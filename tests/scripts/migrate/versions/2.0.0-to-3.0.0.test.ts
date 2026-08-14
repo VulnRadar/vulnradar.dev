@@ -178,6 +178,15 @@ describe("2.0.0-to-3.0.0 migration: exports", () => {
     expect(column?.definition).toBe("TIMESTAMPTZ");
   });
 
+  it("upgrade adds host_badges.scope for the global/per-user badge toggle, defaulting to 'user'", () => {
+    const column = migration.upgrade.addColumns.find(
+      (c) => c.table === "host_badges" && c.column === "scope",
+    );
+    expect(column).toBeDefined();
+    expect(column?.definition).toContain("DEFAULT 'user'");
+    expect(column?.definition).toContain("CHECK (scope IN ('user', 'global'))");
+  });
+
   it("upgrade adds users.pre_staff_plan and backfills existing staff accounts", () => {
     const columns = migration.upgrade.addColumns.map(
       (c) => `${c.table}.${c.column}`,
@@ -359,6 +368,11 @@ describe("2.0.0-to-3.0.0 migration: registry + planner wiring", () => {
     expect(
       v.fingerprint.columns.scan_history?.has("share_publicly_listed"),
     ).toBe(true);
+  });
+
+  it("the 3.0.0 fingerprint includes host_badges.scope", () => {
+    const v = getVersion("3.0.0");
+    expect(v.fingerprint.columns.host_badges?.has("scope")).toBe(true);
   });
 
   it("the 3.0.0 fingerprint includes users.pre_staff_plan", () => {

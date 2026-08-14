@@ -11,6 +11,7 @@ import {
   SMTP_FROM,
   BRANDING_PRIMARY_COLOR,
 } from "@/lib/config/constants";
+import { STAFF_INVITE_EXPIRY_DAYS } from "@/lib/config/constants";
 
 const COLORS = {
   BG_DARK: "#0a0e13",
@@ -458,6 +459,45 @@ export function teamInviteEmail(
         </ul>
       </div>
       <p style="margin: 0 0 16px 0; font-size: 13px; color: ${COLORS.TEXT_MUTED}; text-align: center;">This invitation expires in 7 days.</p>
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 14px 16px;">
+        <p style="margin: 0 0 8px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">If the button doesn't work, copy this link:</p>
+        <p style="margin: 0; font-size: 11px; color: ${COLORS.ACCENT_BLUE_LIGHT}; word-break: break-all; line-height: 1.5; font-family: monospace;">${inviteLink}</p>
+      </div>
+    `,
+  };
+}
+
+export function staffInviteEmail(
+  roleLabel: string,
+  inviteLink: string,
+  invitedBy: string,
+) {
+  const safeRoleLabel = escapeHtml(roleLabel);
+  const safeInvitedBy = escapeHtml(invitedBy);
+  const safeInviteLink = /^https?:\/\//i.test(inviteLink)
+    ? inviteLink
+    : "#invalid";
+  return {
+    subject: `You've been invited to join the ${APP_NAME} team`,
+    text: `${invitedBy} has invited you to join the ${APP_NAME} staff as ${roleLabel}.\n\nClick here to accept the invitation:\n${inviteLink}\n\nThis invitation expires in ${STAFF_INVITE_EXPIRY_DAYS} days.`,
+    html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Staff Invitation</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;"><strong style="color: ${COLORS.TEXT_PRIMARY};">${safeInvitedBy}</strong> has invited you to join the ${APP_NAME} staff.</p>
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 20px; margin-bottom: 24px; text-align: center;">
+        <p style="margin: 0 0 4px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED};">Role</p>
+        <h2 style="margin: 0; font-size: 22px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">${safeRoleLabel}</h2>
+      </div>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
+        <tr>
+          <td align="center">
+            <a href="${safeInviteLink}" style="display: inline-block; padding: 14px 40px; background-color: ${COLORS.ACCENT_BLUE}; color: ${COLORS.WHITE}; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;">Accept Invitation</a>
+          </td>
+        </tr>
+      </table>
+      <div style="background-color: ${COLORS.BG_WARNING}; border-left: 3px solid ${COLORS.ACCENT_YELLOW}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_LIGHT}; font-weight: 600;">Link Expires</p>
+        <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_PALE}; line-height: 1.6;">This invitation expires in ${STAFF_INVITE_EXPIRY_DAYS} days. If you did not expect this invite, you can safely ignore this email.</p>
+      </div>
       <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 14px 16px;">
         <p style="margin: 0 0 8px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">If the button doesn't work, copy this link:</p>
         <p style="margin: 0; font-size: 11px; color: ${COLORS.ACCENT_BLUE_LIGHT}; word-break: break-all; line-height: 1.5; font-family: monospace;">${inviteLink}</p>
@@ -1422,6 +1462,158 @@ export function scheduledScanCompleteEmail(
       </table>
     `,
   };
+}
+
+export interface PostureDigestFinding {
+  title: string;
+  severity: string;
+  url: string;
+}
+
+export interface PostureDigestData {
+  /** Distinct sites (URLs) this user has ever completed a scan of. */
+  siteCount: number;
+  /** New critical/high findings since the previous digest, across every
+   *  site -- possibly truncated to CONFIG_POSTURE_DIGEST_MAX_FINDINGS_LISTED;
+   *  see newFindingsTotal for the untruncated count. */
+  newFindings: PostureDigestFinding[];
+  /** Untruncated count behind `newFindings`. */
+  newFindingsTotal: number;
+  newCriticalCount: number;
+  newHighCount: number;
+  /** Total open critical+high findings right now, across every site. */
+  currentOpenCount: number;
+  /** Same total as of the previous digest (0 for a site with no prior
+   *  baseline scan). */
+  previousOpenCount: number;
+  trend: "up" | "down" | "flat";
+  /** Digest cadence in days -- only used to pick "week" vs "month" copy. */
+  windowDays: number;
+}
+
+function postureFindingListItems(items: PostureDigestFinding[]): string {
+  return items
+    .map((f) => {
+      const isCritical = f.severity === "critical";
+      return `<li style="margin: 0 0 8px 0;"><span style="display: inline-block; min-width: 52px; font-size: 10px; text-transform: uppercase; font-weight: 700; color: ${isCritical ? COLORS.ACCENT_RED_LIGHT : COLORS.ACCENT_YELLOW_LIGHT};">${escapeHtml(f.severity)}</span> ${escapeHtml(f.title)} <span style="color: ${COLORS.TEXT_MUTED}; font-size: 11px;">- ${escapeHtml(f.url)}</span></li>`;
+    })
+    .join("");
+}
+
+function postureFindingListText(items: PostureDigestFinding[]): string {
+  return items
+    .map((f) => `  - [${f.severity}] ${f.title} (${f.url})`)
+    .join("\n");
+}
+
+/**
+ * Weekly/monthly posture digest -- the periodic cross-site summary email
+ * (AUDIT-010: "no periodic posture digest email, only per-scan/per-event
+ * notifications exist"). Distinct from scanCompleteEmail (one scan) and
+ * criticalFindingsEmail (one scan's regression alert): this aggregates
+ * across every site the user has ever scanned, comparing each site's
+ * latest completed scan against what it looked like as of the previous
+ * digest. See lib/notifications/posture-digest.ts for how `data` is built.
+ */
+export function postureDigestEmail(data: PostureDigestData) {
+  const {
+    siteCount,
+    newFindings,
+    newFindingsTotal,
+    currentOpenCount,
+    previousOpenCount,
+    trend,
+    windowDays,
+  } = data;
+
+  const periodLabel = windowDays >= 28 ? "month" : "week";
+  const siteLabel = `${siteCount} site${siteCount !== 1 ? "s" : ""}`;
+
+  const subject =
+    newFindingsTotal > 0
+      ? `Posture Digest: ${newFindingsTotal} new critical/high finding${newFindingsTotal !== 1 ? "s" : ""} across ${siteLabel} - ${APP_NAME}`
+      : `Posture Digest: ${siteLabel} monitored, nothing new this ${periodLabel} - ${APP_NAME}`;
+
+  const trendCopy = {
+    up: {
+      color: COLORS.ACCENT_RED_LIGHT,
+      bg: COLORS.BG_DANGER,
+      label: "Open critical/high findings increased",
+    },
+    down: {
+      color: COLORS.ACCENT_GREEN_LIGHT,
+      bg: COLORS.BG_SUCCESS,
+      label: "Open critical/high findings decreased",
+    },
+    flat: {
+      color: COLORS.TEXT_SECONDARY,
+      bg: COLORS.BG_SECTION,
+      label: "Open critical/high findings unchanged",
+    },
+  }[trend];
+
+  const text = `Your ${periodLabel}ly posture digest across ${siteLabel}.\n\nNew critical/high findings since your last digest: ${newFindingsTotal}\n${
+    newFindings.length > 0 ? `\n${postureFindingListText(newFindings)}\n` : ""
+  }\n${trendCopy.label}: ${previousOpenCount} -> ${currentOpenCount} open critical/high findings.\n\nView your scan history: ${APP_URL}/history`;
+
+  const html = `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Posture Digest</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Across ${siteLabel} you've scanned with ${APP_NAME}.</p>
+
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 20px;">
+        <tr>
+          <td width="33%" style="padding-right: 8px;">
+            <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; text-align: center;">
+              <p style="margin: 0 0 4px 0; font-size: 28px; font-weight: 700; color: ${COLORS.TEXT_PRIMARY};">${siteCount}</p>
+              <p style="margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED};">Sites Monitored</p>
+            </div>
+          </td>
+          <td width="34%" style="padding: 0 4px;">
+            <div style="background-color: ${newFindingsTotal > 0 ? COLORS.BG_DANGER : COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; text-align: center;">
+              <p style="margin: 0 0 4px 0; font-size: 28px; font-weight: 700; color: ${newFindingsTotal > 0 ? COLORS.ACCENT_RED_LIGHT : COLORS.TEXT_PRIMARY};">${newFindingsTotal}</p>
+              <p style="margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED};">New Critical/High</p>
+            </div>
+          </td>
+          <td width="33%" style="padding-left: 8px;">
+            <div style="background-color: ${trendCopy.bg}; border-radius: 8px; padding: 16px; text-align: center;">
+              <p style="margin: 0 0 4px 0; font-size: 28px; font-weight: 700; color: ${trendCopy.color};">${currentOpenCount}</p>
+              <p style="margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED};">Open Now</p>
+            </div>
+          </td>
+        </tr>
+      </table>
+
+      <div style="background-color: ${trendCopy.bg}; border-left: 3px solid ${trendCopy.color}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
+        <p style="margin: 0; font-size: 13px; color: ${trendCopy.color}; line-height: 1.6;">${trendCopy.label}: ${previousOpenCount} to ${currentOpenCount} since your last digest.</p>
+      </div>
+
+      ${
+        newFindings.length > 0
+          ? `
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 10px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED}; font-weight: 600;">New since your last digest${newFindingsTotal > newFindings.length ? ` (showing ${newFindings.length} of ${newFindingsTotal})` : ""}</p>
+        <ul style="margin: 0; padding-left: 18px; font-size: 13px; color: #e2e8f0; line-height: 1.8;">
+          ${postureFindingListItems(newFindings)}
+        </ul>
+      </div>
+      `
+          : `
+      <div style="background-color: ${COLORS.BG_SUCCESS}; border-left: 3px solid ${COLORS.ACCENT_GREEN}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
+        <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_GREEN_LIGHT}; line-height: 1.6;">No new critical or high severity findings since your last digest.</p>
+      </div>
+      `
+      }
+
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td align="center">
+            <a href="${APP_URL}/history" style="display: inline-block; padding: 14px 40px; background-color: ${COLORS.ACCENT_BLUE}; color: ${COLORS.WHITE}; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;">View Scan History</a>
+          </td>
+        </tr>
+      </table>
+    `;
+
+  return { subject, text, html };
 }
 
 export interface AdminChangeNotification {

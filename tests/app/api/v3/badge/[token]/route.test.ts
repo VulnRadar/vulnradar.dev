@@ -137,6 +137,13 @@ describe("GET /api/v3/badge/[token]", () => {
     expect(sql).toContain("hb.revoked_at IS NULL");
     expect(sql).toContain("sh.status = 'completed'");
     expect(sql).toContain("ORDER BY sh.scanned_at DESC");
+    // Resolves to the owner's own scans unless they've opted into
+    // hb.scope = 'global', in which case a completed scan of the URL by
+    // anyone can match -- but only if that scan is public (is_public =
+    // true), never a private or authenticated scan someone else ran.
+    expect(sql).toContain(
+      "(sh.user_id = hb.user_id OR (hb.scope = 'global' AND sh.is_public = true))",
+    );
     const expectedHash = createHash("sha256").update(token).digest("hex");
     expect(params).toEqual([expectedHash]);
 

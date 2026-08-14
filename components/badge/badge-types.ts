@@ -7,6 +7,8 @@ export interface ScanEntry {
   share_token: string | null;
   /** Stable, auto-updating badge token for this URL (app/api/v3/badge/site/route.ts). */
   site_badge_token: string | null;
+  /** 'user' (default): only this account's own scans update the badge. 'global': anyone's latest scan of the URL does. */
+  site_badge_scope: "user" | "global" | null;
   findings: Vulnerability[];
   findings_count: number;
   scanned_at: string;

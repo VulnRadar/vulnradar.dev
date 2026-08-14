@@ -12,6 +12,8 @@ import {
   RefreshCw,
   ArrowRight,
   CalendarDays,
+  Download,
+  Loader2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -74,6 +76,37 @@ export function AuditLog({
   const [expandedLog, setExpandedLog] = useState<number | null>(null);
   const [timeFilter, setTimeFilter] = useState<"all" | "today" | "week">("all");
   const [tocOpen, setTocOpen] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState<"csv" | "json" | null>(
+    null,
+  );
+
+  // AUDIT-010 admin-feature-gap: exports the FULL admin_audit_log table
+  // (not just the current page in `auditLogs`) via the server route, then
+  // triggers the browser download -- same fetch-blob-then-<a download>
+  // pattern used by ProfilePrivacyTab's data export and
+  // SystemSettingsManager's settings export.
+  const handleExport = async (format: "csv" | "json") => {
+    setExportingFormat(format);
+    try {
+      const res = await fetch(
+        `/api/v3/admin/audit-log/export?format=${format}`,
+      );
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `vulnradar-audit-log-${new Date().toISOString().split("T")[0]}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      // Best-effort: the export buttons simply stay available to retry.
+    } finally {
+      setExportingFormat(null);
+    }
+  };
 
   const tocItems: AdminTocItem[] = [
     { id: "audit-filters", label: "Filters" },
@@ -193,19 +226,57 @@ export function AuditLog({
                 </p>
               </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 gap-1.5 border-border/40"
-              onClick={() => fetchAudit(1)}
-              aria-label="Refresh audit log"
-            >
-              <RefreshCw
-                className={cn("h-4 w-4", auditPaging && "animate-spin")}
-                aria-hidden="true"
-              />
-              <span className="hidden sm:inline">Refresh</span>
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 border-border/40"
+                onClick={() => handleExport("csv")}
+                disabled={exportingFormat !== null}
+                aria-label="Export audit log as CSV"
+              >
+                {exportingFormat === "csv" ? (
+                  <Loader2
+                    className="h-4 w-4 animate-spin"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <Download className="h-4 w-4" aria-hidden="true" />
+                )}
+                <span className="hidden sm:inline">CSV</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 border-border/40"
+                onClick={() => handleExport("json")}
+                disabled={exportingFormat !== null}
+                aria-label="Export audit log as JSON"
+              >
+                {exportingFormat === "json" ? (
+                  <Loader2
+                    className="h-4 w-4 animate-spin"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <Download className="h-4 w-4" aria-hidden="true" />
+                )}
+                <span className="hidden sm:inline">JSON</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 border-border/40"
+                onClick={() => fetchAudit(1)}
+                aria-label="Refresh audit log"
+              >
+                <RefreshCw
+                  className={cn("h-4 w-4", auditPaging && "animate-spin")}
+                  aria-hidden="true"
+                />
+                <span className="hidden sm:inline">Refresh</span>
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="pt-0 space-y-4">

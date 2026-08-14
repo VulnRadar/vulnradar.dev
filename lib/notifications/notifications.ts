@@ -24,6 +24,7 @@ export const NOTIFICATION_COLUMNS = {
   scan_failures: "email_critical_findings",
   severity_alerts: "email_regression_alert",
   schedules: "email_schedules",
+  posture_digest: "email_posture_digest",
   api_keys: "email_api_keys",
   api_usage_alerts: "email_api_limit_warning",
   webhooks: "email_webhooks",

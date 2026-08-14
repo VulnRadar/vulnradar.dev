@@ -254,6 +254,9 @@ function ProfileContent() {
   >(null);
   const [sharePubliclyListedByDefault, setSharePubliclyListedByDefault] =
     useState<boolean | null>(null);
+  const [digestEmailEnabled, setDigestEmailEnabled] = useState<boolean | null>(
+    null,
+  );
 
   const fetchData = useCallback(async () => {
     try {
@@ -268,6 +271,7 @@ function ProfileContent() {
         dataReqRes,
         privacyRes,
         sharePrivacyRes,
+        postureDigestRes,
       ] = await Promise.all([
         fetch(API.AUTH.ME),
         fetch(API.KEYS),
@@ -278,6 +282,7 @@ function ProfileContent() {
         fetch(API.DATA_REQUEST),
         fetch(API.ACCOUNT_PRIVACY),
         fetch(API.ACCOUNT_SHARE_PRIVACY),
+        fetch(API.ACCOUNT_POSTURE_DIGEST),
       ]);
 
       if (!userRes.ok) {
@@ -338,6 +343,12 @@ function ProfileContent() {
         setSharePubliclyListedByDefault(
           sharePrivacyData.sharePubliclyListedByDefault ?? true,
         );
+      }
+
+      // Parse the account-level posture-digest opt-in
+      if (postureDigestRes.ok) {
+        const postureDigestData = await postureDigestRes.json();
+        setDigestEmailEnabled(Boolean(postureDigestData.digestEmailEnabled));
       }
     } catch {
       setError("Failed to load profile data.");
@@ -448,6 +459,21 @@ function ProfileContent() {
         }
       }
 
+      // Save the account-level posture-digest opt-in, if changed
+      if (pendingChanges.digestEmailEnabled !== undefined) {
+        const res = await fetch(API.ACCOUNT_POSTURE_DIGEST, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            digestEmailEnabled: pendingChanges.digestEmailEnabled,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setDigestEmailEnabled(Boolean(data.digestEmailEnabled));
+        }
+      }
+
       // Every branch above updates only this page's own local state
       // (setUser, setScansPrivateByDefault, ...) -- none of them touch the
       // app-wide useAuth() SWR cache for /api/v3/auth/me, which is what
@@ -531,6 +557,20 @@ function ProfileContent() {
             newValue: pendingChanges.sharePubliclyListedByDefault
               ? "On"
               : "Off",
+          },
+        ]
+      : []),
+    ...(pendingChanges.digestEmailEnabled !== undefined
+      ? [
+          {
+            field: "digestEmailEnabled",
+            label: "Posture Digest",
+            oldValue: pendingChanges.digestEmailEnabled
+              ? "Disabled"
+              : "Enabled",
+            newValue: pendingChanges.digestEmailEnabled
+              ? "Enabled"
+              : "Disabled",
           },
         ]
       : []),
@@ -795,6 +835,7 @@ function ProfileContent() {
                 discardKey={discardKey}
                 saveKey={saveKey}
                 preloadedNotifPrefs={notifPrefs}
+                preloadedDigestEmailEnabled={digestEmailEnabled}
               />
             )}
 

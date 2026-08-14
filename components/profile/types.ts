@@ -183,6 +183,7 @@ export interface NotificationPrefs {
   email_critical_findings: boolean;
   email_regression_alert: boolean;
   email_schedules: boolean;
+  email_posture_digest: boolean;
   email_api_keys: boolean;
   email_api_limit_warning: boolean;
   email_webhooks: boolean;
@@ -213,6 +214,9 @@ export interface PendingChanges {
   /** Pending edit to the account-level "list new shares in Public Scans by
    *  default" setting (Privacy tab). See PUT /api/v3/account/share-privacy. */
   sharePubliclyListedByDefault?: boolean;
+  /** Pending edit to the account-level posture-digest opt-in (Notifications
+   *  tab). See PUT /api/v3/account/posture-digest. */
+  digestEmailEnabled?: boolean;
 }
 
 // Common props for all profile tab components
@@ -240,6 +244,9 @@ export interface ProfileTabProps {
   /** Account-level "list new shares in Public Scans by default" setting
    *  (Privacy tab). See PUT /api/v3/account/share-privacy. */
   preloadedSharePubliclyListedByDefault?: boolean | null;
+  /** Account-level posture-digest opt-in (Notifications tab). See
+   *  PUT /api/v3/account/posture-digest. */
+  preloadedDigestEmailEnabled?: boolean | null;
   setApiKeys?: React.Dispatch<React.SetStateAction<ApiKey[]>>;
   setWebhooks?: React.Dispatch<React.SetStateAction<WebhookItem[]>>;
   setSchedules?: React.Dispatch<React.SetStateAction<ScheduleItem[]>>;

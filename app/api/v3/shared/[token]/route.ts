@@ -40,11 +40,25 @@ export const GET = withErrorHandling(
     // token (app/api/v3/badge/site/route.ts), so clicking through the
     // badge image always lands on the SAME latest-by-date scan the image
     // itself rendered, same fallback app/api/v3/badge/[token]/route.ts uses.
+    // Scoped to the badge owner's own scans unless they've opted into
+    // hb.scope = 'global' (PATCH on that same route), in which case this
+    // can resolve to a scan someone else ran -- but ONLY one that scan's
+    // owner marked public (sh.is_public = true). Without that gate,
+    // 'global' would let anyone pull a stranger's PRIVATE or authenticated
+    // scan (full findings, headers, notes) just by pointing a badge at
+    // that URL, bypassing is_public the way every other privacy-gated path
+    // in this codebase (getExactUrlReputation, etc) requires it. The
+    // owner's own scans still match regardless of is_public, same as
+    // before. hb.user_id is selected alongside so a foreign-but-public
+    // scan can still be detected and have its notes/identity redacted
+    // below -- is_public only ever governs whether findings are visible
+    // at all, not whether the scanning user's private notes are.
     if (result.rows.length === 0) {
       result = await pool.query(
-        `SELECT sh.id, sh.url, sh.summary, sh.findings, sh.findings_count, sh.duration, sh.scanned_at, sh.response_headers, sh.notes, sh.user_id, sh.result_meta, sh.authenticated, u.name as scanned_by, u.avatar_url as scanned_by_avatar, u.role as scanned_by_role
+        `SELECT sh.id, sh.url, sh.summary, sh.findings, sh.findings_count, sh.duration, sh.scanned_at, sh.response_headers, sh.notes, sh.user_id, sh.result_meta, sh.authenticated, u.name as scanned_by, u.avatar_url as scanned_by_avatar, u.role as scanned_by_role, hb.user_id as badge_owner_id
        FROM host_badges hb
-       JOIN scan_history sh ON sh.user_id = hb.user_id AND sh.url = hb.url
+       JOIN scan_history sh ON sh.url = hb.url
+         AND (sh.user_id = hb.user_id OR (hb.scope = 'global' AND sh.is_public = true))
        JOIN users u ON sh.user_id = u.id
        WHERE hb.badge_token_hash = $1
          AND hb.revoked_at IS NULL
@@ -63,6 +77,15 @@ export const GET = withErrorHandling(
     }
 
     const row = result.rows[0];
+    // A 'global' badge can resolve to a scan someone other than the badge
+    // owner ran. That person never consented to being identified or having
+    // their private notes exposed just because a stranger's badge happened
+    // to pick up their scan -- only the aggregate findings (already the
+    // point of the badge) are shown for a foreign scan; notes and identity
+    // are redacted the same way an anonymous share link redacts nothing
+    // for the owner but this isn't the owner's link to begin with.
+    const isForeignScan =
+      row.badge_owner_id != null && row.user_id !== row.badge_owner_id;
     // checksRun, dangerScore, engineConfidence, incomplete and (for crawl
     // scans) crawl all live in here -- same source app/api/v3/history/[id]/route.ts
     // reads it from, kept in parity so a shared scan shows the same detail
@@ -81,13 +104,19 @@ export const GET = withErrorHandling(
     // link, same as notes already are -- sharing the scan at all already
     // exposes its findings, so there's no additional exposure in also
     // showing the tags derived from (or added alongside) those findings.
+    // Skip the platform-badges lookup entirely for a foreign scan -- those
+    // badges (Verified, Pro, etc.) would tangentially identify the other
+    // user too, and there's no reason to even run the query for a value
+    // the response is about to redact anyway.
     const [badgesResult, subdomainCache, tagsResult] = await Promise.all([
-      pool.query(
-        `SELECT b.id, b.name, b.display_name, b.icon, b.color, b.priority
+      isForeignScan
+        ? Promise.resolve({ rows: [] })
+        : pool.query(
+            `SELECT b.id, b.name, b.display_name, b.icon, b.color, b.priority
        FROM user_badges ub JOIN badges b ON ub.badge_id = b.id
        WHERE ub.user_id = $1 ORDER BY b.priority DESC`,
-        [row.user_id],
-      ),
+            [row.user_id],
+          ),
       getCachedSubdomainSnapshot(row.url),
       pool.query(
         `SELECT tag, source FROM scan_tags WHERE scan_id = $1 ORDER BY source, tag`,
@@ -103,11 +132,13 @@ export const GET = withErrorHandling(
       summary: row.summary,
       findings: row.findings || [],
       responseHeaders: row.response_headers || undefined,
-      notes: row.notes || "",
+      notes: isForeignScan ? "" : row.notes || "",
       authenticated: row.authenticated || false,
-      scannedBy: row.scanned_by || "Anonymous",
-      scannedByAvatar: row.scanned_by_avatar || null,
-      scannedByRole: row.scanned_by_role || "user",
+      scannedBy: isForeignScan
+        ? "Community scan"
+        : row.scanned_by || "Anonymous",
+      scannedByAvatar: isForeignScan ? null : row.scanned_by_avatar || null,
+      scannedByRole: isForeignScan ? "user" : row.scanned_by_role || "user",
       scannedByBadges: badgesResult.rows,
       subdomainCache,
       tags: tagsResult.rows,

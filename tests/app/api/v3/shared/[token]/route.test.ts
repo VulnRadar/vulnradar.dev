@@ -159,10 +159,100 @@ describe("GET /api/v3/shared/[token]", () => {
     expect(hostBadgeSql).toContain("FROM host_badges hb");
     expect(hostBadgeSql).toContain("badge_token_hash = $1");
     expect(hostBadgeSql).toContain("sh.status = 'completed'");
+    expect(hostBadgeSql).toContain(
+      "(sh.user_id = hb.user_id OR (hb.scope = 'global' AND sh.is_public = true))",
+    );
     const expectedHash = createHash("sha256").update(token).digest("hex");
     expect(hostBadgeParams).toEqual([expectedHash]);
     const json = await res.json();
     expect(json.scanId).toBe(55);
+  });
+
+  it("redacts notes and identity for a scan resolved via a global-scope badge that belongs to someone else", async () => {
+    const token = "7".repeat(64);
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // share_token_hash miss
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 61,
+            url: "https://example.com",
+            scanned_at: "2026-03-01T00:00:00.000Z",
+            duration: 700,
+            summary: {},
+            findings: [{ severity: "high", title: "y" }],
+            findings_count: 1,
+            response_headers: null,
+            notes: "internal note about our client",
+            user_id: 99, // the scan belongs to user 99...
+            authenticated: false,
+            result_meta: {},
+            scanned_by: "Stranger",
+            scanned_by_avatar: "https://example.com/s.png",
+            scanned_by_role: "user",
+            badge_owner_id: 42, // ...but the badge belongs to user 42
+          },
+        ],
+      })
+      // Platform-badges lookup must be skipped entirely for a foreign scan.
+      .mockResolvedValueOnce({ rows: [] }) // getSetting()'s system_settings read
+      .mockResolvedValueOnce({ rows: [] }) // tags
+      .mockResolvedValueOnce({ rows: [] }); // subdomain_cache
+
+    const res = await callGet(token);
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.notes).toBe("");
+    expect(json.scannedBy).toBe("Community scan");
+    expect(json.scannedByAvatar).toBeNull();
+    expect(json.scannedByRole).toBe("user");
+    expect(json.scannedByBadges).toEqual([]);
+    // The findings themselves -- the actual point of the badge -- still show.
+    expect(json.findings).toEqual([{ severity: "high", title: "y" }]);
+    // 5 real queries (share_token_hash miss, host_badges hit, settings,
+    // tags, subdomain_cache): the platform-badges query is skipped
+    // entirely for a foreign scan, not just ignored -- there's no extra
+    // pool.query call to account for it.
+    expect(mockQuery).toHaveBeenCalledTimes(5);
+  });
+
+  it("does not redact when the resolved scan belongs to the badge owner themselves", async () => {
+    const token = "8".repeat(64);
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // share_token_hash miss
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 62,
+            url: "https://example.com",
+            scanned_at: "2026-03-01T00:00:00.000Z",
+            duration: 700,
+            summary: {},
+            findings: [],
+            findings_count: 0,
+            response_headers: null,
+            notes: "my own note",
+            user_id: 42,
+            authenticated: false,
+            result_meta: {},
+            scanned_by: "Alice",
+            scanned_by_avatar: null,
+            scanned_by_role: "user",
+            badge_owner_id: 42, // same as user_id -- not a foreign scan
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] }) // badges
+      .mockResolvedValueOnce({ rows: [] }) // getSetting()'s system_settings read
+      .mockResolvedValueOnce({ rows: [] }) // tags
+      .mockResolvedValueOnce({ rows: [] }); // subdomain_cache
+
+    const res = await callGet(token);
+
+    const json = await res.json();
+    expect(json.notes).toBe("my own note");
+    expect(json.scannedBy).toBe("Alice");
   });
 
   it("returns the full shared scan payload, including badges and tags", async () => {

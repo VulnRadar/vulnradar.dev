@@ -313,6 +313,40 @@ export const CONFIG_DB_QUERY_TIMEOUT_MS = 30000;
 // short: a health check that hangs is worse than one that reports failure.
 export const CONFIG_DB_HEALTHCHECK_TIMEOUT_MS = 3000;
 
+// ADMIN ALERTS
+//
+// Outbound webhook for critical system events (boot-time schema failures,
+// scans orphaned by an unclean shutdown), so an operator finds out without
+// having to keep /admin open. Works with Slack/Discord/PagerDuty/any SIEM
+// that accepts an incoming webhook -- no vendor-specific integration.
+// Leave the URL empty to disable (default: off, no operator has configured
+// one yet). See lib/admin/alert-webhook.ts.
+export const CONFIG_ADMIN_ALERT_WEBHOOK_URL = "";
+export const CONFIG_ADMIN_ALERT_WEBHOOK_SECRET = "";
+
+// Staff/admin panel access already SHOWS which staff lack 2FA
+// (components/admin/staff/staff-list.tsx) but never enforced it -- a
+// password-only staff or admin account could still reach every admin
+// route. Off by default so flipping on this app's own audit doesn't
+// instantly lock out existing staff who haven't set up 2FA yet without
+// warning; an operator turns this on once their staff are ready. See
+// requireStaff/requireAdmin in lib/auth/authorization.ts.
+export const CONFIG_ENFORCE_STAFF_2FA = false;
+
+// Staff SSO: a generic OIDC login path for staff/admin accounts (AUDIT-010,
+// admin-feature-gap: "privileged accounts authenticate the same as
+// customers, so a self-hosting org can't put admin access behind their own
+// IdP"). Deliberately protocol-generic (not a specific vendor SDK) so it
+// points at any OIDC-compliant issuer (Okta, Azure AD/Entra ID, Google
+// Workspace, Authentik, Keycloak, etc) via that issuer's own discovery
+// document, the same way this app already lets an operator point
+// AI_PROVIDER at any OpenAI-compatible endpoint rather than hardcoding one
+// vendor. All three empty by default -- disabled until an operator
+// configures their own IdP. See lib/auth/staff-oidc.ts.
+export const CONFIG_STAFF_OIDC_ISSUER_URL = "";
+export const CONFIG_STAFF_OIDC_CLIENT_ID = "";
+export const CONFIG_STAFF_OIDC_CLIENT_SECRET = "";
+
 // RATE LIMITING - UPDATE IF NEEDED
 
 export const CONFIG_RATE_LIMIT_LOGIN_ATTEMPTS = 5;
@@ -920,6 +954,29 @@ export const CONFIG_FEATURE_SCHEDULED_SCANS = true;
 export const CONFIG_FEATURE_BULK_SCANS = true;
 export const CONFIG_FEATURE_PDF_REPORTS = true;
 export const CONFIG_FEATURE_EMAIL_NOTIFICATIONS = true;
+
+// POSTURE DIGEST - opt-in weekly/monthly cross-site summary email (see
+// lib/notifications/posture-digest.ts). Separate deployment-wide switch
+// from FEATURE_EMAIL_NOTIFICATIONS above so an admin can pause just this
+// feature without disabling every other transactional email; the per-user
+// opt-in (users.digest_email_enabled, default false) is the other half of
+// the gate -- this only controls whether the worker runs at all.
+export const CONFIG_POSTURE_DIGEST_ENABLED = true;
+// How often the in-process worker checks for users whose digest is due.
+// Independent of CONFIG_POSTURE_DIGEST_WINDOW_DAYS (the digest's own
+// per-user cadence) -- same "poll on a short fixed cadence, not per-row
+// timers" approach as the scheduled-scans worker and the cleanup job. NOT
+// admin-configurable (see NEVER_CONFIGURABLE in registry.ts): read once
+// when the timer is registered, so a runtime change would not take effect.
+export const CONFIG_POSTURE_DIGEST_POLL_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h
+// Days of "since your last digest" coverage. A user becomes due once this
+// many days have passed since users.last_digest_sent_at (or, for a user
+// who has never received one, since they opted in).
+export const CONFIG_POSTURE_DIGEST_WINDOW_DAYS = 7;
+// Hard cap on individual findings itemized in one digest email -- the
+// summary counts (siteCount, newFindingsTotal, etc.) are never truncated,
+// only the itemized list.
+export const CONFIG_POSTURE_DIGEST_MAX_FINDINGS_LISTED = 15;
 
 // BILLING / PREMIUM CONFIGURATION - UPDATE IF NEEDED
 

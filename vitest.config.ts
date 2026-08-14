@@ -196,6 +196,18 @@ export default defineConfig({
           functions: 100,
           branches: 55,
         },
+        "app/api/v3/assets/route.ts": {
+          // 97.61% / 76.66% / 100% / 97.43% actual. The uncovered branch is
+          // the RETENTION_SETTING_KEYS[userPlan] ?? fallback-to-free arm for
+          // an unrecognized plan string, which every test uses a valid plan
+          // for -- same shape as the identical fallback in
+          // app/api/v3/history/route.ts, which has no dedicated test for it
+          // either.
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 70,
+        },
         "lib/tags/auto-tags.ts": {
           // 98.48% / 92.45% / 100% / 100% actual (stmts/branch/funcs/lines)
           // after the ~50-rule taxonomy expansion and the layered AI/

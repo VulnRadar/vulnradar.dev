@@ -5,6 +5,7 @@
 import pool from "@/lib/database/db";
 import { DB_CLEANUP_INTERVAL } from "@/lib/config/constants";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
+import { archiveAdminAuditLogBeforePurge } from "@/lib/database/audit-log-archive";
 
 /**
  * How often the periodic cleanup pass runs. Sourced from
@@ -37,6 +38,7 @@ export interface CleanupStats {
   oldBrowserSessions: number;
   oldKevCache: number;
   oldErrorLogs: number;
+  archivedAuditLogs: number;
 }
 
 /**
@@ -73,6 +75,7 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     oldBrowserSessions: 0,
     oldKevCache: 0,
     oldErrorLogs: 0,
+    archivedAuditLogs: 0,
   };
 
   // Resolve the admin-configurable per-plan retention windows once up front.
@@ -292,6 +295,15 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     );
     stats.expiredGiftedSubs = giftedSubsRes.rowCount || 0;
 
+    // AUDIT-010 admin-feature-gap: archive the rows this delete is about
+    // to remove permanently, before removing them. Uses the same
+    // transactional `client` the DELETE below runs on, so archive-then-
+    // purge is atomic -- see lib/database/audit-log-archive.ts.
+    stats.archivedAuditLogs = await archiveAdminAuditLogBeforePurge(
+      client,
+      cleanupRetention.CLEANUP_ADMIN_AUDIT_LOG_RETENTION_DAYS,
+    );
+
     // Delete old admin audit logs (admin-configurable retention)
     const auditLogsRes = await client.query(
       "DELETE FROM admin_audit_log WHERE created_at < NOW() - ($1 * INTERVAL '1 day')",
@@ -444,7 +456,13 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
  * Format cleanup stats into a readable log message
  */
 export function formatCleanupStats(stats: CleanupStats): string {
-  const total = Object.values(stats).reduce((a, b) => a + b, 0);
+  // archivedAuditLogs describes how many of the oldAuditLogs rows counted
+  // below were durably archived before their delete -- it is metadata
+  // about that same delete, not a separate class of deleted row, so it is
+  // reported as its own line below but excluded from `total` to avoid
+  // double-counting the same purged rows twice.
+  const { archivedAuditLogs, ...deletionCounts } = stats;
+  const total = Object.values(deletionCounts).reduce((a, b) => a + b, 0);
   if (total === 0) return "no records to clean";
 
   const items: string[] = [];
@@ -487,6 +505,8 @@ export function formatCleanupStats(stats: CleanupStats): string {
     items.push(`${stats.oldBrowserSessions} browser sessions`);
   if (stats.oldKevCache > 0) items.push(`${stats.oldKevCache} KEV cache rows`);
   if (stats.oldErrorLogs > 0) items.push(`${stats.oldErrorLogs} error logs`);
+  if (archivedAuditLogs > 0)
+    items.push(`${archivedAuditLogs} audit logs archived`);
 
   return `${total} total (${items.join(", ")})`;
 }

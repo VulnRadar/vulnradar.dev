@@ -791,6 +791,15 @@ export const upgrade = {
       definition:
         "TEXT GENERATED ALWAYS AS (encode(sha256(badge_token::bytea), 'hex')) STORED",
     },
+    {
+      table: "host_badges",
+      column: "scope",
+      // Defaults to 'user' for every pre-existing row -- a badge someone
+      // already embedded keeps its current owner-only behavior unless they
+      // explicitly opt into 'global' via the toggle on the badge page.
+      definition:
+        "TEXT NOT NULL DEFAULT 'user' CHECK (scope IN ('user', 'global'))",
+    },
     // Auto tags (lib/tags/auto-tags.ts) -- see this file's header comment.
     // Defaults to 'user' so every scan_tags row that predates this column
     // (every row on any real database, v3.0.0 never having shipped) keeps

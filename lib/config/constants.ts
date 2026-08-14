@@ -614,6 +614,15 @@ export const BEARER_PREFIX = "Bearer ";
 // TOTP issuer
 export const TOTP_ISSUER = APP_NAME;
 
+// How long a staff invite link (app/api/v3/admin/staff-invites/route.ts,
+// lib/admin/staff-invites.ts) stays valid. Lives here rather than in
+// lib/admin/staff-invites.ts itself so lib/email/email.ts -- which needs it
+// purely for the "expires in N days" copy in the invite email -- doesn't
+// have to import that module and, transitively, the real DB pool it opens
+// at module load time (that transitive import previously broke every test
+// that touches email.ts without also mocking @/lib/database/db).
+export const STAFF_INVITE_EXPIRY_DAYS = 7;
+
 // TURNSTILE / CAPTCHA CONFIG
 
 export const TURNSTILE_ENABLED = !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;

@@ -17,6 +17,7 @@ import {
 } from "@/components/auth/auth-shell";
 import { OAuthButtons } from "@/components/auth/oauth-buttons";
 import { refreshAuthCache } from "@/components/providers/auth-provider";
+import { useStaffOidcConfigured } from "@/lib/hooks/use-staff-oidc";
 
 interface LoginFormProps {
   redirectTo: string;
@@ -38,6 +39,7 @@ export function LoginForm({
   const [unverifiedEmail, setUnverifiedEmail] = useState(false);
   const [resendingVerification, setResendingVerification] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
+  const staffOidcConfigured = useStaffOidcConfigured();
 
   async function handleResendVerification() {
     setResendingVerification(true);
@@ -239,6 +241,20 @@ export function LoginForm({
       </Button>
 
       <OAuthButtons actionLabel="Sign in" intent="login" />
+
+      {staffOidcConfigured && (
+        <p className="text-center">
+          <a
+            href={API.AUTH.STAFF_OIDC_START}
+            className={cn(
+              "text-xs text-muted-foreground rounded hover:text-foreground hover:underline underline-offset-4",
+              authFocusRing,
+            )}
+          >
+            Staff sign-in with SSO
+          </a>
+        </p>
+      )}
 
       <p className="text-sm text-muted-foreground mt-2">
         No account yet?{" "}

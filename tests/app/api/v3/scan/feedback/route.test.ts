@@ -98,9 +98,11 @@ describe("POST /api/v3/scan/feedback", () => {
   });
 
   it("inserts feedback scoped to the session user and returns it", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 1, verdict: "confirmed", created_at: "2026-01-01" }],
-    });
+    mockQuery
+      .mockResolvedValueOnce({ rows: [{ id: 123 }] }) // ownership check
+      .mockResolvedValueOnce({
+        rows: [{ id: 1, verdict: "confirmed", created_at: "2026-01-01" }],
+      });
 
     const res = await POST(postRequest(validPayload()));
     expect(res.status).toBe(200);
@@ -108,7 +110,13 @@ describe("POST /api/v3/scan/feedback", () => {
     expect(json.ok).toBe(true);
     expect(json.feedback.verdict).toBe("confirmed");
 
-    const [sql, params] = mockQuery.mock.calls[0];
+    const [ownerSql, ownerParams] = mockQuery.mock.calls[0];
+    expect(ownerSql).toContain(
+      "FROM scan_history WHERE id = $1 AND user_id = $2",
+    );
+    expect(ownerParams).toEqual([123, 42]);
+
+    const [sql, params] = mockQuery.mock.calls[1];
     expect(sql).toContain("INSERT INTO scan_finding_feedback");
     expect(params).toEqual([
       42,
@@ -121,9 +129,11 @@ describe("POST /api/v3/scan/feedback", () => {
   });
 
   it("recomputes the scan's score after a successful save when scanHistoryId is present", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 1, verdict: "false_positive", created_at: "2026-01-01" }],
-    });
+    mockQuery
+      .mockResolvedValueOnce({ rows: [{ id: 123 }] }) // ownership check
+      .mockResolvedValueOnce({
+        rows: [{ id: 1, verdict: "false_positive", created_at: "2026-01-01" }],
+      });
 
     await POST(postRequest(validPayload({ verdict: "false_positive" })));
 
@@ -146,9 +156,11 @@ describe("POST /api/v3/scan/feedback", () => {
   });
 
   it("still returns the saved feedback even if recompute fails in the background", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 5, verdict: "false_positive", created_at: "2026-01-01" }],
-    });
+    mockQuery
+      .mockResolvedValueOnce({ rows: [{ id: 123 }] }) // ownership check
+      .mockResolvedValueOnce({
+        rows: [{ id: 5, verdict: "false_positive", created_at: "2026-01-01" }],
+      });
     mockRecomputeScanScore.mockRejectedValueOnce(new Error("db exploded"));
 
     const res = await POST(
@@ -173,29 +185,27 @@ describe("POST /api/v3/scan/feedback", () => {
     expect(params[5]).toBeNull();
   });
 
-  it("does not verify that scanHistoryId belongs to the session user before inserting", async () => {
-    // No prior SELECT against scan_history is issued anywhere in this route:
-    // a caller can attach feedback to any scanHistoryId, including one that
-    // belongs to a different account. This test documents that behavior.
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 3, verdict: "confirmed", created_at: "2026-01-01" }],
-    });
+  it("404s and never inserts when scanHistoryId does not belong to the session user (AUDIT-010#security-02)", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // ownership check: no match
 
     const res = await POST(
       postRequest(validPayload({ scanHistoryId: 999999 })),
     );
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(404);
     expect(mockQuery).toHaveBeenCalledTimes(1);
     const [sql, params] = mockQuery.mock.calls[0];
-    expect(sql).not.toMatch(/SELECT.*scan_history/is);
-    expect(params[1]).toBe(999999);
+    expect(sql).toContain("FROM scan_history WHERE id = $1 AND user_id = $2");
+    expect(params).toEqual([999999, 42]);
+    expect(mockRecomputeScanScore).not.toHaveBeenCalled();
   });
 
   it("returns 503 when the feedback table has not been migrated yet", async () => {
-    mockQuery.mockRejectedValueOnce(
-      new Error('relation "scan_finding_feedback" does not exist'),
-    );
+    mockQuery
+      .mockResolvedValueOnce({ rows: [{ id: 123 }] }) // ownership check
+      .mockRejectedValueOnce(
+        new Error('relation "scan_finding_feedback" does not exist'),
+      );
 
     const res = await POST(postRequest(validPayload()));
     expect(res.status).toBe(503);
@@ -204,6 +214,15 @@ describe("POST /api/v3/scan/feedback", () => {
   });
 
   it("returns 500 on an unrelated database error", async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [{ id: 123 }] }) // ownership check
+      .mockRejectedValueOnce(new Error("connection terminated"));
+
+    const res = await POST(postRequest(validPayload()));
+    expect(res.status).toBe(500);
+  });
+
+  it("returns 500 when the ownership check itself fails", async () => {
     mockQuery.mockRejectedValueOnce(new Error("connection terminated"));
 
     const res = await POST(postRequest(validPayload()));

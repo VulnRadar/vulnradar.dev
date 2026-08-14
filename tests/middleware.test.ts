@@ -234,6 +234,26 @@ describe("middleware: CSRF enforcement on /api/v3/**", () => {
     expect(res.status).not.toBe(403);
   });
 
+  it("does NOT exempt the user's own webhook list/create endpoint -- only the exact Stripe path, not the whole /api/v3/webhooks/ prefix (AUDIT-010#security-03)", () => {
+    const res = middleware(
+      makeRequest("/api/v3/webhooks", {
+        method: "POST",
+        cookie: "vulnradar_session=abc123",
+      }),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("does NOT exempt the user's own webhook edit endpoint from the CSRF check (AUDIT-010#security-03)", () => {
+    const res = middleware(
+      makeRequest("/api/v3/webhooks/42", {
+        method: "PATCH",
+        cookie: "vulnradar_session=abc123",
+      }),
+    );
+    expect(res.status).toBe(403);
+  });
+
   it("does not enforce CSRF on a GET request", () => {
     const res = middleware(
       makeRequest("/api/v3/history", { cookie: "vulnradar_session=abc123" }),

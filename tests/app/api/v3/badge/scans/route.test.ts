@@ -123,6 +123,7 @@ describe("GET /api/v3/badge/scans", () => {
           url: "https://example.com",
           share_token: null,
           site_badge_token: "a".repeat(64),
+          site_badge_scope: "global",
           findings_count: 0,
           scanned_at: "2026-01-15T00:00:00.000Z",
           summary: { total: 0 },
@@ -134,9 +135,11 @@ describe("GET /api/v3/badge/scans", () => {
     const res = await GET();
     const json = await res.json();
     expect(json[0].site_badge_token).toBe("a".repeat(64));
+    expect(json[0].site_badge_scope).toBe("global");
 
     const [sql] = mockQuery.mock.calls[0];
     expect(sql).toContain("LEFT JOIN host_badges");
+    expect(sql).toContain("hb.scope AS site_badge_scope");
   });
 
   it("dedupes to one row per URL, keeping the newest scan", async () => {

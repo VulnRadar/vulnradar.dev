@@ -7,8 +7,41 @@ import {
   STAFF_ROLE_HIERARCHY,
   TEAM_ROLES,
 } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
 
 type AuthError = NextResponse | undefined;
+
+/**
+ * When ENFORCE_STAFF_2FA is on, a staff-or-above account without 2FA
+ * enabled fails every requireStaff/requireAdmin check (AUDIT-010,
+ * admin-feature-gap: 2FA status was visible in the admin panel but never
+ * actually enforced). Does not lock the account out of the app entirely --
+ * /api/v3/auth/2fa/setup only requires a plain session, not requireStaff,
+ * so a locked-out staff member can still reach their own account settings
+ * to turn 2FA on and regain admin access.
+ *
+ * Fails OPEN (treats as "not enforced") if the setting can't be resolved
+ * for any reason -- this is a defense-in-depth hardening toggle, not the
+ * primary access-control check (the role-hierarchy check above/below it
+ * is), so a settings-lookup hiccup should never be able to lock every
+ * admin out of the panel entirely. Checks `enforced === true` with strict
+ * equality rather than truthy coercion for the same fail-open reasoning:
+ * ENFORCE_STAFF_2FA is registry-typed as a real boolean in production, so
+ * this changes nothing there, but it means anything other than an actual
+ * `true` (undefined, a stray non-boolean value) reads as "not enforced"
+ * instead of accidentally denying access.
+ */
+async function passesTwoFactorEnforcement(
+  totpEnabled: boolean,
+): Promise<boolean> {
+  if (totpEnabled) return true;
+  try {
+    const enforced = await getSetting("ENFORCE_STAFF_2FA");
+    return enforced !== true;
+  } catch {
+    return true;
+  }
+}
 
 /**
  * R3/D1: Admin role helpers — single source of truth for admin/staff
@@ -22,13 +55,18 @@ type AuthError = NextResponse | undefined;
 export async function requireStaff() {
   const session = await getSession();
   if (!session) return null;
-  const result = await pool.query("SELECT role FROM users WHERE id = $1", [
-    session.userId,
-  ]);
-  const user = result.rows[0] as { role?: string } | undefined;
+  const result = await pool.query(
+    "SELECT role, totp_enabled FROM users WHERE id = $1",
+    [session.userId],
+  );
+  const user = result.rows[0] as
+    { role?: string; totp_enabled?: boolean } | undefined;
   if (!user) return null;
   const role = user.role || "user";
   if ((STAFF_ROLE_HIERARCHY[role] || 0) < (STAFF_ROLE_HIERARCHY.support || 1)) {
+    return null;
+  }
+  if (!(await passesTwoFactorEnforcement(Boolean(user.totp_enabled)))) {
     return null;
   }
   return { ...session, role };
@@ -37,13 +75,18 @@ export async function requireStaff() {
 export async function requireAdmin() {
   const session = await getSession();
   if (!session) return null;
-  const result = await pool.query("SELECT id, role FROM users WHERE id = $1", [
-    session.userId,
-  ]);
-  const user = result.rows[0] as { id: number; role?: string } | undefined;
+  const result = await pool.query(
+    "SELECT id, role, totp_enabled FROM users WHERE id = $1",
+    [session.userId],
+  );
+  const user = result.rows[0] as
+    { id: number; role?: string; totp_enabled?: boolean } | undefined;
   if (!user) return null;
   const role = user.role || "user";
   if ((STAFF_ROLE_HIERARCHY[role] || 0) < (STAFF_ROLE_HIERARCHY.admin || 3)) {
+    return null;
+  }
+  if (!(await passesTwoFactorEnforcement(Boolean(user.totp_enabled)))) {
     return null;
   }
   return { ...session, id: user.id, role };

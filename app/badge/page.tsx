@@ -76,6 +76,15 @@ export default function BadgePage() {
     }
   }
 
+  function handleScopeChange(scope: "user" | "global") {
+    setSelected((prev) => (prev ? { ...prev, site_badge_scope: scope } : prev));
+    setScans((prev) =>
+      prev.map((s) =>
+        s.id === selected?.id ? { ...s, site_badge_scope: scope } : s,
+      ),
+    );
+  }
+
   if (loading) {
     return <BadgeSkeleton />;
   }
@@ -111,6 +120,7 @@ export default function BadgePage() {
               selected={selected}
               token={selected?.site_badge_token ?? null}
               generating={generating}
+              onScopeChange={handleScopeChange}
             />
           </div>
         )}

@@ -36,6 +36,23 @@ export async function POST(req: NextRequest) {
   const { findingId, findingUrl, scanHistoryId, verdict, notes } = result.data;
 
   try {
+    // scanHistoryId only ever exists to (a) record which scan a piece of
+    // feedback came from and (b) trigger recomputeScanScore against that
+    // scan's own severity tally/danger score and host_reputation cascade --
+    // both of which must stay scoped to the caller's own scans. Without
+    // this, any authenticated user could attach feedback to (and force a
+    // recompute cascade against) any scan in the system just by guessing
+    // its small sequential id (AUDIT-010#security-02).
+    if (scanHistoryId) {
+      const owned = await pool.query(
+        `SELECT id FROM scan_history WHERE id = $1 AND user_id = $2`,
+        [scanHistoryId, session.userId],
+      );
+      if (owned.rows.length === 0) {
+        return NextResponse.json({ error: "Scan not found" }, { status: 404 });
+      }
+    }
+
     const row = await pool.query(
       `INSERT INTO scan_finding_feedback
          (user_id, scan_history_id, finding_id, finding_url, verdict, notes)

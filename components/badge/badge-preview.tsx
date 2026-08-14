@@ -9,8 +9,10 @@ import {
   Code2,
   Copy,
   Check,
+  Globe2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { API, APP_NAME } from "@/lib/config/constants";
 import type { ScanEntry } from "./badge-types";
 import { parseUrl } from "./badge-types";
@@ -19,6 +21,65 @@ interface BadgePreviewProps {
   selected: ScanEntry | null;
   token: string | null;
   generating: boolean;
+  onScopeChange?: (scope: "user" | "global") => void;
+}
+
+function ScopeToggle({
+  url,
+  scope,
+  onScopeChange,
+}: {
+  url: string;
+  scope: "user" | "global";
+  onScopeChange?: (scope: "user" | "global") => void;
+}) {
+  const [pending, setPending] = useState(false);
+  const isGlobal = scope === "global";
+
+  async function toggle(checked: boolean) {
+    const next = checked ? "global" : "user";
+    setPending(true);
+    try {
+      const res = await fetch(API.BADGE_SITE, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url, scope: next }),
+      });
+      if (res.ok) onScopeChange?.(next);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/30 p-3">
+      <Globe2
+        className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5"
+        aria-hidden="true"
+      />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between gap-3">
+          <label
+            htmlFor="badge-scope-toggle"
+            className="text-sm font-medium text-foreground"
+          >
+            Update from anyone&apos;s scan
+          </label>
+          <Switch
+            id="badge-scope-toggle"
+            checked={isGlobal}
+            disabled={pending}
+            onCheckedChange={toggle}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+          {isGlobal
+            ? "On: the badge shows the newest scan of this URL by anyone, not just you. Their notes and identity stay private, only the findings summary shows."
+            : "Off: the badge only updates when you scan this URL yourself. Turn this on if other people also scan it and you want the badge to stay current either way."}
+        </p>
+      </div>
+    </div>
+  );
 }
 
 function SnippetBlock({
@@ -73,6 +134,7 @@ export function BadgePreview({
   selected,
   token,
   generating,
+  onScopeChange,
 }: BadgePreviewProps) {
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
@@ -208,6 +270,12 @@ export function BadgePreview({
         <ExternalLink className="h-3 w-3" aria-hidden="true" />
         View full scan results
       </a>
+
+      <ScopeToggle
+        url={selected.url}
+        scope={selected.site_badge_scope ?? "user"}
+        onScopeChange={onScopeChange}
+      />
 
       <div className="flex flex-col gap-3 pt-2">
         <SnippetBlock

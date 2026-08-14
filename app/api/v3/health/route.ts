@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import pool, { getPoolStats } from "@/lib/database/db";
 import { APP_VERSION, MIN_SCHEMA_VERSION } from "@/lib/config/constants";
 import { CONFIG_DB_HEALTHCHECK_TIMEOUT_MS } from "@/lib/config/config-values";
+import { REQUIRED_TABLES } from "@/lib/database/required-tables";
 
 /**
  * Readiness endpoint.
@@ -32,6 +33,7 @@ type DbStatus = {
   schema_version: string | null;
   schema_required: string;
   schema_ok: boolean;
+  missing_tables: string[];
   pool: ReturnType<typeof getPoolStats>;
 };
 
@@ -53,6 +55,7 @@ async function probeDatabase(): Promise<DbStatus> {
     schema_version: null,
     schema_required: MIN_SCHEMA_VERSION,
     schema_ok: false,
+    missing_tables: [],
     pool: getPoolStats(),
   };
 
@@ -78,6 +81,21 @@ async function probeDatabase(): Promise<DbStatus> {
     status.schema_ok =
       status.schema_version !== null &&
       compareVersions(status.schema_version, MIN_SCHEMA_VERSION) >= 0;
+
+    // instrumentation.ts's own boot-time CREATE TABLE sequence is built to
+    // survive a single statement failing (console.error + continue, see its
+    // own comments), so schema_version alone can say "ready" while a table
+    // it depends on doesn't actually exist -- e.g. a transient DB hiccup
+    // mid-sequence on a fresh `docker compose up`. Catches that gap
+    // directly instead of trusting the version number (AUDIT-010,
+    // production-readiness #3).
+    const tablesRes = await client.query<{ table_name: string }>(
+      `SELECT table_name FROM information_schema.tables
+       WHERE table_schema = 'public' AND table_name = ANY($1::text[])`,
+      [REQUIRED_TABLES],
+    );
+    const present = new Set(tablesRes.rows.map((r) => r.table_name));
+    status.missing_tables = REQUIRED_TABLES.filter((t) => !present.has(t));
   } finally {
     client.release();
     status.pool = getPoolStats();
@@ -104,6 +122,7 @@ export async function GET() {
           schema_version: null,
           schema_required: MIN_SCHEMA_VERSION,
           schema_ok: false,
+          missing_tables: [],
           pool: getPoolStats(),
         },
       },
@@ -111,10 +130,14 @@ export async function GET() {
     );
   }
 
-  // Reachable but on an older schema: the process is up and the operator
-  // needs to run `npm run db:migrate`, so report degraded rather than
-  // pretending to be ready.
-  const healthy = database.connected && database.schema_ok;
+  // Reachable but on an older schema (operator needs to run
+  // `npm run db:migrate`) or missing a table the schema version claims
+  // should exist: either way the process is up but not actually ready, so
+  // report degraded rather than pretending to be.
+  const healthy =
+    database.connected &&
+    database.schema_ok &&
+    database.missing_tables.length === 0;
 
   return NextResponse.json(
     {

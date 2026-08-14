@@ -38,6 +38,7 @@ const {
   finalizeScanSuccess,
   finalizeScanFailure,
   markScanRunning,
+  sweepStaleScans,
 } = await import("@/lib/scanner/scan-jobs");
 
 /**
@@ -458,5 +459,34 @@ describe("markScanRunning", () => {
   it("swallows a query failure instead of throwing", async () => {
     mockQuery.mockRejectedValueOnce(new Error("db down"));
     await expect(markScanRunning(3)).resolves.toBeUndefined();
+  });
+});
+
+describe("sweepStaleScans", () => {
+  it("fails every pending/running row and returns the count", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 1 }, { id: 2 }, { id: 3 }],
+      rowCount: 3,
+    });
+
+    const count = await sweepStaleScans();
+
+    expect(count).toBe(3);
+    const [sql] = mockQuery.mock.calls[0];
+    expect(sql).toContain("status = 'failed'");
+    expect(sql).toContain("WHERE status IN ('pending', 'running')");
+    expect(sql).not.toContain("$1"); // no scan-id scoping -- sweeps everything
+  });
+
+  it("returns 0 when nothing was stale", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    const count = await sweepStaleScans();
+    expect(count).toBe(0);
+  });
+
+  it("returns 0 when rowCount is null", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: null });
+    const count = await sweepStaleScans();
+    expect(count).toBe(0);
   });
 });

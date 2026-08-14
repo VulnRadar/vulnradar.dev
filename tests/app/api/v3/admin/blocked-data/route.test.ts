@@ -35,8 +35,14 @@ vi.mock("@/lib/api/request-utils", () => ({
 const { POST } = await import("@/app/api/v3/admin/blocked-data/route");
 
 function queueRole(role: string | null) {
+  // totp_enabled: true so requireAdmin's 2FA-enforcement check
+  // (lib/auth/authorization.ts) short-circuits before ever calling
+  // getSetting("ENFORCE_STAFF_2FA") -- this file doesn't mock
+  // @/lib/config/runtime-config, so an unmocked call would hit the real
+  // resolver against this same mocked pool, consuming a query slot this
+  // suite's call-count assertions don't expect.
   mockQuery.mockResolvedValueOnce({
-    rows: role ? [{ id: 1, role }] : [],
+    rows: role ? [{ id: 1, role, totp_enabled: true }] : [],
   });
 }
 

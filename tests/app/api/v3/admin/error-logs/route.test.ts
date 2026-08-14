@@ -41,7 +41,15 @@ const { GET, DELETE } = await import("@/app/api/v3/admin/error-logs/route");
 
 function withAdmin(userId = 7, role = "admin") {
   mockGetSession.mockResolvedValue({ userId });
-  mockQuery.mockResolvedValueOnce({ rows: [{ id: userId, role }] });
+  // totp_enabled: true so requireAdmin's 2FA-enforcement check
+  // (lib/auth/authorization.ts) short-circuits before ever calling
+  // getSetting("ENFORCE_STAFF_2FA") -- this file doesn't mock
+  // @/lib/config/runtime-config, so an unmocked call would hit the real
+  // resolver against this same mocked pool, consuming a query slot this
+  // suite's call-count assertions don't expect.
+  mockQuery.mockResolvedValueOnce({
+    rows: [{ id: userId, role, totp_enabled: true }],
+  });
 }
 
 function getRequest(query = ""): NextRequest {

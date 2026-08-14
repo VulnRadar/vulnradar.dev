@@ -135,6 +135,12 @@ export async function register() {
         console.error("\x1b[31m\x1b[1m");
         for (const ln of lines) console.error(ln);
         console.error("\x1b[0m");
+        const { sendAdminAlert } = await import("./lib/admin/alert-webhook");
+        await sendAdminAlert({
+          event: "boot_schema_version_unset",
+          severity: "critical",
+          message: `${APP_NAME} failed to start: database has no schema version recorded.`,
+        });
         process.exit(1);
       }
 
@@ -174,6 +180,12 @@ export async function register() {
         console.error("\x1b[31m\x1b[1m");
         for (const ln of lines) console.error(ln);
         console.error("\x1b[0m");
+        const { sendAdminAlert } = await import("./lib/admin/alert-webhook");
+        await sendAdminAlert({
+          event: "boot_schema_version_mismatch",
+          severity: "critical",
+          message: `${APP_NAME} failed to start: database schema v${dbSchema} is older than the required v${MIN_SCHEMA_VERSION}. Run npm run db:migrate.`,
+        });
         process.exit(1);
       }
 
@@ -182,6 +194,12 @@ export async function register() {
       );
     } catch (schemaError) {
       console.error(`[${APP_NAME}] Schema version check failed:`, schemaError);
+      const { sendAdminAlert } = await import("./lib/admin/alert-webhook");
+      await sendAdminAlert({
+        event: "boot_schema_check_failed",
+        severity: "critical",
+        message: `${APP_NAME} failed to start: the schema version check itself errored.`,
+      });
       process.exit(1);
     }
 
@@ -2815,6 +2833,26 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         );
       }
 
+      // ── Posture digest: schema + periodic worker ──────────────────
+      // ensureDigestSchema() adds users.digest_email_enabled/
+      // last_digest_sent_at and notification_preferences.email_posture_digest
+      // (additive, self-healing) before the worker's first poll tick can
+      // reference them. See lib/notifications/posture-digest.ts.
+      try {
+        const { ensureDigestSchema } =
+          await import("./lib/notifications/digest-schema");
+        await ensureDigestSchema();
+        const { schedulePeriodicPostureDigest } =
+          await import("./lib/notifications/posture-digest");
+        schedulePeriodicPostureDigest();
+        console.log(`[${APP_NAME}] Scheduled the posture-digest worker.`);
+      } catch (scheduleError) {
+        console.error(
+          `[${APP_NAME}] Failed to schedule the posture-digest worker:`,
+          scheduleError,
+        );
+      }
+
       // ════════════════════════════════════════════════════════════════
       // HOST BADGES - stable per-user-per-URL token for the "Secured by
       // VulnRadar" embeddable badge (app/badge/page.tsx), so a badge
@@ -2875,6 +2913,97 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
           // share_token_hash comment above for why this can't use a normal
           // error log).
         });
+
+      // scope controls whose scans a badge resolves against: 'user' (the
+      // default, matching the original behavior) only ever shows the badge
+      // owner's own scans of that URL; 'global' shows whichever completed
+      // scan of that URL is newest, by anyone. Owner-toggleable, off by
+      // default so a badge never starts pulling in a stranger's scan data
+      // without the owner opting in. See app/api/v3/badge/[token]/route.ts
+      // and app/api/v3/shared/[token]/route.ts for how the JOIN branches on
+      // this, and app/api/v3/badge/site/route.ts's PATCH handler for the
+      // toggle itself.
+      await pool
+        .query(
+          `
+        ALTER TABLE host_badges
+          ADD COLUMN IF NOT EXISTS scope TEXT NOT NULL DEFAULT 'user'
+          CHECK (scope IN ('user', 'global'));
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add host_badges.scope (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ── Stale scan sweep (safety net) ─────────────────────────────
+      // Runs once at boot. Fails any scan left `pending`/`running` by a
+      // PREVIOUS process (killed by a deploy, OOM, crash) -- see
+      // lib/scanner/scan-jobs.ts's sweepStaleScans for why the in-memory
+      // watchdog alone can't cover this case.
+      try {
+        const { sweepStaleScans } = await import("./lib/scanner/scan-jobs");
+        const swept = await sweepStaleScans();
+        if (swept > 0) {
+          console.error(
+            `[${APP_NAME}] Failed ${swept} scan(s) left running/pending by a previous process.`,
+          );
+          const { sendAdminAlert } = await import("./lib/admin/alert-webhook");
+          void sendAdminAlert({
+            event: "stale_scans_swept",
+            severity: "warning",
+            message: `${swept} scan(s) were left running/pending by a previous process (an unclean restart) and have been marked failed.`,
+            context: { count: swept },
+          });
+        }
+      } catch (err) {
+        console.error(
+          `[${APP_NAME}] Failed to sweep stale scans (non-fatal):`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+
+      // ── Required-table verification (safety net) ──────────────────
+      // Runs once at boot, after every CREATE TABLE/ALTER TABLE block above
+      // has had its chance to run. Each of those blocks only console.errors
+      // and continues on failure (so one transient hiccup doesn't take the
+      // whole boot sequence down), which means schema_version can say
+      // "ready" while a table that sequence was supposed to create doesn't
+      // actually exist. /api/v3/health checks this same list on every
+      // poll; this fires a one-time alert at boot instead of paging on
+      // every single health-check poll thereafter (AUDIT-010,
+      // production-readiness #3).
+      try {
+        const { REQUIRED_TABLES } =
+          await import("./lib/database/required-tables");
+        const tablesRes = await pool.query<{ table_name: string }>(
+          `SELECT table_name FROM information_schema.tables
+           WHERE table_schema = 'public' AND table_name = ANY($1::text[])`,
+          [REQUIRED_TABLES],
+        );
+        const present = new Set(tablesRes.rows.map((r) => r.table_name));
+        const missing = REQUIRED_TABLES.filter((t) => !present.has(t));
+        if (missing.length > 0) {
+          console.error(
+            `[${APP_NAME}] Boot completed but required table(s) are missing:`,
+            missing.join(", "),
+          );
+          const { sendAdminAlert } = await import("./lib/admin/alert-webhook");
+          void sendAdminAlert({
+            event: "boot_required_tables_missing",
+            severity: "critical",
+            message: `${APP_NAME} booted but ${missing.length} required table(s) are missing: ${missing.join(", ")}. Some routes will fail until this is fixed.`,
+            context: { missingTables: missing },
+          });
+        }
+      } catch (err) {
+        console.error(
+          `[${APP_NAME}] Failed to verify required tables (non-fatal):`,
+          err instanceof Error ? err.message : err,
+        );
+      }
 
       // ── Sequence repair (safety net) ─────────────────────────────
       // Runs last on every startup. Detects and fixes any SERIAL sequences

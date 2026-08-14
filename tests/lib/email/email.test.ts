@@ -554,6 +554,24 @@ describe("remaining templates build without throwing and return a well-formed en
           changes: [{ field: "plan", oldValue: "free", newValue: "pro" }],
           timestamp: new Date("2026-01-01T00:00:00Z"),
         }),
+      () =>
+        email.postureDigestEmail({
+          siteCount: 3,
+          newFindings: [
+            {
+              title: "Missing CSP",
+              severity: "critical",
+              url: "https://a.com",
+            },
+          ],
+          newFindingsTotal: 1,
+          newCriticalCount: 1,
+          newHighCount: 0,
+          currentOpenCount: 4,
+          previousOpenCount: 3,
+          trend: "up",
+          windowDays: 7,
+        }),
     ];
 
     for (const build of builders) {
@@ -563,5 +581,112 @@ describe("remaining templates build without throwing and return a well-formed en
       expect(result.html).toContain("<h1");
       expect(result.text.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("postureDigestEmail", () => {
+  it("mentions the new-finding count and site count in the subject when there are new findings", async () => {
+    const email = await loadEmail();
+    const result = email.postureDigestEmail({
+      siteCount: 2,
+      newFindings: [
+        { title: "Missing CSP", severity: "critical", url: "https://a.com" },
+        { title: "Weak cipher", severity: "high", url: "https://b.com" },
+      ],
+      newFindingsTotal: 2,
+      newCriticalCount: 1,
+      newHighCount: 1,
+      currentOpenCount: 5,
+      previousOpenCount: 3,
+      trend: "up",
+      windowDays: 7,
+    });
+
+    expect(result.subject).toContain("2 new critical/high findings");
+    expect(result.subject).toContain("2 sites");
+    expect(result.html).toContain("Missing CSP");
+    expect(result.html).toContain("https://a.com");
+    expect(result.text).toContain("Weak cipher");
+  });
+
+  it("uses a calm 'nothing new' subject and body when there are no new findings", async () => {
+    const email = await loadEmail();
+    const result = email.postureDigestEmail({
+      siteCount: 1,
+      newFindings: [],
+      newFindingsTotal: 0,
+      newCriticalCount: 0,
+      newHighCount: 0,
+      currentOpenCount: 0,
+      previousOpenCount: 0,
+      trend: "flat",
+      windowDays: 7,
+    });
+
+    expect(result.subject).toContain("nothing new");
+    expect(result.html).toContain("No new critical or high severity findings");
+  });
+
+  it("says 'month' instead of 'week' once the window is 28+ days", async () => {
+    const email = await loadEmail();
+    const result = email.postureDigestEmail({
+      siteCount: 1,
+      newFindings: [],
+      newFindingsTotal: 0,
+      newCriticalCount: 0,
+      newHighCount: 0,
+      currentOpenCount: 0,
+      previousOpenCount: 0,
+      trend: "flat",
+      windowDays: 30,
+    });
+
+    expect(result.subject).toContain("nothing new this month");
+  });
+
+  it("notes when the itemized list was truncated below the real total", async () => {
+    const email = await loadEmail();
+    const newFindings = Array.from({ length: 3 }, (_, i) => ({
+      title: `Finding ${i}`,
+      severity: "high",
+      url: "https://a.com",
+    }));
+    const result = email.postureDigestEmail({
+      siteCount: 1,
+      newFindings,
+      newFindingsTotal: 10,
+      newCriticalCount: 0,
+      newHighCount: 10,
+      currentOpenCount: 10,
+      previousOpenCount: 0,
+      trend: "up",
+      windowDays: 7,
+    });
+
+    expect(result.html).toContain("showing 3 of 10");
+  });
+
+  it("escapes finding titles and URLs before embedding them in HTML", async () => {
+    const email = await loadEmail();
+    const result = email.postureDigestEmail({
+      siteCount: 1,
+      newFindings: [
+        {
+          title: "<script>alert(1)</script>",
+          severity: "critical",
+          url: "https://a.com/<b>",
+        },
+      ],
+      newFindingsTotal: 1,
+      newCriticalCount: 1,
+      newHighCount: 0,
+      currentOpenCount: 1,
+      previousOpenCount: 0,
+      trend: "up",
+      windowDays: 7,
+    });
+
+    expect(result.html).not.toContain("<script>alert(1)</script>");
+    expect(result.html).toContain("&lt;script&gt;");
   });
 });

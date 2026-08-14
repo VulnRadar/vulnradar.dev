@@ -17,6 +17,7 @@ import {
   UserCog,
   Download,
   Users,
+  BarChart3,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -33,6 +34,7 @@ const DEFAULT_PREFS: NotificationPrefs = {
   email_critical_findings: true,
   email_regression_alert: true,
   email_schedules: true,
+  email_posture_digest: true,
   email_api_keys: true,
   email_api_limit_warning: true,
   email_webhooks: true,
@@ -56,6 +58,7 @@ export function ProfileNotificationsTab({
   discardKey,
   saveKey,
   preloadedNotifPrefs,
+  preloadedDigestEmailEnabled,
 }: ProfileTabProps) {
   // Initialize with preloaded data if available
   const initialPrefs = preloadedNotifPrefs
@@ -64,6 +67,18 @@ export function ProfileNotificationsTab({
   const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>(initialPrefs);
   const [originalPrefs, setOriginalPrefs] =
     useState<NotificationPrefs>(initialPrefs);
+
+  // Posture digest opt-in (users.digest_email_enabled) -- unlike every
+  // other category above, this defaults OFF and lives on `users`, not
+  // `notification_preferences`, so it needs its own state/pendingChanges
+  // key. Same discard/save shape as ProfilePrivacyTab's
+  // scansPrivateByDefault toggle.
+  const [digestEmailEnabled, setDigestEmailEnabled] = useState(
+    preloadedDigestEmailEnabled ?? false,
+  );
+  const [originalDigestEmailEnabled, setOriginalDigestEmailEnabled] = useState(
+    preloadedDigestEmailEnabled ?? false,
+  );
 
   // Update state when preloaded data changes
   useEffect(() => {
@@ -74,19 +89,29 @@ export function ProfileNotificationsTab({
     }
   }, [preloadedNotifPrefs]);
 
+  useEffect(() => {
+    if (preloadedDigestEmailEnabled !== undefined) {
+      setDigestEmailEnabled(preloadedDigestEmailEnabled ?? false);
+      setOriginalDigestEmailEnabled(preloadedDigestEmailEnabled ?? false);
+    }
+  }, [preloadedDigestEmailEnabled]);
+
   // Reset to original values when discardKey changes (discard was clicked)
   useEffect(() => {
     if (discardKey && discardKey > 0) {
       setNotifPrefs(originalPrefs);
+      setDigestEmailEnabled(originalDigestEmailEnabled);
     }
-  }, [discardKey, originalPrefs]);
+  }, [discardKey, originalPrefs, originalDigestEmailEnabled]);
 
   // Update original values when saveKey changes (save was successful)
   useEffect(() => {
     if (saveKey && saveKey > 0) {
       setOriginalPrefs(notifPrefs);
+      setOriginalDigestEmailEnabled(digestEmailEnabled);
     }
-  }, [saveKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saveKey]);
 
   const handleToggle = (key: keyof NotificationPrefs, checked: boolean) => {
     setNotifPrefs((prev) => ({ ...prev, [key]: checked }));
@@ -112,6 +137,18 @@ export function ProfileNotificationsTab({
         }
       }
     });
+  };
+
+  const handleToggleDigestEmailEnabled = (checked: boolean) => {
+    setDigestEmailEnabled(checked);
+    if (checked !== originalDigestEmailEnabled) {
+      setPendingChanges((prev) => ({ ...prev, digestEmailEnabled: checked }));
+    } else {
+      setPendingChanges((prev) => {
+        const { digestEmailEnabled: _drop, ...rest } = prev;
+        return rest;
+      });
+    }
   };
 
   return (
@@ -265,6 +302,29 @@ export function ProfileNotificationsTab({
                 />
               </div>
             ))}
+            <div className="flex items-center justify-between gap-4 px-5 py-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <BarChart3
+                    className="h-3.5 w-3.5 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                  <p className="text-sm font-medium text-foreground">
+                    Posture Digest
+                  </p>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  A periodic summary across every site you've scanned: new
+                  critical/high findings and whether your open count is trending
+                  up or down. Off by default.
+                </p>
+              </div>
+              <Switch
+                checked={digestEmailEnabled}
+                onCheckedChange={handleToggleDigestEmailEnabled}
+                aria-label="Posture Digest"
+              />
+            </div>
           </CardContent>
         </Card>
       </section>

@@ -1,15 +1,14 @@
 /**
  * Route-level tests for GET /api/v3/badge/[token]/stats.
  *
- * Unlike its two siblings (app/api/v3/badge/[token]/route.ts and
- * app/api/v3/shared/[token]/route.ts), this one looks up the share token by
- * the plaintext `share_token` column rather than the hashed
- * `share_token_hash` column. That discrepancy is asserted explicitly below
- * so a future migration to the hashed column doesn't silently change this
- * file's behavior without a test noticing.
+ * Same hashed-lookup + host_badges fallback pattern as its two siblings
+ * (app/api/v3/badge/[token]/route.ts and app/api/v3/shared/[token]/route.ts)
+ * -- this one used to compare the plaintext share_token column directly and
+ * never fell back to host_badges at all (AUDIT-010#security-04).
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { createHash } from "node:crypto";
 
 const mockQuery = vi.fn();
 vi.mock("@/lib/database/db", () => ({
@@ -61,8 +60,10 @@ describe("GET /api/v3/badge/[token]/stats", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it("returns 404 for a valid-length token with no matching row", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+  it("returns 404 for a valid-length token with no matching row in either lookup", async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // share_token_hash miss
+      .mockResolvedValueOnce({ rows: [] }); // host_badges fallback miss
 
     const res = await callGet("b".repeat(64));
 
@@ -71,22 +72,27 @@ describe("GET /api/v3/badge/[token]/stats", () => {
     expect(json).toEqual({ error: "Not found" });
   });
 
-  it("looks up by the plaintext share_token column, not a hash", async () => {
+  it("looks up by the SHA-256 hash of the token, never the plaintext", async () => {
     const token = "c".repeat(64);
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
 
     await callGet(token);
 
-    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockQuery).toHaveBeenCalledTimes(2);
     const [sql, params] = mockQuery.mock.calls[0];
-    expect(sql).toContain("share_token = $1");
-    expect(sql).not.toContain("share_token_hash");
-    expect(params).toEqual([token]);
+    expect(sql).toContain("share_token_hash = $1");
+    const expectedHash = createHash("sha256").update(token).digest("hex");
+    expect(params).toEqual([expectedHash]);
+    expect(params[0]).not.toBe(token);
   });
 
   it("excludes an expired share link in SQL, the same way its sibling badge/share endpoints do", async () => {
     const token = "a1".padEnd(64, "0");
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
 
     await callGet(token);
 
@@ -94,6 +100,36 @@ describe("GET /api/v3/badge/[token]/stats", () => {
     expect(sql).toContain(
       "AND (sh.share_expires_at IS NULL OR sh.share_expires_at > NOW())",
     );
+  });
+
+  it("falls back to the host_badges lookup when no per-scan share token matches, gated on is_public for a foreign scan", async () => {
+    const token = "5".repeat(64);
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // share_token_hash miss
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            url: "https://example.com",
+            findings: [],
+            findings_count: 0,
+            scanned_at: "2026-02-01T00:00:00.000Z",
+          },
+        ],
+      });
+
+    const res = await callGet(token);
+
+    expect(res.status).toBe(200);
+    const [sql, params] = mockQuery.mock.calls[1];
+    expect(sql).toContain("FROM host_badges hb");
+    expect(sql).toContain("badge_token_hash = $1");
+    expect(sql).toContain("hb.revoked_at IS NULL");
+    expect(sql).toContain("sh.status = 'completed'");
+    expect(sql).toContain(
+      "(sh.user_id = hb.user_id OR (hb.scope = 'global' AND sh.is_public = true))",
+    );
+    const expectedHash = createHash("sha256").update(token).digest("hex");
+    expect(params).toEqual([expectedHash]);
   });
 
   it("returns stats JSON derived from the row, including URLs built from the request origin", async () => {
@@ -122,7 +158,7 @@ describe("GET /api/v3/badge/[token]/stats", () => {
       lastScanned: "2026-01-15T00:00:00.000Z",
       url: "https://example.com",
       shareUrl: `http://localhost:3000/shared/${token}`,
-      badgeUrl: `http://localhost:3000/api/badge/${token}`,
+      badgeUrl: `http://localhost:3000/api/v3/badge/${token}`,
     });
     expect(res.headers.get("Cache-Control")).toBe("public, max-age=3600");
   });

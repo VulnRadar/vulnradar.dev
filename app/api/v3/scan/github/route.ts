@@ -29,6 +29,10 @@ import {
   claimFreeGithubReviewTrial,
   releaseFreeGithubReviewTrial,
 } from "@/lib/billing/github-review-usage";
+import {
+  checkRateLimit as checkGlobalRateLimit,
+  RATE_LIMITS,
+} from "@/lib/rate-limiting/rate-limit";
 
 const REPO_FULL_NAME_RE = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 
@@ -62,12 +66,38 @@ export async function POST(request: Request) {
     }
     const [owner, repo] = repoFullName.split("/");
 
+    // Same request-throttling pattern as every sibling scan/AI endpoint
+    // (e.g. scan/authenticated's `scan-authenticated:${userId}` key) --
+    // this route had none at all, so a caller could hammer both GitHub's
+    // API and the AI review pipeline with rapid-fire requests before
+    // checkGithubReviewQuota's own per-window USAGE cap ever kicked in
+    // (AUDIT-010, production-readiness #5).
+    const rl = await checkGlobalRateLimit({
+      key: `scan-github:${userId}`,
+      ...RATE_LIMITS.scan,
+    });
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests. Please wait before trying again." },
+        { status: 429 },
+      );
+    }
+
     const token = await getDecryptedGithubToken(userId);
     if (!token) {
       return NextResponse.json(
         { error: "Connect your GitHub account first." },
         { status: 400 },
       );
+    }
+
+    // Checked before any real GitHub API call is made, not after (this used
+    // to call getRepoInfo/listRepoTree first and only check quota once both
+    // had already spent real GitHub API calls on a request that might get
+    // rejected anyway) (AUDIT-010, production-readiness #5).
+    const preQuota = await checkGithubReviewQuota(userId);
+    if (!preQuota.allowed) {
+      return NextResponse.json({ error: preQuota.message }, { status: 403 });
     }
 
     const repoInfo = await getRepoInfo(token, owner, repo);

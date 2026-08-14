@@ -75,6 +75,8 @@ export const API = {
     OAUTH_INFO: `/api/${API_VERSION}/auth/oauth/info`,
     OAUTH_START: (provider: string) =>
       `/api/${API_VERSION}/auth/oauth/${provider}`,
+    STAFF_OIDC_INFO: `/api/${API_VERSION}/auth/staff-oidc/info`,
+    STAFF_OIDC_START: `/api/${API_VERSION}/auth/staff-oidc`,
     TWO_FA: {
       SETUP: `/api/${API_VERSION}/auth/2fa/setup`,
       VERIFY: `/api/${API_VERSION}/auth/2fa/verify`,
@@ -101,6 +103,9 @@ export const API = {
   SCAN_AUTHENTICATED: `/api/${API_VERSION}/scan/authenticated`,
   DEMO_SCAN: `/api/${API_VERSION}/demo-scan`,
   HISTORY: `/api/${API_VERSION}/history`,
+  /** Every distinct host the caller has scanned, grouped from their own
+   *  scan_history, most-recently-scanned first (app/assets/page.tsx). */
+  ASSETS: `/api/${API_VERSION}/assets`,
   DASHBOARD: `/api/${API_VERSION}/dashboard`,
   SHARES: `/api/${API_VERSION}/shares`,
   SHARED: `/api/${API_VERSION}/shared`,
@@ -132,6 +137,8 @@ export const API = {
   ACCOUNT_PRIVACY: `/api/${API_VERSION}/account/privacy`,
   /** Account-level "list new shares in Public Scans by default" setting. */
   ACCOUNT_SHARE_PRIVACY: `/api/${API_VERSION}/account/share-privacy`,
+  /** Account-level posture-digest email opt-in. */
+  ACCOUNT_POSTURE_DIGEST: `/api/${API_VERSION}/account/posture-digest`,
   ACCOUNT_AI_CONFIG: `/api/${API_VERSION}/account/ai-config`,
   ACCOUNT_GITHUB: `/api/${API_VERSION}/account/github`,
   ACCOUNT_GITHUB_CONNECT: `/api/${API_VERSION}/account/github/connect`,
@@ -155,6 +162,9 @@ export const API = {
   VERSION: "/api/version",
   /** Public, unauthenticated: the latest public scan of a host, if any (app/host/[hostname]/page.tsx). */
   HOST: (hostname: string) => `/api/${API_VERSION}/host/${hostname}`,
+  /** Public, unauthenticated: up to the last 30 public/completed scans' risk scores for a host, oldest first (components/host/danger-score-trend.tsx). */
+  HOST_TREND: (hostname: string) =>
+    `/api/${API_VERSION}/host/${hostname}/trend`,
 } as const;
 
 // APPLICATION ROUTES
@@ -171,6 +181,9 @@ export const ROUTES = {
   TEAMS: "/teams",
   TEAMS_JOIN: "/teams/join",
   HISTORY: "/history",
+  /** Browsable, searchable index of every host/URL the caller has scanned,
+   *  each row linking to its /host/[hostname] aggregate report. */
+  ASSETS: "/assets",
   REPOS: "/repos",
   COMPARE: "/compare",
   SHARES: "/shares",

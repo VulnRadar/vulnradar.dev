@@ -55,6 +55,41 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ token, url });
 }
 
+// PATCH to toggle a badge's scope. 'user' (the default) only ever resolves
+// to the badge owner's own scans of that URL; 'global' resolves to whichever
+// completed scan of that URL is newest, by anyone -- see the JOIN in
+// app/api/v3/badge/[token]/route.ts and app/api/v3/shared/[token]/route.ts.
+// Owner-toggleable at any time so someone who turns it on can turn it back
+// off without regenerating the token or touching their embed code.
+export async function PATCH(req: NextRequest) {
+  const session = await getSession();
+  if (!session?.userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = await req.json().catch(() => ({}));
+  const url = String((body as Record<string, unknown>)?.url ?? "");
+  const scope = (body as Record<string, unknown>)?.scope;
+  if (!url) {
+    return NextResponse.json({ error: "Invalid url" }, { status: 400 });
+  }
+  if (scope !== "user" && scope !== "global") {
+    return NextResponse.json({ error: "Invalid scope" }, { status: 400 });
+  }
+
+  const result = await pool.query<{ scope: string }>(
+    `UPDATE host_badges SET scope = $1
+     WHERE user_id = $2 AND url = $3 AND revoked_at IS NULL
+     RETURNING scope`,
+    [scope, session.userId, url],
+  );
+  if (result.rows.length === 0) {
+    return NextResponse.json({ error: "Badge not found" }, { status: 404 });
+  }
+
+  return NextResponse.json({ scope: result.rows[0].scope });
+}
+
 // DELETE to revoke an auto-updating badge (stops the token from resolving;
 // does not touch the underlying scan history).
 export async function DELETE(req: NextRequest) {

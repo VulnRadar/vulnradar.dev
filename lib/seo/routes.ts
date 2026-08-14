@@ -62,6 +62,7 @@ export const DISALLOWED_PATHS: readonly string[] = [
   "/dashboard",
   "/profile",
   "/history",
+  "/assets",
   "/repos",
   "/shares",
   "/shared/",

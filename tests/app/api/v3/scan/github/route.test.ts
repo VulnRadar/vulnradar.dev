@@ -52,6 +52,12 @@ vi.mock("@/lib/billing/github-review-usage", () => ({
     mockCheckGithubReviewQuota(...args),
 }));
 
+const mockCheckGlobalRateLimit = vi.fn();
+vi.mock("@/lib/rate-limiting/rate-limit", () => ({
+  checkRateLimit: (...args: unknown[]) => mockCheckGlobalRateLimit(...args),
+  RATE_LIMITS: { scan: { limit: "scan" } },
+}));
+
 const SETTINGS: Record<string, number> = {
   GITHUB_REVIEW_MAX_FILES: 300,
   GITHUB_REVIEW_MAX_TOTAL_BYTES: 5_000_000,
@@ -110,6 +116,8 @@ beforeEach(() => {
     usedTokens: 0,
     limitTokens: 200_000,
   });
+  mockCheckGlobalRateLimit.mockReset();
+  mockCheckGlobalRateLimit.mockResolvedValue({ allowed: true });
 });
 
 describe("POST /api/v3/scan/github", () => {
@@ -131,6 +139,31 @@ describe("POST /api/v3/scan/github", () => {
     expect(mockListRepoTree).not.toHaveBeenCalled();
   });
 
+  it("429s when the per-user request rate limit is exceeded, before touching GitHub's API (AUDIT-010, production-readiness #5)", async () => {
+    mockCheckGlobalRateLimit.mockResolvedValue({ allowed: false });
+    const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
+    expect(res.status).toBe(429);
+    expect(mockGetDecryptedGithubToken).not.toHaveBeenCalled();
+    expect(mockGetRepoInfo).not.toHaveBeenCalled();
+    expect(mockListRepoTree).not.toHaveBeenCalled();
+    const [config] = mockCheckGlobalRateLimit.mock.calls[0];
+    expect(config.key).toBe("scan-github:5");
+  });
+
+  it("checks quota before calling GitHub's API, not after (AUDIT-010, production-readiness #5)", async () => {
+    mockCheckGithubReviewQuota.mockResolvedValue({
+      allowed: false,
+      usingOwnAi: false,
+      usedTokens: 200_000,
+      limitTokens: 200_000,
+      message: "You've used all your GitHub review AI tokens for this month.",
+    });
+    const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
+    expect(res.status).toBe(403);
+    expect(mockGetRepoInfo).not.toHaveBeenCalled();
+    expect(mockListRepoTree).not.toHaveBeenCalled();
+  });
+
   it("rejects when no scannable files remain after filtering", async () => {
     mockListRepoTree.mockResolvedValue({
       entries: [
@@ -142,7 +175,7 @@ describe("POST /api/v3/scan/github", () => {
     expect(res.status).toBe(400);
   });
 
-  it("rejects upfront when the estimated content exceeds the per-run token ceiling, regardless of quota", async () => {
+  it("rejects when the estimated content exceeds the per-run token ceiling, even with quota available", async () => {
     // Many files, each safely under the per-file byte cap (300_000) and
     // the total still under the total-byte cap (5_000_000), but whose sum
     // (1.5MB -> ~375k estimated tokens) exceeds the 300k token ceiling. A
@@ -157,7 +190,11 @@ describe("POST /api/v3/scan/github", () => {
     });
     const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
     expect(res.status).toBe(413);
-    expect(mockCheckGithubReviewQuota).not.toHaveBeenCalled();
+    // The upfront quota pre-check (before any GitHub API call) already
+    // passed -- the token ceiling is what blocks this, not quota. The
+    // second, atomic quota check right before claimFreeGithubReviewTrial
+    // is never reached because the 413 short-circuits first.
+    expect(mockCheckGithubReviewQuota).toHaveBeenCalledTimes(1);
     expect(mockFetchSelectedFiles).not.toHaveBeenCalled();
   });
 

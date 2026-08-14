@@ -41,6 +41,13 @@ vi.mock("@/lib/auth", () => ({
   getSession: vi.fn(async () => mockSession),
 }));
 
+let mockEnforce2fa = false;
+vi.mock("@/lib/config/runtime-config", () => ({
+  getSetting: vi.fn(async (key: string) =>
+    key === "ENFORCE_STAFF_2FA" ? mockEnforce2fa : undefined,
+  ),
+}));
+
 const {
   requireStaff,
   requireAdmin,
@@ -60,6 +67,7 @@ beforeEach(() => {
   queries.length = 0;
   queryImpl = async () => ({ rows: [] });
   mockSession = null;
+  mockEnforce2fa = false;
 });
 
 describe("requireStaff", () => {
@@ -78,7 +86,9 @@ describe("requireStaff", () => {
     mockSession = { userId: 55, email: "a@example.com" };
     queryImpl = async () => ({ rows: [{ role: "admin" }] });
     await requireStaff();
-    expect(queries[0].sql).toContain("SELECT role FROM users WHERE id = $1");
+    expect(queries[0].sql).toContain(
+      "SELECT role, totp_enabled FROM users WHERE id = $1",
+    );
     expect(queries[0].params).toEqual([55]);
   });
 
@@ -113,6 +123,48 @@ describe("requireStaff", () => {
     queryImpl = async () => ({ rows: [{ role: "totally-unknown-role" }] });
     expect(await requireStaff()).toBeNull();
   });
+
+  describe("2FA enforcement (AUDIT-010, admin-feature-gap)", () => {
+    it("allows a staff account without 2FA when ENFORCE_STAFF_2FA is off (default)", async () => {
+      mockSession = { userId: 1, email: "a@example.com" };
+      mockEnforce2fa = false;
+      queryImpl = async () => ({
+        rows: [{ role: "admin", totp_enabled: false }],
+      });
+      expect(await requireStaff()).not.toBeNull();
+    });
+
+    it("denies a staff account without 2FA when ENFORCE_STAFF_2FA is on", async () => {
+      mockSession = { userId: 1, email: "a@example.com" };
+      mockEnforce2fa = true;
+      queryImpl = async () => ({
+        rows: [{ role: "admin", totp_enabled: false }],
+      });
+      expect(await requireStaff()).toBeNull();
+    });
+
+    it("treats any non-boolean-true getSetting return as 'not enforced' (strict equality, not truthy coercion)", async () => {
+      // Regression test: a getSetting mock shared across a test file for
+      // unrelated settings (e.g. a numeric MAX_DESCRIPTION_LENGTH default)
+      // can resolve ENFORCE_STAFF_2FA to a truthy-but-non-boolean value
+      // like 1000. Only a strict `=== true` should ever deny access here.
+      mockSession = { userId: 1, email: "a@example.com" };
+      mockEnforce2fa = 1000 as unknown as boolean;
+      queryImpl = async () => ({
+        rows: [{ role: "admin", totp_enabled: false }],
+      });
+      expect(await requireStaff()).not.toBeNull();
+    });
+
+    it("allows a staff account WITH 2FA even when ENFORCE_STAFF_2FA is on", async () => {
+      mockSession = { userId: 1, email: "a@example.com" };
+      mockEnforce2fa = true;
+      queryImpl = async () => ({
+        rows: [{ role: "admin", totp_enabled: true }],
+      });
+      expect(await requireStaff()).not.toBeNull();
+    });
+  });
 });
 
 describe("requireAdmin", () => {
@@ -132,7 +184,7 @@ describe("requireAdmin", () => {
     queryImpl = async () => ({ rows: [{ id: 9, role: "admin" }] });
     await requireAdmin();
     expect(queries[0].sql).toContain(
-      "SELECT id, role FROM users WHERE id = $1",
+      "SELECT id, role, totp_enabled FROM users WHERE id = $1",
     );
     expect(queries[0].params).toEqual([9]);
   });
@@ -161,6 +213,26 @@ describe("requireAdmin", () => {
     mockSession = { userId: 1, email: "a@example.com" };
     queryImpl = async () => ({ rows: [{ id: 1, role: null }] });
     expect(await requireAdmin()).toBeNull();
+  });
+
+  describe("2FA enforcement (AUDIT-010, admin-feature-gap)", () => {
+    it("denies an admin account without 2FA when ENFORCE_STAFF_2FA is on", async () => {
+      mockSession = { userId: 9, email: "a@example.com" };
+      mockEnforce2fa = true;
+      queryImpl = async () => ({
+        rows: [{ id: 9, role: "admin", totp_enabled: false }],
+      });
+      expect(await requireAdmin()).toBeNull();
+    });
+
+    it("allows a super_admin WITH 2FA when ENFORCE_STAFF_2FA is on", async () => {
+      mockSession = { userId: 9, email: "a@example.com" };
+      mockEnforce2fa = true;
+      queryImpl = async () => ({
+        rows: [{ id: 9, role: "super_admin", totp_enabled: true }],
+      });
+      expect(await requireAdmin()).not.toBeNull();
+    });
   });
 });
 

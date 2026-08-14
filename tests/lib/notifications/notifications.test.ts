@@ -48,6 +48,11 @@ describe("NOTIFICATION_COLUMNS", () => {
     expect(NOTIFICATION_COLUMNS.team_changes).toBe("email_team_changes");
   });
 
+  it("maps posture_digest to the email_posture_digest column", () => {
+    expect(NOTIFICATION_COLUMNS.posture_digest).toBe("email_posture_digest");
+    expect(ALL_COLUMNS).toContain("email_posture_digest");
+  });
+
   it("keeps team_changes distinct from team_invites", () => {
     expect(NOTIFICATION_COLUMNS.team_invites).toBe("email_team_invite");
     expect(NOTIFICATION_COLUMNS.team_changes).not.toBe(

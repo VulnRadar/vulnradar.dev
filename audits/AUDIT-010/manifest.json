@@ -1,0 +1,9 @@
+{
+  "id": "AUDIT-010",
+  "title": "Comprehensive scanner FP/correctness audit + post-badge-feature security review",
+  "scopes": ["scanner", "privacy", "idor", "csrf", "secrets", "db", "infra"],
+  "createdAt": "2026-08-13T23:05:18.610Z",
+  "status": "in-progress",
+  "summary": "64-agent workflow audit. Scanner lane: 6 groups swept all 18 lib/scanner/checks/*.ts files, 31 confirmed FP/correctness bugs already fixed with tests (uncommitted, in working tree). Gap lane: security review found 1 critical bug (badge global-scope privacy leak) already fixed, plus 4 lower-severity security findings and 5 prod-readiness findings reported but NOT YET APPLIED. Missing-detector and client/admin feature-gap findings reported directly to the user, not filed as audit findings (product backlog, not security issues).",
+  "closedAt": "2026-08-13T23:06:03.395Z"
+}

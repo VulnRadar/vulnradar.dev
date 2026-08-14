@@ -23,7 +23,7 @@ export async function GET() {
     `SELECT * FROM (
        SELECT DISTINCT ON (sh.url)
               sh.id, sh.url, sh.share_token, sh.findings_count, sh.scanned_at, sh.summary, sh.findings,
-              hb.badge_token AS site_badge_token
+              hb.badge_token AS site_badge_token, hb.scope AS site_badge_scope
        FROM scan_history sh
        LEFT JOIN host_badges hb
          ON hb.user_id = sh.user_id AND hb.url = sh.url AND hb.revoked_at IS NULL
@@ -40,6 +40,7 @@ export async function GET() {
     url: row.url,
     share_token: row.share_token,
     site_badge_token: row.site_badge_token,
+    site_badge_scope: row.site_badge_scope,
     findings_count: row.findings_count,
     scanned_at: row.scanned_at,
     summary:

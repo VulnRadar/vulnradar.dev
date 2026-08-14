@@ -48,16 +48,25 @@ export async function GET(
 
   // Not a per-scan snapshot token -- try the auto-updating host_badges
   // token instead. Unlike the lookup above (pinned to one scan_history
-  // row forever), this always resolves to whichever scan of that
-  // (user_id, url) ran most recently BY DATE, not the best-ever result,
-  // so the same embedded badge keeps reflecting reality without the owner
-  // ever having to regenerate or swap the embed code.
+  // row forever), this always resolves to whichever scan ran most recently
+  // BY DATE, not the best-ever result, so the same embedded badge keeps
+  // reflecting reality without the owner ever having to regenerate or swap
+  // the embed code. Scoped to the owner's own scans unless they've opted
+  // into hb.scope = 'global', in which case it can also resolve to a scan
+  // someone else ran -- but ONLY one that scan's own owner marked public
+  // (sh.is_public = true, the same gate getExactUrlReputation uses for
+  // host_reputation). Without this, 'global' would let anyone pull a
+  // stranger's PRIVATE or authenticated scan just by setting a badge to
+  // that URL, bypassing is_public entirely (a real gap this comment used
+  // to not account for). The owner's own scans still match regardless of
+  // is_public, same as before.
   if (result.rows.length === 0) {
     result = await pool.query(
       `SELECT sh.url, sh.summary, sh.findings, sh.scanned_at
        FROM host_badges hb
        JOIN scan_history sh
-         ON sh.user_id = hb.user_id AND sh.url = hb.url
+         ON sh.url = hb.url
+         AND (sh.user_id = hb.user_id OR (hb.scope = 'global' AND sh.is_public = true))
        WHERE hb.badge_token_hash = $1
          AND hb.revoked_at IS NULL
          AND sh.status = 'completed'

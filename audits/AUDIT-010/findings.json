@@ -1,0 +1,377 @@
+{
+  "auditId": "AUDIT-010",
+  "findings": [
+    {
+      "id": "privacy-01",
+      "severity": "critical",
+      "scope": "privacy",
+      "title": "Badge global scope leaked other users' private/authenticated scans, bypassing is_public entirely",
+      "summary": "app/api/v3/badge/[token]/route.ts and app/api/v3/shared/[token]/route.ts joined host_badges to scan_history on (hb.scope = 'global' OR sh.user_id = hb.user_id) with no is_public filter, unlike every other privacy-gated path in the codebase (getExactUrlReputation's AND is_public = true). Any user could set a badge to scope='global' on a URL, then whenever anyone else scanned that exact URL -- including a private or authenticated dashboard scan -- the attacker's badge/share endpoint would return the victim's full findings, headers, and metadata with no consent or is_public=true required. Found by the audit's security-review agent; verified against the real code and fixed before this ever shipped (the global-scope toggle feature was built and audited in the same session, never released).",
+      "files": [
+        "app/api/v3/badge/[token]/route.ts",
+        "app/api/v3/shared/[token]/route.ts"
+      ],
+      "fix": "Changed the JOIN condition in both routes to (sh.user_id = hb.user_id OR (hb.scope = 'global' AND sh.is_public = true)) -- the owner's own scans still match unconditionally (unchanged behavior), but a foreign scan can only be surfaced via a global-scope badge when its own owner marked it public. The existing notes/identity redaction for foreign-but-public scans (Community scan / no avatar / no notes) is unaffected and still applies."
+    },
+    {
+      "id": "security-01",
+      "severity": "critical",
+      "scope": "misc",
+      "title": "Badge 'global' scope leaks other users' PRIVATE (and always-private authenticated) scans, bypassing scan_history.is_public entirely",
+      "summary": "Both the badge-image endpoint and the full-detail shared endpoint resolve an auto-updating (host_badges) token to 'whichever completed scan of that exact URL is newest, by anyone' when the badge owner has set scope='global' -- with NO `is_public` filter on the resolved scan_history row. Query in app/api/v3/badge/[token]/route.ts lines 60-73:\n```\nFROM host_badges hb\nJOIN scan_history sh\n  ON sh.url = hb.url AND (hb.scope = 'global' OR sh.user_id = hb.user_id)\nWHERE hb.badge_token_hash = $1 AND hb.revoked_at IS NULL AND sh.status = 'completed'\nORDER BY sh.scanned_at DESC LIMIT 1\n```\nThe identical join (no is_public filter) is repeated in app/api/v3/shared/[token]/route.ts lines 47-60, which returns the FULL scan JSON (findings array with all evidence, response_headers, authenticated flag, result_meta) rather than just a badge SVG.\n\nThis directly breaks an invariant enforced everywhere else in the codebase: lib/scanner/host-reputation.ts's getExactUrlReputation explicitly scopes `WHERE url = $1 AND is_public = true` with a comment stating 'a scan its owner explicitly kept private must never be exposed through it'; lib/scanner/scan-jobs.ts only calls upsertHostReputation `if (applied && url && isPublic)`; and app/api/v3/scan/authenticated/route.ts makes authenticated scans (which capture logged-in dashboard/account content) private-by-default *regardless* of any account setting, specifically because that content is more sensitive than a logged-out scan. The badge 'global' feature ignores both of these established privacy boundaries.\n\nAttack: Attacker (any registered user) scans a target URL they don't need to own (e.g. https://saas.example.com/dashboard), issues POST /api/v3/badge/site with that scanId, then PATCH .../badge/site {url, scope:'global'} to flip the badge to global scope. Attacker now polls the unauthenticated GET /api/v3/shared/{badge_token} endpoint. Whenever ANY other VulnRadar user later scans that exact same URL -- including a strictly-private authenticated scan that peeks at their own logged-in dashboard/account/billing page, which app/api/v3/scan/authenticated/route.ts's own comments describe as 'account settings, billing details, internal dashboards, anything behind the login' -- that other user's full findings, response headers, and scan metadata become readable to the attacker, who never needed the victim's consent, a share link, or is_public=true. The victim never opted into anything; only the attacker's own badge configuration (which the victim has no visibility into) determines exposure. The UI's own copy in components/badge/badge-preview.tsx ('Their notes and identity stay private, only the findings summary shows') confirms this is not the intended behavior even for a knowingly-public scan -- yet the implementation exposes full findings, not a summary, and applies no privacy gate at all.\n\nConfirmed via tests too: tests/app/api/v3/shared/[token]/route.test.ts and tests/app/api/v3/badge/[token]/route.test.ts assert the exact `(hb.scope = 'global' OR sh.user_id = hb.user_id)` SQL fragment and test identity/notes redaction for a foreign scan, but neither test asserts an is_public check exists -- the privacy gate was simply never wired in. Evidence: app/api/v3/badge/[token]/route.ts:60-73 and app/api/v3/shared/[token]/route.ts:47-60 (host_badges fallback JOIN, no is_public/authenticated filter); contrast with lib/scanner/host-reputation.ts:271 (`WHERE url = $1 AND is_public = true`) and app/api/v3/scan/authenticated/route.ts:314-327 (authenticated scans always private unless explicitly opted in); components/badge/badge-preview.tsx:76-77 (UI's stated intent is 'only the findings summary shows', not full detail with no privacy check).",
+      "files": [],
+      "fix": "NOT YET APPLIED -- reported for review. Recommendation: Add `AND sh.is_public = true` to the global-scope branch of the JOIN in both app/api/v3/badge/[token]/route.ts and app/api/v3/shared/[token]/route.ts, e.g. `ON sh.url = hb.url AND (sh.user_id = hb.user_id OR (hb.scope = 'global' AND sh.is_public = true))`. Since authenticated scans are is_public=false unless the scanning user explicitly opted in, this alone closes the authenticated-scan leak too. Separately, tighten /api/v3/shared/[token]'s foreign-scan branch to actually match the UI's promised 'findings summary' rather than the full findings/response_headers/result_meta payload, since a stranger's scan being picked up by someone else's global badge was never an explicit share action by that scan's owner. Add a regression test asserting a private (is_public=false) or authenticated scan is never resolvable through a global-scope badge token."
+    },
+    {
+      "id": "security-02",
+      "severity": "medium",
+      "scope": "misc",
+      "title": "POST /api/v3/scan/feedback accepts a caller-supplied scanHistoryId with no ownership check, letting any user attach fabricated feedback to (and trigger a forced recompute + host_reputation cascade against) any scan in the system",
+      "summary": "FeedbackSchema only validates that `scanHistoryId` is a positive integer (app/api/v3/scan/feedback/route.ts:10); the POST handler never verifies `scan_history.user_id === session.userId` for it before inserting into scan_finding_feedback (scan_history_id FK just needs to reference an existing row, per instrumentation.ts's `scan_history_id INTEGER REFERENCES scan_history(id) ON DELETE SET NULL`) and before calling `recomputeScanScore(scanHistoryId)` (line 64). This breaks the exact convention the codebase documents for itself elsewhere -- e.g. app/api/v3/webhooks/[id]/route.ts's own comment: 'Every other per-resource route in this codebase ... verifies ownership in the same UPDATE ... WHERE id = $n AND user_id = $n statement ... so a [resource] ID belonging to another user can never be [mutated]' -- a pattern this route does not follow for scanHistoryId.\n\nImpact: any authenticated user (including free tier) can POST arbitrary {findingId, findingUrl, verdict, notes} tied to any other user's scan_history_id (IDs are small sequential integers, trivially enumerable), polluting the scan_finding_feedback table that idx_scan_finding_feedback_finding_id (finding_id, verdict) indexes for the admin 'Engine Feedback' false-positive-rate aggregation (CONFIG_ENGINE_FEEDBACK_NOISE_THRESHOLD_PERCENT). It also forces recomputeScanScore to run an UPDATE against another user's scan_history row and against host_reputation `WHERE source_scan_id = scanHistoryId` for a scan the caller doesn't own and never touched otherwise -- a write side-effect triggered purely by an unauthenticated-for-that-resource request parameter. Evidence: app/api/v3/scan/feedback/route.ts:7-13 (FeedbackSchema, scanHistoryId has no ownership tie), line 39-54 (INSERT uses scanHistoryId as-is, no ownership SELECT), line 63-65 (`if (scanHistoryId) { recomputeScanScore(scanHistoryId).catch(() => {}); }`); lib/scanner/recompute-scan-score.ts:58-112 (reads/writes scan_history and host_reputation by that raw id).",
+      "files": [],
+      "fix": "NOT YET APPLIED -- reported for review. Recommendation: Before inserting or calling recomputeScanScore, verify the caller owns the scan (or has team access, matching the pattern in app/api/v3/history/[id]/share/route.ts): `SELECT user_id FROM scan_history WHERE id = $1 AND user_id = $2`, returning 400/404 if scanHistoryId is present but not owned by session.userId. If it's intentional that feedback can reference a scan the user doesn't own (e.g. a shared/public scan they're reviewing), explicitly document that trust decision and still avoid triggering the host_reputation-cascading recompute for a scan outside the caller's own history."
+    },
+    {
+      "id": "security-03",
+      "severity": "medium",
+      "scope": "misc",
+      "title": "CSRF exemption `pathname.startsWith(\"/api/v3/webhooks/\")` intended only for the Stripe webhook receiver also exempts the user's own session-authenticated webhook-edit endpoint",
+      "summary": "middleware.ts's isExemptFromCsrf() exempts any path starting with `/api/v3/webhooks/` from the Origin/Referer CSRF check, with the stated rationale 'Exempt endpoints authenticate the caller some other way (signed payload, server-issued secret, etc.)' -- true for app/api/v3/webhooks/stripe/route.ts (verified via STRIPE_WEBHOOK_SECRET), but the prefix match also matches app/api/v3/webhooks/[id]/route.ts's PATCH handler, which edits a webhook's url/name/type/active flag using ONLY the session cookie for authentication (no signature, no secondary secret) -- exactly the class of endpoint the CSRF check exists to protect. This violates the function's own documented invariant: 'Keep this list narrow -- every entry needs a clear non-CSRF trust boundary,' which is not true for /api/v3/webhooks/[id].\n\nCurrent practical exploitability is reduced (not eliminated) by the session cookie's `sameSite: 'lax'` attribute (lib/auth/auth.ts:65): a cross-site fetch/XHR PATCH (the only way to reach this endpoint, since HTML forms cannot send PATCH) does not carry SameSite=Lax cookies today in a standards-compliant browser, so this is currently a redundant-layer failure rather than an immediately exploitable one -- but it is a real gap in the app's primary, documented CSRF defense, and would become directly exploitable if a future route is added under this prefix that's reachable via GET/POST top-level navigation, or in any user-agent context where SameSite enforcement is weaker than assumed. Evidence: middleware.ts:314-327 (`pathname.startsWith(\"/api/v3/webhooks/\")` in isExemptFromCsrf); app/api/v3/webhooks/[id]/route.ts:23-32 (PATCH authenticates via getSession() / cookie only, matches the exempted prefix); app/api/v3/webhooks/stripe/route.ts:38-40 (the actual signature-verified endpoint the exemption was written for).",
+      "files": [],
+      "fix": "NOT YET APPLIED -- reported for review. Recommendation: Narrow the exemption to the exact Stripe path: `pathname === \"/api/v3/webhooks/stripe\"` instead of a prefix match, so /api/v3/webhooks/[id] (and any future path under this prefix) goes through the normal Origin/Referer CSRF check like every other session-authenticated mutating route."
+    },
+    {
+      "id": "security-04",
+      "severity": "low",
+      "scope": "misc",
+      "title": "Badge stats endpoint compares the share token in plaintext against scan_history.share_token instead of the hashed lookup used identically elsewhere, and silently ignores host_badges auto-updating tokens",
+      "summary": "app/api/v3/badge/[token]/stats/route.ts queries `WHERE sh.share_token = $1` (the raw plaintext token from the URL) rather than hashing it and comparing against share_token_hash, unlike the sibling badge image route (app/api/v3/badge/[token]/route.ts) and the shared-report route (app/api/v3/shared/[token]/route.ts), both of which deliberately hash first with a comment citing AUDIT-004#secrets-01 ('so the plaintext token is never compared directly in the DB'). Since share_token_hash is a Postgres GENERATED column computed from share_token in the same row, this isn't a new confidentiality gap (the plaintext already lives in that row either way) and 256 bits of entropy makes any timing-based guessing attack infeasible regardless -- so this is a consistency/defense-in-depth gap, not a demonstrated exploit path. Separately, this endpoint never queries host_badges at all, so it silently 404s for any of the new auto-updating badge tokens created via POST /api/v3/badge/site -- a functional gap parallel to the two routes it's supposed to mirror. Evidence: app/api/v3/badge/[token]/stats/route.ts:19-25 (`WHERE sh.share_token = $1`, no hashing, no host_badges fallback) vs. app/api/v3/badge/[token]/route.ts:39-73 and app/api/v3/shared/[token]/route.ts:24-60 (both hash-then-compare and both fall back to host_badges).",
+      "files": [],
+      "fix": "NOT YET APPLIED -- reported for review. Recommendation: Hash the incoming token with SHA-256 and compare against share_token_hash for consistency with the two sibling routes, and add the same host_badges fallback query so stats work for auto-updating badges too."
+    },
+    {
+      "id": "prodready-05",
+      "severity": "critical",
+      "scope": "infra",
+      "title": "No database backup or disaster-recovery mechanism anywhere in the codebase",
+      "summary": "There is no backup script, no scheduled pg_dump/pg_basebackup job, no documented restore procedure, and no mention of backups in README.md, CONTRIBUTING.md, docker-compose.yml, docker-compose.dev.yml, or scripts/. The production Docker Compose file stores all data in a bare local Docker volume (postgres_data, driver: local) with no snapshot, replication, or offsite-copy story. This is a SaaS with user accounts, password hashes, Stripe billing history, API keys, scan history, and team data all in one Postgres instance -- a lost/corrupted volume, a bad migration, a `docker volume rm`, or host disk failure is unrecoverable data loss for every customer, with no tested restore path even claimed to exist. Evidence: docker-compose.yml lines 17-44, 114-116 (postgres service, named local volume, no backup sidecar/cron); README.md has no backup/DR section; grep for 'backup'/'pg_dump' across README.md, CONTRIBUTING.md, docker-compose*.yml, and scripts/ returns nothing related to database backups (only unrelated 2FA 'backup codes').",
+      "files": [],
+      "fix": "NOT YET APPLIED -- reported for review. Recommendation: Add a scheduled pg_dump (or WAL-archiving/pg_basebackup) job -- even a simple cron container in docker-compose.yml pushing encrypted dumps to object storage -- document the restore procedure, and actually perform a test restore before calling this production-ready. For the hosted/managed deployment, confirm the managed Postgres provider's backup retention and verify a restore has been rehearsed, not assumed."
+    },
+    {
+      "id": "prodready-06",
+      "severity": "high",
+      "scope": "infra",
+      "title": "A scan in flight during any process restart is left stuck at 'running' forever, with no automatic recovery",
+      "summary": "Scan cancellation and the scan watchdog are purely in-memory and per-process (lib/scanner/scan-jobs.ts's own header comment concedes this explicitly: 'a scan whose process dies mid-run is left at running with no in-process timer left to rescue it'). The watchdog is a plain setTimeout closure tied to execute-scan.ts's call stack, so it is lost on any restart, not just a crash -- including a routine `docker compose restart`/redeploy. instrumentation.ts's graceful-shutdown handler (SIGTERM/SIGINT) only closes the DB connection pool; it never marks in-flight scan_history rows as failed/interrupted. lib/database/cleanup.ts, which runs a periodic sweep for every other kind of stale row in this app, has no logic that resets stale 'running'/'pending' scan_history rows on startup. The only way to clear a stuck row is the manual DELETE /api/v3/scan/status/[id] cancel endpoint, which nothing calls automatically and which the History UI does not surface for a scan that wasn't started in the current browser session. Net effect: every deploy that lands while any scan is mid-flight leaves that scan permanently spinning in the user's dashboard/history with no error message and no self-heal. Evidence: lib/scanner/scan-jobs.ts lines 12-16 (doc comment) and lines 121-129 (startWatchdog, in-memory setTimeout); instrumentation.ts lines 2965-2975 (gracefulShutdown only calls pool.end()); grep for \"status IN ('pending', 'running')\" / \"status = 'running'\" across lib and app shows only lib/scanner/scan-jobs.ts touches these states -- no reaper anywhere else; app/api/v3/scan/status/[id]/route.ts DELETE handler is the only path that can clear a stuck row, and it requires the user to know to call it.",
+      "files": [],
+      "fix": "NOT YET APPLIED -- reported for review. Recommendation: On boot (instrumentation.ts), sweep scan_history for rows still 'pending'/'running' with started_at older than the max scan timeout and flip them to 'failed' with a reason like 'Interrupted by server restart.' Optionally also attempt this in the SIGTERM handler before pool.end() so a graceful restart doesn't even create the window."
+    },
+    {
+      "id": "prodready-07",
+      "severity": "medium",
+      "scope": "infra",
+      "title": "Schema-creation failure during boot is swallowed, letting the app serve traffic against a partially-initialized database",
+      "summary": "instrumentation.ts wraps its entire ~30-table CREATE TABLE sequence (users, sessions, scan_history, billing_history, webhooks, etc.) in one try/catch that, on failure, only console.errors 'Database migration failed' and lets the process continue starting -- unlike the schema-version check just above it, which correctly process.exit(1)s on a mismatch. A transient DB hiccup partway through this sequence (e.g. a connection drop while creating the 15th of 30 tables) leaves some tables missing while the app still comes up and starts accepting requests. The readiness endpoint (/api/v3/health) only verifies pool connectivity and the vulnradar_schema_meta version row, not that every application table actually exists, so it would report 'ok' while requests touching the missing table 500 repeatedly. Evidence: instrumentation.ts line 257 (try open) through line 2978 (`catch (error) { console.error(...); }` with no process.exit), contrasted with the schema-version mismatch check at lines 143-178 which does process.exit(1); app/api/v3/health/route.ts's probeDatabase only SELECTs from vulnradar_schema_meta and never checks for the presence of other tables.",
+      "files": [],
+      "fix": "NOT YET APPLIED -- reported for review. Recommendation: Either re-throw/process.exit after logging in that outer catch (matching the schema-version check's behavior), or have the health endpoint additionally verify a canonical set of critical tables exist before reporting 'ok'."
+    },
+    {
+      "id": "prodready-08",
+      "severity": "medium",
+      "scope": "infra",
+      "title": "No push/proactive alerting on production incidents -- everything is pull-based",
+      "summary": "There is no external error-tracking or alerting SDK wired into the app (no Sentry/Datadog/etc. in package.json). The admin System > Error Logs panel (a genuinely good feature -- see the 'checked and fine' note) captures console.error calls into a searchable table, and /api/v3/health returns 503 on a dead DB, but both are pull: an operator only learns something is wrong by opening /admin or by having set up their own external uptime monitor against /api/v3/health, neither of which this repo configures. A dead scheduled-scans worker, a run of failed Stripe webhooks, or a DB outage at 3am produces rows in a table and a 503 response that nobody is watching until a customer complains. Evidence: package.json has no @sentry/*, datadog, or similar dependency; app/api/v3/admin/error-logs/route.ts is a GET/DELETE the admin has to visit -- nothing pushes its contents anywhere.",
+      "files": [],
+      "fix": "NOT YET APPLIED -- reported for review. Recommendation: Wire the health endpoint into an external uptime monitor (even a free one) that pages someone on 503, and/or add a lightweight Sentry-style SDK for exception capture with alerting, since the in-app error log viewer is a good diagnostic tool but not an alerting system."
+    },
+    {
+      "id": "prodready-09",
+      "severity": "low",
+      "scope": "infra",
+      "title": "GitHub AI repo-review endpoint makes real GitHub API calls before its quota/rate gate",
+      "summary": "POST /api/v3/scan/github calls getRepoInfo and listRepoTree (real GitHub API requests using the user's connected token) before checkGithubReviewQuota runs. Every other AI-adjacent or expensive endpoint in this app (chat, verify, verify-batch, bulk scan, crawl, discover, demo-scan, browser sessions) goes through checkRateLimit first; this one has no per-request throttle at all, only a per-day quota check that happens after the two GitHub API round-trips. Impact is mostly limited to the calling user's own GitHub API rate limit rather than a shared resource, so this is low severity, but it's the one gap in an otherwise consistently-applied pattern. Evidence: app/api/v3/scan/github/route.ts lines 73-119 (getRepoInfo/listRepoTree calls precede the checkGithubReviewQuota call at line 116); no import of checkRateLimit anywhere in that file (confirmed via grep, contrasted with every sibling route under app/api/v3/scan/).",
+      "files": [],
+      "fix": "NOT YET APPLIED -- reported for review. Recommendation: Add a checkRateLimit gate (a new named limit, e.g. githubReview) at the top of the handler, before any GitHub API call, mirroring the pattern already used everywhere else."
+    },
+    {
+      "id": "scanner-01",
+      "severity": "critical",
+      "scope": "scanner",
+      "title": "code-cmdi-exec: code-cmdi-exec JSON metadata belongs to a different check entirely (Media Device Access, severity info) while its detector implements real command-injection detection",
+      "summary": "In lib/scanner/checks/code.ts, the `code-cmdi-exec` detector matches `exec(\"...\" + userInput)` — i.e. child_process.exec called with a shell command built via string concatenation, a genuine shell-injection sink (same class as the sibling code-cmdi-* checks, which are all severity high/critical). But the JSON entry the registry pairs it with (lib/scanner/checks-data/code.json, `_idx: 27`) has title \"Media Device Access\", description \"Camera/microphone API access detected.\", evidence \"Media device access found.\", riskImpact \"Privacy concern - ensure user consent.\", and severity \"info\" — metadata that belongs to getUserMedia/camera-mic detection (which is actually implemented correctly, under its own id, in lib/scanner/checks-data/content.json's `webcam-microphone-access` entry). Only the entry's `codeExamples` field was updated to match command injection (execFile with argument arrays); everything else was left as the old media-device content. Verified against lib/scanner/registry.ts's resolveDetector: since `code-cmdi-exec`'s def.category is \"code\" and code.ts owns and implements that id directly, the registry pairs the real command-injection detector with this mislabeled metadata every time it runs — there is no shadowing/fallback involved. Trigger: Any page whose inline script contains a pattern like `exec(\"ls \" + userPath)` (a real, exploitable command-injection sink) gets reported to the user as an \"info\"-severity \"Media Device Access\" finding with fix steps about camera/microphone consent, instead of a high/critical command-injection alert.",
+      "files": ["lib/scanner/checks-data/code.json"],
+      "fix": "In lib/scanner/checks-data/code.json, replace the `code-cmdi-exec` entry's title/description/evidence/riskImpact/explanation/fixSteps/severity to describe child_process.exec with a concatenated command string (shell metacharacter injection), using severity \"high\" to match the sibling code-cmdi-process-spawn/code-cmdi-popen entries (or \"critical\" to match code-cmdi-spawn-shell-true/code-cmdi-os-exec/code-cmdi-bin-sh-concat, whichever tier the team judges exec()+concat belongs to). The `codeExamples` field is already correct for command injection and can be left as-is."
+    },
+    {
+      "id": "scanner-02",
+      "severity": "high",
+      "scope": "scanner",
+      "title": "hardcoded-credentials: hardcoded-credentials (critical severity) fires on ordinary role-label maps like `{ admin: \"Administrator\", root: \"Full Access\" }`",
+      "summary": "The admin/root pattern `/\\b(?:admin|root)\\b\\s*[:=]\\s*[\"']([^\"']+)[\"']/gi` only validates the captured value with isPlausibleCredentialValue, which rejects values with spaces or values in a small denylist of single words (\"admin\", \"true\", etc.) — but a descriptive label like \"Administrator\" or \"FullAccess\" has no space and isn't in the denylist, so it passes as a \"plausible credential\" even though it's a role display name, not a secret. Verified directly: matching `{ admin: \"Administrator\", root: \"FullAccess\" }` against the pattern and isPlausibleCredentialValue produces two hits, both `plausible: true`. Trigger: A JS object literal defining role display labels for an admin dashboard / RBAC UI, e.g. `const ROLE_LABELS = { admin: \"Administrator\", root: \"FullAccess\", editor: \"Editor\" };` — an extremely common pattern in CMS/SaaS admin panels, self-hosted dashboards, and forum software that show human-readable role names.",
+      "files": ["lib/scanner/checks/code.ts"],
+      "fix": "Apply the same 'sibling-key chain suggests a denylist/label-map, not a real credential' heuristic already used in vibe-code.ts's vibe-placeholder-auth (chainCount >= 3 comparisons nearby suppresses the finding): count nearby `\\w+\\s*[:=]\\s*[\"'][^\"']+[\"']` occurrences within ~150 chars of the match and skip the finding when 3+ sibling key:value pairs are present in the same object literal, since a real hardcoded admin/root credential does not typically appear as one of several role-label entries."
+    },
+    {
+      "id": "scanner-03",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "innerhtml-xss-sink: innerhtml-xss-sink fires on the textbook-correct DOMPurify.sanitize() pattern",
+      "summary": "The pattern `/\\.innerHTML\\s*=(?!\\s*[\"'])/g` only excludes assignments of a literal string; it does not exclude `el.innerHTML = DOMPurify.sanitize(x)`, which is the exact secure pattern DOMPurify's own documentation recommends for fixing this precise class of XSS sink. The check requires 2+ matches, which any page sanitizing more than one element (e.g. rendering a list of user comments) will easily produce. Verified: `el1.innerHTML = DOMPurify.sanitize(c.html); el2.innerHTML = DOMPurify.sanitize(c.html2);` produces 2 matches, meeting the threshold. Trigger: Any comment section, markdown preview, or CMS block renderer that does `element.innerHTML = DOMPurify.sanitize(content)` for two or more elements on the page — a very common, deliberately secure coding pattern.",
+      "files": ["lib/scanner/checks/code.ts"],
+      "fix": "Mirror the exclusion already used in code-xss-vue-v-html-dynamic's bareMatch check: after finding a `.innerHTML =` match, look at the ~40 characters immediately following the `=` and skip it if they match `/DOMPurify\\.sanitize|sanitize-html|purify\\(|\\.sanitize\\(/i`."
+    },
+    {
+      "id": "scanner-04",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "default-credentials: default-credentials (high severity) fires on instructional/warning text telling users to change default credentials",
+      "summary": "The check does a bare substring match for \"admin/admin\" (and similar) anywhere in the body with only a word-boundary guard against URL-path false matches — it has no documentation/instructional-content exclusion, unlike nine other checks in this same file (path-traversal-indicators, xml-external-entity, code-jwt-verify-no-secret, etc.) that all check the ~150-200 chars before a match for `<code|<pre|\\`\\`\\`|example|documentation` before firing. Verified: `\"Default username and password is admin/admin. Please change it after first login.\"` matches the admin/admin pattern. Trigger: Self-hosted app / router / IoT device first-login banners that literally say \"Default credentials: admin/admin, please change immediately\" (extremely common boilerplate on Pi-hole-style dashboards, home routers, and other self-hosted software's setup screens) — the page is warning the user, not exposing an active default-credential vulnerability.",
+      "files": ["lib/scanner/checks/code.ts"],
+      "fix": "Add the same before-context exclusion this file already applies elsewhere: after a match, check the ~150 chars before it (case-insensitive) for words like \"default\", \"change\", \"please\", \"first login\", \"documentation\" and suppress the finding when present."
+    },
+    {
+      "id": "scanner-05",
+      "severity": "high",
+      "scope": "scanner",
+      "title": "sql-injection-patterns: sql-injection-patterns (critical severity) fires on a static SQL string literal inside a script tag, with no concatenation/user-input requirement",
+      "summary": "The check only requires the SQL-shaped regex to match somewhere inside `<script>...</script>` (and not inside `<code>/<pre>`); it never checks whether the query is built via concatenation with a variable — unlike the more precise code-sqli-raw-query-string and code-sqli-template-literal-query checks a few hundred lines later in this same file, which correctly require `+`/`${}` interpolation with req/request/params/query/body. A single hardcoded SQL string constant used as sample/demo text inside an inline script satisfies this check. Verified: `<script>const sample = \"SELECT * FROM users WHERE active = 1\"; ...</script>` matches the pattern and is correctly identified as being inside a `<script>` context (not inside `<code>/<pre>`), so it fires. Trigger: A client-side SQL playground, query-builder tool, or interactive SQL tutorial page (e.g. an in-browser SQL learning tool, or an admin dashboard's \"saved query\" preview feature) that stores a sample query string like `\"SELECT * FROM users WHERE active = 1\"` as a JS string constant for display purposes.",
+      "files": ["lib/scanner/checks/code.ts"],
+      "fix": "Require the same concatenation/interpolation signal the sibling code-sqli-* checks already use: after a match, verify the matched text is immediately preceded/followed by `+` or `${` and a request-derived identifier (req/request/params/query/body), or at minimum verify the matched SQL text is NOT fully enclosed in a single string literal (i.e. skip when the match is bounded by the same quote character on both sides with no `+`/`${}` inside it)."
+    },
+    {
+      "id": "scanner-06",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "vibe-password-in-comment: vibe-password-in-comment (high severity) fires on ordinary password-validation-rule comments, not just commented-out credentials",
+      "summary": "The pattern `/\\/\\/\\s*password\\s*[:=]\\s*\\S+/i` matches any `// password: <non-whitespace>` comment, including comments that describe validation rules rather than assign a literal value. Verified: `// password: minimum 8 characters, 1 uppercase, 1 number` (a completely ordinary validation-rule comment) matches the pattern. Trigger: A form-validation function with a documentation comment like `// password: minimum 8 characters, 1 uppercase, 1 number` above the check — a routine, benign comment, especially common in the AI-generated code this whole category targets, which tends to over-comment exactly like this.",
+      "files": ["lib/scanner/checks/vibe-code.ts"],
+      "fix": "Require the captured value to look like an actual literal (quoted string or bare token with no spaces) rather than free-form prose: e.g. change `\\S+` to `[\"'][^\"']+[\"']|[A-Za-z0-9_!@#$%^&*-]{4,}` and additionally reject when the next word after the colon/equals is one of minimum/min/max/at/must/should/required/characters/chars/length/strength/format/regex/pattern."
+    },
+    {
+      "id": "scanner-07",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "vibe-generic-error-message: vibe-generic-error-message fires on i18n/translation JSON blobs, not just \"page scripts\" as its own evidence text claims",
+      "summary": "The check requires hasScript(body) (true on virtually every modern page, since it only checks for the presence of any `<script>` tag anywhere) and then does an unscoped body-wide match for quoted common error phrases. It doesn't scope the phrase search to actual script content, so a quoted JSON string value anywhere on the page (e.g. an SSR framework's embedded i18n/state blob) satisfies it just as well as an actual catch-block string literal. Verified: `<script>window.__i18n = {\"errors\":{\"generic\":\"Something went wrong\"}};</script>` matches. Trigger: Any Next.js/Nuxt/similar SSR page that embeds a translation dictionary or initial-state JSON blob containing a friendly error string like `{\"generic\":\"Something went wrong\"}` — a completely standard i18n pattern, not evidence of swallowed exceptions.",
+      "files": ["lib/scanner/checks/vibe-code.ts"],
+      "fix": "Require nearby error-handling context (similar to how vibe-weak-random requires a nearby security term): only fire when the matched phrase is within ~150 chars of `catch\\s*\\(|\\.catch\\s*\\(|onerror|addEventListener\\s*\\(\\s*[\"']error`, so the phrase is confirmed to be inside actual exception-handling code rather than a data/string constant."
+    },
+    {
+      "id": "scanner-08",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "s3-bucket-exposed: s3-bucket-exposed (medium severity) fires on any S3-hosted public asset URL, which is normal, intentional CDN usage",
+      "summary": "The check is a bare regex match for any `https://*.s3.amazonaws.com` URL with zero filtering — presence alone is treated as an \"exposure\". Public S3 buckets used to serve static assets (images, downloads, PDFs) are a deliberate, extremely common hosting pattern, not a misconfiguration. Verified: `<img src=\"https://mybucket.s3.amazonaws.com/logo.png\">` matches. Trigger: Any website that hosts a logo, product image, or downloadable file on a public S3 bucket (widespread practice — S3 static asset hosting is a standard, documented AWS use case), e.g. `<img src=\"https://assets-bucket.s3.amazonaws.com/logo.png\">`.",
+      "files": ["lib/scanner/checks/secrets-extended.ts"],
+      "fix": "Either drop this to \"info\" severity (bare presence of an S3 URL is not itself a risk signal), or require corroborating signal before flagging at \"medium\": only fire when the referenced object path itself suggests sensitive content (matches /backup|\\.env|config|private|dump|\\.sql|credentials/i), analogous to how other checks in this group require adjacent risk context instead of firing on bare presence."
+    },
+    {
+      "id": "scanner-09",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "firebase-config-exposed: firebase-config-exposed fires on the standard, required Firebase SDK initialization call present on virtually every Firebase-based site",
+      "summary": "One of the three patterns is a bare `/firebase\\.initializeApp\\s*\\(/` match. Per Firebase's own documentation, the client-side Firebase config object (including its apiKey) is explicitly NOT a secret — it is a public identifier, and access is controlled via Firebase Security Rules, not by hiding this call. Calling firebase.initializeApp() is mandatory for every single Firebase web app (Auth, Firestore, Realtime DB, etc.), so this pattern matches on essentially 100% of legitimate Firebase usage. Trigger: Any site using Firebase Authentication, Firestore, or Realtime Database — an extremely common choice for hobbyist projects, startups, and production SaaS alike — will contain `firebase.initializeApp({...})` in its bundled JS as required, standard SDK setup.",
+      "files": ["lib/scanner/checks/secrets-extended.ts"],
+      "fix": "Remove the bare `firebase.initializeApp(` and `firebaseConfig[:=]` patterns (presence alone is not a finding per Firebase's own security model). Rely on the already-correctly-scoped secret-firebase-api-key-public detector (which requires \"firebase\" context near an actual AIzaSy* key) for the real signal, or repurpose this check to look for an actual misconfiguration indicator (e.g. permissive Firestore/RTDB security rules text, or a databaseURL referenced without any corresponding auth check) rather than SDK presence."
+    },
+    {
+      "id": "scanner-10",
+      "severity": "high",
+      "scope": "scanner",
+      "title": "cache-control-public-sensitive: Any POST-method form (not just password/sensitive forms) triggers a HIGH-severity finding",
+      "summary": "The check fires whenever Cache-Control includes 'public' AND the body has EITHER a password input OR any <form method=post ...> at all (`if (!hasForm && !hasPasswd) return null;`). hasForm matches any POST form regardless of what it does, so a completely public, non-sensitive page (contact form, newsletter signup, comment form, search-by-POST) served with a normal CDN cache policy gets flagged at HIGH severity as if it were leaking authenticated content. Trigger: A SaaS marketing homepage (not under /login,/signin,/signup,/register) with `<form method=\"post\" action=\"/newsletter-signup\"><input name=\"email\"></form>`, served with `Cache-Control: public, max-age=3600` by its CDN -- a completely standard, correct caching setup for a static marketing page.",
+      "files": ["lib/scanner/checks/headers.ts"],
+      "fix": "Drop the generic hasForm branch; only fire when hasPasswd is true, or narrow hasForm to forms that also contain a sensitive input (password, or name/id matching /card|ssn|cvv|account.?number/i). i.e. change `if (!hasForm && !hasPasswd) return null;` to require an actual sensitive field, not just any POST form."
+    },
+    {
+      "id": "scanner-11",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "sri-missing: Flags Google Tag Manager / Analytics / Stripe.js / PayPal SDK scripts, which are documented as SRI-incompatible",
+      "summary": "sri-missing flags every external <script src> lacking an integrity attribute with no allowlist. Several extremely common third-party scripts are served without stable, versioned URLs and are documented by their vendors as incompatible with SRI (the vendor updates the file's contents in place; an integrity hash would break the site the next time the vendor deploys a fix). This includes Google Tag Manager (googletagmanager.com/gtm.js, gtag/js), Google Analytics (google-analytics.com/analytics.js), Stripe.js (js.stripe.com/v3/), and the PayPal SDK (paypal.com/sdk/js). Trigger: Any site embedding `<script src=\"https://www.googletagmanager.com/gtm.js?id=GTM-XXXXXXX\"></script>` (one of the most widely deployed script tags on the web) with no integrity attribute -- required to be absent by GTM's own design.",
+      "files": ["lib/scanner/checks/headers.ts"],
+      "fix": "Add a host allowlist of known dynamically-served, SRI-incompatible script hosts (googletagmanager.com, google-analytics.com, googlesyndication.com, js.stripe.com, checkout.stripe.com, www.paypalobjects.com, connect.facebook.net, cdn.segment.com, static.hotjar.com, js.intercomcdn.com, widget.intercom.io, snap.licdn.com) and exclude script tags whose src hostname matches it from the noSRI filter."
+    },
+    {
+      "id": "scanner-12",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "sri-stylesheet-missing: Flags Google Fonts stylesheet links, which cannot carry a stable SRI hash by design",
+      "summary": "sri-stylesheet-missing flags every external <link rel=stylesheet> without an integrity attribute. Google Fonts' CSS endpoint (fonts.googleapis.com/css or /css2) deliberately serves different CSS content per requesting User-Agent (different @font-face src URLs/formats for different browsers), so no single, stable content hash exists for it -- SRI is fundamentally incompatible with this and similar UA-negotiated stylesheet services, not merely omitted by site owners. Trigger: Any of the enormous number of sites using `<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Roboto\">` for web fonts.",
+      "files": ["lib/scanner/checks/headers.ts"],
+      "fix": "Exempt fonts.googleapis.com (and similarly UA-negotiated stylesheet CDNs, e.g. use.typekit.net) from this check's noSRI filter."
+    },
+    {
+      "id": "scanner-13",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "charset-meta-missing: Only checks for <meta charset> in the body; ignores an equally valid charset= on the Content-Type header",
+      "summary": "The check (lines 1272-1278) only regex-matches `<meta[^>]+charset=` in the HTML body and never inspects the response's Content-Type header for a charset parameter, even though declaring charset via the HTTP header is equally valid and defeats the same UTF-7/encoding-inheritance attack this check targets. HTTP-header charset declaration is the default behavior of many production stacks. Trigger: Any server responding `Content-Type: text/html; charset=utf-8` (the default for Express's res.send/res.type, and common on many Nginx/production configs) without an inline `<meta charset>` tag -- genuinely safe from the attack this check targets, but flagged anyway.",
+      "files": ["lib/scanner/checks/headers.ts"],
+      "fix": "Before falling back to the body regex, check `h(headers, \"content-type\")` for a `charset=` parameter (e.g. `/charset\\s*=/i.test(contentType)`) and return null if present."
+    },
+    {
+      "id": "scanner-14",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "cache-control-no-store-missing: Sensitive-path detection uses raw substring matches that hit unrelated public routes",
+      "summary": "Both cache-control-no-store-missing (lines 962-977) and cache-control-missing (lines 100-120) use the identical `.includes()` substring list `[/login,/signin,/signup,/register,/admin,/api/auth,/session,/account]`. Because these are plain substring checks rather than path-segment matches, `/api/auth` matches any path merely containing that substring (e.g. `/api/authors`), `/session` matches `/sessions`, and `/account` matches `/accounting` -- none of which are actually authentication/session endpoints. Trigger: A blog/CMS REST endpoint `/api/authors/42` (common on Ghost, WordPress-style, or custom Next.js content APIs) or an events site's public schedule page `/sessions/keynote-address`, or a fintech marketing page `/accounting/reports` -- all public, non-sensitive routes that get flagged as 'sensitive page path detected' for lacking Cache-Control: no-store.",
+      "files": ["lib/scanner/checks/headers.ts"],
+      "fix": "Replace the `.includes()` calls in both detectors with path-segment-aware matching, e.g. `/(^|\\/)(login|signin|signup|register|admin|session|account)(\\/|$)/i.test(path)` plus a separate `/(^|\\/)api\\/auth(\\/|$)/i.test(path)` for the auth-API case, so `/api/authors`, `/sessions`, and `/accounting` no longer match."
+    },
+    {
+      "id": "scanner-15",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "mixed-protocol-content: Counts plain <a href=\"http://...\"> navigation links as mixed content, a bug this codebase already documented and fixed for the sibling headers.ts check but not here",
+      "summary": "detectMixedContent (lines 29-45) matches `(?:src|href|action)\\s*=\\s*[\"']http://` against every tag in the body, which includes ordinary <a href> navigation links and <form action> (already covered separately by form-action-http). A plain hyperlink is never fetched as a subresource by the browser and triggers no mixed-content warning or block. headers.ts's own `mixed-content` detector explicitly documents fixing this exact false positive ('A plain <a href=\"http://...\"> is regular navigation, never fetched as a subresource -- it must not count here'), but that scoping was never applied to this separate ssl.ts implementation of the same underlying concept. Trigger: Any HTTPS page containing an ordinary outbound citation/reference link to an HTTP-only external resource, e.g. a blog post or documentation page linking `<a href=\"http://example-legacy-site.org/paper.pdf\">source</a>` -- gets counted as an N-count 'mixed-content reference' even though nothing is fetched insecurely.",
+      "files": ["lib/scanner/checks/ssl.ts"],
+      "fix": "Scope the pattern to actual subresource-loading tags only (script/img/iframe/video/audio/source/object/embed src=, and <link rel=stylesheet href=), mirroring headers.ts's `mixed-content` detector, and drop bare href on <a> and action on <form> (form action is already covered by form-action-http)."
+    },
+    {
+      "id": "scanner-16",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "expect-ct-missing: Flags absence of the Expect-CT header, which is deprecated and unsupported by modern browsers",
+      "summary": "Chrome removed support for Expect-CT in 2022 and MDN documents it as deprecated/on track for removal; Certificate Transparency is now enforced independently by browsers and CAs. Virtually every modern site -- including ones with excellent security postures -- correctly lacks this header today, for the same reason this codebase already disabled nel-header-missing and age-header-reveals-cdn in headers.ts ('optional... its absence is not a vulnerability'). Trigger: Any HTTPS site scanned in 2024+ (i.e. effectively every site, since no current browser honors this header) gets an info-level finding for not sending a header no browser checks anymore.",
+      "files": ["lib/scanner/checks/ssl.ts"],
+      "fix": "Disable this detector (return null unconditionally), consistent with how nel-header-missing/age-header-reveals-cdn/x-request-id-exposed were handled elsewhere in this codebase, with a comment noting Expect-CT's deprecation."
+    },
+    {
+      "id": "scanner-17",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "x-xss-protection-disabled: Flags X-XSS-Protection: 0, which is the current recommended value, not a vulnerability",
+      "summary": "Explicitly setting `X-XSS-Protection: 0` is the value recommended by the OWASP Secure Headers Project and by Mozilla's own HTTP Observatory scoring (which treats '0' as a pass), because the legacy XSS Auditor/filter this header controls was found to itself introduce exploitable XSS and information-disclosure bugs in old IE/Chrome, and has since been removed entirely from all modern browsers. The detector's own message concedes the header is deprecated yet still returns a finding. Trigger: Any security-conscious site following current OWASP/Mozilla guidance that explicitly sends `X-XSS-Protection: 0` (the recommended configuration, especially alongside a strong CSP) is penalized for doing the currently-correct thing.",
+      "files": ["lib/scanner/checks/headers.ts"],
+      "fix": "Disable this detector (return null unconditionally), matching the file's established pattern for deprecated/non-issue headers (see nel-header-missing, age-header-reveals-cdn, x-request-id-exposed)."
+    },
+    {
+      "id": "scanner-18",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "cookie-expires-too-far: Long-expiry check has no sensitivity filter, unlike every sibling cookie check in this file",
+      "summary": "Every other per-attribute check in cookies.ts that cares about risk (cookie-httponly-missing, cookie-secure-missing, cookie-samesite-missing, cookie-no-secure-prefix, session-cookie-flags) first filters to cookies whose name suggests session/token/auth/jwt. cookie-expires-too-far (lines 203-226) has no such filter -- it fires on ANY cookie, sensitive or not, with Max-Age/Expires over 1 year. Long-lived, non-sensitive analytics/marketing cookies with multi-year lifetimes are standard on the web. Trigger: Google Analytics' `_ga` cookie (2-year default expiry) or LinkedIn's `bcookie` (2 years) or HubSpot's `hubspotutk` (13 months) -- present on a huge fraction of real-world sites and entirely non-sensitive, yet flagged 'Cookie Expires/Max-Age Exceeds 1 Year' on every scan.",
+      "files": ["lib/scanner/checks/cookies.ts"],
+      "fix": "Apply the same sensitivity filter used by the file's other per-attribute checks (cookie name includes session/token/auth/jwt) before evaluating expiry length, so only long-lived authentication/session cookies are flagged."
+    },
+    {
+      "id": "scanner-19",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "iframe-third-party-without-sandbox: Flags common trusted third-party embeds (YouTube, Google Maps, Stripe Elements, reCAPTCHA) for lacking sandbox",
+      "summary": "The check (lines 1366-1387) flags any third-party <iframe> without a sandbox attribute, with no allowlist. Widely embedded, functionally-required third-party iframes -- YouTube/Vimeo video embeds, Google Maps embeds, Stripe/PayPal payment element iframes, reCAPTCHA/hCaptcha/Cloudflare Turnstile challenge iframes -- routinely omit sandbox because it is well known to break their required functionality (postMessage, same-origin storage, popups, presentation API), and developers deliberately don't add it. Trigger: Any page with `<iframe src=\"https://www.youtube.com/embed/VIDEO_ID\">` or `<iframe src=\"https://www.google.com/maps/embed?...\">` -- extremely common, legitimate embeds with no sandbox attribute.",
+      "files": ["lib/scanner/checks/headers.ts"],
+      "fix": "Add an allowlist of common trusted embed hosts that are known to require unsandboxed operation (youtube.com, youtube-nocookie.com, google.com/maps, vimeo.com, js.stripe.com, checkout.stripe.com, google.com/recaptcha, challenges.cloudflare.com) and skip them in the noSandbox filter."
+    },
+    {
+      "id": "scanner-20",
+      "severity": "high",
+      "scope": "scanner",
+      "title": "stripe-key-exposed: Stripe publishable key (pk_live_/pk_test_) reported as a 'high' severity secret leak",
+      "summary": "The detector has two branches: an sk_ (secret key) match and a pk_ (publishable key) match. Both return a non-null string, so both are reported as a finding under the same checks-data entry, which is fixed at severity 'high' with CWE-798/'Live Stripe keys can process real payments' framing. Stripe's own integration docs require pk_live_/pk_test_ to be embedded directly in client-side HTML/JS (Stripe.js, Checkout, Elements) -- this is the intended, documented, unavoidable pattern for every Stripe integration, not a leak. The detector's own codeExamples/fixSteps text even says 'pk_live_* (publishable keys) are intentionally public and safe in browsers,' directly contradicting the severity the same check assigns when a pk_ key is the only thing found. Trigger: Any site using Stripe Checkout/Elements, e.g. a page containing `<script>Stripe('pk_live_51H8x...').elements()</script>` (the standard, required Stripe.js initialization snippet) -- this alone fires 'Stripe Key Exposed' at severity high.",
+      "files": ["lib/scanner/checks/content.ts"],
+      "fix": "Return null for the pk_ branch (publishable keys are public by design, same treatment already given to Google Analytics tracking IDs and reCAPTCHA site keys elsewhere in this codebase), or split it into a separate low/info-severity check id (mirroring how twilio-credentials-exposed was already given its own 'low' severity entry with explanatory language for the non-secret Account SID case) so a bare publishable-key match never shares the sk_ branch's high-severity, CWE-798 finding."
+    },
+    {
+      "id": "scanner-21",
+      "severity": "high",
+      "scope": "scanner",
+      "title": "sql-error-exposure: PostgreSQL pattern lacks the 'ERROR:' colon requirement its sibling check was fixed to require",
+      "summary": "The pattern `/PostgreSQL.*ERROR/i` matches any single line containing the word 'PostgreSQL' followed anywhere later by the word 'error' (case-insensitive, unbounded `.*`). The near-identical detector `sql-error-in-page` in content.ts was already hardened for exactly this false-positive class with an inline comment: 'Require \"ERROR:\" colon to match actual PG error format, not descriptive text like \"PostgreSQL errors\"' -- but that fix was never applied to this file's separate, independently-registered 'sql-error-exposure' check (category information-disclosure, severity high), which still uses the old unbounded pattern. Trigger: Any developer blog, changelog, or README rendered as HTML containing a sentence like 'We migrated our backend from MySQL to PostgreSQL. Error handling for failed queries is now centralized in a single wrapper.' -- 'PostgreSQL' and 'error' appear on the same line with no actual database error present, firing a 'high' severity 'SQL error message in response' finding.",
+      "files": ["lib/scanner/checks/information-disclosure.ts"],
+      "fix": "Change the pattern to `/PostgreSQL.*?ERROR:/i` (require the literal colon after ERROR, matching real Postgres error-message format), identical to the fix already applied to `sql-error-in-page` in content.ts."
+    },
+    {
+      "id": "scanner-22",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "phishing-lookalike-domain: Treats the mere presence of the punycode ACE prefix 'xn--' as a homoglyph/phishing signal",
+      "summary": "The regex `/[a-z0-9-]+\\.(?:xn--|аpple|googIe|paypaI|microsft|amazom|faceb00k|app1e)/i` puts the bare literal 'xn--' in the same alternation as specific brand-lookalike strings. 'xn--' is simply the standard ASCII-Compatible-Encoding prefix that ANY internationalized domain name (IDN) is converted to -- it has no inherent relationship to brand impersonation. The description in content.json even frames this check as being about links that 'closely resemble known trusted brands,' but the code never decodes the punycode label or compares it to a brand list for this branch. Trigger: Any legitimate business using a non-Latin-script domain (common in Germany, Sweden, Russia, Japan, etc.), e.g. a canonical/og:url self-reference like `<link rel=\"canonical\" href=\"https://www.xn--mnchen-3ya.de/\">` on that site's own homepage -- 'www.' + 'xn--' matches the regex and is reported as a 'medium' severity 'Potential phishing lookalike domain detected in links' finding on the site's own legitimate self-referential markup.",
+      "files": ["lib/scanner/checks/content.ts"],
+      "fix": "Remove the bare 'xn--' alternative from the pattern entirely. If IDN-based typosquatting detection is wanted, punycode-decode each `xn--`-prefixed label (e.g. via the URL API / a punycode library) and run brand-confusability comparison (Unicode skeleton / homoglyph mapping) only against the decoded Unicode label, not the raw ASCII-encoded string."
+    },
+    {
+      "id": "scanner-23",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "clipboard-hijack-pattern: Matches the common, benign 'append source URL on copy' attribution snippet used by many blogs/news sites",
+      "summary": "The pattern only requires a `copy` event listener followed within 200 characters by `clipboardData.setData`/`setData('text`. This exact shape is also the well-known, widely-published technique many blogs and documentation/news sites use to append a 'Read more at <url>' or attribution line whenever a visitor copies page text -- a benign SEO/anti-scraping courtesy, not a hijack. The evidence text ('matches a pattern used for clipboard-hijacking attacks (e.g. swapping copied crypto addresses)') is reported regardless of whether anything crypto/address-related is actually happening. Trigger: The standard copy-attribution snippet: `document.addEventListener('copy', function(e){ e.clipboardData.setData('text/plain', document.getSelection() + '\\n\\nRead more at ' + location.href); e.preventDefault(); });` -- present on many blogs/news sites -- fires the 'clipboard-hijacking' finding.",
+      "files": ["lib/scanner/checks/content.ts"],
+      "fix": "Require evidence that the ORIGINAL selection is discarded rather than included/appended -- e.g. only flag when the setData call's argument does not reference `getSelection()`/`selection` at all (a pure replacement, not an append), or narrow the pattern to require an address/URL-looking regex literal (crypto wallet patterns, `bc1`/`0x` prefixes) nearby. At minimum, soften the evidence wording so it doesn't assert a crypto-swap attack when only a plain URL suffix is being appended."
+    },
+    {
+      "id": "scanner-24",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "debug-info-in-page-js: Bare 'key'/'token' substring match (no word boundary) flags public Firebase/reCAPTCHA/publishable keys in hydration state",
+      "summary": "Lines 213-225: the second pattern `window\\.__(?:ENV|CONFIG|APP_CONFIG|INITIAL_STATE)__\\s*=\\s*\\{[^}]{0,500}(?:password|secret|key|token)/i` matches 'key'/'token' as a bare substring with no `\\b` word boundary, so it matches inside any field name containing those letters -- 'apiKey', 'siteKey', 'publicKey', 'csrfToken', 'pageToken', etc. Firebase's Web SDK client config (`apiKey: \"AIzaSy...\"`) is explicitly documented by Google as safe to expose client-side (restricted by domain, not secrecy) and this same codebase already codifies that exact exception in the sibling check `api-key-hardcoded-in-js` (excludes the 'AIza' prefix). But when that same Firebase config is serialized server-side into `window.__CONFIG__`, `window.__APP_CONFIG__`, or `window.__INITIAL_STATE__` -- an extremely common SSR hydration pattern for Nuxt/Next/Redux apps bootstrapping Firebase -- this check fires 'Sensitive configuration data serialized into page JavaScript' purely because the object contains a field literally named 'apiKey'. The file's own sibling check `localstorage-sensitive-data` already documents the correct principle in a comment ('bare key alone is too generic') but this check never applies it. Trigger: window.__INITIAL_STATE__ = {\"firebase\":{\"apiKey\":\"AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\",\"authDomain\":\"myapp.firebaseapp.com\",\"projectId\":\"myapp\"}};",
+      "files": ["lib/scanner/checks/client-side.ts"],
+      "fix": "Drop bare 'key' from the alternation (mirroring localstorage-sensitive-data's own reasoning in this file) and require whole-word matches: change `(?:password|secret|key|token)` to `\\b(?:password|secret|token)\\b` and separately require an actual private-key-shaped field via `\\bprivate[_-]?key\\b` if you want to keep key coverage, so 'apiKey'/'siteKey'/'publicKey' no longer match on the bare 'key' substring."
+    },
+    {
+      "id": "scanner-25",
+      "severity": "high",
+      "scope": "scanner",
+      "title": "api-key-hardcoded-in-js: No placeholder/known-test-key denylist -- flags Stripe's own publicly documented example secret key",
+      "summary": "Lines 196-211: unlike the credit-card-pattern check (fixed earlier this session with a KNOWN_TEST_CARD_NUMBERS denylist) and hardcoded-credentials/insecure-auth (fixed with CREDENTIAL_VALUE_PLACEHOLDERS), this check has no placeholder/known-test-value guard at all. Stripe's own official API documentation uses the example secret test key `sk_test_4eC39HqLyjWDarjtT1zdp7dc` throughout its docs (confirmed via web search: this exact string appears across docs.stripe.com samples and is reproduced verbatim in thousands of third-party tutorials, gists, and Stripe CLI examples -- e.g. github.com/stripe/stripe-cli issue #1553 literally pastes it). The second regex pattern `/(?:openai|anthropic|stripe|sendgrid|twilio)\\s*(?:api.?key|secret)\\s*[:=]\\s*[\"'](?!pk_)[A-Za-z0-9\\-_]{20,}[\"']/i` matches this key whenever it's assigned to a camelCase identifier like `stripeApiKey`/`stripeSecretKey`/`stripeSecret` (a very common naming convention in beginner Stripe-integration tutorials and CodePen/demo pages that -- as bad practice -- put the test secret key in client JS): the value `sk_test_4eC39HqLyjWDarjtT1zdp7dc` is 32 chars of `[A-Za-z0-9_]`, doesn't start with `pk_`, and satisfies every condition, so it's flagged as 'treat as compromised' when it's actually Stripe's own inert, publicly-known example key. Trigger: const stripeApiKey = \"sk_test_4eC39HqLyjWDarjtT1zdp7dc\"; // copied verbatim from Stripe's own docs example",
+      "files": ["lib/scanner/checks/client-side.ts"],
+      "fix": "Add a placeholder/known-test-key guard mirroring the KNOWN_TEST_CARD_NUMBERS precedent already established in secrets-extended.ts: capture the matched value in both regexes, then skip if it equals a small KNOWN_TEST_API_KEYS denylist (at minimum Stripe's `sk_test_4eC39HqLyjWDarjtT1zdp7dc`), and/or skip values that are a repeated character run or match /^(?:x+|0+|test|example|sample|dummy|placeholder|your[_-]?api[_-]?key)/i, matching the isPlausibleCredentialValue() pattern already used in code.ts."
+    },
+    {
+      "id": "scanner-26",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "rate-limiting: Fires on static documentation pages whose URL merely contains '/api/'",
+      "summary": "Lines 122-149: `isApiPath` is satisfied by any URL containing `/api/` anywhere in the path, with no check that the response is actually an API response rather than an HTML documentation page. Any API-reference/docs page hosted under a path like `/api/authentication` or `/docs/api/...` -- a very common URL shape for developer documentation -- qualifies, and since a plain HTML docs page naturally carries no X-RateLimit-* headers, the check fires 'No rate-limiting headers detected. API endpoints may be vulnerable to abuse.' on a static prose page that isn't an API endpoint at all. Confirmed real-world instance: Stripe's own authentication documentation page is served at the URL path `/api/authentication` (docs.stripe.com/api/authentication) and returns `text/html`, not JSON. Trigger: GET https://docs.stripe.com/api/authentication (a static HTML documentation page, not an API endpoint)",
+      "files": ["lib/scanner/checks/api.ts"],
+      "fix": "Before treating the URL-shape match as sufficient, also check the response Content-Type and bail out for HTML: `const contentType = headers.get(\"content-type\") || \"\"; if (/text\\/html/i.test(contentType)) return null;` inserted right after the isApiPath check."
+    },
+    {
+      "id": "scanner-27",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "supply-chain-dockerfile-exposed: docker-compose.yml version regex only matches a bare integer, missing the near-universal decimal version syntax",
+      "summary": "Line 118: `/^version:\\s*[\"']\\d+[\"']$/m` requires the quoted version to be `\\d+` with nothing else, so it matches `version: '3'` but NOT `version: '3.8'`, `version: '3.9'`, `version: '2.4'`, etc. In practice the overwhelming majority of real-world docker-compose.yml files pin a dotted Compose spec version (`'3.8'`, `'3.9'`, `'2.1'`...) rather than a bare digit, so this branch of the check almost never actually fires on real exposed compose files even though the sibling `image:` condition is satisfied, making this a 'check that can basically never fire' bug on the format it was written to detect. Trigger: A leaked docker-compose.yml containing `version: '3.8'\\nservices:\\n  web:\\n    image: myapp:latest` -- the extremely common modern Compose file shape.",
+      "files": ["lib/scanner/checks/supply-chain.ts"],
+      "fix": "Change the regex to `/^version:\\s*[\"']\\d+(?:\\.\\d+)?[\"']$/m` to accept an optional decimal component."
+    },
+    {
+      "id": "scanner-28",
+      "severity": "high",
+      "scope": "scanner",
+      "title": "webhook-ssrf-request-input-no-validation: Regex conflates server-side req/body/params/query objects with identically-named client-side variables, flagging ordinary browser OAuth/redirect JS as server-side SSRF",
+      "summary": "The detector's assignRe pattern `(?:webhook|callback)[a-zA-Z_]*\\s*[:=]\\s*(?:await\\s+)?(?:req(?:uest)?|body|params|query)\\??\\.[\\w'\"[\\].]{1,80}` treats a bare identifier named `body`, `params`, or `query` as proof of an Express/Koa/Fastify request object, but those exact names are extremely common in *client-side* browser JavaScript that has nothing to do with server-side SSRF: `const params = new URLSearchParams(window.location.search)` (a standard way to read OAuth/SSO callback/redirect params on a landing page) or React Router's `useParams()` hook both produce a local variable literally named `params`/`query`. Any page whose readable (non-minified) inline `<script>` does something like `const callbackUrl = params.get('callback_url'); fetch(callbackUrl)` -- a completely normal client-side OAuth callback/redirect handler -- matches this pattern and produces no nearby validation keyword to suppress it, so it fires the medium-severity 'Webhook URL From Request Passed to Outbound Call Unvalidated' (SSRF) finding on code that runs in the visitor's own browser, not on the server, and therefore cannot be SSRF at all. Trigger: Any server-rendered page (WordPress/Shopify/small business sites frequently ship unminified inline JS) containing: `<script>const params = new URLSearchParams(window.location.search); const callbackUrl = params.get(\"callback_url\"); fetch(callbackUrl).then(r => r.json());</script>` -- verified against the actual regex in this file: it matches `callbackUrl = params.get`, finds `fetch(` within the 500-char lookahead, and finds none of the exclusion keywords (private/internal/loopback/etc.) nearby, so it fires.",
+      "files": ["lib/scanner/checks/host-validation.ts"],
+      "fix": "Require the request-object source to be `req.` or `request.` immediately followed by `.body`/`.params`/`.query` rather than accepting those three names bare. Change the alternation from `(?:req(?:uest)?|body|params|query)\\??\\.` to `(?:req(?:uest)?)\\??\\.(?:body|params|query)\\??\\.` so the regex only matches the canonical Express/Koa/Fastify shape (`req.body.X`, `request.query.X`) shown in this very check's own 'Bad' code example, and no longer matches bare `body.X`/`params.X`/`query.X` that are equally common as client-side `URLSearchParams`/`useParams()` variable names."
+    },
+    {
+      "id": "scanner-29",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "idor-sequential-id-in-url: Fires on Drupal's default /user/{uid} entity route, a standard CMS path used across a large share of the web",
+      "summary": "The regex `/\\/(?:api\\/)?(?:v\\d+\\/)?(?:user|account|invoice|order|profile)s?\\/([1-9]\\d{0,4})(?:\\/|$|\\?)/i` matches any URL path shaped like `/user/<n>` or `/profile/<n>` with no API/version prefix required. Drupal (a major CMS, powering a large share of government, university, and enterprise sites) uses exactly this path -- `/user/{uid}` -- as its default, framework-generated user-profile route, and by Drupal convention uid 1 is the site's first/admin account, so `/user/1` is an extremely common, often intentionally reachable URL across the Drupal ecosystem (frequently linked exactly this way, e.g. the pattern seen at drupal.org/user/1-style links). Scanning any Drupal site's default user page produces a 'Sequential Numeric ID in URL (IDOR Risk)' finding for what is simply the CMS's standard content-routing path, not an owner-scoped API resource. Trigger: Scanning any stock Drupal site at its default admin/user page, e.g. `https://<any-drupal-site>/user/1` -- confirmed the check's own regex matches this exact path (verified: `/\\/(?:api\\/)?(?:v\\d+\\/)?(?:user|account|invoice|order|profile)s?\\/([1-9]\\d{0,4})(?:\\/|$|\\?)/i.exec(\"https://example.edu/user/1\")` returns a match with id=1).",
+      "files": ["lib/scanner/checks/host-validation.ts"],
+      "fix": "Require an `api/` or `v\\d+/` prefix specifically for the `user` and `profile` nouns (the two that collide with common CMS content-routing conventions), while leaving `account`/`invoice`/`order` matchable bare since those remain reliably owner-scoped in normal usage. Concretely: split the alternation so `(?:api\\/|v\\d+\\/)(?:user|profile)s?\\/(\\d+)` requires an API/version prefix, while `(?:api\\/)?(?:v\\d+\\/)?(?:account|invoice|order)s?\\/(\\d+)` keeps the current bare-path matching."
+    },
+    {
+      "id": "scanner-30",
+      "severity": "high",
+      "scope": "scanner",
+      "title": "open-redirect-location-confirmed: Fires 'confirmed open redirect' on legitimate link-safety rewriting services (e.g. Microsoft Defender Safe Links) whose entire purpose is redirecting to an external host after a security check",
+      "summary": "`REDIRECT_PARAM_NAMES` includes `url`, and the check fires whenever a query param with that exact name holds an absolute external URL and the response's Location header sends the browser to that same external host, treated as 'confirmed, not a static text guess.' Microsoft Defender for Office 365 Safe Links -- extremely common in corporate email -- rewrites every link to `https://<region>.safelinks.protection.outlook.com/?url=<percent-encoded target>&data=...` and, when visited, legitimately issues a 302 to that exact `url=` value after a reputation check. Since `safelinks.protection.outlook.com` and the target domain are unrelated organizations, `extractRootDomain` won't suppress it, so scanning any Safe-Links-wrapped URL produces a high-severity 'Confirmed Open Redirect via Location Header' finding against a security vendor's own protective redirector, not against a vulnerability in the scanned application. Trigger: Scanning `https://nam02.safelinks.protection.outlook.com/?url=https%3A%2F%2Fwww.example.com%2Fpage&data=...` -- verified end to end against this file's actual logic: `reqUrl.hostname` (safelinks.protection.outlook.com) differs from `locUrl.hostname` (www.example.com), the `url` param name is in `REDIRECT_PARAM_NAMES`, its decoded value is an absolute external URL, and it matches the Location header's host exactly, so the check returns a confirmed-finding string.",
+      "files": ["lib/scanner/checks/host-validation.ts"],
+      "fix": "Add a short skip-list of known link-safety/URL-rewriting vendor hostnames (e.g. `/\\.safelinks\\.protection\\.outlook\\.com$/i`, `/^urldefense\\.proofpoint\\.com$/i`, `/\\.secure-web\\.cisco\\.com$/i`, `/\\.clicktime\\.symantec\\.com$/i`, `/\\.linkprotect\\.cudasvc\\.com$/i`, `/\\.mimecastprotect\\.com$/i`) and return null immediately when `reqUrl.hostname` matches one of them, before doing the param/Location comparison. Apply the same skip-list check to the sibling `open-redirect-meta-refresh-confirmed` detector, which shares the identical `REDIRECT_PARAM_NAMES`-based matching and the same exposure."
+    },
+    {
+      "id": "scanner-31",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "reflected-input-xss: Finding ID distinguisher (form.action alone) collides when two different forms share the same action URL",
+      "summary": "buildFinding(\"reflected-input-xss\", url, form.action) passes form.action as the id distinguisher, and generateId() in lib/scanner/_helpers.ts hashes checkId+url+distinguisher into the finding id. When two distinct `<form>` elements on the same page submit to the same action (a common pattern: a header 'quick search' box and a body 'advanced search' form both posting to `/search`, or a main contact form and a newsletter-signup mini-form both posting to `/submit`), and both independently reflect their own per-form canary unescaped, both findings get the exact same `id` (same checkId, same url, same distinguisher). _helpers.ts's own doc comment for generateId explicitly warns this is the failure mode the distinguisher parameter exists to prevent: 'without a per-hit distinguisher every hit... would collapse onto the exact same id... a false_positive mark on one hit... silently suppressing the other, unrelated hit too' -- but the distinguisher chosen here (bare form.action) doesn't actually guarantee uniqueness across forms. Trigger: A page with a header search widget and a separate body search form, both `<form method=\"GET\" action=\"/search\">` but with different field names (e.g. `q` vs `query`), where both reflect their submitted canary unescaped. Both vulnerable forms produce identical finding ids; a user who reviews the surfaced finding and marks it a false positive (scan_finding_feedback is keyed on this id) silently suppresses the report for the other, genuinely-vulnerable form on future scans too.",
+      "files": ["lib/scanner/active-probe-check.ts"],
+      "fix": "Make the distinguisher unique per probed form rather than per action URL, e.g. change the call to `buildFinding(\"reflected-input-xss\", url, `${form.action}:${form.testableFields.join(\",\")}`)`, or include the form's index in the `forms` array, so two forms with the same action but different field sets (or the same field set, via an index) still produce distinct ids."
+    }
+  ]
+}

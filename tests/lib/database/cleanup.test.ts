@@ -22,6 +22,11 @@ let releaseSpy = vi.fn();
 let badgeLookupRows: { id: number }[] = [];
 let queryFailureFor: string | null = null;
 let rollbackShouldFail = false;
+// Rows the archive-before-purge SELECT (lib/database/audit-log-archive.ts)
+// returns -- distinct from the DELETE FROM admin_audit_log rowCount mock
+// above, since the two are separately-scripted queries in this fake
+// client. Empty by default so existing tests below are unaffected.
+let auditArchiveSelectRows: Record<string, unknown>[] = [];
 
 const clientQuery = vi.fn(async (sql: string, params?: unknown[]) => {
   const s = sql.trim();
@@ -91,6 +96,12 @@ const clientQuery = vi.fn(async (sql: string, params?: unknown[]) => {
     return { rowCount: 1, rows: [] };
   if (s.startsWith("DELETE FROM system_error_logs"))
     return { rowCount: 5, rows: [] };
+  if (s.startsWith("CREATE TABLE IF NOT EXISTS admin_audit_log_archive"))
+    return { rows: [] };
+  if (s.startsWith("SELECT id, admin_id, target_user_id"))
+    return { rows: auditArchiveSelectRows };
+  if (s.startsWith("INSERT INTO admin_audit_log_archive"))
+    return { rowCount: 1, rows: [] };
 
   return { rows: [] };
 });
@@ -138,6 +149,7 @@ beforeEach(() => {
   queryFailureFor = null;
   rollbackShouldFail = false;
   retentionSettingsRows = [];
+  auditArchiveSelectRows = [];
   clientQuery.mockClear();
   mockConnect.mockClear();
   mockPoolQuery.mockClear();
@@ -185,6 +197,75 @@ describe("performDatabaseCleanup", () => {
     expect(stats.oldBrowserSessions).toBe(4);
     expect(stats.oldKevCache).toBe(1);
     expect(stats.oldErrorLogs).toBe(5);
+    // auditArchiveSelectRows is empty by default (see mockPoolQuery-style
+    // helper above) -- the archive SELECT and the DELETE's mocked
+    // rowCount(1) are independently scripted queries in this fake client.
+    expect(stats.archivedAuditLogs).toBe(0);
+  });
+
+  it("archives every about-to-be-purged admin_audit_log row into admin_audit_log_archive BEFORE deleting them, in the same transaction", async () => {
+    auditArchiveSelectRows = [
+      {
+        id: 1,
+        admin_id: 7,
+        target_user_id: null,
+        action: "reset_password",
+        details: null,
+        ip_address: "127.0.0.1",
+        created_at: "2025-01-01T00:00:00Z",
+      },
+      {
+        id: 2,
+        admin_id: 7,
+        target_user_id: 3,
+        action: "set_role",
+        details: "role changed",
+        ip_address: "127.0.0.1",
+        created_at: "2025-01-02T00:00:00Z",
+      },
+    ];
+
+    const stats = await performDatabaseCleanup();
+
+    expect(stats.archivedAuditLogs).toBe(2);
+
+    const ensureTableIdx = calls.findIndex((c) =>
+      c.sql.startsWith("CREATE TABLE IF NOT EXISTS admin_audit_log_archive"),
+    );
+    const selectIdx = calls.findIndex((c) =>
+      c.sql.startsWith("SELECT id, admin_id, target_user_id"),
+    );
+    const insertIdx = calls.findIndex((c) =>
+      c.sql.startsWith("INSERT INTO admin_audit_log_archive"),
+    );
+    const deleteIdx = calls.findIndex((c) =>
+      c.sql.startsWith("DELETE FROM admin_audit_log"),
+    );
+
+    // Table creation, then select-to-archive, then the archive insert, all
+    // strictly before the DELETE that actually purges the rows.
+    expect(ensureTableIdx).toBeGreaterThanOrEqual(0);
+    expect(selectIdx).toBeGreaterThan(ensureTableIdx);
+    expect(insertIdx).toBeGreaterThan(selectIdx);
+    expect(deleteIdx).toBeGreaterThan(insertIdx);
+
+    expect(calls[selectIdx].params).toEqual([365]);
+    const insertParams = calls[insertIdx].params as unknown[];
+    expect(insertParams[0]).toBe(365); // retention_days
+    expect(insertParams[1]).toBe(2); // row_count
+    expect(JSON.parse(insertParams[2] as string)).toEqual(
+      auditArchiveSelectRows,
+    );
+  });
+
+  it("writes no archive batch when there is nothing to archive", async () => {
+    auditArchiveSelectRows = [];
+    await performDatabaseCleanup();
+    expect(
+      calls.some((c) =>
+        c.sql.startsWith("INSERT INTO admin_audit_log_archive"),
+      ),
+    ).toBe(false);
   });
 
   it("deletes a browser session by its own expires_at, with a created_at fallback for one that never got an expiry", async () => {
@@ -418,6 +499,7 @@ describe("formatCleanupStats", () => {
       oldBrowserSessions: 0,
       oldKevCache: 0,
       oldErrorLogs: 0,
+      archivedAuditLogs: 0,
     };
     expect(formatCleanupStats(zeroStats)).toBe("no records to clean");
   });
@@ -448,6 +530,7 @@ describe("formatCleanupStats", () => {
       oldBrowserSessions: 0,
       oldKevCache: 0,
       oldErrorLogs: 0,
+      archivedAuditLogs: 0,
     };
     const summary = formatCleanupStats(stats);
     expect(summary).toContain("5 total");
@@ -482,6 +565,7 @@ describe("formatCleanupStats", () => {
       oldBrowserSessions: 0,
       oldKevCache: 0,
       oldErrorLogs: 0,
+      archivedAuditLogs: 0,
     };
     const summary = formatCleanupStats(stats);
     expect(summary).toContain("4 total");
@@ -514,10 +598,47 @@ describe("formatCleanupStats", () => {
       oldBrowserSessions: 0,
       oldKevCache: 0,
       oldErrorLogs: 12,
+      archivedAuditLogs: 0,
     };
     const summary = formatCleanupStats(stats);
     expect(summary).toContain("12 total");
     expect(summary).toContain("12 error logs");
+  });
+
+  it("reports the archived-audit-log count as its own line without inflating the total", () => {
+    const stats = {
+      expiredSessions: 0,
+      oldApiUsage: 0,
+      revokedApiKeys: 0,
+      oldDataRequests: 0,
+      oldScans: 0,
+      oldRateLimits: 0,
+      expiredTokens: 0,
+      expiredInvites: 0,
+      expired2FACodes: 0,
+      expiredBillingCodes: 0,
+      expiredDeviceTrust: 0,
+      expiredNotifications: 0,
+      expiredGiftedSubs: 0,
+      oldAuditLogs: 6,
+      oldAdminNotes: 0,
+      oldStaffActivity: 0,
+      oldSubdomainCache: 0,
+      oldAiConversations: 0,
+      oldScanFindingFeedback: 0,
+      oldUserNotifications: 0,
+      oldGithubReviewUsage: 0,
+      oldBrowserSessions: 0,
+      oldKevCache: 0,
+      oldErrorLogs: 0,
+      archivedAuditLogs: 6,
+    };
+    const summary = formatCleanupStats(stats);
+    // Same 6 rows counted once via oldAuditLogs -- archivedAuditLogs
+    // describes those same rows, not an additional 6 deleted elsewhere.
+    expect(summary).toContain("6 total");
+    expect(summary).toContain("6 audit logs");
+    expect(summary).toContain("6 audit logs archived");
   });
 
   it("includes the new retention counters (finding feedback, in-app notifications, GitHub review usage, browser sessions, KEV cache) when nonzero", () => {
@@ -546,6 +667,7 @@ describe("formatCleanupStats", () => {
       oldBrowserSessions: 4,
       oldKevCache: 1,
       oldErrorLogs: 0,
+      archivedAuditLogs: 0,
     };
     const summary = formatCleanupStats(stats);
     expect(summary).toContain("23 total");

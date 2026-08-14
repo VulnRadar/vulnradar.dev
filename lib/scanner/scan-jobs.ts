@@ -338,3 +338,33 @@ export async function markScanRunning(scanId: number): Promise<void> {
     )
     .catch(() => {});
 }
+
+/**
+ * Fail every scan_history row still `pending`/`running` from BEFORE this
+ * process started. Called once at boot (see instrumentation.ts) as the
+ * counterpart to the in-memory watchdog above: that watchdog dies with its
+ * process, so a scan whose process was killed mid-run (a deploy, an OOM
+ * kill, a crash) had nothing left to rescue it and stayed "running" forever
+ * on the owner's dashboard until they manually noticed (AUDIT-010,
+ * production-readiness #2). Every real completion path (finalizeScanSuccess/
+ * finalizeScanFailure) already guards on `WHERE status IN ('pending',
+ * 'running')`, so this can never race a scan that's genuinely still
+ * in-flight in the CURRENT process -- there is no current process yet when
+ * this runs, only rows orphaned by a PREVIOUS one. Returns the number of
+ * rows swept.
+ */
+export async function sweepStaleScans(): Promise<number> {
+  const result = await pool.query(
+    `UPDATE scan_history
+     SET status = 'failed',
+         error_message = 'Scan interrupted by a server restart. Please run it again.',
+         current_category = NULL,
+         duration = COALESCE(
+           (EXTRACT(EPOCH FROM (NOW() - started_at)) * 1000)::INTEGER,
+           duration
+         )
+     WHERE status IN ('pending', 'running')
+     RETURNING id`,
+  );
+  return result.rowCount ?? 0;
+}

@@ -3,34 +3,16 @@ import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api/api-utils";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
-import { getNotificationPreferences } from "@/lib/notifications/notifications";
+import {
+  ALL_COLUMNS,
+  getNotificationPreferences,
+} from "@/lib/notifications/notifications";
 
-const ALL_PREF_COLUMNS = [
-  // Security
-  "email_security",
-  "email_new_login",
-  "email_password_change",
-  "email_2fa_change",
-  "email_session_revoked",
-  // Scanning
-  "email_scan_complete",
-  "email_critical_findings",
-  "email_regression_alert",
-  "email_schedules",
-  // API & Integrations
-  "email_api_keys",
-  "email_api_limit_warning",
-  "email_webhooks",
-  "email_webhook_failure",
-  // Account
-  "email_data_requests",
-  "email_account_deletion",
-  "email_team_invite",
-  "email_team_changes",
-  // Product
-  "email_product_updates",
-  "email_tips_guides",
-] as const;
+// Derived from NOTIFICATION_COLUMNS (lib/notifications/notifications.ts),
+// the single source of truth every notification column comes from -- this
+// used to be its own manually-maintained list that had already drifted out
+// of sync with NOTIFICATION_COLUMNS once (missing email_posture_digest).
+const ALL_PREF_COLUMNS = ALL_COLUMNS;
 
 // GET: Fetch notification preferences
 export const GET = withErrorHandling(async () => {

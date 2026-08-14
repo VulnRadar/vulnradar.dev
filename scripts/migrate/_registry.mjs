@@ -398,6 +398,7 @@ export const VERSIONS = [
           "created_at",
           "revoked_at",
           "badge_token_hash",
+          "scope",
         ]),
         github_connections: new Set([
           "id",

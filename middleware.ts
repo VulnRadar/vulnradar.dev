@@ -312,11 +312,16 @@ export function middleware(request: NextRequest) {
  * non-CSRF trust boundary.
  */
 function isExemptFromCsrf(pathname: string): boolean {
-  // Stripe webhooks: signed via STRIPE_WEBHOOK_SECRET.
+  // Stripe webhooks: signed via STRIPE_WEBHOOK_SECRET. Exact path only --
+  // NOT a startsWith("/api/v3/webhooks/") prefix, which used to also exempt
+  // /api/v3/webhooks/route.ts and /api/v3/webhooks/[id]/route.ts, the
+  // user's own session-authenticated webhook list/edit/delete endpoints.
+  // Those have no signature to fall back on, so they need the CSRF check
+  // like every other session-authenticated route (AUDIT-010#security-03).
   // Discord callback: signed via HMAC-signed state token.
   // Demo scan / version / security-txt: unauthenticated or read-only.
   return (
-    pathname.startsWith("/api/v3/webhooks/") ||
+    pathname === "/api/v3/webhooks/stripe" ||
     pathname === "/api/v3/auth/discord/callback" ||
     pathname === "/api/v3/demo-scan" ||
     pathname === "/api/v3/version" ||
