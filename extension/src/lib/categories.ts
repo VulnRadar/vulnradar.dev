@@ -1,8 +1,12 @@
-// The 16 scanner categories, with human-readable labels and the
+// The 18 scanner categories, with human-readable labels and the
 // "what this checks" tooltip copy. Labels mirror components/scanner/
-// scan-form.tsx and descriptions mirror components/landing/landing-
-// categories.tsx in the main app, so the extension UI stays in sync
-// with the main product instead of inventing its own wording.
+// scan-form.tsx's CHECK_FAMILIES and descriptions mirror components/landing/
+// landing-categories.tsx in the main app, so the extension UI stays in sync
+// with the main product instead of inventing its own wording. This is a
+// hand-maintained copy, not a shared import -- the extension is a separate
+// build target that can't import from the Next.js app's lib/ or
+// components/. Re-check against the main app's source whenever a category
+// changes there.
 
 import type { ScannerCategory, Severity } from "./types";
 
@@ -30,7 +34,7 @@ export const CATEGORIES: readonly CategoryMeta[] = [
   },
   {
     id: "tls",
-    label: "TLS Configuration",
+    label: "TLS Details",
     description:
       "Protocol version (1.0/1.1/1.2/1.3), cipher suites, ALPN, OCSP stapling.",
     defaultEnabled: true,
@@ -51,7 +55,7 @@ export const CATEGORIES: readonly CategoryMeta[] = [
   },
   {
     id: "configuration",
-    label: "Server Configuration",
+    label: "Configuration",
     description:
       "Server banner disclosure, framework fingerprints, exposed debug/admin endpoints, directory listing.",
     defaultEnabled: true,
@@ -65,7 +69,7 @@ export const CATEGORIES: readonly CategoryMeta[] = [
   },
   {
     id: "dns",
-    label: "DNS Configuration",
+    label: "DNS Records",
     description:
       "SPF syntax, DMARC policy strength, DNSSEC, CAA records, dangling CNAMEs.",
     defaultEnabled: true,
@@ -79,21 +83,21 @@ export const CATEGORIES: readonly CategoryMeta[] = [
   },
   {
     id: "api",
-    label: "API Security",
+    label: "API Surface",
     description:
       "CORS policy, rate-limit header presence, GraphQL introspection, OpenAPI exposure, Swagger UI, authentication methods.",
     defaultEnabled: true,
   },
   {
     id: "code",
-    label: "Client-Side Code",
+    label: "Code (SAST)",
     description:
       "Inline JS patterns, CDN-fingerprinted vulnerable library versions, hardcoded secrets, eval usage, source maps.",
     defaultEnabled: true,
   },
   {
     id: "secrets-extended",
-    label: "Exposed Secrets",
+    label: "Secrets",
     description:
       "AWS keys, Stripe keys, GitHub tokens, OpenAI keys, Twilio, SendGrid, generic high-entropy strings.",
     defaultEnabled: true,
@@ -135,9 +139,9 @@ export const CATEGORIES: readonly CategoryMeta[] = [
   },
   {
     id: "active-probes",
-    label: "Active Probing (XSS)",
+    label: "XSS, SQLi & SSTI Probe",
     description:
-      "Submits a test value through forms found on the page and checks whether it reflects back unescaped. Unlike every other check, this writes real requests to the target. Off by default, only scan sites you're authorized to test this way.",
+      "Submits real values through forms found on the page and checks for reflected XSS, error-based SQL injection, and server-side template injection. Unlike every other check, this writes real requests to the target. Off by default, only scan sites you're authorized to test this way.",
     defaultEnabled: false,
   },
 ] as const;

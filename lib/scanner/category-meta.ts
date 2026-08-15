@@ -83,6 +83,6 @@ export const CATEGORY_META: Record<Category, { label: string; blurb: string }> =
     "active-probes": {
       label: "Active probing",
       blurb:
-        "Opt-in only: submits a canary value through discovered forms and checks for unescaped reflection (XSS).",
+        "Opt-in only: submits real values through discovered forms and checks for reflected XSS, error-based SQL injection, and server-side template injection.",
     },
   };

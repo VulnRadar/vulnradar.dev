@@ -178,7 +178,7 @@ const CHECK_FAMILIES: readonly CheckFamily[] = [
   },
   {
     id: "active-probes",
-    label: "Reflected input (XSS) probe",
+    label: "XSS, SQLi & SSTI probe",
     shortLabel: "Active probing",
     group: "Active probing (writes to target)",
   },

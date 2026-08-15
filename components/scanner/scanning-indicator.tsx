@@ -28,7 +28,7 @@ const FAMILY_STEP: Record<Category, string> = {
   "supply-chain": "Checking supply chain artifacts",
   "host-validation": "Validating host and origin handling",
   reputation: "Checking threat-intelligence reputation",
-  "active-probes": "Probing forms for reflected input",
+  "active-probes": "Probing forms for XSS, SQLi & SSTI",
 };
 
 const OPENING_STEP = "Connecting to the target";
