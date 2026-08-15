@@ -143,6 +143,7 @@ export function TosModal({
   termsChangeSummary,
 }: TosModalProps) {
   const [accepting, setAccepting] = useState(false);
+  const [acceptError, setAcceptError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [checked, setChecked] = useState({
     terms: false,
@@ -171,6 +172,7 @@ export function TosModal({
   async function handleAccept() {
     if (!allChecked) return;
     setAccepting(true);
+    setAcceptError(null);
     try {
       const res = await fetch(API.AUTH.ACCEPT_TOS, { method: "POST" });
       if (res.ok) {
@@ -180,9 +182,19 @@ export function TosModal({
         // cache (see the matching note in app/profile/page.tsx).
         refreshAuthCache();
         onAccept();
+        return;
       }
+      // This modal blocks every logged-in user until they get through it
+      // (no close button, no backdrop dismissal) -- a failure here must
+      // never leave them stuck with zero feedback and no way forward.
+      const data = await res.json().catch(() => null);
+      setAcceptError(
+        data?.error || "Couldn't save your acceptance. Please try again.",
+      );
     } catch {
-      // retry on next attempt
+      setAcceptError(
+        "Couldn't reach the server. Check your connection and try again.",
+      );
     } finally {
       setAccepting(false);
     }
@@ -397,6 +409,11 @@ export function TosModal({
 
           {/* ── Footer ── */}
           <div className="px-6 py-4 border-t border-border/40 shrink-0 space-y-3">
+            {acceptError && (
+              <p role="alert" className="text-sm text-destructive text-center">
+                {acceptError}
+              </p>
+            )}
             <Button
               onClick={handleAccept}
               disabled={!allChecked || accepting}

@@ -186,10 +186,24 @@ function DashboardContent() {
       ) => Promise<void>)
     | null
   >(null);
+  // Set by handleCancelScan, read once by runScan right after
+  // pollScanStatus settles. Without this, a user-initiated cancel resets
+  // the UI to idle immediately, but the poll loop's in-flight request is
+  // still running underneath -- it resolves moments later with the
+  // server's own "status: failed, error: Cancelled" (from the DELETE
+  // handler) and would otherwise clobber the idle reset with a jarring
+  // "scan failed" screen right after the user clicked away.
+  const cancelledRef = useRef(false);
   const [status, setStatus] = useState<ScanStatus>("idle");
   const [showLimitModal, setShowLimitModal] = useState(false);
   const [result, setResult] = useState<ScanResult | null>(null);
   const [scanHistoryId, setScanHistoryId] = useState<number | null>(null);
+  // The in-flight job's id, tracked separately from scanHistoryId (which
+  // only gets set once a scan actually finishes) -- this is what "Cancel
+  // scan" targets while status === "scanning". Cleared whenever the poll
+  // loop exits for any reason, so a stale id can never be cancelled after
+  // its own run already ended.
+  const [runningScanId, setRunningScanId] = useState<number | null>(null);
   const [scanTags, setScanTags] = useState<ScanTag[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
@@ -505,6 +519,7 @@ function DashboardContent() {
             setStatus("failed");
             return;
           }
+          setRunningScanId(scanId);
           let statusData: ScanStatusResponse;
           try {
             statusData = await pollScanStatus(
@@ -514,6 +529,14 @@ function DashboardContent() {
               scanStatusPollIntervalMs,
             );
           } catch (pollError) {
+            // A user-initiated cancel already reset the UI to idle
+            // (handleCancelScan) -- don't clobber that with a "scan
+            // failed" screen just because this in-flight poll's own
+            // request lost the race and errored out afterward.
+            if (cancelledRef.current) {
+              cancelledRef.current = false;
+              return;
+            }
             setError(
               pollError instanceof Error
                 ? pollError.message
@@ -521,6 +544,15 @@ function DashboardContent() {
             );
             setErrorUrl(url);
             setStatus("failed");
+            return;
+          } finally {
+            setRunningScanId(null);
+          }
+          if (cancelledRef.current) {
+            // Same reasoning as above: the cancel already reset the UI,
+            // this resolved poll is just the DELETE's own "status: failed,
+            // error: Cancelled" response arriving after the fact.
+            cancelledRef.current = false;
             return;
           }
           if (statusData.status === "failed" || !statusData.result) {
@@ -674,6 +706,21 @@ function DashboardContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
+  // Best-effort: fires the server-side cancel (DELETE, see
+  // app/api/v3/scan/status/[id]/route.ts) and returns to idle immediately
+  // rather than waiting for the in-flight pollScanStatus loop to notice.
+  // A failure here is fine to ignore -- the scan keeps running server-side
+  // either way, and the user is already back at the form to start a new
+  // one; nothing about cancelling a job the UI no longer displays needs a
+  // blocking error state.
+  function handleCancelScan() {
+    if (!runningScanId) return;
+    cancelledRef.current = true;
+    fetch(API.SCAN_STATUS(runningScanId), { method: "DELETE" }).catch(() => {});
+    setRunningScanId(null);
+    setStatus("idle");
+  }
+
   async function handleDeepScan() {
     if (!scanHistoryId) return;
     setAiDeepLoading(true);
@@ -778,6 +825,7 @@ function DashboardContent() {
               currentCategory={scanProgress?.currentCategory ?? null}
               categoriesCompleted={scanProgress?.categoriesCompleted ?? 0}
               categoriesTotal={scanProgress?.categoriesTotal ?? 0}
+              onCancel={runningScanId ? handleCancelScan : undefined}
             />
           </div>
         )}
