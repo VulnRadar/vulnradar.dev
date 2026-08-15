@@ -133,11 +133,7 @@ import type {
   Team,
   TeamMember,
 } from "@/components/admin/types";
-import {
-  UserAvatar,
-  Toast as AdminToast,
-  ConfirmDialog,
-} from "@/components/admin/shared";
+import { UserAvatar, Toast as AdminToast } from "@/components/admin/shared";
 import {
   UserDetailPanel,
   BulkActionsToolbar,
@@ -194,14 +190,6 @@ function AdminContent() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [confirmDialog, setConfirmDialog] = useState<{
-    title: string;
-    description: string;
-    confirmLabel: string;
-    danger?: boolean;
-    action: () => Promise<void>;
-    children?: React.ReactNode;
-  } | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
   const [auditPage, setAuditPage] = useState(1);
   const [auditTotalPages, setAuditTotalPages] = useState(1);
@@ -489,7 +477,6 @@ function AdminContent() {
       });
       if (res.ok) {
         showToast("Team deleted successfully", "success");
-        setConfirmDialog(null);
         fetchTeams(teamsPage);
       } else {
         const data = await res.json();
@@ -581,7 +568,6 @@ function AdminContent() {
       result = { ok: false, error: "Action failed." };
     }
     setActionLoading(null);
-    setConfirmDialog(null);
     return result;
   }
 
@@ -1644,18 +1630,6 @@ function AdminContent() {
         </div>
       </main>
       <Footer />
-
-      {confirmDialog && (
-        <ConfirmDialog
-          open={true}
-          title={confirmDialog.title}
-          description={confirmDialog.description}
-          confirmLabel={confirmDialog.confirmLabel}
-          danger={confirmDialog.danger}
-          onConfirm={confirmDialog.action}
-          onCancel={() => setConfirmDialog(null)}
-        />
-      )}
 
       {toast && <AdminToast toast={toast} onClose={() => setToast(null)} />}
     </div>

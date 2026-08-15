@@ -124,6 +124,10 @@ export function UserDetailPanel({
   const [showCreateBadge, setShowCreateBadge] = useState(false);
   const [showManageBadges, setShowManageBadges] = useState(false);
   const [newNote, setNewNote] = useState("");
+  async function addNote() {
+    const result = await onAction(u.id, "add_note", { note: newNote.trim() });
+    if (result.ok) setNewNote("");
+  }
   const [editingNote, setEditingNote] = useState<{
     id: number;
     text: string;
@@ -1487,19 +1491,31 @@ export function UserDetailPanel({
                     </Button>
                     <Button
                       size="sm"
-                      disabled={!newBadgeName.trim() || !newBadgeDisplay.trim()}
-                      onClick={() => {
-                        onAction(u.id, "create_badge", {
+                      disabled={
+                        !newBadgeName.trim() ||
+                        !newBadgeDisplay.trim() ||
+                        isLoading("create_badge")
+                      }
+                      onClick={async () => {
+                        const result = await onAction(u.id, "create_badge", {
                           name: newBadgeName.trim(),
                           displayName: newBadgeDisplay.trim(),
                           color: newBadgeColor,
                         });
-                        setShowCreateBadge(false);
-                        setNewBadgeName("");
-                        setNewBadgeDisplay("");
-                        setNewBadgeColor("#6366f1");
+                        if (result.ok) {
+                          setShowCreateBadge(false);
+                          setNewBadgeName("");
+                          setNewBadgeDisplay("");
+                          setNewBadgeColor("#6366f1");
+                        }
                       }}
                     >
+                      {isLoading("create_badge") && (
+                        <Loader2
+                          className="h-3.5 w-3.5 mr-1.5 animate-spin"
+                          aria-hidden="true"
+                        />
+                      )}
                       Create &amp; Award
                     </Button>
                   </DialogFooter>
@@ -1560,18 +1576,30 @@ export function UserDetailPanel({
                             <Button
                               variant="destructive"
                               size="sm"
-                              onClick={() => {
-                                onAction(u.id, "delete_badge", {
-                                  badgeId: String(pendingDeleteBadge.id),
-                                });
-                                setPendingDeleteBadge(null);
-                                setShowManageBadges(false);
+                              disabled={isLoading("delete_badge")}
+                              onClick={async () => {
+                                const result = await onAction(
+                                  u.id,
+                                  "delete_badge",
+                                  { badgeId: String(pendingDeleteBadge.id) },
+                                );
+                                if (result.ok) {
+                                  setPendingDeleteBadge(null);
+                                  setShowManageBadges(false);
+                                }
                               }}
                             >
-                              <Trash2
-                                className="h-3.5 w-3.5 mr-1.5"
-                                aria-hidden="true"
-                              />
+                              {isLoading("delete_badge") ? (
+                                <Loader2
+                                  className="h-3.5 w-3.5 mr-1.5 animate-spin"
+                                  aria-hidden="true"
+                                />
+                              ) : (
+                                <Trash2
+                                  className="h-3.5 w-3.5 mr-1.5"
+                                  aria-hidden="true"
+                                />
+                              )}
                               Delete Permanently
                             </Button>
                           </div>
@@ -1673,8 +1701,7 @@ export function UserDetailPanel({
                 className="h-9 text-sm flex-1"
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && newNote.trim()) {
-                    onAction(u.id, "add_note", { note: newNote.trim() });
-                    setNewNote("");
+                    void addNote();
                   }
                 }}
               />
@@ -1683,10 +1710,7 @@ export function UserDetailPanel({
                 className="h-9 gap-1.5"
                 disabled={!newNote.trim() || isLoading("add_note")}
                 onClick={() => {
-                  if (newNote.trim()) {
-                    onAction(u.id, "add_note", { note: newNote.trim() });
-                    setNewNote("");
-                  }
+                  if (newNote.trim()) void addNote();
                 }}
               >
                 {isLoading("add_note") ? (

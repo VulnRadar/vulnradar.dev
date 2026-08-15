@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { UserCog, Loader2 } from "lucide-react";
+import { UserCog, Loader2, AlertTriangle } from "lucide-react";
 import {
   useAuth,
   refreshAuthCache,
@@ -30,6 +30,7 @@ import { ROUTES } from "@/lib/config/client-constants";
 export function ImpersonationBanner() {
   const { me } = useAuth();
   const [stopping, setStopping] = useState(false);
+  const [stopError, setStopError] = useState(false);
   const bannerRef = useRef<HTMLDivElement>(null);
   const isImpersonating = !!me?.isImpersonating;
 
@@ -57,16 +58,27 @@ export function ImpersonationBanner() {
 
   async function handleStop() {
     setStopping(true);
+    setStopError(false);
     try {
-      await fetch(API.AUTH.IMPERSONATION_STOP, { method: "POST" });
-    } finally {
-      // Full reload, not a client-side refreshAuthCache-only update: the
-      // session identity itself just changed (back to the admin account),
-      // so every already-fetched piece of page state for the impersonated
-      // user needs to go, not just the cached /api/v3/auth/me response.
-      refreshAuthCache();
-      window.location.href = ROUTES.ADMIN;
+      const res = await fetch(API.AUTH.IMPERSONATION_STOP, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        setStopError(true);
+        setStopping(false);
+        return;
+      }
+    } catch {
+      setStopError(true);
+      setStopping(false);
+      return;
     }
+    // Full reload, not a client-side refreshAuthCache-only update: the
+    // session identity itself just changed (back to the admin account),
+    // so every already-fetched piece of page state for the impersonated
+    // user needs to go, not just the cached /api/v3/auth/me response.
+    refreshAuthCache();
+    window.location.href = ROUTES.ADMIN;
   }
 
   return (
@@ -88,6 +100,12 @@ export function ImpersonationBanner() {
         {stopping && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
         Stop impersonating
       </button>
+      {stopError && (
+        <span className="inline-flex items-center gap-1 text-amber-950/80">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          Couldn&apos;t stop, try again
+        </span>
+      )}
     </div>
   );
 }

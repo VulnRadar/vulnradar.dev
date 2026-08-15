@@ -4,19 +4,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { AdminPasswordConfirmDialog } from "@/components/admin/shared";
 import {
   DownloadCloud,
   RefreshCw,
@@ -120,9 +109,6 @@ export function UpdaterManager() {
   const [refreshing, setRefreshing] = useState(false);
   const [job, setJob] = useState<UpdaterJob | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [password, setPassword] = useState("");
-  const [starting, setStarting] = useState(false);
-  const [startError, setStartError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchStatus = useCallback(async () => {
@@ -187,9 +173,7 @@ export function UpdaterManager() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job?.id]);
 
-  const startUpdate = async () => {
-    setStarting(true);
-    setStartError(null);
+  const startUpdate = async (password: string) => {
     try {
       const res = await fetch("/api/v3/admin/updater/apply", {
         method: "POST",
@@ -203,14 +187,14 @@ export function UpdaterManager() {
       if (res.ok) {
         setJob({ id: data.jobId } as UpdaterJob);
         setConfirmOpen(false);
-        setPassword("");
-      } else {
-        setStartError(data.error || "Failed to start update.");
+        return { ok: true as const };
       }
+      return {
+        ok: false as const,
+        error: data.error || "Failed to start update.",
+      };
     } catch {
-      setStartError("Failed to start update.");
-    } finally {
-      setStarting(false);
+      return { ok: false as const, error: "Failed to start update." };
     }
   };
 
@@ -486,70 +470,15 @@ export function UpdaterManager() {
         </Card>
       )}
 
-      <AlertDialog
+      <AdminPasswordConfirmDialog
         open={confirmOpen}
-        onOpenChange={(o) => !o && setConfirmOpen(false)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <div className="flex items-start gap-3">
-              <div className="h-10 w-10 rounded-lg flex items-center justify-center shrink-0 bg-destructive/10">
-                <AlertTriangle
-                  className="h-5 w-5 text-destructive"
-                  aria-hidden="true"
-                />
-              </div>
-              <div>
-                <AlertDialogTitle>Apply update</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This downloads, verifies, and installs v
-                  {status?.latest ?? "the latest release"} over this app&apos;s
-                  files, then runs npm ci, npm run build, and npm run
-                  db:migrate. It does not restart the server; you do that
-                  yourself once it finishes. Re-enter your password to confirm.
-                </AlertDialogDescription>
-              </div>
-            </div>
-          </AlertDialogHeader>
-          <div className="space-y-2 px-1">
-            <Label htmlFor="updater-password">Your password</Label>
-            <Input
-              id="updater-password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-            />
-            {startError && (
-              <p className="text-xs text-destructive">{startError}</p>
-            )}
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              disabled={starting}
-              onClick={() => setPassword("")}
-            >
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              disabled={starting || password.length === 0}
-              onClick={(e) => {
-                e.preventDefault();
-                startUpdate();
-              }}
-              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
-            >
-              {starting && (
-                <Loader2
-                  className="h-4 w-4 mr-2 animate-spin"
-                  aria-hidden="true"
-                />
-              )}
-              Apply update
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        onOpenChange={setConfirmOpen}
+        title="Apply update"
+        description={`This downloads, verifies, and installs v${status?.latest ?? "the latest release"} over this app's files, then runs npm ci, npm run build, and npm run db:migrate. It does not restart the server; you do that yourself once it finishes. Re-enter your password to confirm.`}
+        confirmLabel="Apply update"
+        variant="destructive"
+        onConfirm={startUpdate}
+      />
     </div>
   );
 }
