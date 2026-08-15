@@ -12,6 +12,8 @@ interface VerifySubscriptionOptions {
 interface VerifySubscriptionResult {
   verifying: boolean;
   verified: boolean;
+  /** True once polling is exhausted without the expected plan confirming. */
+  pending: boolean;
   planName: string | null;
   planId: string | null;
   startVerification: () => void;
@@ -23,6 +25,7 @@ export function useVerifySubscription(
   const { sessionId, expectedPlanId, autoStart = true } = options;
   const [verifying, setVerifying] = useState(autoStart);
   const [verified, setVerified] = useState(false);
+  const [pending, setPending] = useState(false);
   const [planName, setPlanName] = useState<string | null>(null);
   const [planId, setPlanId] = useState<string | null>(null);
 
@@ -35,6 +38,7 @@ export function useVerifySubscription(
   const verify = useCallback(async () => {
     cancelledRef.current = false;
     setVerifying(true);
+    setPending(false);
 
     const pollIntervals = [
       ...Array(5).fill(500),
@@ -78,8 +82,9 @@ export function useVerifySubscription(
       await new Promise((resolve) => setTimeout(resolve, pollIntervals[i]));
     }
 
+    // Payment succeeded but the plan never confirmed; don't report success.
     if (!cancelledRef.current) {
-      setVerified(true);
+      setPending(true);
       setVerifying(false);
     }
   }, [sessionId, expectedPlanId]);
@@ -103,6 +108,7 @@ export function useVerifySubscription(
   return {
     verifying,
     verified,
+    pending,
     planName,
     planId,
     startVerification,
