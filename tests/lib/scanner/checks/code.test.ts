@@ -136,6 +136,21 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
+  "code-xss-template-tag": [
+    {
+      description:
+        "interpolation inside the same html`...` tagged template fires -- genuine risk if unescaped",
+      body: "<script>function render(x){ return html`<div>${x}</div>`; }</script>",
+      expect: "fire",
+    },
+    {
+      description:
+        "regression: a static html`...` template with no interpolation of its own must NOT fire just because an unrelated ${...} interpolation exists later in the same script -- the middle wildcard used to be unbounded and matched across the closing backtick into unrelated code, misfiring on lit-html usage across dozens of real-world bulk-scan sites",
+      body: "<script>function render(){ return html`<div>static content only</div>`; } function unrelated(){ const msg = `Hello ${name}`; return msg; }</script>",
+      expect: "skip",
+    },
+  ],
+
   "eval-usage": [
     {
       description:
@@ -235,6 +250,45 @@ const fixtures: DetectorFixtures = {
       description:
         "Google API key ALONE must not fire here — no legitimate-secret pattern present, and the format is covered by google-api-key-exposed / secret-google-maps-api-key at medium severity instead of being re-flagged critical",
       body: "<script>const mapsKey = 'AIzaSyDaGmWKa4JsXZ-HjGw7ISLn_3namBGewQe';</script>",
+      expect: "skip",
+    },
+    {
+      description:
+        "Twilio SID as a real quoted string literal — genuine embedded credential shape, stays critical",
+      body: "<script>const sid = 'AC1234567890abcdef1234567890abcdef';</script>",
+      expect: "fire",
+      evidenceIncludes: "Twilio Account SID",
+    },
+    {
+      description:
+        "regression: 'AC' + 32 hex chars occurring unquoted inside an unrelated hash (a cache-busting asset hash, not a credential) must NOT fire — this exact shape misfired on google.com/bing.com bulk-scan output before the quote-boundary fix",
+      body: '<html><body><img src="/logo.png?v=ffffACfedcba9876543210fedcba98765432"></body></html>',
+      expect: "skip",
+    },
+    {
+      description:
+        "Facebook token as a real quoted string literal, stays critical",
+      body: `<script>const fbToken = 'EAA${"a".repeat(100)}';</script>`,
+      expect: "fire",
+      evidenceIncludes: "Facebook Token",
+    },
+    {
+      description:
+        "regression: 'EAA' + 100 alphanumeric chars occurring unquoted inside an unrelated base64-ish blob must NOT fire",
+      body: `<html><body><div data-tracking-blob="xxEAA${"b".repeat(100)}yy"></div></body></html>`,
+      expect: "skip",
+    },
+    {
+      description:
+        "a real hardcoded database connection string assigned to dsn= still fires",
+      body: '<script>const dsn = "postgres://user:pass@db.internal:5432/mydb";</script>',
+      expect: "fire",
+      evidenceIncludes: "Connection String",
+    },
+    {
+      description:
+        'regression: a Sentry DSN (dsn: "https://...@sentry.io/...") must NOT fire as "Connection String" -- this codebase\'s own Sentry DSN pattern (client-exposed tier) already documents it as not a secret per Sentry\'s own docs, but the old bare "dsn=" match with no scheme check flagged it critical anyway; reproduces the roblox.com bulk-scan false positive',
+      body: '<script>Sentry.init({ dsn: "https://abc123def456abc123def456abc123df@o123456.ingest.sentry.io/1234304" });</script>',
       expect: "skip",
     },
   ],

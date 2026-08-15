@@ -54,6 +54,11 @@ nscripts/storage/
 # FP audit temporary scan storage
 scripts/storage/
 
+# Bulk-scan QA tool output: per-host findings JSON, not source, not for
+# git history (may contain pattern-matched strings that look like secrets
+# even when they're false positives).
+engine/data/host-json/
+
 # Note: the extension/ directory has its OWN .gitignore that handles
 # its own build outputs (dist-*/, node_modules/, *.tsbuildinfo).
 # The main .gitignore must NOT add extension/* here or it would

@@ -1,6 +1,6 @@
 # VulnRadar Scanner Checks: AI Index (compact)
 
-_Compact index auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-14._
+_Compact index auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-15._
 
 One line per check. Format: `[severity] check-id - title`.
 Full details (fix steps, code examples, references) live in

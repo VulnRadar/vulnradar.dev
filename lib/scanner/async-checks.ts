@@ -2945,10 +2945,14 @@ async function checkExposedFiles(
       path: "/phpmyadmin/",
       verify: (status, body) => {
         if (status !== 200) return null;
-        if (!/phpMyAdmin|phpmyadmin/i.test(body)) return null;
-        if (!/<title>/i.test(body)) return null;
+        // The old gate matched "phpMyAdmin" anywhere in the body, which
+        // false-positives on any SPA that serves its normal app shell (200 +
+        // HTML) for an unmatched route, if its bundled JS happens to contain
+        // the substring anywhere. Real phpMyAdmin puts its name in the page
+        // <title>; a bundler's minified output does not.
         const m = body.match(/<title>([^<]{1,80})<\/title>/i);
-        return `phpMyAdmin interface accessible. Page title: "${m?.[1] ?? "phpMyAdmin"}"`;
+        if (!m || !/phpMyAdmin/i.test(m[1])) return null;
+        return `phpMyAdmin interface accessible. Page title: "${m[1]}"`;
       },
       title: "phpMyAdmin Admin Panel Exposed",
       severity: "high",
@@ -2967,7 +2971,11 @@ async function checkExposedFiles(
       path: "/adminer.php",
       verify: (status, body) => {
         if (status !== 200) return null;
-        if (!/Adminer|adminer/i.test(body)) return null;
+        // Same SPA-collision risk as phpMyAdmin below: require the name in
+        // the page <title> (real Adminer's login page is "Login - Adminer"),
+        // not just anywhere in the body.
+        const m = body.match(/<title>([^<]{1,80})<\/title>/i);
+        if (!m || !/Adminer/i.test(m[1])) return null;
         return "Adminer database management interface is accessible.";
       },
       title: "Adminer Database Admin Panel Exposed",
@@ -3256,7 +3264,17 @@ async function checkExposedFiles(
       verify: (status, body, ct) => {
         if (status !== 200 && status !== 403) return null;
         if (!ct.includes("text/html")) return null;
-        if (!body.includes("Jenkins") && !body.includes("hudson")) return null;
+        // "Jenkins" is also a common surname; matching it anywhere in the
+        // body false-positives on any unrelated page that mentions one (a
+        // team bio, a byline) or on an SPA's app-shell bundle. Real Jenkins
+        // suffixes every page title with " [Jenkins]" and ships a
+        // jenkins-head-icon element -- both are Jenkins-specific, not
+        // generic word matches.
+        if (
+          !/\[Jenkins\]<\/title>/i.test(body) &&
+          !body.includes("jenkins-head-icon")
+        )
+          return null;
         const isOpen =
           status === 200 &&
           (body.includes("Dashboard") ||
@@ -3284,7 +3302,12 @@ async function checkExposedFiles(
       verify: (status, body, ct) => {
         if (status !== 200) return null;
         if (!ct.includes("text/html")) return null;
-        if (!body.includes("Consul") && !body.includes("consul")) return null;
+        // "consul" is also an ordinary English word (a diplomatic consul),
+        // and matching it anywhere in the body false-positives on an SPA's
+        // app-shell bundle for an unmatched route. Real Consul's UI titles
+        // its pages "Consul" specifically.
+        const m = body.match(/<title>([^<]{1,80})<\/title>/i);
+        if (!m || !/Consul/i.test(m[1])) return null;
         return "HashiCorp Consul UI is publicly accessible. Service registry, health checks, and potentially KV store data are readable without authentication.";
       },
       title: "HashiCorp Consul UI Exposed",
@@ -3305,7 +3328,13 @@ async function checkExposedFiles(
       verify: (status, body, ct) => {
         if (status !== 200 && status !== 403) return null;
         if (!ct.includes("text/html")) return null;
-        if (!body.includes("MinIO") && !body.includes("minio")) return null;
+        // "minio" is a short, generic-looking substring (also a common
+        // fragment inside unrelated minified identifiers), so matching it
+        // anywhere in the body false-positives on an SPA's app-shell bundle
+        // for an unmatched route. Real MinIO's console titles its page
+        // "MinIO Console" specifically.
+        const m = body.match(/<title>([^<]{1,80})<\/title>/i);
+        if (!m || !/MinIO/i.test(m[1])) return null;
         return `MinIO object storage console detected at /minio/. ${status === 200 ? "Console is accessible" : "Login panel exposed"}. S3-compatible storage system is reachable from the internet.`;
       },
       title: "MinIO Object Storage Console Exposed",
@@ -3326,8 +3355,11 @@ async function checkExposedFiles(
       verify: (status, body, ct) => {
         if (status !== 200 && status !== 401) return null;
         if (!ct.includes("text/html")) return null;
-        if (!body.includes("RabbitMQ") && !body.includes("rabbitmq"))
-          return null;
+        // Matching "rabbitmq" anywhere in the body false-positives on an
+        // SPA's app-shell bundle for an unmatched route. Real RabbitMQ's
+        // management UI titles its page "RabbitMQ Management" specifically.
+        const titleMatch = body.match(/<title>([^<]{1,80})<\/title>/i);
+        if (!titleMatch || !/RabbitMQ/i.test(titleMatch[1])) return null;
         const isOpen = status === 200 && body.includes("Overview");
         return isOpen
           ? "RabbitMQ management UI is accessible without authentication. Message queue contents, vhosts, and credentials may be exposed."

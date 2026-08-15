@@ -88,12 +88,22 @@ const CRITICAL_SECRET_PATTERNS: SecretPattern[] = [
   // Bare SID, no adjacent auth token match — genuinely low-value on its
   // own, but kept critical per explicit product guidance: a leaked SID is
   // still an account identifier worth treating cautiously by default.
-  { name: "Twilio Account SID", pattern: /AC[0-9a-fA-F]{32}/g },
+  // Quote-delimited (see the lookaround) because the un-anchored shape --
+  // literal "AC" + 32 hex chars -- matches anywhere inside an unrelated
+  // 32+ hex-char blob (an MD5-based cache-busting hash, a tracking ID) on
+  // a completely unrelated page; a real embedded SID is a JS string
+  // literal, so it is always quoted.
+  {
+    name: "Twilio Account SID",
+    pattern: /(?<=["'])AC[0-9a-fA-F]{32}(?=["'])/g,
+  },
   {
     name: "SendGrid Key",
     pattern: /SG\.[0-9A-Za-z_-]{22}\.[0-9A-Za-z_-]{43}/g,
   },
-  { name: "Mailgun Key", pattern: /key-[0-9a-f]{32}/g },
+  // Same MD5-shaped false-collision risk as the Twilio SID above ("key-" +
+  // 32 hex chars matches inside an unrelated hash), same quote-boundary fix.
+  { name: "Mailgun Key", pattern: /(?<=["'])key-[0-9a-f]{32}(?=["'])/g },
   {
     name: "MongoDB URI",
     pattern: /mongodb(?:\+srv)?:\/\/[^:]+:[^\s@"'<>]+@[^\s"'<>]{5,}/g,
@@ -119,7 +129,13 @@ const CRITICAL_SECRET_PATTERNS: SecretPattern[] = [
   // NRBR- browser monitoring key, which vendors embed client-side by
   // design (secret-newrelic-browser-key, medium, is the check for that).
   { name: "New Relic Key", pattern: /NRAK-[A-Z0-9]{27}/g },
-  { name: "Facebook Token", pattern: /EAA[0-9A-Za-z]{100,}/g },
+  // Quote-delimited for the same reason as the Twilio SID above: unanchored,
+  // this matches anywhere inside an unrelated long alphanumeric blob (a
+  // base64 asset, a tracking payload) that happens to contain "EAA".
+  {
+    name: "Facebook Token",
+    pattern: /(?<=["'])EAA[0-9A-Za-z]{100,}(?=["'])/g,
+  },
   { name: "RSA Private Key", pattern: /-----BEGIN RSA PRIVATE KEY-----/g },
   { name: "EC Private Key", pattern: /-----BEGIN EC PRIVATE KEY-----/g },
   {
@@ -135,10 +151,18 @@ const CRITICAL_SECRET_PATTERNS: SecretPattern[] = [
     pattern:
       /(?:api_secret|secret_key|private_key|client_secret|app_secret)\s*[:=]\s*["'][a-zA-Z0-9/+=_-]{20,}["']/gi,
   },
+  // "dsn" alone (no scheme requirement on the value) collided with Sentry's
+  // own naming convention: Sentry SDKs are configured with a `dsn: "https://
+  // ...@sentry.io/..."` field, which this codebase's own Sentry DSN pattern
+  // (below, client-exposed tier) documents as "not a secret" per Sentry's
+  // docs -- so the same string was simultaneously "critical" here and
+  // "not a secret" there. Requiring an actual DB-protocol scheme keeps this
+  // matching real hardcoded connection strings (postgres://, mongodb://,
+  // etc.) without catching every dsn="https://..." tracking config.
   {
     name: "Connection String",
     pattern:
-      /(?:connection_string|database_url|dsn)\s*[:=]\s*["'][^"']{20,}["']/gi,
+      /(?:connection_string|database_url|dsn)\s*[:=]\s*["'](?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|rediss|mssql|oracle|sqlserver):\/\/[^"']{10,}["']/gi,
   },
 ];
 
@@ -1286,15 +1310,25 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "code-xss-template-tag": (_url, _headers, body) => {
+    // The middle `[\s\S]*` used to be unbounded, so it matched across the
+    // closing backtick of one tagged template into a completely unrelated
+    // later template literal's `${...}` -- e.g. a static, safe
+    // html`<div>static content</div>` got flagged solely because some
+    // other, unrelated `${name}` interpolation existed anywhere later in
+    // the same script. `[^`]{0,500}` keeps the match inside one
+    // un-terminated template literal (no backtick in between, so still the
+    // same string) and bounds the distance to a realistic single
+    // expression's length.
     if (
-      /\bhtml\s*`[\s\S]*\$\{/i.test(body) ||
-      /\bsvg\s*`[\s\S]*\$\{/i.test(body)
+      /\bhtml\s*`[^`]{0,500}\$\{/i.test(body) ||
+      /\bsvg\s*`[^`]{0,500}\$\{/i.test(body)
     ) {
       return "Tagged template literal (html`...`) - XSS if interpolations are unescaped.";
     }
-    if (/<script[\s\S]*`[\s\S]*\$\{/i.test(body)) {
-      return "Template literal interpolation in script context - audit escaping.";
-    }
+    // Removed: the <script>...`...${ fallback matched "a <script> tag
+    // exists, and a backtick exists somewhere after it, and ${ exists
+    // somewhere after that" -- true on nearly every JS-heavy page, since
+    // template literals are ubiquitous and unrelated to each other.
     return null;
   },
 
