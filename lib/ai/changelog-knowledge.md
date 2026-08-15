@@ -30,6 +30,16 @@ A big one. Scans, webhooks, and scheduled scans can now be shared with a team in
   The account that can never be modified by anyone else (including a full admin) now runs on a single named permission instead of scattered role checks, and it's applied everywhere team sharing touches an account, not just the existing admin-panel guards.
 - [Lock] **[FIXED]** **Admin Team Management Skipped 2FA Enforcement**
   The routes admins use to rename or delete any team on the platform had their own, separate permission check that verified role but never checked whether two-factor authentication was actually enabled, silently bypassing the "require 2FA for staff" setting other admin actions respect. Fixed to go through the same enforcement every other admin route uses.
+- [Trash2] **[SECURITY]** **Removed Bulk User Actions**
+  The admin Users tab let staff select many accounts at once and role-change, disable, or permanently delete up to 200 of them in a single confirmed request. That concentrates a lot of blast radius behind one compromised admin credential, with password re-entry as the only extra gate, which does nothing if an attacker actually has the password. Removed entirely: every action on a user account is single-target now, the same as any other admin route.
+- [Key] **[FIXED]** **Admin Panel Showed a Generic Error When 2FA Was the Real Reason**
+  A staff account locked out of /admin by the "require 2FA for staff" setting saw the exact same "Access Denied" screen as someone with no admin access at all, a dead end with no indication that turning on two-factor authentication would fix it. That specific case now shows its own screen explaining why and linking straight to Profile > Security to set it up.
+- [UserCog] **[FIXED]** **Super Admin's Role Displayed as "User" on the Edit Screen**
+  The role dropdown on a user's admin detail page listed 8 assignable roles but not super_admin, so viewing a super admin's own account showed the dropdown falling back to whatever the browser picks when a select's value matches none of its options: "User", the least-privileged one, the opposite of reality. The dropdown now displays "Super Admin" correctly and is disabled outright for that account, since the role was already non-assignable server-side.
+- [Lock] **[ADDED]** **This App Now Redirects Plain HTTP to HTTPS Itself, Not Just the Proxy**
+  HTTPS termination is expected to happen in front of this app (Cloudflare, nginx, Caddy), and that front door is expected to redirect HTTP to HTTPS on its own. Not every self-hosted setup gets that configured, though. The app now does it too, reading the reverse proxy's own X-Forwarded-Proto header, so a misconfigured front door no longer means plain-HTTP traffic reaches all the way to the app unredirected.
+- [ScanSearch] **[FIXED]** **Scanner Options Panel Closed the Instant You Tried to Scroll It**
+  A fix for an iOS Safari scroll hitch closed the Check Families / Active Probing popovers on any page scroll, but the listener couldn't tell the outer page scrolling from the popover's own internal list being scrolled, so scrolling that list closed it immediately, making a list longer than the visible area impossible to actually look through. Now only an actual page-level scroll closes it.
 - [Eye] **[FIXED]** **Impersonate User, Finished**
   An admin can now actually start and stop an impersonation session for a support case, complete with a hard 1-hour session cap, a banner while it's active, and a one-click way back to your own account. The password re-entry prompt this action shows was previously cosmetic: the server never checked what was typed. It's enforced now.
 - [Bug] **[FIXED]** **Confirm Dialogs and Action Buttons Could Show Success on a Rejected Action**
@@ -1448,6 +1458,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 57
-- **Total changes documented:** 489
+- **Total changes documented:** 494
 - **Latest:** v3.4.0 (August 14, 2026) - Team-Scoped Resources, Admin Security Hardening
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release
