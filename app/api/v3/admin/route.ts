@@ -40,6 +40,7 @@ import {
   passwordResetEmail,
 } from "@/lib/email/email";
 import { deleteAvatarFilesIfLocal } from "@/lib/uploads/avatar-storage";
+import { PASSWORD_GATED_ACTIONS } from "@/components/admin/config";
 
 // Helper to send email only if user notification is enabled
 async function sendNotificationIfEnabled(
@@ -567,29 +568,15 @@ export async function PATCH(request: NextRequest) {
   // actual action handlers were unreachable). Added make_admin and set_role
   // which were missing from the original gate.
   //
-  // Keep in sync with PASSWORD_GATED_ACTIONS in components/admin/config.ts.
-  // "revoke_all_sessions" was a bug: the real action name sent by the UI is
-  // "revoke_sessions" (no "all"), so that action was never actually gated.
-  const GATED_ACTIONS = new Set([
-    "update_email",
-    "update_password",
-    "disable",
-    "reset_password",
-    "delete",
-    "revoke_sessions",
-    "revoke_api_keys",
-    "reset_2fa",
-    "force_logout_all",
-    "toggle_ai_ban",
-    "delete_scans",
-    "delete_webhooks",
-    "delete_schedules",
-    "remove_admin",
-    "make_admin",
-    "set_role",
-    "impersonate",
-  ]);
-  if (GATED_ACTIONS.has(action)) {
+  // PASSWORD_GATED_ACTIONS (components/admin/config.ts) is the single
+  // source for this set -- the client UI imports the same constant to
+  // decide when to show the re-auth prompt, so the two can no longer drift
+  // the way they did before (this route used to keep its own hand-typed
+  // copy, "in sync" only by a comment reminding whoever edited one to also
+  // edit the other). "revoke_all_sessions" was a bug: the real action name
+  // sent by the UI is "revoke_sessions" (no "all"), so that action was
+  // never actually gated.
+  if (PASSWORD_GATED_ACTIONS.has(action)) {
     const currentAdminPassword = body.currentAdminPassword;
     if (
       typeof currentAdminPassword !== "string" ||

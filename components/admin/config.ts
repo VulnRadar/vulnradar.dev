@@ -291,12 +291,14 @@ export const ACTION_LABELS: Record<string, string> = {
 // (re-exported from the barrel to avoid duplicate declarations)
 
 // Actions the admin API requires re-entering the calling admin's own
-// password for (see GATED_ACTIONS in app/api/v3/admin/route.ts). Any PATCH
-// to /api/v3/admin with one of these `action` values is rejected with 403
-// unless `currentAdminPassword` is included in the request body. Keep this
-// list in sync with the backend set -- every "Danger Zone" action in
-// user-detail-panel.tsx (irreversible data loss, or revoking access/
-// security material) plus the pre-existing account-mutation set.
+// password for. Any PATCH to /api/v3/admin with one of these `action`
+// values is rejected with 403 unless `currentAdminPassword` is included in
+// the request body -- app/api/v3/admin/route.ts imports this exact Set for
+// that check, rather than keeping its own copy, so this is the single
+// place both the client re-auth prompt and the server enforcement read
+// from. Every "Danger Zone" action in user-detail-panel.tsx (irreversible
+// data loss, or revoking access/security material) plus the pre-existing
+// account-mutation set.
 //
 // "revoke_all_sessions" was a bug: no action anywhere is ever queued
 // under that name (the real one is "revoke_sessions" -- see
