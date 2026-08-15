@@ -14,6 +14,7 @@ import {
 import { useState } from "react";
 import type { ScanResult } from "@/lib/scanner/types";
 import { cn } from "@/lib/ui/utils";
+import { copyToClipboard } from "@/lib/ui/clipboard";
 import { SeverityDistribution } from "@/components/scanner/severity-badge";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
 import { StatIcon, type StatTone } from "@/components/shared/stat-icon";
@@ -121,10 +122,11 @@ export function ScanSummary({
     info: result.summary.info || 0,
   };
 
-  function copyUrl() {
-    navigator.clipboard.writeText(result.url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  async function copyUrl() {
+    if (await copyToClipboard(result.url)) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   }
 
   return (

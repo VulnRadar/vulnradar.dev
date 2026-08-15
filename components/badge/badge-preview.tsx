@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { API, APP_NAME } from "@/lib/config/constants";
+import { copyToClipboard as copyTextToClipboard } from "@/lib/ui/clipboard";
 import type { ScanEntry } from "./badge-types";
 import { parseUrl } from "./badge-types";
 
@@ -148,25 +149,11 @@ export function BadgePreview({
     ? `[![Secured by ${APP_NAME}](${badgeUrl})](${shareUrl})`
     : "";
 
-  function copyToClipboard(text: string, field: string) {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
-    } else {
-      fallbackCopy(text);
+  async function copyToClipboard(text: string, field: string) {
+    if (await copyTextToClipboard(text)) {
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(null), 2000);
     }
-    setCopiedField(field);
-    setTimeout(() => setCopiedField(null), 2000);
-  }
-
-  function fallbackCopy(text: string) {
-    const textarea = document.createElement("textarea");
-    textarea.value = text;
-    textarea.style.position = "fixed";
-    textarea.style.opacity = "0";
-    document.body.appendChild(textarea);
-    textarea.select();
-    document.execCommand("copy");
-    document.body.removeChild(textarea);
   }
 
   if (!selected) {

@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { copyToClipboard } from "@/lib/ui/clipboard";
 
 interface AiSummaryModalProps {
   open: boolean;
@@ -39,11 +40,12 @@ export function AiSummaryModal({
 }: AiSummaryModalProps) {
   const [copied, setCopied] = useState(false);
 
-  function copySummary() {
+  async function copySummary() {
     if (!summary) return;
-    navigator.clipboard.writeText(summary);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (await copyToClipboard(summary)) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   }
 
   return (

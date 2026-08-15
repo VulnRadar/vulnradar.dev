@@ -7,6 +7,7 @@ import { ThemedLogo } from "@/components/shared/themed-logo";
 import { Button } from "@/components/ui/button";
 import { APP_NAME, ROUTES } from "@/lib/config/constants";
 import { focus } from "@/lib/ui/animations";
+import { copyToClipboard } from "@/lib/ui/clipboard";
 
 export default function Error({
   error,
@@ -21,9 +22,8 @@ export default function Error({
     console.error(`[${APP_NAME}] Unhandled error:`, error);
   }, [error]);
 
-  function copyErrorId() {
-    if (error.digest) {
-      navigator.clipboard.writeText(error.digest);
+  async function copyErrorId() {
+    if (error.digest && (await copyToClipboard(error.digest))) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }

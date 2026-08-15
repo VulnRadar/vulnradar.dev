@@ -5,6 +5,7 @@ import { ArrowLeft, Check, Copy } from "lucide-react";
 import { ScanActionsMenu } from "@/components/scanner/scan-actions-menu";
 import { AuthenticatedBadge } from "@/components/scanner/authenticated-badge";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
+import { copyToClipboard } from "@/lib/ui/clipboard";
 
 interface HistoryDetailHeaderProps {
   scanDetail: ScanResult;
@@ -31,10 +32,11 @@ export function HistoryDetailHeader({
 }: HistoryDetailHeaderProps) {
   const [copied, setCopied] = useState(false);
 
-  function copyUrl() {
-    navigator.clipboard.writeText(scanDetail.url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  async function copyUrl() {
+    if (await copyToClipboard(scanDetail.url)) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   }
 
   return (

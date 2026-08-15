@@ -22,6 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/ui/utils";
+import { copyToClipboard } from "@/lib/ui/clipboard";
 
 interface ShareModalProps {
   open: boolean;
@@ -34,34 +35,6 @@ interface ShareModalProps {
   publiclyListed?: boolean;
   onPubliclyListedChange?: (next: boolean) => void;
   togglingPubliclyListed?: boolean;
-}
-
-async function copyText(text: string): Promise<boolean> {
-  if (navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch {
-      // Fall through to legacy fallback
-    }
-  }
-
-  try {
-    const textarea = document.createElement("textarea");
-    textarea.value = text;
-    textarea.style.position = "fixed";
-    textarea.style.left = "-9999px";
-    textarea.style.top = "-9999px";
-    textarea.style.opacity = "0";
-    document.body.appendChild(textarea);
-    textarea.focus();
-    textarea.select();
-    const success = document.execCommand("copy");
-    document.body.removeChild(textarea);
-    return success;
-  } catch {
-    return false;
-  }
 }
 
 const SHARE_OPTIONS = [
@@ -131,7 +104,7 @@ export function ShareModal({
   const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
-    const success = await copyText(shareUrl);
+    const success = await copyToClipboard(shareUrl);
     if (success) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);

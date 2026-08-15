@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { BILLING_ENABLED, SUPPORT_EMAIL } from "@/lib/config/constants";
 import { cn } from "@/lib/ui/utils";
+import { copyToClipboard } from "@/lib/ui/clipboard";
 
 interface DashboardErrorStateProps {
   error: string;
@@ -161,7 +162,7 @@ export function DashboardErrorState({
   const meta = ERROR_META[kind];
   const Icon = meta.icon;
 
-  function copyDetails() {
+  async function copyDetails() {
     const text = [
       `Error: ${error}`,
       url ? `URL: ${url}` : null,
@@ -170,9 +171,10 @@ export function DashboardErrorState({
     ]
       .filter(Boolean)
       .join("\n");
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
+    if (await copyToClipboard(text)) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    }
   }
 
   return (

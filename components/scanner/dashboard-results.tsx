@@ -17,6 +17,7 @@ import { ResultsList } from "./results-list";
 import { CrawlPagesInfo } from "./crawl-pages-info";
 import { SubdomainDiscovery } from "./subdomain-discovery";
 import { cn } from "@/lib/ui/utils";
+import { copyToClipboard } from "@/lib/ui/clipboard";
 
 const ScanActionsMenu = dynamic(() =>
   import("./scan-actions-menu").then((m) => ({ default: m.ScanActionsMenu })),
@@ -101,10 +102,11 @@ export function DashboardResults({
     );
   }
 
-  function copyUrl() {
-    navigator.clipboard.writeText(result.url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  async function copyUrl() {
+    if (await copyToClipboard(result.url)) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   }
 
   const displayUrl = result.url.replace(/^https?:\/\//, "");

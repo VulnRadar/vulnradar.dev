@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowRight, Check, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { APP_URL, ROUTES } from "@/lib/config/constants";
+import { copyToClipboard } from "@/lib/ui/clipboard";
 
 const API_BASE = APP_URL.replace(/\/$/, "");
 
@@ -52,10 +53,11 @@ function CodeBlock({ code, label }: { code: string; label: string }) {
           variant="ghost"
           size="sm"
           aria-label={`Copy ${label} snippet`}
-          onClick={() => {
-            navigator.clipboard.writeText(code);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1800);
+          onClick={async () => {
+            if (await copyToClipboard(code)) {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1800);
+            }
           }}
           className="h-7 px-2 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
         >

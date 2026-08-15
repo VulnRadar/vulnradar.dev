@@ -28,6 +28,7 @@ import {
   TeamMemberScans,
 } from "@/components/teams";
 import { TeamsSkeleton } from "@/components/teams/teams-skeleton";
+import { copyToClipboard } from "@/lib/ui/clipboard";
 
 export default function TeamsPage() {
   const router = useRouter();
@@ -357,13 +358,15 @@ export default function TeamsPage() {
     }
   }
 
-  function copyInviteLink() {
+  async function copyInviteLink() {
     if (!inviteToken) return;
-    navigator.clipboard.writeText(
+    const success = await copyToClipboard(
       `${window.location.origin}/teams/join?token=${inviteToken}`,
     );
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (success) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   }
 
   if (loading) {

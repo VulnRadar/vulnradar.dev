@@ -27,6 +27,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
+import { copyToClipboard } from "@/lib/ui/clipboard";
 import { API, ROUTES, APP_NAME } from "@/lib/config/constants";
 import { refreshAuthCache } from "@/components/providers/auth-provider";
 import type { ProfileTabProps } from "@/components/profile/types";
@@ -472,9 +473,10 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
           <Button
             size="lg"
             className="h-11 px-6 gap-2"
-            onClick={() => {
-              navigator.clipboard.writeText(backupCodes.join("\n"));
-              setCodesCopied(true);
+            onClick={async () => {
+              if (await copyToClipboard(backupCodes.join("\n"))) {
+                setCodesCopied(true);
+              }
             }}
           >
             {codesCopied ? (
