@@ -45,6 +45,32 @@ async function passesTwoFactorEnforcement(
 }
 
 /**
+ * Distinguishes "this account isn't staff" from "this account is staff but
+ * ENFORCE_STAFF_2FA is blocking it" -- requireStaff() (and friends) collapse
+ * both into the same `null`, which is correct for authorization but means
+ * the admin panel's own "Access Denied" screen can't tell a genuinely
+ * unprivileged user from a staff member locked out only by a missing 2FA
+ * setup, the one case with a real next step (turn 2FA on in Profile >
+ * Security) rather than a dead end. Read-only, does no gating itself.
+ */
+export async function checkStaff2FALockout(): Promise<boolean> {
+  const session = await getSession();
+  if (!session) return false;
+  const result = await pool.query(
+    "SELECT role, totp_enabled FROM users WHERE id = $1",
+    [session.userId],
+  );
+  const user = result.rows[0] as
+    { role?: string; totp_enabled?: boolean } | undefined;
+  if (!user) return false;
+  const role = user.role || "user";
+  if ((STAFF_ROLE_HIERARCHY[role] || 0) < (STAFF_ROLE_HIERARCHY.support || 1)) {
+    return false;
+  }
+  return !(await passesTwoFactorEnforcement(Boolean(user.totp_enabled)));
+}
+
+/**
  * R3/D1: Admin role helpers — single source of truth for admin/staff
  * role checks. Returns the session augmented with `id` and `role`, or
  * null when the caller is unauthenticated or lacks the required role.

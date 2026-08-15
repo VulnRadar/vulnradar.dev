@@ -160,6 +160,39 @@ const CHANGELOG: Release[] = [
         category: "fixed",
       },
       {
+        icon: Trash2,
+        label: "Removed Bulk User Actions",
+        desc: "The admin Users tab let staff select many accounts at once and role-change, disable, or permanently delete up to 200 of them in a single confirmed request. That concentrates a lot of blast radius behind one compromised admin credential, with password re-entry as the only extra gate, which does nothing if an attacker actually has the password. Removed entirely: every action on a user account is single-target now, the same as any other admin route.",
+        category: "security",
+      },
+      {
+        icon: Key,
+        label:
+          "Admin Panel Showed a Generic Error When 2FA Was the Real Reason",
+        desc: 'A staff account locked out of /admin by the "require 2FA for staff" setting saw the exact same "Access Denied" screen as someone with no admin access at all, a dead end with no indication that turning on two-factor authentication would fix it. That specific case now shows its own screen explaining why and linking straight to Profile > Security to set it up.',
+        category: "fixed",
+      },
+      {
+        icon: UserCog,
+        label: 'Super Admin\'s Role Displayed as "User" on the Edit Screen',
+        desc: 'The role dropdown on a user\'s admin detail page listed 8 assignable roles but not super_admin, so viewing a super admin\'s own account showed the dropdown falling back to whatever the browser picks when a select\'s value matches none of its options: "User", the least-privileged one, the opposite of reality. The dropdown now displays "Super Admin" correctly and is disabled outright for that account, since the role was already non-assignable server-side.',
+        category: "fixed",
+      },
+      {
+        icon: Lock,
+        label:
+          "This App Now Redirects Plain HTTP to HTTPS Itself, Not Just the Proxy",
+        desc: "HTTPS termination is expected to happen in front of this app (Cloudflare, nginx, Caddy), and that front door is expected to redirect HTTP to HTTPS on its own. Not every self-hosted setup gets that configured, though. The app now does it too, reading the reverse proxy's own X-Forwarded-Proto header, so a misconfigured front door no longer means plain-HTTP traffic reaches all the way to the app unredirected.",
+        category: "added",
+      },
+      {
+        icon: ScanSearch,
+        label:
+          "Scanner Options Panel Closed the Instant You Tried to Scroll It",
+        desc: "A fix for an iOS Safari scroll hitch closed the Check Families / Active Probing popovers on any page scroll, but the listener couldn't tell the outer page scrolling from the popover's own internal list being scrolled, so scrolling that list closed it immediately, making a list longer than the visible area impossible to actually look through. Now only an actual page-level scroll closes it.",
+        category: "fixed",
+      },
+      {
         icon: Eye,
         label: "Impersonate User, Finished",
         desc: "An admin can now actually start and stop an impersonation session for a support case, complete with a hard 1-hour session cap, a banner while it's active, and a one-click way back to your own account. The password re-entry prompt this action shows was previously cosmetic: the server never checked what was typed. It's enforced now.",

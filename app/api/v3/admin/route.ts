@@ -6,6 +6,7 @@ import { randomBytes, createHash } from "node:crypto";
 import {
   requireStaff as _requireStaff,
   logAction,
+  checkStaff2FALockout,
 } from "@/lib/auth/authorization";
 import {
   hasGodMode,
@@ -80,11 +81,22 @@ async function requireStaff() {
 // GET: Admin dashboard stats + user list + audit log
 export async function GET(request: NextRequest) {
   const session = await requireStaff();
-  if (!session)
+  if (!session) {
+    if (await checkStaff2FALockout()) {
+      return NextResponse.json(
+        {
+          error:
+            "Two-factor authentication is required for admin panel access.",
+          code: "2fa_required",
+        },
+        { status: 403 },
+      );
+    }
     return NextResponse.json(
       { error: ERROR_MESSAGES.FORBIDDEN },
       { status: 403 },
     );
+  }
 
   const { searchParams } = new URL(request.url);
   const pageParam = searchParams.get("page");

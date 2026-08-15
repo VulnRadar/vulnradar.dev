@@ -192,6 +192,28 @@ function applySecurityHeaders(
 }
 
 export function middleware(request: NextRequest) {
+  // A reverse proxy in front of this app (Cloudflare, nginx, Caddy -- see
+  // docker-compose.yml) is expected to redirect plain HTTP to HTTPS itself,
+  // but not every self-hosted deployment gets that configured. X-Forwarded-
+  // Proto reflects what the client actually connected with, trusted the
+  // same way requestSelfOrigin() below trusts it -- redirect here as a
+  // fallback whenever it explicitly says "http". A no-op for any proxy
+  // that already upgrades before forwarding (the request would already be
+  // https by the time it reaches here), and for a direct/internal request
+  // with no proxy in front at all (no header present, nothing to redirect
+  // on).
+  if (
+    request.headers
+      .get("x-forwarded-proto")
+      ?.split(",")[0]
+      ?.trim()
+      .toLowerCase() === "http"
+  ) {
+    const httpsUrl = new URL(request.url);
+    httpsUrl.protocol = "https:";
+    return NextResponse.redirect(httpsUrl, 301);
+  }
+
   // This used to only be enforced at next.config.mjs build time, which a
   // pre-built Docker image started with a new env var would never
   // re-trigger. Middleware re-evaluates on every request in production, so
