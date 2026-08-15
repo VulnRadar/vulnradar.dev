@@ -65,6 +65,7 @@ import {
   STAFF_ROLE_HIERARCHY,
   ROUTES,
 } from "@/lib/config/constants";
+import { PLANS, getPlanById } from "@/lib/billing/catalog";
 import {
   hasStaffPermission,
   hasGodMode,
@@ -867,14 +868,9 @@ export function UserDetailPanel({
                     <span className="text-xs font-medium text-foreground flex items-center gap-2">
                       {(() => {
                         const effectivePlan = u.gifted_plan || u.plan;
-                        const label =
-                          effectivePlan === "free" || !effectivePlan
-                            ? "Free"
-                            : effectivePlan
-                                .replace("_supporter", " Supporter")
-                                .replace(/(^\w|\s\w)/g, (m: string) =>
-                                  m.toUpperCase(),
-                                );
+                        const label = effectivePlan
+                          ? getPlanById(effectivePlan)?.name || effectivePlan
+                          : "Free";
                         return (
                           <>
                             {label}
@@ -1017,11 +1013,7 @@ export function UserDetailPanel({
                         <div className="flex flex-col gap-1.5">
                           <div className="h-8 text-xs rounded-md border border-amber-500/30 bg-amber-500/5 px-2 flex items-center gap-2 text-amber-500">
                             <Gift className="h-3.5 w-3.5" aria-hidden="true" />
-                            {u.gifted_plan
-                              .replace("_supporter", " Supporter")
-                              .replace(/(^\w|\s\w)/g, (m: string) =>
-                                m.toUpperCase(),
-                              )}
+                            {getPlanById(u.gifted_plan)?.name || u.gifted_plan}
                           </div>
                           <p className="text-[10px] text-muted-foreground">
                             Gifted until{" "}
@@ -1044,12 +1036,11 @@ export function UserDetailPanel({
                           }}
                           className="h-8 text-xs rounded-md border border-border bg-background px-2"
                         >
-                          <option value="free">Free</option>
-                          <option value="core_supporter">Core Supporter</option>
-                          <option value="pro_supporter">Pro Supporter</option>
-                          <option value="elite_supporter">
-                            Elite Supporter
-                          </option>
+                          {PLANS.map((plan) => (
+                            <option key={plan.id} value={plan.id}>
+                              {plan.name}
+                            </option>
+                          ))}
                         </select>
                       )}
                     </div>
@@ -2230,7 +2221,7 @@ export function UserDetailPanel({
                       <ActionCard
                         icon={CrownIcon}
                         label="Edit Gift Subscription"
-                        description={`${u.gifted_plan.replace("_supporter", " Supporter").replace(/(^\w|\s\w)/g, (m: string) => m.toUpperCase())} · expires ${new Date(u.gift_end_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`}
+                        description={`${getPlanById(u.gifted_plan)?.name || u.gifted_plan} · expires ${new Date(u.gift_end_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`}
                         color="text-primary"
                         bg="bg-primary/10"
                         loading={
@@ -2276,7 +2267,7 @@ export function UserDetailPanel({
                       queueSupportAction(
                         "gift_subscription",
                         "Gift Subscription",
-                        `Gift ${plan.replace("_", " ")} plan to ${u.name || u.email} until ${new Date(endDate).toLocaleDateString()}`,
+                        `Gift ${getPlanById(plan)?.name || plan} plan to ${u.name || u.email} until ${new Date(endDate).toLocaleDateString()}`,
                         "default",
                         { giftPlan: plan, giftEndDate: endDate },
                       );

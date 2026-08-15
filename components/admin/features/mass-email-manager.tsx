@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
+import { getPaidPlans } from "@/lib/billing/catalog";
 import { SaveConfirmationModal } from "@/components/shared/save-confirmation-modal";
 import {
   EmptyState,
@@ -141,9 +142,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   all: "All Users",
   premium: "All Premium Users",
   free: "Free Users",
-  core_supporter: "Core Supporter",
-  pro_supporter: "Pro Supporter",
-  elite_supporter: "Elite Supporter",
+  ...Object.fromEntries(getPaidPlans().map((p) => [p.id, p.name])),
   specific: "Specific Email",
 };
 

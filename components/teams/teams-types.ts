@@ -1,4 +1,5 @@
 import { Crown, Shield, Eye, User, Settings, Wrench } from "lucide-react";
+import { TEAM_ROLES } from "@/lib/config/constants";
 
 export interface Team {
   id: number;
@@ -73,14 +74,10 @@ export const ROLE_ABILITIES: Record<string, string> = {
   viewer: "Read reports. Cannot start a scan.",
 };
 
-export const ROLE_ORDER = [
-  "owner",
-  "admin",
-  "manager",
-  "operator",
-  "member",
-  "viewer",
-] as const;
+// Most to least privileged is TEAM_ROLES' own declared key order (owner
+// first), so this just walks it directly -- a future role addition to
+// TEAM_ROLES shows up here with no edit needed here.
+export const ROLE_ORDER: readonly string[] = Object.values(TEAM_ROLES);
 
 export function formatRelativeTime(date: Date): string {
   const now = new Date();

@@ -68,6 +68,7 @@ import {
 import { Header } from "@/components/scanner/header";
 import { Footer } from "@/components/scanner/footer";
 import { cn } from "@/lib/ui/utils";
+import { getPlanById } from "@/lib/billing/catalog";
 import { PaginationControl } from "@/components/ui/pagination-control";
 import {
   STAFF_ROLES,
@@ -1342,13 +1343,8 @@ function AdminContent() {
                                         effectivePlan !== "free"
                                       ) {
                                         const planLabel =
-                                          effectivePlan
-                                            .replace("_supporter", "")
-                                            .charAt(0)
-                                            .toUpperCase() +
-                                          effectivePlan
-                                            .replace("_supporter", "")
-                                            .slice(1);
+                                          getPlanById(effectivePlan)?.badge
+                                            ?.text || effectivePlan;
                                         return (
                                           <Badge
                                             className={cn(
@@ -1492,13 +1488,8 @@ function AdminContent() {
                               const effectivePlan = u.gifted_plan || u.plan;
                               if (effectivePlan && effectivePlan !== "free") {
                                 const label =
-                                  effectivePlan
-                                    .replace("_supporter", "")
-                                    .charAt(0)
-                                    .toUpperCase() +
-                                  effectivePlan
-                                    .replace("_supporter", "")
-                                    .slice(1);
+                                  getPlanById(effectivePlan)?.badge?.text ||
+                                  effectivePlan;
                                 return (
                                   <>
                                     <span className="text-border">|</span>

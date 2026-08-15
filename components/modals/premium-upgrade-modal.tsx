@@ -209,12 +209,7 @@ export function hasFeatureAccess(
   userPlan: string,
   requiredPlan: string,
 ): boolean {
-  const planHierarchy = [
-    "free",
-    "core_supporter",
-    "pro_supporter",
-    "elite_supporter",
-  ];
+  const planHierarchy: string[] = PLANS.map((p) => p.id);
   const userPlanIndex = planHierarchy.indexOf(userPlan);
   const requiredPlanIndex = planHierarchy.indexOf(requiredPlan);
   return userPlanIndex >= requiredPlanIndex;

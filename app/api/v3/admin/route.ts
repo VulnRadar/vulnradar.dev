@@ -23,6 +23,7 @@ import {
 } from "@/lib/billing/staff-plan";
 import { deleteUserAccountData } from "@/lib/auth/account-deletion";
 import { resolveCurrentWindow } from "@/lib/billing/ai-usage";
+import { getPaidPlans, getPlanById } from "@/lib/billing/catalog";
 
 import pool from "@/lib/database/db";
 import { getClientIp } from "@/lib/api/request-utils";
@@ -1628,7 +1629,7 @@ export async function PATCH(request: NextRequest) {
           { status: 400 },
         );
       }
-      const validPlans = ["core_supporter", "pro_supporter", "elite_supporter"];
+      const validPlans = getPaidPlans().map((p) => p.id);
       if (!validPlans.includes(giftPlan)) {
         return NextResponse.json(
           { error: "Invalid plan. Must be one of: " + validPlans.join(", ") },
@@ -1883,12 +1884,7 @@ export async function PATCH(request: NextRequest) {
       );
 
       // Send email notification
-      const formatPlan = (p: string) =>
-        p === "free"
-          ? "Free"
-          : p
-              .replace("_supporter", " Supporter")
-              .replace(/(^\w|\s\w)/g, (m: string) => m.toUpperCase());
+      const formatPlan = (p: string) => getPlanById(p)?.name || p;
       const [adminNameP, userNameP] = await Promise.all([
         getAdminName(session.userId),
         getUserName(userId),

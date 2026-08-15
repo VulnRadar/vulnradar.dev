@@ -24,9 +24,10 @@ import {
   DEFAULT_SCAN_NOTE,
   ERROR_MESSAGES,
   SEVERITY_LEVELS,
+  SEVERITY_PRIORITY,
 } from "@/lib/config/constants";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
-import type { Category, Severity, Vulnerability } from "@/lib/scanner/types";
+import type { Category, Vulnerability } from "@/lib/scanner/types";
 import { runSyncChecks } from "@/lib/scanner/engine";
 import { runAsyncChecks } from "@/lib/scanner/async-checks";
 import { normalizeUrl } from "@/lib/scanner/execute-scan";
@@ -86,14 +87,6 @@ import type {
  * This mirrors the fetch-and-check shape of POST /api/v3/scan for a single
  * page. It intentionally does not crawl.
  */
-
-const SEVERITY_ORDER: Record<Severity, number> = {
-  critical: 0,
-  high: 1,
-  medium: 2,
-  low: 3,
-  info: 4,
-};
 
 /**
  * The request schema depends on three admin-configurable settings
@@ -427,7 +420,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   }
 
   const findings = [...syncFindings, ...asyncFindings].sort(
-    (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity],
+    (a, b) => SEVERITY_PRIORITY[b.severity] - SEVERITY_PRIORITY[a.severity],
   );
 
   const summary = {

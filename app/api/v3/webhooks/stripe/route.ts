@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStripe } from "@/lib/billing/stripe";
 import { getPlanFromProductId } from "@/lib/billing/products";
-import type { PlanId } from "@/lib/billing/catalog";
+import { getPaidPlans, type PlanId } from "@/lib/billing/catalog";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "@/lib/billing/subscription-status";
 import { grantPremiumBadge, revokePremiumBadge } from "@/lib/billing/badges";
 import { getAiCreditTier } from "@/lib/billing/ai-credit-catalog";
@@ -33,6 +33,8 @@ async function resolvePlanFromStripeProductId(
     return "";
   }
 }
+
+const PAID_PLAN_IDS: readonly PlanId[] = getPaidPlans().map((p) => p.id);
 
 // Get webhook secret lazily to avoid issues during build time
 function getWebhookSecret() {
@@ -113,10 +115,7 @@ export async function POST(req: NextRequest) {
         let plan = session.metadata?.planId || "";
 
         // Validate the plan is a valid supporter plan
-        if (
-          !plan ||
-          !["core_supporter", "pro_supporter", "elite_supporter"].includes(plan)
-        ) {
+        if (!plan || !PAID_PLAN_IDS.includes(plan as PlanId)) {
           // Try to get from subscription metadata
           if (subscriptionId) {
             const subscription =
@@ -215,10 +214,7 @@ export async function POST(req: NextRequest) {
         let plan = subscription.metadata?.planId || "";
 
         // Fallback: try to get plan from productId
-        if (
-          !plan ||
-          !["core_supporter", "pro_supporter", "elite_supporter"].includes(plan)
-        ) {
+        if (!plan || !PAID_PLAN_IDS.includes(plan as PlanId)) {
           const productId = subscription.metadata?.productId || "";
           plan = getPlanFromProductId(productId);
         }

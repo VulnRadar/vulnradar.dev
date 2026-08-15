@@ -1,21 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { allChecks } from "@/lib/scanner/registry";
 import { runAsyncChecks } from "@/lib/scanner/async-checks";
-import type { ScanResult, Severity, Vulnerability } from "@/lib/scanner/types";
-import { APP_NAME, SEVERITY_LEVELS } from "@/lib/config/constants";
+import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
+import {
+  APP_NAME,
+  SEVERITY_LEVELS,
+  SEVERITY_PRIORITY,
+} from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
 import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp } from "@/lib/api/request-utils";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { safeFetch } from "@/lib/scanner/safe-fetch";
-
-const SEVERITY_ORDER: Record<Severity, number> = {
-  critical: 0,
-  high: 1,
-  medium: 2,
-  low: 3,
-  info: 4,
-};
 
 function _isValidUrl(input: string): boolean {
   try {
@@ -212,7 +208,7 @@ export async function POST(request: NextRequest) {
 
     const findings = [...syncFindings, ...asyncFindings];
     findings.sort(
-      (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity],
+      (a, b) => SEVERITY_PRIORITY[b.severity] - SEVERITY_PRIORITY[a.severity],
     );
 
     const duration = Date.now() - startTime;

@@ -53,7 +53,12 @@ import {
   type SortDirection,
 } from "@/components/admin/shared";
 import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
-import { STAFF_ROLE_LABELS, ROLE_BADGE_STYLES } from "@/lib/config/constants";
+import {
+  STAFF_ROLES,
+  STAFF_ROLE_LABELS,
+  ROLE_BADGE_STYLES,
+  type StaffRole,
+} from "@/lib/config/constants";
 import type { ActiveAdmin } from "@/components/admin/types";
 
 interface StaffListProps {
@@ -64,6 +69,17 @@ interface StaffListProps {
 
 type StatusFilter = "all" | "active" | "recent" | "offline";
 type SortColumn = "created_at" | "total_actions";
+
+// Roles an admin can invite someone directly into via the staff-invite
+// modal below. Mirrors app/api/v3/admin/staff-invites/route.ts's own
+// INVITABLE_ROLES: user (the default, not a staff role) and super_admin
+// (only ever granted by the first-user bootstrap in lib/auth/auth.ts)
+// are excluded.
+const INVITABLE_STAFF_ROLES: readonly StaffRole[] = Object.values(
+  STAFF_ROLES,
+).filter(
+  (role) => role !== STAFF_ROLES.USER && role !== STAFF_ROLES.SUPER_ADMIN,
+);
 
 export function StaffList({
   activeAdmins,
@@ -81,15 +97,7 @@ export function StaffList({
   // the invitee to self-register first, then be promoted separately).
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<
-    | "support"
-    | "billing"
-    | "security_analyst"
-    | "content_manager"
-    | "ops"
-    | "moderator"
-    | "admin"
-  >("support");
+  const [inviteRole, setInviteRole] = useState<StaffRole>(STAFF_ROLES.SUPPORT);
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState("");
   const [inviteSuccess, setInviteSuccess] = useState("");
@@ -97,7 +105,7 @@ export function StaffList({
   function closeInviteModal() {
     setInviteOpen(false);
     setInviteEmail("");
-    setInviteRole("support");
+    setInviteRole(STAFF_ROLES.SUPPORT);
     setInviteError("");
     setInviteSuccess("");
   }
@@ -628,33 +636,14 @@ export function StaffList({
                 <select
                   id="staff-invite-role"
                   value={inviteRole}
-                  onChange={(e) =>
-                    setInviteRole(
-                      e.target.value as
-                        | "support"
-                        | "billing"
-                        | "security_analyst"
-                        | "content_manager"
-                        | "ops"
-                        | "moderator"
-                        | "admin",
-                    )
-                  }
+                  onChange={(e) => setInviteRole(e.target.value as StaffRole)}
                   className="h-10 rounded-md border border-input bg-background px-3 text-base sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <option value="support">{STAFF_ROLE_LABELS.support}</option>
-                  <option value="billing">{STAFF_ROLE_LABELS.billing}</option>
-                  <option value="security_analyst">
-                    {STAFF_ROLE_LABELS.security_analyst}
-                  </option>
-                  <option value="content_manager">
-                    {STAFF_ROLE_LABELS.content_manager}
-                  </option>
-                  <option value="ops">{STAFF_ROLE_LABELS.ops}</option>
-                  <option value="moderator">
-                    {STAFF_ROLE_LABELS.moderator}
-                  </option>
-                  <option value="admin">{STAFF_ROLE_LABELS.admin}</option>
+                  {INVITABLE_STAFF_ROLES.map((role) => (
+                    <option key={role} value={role}>
+                      {STAFF_ROLE_LABELS[role] || role}
+                    </option>
+                  ))}
                 </select>
               </div>
 

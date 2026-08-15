@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { CrownIcon, X, Loader2, Ban } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
+import { getPaidPlans } from "@/lib/billing/catalog";
 
 interface GiftSubscriptionModalProps {
   open: boolean;
@@ -14,11 +15,10 @@ interface GiftSubscriptionModalProps {
   existingGift?: { plan: string; end_date: string } | null;
 }
 
-const PLAN_LABELS: Record<string, string> = {
-  core_supporter: "Core Supporter",
-  pro_supporter: "Pro Supporter",
-  elite_supporter: "Elite Supporter",
-};
+const GIFTABLE_PLANS = getPaidPlans();
+const PLAN_LABELS: Record<string, string> = Object.fromEntries(
+  GIFTABLE_PLANS.map((p) => [p.id, p.name]),
+);
 
 /**
  * Modal for gifting or managing subscriptions
@@ -130,9 +130,11 @@ export function GiftSubscriptionModal({
                 onChange={(e) => setGiftPlan(e.target.value)}
                 className="h-9 rounded-md border border-border/40 bg-background/50 px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50"
               >
-                <option value="core_supporter">Core Supporter</option>
-                <option value="pro_supporter">Pro Supporter</option>
-                <option value="elite_supporter">Elite Supporter</option>
+                {GIFTABLE_PLANS.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
               </select>
             </div>
             <div className="flex flex-col gap-1.5">

@@ -22,10 +22,11 @@ import pool from "@/lib/database/db";
 import {
   APP_NAME,
   SEVERITY_LEVELS,
+  SEVERITY_PRIORITY,
   BEARER_PREFIX,
 } from "@/lib/config/constants";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
-import type { Vulnerability, Severity } from "@/lib/scanner/types";
+import type { Vulnerability } from "@/lib/scanner/types";
 import { getProtocolFromUrl } from "@/lib/scanner/protocols";
 import { runWebSocketChecks } from "@/lib/scanner/protocols/websocket";
 import { runFtpChecks } from "@/lib/scanner/protocols/ftp";
@@ -35,13 +36,6 @@ import { redactSensitiveResponseHeaders } from "@/lib/scanner/response-headers";
 import { upsertHostReputation } from "@/lib/scanner/host-reputation";
 import { saveAutoTags, maybeSuggestAiTag } from "@/lib/tags/auto-tags";
 
-const SEVERITY_ORDER: Record<Severity, number> = {
-  critical: 0,
-  high: 1,
-  medium: 2,
-  low: 3,
-  info: 4,
-};
 const SUPPORTED_PROTOCOLS = ["http:", "https:", "ws:", "wss:", "ftp:", "ftps:"];
 
 async function safeReadBody(
@@ -252,7 +246,9 @@ async function runSingleScan(
     ...protocolSpecificFindings,
     ...syncFindings,
     ...asyncFindings,
-  ].sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
+  ].sort(
+    (a, b) => SEVERITY_PRIORITY[b.severity] - SEVERITY_PRIORITY[a.severity],
+  );
 
   const duration = Date.now() - startTime;
   const summary = {

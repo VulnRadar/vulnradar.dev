@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { ROUTES } from "@/lib/config/constants";
 import { createSubscription, confirmSubscription } from "@/app/actions/stripe";
+import { getPlanById } from "@/lib/billing/catalog";
 
 /** Mirrors the PaymentElement's own shape (tabs row, then card/email
  * fields) so there's no layout jump once Stripe's real form mounts. Only
@@ -133,8 +134,8 @@ function VerifiedStatus({ plan }: { plan: string }) {
       <h3 className="text-xl font-semibold mb-2">You are subscribed</h3>
       <p className="text-muted-foreground mb-6">
         Your account is on{" "}
-        <span className="font-medium text-foreground capitalize">
-          {plan.replace(/_/g, " ")}
+        <span className="font-medium text-foreground">
+          {getPlanById(plan)?.name || plan}
         </span>{" "}
         now. The new scan limit applies immediately.
       </p>

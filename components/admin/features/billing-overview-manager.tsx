@@ -27,6 +27,7 @@ import {
 } from "@/components/admin/shared";
 import type { ToastState } from "@/components/admin/types";
 import { cn } from "@/lib/ui/utils";
+import { getPlanById } from "@/lib/billing/catalog";
 
 interface PlanMixEntry {
   planId: string;
@@ -322,8 +323,8 @@ export function BillingOverviewManager() {
                         </div>
                       )}
                     </TableCell>
-                    <TableCell className="text-muted-foreground capitalize">
-                      {user.plan.replace(/_/g, " ")}
+                    <TableCell className="text-muted-foreground">
+                      {getPlanById(user.plan)?.name || user.plan}
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground">
                       {user.currentPeriodEnd

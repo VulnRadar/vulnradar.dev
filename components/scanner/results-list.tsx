@@ -20,6 +20,7 @@ import {
 import type { Severity, Vulnerability, Category } from "@/lib/scanner/types";
 import { cn } from "@/lib/ui/utils";
 import { SEVERITY_PRIORITY } from "@/lib/config/constants";
+import { CATEGORY_META } from "@/lib/scanner/category-meta";
 import {
   getQueryParam,
   setQueryParam,
@@ -54,29 +55,11 @@ function listKey(findings: Vulnerability[]): string {
   return `${findings.length}:${findings[0]?.id ?? ""}`;
 }
 
-const CATEGORY_LABEL: Record<string, string> = {
-  headers: "Headers",
-  ssl: "SSL",
-  tls: "TLS",
-  content: "Content",
-  cookies: "Cookies",
-  configuration: "Config",
-  "information-disclosure": "Info disclosure",
-  dns: "DNS",
-  email: "Email",
-  api: "API",
-  code: "Code",
-  "secrets-extended": "Secrets",
-  "vibe-code": "AI code",
-  "client-side": "Client-side",
-  "supply-chain": "Supply chain",
-  "host-validation": "Host validation",
-  reputation: "Reputation",
-  "active-probes": "Active probing",
-};
-
 function categoryLabel(cat: string) {
-  return CATEGORY_LABEL[cat] || cat.replace(/-/g, " ");
+  return (
+    CATEGORY_META[cat as keyof typeof CATEGORY_META]?.label ||
+    cat.replace(/-/g, " ")
+  );
 }
 
 const AI_VERDICT: Record<
