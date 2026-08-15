@@ -59,6 +59,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/ui/utils";
 import {
+  STAFF_ROLES,
   STAFF_ROLE_LABELS,
   ROLE_BADGE_STYLES,
   STAFF_ROLE_HIERARCHY,
@@ -66,6 +67,7 @@ import {
 } from "@/lib/config/constants";
 import {
   hasStaffPermission,
+  hasGodMode,
   STAFF_PERMISSIONS,
 } from "@/lib/auth/permissions-client";
 import {
@@ -1096,38 +1098,35 @@ export function UserDetailPanel({
                 )}
               </div>
               <p className="text-xs text-muted-foreground">
-                Select a permission level for this user.
+                {hasGodMode(u.role)
+                  ? "The super admin's role can't be changed."
+                  : "Select a permission level for this user."}
               </p>
             </CardHeader>
             <CardContent className="p-4 pt-0">
               <select
                 value={editRole}
+                disabled={hasGodMode(u.role)}
                 onChange={(e) => {
                   setEditRole(e.target.value);
                   addPendingChange("role", e.target.value, u.role || "user");
                 }}
-                className="w-full h-10 rounded-lg border border-border/40 bg-card/30 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full h-10 rounded-lg border border-border/40 bg-card/30 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {(
-                  [
-                    "user",
-                    "support",
-                    "billing",
-                    "security_analyst",
-                    "content_manager",
-                    "ops",
-                    "moderator",
-                    "admin",
-                  ] as const
-                ).map((role) => {
-                  const isOriginal = (u.role || "user") === role;
-                  return (
-                    <option key={role} value={role}>
-                      {STAFF_ROLE_LABELS[role] || role}
-                      {isOriginal ? " (current)" : ""}
-                    </option>
-                  );
-                })}
+                {Object.values(STAFF_ROLES)
+                  .filter(
+                    (role) =>
+                      role !== STAFF_ROLES.SUPER_ADMIN || hasGodMode(u.role),
+                  )
+                  .map((role) => {
+                    const isOriginal = (u.role || "user") === role;
+                    return (
+                      <option key={role} value={role}>
+                        {STAFF_ROLE_LABELS[role] || role}
+                        {isOriginal ? " (current)" : ""}
+                      </option>
+                    );
+                  })}
               </select>
             </CardContent>
           </Card>

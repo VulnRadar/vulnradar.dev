@@ -6,7 +6,6 @@ import {
   Trash2,
   Loader2,
   Share2,
-  Link2,
   Clock,
   Copy,
   Check,
@@ -52,7 +51,6 @@ export function SharesRow({
 }: SharesRowProps) {
   const [copied, setCopied] = useState(false);
   const severity = getSeverityInfo(share);
-  const SeverityIcon = severity.icon;
 
   async function handleCopy() {
     if (await copyToClipboard(getShareUrl(share.token))) {
@@ -72,7 +70,6 @@ export function SharesRow({
       />
       {/* URL */}
       <div className="flex min-w-0 items-center gap-3">
-        <Link2 aria-hidden className={cn("h-4 w-4 shrink-0", severity.color)} />
         <div className="min-w-0">
           <p className="truncate font-mono text-sm font-medium text-foreground">
             {share.url}
@@ -94,10 +91,6 @@ export function SharesRow({
 
       {/* Status */}
       <div className="flex items-center gap-1.5">
-        <SeverityIcon
-          aria-hidden
-          className={cn("h-3.5 w-3.5", severity.color)}
-        />
         <span className={cn("text-sm font-medium", severity.color)}>
           {severity.label}
         </span>

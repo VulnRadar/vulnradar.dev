@@ -370,7 +370,17 @@ export function ScanForm({
   // trigger's position isn't useful anyway.
   useEffect(() => {
     if (!scannersOpen && !probesOpen) return;
-    function handleScroll() {
+    // Registered on window with capture so it also sees scroll events from
+    // nested scrollable elements (they don't bubble, but capture-phase
+    // listeners fire regardless of bubbling) -- both popovers have their
+    // own internal overflow-y-auto list. Scrolling that list dispatches a
+    // scroll event whose target is the list div, not `document`; without
+    // this check every scroll of the popover's own content closed it
+    // immediately, making the list impossible to scroll at all. Only an
+    // actual page-level scroll (target === document) is the case this
+    // effect exists for.
+    function handleScroll(event: Event) {
+      if (event.target !== document) return;
       setScannersOpen(false);
       setProbesOpen(false);
     }
