@@ -68,6 +68,8 @@ A big one. Scans, webhooks, and scheduled scans can now be shared with a team in
   A site-wide notification (banner, modal, toast, or bell) can now carry up to two action buttons instead of one, e.g. "Add to Chrome" next to "Add to Firefox" on the same announcement.
 - [Wrench] **[FIXED]** **Extension: Auto-Scan URL Filters Could Be Resized Away**
   The whitelist and blacklist text boxes in the extension's Auto-Scan settings had no minimum or maximum height, so dragging the resize handle could shrink one down to a sliver or blow it up past the rest of the page. Now clamped to a sensible range.
+- [Code] **[ADDED]** **Try It Live on the API Reference**
+  Every documented GET endpoint on the API Reference page now has a live request panel: paste an API key, fill in the parameters, and see the real response, status, and timing without leaving the docs.
 
 ---
 
@@ -1464,6 +1466,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 57
-- **Total changes documented:** 497
+- **Total changes documented:** 498
 - **Latest:** v3.4.0 (August 14, 2026) - Team-Scoped Resources, Admin Security Hardening
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release

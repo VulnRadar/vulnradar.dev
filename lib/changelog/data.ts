@@ -281,6 +281,12 @@ const CHANGELOG: Release[] = [
         desc: "The whitelist and blacklist text boxes in the extension's Auto-Scan settings had no minimum or maximum height, so dragging the resize handle could shrink one down to a sliver or blow it up past the rest of the page. Now clamped to a sensible range.",
         category: "fixed",
       },
+      {
+        icon: Code,
+        label: "Try It Live on the API Reference",
+        desc: "Every documented GET endpoint on the API Reference page now has a live request panel: paste an API key, fill in the parameters, and see the real response, status, and timing without leaving the docs.",
+        category: "added",
+      },
     ],
   },
   {
