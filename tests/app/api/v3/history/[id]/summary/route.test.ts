@@ -22,6 +22,11 @@ vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
 }));
 
+const mockValidateApiKey = vi.fn();
+vi.mock("@/lib/api/api-keys", () => ({
+  validateApiKey: (...args: unknown[]) => mockValidateApiKey(...args),
+}));
+
 const mockGenerateScanSummary = vi.fn();
 vi.mock("@/lib/ai/scan-summary", () => ({
   generateScanSummary: (...args: unknown[]) => mockGenerateScanSummary(...args),
@@ -48,10 +53,14 @@ function params(id = "10") {
   return { params: Promise.resolve({ id }) };
 }
 
-function postRequest(id = "10", query = "") {
+function postRequest(
+  id = "10",
+  query = "",
+  headers: Record<string, string> = {},
+) {
   return new NextRequest(
     `http://localhost/api/v3/history/${id}/summary${query}`,
-    { method: "POST" },
+    { method: "POST", headers },
   );
 }
 
@@ -75,6 +84,7 @@ beforeEach(() => {
   mockQuery.mockReset();
   mockGetSession.mockReset();
   mockGetSession.mockResolvedValue({ userId: 42 });
+  mockValidateApiKey.mockReset();
   mockGenerateScanSummary.mockReset();
   mockGenerateScanSummary.mockResolvedValue("A short plain-English summary.");
   mockCheckRateLimit.mockReset();
@@ -93,7 +103,7 @@ beforeEach(() => {
 });
 
 describe("POST /api/v3/history/[id]/summary: auth and validation", () => {
-  it("requires authentication", async () => {
+  it("requires session or API key authentication", async () => {
     mockGetSession.mockResolvedValue(null);
 
     const res = await POST(postRequest(), params());
@@ -101,6 +111,60 @@ describe("POST /api/v3/history/[id]/summary: auth and validation", () => {
     expect(res.status).toBe(401);
     expect(mockQuery).not.toHaveBeenCalled();
     expect(mockGenerateScanSummary).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid API key", async () => {
+    mockGetSession.mockResolvedValue(null);
+    mockValidateApiKey.mockResolvedValue(null);
+
+    const res = await POST(
+      postRequest("10", "", { Authorization: "Bearer vr_live_bad" }),
+      params(),
+    );
+
+    expect(res.status).toBe(401);
+    const json = await res.json();
+    expect(json.error).toBe("Invalid API key.");
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("rejects an API key missing the scan:write scope", async () => {
+    mockGetSession.mockResolvedValue(null);
+    mockValidateApiKey.mockResolvedValue({ userId: 77, scopes: ["scan:read"] });
+
+    const res = await POST(
+      postRequest("10", "", { Authorization: "Bearer vr_live_readonly" }),
+      params(),
+    );
+
+    expect(res.status).toBe(403);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("authenticates via a valid API key and scopes the scan lookup to its userId", async () => {
+    mockGetSession.mockResolvedValue(null);
+    mockValidateApiKey.mockResolvedValue({
+      userId: 77,
+      scopes: ["scan:write"],
+    });
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // ai config: none
+      .mockResolvedValueOnce({ rows: [scanRow] })
+      .mockResolvedValueOnce({ rows: [] }); // UPDATE
+
+    const res = await POST(
+      postRequest("10", "", { Authorization: "Bearer vr_live_good" }),
+      params(),
+    );
+
+    expect(res.status).toBe(200);
+    const [, sqlParams] = mockQuery.mock.calls[1];
+    expect(sqlParams).toEqual([10, 77]);
+    expect(mockGenerateScanSummary).toHaveBeenCalledWith(
+      expect.objectContaining({ url: "https://example.com" }),
+      77,
+      false,
+    );
   });
 
   it("rejects a non-numeric scan id", async () => {

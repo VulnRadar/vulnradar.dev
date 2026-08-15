@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
+import { validateApiKey } from "@/lib/api/api-keys";
+import {
+  hasApiKeyScope,
+  apiKeyScopeErrorMessage,
+  API_KEY_SCOPES,
+} from "@/lib/api/api-key-scopes";
+import { BEARER_PREFIX, ERROR_MESSAGES } from "@/lib/config/constants";
 import pool from "@/lib/database/db";
 import { generateScanSummary } from "@/lib/ai/scan-summary";
-import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { checkAiUsageQuota } from "@/lib/billing/ai-usage";
 import type { ScanResult } from "@/lib/scanner/types";
@@ -18,30 +24,47 @@ export const maxDuration = 150;
 /**
  * On-demand scan-level AI summary, analogous to POST /api/v3/scan/verify
  * (per-finding AI verification) but for the whole scan at once. Owner-only,
- * session auth only -- no API key path, matching scan/verify/route.ts's
- * simpler auth rather than the full API-key dance the other history/[id]
- * routes support, since this is an AI action a human triggers from the UI,
- * not something scripted API consumers are expected to call.
- *
- * Caches its result: once a scan already has result_meta.aiSummary, a plain
- * call returns that cached text instead of calling the AI provider again --
- * pressing the (now labeled "Regenerate") button repeatedly would otherwise
- * re-call the provider on every click even though nothing about the scan
- * changed. Pass ?regenerate=true to force a fresh call and overwrite the
- * cached summary; components/scanner/scan-actions-menu.tsx does this
- * whenever it already has a summary to show (i.e. whenever its own label
- * reads "Regenerate" rather than "Generate").
+ * accepts session OR API key auth (scan:write), same dual-auth pattern as
+ * scan/verify/route.ts -- this is a real scripted-API-consumer action, not
+ * only a UI button, so a CI pipeline or any other API client can generate
+ * (and persist) a summary for a scan it owns without a browser session.
  */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  let userId: number | null = null;
+
   const session = await getSession();
-  if (!session) {
-    return NextResponse.json(
-      { error: ERROR_MESSAGES.UNAUTHORIZED },
-      { status: 401 },
-    );
+  if (session) {
+    userId = session.userId;
+  } else {
+    const authHeader = request.headers.get("Authorization");
+    if (authHeader?.startsWith(BEARER_PREFIX)) {
+      const key = authHeader.slice(BEARER_PREFIX.length);
+      const keyResult = await validateApiKey(key);
+      if (!keyResult) {
+        return NextResponse.json(
+          { error: "Invalid API key." },
+          { status: 401 },
+        );
+      }
+      // scoping: generating (and persisting) an AI summary onto a scan is
+      // part of the active scanning workflow, same reasoning scan/verify's
+      // and verify-batch's own scan:write requirement documents.
+      if (!hasApiKeyScope(keyResult.scopes, API_KEY_SCOPES.SCAN_WRITE)) {
+        return NextResponse.json(
+          { error: apiKeyScopeErrorMessage(API_KEY_SCOPES.SCAN_WRITE) },
+          { status: 403 },
+        );
+      }
+      userId = keyResult.userId;
+    } else {
+      return NextResponse.json(
+        { error: ERROR_MESSAGES.UNAUTHORIZED },
+        { status: 401 },
+      );
+    }
   }
 
   const { id } = await params;
@@ -54,7 +77,7 @@ export async function POST(
   try {
     const configResult = await pool.query(
       `SELECT ai_disabled FROM user_ai_configs WHERE user_id = $1`,
-      [session.userId],
+      [userId],
     );
     if (configResult.rows[0]?.ai_disabled) {
       return NextResponse.json(
@@ -69,7 +92,7 @@ export async function POST(
   const scanResult = await pool.query(
     `SELECT url, scanned_at, duration, findings, summary, response_headers, result_meta, authenticated
      FROM scan_history WHERE id = $1 AND user_id = $2`,
-    [scanId, session.userId],
+    [scanId, userId],
   );
 
   if (scanResult.rows.length === 0) {
@@ -99,7 +122,7 @@ export async function POST(
   // returns above), so this bounds AI provider cost from a single account
   // without penalizing repeat views of an existing summary.
   const rl = await checkRateLimit({
-    key: `ai-summary:${session.userId}`,
+    key: `ai-summary:${userId}`,
     ...RATE_LIMITS.aiSummary,
   });
   if (!rl.allowed) {
@@ -115,7 +138,7 @@ export async function POST(
   // aiTokensPerWindow cap. Still resolves usingOwnAi (used below to pick
   // which AI provider generateScanSummary calls) and usage is still
   // recorded for admin cost visibility; it just never blocks the request.
-  const quota = await checkAiUsageQuota(session.userId);
+  const quota = await checkAiUsageQuota(userId);
 
   const result: ScanResult = {
     url: row.url,
@@ -130,7 +153,7 @@ export async function POST(
 
   const summaryText = await generateScanSummary(
     result,
-    session.userId,
+    userId,
     quota.usingOwnAi,
   );
   if (!summaryText) {
@@ -150,7 +173,7 @@ export async function POST(
     `UPDATE scan_history
      SET result_meta = COALESCE(result_meta, '{}'::jsonb) || $1::jsonb
      WHERE id = $2 AND user_id = $3`,
-    [JSON.stringify({ aiSummary: summaryText }), scanId, session.userId],
+    [JSON.stringify({ aiSummary: summaryText }), scanId, userId],
   );
 
   return NextResponse.json({ success: true, summary: summaryText });

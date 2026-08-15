@@ -550,6 +550,44 @@ Submit up to 100 URLs in one request. Each URL counts as one daily quota unit.
 }
 ```
 
+#### `POST /scan/verify`: AI-Verify a Scan's Findings
+Re-run every finding on a scan you own through AI verification and persist the result: each finding gets aiVerdict (confirmed, possible_fp, or uncertain), aiConfidence, and aiReason written back onto the scan, so a later GET /scan/status/{scanId} or GET /history/{id} shows them in place.
+
+- **Request body:**
+```json
+{
+  "scanHistoryId": 12345
+}
+```
+
+- **Response (200):**
+```json
+{
+  "success": true,
+  "findings": [
+    {
+      "id": "hsts-missing",
+      "title": "HSTS Header Missing",
+      "aiVerdict": "confirmed",
+      "aiConfidence": 92,
+      "aiReason": "No Strict-Transport-Security header on any response checked."
+    }
+  ]
+}
+```
+
+#### `POST /history/{id}/summary`: Generate an AI Scan Summary
+Generate a short plain-English summary of a completed scan you own and persist it onto the scan's result_meta.aiSummary. A plain call returns the cached summary (no AI call, no rate-limit cost) once one already exists; pass ?regenerate=true to force a fresh one.
+
+- **Response (200):**
+```json
+{
+  "success": true,
+  "summary": "This scan of example.com found 4 issues, none critical. The most notable is a missing HSTS header, which leaves the first request on a network exposed to downgrade attacks.",
+  "cached": true
+}
+```
+
 #### `POST /scan/crawl`: Deep Crawl Scan
 Crawl the target and scan each discovered page. Either provide a pre-selected URL list or let the crawler discover links. Up to 15 pages per crawl. Like POST /scan, this runs as a background job: the call returns immediately with a scan id, and you poll GET /scan/status/{scanId} for progress and the final aggregate result.
 
@@ -1474,7 +1512,7 @@ npm run lint:fix    # auto-fix
 | `/docs/extension` | ✓ | 8 | 1 | 0 | 0 | 0 | 0 | 10 | 2 |
 | `/docs/self-hosting` | - | 15 | 3 | 0 | 11 | 0 | 0 | 14 | 2 |
 | `/docs/config` | - | 9 | 3 | 0 | 2 | 0 | 0 | 23 | 0 |
-| `/docs/api` | - | 8 | 3 | 0 | 4 | 22 | 0 | 9 | 6 |
+| `/docs/api` | - | 8 | 3 | 0 | 4 | 24 | 0 | 9 | 6 |
 | `/docs/webhooks` | ✓ | 6 | 0 | 0 | 3 | 0 | 0 | 5 | 5 |
 | `/docs/rate-limits` | - | 6 | 5 | 0 | 4 | 0 | 0 | 10 | 3 |
 | `/docs/architecture` | - | 5 | 1 | 0 | 4 | 0 | 0 | 8 | 0 |

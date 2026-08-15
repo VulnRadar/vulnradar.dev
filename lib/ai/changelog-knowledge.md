@@ -70,6 +70,8 @@ A big one. Scans, webhooks, and scheduled scans can now be shared with a team in
   The whitelist and blacklist text boxes in the extension's Auto-Scan settings had no minimum or maximum height, so dragging the resize handle could shrink one down to a sliver or blow it up past the rest of the page. Now clamped to a sensible range.
 - [Code] **[ADDED]** **Try It Live on the API Reference**
   Every documented GET endpoint on the API Reference page now has a live request panel: paste an API key, fill in the parameters, and see the real response, status, and timing without leaving the docs.
+- [BellRing] **[ADDED]** **AI Verification and Summaries Now Work With an API Key**
+  POST /scan/verify and POST /history/{id}/summary previously only accepted a logged-in session, so a script using an API key could get an AI verdict on a finding but never persist it, and couldn't generate a scan summary at all. Both now accept a Bearer API key with the scan:write scope, the same as every other scan-management endpoint.
 
 ---
 
@@ -1466,6 +1468,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 57
-- **Total changes documented:** 498
+- **Total changes documented:** 499
 - **Latest:** v3.4.0 (August 14, 2026) - Team-Scoped Resources, Admin Security Hardening
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release

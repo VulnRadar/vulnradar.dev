@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
+import { validateApiKey } from "@/lib/api/api-keys";
+import {
+  hasApiKeyScope,
+  apiKeyScopeErrorMessage,
+  API_KEY_SCOPES,
+} from "@/lib/api/api-key-scopes";
+import { BEARER_PREFIX } from "@/lib/config/constants";
 import pool from "@/lib/database/db";
 import { runAiVerification } from "@/lib/ai/verify-findings";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
@@ -16,12 +23,44 @@ export const runtime = "nodejs";
 export const maxDuration = 720;
 
 export async function POST(req: NextRequest) {
+  // Accept session auth OR API key auth, same dual-auth pattern as the
+  // sibling /api/v3/scan/verify-batch (which never persists) -- this route
+  // is the one that also writes the enriched findings back onto the scan,
+  // so a CI pipeline or any other scripted API consumer can now trigger AI
+  // verification of its own scan and have the result actually stick, not
+  // just get it back in this one response.
+  let userId: number | null = null;
+
   const session = await getSession();
-  if (!session) {
-    return NextResponse.json(
-      { error: "Sign in to use AI verification." },
-      { status: 401 },
-    );
+  if (session) {
+    userId = session.userId;
+  } else {
+    const authHeader = req.headers.get("Authorization");
+    if (authHeader?.startsWith(BEARER_PREFIX)) {
+      const key = authHeader.slice(BEARER_PREFIX.length);
+      const keyResult = await validateApiKey(key);
+      if (!keyResult) {
+        return NextResponse.json(
+          { error: "Invalid API key." },
+          { status: 401 },
+        );
+      }
+      // scoping: persisting AI verdicts onto a scan is part of the active
+      // scanning workflow, same reasoning verify-batch's own scan:write
+      // requirement documents.
+      if (!hasApiKeyScope(keyResult.scopes, API_KEY_SCOPES.SCAN_WRITE)) {
+        return NextResponse.json(
+          { error: apiKeyScopeErrorMessage(API_KEY_SCOPES.SCAN_WRITE) },
+          { status: 403 },
+        );
+      }
+      userId = keyResult.userId;
+    } else {
+      return NextResponse.json(
+        { error: "Sign in or use an API key to use AI verification." },
+        { status: 401 },
+      );
+    }
   }
 
   // Rate limit: bounds AI provider cost from a single account. Shared with
@@ -29,7 +68,7 @@ export async function POST(req: NextRequest) {
   // routes run the same per-finding AI verification pipeline -- see
   // RATE_LIMITS.aiVerify's doc comment in lib/rate-limiting/rate-limit.ts.
   const rl = await checkRateLimit({
-    key: `ai-verify:${session.userId}`,
+    key: `ai-verify:${userId}`,
     ...RATE_LIMITS.aiVerify,
   });
   if (!rl.allowed) {
@@ -63,7 +102,7 @@ export async function POST(req: NextRequest) {
   try {
     const configResult = await pool.query(
       `SELECT ai_disabled FROM user_ai_configs WHERE user_id = $1`,
-      [session.userId],
+      [userId],
     );
     if (configResult.rows[0]?.ai_disabled) {
       return NextResponse.json(
@@ -78,7 +117,7 @@ export async function POST(req: NextRequest) {
   // Fetch the scan — must belong to this user
   const scanResult = await pool.query(
     `SELECT url, findings FROM scan_history WHERE id = $1 AND user_id = $2`,
-    [scanHistoryId, session.userId],
+    [scanHistoryId, userId],
   );
 
   if (scanResult.rows.length === 0) {
@@ -91,7 +130,7 @@ export async function POST(req: NextRequest) {
   // Pre-call gate: bounds VulnRadar's own AI cost per plan tier. Bypassed
   // entirely for a user with their own AI key configured (quota.usingOwnAi),
   // same as GitHub repo AI code review's identical gate.
-  const quota = await checkAiUsageQuota(session.userId);
+  const quota = await checkAiUsageQuota(userId);
   if (!quota.allowed) {
     return NextResponse.json({ error: quota.message }, { status: 429 });
   }
@@ -100,7 +139,7 @@ export async function POST(req: NextRequest) {
     url as string,
     parsedFindings,
     scanHistoryId,
-    session.userId,
+    userId,
     quota.usingOwnAi,
   );
 

@@ -287,6 +287,12 @@ const CHANGELOG: Release[] = [
         desc: "Every documented GET endpoint on the API Reference page now has a live request panel: paste an API key, fill in the parameters, and see the real response, status, and timing without leaving the docs.",
         category: "added",
       },
+      {
+        icon: BellRing,
+        label: "AI Verification and Summaries Now Work With an API Key",
+        desc: "POST /scan/verify and POST /history/{id}/summary previously only accepted a logged-in session, so a script using an API key could get an AI verdict on a finding but never persist it, and couldn't generate a scan summary at all. Both now accept a Bearer API key with the scan:write scope, the same as every other scan-management endpoint.",
+        category: "added",
+      },
     ],
   },
   {

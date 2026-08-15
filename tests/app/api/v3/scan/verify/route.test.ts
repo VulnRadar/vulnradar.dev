@@ -25,6 +25,11 @@ vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
 }));
 
+const mockValidateApiKey = vi.fn();
+vi.mock("@/lib/api/api-keys", () => ({
+  validateApiKey: (...args: unknown[]) => mockValidateApiKey(...args),
+}));
+
 const mockRunAiVerification = vi.fn();
 vi.mock("@/lib/ai/verify-findings", () => ({
   runAiVerification: (...args: unknown[]) => mockRunAiVerification(...args),
@@ -47,10 +52,13 @@ vi.mock("@/lib/billing/ai-usage", () => ({
 
 const { POST } = await import("@/app/api/v3/scan/verify/route");
 
-function postRequest(body: unknown): NextRequest {
+function postRequest(
+  body: unknown,
+  headers: Record<string, string> = {},
+): NextRequest {
   return new NextRequest("http://localhost/api/v3/scan/verify", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify(body),
   });
 }
@@ -59,6 +67,7 @@ beforeEach(() => {
   mockQuery.mockReset();
   mockGetSession.mockReset();
   mockGetSession.mockResolvedValue({ userId: 42 });
+  mockValidateApiKey.mockReset();
   mockRunAiVerification.mockReset();
   mockRunAiVerification.mockResolvedValue(undefined);
   mockCheckRateLimit.mockReset();
@@ -112,12 +121,73 @@ describe("POST /api/v3/scan/verify: rate limiting", () => {
 });
 
 describe("POST /api/v3/scan/verify: auth and validation", () => {
-  it("requires authentication", async () => {
+  it("requires session or API key authentication", async () => {
     mockGetSession.mockResolvedValue(null);
     const res = await POST(postRequest({ scanHistoryId: 1 }));
     expect(res.status).toBe(401);
     expect(mockQuery).not.toHaveBeenCalled();
     expect(mockCheckRateLimit).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid API key", async () => {
+    mockGetSession.mockResolvedValue(null);
+    mockValidateApiKey.mockResolvedValue(null);
+    const res = await POST(
+      postRequest(
+        { scanHistoryId: 1 },
+        { Authorization: "Bearer vr_live_bad" },
+      ),
+    );
+    expect(res.status).toBe(401);
+    const json = await res.json();
+    expect(json.error).toBe("Invalid API key.");
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("rejects an API key missing the scan:write scope", async () => {
+    mockGetSession.mockResolvedValue(null);
+    mockValidateApiKey.mockResolvedValue({ userId: 77, scopes: ["scan:read"] });
+    const res = await POST(
+      postRequest(
+        { scanHistoryId: 1 },
+        { Authorization: "Bearer vr_live_readonly" },
+      ),
+    );
+    expect(res.status).toBe(403);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("authenticates via a valid API key, persists the verified findings, and uses its userId", async () => {
+    mockGetSession.mockResolvedValue(null);
+    mockValidateApiKey.mockResolvedValue({
+      userId: 77,
+      scopes: ["scan:write"],
+    });
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // ai config: none
+      .mockResolvedValueOnce({
+        rows: [{ url: "https://example.com", findings: [] }],
+      })
+      .mockResolvedValueOnce({ rows: [{ findings: [] }] });
+
+    const res = await POST(
+      postRequest(
+        { scanHistoryId: 10 },
+        { Authorization: "Bearer vr_live_good" },
+      ),
+    );
+    expect(res.status).toBe(200);
+    expect(mockRunAiVerification).toHaveBeenCalledWith(
+      "https://example.com",
+      [],
+      10,
+      77,
+      false,
+    );
+    // Scoped to the API key's own userId, same ownership check a session
+    // caller gets -- one key can't verify another account's scan.
+    const [, params] = mockQuery.mock.calls[1];
+    expect(params).toEqual([10, 77]);
   });
 
   it("rejects invalid JSON", async () => {

@@ -214,6 +214,96 @@ const endpoints: Endpoint[] = [
     ],
   },
   {
+    id: "post-scan-verify",
+    method: "POST",
+    path: "/scan/verify",
+    title: "AI-Verify a Scan's Findings",
+    description:
+      "Re-run every finding on a scan you own through AI verification and persist the result: each finding gets aiVerdict (confirmed, possible_fp, or uncertain), aiConfidence, and aiReason written back onto the scan, so a later GET /scan/status/{scanId} or GET /history/{id} shows them in place.",
+    requestBody: `{
+  "scanHistoryId": 12345
+}`,
+    responseExample: `{
+  "success": true,
+  "findings": [
+    {
+      "id": "hsts-missing",
+      "title": "HSTS Header Missing",
+      "aiVerdict": "confirmed",
+      "aiConfidence": 92,
+      "aiReason": "No Strict-Transport-Security header on any response checked."
+    }
+  ]
+}`,
+    notes: [
+      "Owner-only: scanHistoryId must belong to the caller (session user or the API key's account).",
+      "Shares its per-account rate limit with POST /scan/verify-batch below.",
+      "Bounded by the account's AI token quota per plan; a BYOK account (its own AI provider key configured) bypasses that cap entirely.",
+    ],
+    errors: [
+      { code: 400, description: "Missing or non-numeric scanHistoryId" },
+      { code: 401, description: "Unauthorized" },
+      {
+        code: 403,
+        description:
+          "AI disabled in your settings, or the API key is missing scan:write",
+      },
+      { code: 404, description: "Scan not found or access denied" },
+      {
+        code: 429,
+        description: "AI verification rate limit or AI token quota exceeded",
+      },
+    ],
+  },
+  {
+    id: "post-history-summary",
+    method: "POST",
+    path: "/history/{id}/summary",
+    title: "Generate an AI Scan Summary",
+    description:
+      "Generate a short plain-English summary of a completed scan you own and persist it onto the scan's result_meta.aiSummary. A plain call returns the cached summary (no AI call, no rate-limit cost) once one already exists; pass ?regenerate=true to force a fresh one.",
+    pathParams: [
+      {
+        name: "id",
+        type: "number",
+        required: true,
+        description: "Scan (scan_history) id",
+      },
+    ],
+    queryParams: [
+      {
+        name: "regenerate",
+        type: "boolean",
+        description: "Force a fresh AI call and overwrite the cached summary",
+        default: "false",
+      },
+    ],
+    responseExample: `{
+  "success": true,
+  "summary": "This scan of example.com found 4 issues, none critical. The most notable is a missing HSTS header, which leaves the first request on a network exposed to downgrade attacks.",
+  "cached": true
+}`,
+    notes: [
+      "Owner-only: {id} must belong to the caller (session user or the API key's account).",
+      "Unmetered against the AI token quota (summaries are free/unmetered), but still rate-limited per account.",
+    ],
+    errors: [
+      { code: 400, description: "Invalid scan id" },
+      { code: 401, description: "Unauthorized" },
+      {
+        code: 403,
+        description:
+          "AI disabled in your settings, or the API key is missing scan:write",
+      },
+      { code: 404, description: "Scan not found or access denied" },
+      { code: 429, description: "AI summary rate limit exceeded" },
+      {
+        code: 502,
+        description: "AI provider unavailable or returned nothing usable",
+      },
+    ],
+  },
+  {
     id: "post-scan-crawl",
     method: "POST",
     path: "/scan/crawl",
