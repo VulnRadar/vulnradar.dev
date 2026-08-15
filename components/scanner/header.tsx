@@ -177,7 +177,12 @@ export function Header() {
                 const active =
                   pathname === href ||
                   pathname.startsWith(href.split("#")[0]) ||
-                  (href === ROUTES.HISTORY && pathname === ROUTES.PUBLIC_SCANS);
+                  // Public Scans and Assets are both tabs under History, not
+                  // their own top-level section -- same reasoning as the
+                  // desktop nav's identical check above.
+                  (href === ROUTES.HISTORY &&
+                    (pathname === ROUTES.PUBLIC_SCANS ||
+                      pathname === ROUTES.ASSETS));
                 return (
                   <Link
                     key={href}

@@ -33,7 +33,7 @@ export default function CreditsCheckoutPage() {
       try {
         const meRes = await fetch("/api/v3/auth/me");
         if (!meRes.ok) {
-          router.push("/auth?redirect=/checkout/credits");
+          router.push(`${ROUTES.LOGIN}?redirect=/checkout/credits`);
           return;
         }
       } catch {

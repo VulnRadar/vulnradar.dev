@@ -109,6 +109,7 @@ const VALID_TABS = [
   "teams",
   "access-rules",
   "blocked-data",
+  "content",
   "security-alerts",
   "settings",
   "broadcast",
@@ -968,7 +969,12 @@ function AdminContent() {
                     {group.items.map((tab) => (
                       <a
                         key={tab.key}
-                        href={`/admin#${tab.key}`}
+                        // Real navigation (ctrl/meta-click opening a new
+                        // tab) reads this href directly and never runs the
+                        // onClick handler below -- it has to be the actual
+                        // ?tab= query param the page reads on load, not a
+                        // hash fragment nothing here ever parses.
+                        href={`/admin?tab=${tab.key}`}
                         onClick={(e) => {
                           if (!e.ctrlKey && !e.metaKey) {
                             e.preventDefault();
@@ -1410,7 +1416,7 @@ function AdminContent() {
                                       onClick={(e) => e.stopPropagation()}
                                     >
                                       <a
-                                        href={`/admin#users/user-${u.id}`}
+                                        href={`/admin?tab=users&user=${u.id}`}
                                         aria-label={`View ${u.name || u.email}`}
                                         onClick={(e) => {
                                           if (!e.ctrlKey && !e.metaKey) {
@@ -1457,7 +1463,7 @@ function AdminContent() {
                     {sortedUsers.map((u) => (
                       <a
                         key={u.id}
-                        href={`/admin#users/user-${u.id}`}
+                        href={`/admin?tab=users&user=${u.id}`}
                         onClick={(e) => {
                           if (!e.ctrlKey && !e.metaKey) {
                             e.preventDefault();

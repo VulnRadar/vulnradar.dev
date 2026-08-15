@@ -72,6 +72,7 @@ const severityConfig = {
 export function SecurityAlertsManager() {
   const [alerts, setAlerts] = useState<SecurityAlert[]>([]);
   const [loading, setLoading] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [selectedSeverity, setSelectedSeverity] = useState<string>("all");
   const [pendingResolve, setPendingResolve] = useState<{
     alert: SecurityAlert;
@@ -82,6 +83,7 @@ export function SecurityAlertsManager() {
 
   const fetchAlerts = useCallback(async () => {
     setLoading(true);
+    setFetchError(null);
     try {
       const res = await fetch("/api/v3/admin/features", {
         method: "POST",
@@ -93,10 +95,18 @@ export function SecurityAlertsManager() {
           severity: selectedSeverity !== "all" ? selectedSeverity : undefined,
         }),
       });
+      if (!res.ok) {
+        // A failed fetch must never render as "0 alerts" -- in a security
+        // panel specifically, that reads as a false all-clear rather than
+        // the load failure it actually is.
+        setFetchError("Could not load security alerts.");
+        return;
+      }
       const data = await res.json();
       setAlerts(data.alerts || []);
     } catch (error) {
       console.error("Error fetching alerts:", error);
+      setFetchError("Could not load security alerts.");
     } finally {
       setLoading(false);
     }
@@ -260,6 +270,12 @@ export function SecurityAlertsManager() {
             <div className="p-4 sm:p-5">
               <DataTableSkeleton rows={4} />
             </div>
+          ) : fetchError ? (
+            <EmptyState
+              icon={AlertTriangle}
+              title="Couldn't load alerts"
+              description={fetchError}
+            />
           ) : unresolvedAlerts.length === 0 ? (
             <EmptyState
               icon={CheckCircle2}

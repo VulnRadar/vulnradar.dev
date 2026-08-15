@@ -35,7 +35,7 @@ export default function GithubCreditsCheckoutPage() {
       try {
         const meRes = await fetch("/api/v3/auth/me");
         if (!meRes.ok) {
-          router.push("/auth?redirect=/checkout/github-credits");
+          router.push(`${ROUTES.LOGIN}?redirect=/checkout/github-credits`);
           return;
         }
       } catch {

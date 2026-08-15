@@ -54,7 +54,7 @@ export default function CheckoutPage({
       try {
         const meRes = await fetch("/api/v3/auth/me");
         if (!meRes.ok) {
-          router.push(`/auth?redirect=/checkout/${productId}`);
+          router.push(`${ROUTES.LOGIN}?redirect=/checkout/${productId}`);
           return;
         }
         const meData = await meRes.json();

@@ -71,6 +71,7 @@ export function IPRulesManager() {
   const [pendingDelete, setPendingDelete] = useState<AccessRule | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [selectedRule, setSelectedRule] = useState<AccessRule | null>(null);
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
@@ -80,16 +81,25 @@ export function IPRulesManager() {
 
   const fetchRules = async () => {
     setLoading(true);
+    setFetchError(null);
     try {
       const res = await fetch("/api/v3/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "list", section: "access_rules" }),
       });
+      if (!res.ok) {
+        // A failed fetch must never render as "no rules configured" -- in
+        // a security-relevant panel specifically, that reads as a false
+        // all-clear rather than the load failure it actually is.
+        setFetchError("Could not load access rules.");
+        return;
+      }
       const data = await res.json();
       setRules(data.rules || []);
     } catch (error) {
       console.error("Error fetching access rules:", error);
+      setFetchError("Could not load access rules.");
     } finally {
       setLoading(false);
     }
@@ -670,6 +680,12 @@ export function IPRulesManager() {
               <div className="p-4">
                 <DataTableSkeleton rows={6} />
               </div>
+            ) : fetchError ? (
+              <EmptyState
+                icon={AlertTriangle}
+                title="Couldn't load rules"
+                description={fetchError}
+              />
             ) : rules.length === 0 ? (
               <EmptyState
                 icon={Network}
