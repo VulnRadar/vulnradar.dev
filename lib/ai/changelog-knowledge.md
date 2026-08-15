@@ -1,6 +1,6 @@
 # VulnRadar Changelog - AI Knowledge
 
-_Auto-compiled from `lib/changelog/data.ts` on 2026-08-14._
+_Auto-compiled from `lib/changelog/data.ts` on 2026-08-15._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about specific versions, release
@@ -21,7 +21,7 @@ and full description.
 ## v3.4.0 - August 14, 2026 **(highlights)**
 **Team-Scoped Resources, Admin Security Hardening**
 
-A big one. Scans, webhooks, and scheduled scans can now be shared with a team instead of only living under one account, with real owner/admin/member/viewer permissions behind it. Alongside that: a proper audit of the admin panel's own security turned up and fixed a handful of real gaps, including a route that skipped 2FA enforcement entirely and a password re-entry prompt that was never actually checked server-side.
+A big one. Scans, webhooks, and scheduled scans can now be shared with a team instead of only living under one account, with real owner/admin/member/viewer permissions behind it. Alongside that: a proper audit of the admin panel's own security turned up and fixed a handful of real gaps, including a route that skipped 2FA enforcement entirely and a password re-entry prompt that was never actually checked server-side. A broader sweep for the same underlying bug, UI that claims success without checking whether the request behind it actually succeeded, found and fixed a dozen more instances across the admin panel, checkout, scan history, and every copy-to-clipboard button in the app.
 
 ### Changes
 - [Users] **[ADDED]** **Team-Scoped Scans, Webhooks & Schedules**
@@ -32,8 +32,18 @@ A big one. Scans, webhooks, and scheduled scans can now be shared with a team in
   The routes admins use to rename or delete any team on the platform had their own, separate permission check that verified role but never checked whether two-factor authentication was actually enabled, silently bypassing the "require 2FA for staff" setting other admin actions respect. Fixed to go through the same enforcement every other admin route uses.
 - [Eye] **[FIXED]** **Impersonate User, Finished**
   An admin can now actually start and stop an impersonation session for a support case, complete with a hard 1-hour session cap, a banner while it's active, and a one-click way back to your own account. The password re-entry prompt this action shows was previously cosmetic: the server never checked what was typed. It's enforced now.
-- [Bug] **[FIXED]** **Confirm Dialogs Could Show Success on a Rejected Action**
-  Several confirmation dialogs across the admin panel and account settings flipped to their "saved" checkmark as soon as the underlying request finished, even when the server had just rejected it, which could show "Changes Saved" right next to the real error toast. All of them now check the actual result first.
+- [Bug] **[FIXED]** **Confirm Dialogs and Action Buttons Could Show Success on a Rejected Action**
+  Several confirmation dialogs and plain action buttons across the admin panel, account settings, and scan history flipped to their "success" state as soon as the underlying request finished, even when the server had just rejected it: a failed badge delete still closed its confirm dialog, a failed impersonation-stop still navigated away as if it had ended, a failed "clear all history" still emptied the list on screen. All of them now check the actual result first, and stay open with a real error shown instead of dismissing themselves.
+- [Copy] **[FIXED]** **Copy Buttons Could Show "Copied" When Nothing Was Copied**
+  Every copy-to-clipboard button in the app, share links, API keys, webhook secrets, badge embed code, scan URLs, called the clipboard API and immediately showed its checkmark regardless of whether the write actually succeeded, so a denied permission or an insecure context (plain HTTP, an embedded iframe) still read as "Copied." Consolidated into one shared helper that awaits the real result and only confirms on an actual success.
+- [CreditCard] **[FIXED]** **Subscription Checkout Could Show Success Before the Plan Actually Changed**
+  After paying, the checkout success page polled for up to ~17.5 seconds waiting for the new plan to show up, then displayed "You're on your new plan" regardless of whether it ever did. A slow webhook or a still-settling payment method could show that screen while the account was still on its old plan. It now shows a genuine "still confirming" state instead, with a link to Billing, until the plan is actually confirmed.
+- [Mail] **[FIXED]** **Mass-Email Preview Showed Escaped HTML Instead of the Real Formatting**
+  The broadcast-email composer's Content field is explicitly labeled "HTML supported," but its preview escaped every tag before rendering, so writing bold text showed the literal, escaped tag characters in preview while the actual sent email rendered correctly. The preview now renders the same way the real email does, and its iframe is sandboxed as a second layer of protection since it runs inside the admin's own authenticated session.
+- [Settings] **[FIXED]** **A Few Displayed Values Had Drifted From Their Own Source of Truth**
+  The team invite role dropdown listed its five roles by hand instead of reading them from the same list the backend validates against, so a new role would not have shown up here even though the API would have accepted it. Separately, a gifted-subscription plan name was built by string-replacing the plan id instead of reading its real display name, which was already visibly wrong for one plan ("gifted elite subscription" instead of "Elite Supporter"). Both now read from the actual plan/role catalog.
+- [Link2] **[FIXED]** **Checkout Pages Could Redirect to a Dead Route on a Network Blip**
+  All three checkout pages correctly sent a signed-out visitor to Login when the auth check came back unauthorized, but a network failure on that same check, as opposed to an auth failure, fell back to a hardcoded path that no longer exists, landing on a 404 instead of the login page.
 - [Mail] **[ADDED]** **Admin Password Resets Now Go Out By Email**
   Resetting a user's password from the admin panel used to generate a temporary password the admin could see. It now emails the user a reset link instead, the same as a self-service reset, and includes a searchable delivery log (with any link, code, or token redacted) so staff can confirm an email actually went out without ever seeing its contents.
 - [BarChart3] **[ADDED]** **CVSS 3.1 Scoring on Every Finding**
@@ -1438,6 +1448,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 57
-- **Total changes documented:** 484
+- **Total changes documented:** 489
 - **Latest:** v3.4.0 (August 14, 2026) - Team-Scoped Resources, Admin Security Hardening
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release

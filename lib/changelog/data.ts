@@ -74,6 +74,7 @@ import {
   X,
   Keyboard,
   BookOpen,
+  Copy,
   type LucideIcon,
 } from "lucide-react";
 
@@ -138,7 +139,7 @@ const CHANGELOG: Release[] = [
     title: "Team-Scoped Resources, Admin Security Hardening",
     highlights: true,
     summary:
-      "A big one. Scans, webhooks, and scheduled scans can now be shared with a team instead of only living under one account, with real owner/admin/member/viewer permissions behind it. Alongside that: a proper audit of the admin panel's own security turned up and fixed a handful of real gaps, including a route that skipped 2FA enforcement entirely and a password re-entry prompt that was never actually checked server-side.",
+      "A big one. Scans, webhooks, and scheduled scans can now be shared with a team instead of only living under one account, with real owner/admin/member/viewer permissions behind it. Alongside that: a proper audit of the admin panel's own security turned up and fixed a handful of real gaps, including a route that skipped 2FA enforcement entirely and a password re-entry prompt that was never actually checked server-side. A broader sweep for the same underlying bug, UI that claims success without checking whether the request behind it actually succeeded, found and fixed a dozen more instances across the admin panel, checkout, scan history, and every copy-to-clipboard button in the app.",
     changes: [
       {
         icon: Users,
@@ -155,7 +156,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Lock,
         label: "Admin Team Management Skipped 2FA Enforcement",
-        desc: "The routes admins use to rename or delete any team on the platform had their own, separate permission check that verified role but never checked whether two-factor authentication was actually enabled, silently bypassing the \"require 2FA for staff\" setting other admin actions respect. Fixed to go through the same enforcement every other admin route uses.",
+        desc: 'The routes admins use to rename or delete any team on the platform had their own, separate permission check that verified role but never checked whether two-factor authentication was actually enabled, silently bypassing the "require 2FA for staff" setting other admin actions respect. Fixed to go through the same enforcement every other admin route uses.',
         category: "fixed",
       },
       {
@@ -166,8 +167,43 @@ const CHANGELOG: Release[] = [
       },
       {
         icon: Bug,
-        label: "Confirm Dialogs Could Show Success on a Rejected Action",
-        desc: "Several confirmation dialogs across the admin panel and account settings flipped to their \"saved\" checkmark as soon as the underlying request finished, even when the server had just rejected it, which could show \"Changes Saved\" right next to the real error toast. All of them now check the actual result first.",
+        label:
+          "Confirm Dialogs and Action Buttons Could Show Success on a Rejected Action",
+        desc: 'Several confirmation dialogs and plain action buttons across the admin panel, account settings, and scan history flipped to their "success" state as soon as the underlying request finished, even when the server had just rejected it: a failed badge delete still closed its confirm dialog, a failed impersonation-stop still navigated away as if it had ended, a failed "clear all history" still emptied the list on screen. All of them now check the actual result first, and stay open with a real error shown instead of dismissing themselves.',
+        category: "fixed",
+      },
+      {
+        icon: Copy,
+        label: 'Copy Buttons Could Show "Copied" When Nothing Was Copied',
+        desc: 'Every copy-to-clipboard button in the app, share links, API keys, webhook secrets, badge embed code, scan URLs, called the clipboard API and immediately showed its checkmark regardless of whether the write actually succeeded, so a denied permission or an insecure context (plain HTTP, an embedded iframe) still read as "Copied." Consolidated into one shared helper that awaits the real result and only confirms on an actual success.',
+        category: "fixed",
+      },
+      {
+        icon: CreditCard,
+        label:
+          "Subscription Checkout Could Show Success Before the Plan Actually Changed",
+        desc: 'After paying, the checkout success page polled for up to ~17.5 seconds waiting for the new plan to show up, then displayed "You\'re on your new plan" regardless of whether it ever did. A slow webhook or a still-settling payment method could show that screen while the account was still on its old plan. It now shows a genuine "still confirming" state instead, with a link to Billing, until the plan is actually confirmed.',
+        category: "fixed",
+      },
+      {
+        icon: Mail,
+        label:
+          "Mass-Email Preview Showed Escaped HTML Instead of the Real Formatting",
+        desc: "The broadcast-email composer's Content field is explicitly labeled \"HTML supported,\" but its preview escaped every tag before rendering, so writing bold text showed the literal, escaped tag characters in preview while the actual sent email rendered correctly. The preview now renders the same way the real email does, and its iframe is sandboxed as a second layer of protection since it runs inside the admin's own authenticated session.",
+        category: "fixed",
+      },
+      {
+        icon: Settings,
+        label:
+          "A Few Displayed Values Had Drifted From Their Own Source of Truth",
+        desc: 'The team invite role dropdown listed its five roles by hand instead of reading them from the same list the backend validates against, so a new role would not have shown up here even though the API would have accepted it. Separately, a gifted-subscription plan name was built by string-replacing the plan id instead of reading its real display name, which was already visibly wrong for one plan ("gifted elite subscription" instead of "Elite Supporter"). Both now read from the actual plan/role catalog.',
+        category: "fixed",
+      },
+      {
+        icon: Link2,
+        label:
+          "Checkout Pages Could Redirect to a Dead Route on a Network Blip",
+        desc: "All three checkout pages correctly sent a signed-out visitor to Login when the auth check came back unauthorized, but a network failure on that same check, as opposed to an auth failure, fell back to a hardcoded path that no longer exists, landing on a 404 instead of the login page.",
         category: "fixed",
       },
       {
