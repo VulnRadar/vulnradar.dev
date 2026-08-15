@@ -3,11 +3,14 @@
 import { useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ExternalLink } from "lucide-react";
 import {
   APP_NAME,
   RELEASES_URL,
   ROUTES,
   TOTAL_CHECKS_LABEL,
+  CHROME_WEB_STORE_URL,
 } from "@/lib/config/constants";
 import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
 import {
@@ -80,26 +83,71 @@ export default function ExtensionPage() {
       </DocsSection>
 
       <DocsSection id="install" title="Install">
-        <DocsCallout variant="info" title="Store listings pending review">
-          Chrome Web Store and Firefox Add-ons submissions are in progress.
-          Until those are approved, install from the packaged release below.
+        <DocsCallout variant="success" title="Live on the Chrome Web Store">
+          Firefox Add-ons review is still in progress. Chrome and other Chromium
+          browsers (Edge, Brave) can install straight from the store; Firefox
+          needs the packaged release below until AMO approves it.
         </DocsCallout>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Card className="p-5 border-border/50 bg-card/50 flex flex-col">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="text-sm font-semibold text-foreground">
+                Chrome / Edge
+              </h3>
+              <Badge
+                variant="outline"
+                className="text-[10px] px-1.5 py-0 border-[hsl(var(--success))]/30 text-[hsl(var(--success))]"
+              >
+                Live
+              </Badge>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4 flex-1">
+              One click from the store. Updates itself from here on, no manual
+              re-download.
+            </p>
+            <Button asChild className="gap-1.5">
+              <a
+                href={CHROME_WEB_STORE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Add to Chrome
+                <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+              </a>
+            </Button>
+          </Card>
+
+          <Card className="p-5 border-border/50 bg-card/50 flex flex-col">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="text-sm font-semibold text-foreground">Firefox</h3>
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                Pending review
+              </Badge>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4 flex-1">
+              Grab <InlineCode>vulnradar-firefox-vX.Y.Z.zip</InlineCode> from
+              the GitHub releases page and unzip it.
+            </p>
+            <Button asChild variant="outline" className="gap-1.5">
+              <a href={RELEASES_URL} target="_blank" rel="noopener noreferrer">
+                Download latest release
+                <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+              </a>
+            </Button>
+          </Card>
+        </div>
 
         <DocsSteps
           steps={[
             {
               step: 1,
-              title: "Download the latest release",
-              description: `Grab vulnradar-chrome-vX.Y.Z.zip or vulnradar-firefox-vX.Y.Z.zip from the GitHub releases page and unzip it.`,
+              title: "Firefox: load it unpacked",
+              description:
+                "After unzipping the release above: about:debugging#/runtime/this-firefox -> Load Temporary Add-on -> select any file inside the folder. Temporary add-ons are removed when Firefox restarts, so you'll redo this until the AMO listing is live.",
             },
             {
               step: 2,
-              title: "Load it unpacked",
-              description:
-                "Chrome/Edge: chrome://extensions -> enable Developer mode -> Load unpacked -> select the unzipped folder. Firefox: about:debugging#/runtime/this-firefox -> Load Temporary Add-on -> select any file inside the folder.",
-            },
-            {
-              step: 3,
               title: "Connect your account",
               description:
                 "Click the toolbar icon, then Open Settings. Generate an API key from your VulnRadar profile and paste it in - the extension authenticates as you from then on.",

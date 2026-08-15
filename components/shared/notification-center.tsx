@@ -60,6 +60,9 @@ interface ApiNotification {
   action_label: string | null;
   action_url: string | null;
   action_external: boolean;
+  action_label_2: string | null;
+  action_url_2: string | null;
+  action_external_2: boolean;
   priority: number;
 }
 
@@ -683,6 +686,39 @@ export function NotificationBell() {
                             >
                               {n.action_label || "View"}
                               {n.action_external ? (
+                                <ExternalLink
+                                  className="h-3 w-3"
+                                  aria-hidden="true"
+                                />
+                              ) : (
+                                <ArrowRight
+                                  className="h-3 w-3"
+                                  aria-hidden="true"
+                                />
+                              )}
+                            </a>
+                          )}
+                          {n.action_url_2 && (
+                            <a
+                              href={n.action_url_2}
+                              target={n.action_external_2 ? "_blank" : "_self"}
+                              rel={
+                                n.action_external_2
+                                  ? "noopener noreferrer"
+                                  : undefined
+                              }
+                              onClick={() => {
+                                if (n.is_dismissible)
+                                  dismissNotification(
+                                    n.cookie_id,
+                                    n.dismiss_duration_hours,
+                                  );
+                                setOpen(false);
+                              }}
+                              className="text-xs font-medium text-primary hover:text-primary/80 transition-colors inline-flex items-center gap-1"
+                            >
+                              {n.action_label_2 || "View"}
+                              {n.action_external_2 ? (
                                 <ExternalLink
                                   className="h-3 w-3"
                                   aria-hidden="true"

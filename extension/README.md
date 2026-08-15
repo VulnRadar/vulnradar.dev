@@ -28,7 +28,7 @@ npm run build
 For store submission, also run:
 
 ```bash
-npm run package         # zips dist-{chrome,firefox} into vulnradar-{browser}-v0.1.2.zip
+npm run package         # zips dist-{chrome,firefox} into vulnradar-{browser}-vX.Y.Z.zip
 ```
 
 ### Chrome (Chromium / Edge / Brave / Arc / Opera)
@@ -103,12 +103,10 @@ Not supported in v0.1. Safari Web Extensions require a separate Xcode project + 
 
 **No data is sent to any other origin.** The extension talks to `vulnradar.dev` (or whatever you configure) and that's it.
 
-## Publishing (optional)
+## Publishing
 
-Once you're happy with v0.1:
-
-- **Chrome Web Store:** $5 one-time dev fee. Upload `vulnradar-chrome-v0.1.2.zip` at [chrome.google.com/webstore/devconsole](https://chrome.google.com/webstore/devconsole/). Requires 128x128 + 440x280 promo tile + 1280x720 screenshot.
-- **Firefox AMO:** Free. Upload `vulnradar-firefox-v0.1.2.zip` at [addons.mozilla.org/developers/addon/submit](https://addons.mozilla.org/developers/addon/submit/). Mozilla review takes a few days.
+- **Chrome Web Store:** live. Upload `vulnradar-chrome-vX.Y.Z.zip` at [chrome.google.com/webstore/devconsole](https://chrome.google.com/webstore/devconsole/) for each new release.
+- **Firefox AMO:** pending review. Upload `vulnradar-firefox-vX.Y.Z.zip` at [addons.mozilla.org/developers/addon/submit](https://addons.mozilla.org/developers/addon/submit/). Mozilla review takes a few days.
 
 ## Project structure
 
@@ -120,7 +118,7 @@ extension/
 ├── .gitignore
 ├── manifest/
 │   ├── chrome.json           ← MV3 (no gecko block)
-│   └── firefox.json          ← MV3 + gecko.strict_min_version: "109.0"
+│   └── firefox.json          ← MV3 + gecko.strict_min_version: "140.0"
 ├── scripts/
 │   ├── build.mjs             ← vite + per-target manifest inject
 │   ├── generate-icons.mjs    ← sharp: SVG → 16/32/48/128 PNGs

@@ -973,6 +973,9 @@ export async function register() {
           action_label VARCHAR(100) DEFAULT NULL,
           action_url VARCHAR(500) DEFAULT NULL,
           action_external BOOLEAN DEFAULT false,
+          action_label_2 VARCHAR(100) DEFAULT NULL,
+          action_url_2 VARCHAR(500) DEFAULT NULL,
+          action_external_2 BOOLEAN DEFAULT false,
           priority INTEGER NOT NULL DEFAULT 0,
           created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -981,6 +984,13 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_admin_notifications_active ON admin_notifications (is_active, starts_at, ends_at) WHERE is_active = true;
         CREATE INDEX IF NOT EXISTS idx_admin_notifications_type ON admin_notifications (type);
         CREATE INDEX IF NOT EXISTS idx_admin_notifications_cookie ON admin_notifications (cookie_id);
+
+        -- Second, optional action button (e.g. "Add to Chrome" + "Add to Firefox"
+        -- on the same notification). Idempotent for databases created before
+        -- this pair existed.
+        ALTER TABLE admin_notifications ADD COLUMN IF NOT EXISTS action_label_2 VARCHAR(100) DEFAULT NULL;
+        ALTER TABLE admin_notifications ADD COLUMN IF NOT EXISTS action_url_2 VARCHAR(500) DEFAULT NULL;
+        ALTER TABLE admin_notifications ADD COLUMN IF NOT EXISTS action_external_2 BOOLEAN DEFAULT false;
       `);
 
       // ════════════════════════════════════════════════════════════════

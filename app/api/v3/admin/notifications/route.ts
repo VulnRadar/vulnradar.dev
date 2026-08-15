@@ -60,6 +60,9 @@ export async function POST(req: Request) {
       action_label,
       action_url,
       action_external = false,
+      action_label_2,
+      action_url_2,
+      action_external_2 = false,
       priority = 0,
     } = body;
 
@@ -70,20 +73,24 @@ export async function POST(req: Request) {
       );
     }
 
-    // SECURITY: action_url is rendered as an <a href> by the client-side
-    // notification UI. Without validation, a moderator with
+    // SECURITY: action_url/action_url_2 are rendered as an <a href> by the
+    // client-side notification UI. Without validation, a moderator with
     // SEND_ANNOUNCEMENTS permission could store `javascript:...` and
     // execute arbitrary JS in vulnradar.dev's origin the moment any
     // user clicks the notification's CTA. Restrict to http(s) and
     // same-origin paths only.
-    if (action_url != null && action_url !== "") {
-      if (typeof action_url !== "string") {
+    for (const [field, value] of [
+      ["action_url", action_url],
+      ["action_url_2", action_url_2],
+    ] as const) {
+      if (value == null || value === "") continue;
+      if (typeof value !== "string") {
         return NextResponse.json(
-          { error: "action_url must be a string" },
+          { error: `${field} must be a string` },
           { status: 400 },
         );
       }
-      const lower = action_url.trim().toLowerCase();
+      const lower = value.trim().toLowerCase();
       const allowed =
         lower.startsWith("https://") ||
         lower.startsWith("http://") ||
@@ -91,8 +98,7 @@ export async function POST(req: Request) {
       if (!allowed) {
         return NextResponse.json(
           {
-            error:
-              "action_url must start with https://, http://, or / (no javascript:, data:, or other schemes)",
+            error: `${field} must start with https://, http://, or / (no javascript:, data:, or other schemes)`,
           },
           { status: 400 },
         );
@@ -106,8 +112,9 @@ export async function POST(req: Request) {
       `INSERT INTO admin_notifications (
         cookie_id, title, message, type, variant, audience, path_pattern,
         starts_at, ends_at, is_active, is_dismissible, dismiss_duration_hours,
-        action_label, action_url, action_external, priority, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        action_label, action_url, action_external, action_label_2, action_url_2,
+        action_external_2, priority, created_by
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
       RETURNING *`,
       [
         cookieId,
@@ -125,6 +132,9 @@ export async function POST(req: Request) {
         action_label,
         action_url,
         action_external,
+        action_label_2,
+        action_url_2,
+        action_external_2,
         priority,
         session.userId,
       ],

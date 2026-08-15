@@ -16,7 +16,8 @@ export async function GET(req: Request) {
     // - "staff" / "admin" = staff members only
     const result = await pool.query(
       `SELECT id, cookie_id, title, message, type, variant, audience, path_pattern, is_active,
-              is_dismissible, dismiss_duration_hours, action_label, action_url, action_external, priority
+              is_dismissible, dismiss_duration_hours, action_label, action_url, action_external,
+              action_label_2, action_url_2, action_external_2, priority
        FROM admin_notifications
        WHERE is_active = true
        AND (starts_at IS NULL OR starts_at <= $1)

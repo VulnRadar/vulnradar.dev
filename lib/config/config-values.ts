@@ -79,6 +79,9 @@ export const CONFIG_TOTAL_CHECKS_LABEL = GENERATED_CHECKS_LABEL;
 export const CONFIG_APP_URL = "https://sandbox.vulnradar.dev";
 export const CONFIG_APP_REPO = "VulnRadar/vulnradar.dev";
 export const CONFIG_DISCORD_INVITE_URL = "https://discord.gg/Y7R6hdGbNe";
+// Empty until a store listing is live for this fork/deployment.
+export const CONFIG_CHROME_WEB_STORE_URL =
+  "https://chromewebstore.google.com/detail/nbmifpplhhejdfokaglpomdnbaifngfj";
 
 // Emails - UPDATE THESE FOR YOUR DEPLOYMENT
 export const CONFIG_SUPPORT_EMAIL = "support@vulnradar.dev";

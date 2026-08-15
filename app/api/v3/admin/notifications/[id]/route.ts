@@ -40,21 +40,28 @@ export async function PUT(
       action_label,
       action_url,
       action_external,
+      action_label_2,
+      action_url_2,
+      action_external_2,
       priority,
     } = body;
 
-    // SECURITY: action_url is rendered as an <a href> by the client-side
-    // notification UI. Reject anything that isn't http(s) or a same-origin
-    // path so a moderator can't store a `javascript:` URL that would
-    // execute arbitrary JS in vulnradar.dev's origin.
-    if (action_url != null && action_url !== "") {
-      if (typeof action_url !== "string") {
+    // SECURITY: action_url/action_url_2 are rendered as an <a href> by the
+    // client-side notification UI. Reject anything that isn't http(s) or a
+    // same-origin path so a moderator can't store a `javascript:` URL that
+    // would execute arbitrary JS in vulnradar.dev's origin.
+    for (const [field, value] of [
+      ["action_url", action_url],
+      ["action_url_2", action_url_2],
+    ] as const) {
+      if (value == null || value === "") continue;
+      if (typeof value !== "string") {
         return NextResponse.json(
-          { error: "action_url must be a string" },
+          { error: `${field} must be a string` },
           { status: 400 },
         );
       }
-      const lower = action_url.trim().toLowerCase();
+      const lower = value.trim().toLowerCase();
       const allowed =
         lower.startsWith("https://") ||
         lower.startsWith("http://") ||
@@ -62,8 +69,7 @@ export async function PUT(
       if (!allowed) {
         return NextResponse.json(
           {
-            error:
-              "action_url must start with https://, http://, or / (no javascript:, data:, or other schemes)",
+            error: `${field} must start with https://, http://, or / (no javascript:, data:, or other schemes)`,
           },
           { status: 400 },
         );
@@ -86,9 +92,12 @@ export async function PUT(
         action_label = $12,
         action_url = $13,
         action_external = COALESCE($14, action_external),
-        priority = COALESCE($15, priority),
+        action_label_2 = $15,
+        action_url_2 = $16,
+        action_external_2 = COALESCE($17, action_external_2),
+        priority = COALESCE($18, priority),
         updated_at = NOW()
-      WHERE id = $16
+      WHERE id = $19
       RETURNING *`,
       [
         title,
@@ -105,6 +114,9 @@ export async function PUT(
         action_label,
         action_url,
         action_external,
+        action_label_2,
+        action_url_2,
+        action_external_2,
         priority,
         id,
       ],

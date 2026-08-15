@@ -263,6 +263,24 @@ const CHANGELOG: Release[] = [
         desc: "A ready-to-use GitHub Action that scans a URL and fails the build if findings cross a severity threshold you set, so a scan can gate a pull request without writing your own polling loop against the API.",
         category: "added",
       },
+      {
+        icon: Globe,
+        label: "Extension: Live on the Chrome Web Store",
+        desc: "The browser extension is now installable straight from the Chrome Web Store instead of a manual unpacked-folder install. Firefox Add-ons review is still in progress; that path still uses the packaged release.",
+        category: "added",
+      },
+      {
+        icon: Bell,
+        label: "Site Notifications Support a Second Action Button",
+        desc: 'A site-wide notification (banner, modal, toast, or bell) can now carry up to two action buttons instead of one, e.g. "Add to Chrome" next to "Add to Firefox" on the same announcement.',
+        category: "added",
+      },
+      {
+        icon: Wrench,
+        label: "Extension: Auto-Scan URL Filters Could Be Resized Away",
+        desc: "The whitelist and blacklist text boxes in the extension's Auto-Scan settings had no minimum or maximum height, so dragging the resize handle could shrink one down to a sliver or blow it up past the rest of the page. Now clamped to a sensible range.",
+        category: "fixed",
+      },
     ],
   },
   {

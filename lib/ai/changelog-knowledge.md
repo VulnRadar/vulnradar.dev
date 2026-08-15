@@ -62,6 +62,12 @@ A big one. Scans, webhooks, and scheduled scans can now be shared with a team in
   The opt-in active-probing category (real requests submitted to the target, off by default) now checks for error-based SQL injection and server-side template injection alongside the existing reflected-XSS canary probe.
 - [GitMerge] **[ADDED]** **GitHub Actions Scan Gate**
   A ready-to-use GitHub Action that scans a URL and fails the build if findings cross a severity threshold you set, so a scan can gate a pull request without writing your own polling loop against the API.
+- [Globe] **[ADDED]** **Extension: Live on the Chrome Web Store**
+  The browser extension is now installable straight from the Chrome Web Store instead of a manual unpacked-folder install. Firefox Add-ons review is still in progress; that path still uses the packaged release.
+- [Bell] **[ADDED]** **Site Notifications Support a Second Action Button**
+  A site-wide notification (banner, modal, toast, or bell) can now carry up to two action buttons instead of one, e.g. "Add to Chrome" next to "Add to Firefox" on the same announcement.
+- [Wrench] **[FIXED]** **Extension: Auto-Scan URL Filters Could Be Resized Away**
+  The whitelist and blacklist text boxes in the extension's Auto-Scan settings had no minimum or maximum height, so dragging the resize handle could shrink one down to a sliver or blow it up past the rest of the page. Now clamped to a sensible range.
 
 ---
 
@@ -1458,6 +1464,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 57
-- **Total changes documented:** 494
+- **Total changes documented:** 497
 - **Latest:** v3.4.0 (August 14, 2026) - Team-Scoped Resources, Admin Security Hardening
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release

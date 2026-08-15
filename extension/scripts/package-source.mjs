@@ -1,6 +1,6 @@
 import archiver from "archiver";
 import { createWriteStream } from "node:fs";
-import { readdir } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -14,7 +14,11 @@ const EXCLUDE_DIRS = new Set([
   "out",
 ]);
 
-const outPath = path.join(root, "vulnradar-extension-v0.1.5-source.zip");
+const PKG = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
+const outPath = path.join(
+  root,
+  `vulnradar-extension-v${PKG.version}-source.zip`,
+);
 const output = createWriteStream(outPath);
 const archive = archiver("zip", { zlib: { level: 9 } });
 

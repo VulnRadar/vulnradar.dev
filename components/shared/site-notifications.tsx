@@ -32,6 +32,9 @@ interface Notification {
   action_label?: string | null;
   action_url?: string | null;
   action_external?: boolean;
+  action_label_2?: string | null;
+  action_url_2?: string | null;
+  action_external_2?: boolean;
 }
 
 // Cookie utilities for per-notification dismiss tracking
@@ -208,6 +211,30 @@ export function SiteBanner({ notification }: { notification: Notification }) {
               </a>
             </Button>
           )}
+          {notification.action_url_2 && (
+            <Button
+              size="sm"
+              variant="outline"
+              asChild
+              className="h-8 px-3 text-xs font-semibold"
+            >
+              <a
+                href={notification.action_url_2}
+                target={notification.action_external_2 ? "_blank" : "_self"}
+                rel={
+                  notification.action_external_2
+                    ? "noopener noreferrer"
+                    : undefined
+                }
+                className="flex items-center gap-1.5"
+              >
+                {notification.action_label_2 || "Learn more"}
+                {notification.action_external_2 && (
+                  <ExternalLink className="h-3 w-3" />
+                )}
+              </a>
+            </Button>
+          )}
           {notification.is_dismissible && (
             <button
               onClick={handleDismiss}
@@ -311,6 +338,25 @@ export function SiteModal({
           {notification.is_dismissible && (
             <Button variant="ghost" size="sm" onClick={handleClose}>
               Dismiss
+            </Button>
+          )}
+          {notification.action_url_2 && (
+            <Button size="sm" variant="outline" asChild>
+              <a
+                href={notification.action_url_2}
+                target={notification.action_external_2 ? "_blank" : "_self"}
+                rel={
+                  notification.action_external_2
+                    ? "noopener noreferrer"
+                    : undefined
+                }
+                className="flex items-center gap-1.5"
+              >
+                {notification.action_label_2 || "Learn more"}
+                {notification.action_external_2 && (
+                  <ExternalLink className="h-3.5 w-3.5" />
+                )}
+              </a>
             </Button>
           )}
           {notification.action_url && (
@@ -434,22 +480,43 @@ export function SiteToast({
             >
               {notification.message}
             </p>
-            {notification.action_url && (
-              <a
-                href={notification.action_url}
-                target={notification.action_external ? "_blank" : "_self"}
-                rel={
-                  notification.action_external
-                    ? "noopener noreferrer"
-                    : undefined
-                }
-                className="inline-flex items-center gap-1 text-sm font-medium text-primary mt-1.5 hover:underline underline-offset-2"
-              >
-                {notification.action_label || "Learn more"}
-                {notification.action_external && (
-                  <ExternalLink className="h-3 w-3" />
+            {(notification.action_url || notification.action_url_2) && (
+              <div className="flex items-center gap-3 mt-1.5">
+                {notification.action_url && (
+                  <a
+                    href={notification.action_url}
+                    target={notification.action_external ? "_blank" : "_self"}
+                    rel={
+                      notification.action_external
+                        ? "noopener noreferrer"
+                        : undefined
+                    }
+                    className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline underline-offset-2"
+                  >
+                    {notification.action_label || "Learn more"}
+                    {notification.action_external && (
+                      <ExternalLink className="h-3 w-3" />
+                    )}
+                  </a>
                 )}
-              </a>
+                {notification.action_url_2 && (
+                  <a
+                    href={notification.action_url_2}
+                    target={notification.action_external_2 ? "_blank" : "_self"}
+                    rel={
+                      notification.action_external_2
+                        ? "noopener noreferrer"
+                        : undefined
+                    }
+                    className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline underline-offset-2"
+                  >
+                    {notification.action_label_2 || "Learn more"}
+                    {notification.action_external_2 && (
+                      <ExternalLink className="h-3 w-3" />
+                    )}
+                  </a>
+                )}
+              </div>
             )}
           </div>
           {notification.is_dismissible && (

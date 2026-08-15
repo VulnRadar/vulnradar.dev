@@ -62,6 +62,9 @@ interface AdminNotification {
   action_label: string | null;
   action_url: string | null;
   action_external: boolean;
+  action_label_2: string | null;
+  action_url_2: string | null;
+  action_external_2: boolean;
   priority: number;
   created_at: string;
   updated_at: string;
@@ -204,6 +207,9 @@ export function NotificationsManager() {
     action_label: "",
     action_url: "",
     action_external: false,
+    action_label_2: "",
+    action_url_2: "",
+    action_external_2: false,
     priority: "0",
   });
 
@@ -250,6 +256,9 @@ export function NotificationsManager() {
       action_label: "",
       action_url: "",
       action_external: false,
+      action_label_2: "",
+      action_url_2: "",
+      action_external_2: false,
       priority: "0",
     });
     setEditingNotification(null);
@@ -276,6 +285,9 @@ export function NotificationsManager() {
       action_label: notif.action_label || "",
       action_url: notif.action_url || "",
       action_external: notif.action_external,
+      action_label_2: notif.action_label_2 || "",
+      action_url_2: notif.action_url_2 || "",
+      action_external_2: notif.action_external_2,
       priority: notif.priority.toString(),
     });
     setEditingNotification(notif);
@@ -311,6 +323,9 @@ export function NotificationsManager() {
         action_label: formData.action_label || null,
         action_url: formData.action_url || null,
         action_external: formData.action_external,
+        action_label_2: formData.action_label_2 || null,
+        action_url_2: formData.action_url_2 || null,
+        action_external_2: formData.action_external_2,
         priority: parseInt(formData.priority) || 0,
       };
       const url = editingNotification
@@ -592,6 +607,15 @@ export function NotificationsManager() {
                               aria-hidden="true"
                             />
                             {notif.action_label || "Action"}
+                          </div>
+                        )}
+                        {notif.action_url_2 && (
+                          <div className="flex items-center gap-1 text-xs text-primary font-medium">
+                            <ExternalLink
+                              className="h-3 w-3"
+                              aria-hidden="true"
+                            />
+                            {notif.action_label_2 || "Action"}
                           </div>
                         )}
                       </div>
@@ -915,7 +939,7 @@ export function NotificationsManager() {
 
             {/* Action button */}
             <div>
-              <SectionLabel>Action button (optional)</SectionLabel>
+              <SectionLabel>First action button (optional)</SectionLabel>
               <div className="divide-y divide-border/40">
                 <FieldRow htmlFor="action_label" label="Button label">
                   <Input
@@ -941,6 +965,44 @@ export function NotificationsManager() {
                       id="action_external"
                       checked={formData.action_external}
                       onCheckedChange={(v) => set({ action_external: v })}
+                    />
+                  </FieldRow>
+                )}
+              </div>
+            </div>
+
+            {/* Second action button */}
+            <div>
+              <SectionLabel>Second action button (optional)</SectionLabel>
+              <div className="divide-y divide-border/40">
+                <FieldRow
+                  htmlFor="action_label_2"
+                  label="Button label"
+                  help="E.g. two install links: Add to Chrome and Add to Firefox."
+                >
+                  <Input
+                    id="action_label_2"
+                    value={formData.action_label_2}
+                    onChange={(e) => set({ action_label_2: e.target.value })}
+                    placeholder="Add to Firefox"
+                    className="w-40 sm:w-48 h-9 bg-background/50 border-border/40 focus:border-primary/50"
+                  />
+                </FieldRow>
+                <FieldRow htmlFor="action_url_2" label="URL / path">
+                  <Input
+                    id="action_url_2"
+                    value={formData.action_url_2}
+                    onChange={(e) => set({ action_url_2: e.target.value })}
+                    placeholder="https:// or /path"
+                    className="w-40 sm:w-56 h-9 bg-background/50 border-border/40 focus:border-primary/50"
+                  />
+                </FieldRow>
+                {formData.action_url_2 && (
+                  <FieldRow htmlFor="action_external_2" label="Open in new tab">
+                    <Switch
+                      id="action_external_2"
+                      checked={formData.action_external_2}
+                      onCheckedChange={(v) => set({ action_external_2: v })}
                     />
                   </FieldRow>
                 )}

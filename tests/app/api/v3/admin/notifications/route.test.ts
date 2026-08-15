@@ -164,6 +164,35 @@ describe("POST /api/v3/admin/notifications", () => {
     );
     expect(res.status).toBe(200);
   });
+
+  it("rejects a javascript: action_url_2 (second button gets the same XSS guard)", async () => {
+    withRole("admin");
+    const res = await POST(
+      postRequest({
+        title: "t",
+        message: "m",
+        action_url_2: "javascript:alert(1)",
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("accepts a second action button alongside the first", async () => {
+    withRole("admin");
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 4 }] });
+    const res = await POST(
+      postRequest({
+        title: "t",
+        message: "m",
+        action_label: "Add to Chrome",
+        action_url: "https://chromewebstore.google.com/detail/abc",
+        action_label_2: "Add to Firefox",
+        action_url_2: "https://addons.mozilla.org/firefox/addon/abc",
+      }),
+    );
+    expect(res.status).toBe(200);
+  });
 });
 
 describe("module shape", () => {

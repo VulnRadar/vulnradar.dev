@@ -245,6 +245,12 @@ main#app {
   width: 100%;
 }
 
+textarea.input {
+  resize: vertical;
+  min-height: 64px;
+  max-height: 280px;
+}
+
 .btn {
   font: inherit;
   padding: 8px 14px;

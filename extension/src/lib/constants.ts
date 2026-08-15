@@ -8,7 +8,7 @@ export const VULNRADAR = {
   /** Primary brand color (matches --primary hsl(213 94% 68%) from globals.css). */
   brandColor: "#60a5fa",
   /** Extension version (mirrors package.json). */
-  version: "0.1.5",
+  version: "0.1.6",
   /** Storage keys (namespaced to avoid collisions). */
   storageKeys: {
     auth: "vulnradar_ext.auth",

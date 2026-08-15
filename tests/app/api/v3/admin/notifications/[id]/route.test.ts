@@ -85,6 +85,16 @@ describe("PUT /api/v3/admin/notifications/[id]", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
+  it("rejects a javascript: action_url_2", async () => {
+    withRole("admin");
+    const res = await PUT(
+      putRequest({ action_url_2: "javascript:alert(1)" }),
+      ctx("1"),
+    );
+    expect(res.status).toBe(400);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
   it("returns 404 when the notification does not exist", async () => {
     withRole("admin");
     mockQuery.mockResolvedValueOnce({ rows: [] });

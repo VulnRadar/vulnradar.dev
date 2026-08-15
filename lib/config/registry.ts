@@ -20,6 +20,7 @@ import {
   CONFIG_APP_URL,
   CONFIG_APP_REPO,
   CONFIG_DISCORD_INVITE_URL,
+  CONFIG_CHROME_WEB_STORE_URL,
   CONFIG_SUPPORT_EMAIL,
   CONFIG_LEGAL_EMAIL,
   CONFIG_SECURITY_EMAIL,
@@ -379,6 +380,14 @@ export const SETTINGS_REGISTRY = {
     group: "General",
     label: "Discord invite URL",
     help: "Community link shown in the footer and support pages.",
+  },
+  CHROME_WEB_STORE_URL: {
+    tier: "build",
+    type: "url",
+    default: CONFIG_CHROME_WEB_STORE_URL,
+    group: "General",
+    label: "Chrome Web Store listing URL",
+    help: "Shown as the install link on the extension docs page once the listing is live. Leave empty to fall back to a packaged-release download.",
   },
   TERMS_UPDATED_AT: {
     tier: "runtime",
