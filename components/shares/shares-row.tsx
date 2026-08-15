@@ -24,6 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/ui/utils";
+import { copyToClipboard } from "@/lib/ui/clipboard";
 import type { Share } from "./shares-types";
 import {
   getSeverityInfo,
@@ -54,11 +55,10 @@ export function SharesRow({
   const SeverityIcon = severity.icon;
 
   async function handleCopy() {
-    try {
-      await navigator.clipboard.writeText(getShareUrl(share.token));
+    if (await copyToClipboard(getShareUrl(share.token))) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {}
+    }
   }
 
   return (

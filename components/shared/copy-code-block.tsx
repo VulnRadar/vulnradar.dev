@@ -3,6 +3,7 @@
 import { Copy, Check } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { copyToClipboard } from "@/lib/ui/clipboard";
 
 interface CopyCodeBlockProps {
   code: string;
@@ -13,12 +14,9 @@ export function CopyCodeBlock({ code, children }: CopyCodeBlockProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(code);
+    if (await copyToClipboard(code)) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error("Failed to copy:", err);
     }
   };
 

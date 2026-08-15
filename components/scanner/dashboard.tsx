@@ -219,7 +219,7 @@ export function Dashboard() {
       .then((r) => {
         if (!r.ok) {
           if (r.status === 401 || r.status === 403)
-            window.location.href = "/login";
+            window.location.href = ROUTES.LOGIN;
           throw new Error("unauthorized");
         }
         return r.json();

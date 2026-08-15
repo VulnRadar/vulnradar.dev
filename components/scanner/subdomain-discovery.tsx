@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/ui/utils";
 import { animations } from "@/lib/ui/animations";
-import { API } from "@/lib/config/constants";
+import { API, ROUTES } from "@/lib/config/constants";
 import { useAuth } from "@/components/providers/auth-provider";
 import {
   PremiumUpgradeModal,
@@ -519,7 +519,7 @@ function SubdomainRow({
     if (onScanSubdomain) {
       onScanSubdomain(sub.url);
     } else {
-      router.push(`/dashboard?scan=${encodeURIComponent(sub.url)}`);
+      router.push(`${ROUTES.DASHBOARD}?scan=${encodeURIComponent(sub.url)}`);
     }
   }
 

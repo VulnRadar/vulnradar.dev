@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/ui/utils";
+import { copyToClipboard } from "@/lib/ui/clipboard";
 import {
   Key,
   Webhook,
@@ -448,11 +449,10 @@ export function ProfileDeveloperTab({
 
   async function handleCopyKey() {
     if (!newlyCreatedKey) return;
-    try {
-      await navigator.clipboard.writeText(newlyCreatedKey);
+    if (await copyToClipboard(newlyCreatedKey)) {
       setCopiedKey(true);
       setTimeout(() => setCopiedKey(false), 2000);
-    } catch {
+    } else {
       setError(
         "Could not copy automatically. Select the key text and copy it manually.",
       );

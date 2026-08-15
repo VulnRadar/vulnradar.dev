@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Check, FileJson, FileSpreadsheet, Link2 } from "lucide-react";
 import { PageActionsMenu, type PageActionEntry } from "@/components/shared";
 import { APP_SLUG } from "@/lib/config/constants";
+import { copyToClipboard } from "@/lib/ui/clipboard";
 import { displayUrl, type DiffResult } from "./compare-types";
 
 interface CompareActionsMenuProps {
@@ -68,12 +69,9 @@ export function CompareActionsMenu({ result }: CompareActionsMenuProps) {
   }
 
   async function copyLink() {
-    try {
-      await navigator.clipboard.writeText(window.location.href);
+    if (await copyToClipboard(window.location.href)) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
-      /* clipboard API unavailable, nothing to fall back to here */
     }
   }
 

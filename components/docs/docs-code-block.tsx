@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Copy, Check } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
+import { copyToClipboard } from "@/lib/ui/clipboard";
 
 /**
  * Copy state lives in one hook so the button and the block agree on the
@@ -20,13 +21,10 @@ function useCopy(text: string) {
   }, []);
 
   const copy = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(text);
+    if (await copyToClipboard(text)) {
       setCopied(true);
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error("Clipboard write failed:", err);
     }
   }, [text]);
 

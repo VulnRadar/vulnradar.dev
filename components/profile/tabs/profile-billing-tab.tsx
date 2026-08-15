@@ -28,6 +28,7 @@ import { cn } from "@/lib/ui/utils";
 import { API, ROUTES, BILLING_ENABLED, APP_NAME } from "@/lib/config/constants";
 import { refreshAuthCache } from "@/components/providers/auth-provider";
 import { getPaidPlans } from "@/lib/billing/plans";
+import { getPlanById } from "@/lib/billing/catalog";
 import { createBillingPortalSession } from "@/app/actions/stripe";
 import type { ProfileTabProps, BillingInfo } from "../types";
 import {
@@ -217,13 +218,7 @@ export function ProfileBillingTab({
                       <p className="text-sm text-muted-foreground">
                         You have unlimited scans
                         {billingInfo.plan !== "free" &&
-                          " with your " +
-                            billingInfo.plan
-                              .replace("_supporter", " Supporter")
-                              .replace(/(^\w|\s\w)/g, (m: string) =>
-                                m.toUpperCase(),
-                              ) +
-                            " plan"}
+                          ` with your ${getPlanById(billingInfo.plan)?.name || billingInfo.plan} plan`}
                         .
                       </p>
                     </div>
@@ -1199,9 +1194,8 @@ export function ProfileBillingTab({
                       <Gift className="h-4 w-4 text-primary shrink-0" />
                       <p className="text-sm text-primary">
                         You have a gifted{" "}
-                        {billingInfo.giftedSubscription.plan
-                          .replace("_supporter", "")
-                          .replace("_", " ")}{" "}
+                        {getPlanById(billingInfo.giftedSubscription.plan)
+                          ?.name || billingInfo.giftedSubscription.plan}{" "}
                         subscription until{" "}
                         {new Date(
                           billingInfo.giftedSubscription.expiresAt,

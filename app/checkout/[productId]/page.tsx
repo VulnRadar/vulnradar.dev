@@ -65,7 +65,7 @@ export default function CheckoutPage({
         );
         setIsStaffAccount(isStaffRole(meData.data?.role));
       } catch {
-        router.push(`/auth?redirect=/checkout/${productId}`);
+        router.push(`${ROUTES.LOGIN}?redirect=/checkout/${productId}`);
       } finally {
         setLoading(false);
       }

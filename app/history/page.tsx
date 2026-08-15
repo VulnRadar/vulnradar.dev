@@ -85,6 +85,7 @@ export default function HistoryPage() {
   const [pageSize, setPageSize] = useState(10);
   const [rescanning, setRescanning] = useState<number | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [clearError, setClearError] = useState<string | null>(null);
 
   // Detail state
   const [selectedScanId, setSelectedScanId] = useState<number | null>(null);
@@ -269,12 +270,19 @@ export default function HistoryPage() {
   };
 
   const handleClearHistory = async () => {
-    setShowClearConfirm(false);
     setClearing(true);
+    setClearError(null);
     try {
-      await fetch(API.HISTORY, { method: "DELETE" });
-      setScans([]);
-    } catch {}
+      const res = await fetch(API.HISTORY, { method: "DELETE" });
+      if (res.ok) {
+        setScans([]);
+        setShowClearConfirm(false);
+      } else {
+        setClearError("Couldn't clear history. Try again.");
+      }
+    } catch {
+      setClearError("Couldn't clear history. Try again.");
+    }
     setClearing(false);
   };
 
@@ -544,7 +552,10 @@ export default function HistoryPage() {
       <AlertDialog
         open={showClearConfirm}
         onOpenChange={(open) => {
-          if (!open && !clearing) setShowClearConfirm(false);
+          if (!open && !clearing) {
+            setShowClearConfirm(false);
+            setClearError(null);
+          }
         }}
       >
         <AlertDialogContent className="sm:max-w-md">
@@ -565,10 +576,16 @@ export default function HistoryPage() {
               and notes included. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {clearError && (
+            <p className="text-sm text-destructive">{clearError}</p>
+          )}
           <AlertDialogFooter className="flex-col-reverse sm:flex-row gap-2">
             <Button
               variant="outline"
-              onClick={() => setShowClearConfirm(false)}
+              onClick={() => {
+                setShowClearConfirm(false);
+                setClearError(null);
+              }}
               disabled={clearing}
             >
               Cancel

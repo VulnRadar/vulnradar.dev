@@ -41,6 +41,7 @@ import {
   TOTAL_CHECKS_LABEL,
 } from "@/lib/config/constants";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
+import { copyToClipboard } from "@/lib/ui/clipboard";
 
 /** Mirrors app/history/page.tsx's shape for the same crawl result_meta. */
 interface CrawlPageData {
@@ -141,12 +142,9 @@ export default function SharedScanPage() {
   }, [token]);
 
   async function copyUrl() {
-    try {
-      await navigator.clipboard.writeText(result?.url || "");
+    if (await copyToClipboard(result?.url || "")) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Fallback
     }
   }
 

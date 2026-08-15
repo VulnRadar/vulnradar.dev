@@ -37,7 +37,7 @@ export default function CreditsCheckoutPage() {
           return;
         }
       } catch {
-        router.push("/auth?redirect=/checkout/credits");
+        router.push(`${ROUTES.LOGIN}?redirect=/checkout/credits`);
         return;
       }
       setLoading(false);

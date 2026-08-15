@@ -26,6 +26,7 @@ import { DangerScoreTrend } from "@/components/host/danger-score-trend";
 import { API, APP_NAME, ROUTES } from "@/lib/config/constants";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 import type { HostReportData } from "@/app/api/v3/host/[hostname]/route";
+import { copyToClipboard } from "@/lib/ui/clipboard";
 
 export default function HostReportPage() {
   const params = useParams();
@@ -84,12 +85,9 @@ export default function HostReportPage() {
   }, [hostname]);
 
   async function copyHost() {
-    try {
-      await navigator.clipboard.writeText(data?.host || hostname);
+    if (await copyToClipboard(data?.host || hostname)) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Fallback
     }
   }
 

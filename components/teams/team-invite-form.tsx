@@ -6,8 +6,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { ROLE_ABILITIES } from "./teams-types";
+import { TEAM_ROLES } from "@/lib/config/constants";
 
 type InvitableRole = "admin" | "manager" | "operator" | "member" | "viewer";
+
+// Least to most privileged, matching the invite form's intended reading
+// order. Derived from TEAM_ROLES (excluding the non-invitable owner) so a
+// future role addition shows up here automatically, the same way
+// app/api/v3/teams/members/route.ts's INVITABLE_TEAM_ROLES already does.
+const INVITABLE_ROLES = Object.values(TEAM_ROLES)
+  .filter((r) => r !== TEAM_ROLES.OWNER)
+  .reverse() as InvitableRole[];
+
+function roleLabel(role: string): string {
+  return role.charAt(0).toUpperCase() + role.slice(1);
+}
 
 interface TeamInviteFormProps {
   inviteEmail: string;
@@ -80,11 +93,11 @@ export function TeamInviteForm({
               aria-describedby="invite-role-hint"
               className="h-10 rounded-md border border-input bg-background px-3 text-base sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <option value="viewer">Viewer</option>
-              <option value="member">Member</option>
-              <option value="operator">Operator</option>
-              <option value="manager">Manager</option>
-              <option value="admin">Admin</option>
+              {INVITABLE_ROLES.map((role) => (
+                <option key={role} value={role}>
+                  {roleLabel(role)}
+                </option>
+              ))}
             </select>
           </div>
           <Button

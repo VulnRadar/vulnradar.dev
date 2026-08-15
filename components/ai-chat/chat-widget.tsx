@@ -39,6 +39,7 @@ import {
   type SlashCommand,
 } from "@/lib/ai/commands";
 import { AI_CHAT_ASK_EVENT, type AiChatAskDetail } from "@/lib/ai/chat-bridge";
+import { copyToClipboard } from "@/lib/ui/clipboard";
 
 type ChatMessage = {
   id: string;
@@ -290,22 +291,10 @@ function MarkdownContent({ content }: { content: string }) {
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      ta.style.cssText = "position:fixed;opacity:0";
-      document.body.appendChild(ta);
-      ta.select();
-      try {
-        document.execCommand("copy");
-      } finally {
-        document.body.removeChild(ta);
-      }
+    if (await copyToClipboard(text)) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
     }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
   }, [text]);
 
   return (

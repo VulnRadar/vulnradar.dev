@@ -39,7 +39,7 @@ export default function GithubCreditsCheckoutPage() {
           return;
         }
       } catch {
-        router.push("/auth?redirect=/checkout/github-credits");
+        router.push(`${ROUTES.LOGIN}?redirect=/checkout/github-credits`);
         return;
       }
       setLoading(false);

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/ui/utils";
+import { copyToClipboard } from "@/lib/ui/clipboard";
 import {
   Plus,
   Play,
@@ -85,13 +86,9 @@ export function WebhooksSection({
 
   async function handleCopySecret() {
     if (!newlyCreatedWebhookSecret) return;
-    try {
-      await navigator.clipboard.writeText(newlyCreatedWebhookSecret);
+    if (await copyToClipboard(newlyCreatedWebhookSecret)) {
       setCopiedSecret(true);
       setTimeout(() => setCopiedSecret(false), 2000);
-    } catch {
-      // Clipboard permission denied or unavailable -- the secret is still
-      // selectable text in the panel below, so this is a soft failure.
     }
   }
 
