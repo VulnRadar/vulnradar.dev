@@ -350,30 +350,101 @@ export default function ReposPage() {
         )}
 
         {!status.connected ? (
-          <div className="flex flex-col gap-1 pt-6">
-            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
-              Repos
-            </h1>
-            <p className="text-sm text-muted-foreground max-w-prose">
-              Run a security review on your repo source: any kind of repo, not
-              just web apps. Bots, games, CLIs, libraries, whatever. The AI
-              review looks for hardcoded secrets, SQL/command injection, and
-              other code-level issues, not URL/HTTP problems.
-            </p>
-            <div className="mt-4 rounded-lg border border-dashed border-border px-5 py-8 text-center max-w-lg">
-              <p className="text-sm text-foreground font-medium">
-                Repo access hasn&apos;t been granted yet
-              </p>
-              <p className="text-sm text-muted-foreground mt-1 mb-4">
-                Grant access from your GitHub connection in Social settings,
-                then come back here to pick repos.
-              </p>
-              <Button asChild className="gap-2">
-                <Link href={`${ROUTES.PROFILE}?tab=social`}>
-                  <GithubIcon className="h-4 w-4" />
-                  Go to Social settings
-                </Link>
-              </Button>
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)] gap-8 lg:gap-12 items-center pt-6">
+            <div className="flex flex-col gap-4 min-w-0">
+              <div className="flex flex-col gap-1">
+                <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
+                  Repos
+                </h1>
+                <p className="text-sm text-muted-foreground max-w-prose">
+                  Run a security review on your repo source: any kind of repo,
+                  not just web apps. Bots, games, CLIs, libraries, whatever. Not
+                  URL/HTTP problems, actual code-level issues.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  "Hardcoded secrets",
+                  "SQL injection",
+                  "Command injection",
+                ].map((label) => (
+                  <span
+                    key={label}
+                    className="rounded-full border border-border/60 bg-muted/40 px-2.5 py-1 text-xs font-medium text-muted-foreground"
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
+              <div className="flex flex-col gap-3 rounded-lg border border-border/60 bg-card/50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    Repo access hasn&apos;t been granted yet
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Grant it from your GitHub connection in Social settings.
+                  </p>
+                </div>
+                <Button asChild className="gap-2 shrink-0">
+                  <Link href={`${ROUTES.PROFILE}?tab=social`}>
+                    <GithubIcon className="h-4 w-4" />
+                    Go to Social settings
+                  </Link>
+                </Button>
+              </div>
+            </div>
+
+            {/* A concrete example of what a review turns up, so "AI review"
+                isn't just a claim in a sentence. */}
+            <div className="rounded-xl border border-border/60 bg-muted/30 overflow-hidden">
+              <div className="flex items-center gap-2 border-b border-border/60 bg-muted/50 px-3.5 py-2">
+                <span className="h-2.5 w-2.5 rounded-full bg-destructive/60" />
+                <span className="h-2.5 w-2.5 rounded-full bg-[hsl(var(--severity-medium))]/60" />
+                <span className="h-2.5 w-2.5 rounded-full bg-[hsl(var(--success))]/60" />
+                <span className="ml-1.5 font-mono text-[11px] text-muted-foreground">
+                  config/database.js
+                </span>
+              </div>
+              <pre className="px-4 py-3.5 overflow-x-auto text-xs leading-6 font-mono">
+                <code className="block">
+                  <span className="block text-muted-foreground/60">
+                    <span className="inline-block w-4 text-muted-foreground/40">
+                      1
+                    </span>
+                    const client = new Redis({"{"}
+                  </span>
+                  <span className="-mx-4 block bg-destructive/10 px-4">
+                    <span className="inline-block w-4 text-muted-foreground/40">
+                      2
+                    </span>
+                    <span className="text-foreground/90">
+                      {'  password: "prod_'}
+                    </span>
+                    <span className="font-semibold text-destructive">
+                      Kx9pL2mQ...
+                    </span>
+                    <span className="text-foreground/90">{'",'}</span>
+                  </span>
+                  <span className="block text-muted-foreground/60">
+                    <span className="inline-block w-4 text-muted-foreground/40">
+                      3
+                    </span>
+                    {"});"}
+                  </span>
+                </code>
+              </pre>
+              <div className="flex items-start gap-2 border-t border-border/60 px-4 py-3">
+                <ShieldAlert
+                  className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5"
+                  aria-hidden="true"
+                />
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-medium text-destructive">
+                    Critical:
+                  </span>{" "}
+                  hardcoded credential committed to source control
+                </p>
+              </div>
             </div>
           </div>
         ) : activeRepo ? (
@@ -414,14 +485,26 @@ export default function ReposPage() {
                 <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
               </div>
             ) : !repos || repos.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-border px-5 py-10 text-center max-w-lg">
-                <p className="text-sm text-foreground font-medium">
-                  No repos selected yet
-                </p>
-                <p className="text-sm text-muted-foreground mt-1 mb-4">
-                  Pick which of your repos should show up here.
-                </p>
-                <Button className="gap-2" onClick={() => setPickerOpen(true)}>
+              <div className="flex flex-col gap-4 rounded-xl border border-border/60 bg-card/50 px-6 py-8 sm:flex-row sm:items-center sm:gap-6">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-muted/60">
+                  <GithubIcon className="h-5 w-5 text-muted-foreground" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground">
+                    No repos selected yet
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    Signed in as{" "}
+                    <span className="font-mono text-foreground/80">
+                      {status.githubUsername}
+                    </span>
+                    . Pick which repos should show up here.
+                  </p>
+                </div>
+                <Button
+                  className="gap-2 shrink-0"
+                  onClick={() => setPickerOpen(true)}
+                >
                   <GithubIcon className="h-4 w-4" />
                   Select repositories
                 </Button>
