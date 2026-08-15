@@ -757,6 +757,76 @@ describe("checkDNSSecurity", () => {
     expect(titles.some((t) => /MTA-STS/i.test(t))).toBe(true);
     expect(titles.some((t) => /TLS-RPT/i.test(t))).toBe(true);
   });
+
+  it("suppresses 'Missing SPF Record' on a null-MX (web-only) domain", async () => {
+    // A subdomain with no mail activity at all (app./staging./dashboard.,
+    // the common case for a scanned URL) has no SPF record by design --
+    // this must not fire the same way DKIM/MTA-STS/TLS-RPT already don't.
+    // The TXT lookup must resolve (not reject) with a genuinely non-SPF
+    // record, matching checkSPF's own "confirmed missing" condition --
+    // a rejected lookup is a transient-error no-op, not a meaningful test
+    // of the null-MX gate itself.
+    dnsMock.resolveMx.mockResolvedValue([{ exchange: ".", priority: 0 }]);
+    dnsMock.resolveTxt.mockImplementation(async (name: string) => {
+      if (typeof name !== "string") throw new Error("NXDOMAIN");
+      if (name === "sandbox.example.com") return [["some-unrelated-txt"]];
+      throw new Error("NXDOMAIN");
+    });
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      json: () => Promise.resolve({ AD: false }),
+    });
+    const findings = await checkDNSSecurity(
+      "sandbox.example.com",
+      "https://sandbox.example.com",
+    );
+    const titles = findings.map((f) => f.title);
+    expect(titles).not.toContain("Missing SPF Record");
+  });
+
+  it("still reports 'Missing SPF Record' when MX points to a real mail server", async () => {
+    dnsMock.resolveMx.mockResolvedValue([
+      { exchange: "mail.example.com", priority: 10 },
+    ]);
+    // A resolved TXT lookup with no v=spf1 record is genuinely "missing" --
+    // a rejected lookup (ENOTFOUND) is treated as a transient DNS error and
+    // produces no finding at all, so it can't stand in for "confirmed
+    // absent" here (see checkSPF's own catch block).
+    dnsMock.resolveTxt.mockImplementation(async (name: string) => {
+      if (typeof name !== "string") throw new Error("NXDOMAIN");
+      if (name === "example.com") return [["v=spf2.0"]];
+      throw new Error("NXDOMAIN");
+    });
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      json: () => Promise.resolve({ AD: false }),
+    });
+    const findings = await checkDNSSecurity(
+      "example.com",
+      "https://example.com",
+    );
+    const titles = findings.map((f) => f.title);
+    expect(titles).toContain("Missing SPF Record");
+  });
+
+  it("still reports a genuinely weak SPF record (+all) even on a null-MX domain", async () => {
+    // Only the "missing" case is gated -- a record that DOES exist means
+    // SPF is in real use regardless of the MX declaration, so a weak
+    // policy on it is still a real finding.
+    dnsMock.resolveMx.mockResolvedValue([{ exchange: ".", priority: 0 }]);
+    dnsMock.resolveTxt.mockImplementation(async (name: string) => {
+      if (typeof name !== "string") throw new Error("NXDOMAIN");
+      if (name === "sandbox.example.com") return [["v=spf1 +all"]];
+      throw new Error("NXDOMAIN");
+    });
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      json: () => Promise.resolve({ AD: false }),
+    });
+    const findings = await checkDNSSecurity(
+      "sandbox.example.com",
+      "https://sandbox.example.com",
+    );
+    const titles = findings.map((f) => f.title);
+    expect(titles).toContain("Weak SPF Record (+all)");
+  });
 });
 
 // ── checkTLSCert ─────────────────────────────────────────────────────

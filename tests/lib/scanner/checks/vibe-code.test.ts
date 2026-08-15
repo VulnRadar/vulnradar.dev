@@ -31,6 +31,30 @@ const fixtures: DetectorFixtures = {
       evidenceIncludes: "eval",
     },
   ],
+  "vibe-weak-random": [
+    {
+      description:
+        "Math.random() genuinely used to build a security token fires",
+      body: "<script>const value = Math.random().toString(36); const kind = 'token';</script>",
+      expect: "fire",
+      evidenceIncludes: "Math.random()",
+    },
+    {
+      description:
+        "Math.random() used for an unrelated DOM element id, with 'productId' appearing much later on the same long minified line, does not fire (bounded proximity window)",
+      body:
+        "<script>const domId=Math.random().toString(36);" +
+        "x".repeat(200) +
+        "const productId=42;</script>",
+      expect: "skip",
+    },
+    {
+      description:
+        "trigger word matches only as a substring of an unrelated identifier ('gridSize') right after Math.random(), not a standalone term -- does not fire",
+      body: "<script>const gridSize = Math.random() * 10;</script>",
+      expect: "skip",
+    },
+  ],
   "vibe-sql-string-concat": [
     {
       description:

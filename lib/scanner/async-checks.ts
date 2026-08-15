@@ -2117,8 +2117,22 @@ export async function checkDNSSecurity(
   const isNullMx = nullMxResult.status === "fulfilled" && nullMxResult.value;
 
   const findings: Vulnerability[] = [];
+
+  // "Missing SPF Record" only applies to a domain that actually sends
+  // mail -- a null-MX domain has explicitly declared (RFC 7505) that it
+  // never will, the same reasoning the DKIM/MTA-STS/TLS-RPT/BIMI group
+  // below is already gated on. Any OTHER SPF finding (weak +all,
+  // soft-fail ~all, deprecated ptr:) only fires when a record already
+  // exists, meaning SPF is genuinely in use regardless of the MX
+  // declaration, so those still apply unconditionally.
+  if (spfResult.status === "fulfilled") {
+    const spfFindings = isNullMx
+      ? spfResult.value.filter((v) => v.title !== "Missing SPF Record")
+      : spfResult.value;
+    findings.push(...spfFindings);
+  }
+
   for (const r of [
-    spfResult,
     dmarcResult,
     dnssecResult,
     caaResult,

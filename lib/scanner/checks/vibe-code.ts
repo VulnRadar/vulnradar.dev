@@ -120,8 +120,15 @@ const rawDetectors: Record<string, DetectFn> = {
 
   "vibe-weak-random": (_url, _headers, body) => {
     if (!hasScript(body)) return null;
+    // Bounded proximity window (matches the SQL-concat check's own
+    // [\s\S]{0,150} convention above) and word-boundaried trigger terms --
+    // the previous unbounded, unanchored `.*` matched across an entire
+    // minified line (the production norm) and matched inside ordinary
+    // identifiers containing these substrings (grid, hidden, productId,
+    // keyword, encode), not just the standalone security-sensitive terms
+    // it was meant to catch.
     const pattern =
-      /Math\.random\(\).*(?:token|csrf|session|secret|key|nonce|id|code)/i;
+      /Math\.random\(\)[\s\S]{0,150}\b(?:token|csrf|session|secret|key|nonce|id|code)\b/i;
     if (pattern.test(body)) {
       return "Math.random() used near security-sensitive term — Math.random() is not cryptographically secure.";
     }

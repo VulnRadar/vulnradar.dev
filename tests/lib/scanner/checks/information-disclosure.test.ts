@@ -225,8 +225,24 @@ const fixtures: DetectorFixtures = {
 
   "html-comment-leaks": [
     {
-      description: "TODO in HTML comment",
+      // TODO/FIXME/XXX/HACK are deliberately NOT flagged: they show up in
+      // virtually every real production site's HTML comments and aren't a
+      // credential leak. Same fix already applied once to content.ts's
+      // sensitive-comments detector for the identical reason.
+      description:
+        "TODO in HTML comment is not flagged -- appears on nearly every real site",
       body: "<html><body><!-- TODO: remove debug print before launch --></body></html>",
+      expect: "skip",
+    },
+    {
+      description: "password with attached value in HTML comment fires",
+      body: "<html><body><!-- password: hunter2fallback --></body></html>",
+      expect: "fire",
+      evidenceIncludes: "Sensitive keywords",
+    },
+    {
+      description: "private key header in HTML comment fires",
+      body: "<html><body><!-- -----BEGIN RSA PRIVATE KEY----- --></body></html>",
       expect: "fire",
     },
   ],
@@ -405,15 +421,27 @@ const fixtures: DetectorFixtures = {
 
   "django-debug-page-exposure": [
     {
-      description: "Django technical 500 page with version banner",
-      body: "<html><body>Django Version: 4.2.1, Python Version: 3.11</body></html>",
+      description:
+        "real Django technical 500 page: version banner plus the structural markers the template always renders alongside it",
+      body: "<html><body>Django Version: 4.2.1, Python Version: 3.11<br>Environment:<br>Request Method: GET</body></html>",
       expect: "fire",
+    },
+    {
+      description:
+        "bare version banner alone (e.g. a migration guide showing 'Django Version: 4.2') no longer fires -- same bug already fixed once for the sibling django-debug-page detector in content.ts",
+      body: "<html><body><p>Upgrading from Django Version: 3.2 to 4.2 requires...</p></body></html>",
+      expect: "skip",
     },
     {
       description:
         "bare DJANGO_SETTINGS_MODULE mention (e.g. deployment docs) no longer fires alone",
       body: "<html><body>export DJANGO_SETTINGS_MODULE=myproject.settings.production</body></html>",
       expect: "skip",
+    },
+    {
+      description: "the DJANGO_DEBUG explanatory sentence fires on its own",
+      body: "<html><body>You're seeing this error because you have <code>DJANGO_DEBUG</code> set to True.</body></html>",
+      expect: "fire",
     },
   ],
 

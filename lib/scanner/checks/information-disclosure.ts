@@ -453,7 +453,11 @@ export const detectors: Record<string, DetectFn> = {
       // server") doesn't get treated the same as an actual embedded credential.
       /(?:password|passwd|pwd)\s*[:=]\s*['"]?[^\s'">]{4,}/i,
       /(?:api[_-]?key|secret|token)\s*[:=]\s*['"]?[^\s'">]{6,}/i,
-      /TODO|FIXME|XXX|HACK/i,
+      // TODO|FIXME|XXX|HACK removed: appears in virtually every real
+      // website's production HTML (<!-- TODO: add favicon --> etc.), the
+      // same reason it was already stripped from content.ts's
+      // sensitive-comments detector -- these are developer-workflow
+      // markers, not credential leaks, and don't belong in this list.
       /BEGIN (?:RSA |OPENSSH |)PRIVATE KEY/i,
       /Bearer\s+[A-Za-z0-9\-_.=]{20,}/i,
     ];
@@ -767,8 +771,19 @@ export const detectors: Record<string, DetectFn> = {
     // DJANGO_SETTINGS_MODULE= is a standard env var name that also appears
     // verbatim in ordinary deployment docs; removed as a standalone signal
     // since it has no requirement for an actual technical-500 page marker.
+    //
+    // The bare "Django Version: X.Y" branch was the same bug already fixed
+    // once for the sibling django-debug-page detector (content.ts): the
+    // string alone appears in ordinary Django tutorials/migration guides,
+    // not just a live debug page. Same fix here -- require the two
+    // structural markers Django's technical_500 template always renders
+    // alongside it. The DJANGO_DEBUG explanatory sentence is left as a
+    // standalone OR since that exact wording is already specific enough
+    // on its own; nothing else renders it.
     if (
-      /Django\s+Version\s*:\s*\d+\.\d+/i.test(body) ||
+      (/Django\s+Version\s*:\s*\d+\.\d+/i.test(body) &&
+        /Environment:/i.test(body) &&
+        /Request Method:/i.test(body)) ||
       /You're\s+seeing\s+this\s+error\s+because\s+you\s+have\s+<code>DJANGO_DEBUG<\/code>\s+set\s+to\s+True/i.test(
         body,
       )

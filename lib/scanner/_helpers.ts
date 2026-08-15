@@ -74,6 +74,36 @@ export function escapeRegExp(input: string): string {
 }
 
 /**
+ * The CSP header string plus any <meta http-equiv="Content-Security-Policy">
+ * content, concatenated. A meta-tag CSP is exactly as binding on the
+ * browser as the header (a page can carry one and not the other, or
+ * different directives in each -- both apply), so "is directive X present"
+ * checks need to see both, not just the header. Was previously only done
+ * ad hoc in csp-frame-src-missing (lib/scanner/checks/headers.ts); every
+ * other CSP check silently ignored a meta-only CSP, either wrongly
+ * reporting "no CSP at all" (csp-missing) or wrongly skipping a directive
+ * check entirely, since the header string alone was empty.
+ */
+export function getEffectiveCsp(headers: Headers, body: string): string {
+  const headerCsp = getHeader(headers, "content-security-policy") || "";
+  const metaTag = body.match(
+    /<meta\b[^>]*http-equiv=["']?content-security-policy["']?[^>]*>/i,
+  )?.[0];
+  // A real CSP value is full of single quotes ('self', 'unsafe-inline',
+  // ...), so a shared [^"']* class terminates at the FIRST one -- e.g.
+  // content="default-src 'self'; form-action 'self'" would capture only
+  // "default-src " and silently drop everything after it. Match
+  // double-quoted and single-quoted attribute forms separately instead,
+  // each only stopping at ITS OWN quote character.
+  const metaCsp =
+    metaTag?.match(/content="([^"]*)"/i)?.[1] ??
+    metaTag?.match(/content='([^']*)'/i)?.[1] ??
+    "";
+  if (headerCsp && metaCsp) return `${headerCsp}; ${metaCsp}`;
+  return headerCsp || metaCsp;
+}
+
+/**
  * Cookie parsing helpers.
  */
 export function getSetCookies(headers: Headers): string[] {

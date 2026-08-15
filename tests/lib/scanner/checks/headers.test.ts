@@ -108,6 +108,14 @@ const fixtures: DetectorFixtures = {
       headers: { "content-type": "application/json" },
       expect: "skip",
     },
+    {
+      description:
+        "CSP delivered only via <meta http-equiv> (GitHub Pages, S3 without a CloudFront function) is not reported as missing",
+      url: "https://example.com/",
+      headers: { "content-type": "text/html" },
+      body: '<html><head><meta http-equiv="Content-Security-Policy" content="default-src \'self\'"></head></html>',
+      expect: "skip",
+    },
   ],
 
   "clickjack-missing": [
@@ -840,11 +848,47 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
+  "csp-form-action-missing": [
+    {
+      description: "CSP without form-action directive",
+      url: "https://example.com/",
+      headers: { "content-security-policy": "default-src 'self'" },
+      expect: "fire",
+    },
+    {
+      description: "form-action set only via meta-tag CSP is not missing",
+      url: "https://example.com/",
+      body: "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'self'; form-action 'self'\">",
+      expect: "skip",
+    },
+  ],
+
+  "csp-no-default-src": [
+    {
+      description: "CSP without default-src directive",
+      url: "https://example.com/",
+      headers: { "content-security-policy": "script-src 'self'" },
+      expect: "fire",
+    },
+    {
+      description: "default-src set only via meta-tag CSP is not missing",
+      url: "https://example.com/",
+      body: '<meta http-equiv="Content-Security-Policy" content="default-src \'self\'">',
+      expect: "skip",
+    },
+  ],
+
   "csp-wildcard-source": [
     {
       description: "CSP default-src *",
       url: "https://example.com/",
       headers: { "content-security-policy": "default-src *" },
+      expect: "fire",
+    },
+    {
+      description: "wildcard set via meta-tag CSP (no header CSP at all)",
+      url: "https://example.com/",
+      body: '<meta http-equiv="Content-Security-Policy" content="default-src *">',
       expect: "fire",
     },
   ],
@@ -862,6 +906,13 @@ const fixtures: DetectorFixtures = {
       headers: {
         "content-security-policy": "default-src 'self'; base-uri 'self'",
       },
+      expect: "skip",
+    },
+    {
+      description:
+        "base-uri set only via meta-tag CSP is not reported as missing",
+      url: "https://example.com/",
+      body: "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'self'; base-uri 'self'\">",
       expect: "skip",
     },
   ],
@@ -889,6 +940,13 @@ const fixtures: DetectorFixtures = {
       url: "https://example.com/",
       headers: { "content-security-policy": "default-src 'self'" },
       body: '<meta http-equiv="Content-Security-Policy" content="frame-src https://www.youtube.com https://player.vimeo.com">',
+      expect: "skip",
+    },
+    {
+      description:
+        "meta CSP value containing single-quoted tokens ('self') is read in full, not truncated at the first quote",
+      url: "https://example.com/",
+      body: '<meta http-equiv="Content-Security-Policy" content="default-src \'self\'; frame-src \'self\'">',
       expect: "skip",
     },
   ],

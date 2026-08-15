@@ -10,6 +10,7 @@ import {
   getHeader,
   hasHeader,
   extractScriptContents,
+  getEffectiveCsp,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
 import { SRI_EXEMPT_HOSTS } from "./client-side";
@@ -33,10 +34,14 @@ export const detectors: Record<string, DetectFn> = {
     return "Header 'Strict-Transport-Security' is not present in the response.";
   },
 
-  "csp-missing": (_url, headers) => {
+  "csp-missing": (_url, headers, body) => {
     const ct = h(headers, "content-type") || "";
     if (!ct.includes("text/html")) return null;
-    if (hasHeader(headers, "content-security-policy")) return null;
+    // A <meta http-equiv="Content-Security-Policy"> is equally binding on
+    // the browser -- a site delivering CSP that way (GitHub Pages, S3
+    // without a CloudFront function, several CMS security plugins) was
+    // being reported as having no CSP at all.
+    if (getEffectiveCsp(headers, body)) return null;
     return "Header 'Content-Security-Policy' is not present in the response.";
   },
 
@@ -208,15 +213,15 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "csp-form-action-missing": (_url, headers) => {
-    const csp = h(headers, "content-security-policy");
+  "csp-form-action-missing": (_url, headers, body) => {
+    const csp = getEffectiveCsp(headers, body);
     if (!csp) return null;
     if (csp.includes("form-action")) return null;
     return "CSP exists but no form-action directive.";
   },
 
-  "csp-base-uri-missing": (_url, headers) => {
-    const csp = h(headers, "content-security-policy");
+  "csp-base-uri-missing": (_url, headers, body) => {
+    const csp = getEffectiveCsp(headers, body);
     if (!csp) return null;
     if (csp.includes("base-uri")) return null;
     return "CSP exists but no base-uri directive.";
@@ -237,8 +242,8 @@ export const detectors: Record<string, DetectFn> = {
     return "CSP does not include 'upgrade-insecure-requests' directive.";
   },
 
-  "csp-no-default-src": (_url, headers) => {
-    const csp = h(headers, "content-security-policy");
+  "csp-no-default-src": (_url, headers, body) => {
+    const csp = getEffectiveCsp(headers, body);
     if (!csp) return null;
     if (csp.includes("default-src")) return null;
     return "CSP has no default-src fallback directive. Undeclared resource types are unrestricted.";
@@ -313,8 +318,8 @@ export const detectors: Record<string, DetectFn> = {
     return `CSP ${directive} allows http:// sources — scripts can be loaded over unencrypted HTTP, enabling MITM injection.`;
   },
 
-  "csp-wildcard-source": (_url, headers) => {
-    const csp = h(headers, "content-security-policy");
+  "csp-wildcard-source": (_url, headers, body) => {
+    const csp = getEffectiveCsp(headers, body);
     if (!csp) return null;
     const parts = csp.split(";").map((s) => s.trim());
     for (const p of parts) {
@@ -896,17 +901,9 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "csp-frame-src-missing": (_url, headers, body) => {
-    const csp = h(headers, "content-security-policy");
-    // A <meta http-equiv="Content-Security-Policy"> is equally binding on
-    // the browser, and a page can carry a frame-src there while the HTTP
-    // header CSP omits it entirely (or vice versa) -- both are enforced,
-    // so the directive is only truly missing when neither source sets it.
-    const metaTag = body.match(
-      /<meta\b[^>]*http-equiv=["']?content-security-policy["']?[^>]*>/i,
-    )?.[0];
-    const metaCsp = metaTag?.match(/content=["']([^"']*)["']/i)?.[1] ?? "";
-    if (!csp && !metaCsp) return null;
-    if (/frame-src/i.test(csp ?? "") || /frame-src/i.test(metaCsp)) return null;
+    const csp = getEffectiveCsp(headers, body);
+    if (!csp) return null;
+    if (/frame-src/i.test(csp)) return null;
     return "CSP lacks frame-src directive for iframe sources.";
   },
 
