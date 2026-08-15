@@ -152,6 +152,50 @@ describe("checkActiveProbes", () => {
     expect(findings).toEqual([]);
   });
 
+  it("does not flag a JSON API response that omits Content-Type entirely (real backend misconfiguration, not just a hypothetical)", async () => {
+    mockSafeFetch
+      .mockResolvedValueOnce(htmlResponse(CONTACT_PAGE))
+      .mockImplementationOnce(async (_url: string, init: RequestInit) => {
+        const body = new URLSearchParams(init.body as string);
+        // Raw bytes, not a string body -- a string body makes the Response
+        // constructor auto-fill Content-Type: text/plain per the Fetch
+        // spec, which would exercise the OLD "non-HTML content-type
+        // present" guard instead of the new no-Content-Type markup-shape
+        // sniff this fixture is meant to test.
+        return new Response(
+          new TextEncoder().encode(
+            JSON.stringify({
+              error: `invalid value for field: ${body.get("name")}`,
+            }),
+          ),
+          { status: 400 },
+        );
+      });
+
+    const findings = await checkActiveProbes("https://example.com/contact");
+    expect(findings).toEqual([]);
+  });
+
+  it("still flags a real reflected-XSS response with no Content-Type header (fails open toward HTML when the body is actually markup-shaped)", async () => {
+    mockSafeFetch
+      .mockResolvedValueOnce(htmlResponse(SEARCH_PAGE))
+      .mockImplementationOnce(async (_url: string) => {
+        const q = new URL(_url).searchParams.get("q") ?? "";
+        // A string body makes the Response constructor auto-fill
+        // Content-Type: text/plain per the Fetch spec, which would defeat
+        // the point of this fixture -- pass raw bytes instead so no
+        // Content-Type is set at all, the actual "misconfigured backend"
+        // scenario this guard needs to still fail open on.
+        return new Response(
+          new TextEncoder().encode(`<p>Results for: ${q}</p>`),
+          { status: 200 },
+        );
+      });
+
+    const findings = await checkActiveProbes("https://example.com/search");
+    expect(findings).toHaveLength(1);
+  });
+
   it("submits a GET form as query params, not a body", async () => {
     mockSafeFetch
       .mockResolvedValueOnce(htmlResponse(SEARCH_PAGE))
@@ -312,6 +356,51 @@ describe("checkSqlInjectionProbe", () => {
       );
 
     const findings = await checkSqlInjectionProbe("https://example.com");
+    expect(findings).toHaveLength(1);
+  });
+
+  it("does not flag a database/dev-tooling documentation page that already quotes the exact error text before any probe runs", async () => {
+    const DOCS_PAGE_WITH_SEARCH = `
+<html><body>
+<p>Common error: "you have an error in your SQL syntax" usually means a
+malformed query. See our troubleshooting guide.</p>
+<form action="/search" method="get">
+  <input type="text" name="q">
+</form>
+</body></html>
+`;
+    mockSafeFetch
+      .mockResolvedValueOnce(htmlResponse(DOCS_PAGE_WITH_SEARCH))
+      .mockResolvedValueOnce(
+        // Real page: this text is on EVERY response from this page,
+        // probed or not -- our lone-quote payload didn't cause it.
+        htmlResponse(
+          'Common error: "you have an error in your SQL syntax" usually means a malformed query.',
+        ),
+      );
+
+    const findings = await checkSqlInjectionProbe("https://example.com/search");
+    expect(findings).toEqual([]);
+  });
+
+  it("still flags a real SQL error signature that was NOT already present on the unprobed page, even when the page happens to mention an unrelated one", async () => {
+    const DOCS_PAGE_MENTIONS_MYSQL_ONLY = `
+<html><body>
+<p>We migrated from "you have an error in your SQL syntax" (MySQL) to PostgreSQL.</p>
+<form action="/search" method="get">
+  <input type="text" name="q">
+</form>
+</body></html>
+`;
+    mockSafeFetch
+      .mockResolvedValueOnce(htmlResponse(DOCS_PAGE_MENTIONS_MYSQL_ONLY))
+      .mockResolvedValueOnce(
+        // A genuinely different (PostgreSQL) signature, not present on
+        // the baseline page at all -- this one is real, live evidence.
+        htmlResponse('ERROR: syntax error at or near "vr1234\'"'),
+      );
+
+    const findings = await checkSqlInjectionProbe("https://example.com/search");
     expect(findings).toHaveLength(1);
   });
 });

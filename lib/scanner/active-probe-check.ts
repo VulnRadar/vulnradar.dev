@@ -113,6 +113,12 @@ function buildProbeRequest(
 interface ProbableForm {
   hostname: string;
   forms: ReturnType<typeof findAllForms>;
+  /** The unprobed page's own HTML, before any payload was submitted --
+   *  lets a probe distinguish "the target's response CONTAINS this text
+   *  because our payload provoked it" from "this text was already on the
+   *  page regardless" (a database/dev-tooling docs page or Q&A thread
+   *  quoting a real error message as an example). */
+  baselineHtml: string;
 }
 
 /**
@@ -155,7 +161,7 @@ async function discoverProbableForms(
     .slice(0, MAX_FORMS_TO_PROBE);
   if (forms.length === 0) return null;
 
-  return { hostname, forms };
+  return { hostname, forms, baselineHtml: html };
 }
 
 /**
@@ -195,13 +201,23 @@ export async function checkActiveProbes(url: string): Promise<Vulnerability[]> {
       // A JSON/plaintext API response can contain the literal marker (JSON
       // string encoding doesn't escape < or >) without it ever being parsed
       // as HTML by a browser, so only treat this as confirmed reflected XSS
-      // when the response is actually HTML (or the content type is unknown,
-      // which we treat conservatively as possibly HTML).
+      // when the response is actually HTML.
       const contentType = res.headers.get("content-type") ?? "";
       if (contentType && !/^text\/html/i.test(contentType)) {
         continue;
       }
       const responseText = await res.text();
+      // No Content-Type at all is a real, common backend misconfiguration
+      // (not hypothetical) -- trusting that as "possibly HTML" let a JSON
+      // API omitting the header (e.g. {"error":"invalid value for field:
+      // <canary>"}) get "confirmed" as reflected XSS even though a
+      // browser's MIME-sniffing would never render/execute it. Sniff the
+      // body's own shape instead of guessing: a response beginning with
+      // `{` or `[` (after whitespace) is JSON-shaped, not HTML, regardless
+      // of what header (or lack of one) it came with.
+      if (!contentType && /^\s*[{[]/.test(responseText)) {
+        continue;
+      }
       if (responseText.includes(marker)) {
         // form.action alone isn't a unique distinguisher: two different
         // forms on the same page (a header search box and a body search
@@ -260,7 +276,22 @@ export async function checkSqlInjectionProbe(
 ): Promise<Vulnerability[]> {
   const discovered = await discoverProbableForms(url);
   if (!discovered) return [];
-  const { hostname, forms } = discovered;
+  const { hostname, forms, baselineHtml } = discovered;
+
+  // A signature already present on the UNPROBED page (a database/dev-
+  // tooling documentation page or Q&A thread that quotes a real SQL error
+  // message as example content) would keep matching every probed response
+  // too, regardless of whether the payload did anything at all. Exclude
+  // those signatures up front rather than trusting a post-probe match
+  // alone -- this is a cheap, no-extra-request way to approximate the
+  // "confirm against a control response" check mainstream DAST tools do.
+  const preExisting = new Set(
+    SQL_ERROR_SIGNATURES.filter((sig) => sig.test(baselineHtml)),
+  );
+  const liveSignatures = SQL_ERROR_SIGNATURES.filter(
+    (sig) => !preExisting.has(sig),
+  );
+  if (liveSignatures.length === 0) return [];
 
   const findings: Vulnerability[] = [];
 
@@ -278,7 +309,7 @@ export async function checkSqlInjectionProbe(
       );
       const res = await safeFetch(probeUrl, init, [hostname]);
       const responseText = await res.text();
-      if (SQL_ERROR_SIGNATURES.some((sig) => sig.test(responseText))) {
+      if (liveSignatures.some((sig) => sig.test(responseText))) {
         const distinguisher = `${form.action}#${formIndex}:${form.testableFields.join(",")}`;
         const finding = buildFinding(
           "sql-injection-error-based",
