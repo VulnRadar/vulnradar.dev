@@ -15,6 +15,8 @@ import {
   EXACT_CHECK_COUNT,
   EXACT_CHECK_CATEGORY_COUNT,
 } from "@/lib/config/check-stats.generated";
+import { Eye, EyeOff } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/ui/utils";
 import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
 import {
@@ -327,7 +329,7 @@ const endpoints: Endpoint[] = [
   {
     id: "get-history-id",
     method: "GET",
-    path: "/history/[id]",
+    path: "/history/{id}",
     title: "Get Scan Details",
     description:
       "Return full scan details: findings, response headers, scan metadata. Owner or same-team member can view.",
@@ -368,7 +370,7 @@ const endpoints: Endpoint[] = [
   {
     id: "delete-history-id",
     method: "DELETE",
-    path: "/history/[id]",
+    path: "/history/{id}",
     title: "Delete a Single Scan",
     description: "Permanently delete a single scan by ID. Owner only.",
     pathParams: [
@@ -392,7 +394,7 @@ const endpoints: Endpoint[] = [
   {
     id: "patch-history-id",
     method: "PATCH",
-    path: "/history/[id]",
+    path: "/history/{id}",
     title: "Update Scan Notes",
     description: "Update the user note on a scan. Owner only.",
     pathParams: [
@@ -536,7 +538,7 @@ const endpoints: Endpoint[] = [
   {
     id: "get-finding-types",
     method: "GET",
-    path: "/api/v3/finding-types",
+    path: "/finding-types",
     title: "Finding Types",
     description:
       "Returns the full catalogue of detection checks. Use this to display human-readable titles, categorize findings, or build SDKs that know every check ID ahead of time.",
@@ -641,7 +643,7 @@ const endpoints: Endpoint[] = [
   {
     id: "post-keys-rotate",
     method: "POST",
-    path: "/keys/[id]/rotate",
+    path: "/keys/{id}/rotate",
     title: "Rotate API Key",
     description:
       "Hard-delete the key and create a new one with the same name. Returns the new raw key once.",
@@ -666,7 +668,7 @@ const endpoints: Endpoint[] = [
   {
     id: "post-keys-revoke",
     method: "POST",
-    path: "/keys/[id]/revoke",
+    path: "/keys/{id}/revoke",
     title: "Revoke API Key",
     description:
       "Set revoked_at on the key. The key stops working immediately.",
@@ -791,6 +793,11 @@ export default function APIDocsPage() {
   const [activeCodeTab, setActiveCodeTab] = useState<
     "curl" | "javascript" | "python"
   >("curl");
+  // Kept in memory only -- never persisted to localStorage/sessionStorage or
+  // sent anywhere but this deployment's own /api/v3, so it's gone the
+  // moment this page unmounts or reloads.
+  const [playgroundApiKey, setPlaygroundApiKey] = useState("");
+  const [showPlaygroundApiKey, setShowPlaygroundApiKey] = useState(false);
   const observerRef = useRef<IntersectionObserver | null>(null);
 
   useEffect(() => {
@@ -916,6 +923,48 @@ export default function APIDocsPage() {
           </div>
         </dl>
 
+        <div className="rounded-lg border border-border/50 bg-card/50 p-3 sm:p-4">
+          <label
+            htmlFor="playground-api-key"
+            className="text-sm font-medium text-foreground"
+          >
+            Try it live
+          </label>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Paste an API key to fire real GET requests against this deployment
+            straight from each endpoint below (look for the &quot;Try it
+            live&quot; toggle). Kept in memory for this page load only, never
+            stored or sent anywhere but{" "}
+            <InlineCode>{APP_URL}/api/v3</InlineCode>.
+          </p>
+          <div className="relative mt-2 max-w-sm">
+            <Input
+              id="playground-api-key"
+              type={showPlaygroundApiKey ? "text" : "password"}
+              value={playgroundApiKey}
+              onChange={(e) => setPlaygroundApiKey(e.target.value)}
+              placeholder="vr_live_..."
+              autoComplete="off"
+              className="h-9 pr-9 font-mono text-xs bg-background/50 border-border/40"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPlaygroundApiKey((v) => !v)}
+              className="absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
+              aria-label={
+                showPlaygroundApiKey ? "Hide API key" : "Show API key"
+              }
+              aria-pressed={showPlaygroundApiKey}
+            >
+              {showPlaygroundApiKey ? (
+                <EyeOff className="h-4 w-4" aria-hidden="true" />
+              ) : (
+                <Eye className="h-4 w-4" aria-hidden="true" />
+              )}
+            </button>
+          </div>
+        </div>
+
         <EndpointTable
           caption="Every documented endpoint, with a link to its full reference"
           endpoints={endpoints.map((e) => ({
@@ -927,7 +976,11 @@ export default function APIDocsPage() {
 
         <div className="space-y-6">
           {endpoints.map((endpoint) => (
-            <EndpointCard key={endpoint.id} {...endpoint} />
+            <EndpointCard
+              key={endpoint.id}
+              {...endpoint}
+              apiKey={playgroundApiKey}
+            />
           ))}
         </div>
       </DocsSection>

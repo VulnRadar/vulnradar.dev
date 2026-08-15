@@ -635,7 +635,7 @@ Returns up to 100 most recent scans for the authenticated user. Retention follow
 }
 ```
 
-#### `GET /history/[id]`: Get Scan Details
+#### `GET /history/{id}`: Get Scan Details
 Return full scan details: findings, response headers, scan metadata. Owner or same-team member can view.
 
 - **Response (200):**
@@ -666,7 +666,7 @@ Permanently delete every scan and tag for the authenticated user. Cannot be undo
 }
 ```
 
-#### `DELETE /history/[id]`: Delete a Single Scan
+#### `DELETE /history/{id}`: Delete a Single Scan
 Permanently delete a single scan by ID. Owner only.
 
 - **Response (200):**
@@ -677,7 +677,7 @@ Permanently delete a single scan by ID. Owner only.
 }
 ```
 
-#### `PATCH /history/[id]`: Update Scan Notes
+#### `PATCH /history/{id}`: Update Scan Notes
 Update the user note on a scan. Owner only.
 
 - **Request body:**
@@ -763,7 +763,7 @@ Compare installed version against the latest GitHub release. Unauthenticated. Ca
 }
 ```
 
-#### `GET /api/v3/finding-types`: Finding Types
+#### `GET /finding-types`: Finding Types
 Returns the full catalogue of detection checks. Use this to display human-readable titles, categorize findings, or build SDKs that know every check ID ahead of time.
 
 - **Response (200):**
@@ -853,7 +853,7 @@ Generate a new API key. The raw value is returned ONLY in this response, so copy
 }
 ```
 
-#### `POST /keys/[id]/rotate`: Rotate API Key
+#### `POST /keys/{id}/rotate`: Rotate API Key
 Hard-delete the key and create a new one with the same name. Returns the new raw key once.
 
 - **Response (200):**
@@ -865,7 +865,7 @@ Hard-delete the key and create a new one with the same name. Returns the new raw
 }
 ```
 
-#### `POST /keys/[id]/revoke`: Revoke API Key
+#### `POST /keys/{id}/revoke`: Revoke API Key
 Set revoked_at on the key. The key stops working immediately.
 
 - **Response (200):**
@@ -886,6 +886,7 @@ Set revoked_at on the key. The key stops working immediately.
 ### Notes
 - Authentication is either the session cookie the web app already holds, or a Bearer API key prefixed vr_live_ ( CONFIG_API_KEY_PREFIX). Which one you use changes how quota is counted, so read Rate Limits before you wire this into CI.
 - Each account is capped at 3 active keys. Keep them out of version control and rotate with POST /api/v3/keys/[id]/rotate, which deletes the old key in the same call.
+- Paste an API key to fire real GET requests against this deployment straight from each endpoint below (look for the "Try it live" toggle). Kept in memory for this page load only, never stored or sent anywhere but /api/v3.
 - The same three calls in curl, JavaScript, and Python. Swap the placeholder key and they run as-is. The Python tab uses the official SDK (pip install vulnradar, source at github.com/VulnRadar/Python-SDK ) instead of raw HTTP calls.
 - Finding IDs are stable, so a scan can gate a pull request: fail the build when critical or high findings show up, without hand-rolling the poll loop yourself.
 - Store your API key as a repo secret named VULNRADAR_TOKEN, never hardcoded in the workflow. Self-hosting? Point api-base-url at your own deployment's /api/v3.
@@ -1473,7 +1474,7 @@ npm run lint:fix    # auto-fix
 | `/docs/extension` | ✓ | 8 | 1 | 0 | 0 | 0 | 0 | 10 | 2 |
 | `/docs/self-hosting` | - | 15 | 3 | 0 | 11 | 0 | 0 | 14 | 2 |
 | `/docs/config` | - | 9 | 3 | 0 | 2 | 0 | 0 | 23 | 0 |
-| `/docs/api` | - | 8 | 3 | 0 | 4 | 22 | 0 | 8 | 6 |
+| `/docs/api` | - | 8 | 3 | 0 | 4 | 22 | 0 | 9 | 6 |
 | `/docs/webhooks` | ✓ | 6 | 0 | 0 | 3 | 0 | 0 | 5 | 5 |
 | `/docs/rate-limits` | - | 6 | 5 | 0 | 4 | 0 | 0 | 10 | 3 |
 | `/docs/architecture` | - | 5 | 1 | 0 | 4 | 0 | 0 | 8 | 0 |
