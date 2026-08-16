@@ -84,7 +84,13 @@
     {
       "id": "AUDIT-005",
       "title": "Engine 3.0.0 cleanup, email-2FA race, Bearer CSRF bypass, billing salt",
-      "scopes": ["auth", "csrf", "crypto", "scanner", "misc"],
+      "scopes": [
+        "auth",
+        "csrf",
+        "crypto",
+        "scanner",
+        "misc"
+      ],
       "createdAt": "2026-07-05T00:00:00Z",
       "closedAt": "2026-07-05T06:00:00Z",
       "status": "shipped",
@@ -93,7 +99,12 @@
     {
       "id": "AUDIT-006",
       "title": "Engine 3.0.0 probe evidence masking and body-size hardening",
-      "scopes": ["scanner", "evidence", "perf", "rate-limit"],
+      "scopes": [
+        "scanner",
+        "evidence",
+        "perf",
+        "rate-limit"
+      ],
       "createdAt": "2026-07-05T23:10:00Z",
       "closedAt": "2026-07-05T23:30:00Z",
       "status": "shipped",
@@ -121,7 +132,9 @@
     {
       "id": "AUDIT-008",
       "title": "Scanner check accuracy sweep (post-Walmart false-positive report)",
-      "scopes": ["scanner"],
+      "scopes": [
+        "scanner"
+      ],
       "createdAt": "2026-08-09T02:53:57.917Z",
       "closedAt": "2026-08-09T03:21:43.480Z",
       "status": "in_progress",
@@ -165,9 +178,10 @@
         "infra"
       ],
       "createdAt": "2026-08-13T23:05:18.610Z",
-      "closedAt": "2026-08-13T23:06:03.395Z",
-      "status": "in-progress",
-      "findingsCount": 41
+      "closedAt": "2026-08-16T22:28:23.998Z",
+      "status": "shipped",
+      "findingsCount": 41,
+      "shipCommit": "c58d0481"
     }
   ]
 }
