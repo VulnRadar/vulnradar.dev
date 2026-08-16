@@ -962,7 +962,7 @@ export const CONFIG_CONTACT_MESSAGE_MAX_LENGTH = 5000;
 
 // Row cap for both the "Recent Scans" and "Top Vulnerabilities" dashboard
 // widgets (GET /api/v3/dashboard).
-export const CONFIG_DASHBOARD_WIDGET_LIMIT = 5;
+export const CONFIG_DASHBOARD_WIDGET_LIMIT = 6;
 
 // Server-enforced avatar upload size cap, after base64 decode
 // (lib/uploads/avatar.ts). The profile page's client-side pre-check
