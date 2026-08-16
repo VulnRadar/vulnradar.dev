@@ -313,6 +313,12 @@ const CHANGELOG: Release[] = [
         desc: "The score recalculation itself was already correct and saved right away, but the scan view you were looking at didn't know to refresh, so the risk score looked unchanged until you left and reopened the scan. It now updates in place as soon as you mark a finding.",
         category: "fixed",
       },
+      {
+        icon: Bug,
+        label: "Detection Engine v3.2.2: Three More False Positives",
+        desc: "A second bulk-scan pass over the same dataset. A cookie check that contradicted its own advice, flagging the modern, correct cookie syntax and telling you to revert to the deprecated one, got merged into the check that already covers the real risk. A prototype-pollution check was matching the standard defensive guard against pollution as if it were the vulnerability itself (flagged critical on google.com). And a Twilio credential pattern still collided with an unrelated token on a large enough page even after last version's fix, so it now also requires a Twilio-related keyword nearby before firing.",
+        category: "fixed",
+      },
     ],
   },
   {

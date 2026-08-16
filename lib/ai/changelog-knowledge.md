@@ -78,6 +78,8 @@ A big one. Scans, webhooks, and scheduled scans can now be shared with a team in
   The risk-score calculation treated every hardcoded-secret finding as "actively exploitable", including the deliberately low-risk tiers like a key that's already meant to be public client-side. A handful of harmless ones together could push a scan from safe straight to critical. Now only the two genuinely dangerous secret tiers count toward that.
 - [Flag] **[FIXED]** **Marking a Finding False Positive Didn't Refresh the Risk Score On Screen**
   The score recalculation itself was already correct and saved right away, but the scan view you were looking at didn't know to refresh, so the risk score looked unchanged until you left and reopened the scan. It now updates in place as soon as you mark a finding.
+- [Bug] **[FIXED]** **Detection Engine v3.2.2: Three More False Positives**
+  A second bulk-scan pass over the same dataset. A cookie check that contradicted its own advice, flagging the modern, correct cookie syntax and telling you to revert to the deprecated one, got merged into the check that already covers the real risk. A prototype-pollution check was matching the standard defensive guard against pollution as if it were the vulnerability itself (flagged critical on google.com). And a Twilio credential pattern still collided with an unrelated token on a large enough page even after last version's fix, so it now also requires a Twilio-related keyword nearby before firing.
 
 ---
 
@@ -1474,6 +1476,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 57
-- **Total changes documented:** 502
+- **Total changes documented:** 503
 - **Latest:** v3.4.0 (August 14, 2026) - Team-Scoped Resources, Admin Security Hardening
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release

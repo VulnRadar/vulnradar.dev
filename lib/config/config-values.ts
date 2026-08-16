@@ -85,7 +85,19 @@ export const CONFIG_MIN_SCHEMA_VERSION = "3.0.0";
 // deliberately low-risk client-exposed/low-risk ones) as "actively
 // exploitable", which alone could push a scan's danger score to 10/10. No
 // new checks or categories, so a patch bump.
-export const CONFIG_ENGINE_VERSION = "3.2.1";
+// 3.2.2: a second bulk-scan sweep over the same dataset found 3 more.
+// cookie-domain-no-leading-dot was a self-contradicting duplicate of
+// cookie-domain-broad (fired on the RFC-6265bis-correct syntax and told
+// the site to revert to the deprecated one) -- merged into
+// cookie-domain-broad and removed, 794 checks total now.
+// prototype-pollution-client matched the standard `= null` /
+// `= Object.create(null)` defensive guard against pollution identically
+// to a real sink (flagged critical on google.com). Twilio Account SID's
+// quote-boundary fix from 3.2.1 wasn't sufficient alone -- format-only
+// matching still collided with an unrelated token on google.com's
+// homepage bundle; now also requires a "twilio" keyword nearby. No new
+// checks or categories, so a patch bump.
+export const CONFIG_ENGINE_VERSION = "3.2.2";
 export const CONFIG_APP_DESCRIPTION =
   "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.";
 export const CONFIG_TOTAL_CHECKS_LABEL = GENERATED_CHECKS_LABEL;
