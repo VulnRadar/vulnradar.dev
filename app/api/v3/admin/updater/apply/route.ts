@@ -25,8 +25,9 @@ interface ApplyBody {
  * POST /api/v3/admin/updater/apply
  *
  * Downloads, verifies, and installs a VulnRadar release over the running
- * app directory, then runs npm ci / npm run build / npm run db:migrate.
- * Never restarts the process -- the admin restarts manually afterward.
+ * app directory, then runs npm ci / npm run db:migrate (backing up the
+ * database first). Deliberately does NOT run npm run build or restart
+ * the process -- the admin builds and restarts manually afterward.
  *
  * This is, by design, "let a super_admin trigger code execution on the
  * host": gated hard behind the super_admin role (not just admin/staff),

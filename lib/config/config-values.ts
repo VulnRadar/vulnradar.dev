@@ -1183,7 +1183,6 @@ export const CONFIG_CLEANUP_KEV_CACHE_RETENTION_DAYS = 7;
 // raised further.
 
 export const CONFIG_UPDATER_NPM_CI_TIMEOUT_MS = 10 * 60 * 1000;
-export const CONFIG_UPDATER_NPM_BUILD_TIMEOUT_MS = 15 * 60 * 1000;
 // How long to wait when downloading the release tarball/checksums/cosign
 // bundle from GitHub before aborting with AssetDownloadError.
 export const CONFIG_UPDATER_ASSET_DOWNLOAD_TIMEOUT_MS = 120_000;

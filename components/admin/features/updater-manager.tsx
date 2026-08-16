@@ -62,7 +62,6 @@ const STEP_LABELS: Record<string, string> = {
   extract: "Extract tarball",
   copy: "Copy files into app directory",
   "npm-ci": "npm ci",
-  "npm-build": "npm run build",
   "db-migrate": "npm run db:migrate",
 };
 
@@ -260,8 +259,8 @@ export function UpdaterManager() {
                   Updater
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Pull and install the latest release from GitHub. You restart
-                  the server yourself once it finishes.
+                  Pull and install the latest release from GitHub. You build and
+                  restart the server yourself once it finishes.
                 </p>
               </div>
             </div>
@@ -425,8 +424,8 @@ export function UpdaterManager() {
                   aria-hidden="true"
                 />
                 <p className="text-sm text-[hsl(var(--success))]">
-                  Update applied. Restart your server process now to run the new
-                  version.
+                  Update applied. Run `npm run build`, then restart your server
+                  process, to run the new version.
                 </p>
               </div>
             )}
@@ -474,7 +473,7 @@ export function UpdaterManager() {
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         title="Apply update"
-        description={`This downloads, verifies, and installs v${status?.latest ?? "the latest release"} over this app's files, then runs npm ci, npm run build, and npm run db:migrate. It does not restart the server; you do that yourself once it finishes. Re-enter your password to confirm.`}
+        description={`This downloads, verifies, and installs v${status?.latest ?? "the latest release"} over this app's files, then runs npm ci and npm run db:migrate (backing up the database first). It does not build or restart the server; you do that yourself once it finishes. Re-enter your password to confirm.`}
         confirmLabel="Apply update"
         variant="destructive"
         onConfirm={startUpdate}

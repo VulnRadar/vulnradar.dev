@@ -1,9 +1,12 @@
 /**
  * Orchestrates a self-update: resolve the release -> download -> verify
  * checksum -> verify cosign signature (if available) -> extract -> copy
- * over the running app directory -> npm ci -> npm run build -> npm run
- * db:migrate. Never restarts anything -- the last log line always tells
- * the admin to restart manually.
+ * over the running app directory -> npm ci -> back up the database -> npm
+ * run db:migrate. Deliberately does NOT run `npm run build` -- that runs
+ * against whatever's already on disk when the admin builds it themselves,
+ * so the updater's job ends at "files and dependencies are in place, DB
+ * is migrated" and the last log line always tells the admin to build and
+ * restart manually.
  *
  * Every subprocess is spawned with an explicit argv array (see
  * lib/updater/exec.ts) and a bounded timeout. The checksum check is a
@@ -275,12 +278,8 @@ export async function runUpdateJob(
       );
     }
 
-    const {
-      UPDATER_NPM_CI_TIMEOUT_MS: npmCiTimeoutMs,
-      UPDATER_NPM_BUILD_TIMEOUT_MS: npmBuildTimeoutMs,
-    } = await getSettings([
+    const { UPDATER_NPM_CI_TIMEOUT_MS: npmCiTimeoutMs } = await getSettings([
       "UPDATER_NPM_CI_TIMEOUT_MS",
-      "UPDATER_NPM_BUILD_TIMEOUT_MS",
     ] as const);
 
     startStep("npm-ci");
@@ -297,20 +296,11 @@ export async function runUpdateJob(
     }
     setStep(jobId, "npm-ci", "done");
 
-    setStatus(jobId, "building");
-    startStep("npm-build");
-    const buildResult = await runCommand("npm", ["run", "build"], {
-      cwd: appRoot,
-      timeoutMs: npmBuildTimeoutMs,
-      onOutput: (chunk) => log(chunk.trimEnd()),
-    });
-    if (buildResult.code !== 0) {
-      setStep(jobId, "npm-build", "failed", `exit ${buildResult.code}`);
-      throw new UpdaterError(
-        `npm run build failed (exit code ${buildResult.code}${buildResult.timedOut ? ", timed out" : ""}).`,
-      );
-    }
-    setStep(jobId, "npm-build", "done");
+    // Deliberately no `npm run build` here -- see module comment. The
+    // admin builds and restarts themselves once this job reports done,
+    // against whatever's actually on disk at that point (their own
+    // config, any local patches) rather than a build this process ran
+    // before dependencies/DB were even necessarily in their final state.
 
     setStatus(jobId, "migrating");
     startStep("db-migrate");
@@ -339,7 +329,7 @@ export async function runUpdateJob(
     setStep(jobId, "db-migrate", "done");
 
     log(
-      `Update to ${release.tagName} applied. Restart your server process to run the new version.`,
+      `Update to ${release.tagName} applied: files updated, dependencies installed, database migrated (backed up first). Run \`npm run build\`, then restart your server process, to finish.`,
     );
     finishJob(jobId, "completed");
   } catch (err) {

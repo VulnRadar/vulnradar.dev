@@ -22,7 +22,6 @@ export type UpdaterJobStatus =
   | "verifying"
   | "extracting"
   | "installing"
-  | "building"
   | "migrating"
   | "completed"
   | "failed";
