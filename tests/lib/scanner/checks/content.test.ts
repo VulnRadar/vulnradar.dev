@@ -118,6 +118,47 @@ const fixtures: DetectorFixtures = {
       expect: "fire",
       evidenceIncludes: "bearer token",
     },
+    {
+      description:
+        "regression: repeated-x placeholder ('Bearer vr_live_xxxxxxxxxxxxxxxxxxxxxxxx', our own API docs' example) does not fire -- not ALL-CAPS, so it slipped past that exclusion alone",
+      body: "<code>Authorization: Bearer vr_live_xxxxxxxxxxxxxxxxxxxxxxxx</code>",
+      expect: "skip",
+    },
+  ],
+  "oauth-state-missing": [
+    {
+      description:
+        "regression: a privacy policy describing an OAuth integration in prose ('Discord OAuth (Optional)... whatever repos you authorize') does not fire -- no actual URL present",
+      body: "<p><strong>Discord OAuth (Optional)</strong>: connects your account. GitHub OAuth lets you authorize repo access.</p>",
+      expect: "skip",
+    },
+    {
+      description:
+        "a real authorization URL with client_id but no state parameter fires",
+      body: '<a href="https://accounts.example.com/oauth2/authorize?client_id=abc123&redirect_uri=https://app.example.com/callback">Sign in</a>',
+      expect: "fire",
+      evidenceIncludes: "state parameter",
+    },
+    {
+      description:
+        "the same authorization URL WITH a state parameter does not fire",
+      body: '<a href="https://accounts.example.com/oauth2/authorize?client_id=abc123&state=xyz789&redirect_uri=https://app.example.com/callback">Sign in</a>',
+      expect: "skip",
+    },
+  ],
+  "sql-error-in-page": [
+    {
+      description:
+        "regression: a self-hosting guide mentioning PostgreSQL in one section and an unrelated 'Error: ECONNREFUSED' in a later troubleshooting section does not fire -- the two are far apart on the page, not part of the same error string",
+      body: "<p>Configure PostgreSQL for the app.</p><p>Some unrelated paragraph text sits here to separate the two mentions on the page.</p><p>Error: ECONNREFUSED 127.0.0.1:5432</p>",
+      expect: "skip",
+    },
+    {
+      description: "a real raw Postgres error string fires",
+      body: 'Query failed: PostgreSQL query error: ERROR:  relation "users" does not exist',
+      expect: "fire",
+      evidenceIncludes: "PostgreSQL",
+    },
   ],
   "sensitive-form-no-csrf": [
     {

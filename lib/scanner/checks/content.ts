@@ -878,11 +878,15 @@ export const detectors: Record<string, DetectFn> = {
   "sql-error-in-page": (_url, _headers, body) => {
     const html = stripExampleContent(body);
     const patterns = [
-      /SQL syntax.*MySQL/i,
+      // Bounded to ~80 chars so "MySQL"/"ERROR:" has to actually be part of
+      // the same error string, not just somewhere later on an unrelated
+      // page that happens to mention the database by name (e.g. a
+      // self-hosting setup guide's "Configure PostgreSQL..." followed,
+      // sections later, by an unrelated troubleshooting "Error: ECONNREFUSED").
+      /SQL syntax[^<]{0,80}MySQL/i,
       /ORA-\d{5}:/,
-      /Microsoft SQL.*Driver/i,
-      // Require "ERROR:" colon to match actual PG error format, not descriptive text like "PostgreSQL errors"
-      /PostgreSQL.*?ERROR:/i,
+      /Microsoft SQL[^<]{0,80}Driver/i,
+      /PostgreSQL[^<]{0,80}ERROR:/i,
       /pg_query\(\)|pg_exec\(\)/i,
       /sqlite3?\.OperationalError/i,
       /SQLSTATE\[/,
@@ -1112,8 +1116,22 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "oauth-state-missing": (_url, _headers, body) => {
-    if (/oauth2?.*(?:authorize|auth)[^"']*(?:\?|&)(?!.*state=)/gi.test(body)) {
-      return "OAuth authorization URL without state parameter - CSRF risk.";
+    // Requires an actual URL with an OAuth-shaped query string (client_id=
+    // or response_type=), not just the words "oauth" and "authorize"
+    // appearing anywhere on the page -- the old unbounded oauth2?.*authorize
+    // plus a lookahead scanning the REST OF THE BODY for "state=" matched a
+    // privacy policy's plain-English description of an OAuth integration
+    // ("Discord OAuth (Optional)... whatever repos you authorize") as if it
+    // were a real, state-less redirect URL.
+    const urls = body.match(
+      /https?:\/\/[^\s"'<>]*(?:oauth2?\/)?(?:authorize|auth)\?[^\s"'<>]*/gi,
+    );
+    if (!urls) return null;
+    for (const u of urls) {
+      if (!/client_id=|response_type=/i.test(u)) continue;
+      if (!/state=/i.test(u)) {
+        return "OAuth authorization URL without state parameter - CSRF risk.";
+      }
     }
     return null;
   },
@@ -1398,7 +1416,15 @@ export const detectors: Record<string, DetectFn> = {
     // dropping the single most common false positive on documentation
     // pages that show an example Authorization header.
     const match = body.match(/Bearer\s+([A-Za-z0-9._\-+/=]{20,})/i);
-    if (match && !/^[A-Z0-9_]+$/.test(match[1])) {
+    // A long run of one repeated character (xxxx..., 0000...) is a
+    // placeholder convention too, not just the ALL-CAPS style excluded
+    // above -- e.g. our own API docs show
+    // "Bearer vr_live_xxxxxxxxxxxxxxxxxxxxxxxx".
+    if (
+      match &&
+      !/^[A-Z0-9_]+$/.test(match[1]) &&
+      !/(.)\1{9,}/.test(match[1])
+    ) {
       return "Bearer token found in page source.";
     }
     const auth = headers.get("authorization");
