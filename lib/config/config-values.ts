@@ -72,7 +72,20 @@ export const CONFIG_MIN_SCHEMA_VERSION = "3.0.0";
 // and host-validation, each verified in both directions (fires on a real
 // vulnerable example, stays silent on a safe/defensive counterexample and
 // on documentation/tutorial context) before being shipped.
-export const CONFIG_ENGINE_VERSION = "3.2.0";
+// 3.2.1: bulk-scanned ~1200 real sites (popular third-party hosts plus
+// VulnRadar's own authenticated pages) and grouped findings by title/host
+// frequency to find false positives at scale. Fixed: exposed-panel probes
+// (Jenkins/Consul/MinIO/phpMyAdmin/Adminer/RabbitMQ) matching any SPA's
+// catch-all shell response instead of the real panel; Twilio/Mailgun/
+// Facebook secret patterns with no quote boundary matching substrings of
+// unrelated tokens; the tagged-template XSS detector's unbounded regex
+// spanning across unrelated later code; Connection String colliding with
+// Sentry's own dsn= convention; and safety-rating.ts's exploitable-pattern
+// matcher bucketing every hardcoded-secret severity tier (including the
+// deliberately low-risk client-exposed/low-risk ones) as "actively
+// exploitable", which alone could push a scan's danger score to 10/10. No
+// new checks or categories, so a patch bump.
+export const CONFIG_ENGINE_VERSION = "3.2.1";
 export const CONFIG_APP_DESCRIPTION =
   "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.";
 export const CONFIG_TOTAL_CHECKS_LABEL = GENERATED_CHECKS_LABEL;

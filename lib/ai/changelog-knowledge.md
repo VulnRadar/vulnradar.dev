@@ -1,6 +1,6 @@
 # VulnRadar Changelog - AI Knowledge
 
-_Auto-compiled from `lib/changelog/data.ts` on 2026-08-15._
+_Auto-compiled from `lib/changelog/data.ts` on 2026-08-16._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about specific versions, release
@@ -72,6 +72,12 @@ A big one. Scans, webhooks, and scheduled scans can now be shared with a team in
   Every documented GET endpoint on the API Reference page now has a live request panel: paste an API key, fill in the parameters, and see the real response, status, and timing without leaving the docs.
 - [BellRing] **[ADDED]** **AI Verification and Summaries Now Work With an API Key**
   POST /scan/verify and POST /history/{id}/summary previously only accepted a logged-in session, so a script using an API key could get an AI verdict on a finding but never persist it, and couldn't generate a scan summary at all. Both now accept a Bearer API key with the scan:write scope, the same as every other scan-management endpoint.
+- [Bug] **[FIXED]** **Detection Engine v3.2.1: More False-Positive Fixes**
+  Bulk-scanned roughly 1,200 real sites, popular third-party hosts plus VulnRadar's own authenticated pages, and grouped the findings by title and host to spot systemic false positives instead of one-offs. Fixed: exposed-panel checks (Jenkins, Consul, MinIO, phpMyAdmin, Adminer, RabbitMQ) matching any single-page app's generic shell instead of the real panel; Twilio, Mailgun, and Facebook secret patterns matching substrings buried inside unrelated longer tokens; an XSS detector whose pattern could span across unrelated later code in the page; and a Connection String check that collided with Sentry's own unrelated dsn= convention (caught scanning roblox.com).
+- [RefreshCw] **[FIXED]** **Any Hardcoded-Secret Finding Could Push a Scan to 10/10 Risk**
+  The risk-score calculation treated every hardcoded-secret finding as "actively exploitable", including the deliberately low-risk tiers like a key that's already meant to be public client-side. A handful of harmless ones together could push a scan from safe straight to critical. Now only the two genuinely dangerous secret tiers count toward that.
+- [Flag] **[FIXED]** **Marking a Finding False Positive Didn't Refresh the Risk Score On Screen**
+  The score recalculation itself was already correct and saved right away, but the scan view you were looking at didn't know to refresh, so the risk score looked unchanged until you left and reopened the scan. It now updates in place as soon as you mark a finding.
 
 ---
 
@@ -1468,6 +1474,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 57
-- **Total changes documented:** 499
+- **Total changes documented:** 502
 - **Latest:** v3.4.0 (August 14, 2026) - Team-Scoped Resources, Admin Security Hardening
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release

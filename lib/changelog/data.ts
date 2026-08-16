@@ -16,6 +16,7 @@ import {
   Globe,
   Share2,
   Fingerprint,
+  Flag,
   FileText,
   FileSearch,
   FileDown,
@@ -292,6 +293,25 @@ const CHANGELOG: Release[] = [
         label: "AI Verification and Summaries Now Work With an API Key",
         desc: "POST /scan/verify and POST /history/{id}/summary previously only accepted a logged-in session, so a script using an API key could get an AI verdict on a finding but never persist it, and couldn't generate a scan summary at all. Both now accept a Bearer API key with the scan:write scope, the same as every other scan-management endpoint.",
         category: "added",
+      },
+      {
+        icon: Bug,
+        label: "Detection Engine v3.2.1: More False-Positive Fixes",
+        desc: "Bulk-scanned roughly 1,200 real sites, popular third-party hosts plus VulnRadar's own authenticated pages, and grouped the findings by title and host to spot systemic false positives instead of one-offs. Fixed: exposed-panel checks (Jenkins, Consul, MinIO, phpMyAdmin, Adminer, RabbitMQ) matching any single-page app's generic shell instead of the real panel; Twilio, Mailgun, and Facebook secret patterns matching substrings buried inside unrelated longer tokens; an XSS detector whose pattern could span across unrelated later code in the page; and a Connection String check that collided with Sentry's own unrelated dsn= convention (caught scanning roblox.com).",
+        category: "fixed",
+      },
+      {
+        icon: RefreshCw,
+        label: "Any Hardcoded-Secret Finding Could Push a Scan to 10/10 Risk",
+        desc: 'The risk-score calculation treated every hardcoded-secret finding as "actively exploitable", including the deliberately low-risk tiers like a key that\'s already meant to be public client-side. A handful of harmless ones together could push a scan from safe straight to critical. Now only the two genuinely dangerous secret tiers count toward that.',
+        category: "fixed",
+      },
+      {
+        icon: Flag,
+        label:
+          "Marking a Finding False Positive Didn't Refresh the Risk Score On Screen",
+        desc: "The score recalculation itself was already correct and saved right away, but the scan view you were looking at didn't know to refresh, so the risk score looked unchanged until you left and reopened the scan. It now updates in place as soon as you mark a finding.",
+        category: "fixed",
       },
     ],
   },
