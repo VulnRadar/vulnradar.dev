@@ -946,7 +946,7 @@ const fixtures: DetectorFixtures = {
       description:
         "meta CSP value containing single-quoted tokens ('self') is read in full, not truncated at the first quote",
       url: "https://example.com/",
-      body: '<meta http-equiv="Content-Security-Policy" content="default-src \'self\'; frame-src \'self\'">',
+      body: "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'self'; frame-src 'self'\">",
       expect: "skip",
     },
   ],

@@ -56,9 +56,8 @@ vi.mock("@/lib/config/runtime-config", () => ({
   getSetting: (...args: unknown[]) => mockGetSetting(...args),
 }));
 
-const { GET, POST } = await import(
-  "@/app/api/v3/auth/staff-invite/[token]/route"
-);
+const { GET, POST } =
+  await import("@/app/api/v3/auth/staff-invite/[token]/route");
 const { createHash } = await import("node:crypto");
 
 const STRONG_PASSWORD = "Qx7#Lm2Wdftz9";
@@ -223,9 +222,7 @@ describe("POST /api/v3/auth/staff-invite/[token] — super_admin account protect
     expect(json.error).toMatch(/can no longer be accepted/i);
     // No UPDATE users, no accepted_at write, no commit -- just rollback.
     expect(mockClientQuery).toHaveBeenCalledWith("ROLLBACK");
-    expect(mockClientQuery).not.toHaveBeenCalledWith(
-      "COMMIT",
-    );
+    expect(mockClientQuery).not.toHaveBeenCalledWith("COMMIT");
     const updateCalls = mockClientQuery.mock.calls.filter(([sql]) =>
       typeof sql === "string" ? sql.includes("UPDATE users SET role") : false,
     );

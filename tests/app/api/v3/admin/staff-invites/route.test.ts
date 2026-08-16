@@ -236,9 +236,7 @@ describe("POST /api/v3/admin/staff-invites — invite lifecycle", () => {
       text: string;
     };
     expect(emailArgs.to).toBe("new@example.com");
-    const linkMatch = emailArgs.text.match(
-      /staff-invite\/([a-f0-9]{64})/,
-    );
+    const linkMatch = emailArgs.text.match(/staff-invite\/([a-f0-9]{64})/);
     expect(linkMatch).not.toBeNull();
     const plaintextToken = linkMatch![1];
     expect(plaintextToken).not.toBe(tokenHash);
