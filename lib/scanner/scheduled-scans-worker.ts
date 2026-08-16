@@ -71,6 +71,7 @@ import {
   scheduledScanCompleteEmail,
 } from "@/lib/email/email";
 import { APP_NAME, DEFAULT_SCAN_NOTE } from "@/lib/config/constants";
+import { createFailureEscalator } from "@/lib/admin/failure-escalation";
 
 /** Rows claimed per polling tick, admin-configurable (SCHEDULE_WORKER_CLAIM_LIMIT
  *  setting). A backlog larger than this just spreads across additional ticks
@@ -463,6 +464,7 @@ export function schedulePeriodicScheduledScans(
       ? intervalMs
       : CONFIG_SCHEDULE_WORKER_POLL_INTERVAL_MS;
 
+  const escalator = createFailureEscalator("scheduled_scans_worker_failing");
   activeScheduleTimer = setInterval(async () => {
     try {
       const stats = await runDueSchedules();
@@ -471,8 +473,12 @@ export function schedulePeriodicScheduledScans(
           `[${APP_NAME}] Scheduled scan worker: ${formatStats(stats)}`,
         );
       }
+      escalator.recordSuccess();
     } catch (err) {
       console.error(`[${APP_NAME}] Scheduled scan worker pass failed:`, err);
+      escalator.recordFailure(
+        "The scheduled-scans worker is failing on every pass -- due scheduled scans are not running",
+      );
     }
   }, safeInterval);
   activeScheduleTimer.unref?.();

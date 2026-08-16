@@ -50,6 +50,7 @@ import { diffFindingsByKey } from "@/lib/scanner/finding-diff";
 import type { Vulnerability } from "@/lib/scanner/types";
 import { sendNotificationEmail } from "./notifications";
 import { postureDigestEmail, type PostureDigestData } from "@/lib/email/email";
+import { createFailureEscalator } from "@/lib/admin/failure-escalation";
 
 function isCriticalOrHigh(f: Vulnerability): boolean {
   return f.severity === "critical" || f.severity === "high";
@@ -292,6 +293,7 @@ export function schedulePeriodicPostureDigest(
       ? intervalMs
       : CONFIG_POSTURE_DIGEST_POLL_INTERVAL_MS;
 
+  const escalator = createFailureEscalator("posture_digest_worker_failing");
   activeDigestTimer = setInterval(async () => {
     try {
       const stats = await sendWeeklyDigests();
@@ -300,8 +302,12 @@ export function schedulePeriodicPostureDigest(
           `[${APP_NAME}] Posture digest worker: ${formatStats(stats)}`,
         );
       }
+      escalator.recordSuccess();
     } catch (err) {
       console.error(`[${APP_NAME}] Posture digest worker pass failed:`, err);
+      escalator.recordFailure(
+        "The posture-digest worker is failing on every pass -- weekly digest emails are not being sent",
+      );
     }
   }, safeInterval);
   activeDigestTimer.unref?.();

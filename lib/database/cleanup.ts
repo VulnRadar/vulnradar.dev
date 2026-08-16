@@ -6,6 +6,7 @@ import pool from "@/lib/database/db";
 import { DB_CLEANUP_INTERVAL } from "@/lib/config/constants";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import { archiveAdminAuditLogBeforePurge } from "@/lib/database/audit-log-archive";
+import { createFailureEscalator } from "@/lib/admin/failure-escalation";
 
 /**
  * How often the periodic cleanup pass runs. Sourced from
@@ -553,14 +554,19 @@ export function schedulePeriodicCleanup(
     Number.isFinite(intervalMs) && intervalMs > 0
       ? intervalMs
       : CLEANUP_INTERVAL_MS;
+  const escalator = createFailureEscalator("cleanup_worker_failing");
   activeCleanupTimer = setInterval(async () => {
     try {
       const stats = await performDatabaseCleanup();
       console.log(
         `[Database Cleanup] Periodic cleanup completed: ${formatCleanupStats(stats)}`,
       );
+      escalator.recordSuccess();
     } catch (error) {
       console.error("[Database Cleanup] Periodic cleanup failed:", error);
+      escalator.recordFailure(
+        "The periodic database cleanup worker is failing on every run",
+      );
     }
   }, safeInterval);
   activeCleanupTimer.unref?.();
