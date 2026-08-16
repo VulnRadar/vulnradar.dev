@@ -83,10 +83,14 @@ COPY --from=builder --chown=nextjs:nodejs /app/next.config.mjs ./next.config.mjs
 # /usr/local/bin is on Alpine's default PATH already.
 COPY --from=cosign /ko-app/cosign /usr/local/bin/cosign
 
-# Install wget for health checks + tini for proper PID 1 signal handling
+# Install wget for health checks, tini for proper PID 1 signal handling
 # (npm as PID 1 does not forward SIGTERM to the Node worker on
-# container shutdown).
-RUN apk add --no-cache wget tini
+# container shutdown), and postgresql-client for pg_dump -- scripts/
+# migrate/migrate.mjs backs up the database to databases/ before
+# applying any schema changes; without this package that step warns and
+# skips instead of hard-failing the migration (see _lib.backup.mjs),
+# but a self-hosted deploy using this image gets the real thing.
+RUN apk add --no-cache wget tini postgresql-client
 
 # infra: HEALTHCHECK gives orchestrators (k8s, ECS, compose) a real
 # signal of app readiness. /api/v3/health checks database connectivity;

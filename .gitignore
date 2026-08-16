@@ -7,6 +7,10 @@ node_modules/
 .opencode
 graphify-out
 
+# Pre-migration database backups (scripts/_lib/_lib.backup.mjs) -- real
+# customer data, never commit.
+/databases/
+
 # Agent instructions - never commit; per-developer files
 AGENTS.md
 CLAUDE.md

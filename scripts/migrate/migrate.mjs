@@ -62,6 +62,7 @@ import { ensureMetaTable, readMeta, writeMeta } from "./_meta.mjs";
 import { fingerprintDetect } from "./_detect.mjs";
 import { buildPlan, renderPlan } from "./_planner.mjs";
 import { runPlan, repairAllSequences } from "./_runner.mjs";
+import { backupDatabase } from "../_lib/_lib.backup.mjs";
 
 // ── Args (only one flag: --dry-run) ────────────────────────────────────────
 const DRY_RUN = process.argv.includes("--dry-run");
@@ -512,8 +513,21 @@ async function main() {
     }
     log("");
 
-    // 11. Execute.
-    section("Step 5 — Execute");
+    // 11. Back up before touching anything -- only when there's real DDL
+    // about to run (a same-version no-op re-run has nothing to protect
+    // against). Labeled with the version being migrated FROM, since
+    // that's the state this snapshot can actually restore.
+    if (plan.steps.length > 0) {
+      section("Step 5 — Back up database");
+      await backupDatabase(process.env.DATABASE_URL, {
+        appVersion: projectMeta.version,
+        schemaVersion: current,
+      });
+      log("");
+    }
+
+    // 12. Execute.
+    section("Step 6 — Execute");
     if (plan.steps.length === 0) {
       log(
         `  ${c.dim}0.${c.reset}  ${c.dim}SKIP${c.reset}  (no DDL to run; schema is already at the target version)`,
@@ -538,7 +552,7 @@ async function main() {
       }
     }
 
-    // 12. Update the meta table (always, even for same version).
+    // 13. Update the meta table (always, even for same version).
     await writeMeta(livePool, {
       schemaVersion: target,
       appVersion: projectMeta.version,
