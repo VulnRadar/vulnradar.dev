@@ -192,6 +192,37 @@ describe("middleware: public path / auth redirects", () => {
     const res = middleware(makeRequest("/robots.txt"));
     expect(res.headers.get("location")).toBeNull();
   });
+
+  // Regression: these five were missing from PUBLIC_PATHS entirely (only
+  // their sub-pages or API routes were listed, not the page itself), so a
+  // logged-out visitor got 307'd to /login before ever reaching a page
+  // whose whole point is to be public -- caught by scanning VulnRadar's
+  // own site with its own scanner and finding the real login form's
+  // password field showing up on pages that should never redirect there.
+  it("does not redirect an unauthenticated request for /legal (the bare index, not just its sub-pages)", () => {
+    const res = middleware(makeRequest("/legal"));
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  it("does not redirect an unauthenticated request for /badge", () => {
+    const res = middleware(makeRequest("/badge"));
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  it("does not redirect an unauthenticated request for /checkout/success", () => {
+    const res = middleware(makeRequest("/checkout/success"));
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  it("does not redirect an unauthenticated request for /teams/join -- invite links must work for people without an account yet", () => {
+    const res = middleware(makeRequest("/teams/join"));
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  it("does not redirect an unauthenticated request for /host/[hostname]", () => {
+    const res = middleware(makeRequest("/host/example.com"));
+    expect(res.headers.get("location")).toBeNull();
+  });
 });
 
 describe("middleware: CSRF enforcement on /api/v3/**", () => {

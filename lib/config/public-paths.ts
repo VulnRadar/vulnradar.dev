@@ -40,6 +40,13 @@ export const PUBLIC_PATHS = [
   "/api/v3/auth/2fa/email-send",
 
   // ─── Legal Pages ───────────────────────────────────────────────
+  // "/legal" (the bare index) was missing here -- only its sub-pages were
+  // listed -- so a logged-out visitor landing on /legal itself got 307'd
+  // to /login instead of the page whose whole point is to be public.
+  // Prefix-matched below (see middleware.ts), so this one entry also
+  // covers every /legal/* sub-page; the individual ones stay listed too
+  // rather than being pulled out, to keep this a purely additive fix.
+  "/legal",
   ROUTES.LEGAL_TERMS,
   ROUTES.LEGAL_PRIVACY,
   ROUTES.LEGAL_DISCLAIMER,
@@ -104,6 +111,11 @@ export const PUBLIC_PATHS = [
 
   // ─── Public Badge Endpoints (v2) ────────────────────────────────
   "/api/v3/badge",
+  // The BADGE *page* itself (app/badge/page.tsx, where a site owner
+  // configures/copies their embed snippet) was missing -- only the API
+  // route was listed -- so a logged-out visitor got 307'd to /login
+  // before ever seeing it.
+  ROUTES.BADGE,
 
   // ─── Public Avatar Files ────────────────────────────────────────
   // Avatars already render on logged-out surfaces (shared scan reports)
@@ -123,4 +135,22 @@ export const PUBLIC_PATHS = [
   // ─── Email Unsubscribe (token-authenticated, no session needed) ──
   "/unsubscribe",
   "/api/v3/account/unsubscribe",
+
+  // ─── Post-Checkout Confirmation ─────────────────────────────────
+  // Stripe redirects here after a successful purchase; the page itself
+  // just renders a confirmation, no session needed to see it. Was missing
+  // here, so it 307'd to /login instead.
+  "/checkout/success",
+
+  // ─── Team Invite Links ───────────────────────────────────────────
+  // Invite links are meant to work for people who don't have an account
+  // yet -- that's the entire point of an invite. Was missing here, so an
+  // invitee without an existing account got 307'd to /login before ever
+  // seeing the invite.
+  ROUTES.TEAMS_JOIN,
+
+  // ─── Public Host Reports ─────────────────────────────────────────
+  // app/host/[hostname]/page.tsx is a public host-report lookup for any
+  // hostname string, no session needed. Was missing here entirely.
+  "/host",
 ];
