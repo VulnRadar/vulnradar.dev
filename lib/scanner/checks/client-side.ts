@@ -266,14 +266,27 @@ export const detectors: Record<string, DetectFn> = {
 
   "prototype-pollution-client": (_url, _headers, body) => {
     // Only a write into __proto__ (not a `delete`/`===`/`!==` guard reading or
-    // filtering it) is an actual pollution sink.
+    // filtering it) is an actual pollution sink. A write of null/undefined/
+    // Object.create(null) right after the `=` is the opposite of pollution:
+    // it's the defensive pattern that GUARDS against it (a common hardening
+    // idiom in merge/clone utilities), and matched identically before this
+    // exclusion existed -- e.g. flagged as a critical finding on google.com.
     const protoAssign = /\[["']__proto__["']\]\s*=(?!=)/g;
     let m: RegExpExecArray | null;
     while ((m = protoAssign.exec(body)) !== null) {
       const before = body.slice(Math.max(0, m.index - 20), m.index);
-      if (!/\bdelete\s*$/.test(before)) {
-        return "Client-side prototype pollution pattern detected — audit Object merge operations for __proto__ filtering.";
-      }
+      if (/\bdelete\s*$/.test(before)) continue;
+      const after = body.slice(
+        m.index + m[0].length,
+        m.index + m[0].length + 30,
+      );
+      if (
+        /^\s*(?:(?:null|undefined|void 0)\b|Object\.create\(\s*null\s*\))/.test(
+          after,
+        )
+      )
+        continue;
+      return "Client-side prototype pollution pattern detected — audit Object merge operations for __proto__ filtering.";
     }
     const patterns = [
       /Object\.prototype\.\w+\s*=/,

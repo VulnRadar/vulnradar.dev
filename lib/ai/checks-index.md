@@ -1,6 +1,6 @@
 # VulnRadar Scanner Checks: AI Index (compact)
 
-_Compact index auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-15._
+_Compact index auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-16._
 
 One line per check. Format: `[severity] check-id - title`.
 Full details (fix steps, code examples, references) live in
@@ -381,7 +381,7 @@ remediation documentation in the docs.
 - [low     ] `clipboard-hijack-pattern` [body-pattern] - Copy Event Listener Rewrites Clipboard Content
 - [high    ] `sourcemap-sourcescontent-exposed` [network-probe] - Source Map Publicly Exposes Original Source Code
 
-### cookies (30)
+### cookies (29)
 - [low     ] `cookie-domain-broad` [combined] - Cookie Domain Attribute Is Too Broad
 - [low     ] `cookie-secure-missing` [combined] - Cookie Missing Secure Attribute
 - [info    ] `cookie-partitioned-missing` [combined] - Third-Party Cookie Missing Partitioned Attribute
@@ -390,7 +390,6 @@ remediation documentation in the docs.
 - [high    ] `cookie-secure-prefix-not-secure` [header] - __Secure- Prefix Cookie Missing Secure Attribute
 - [low     ] `cookie-expires-too-far` [header] - Cookie Expires/Max-Age Exceeds 1 Year
 - [info    ] `cookie-name-disclosure` [header] - Cookie Name Leaks Framework or Language
-- [low     ] `cookie-domain-no-leading-dot` [header] - Domain Attribute Without Leading Dot (RFC 6265bis)
 - [medium  ] `cookie-path-cross-app` [header] - Cookie Path Crosses Application Boundary
 - [info    ] `cookie-expires-in-past` [header] - Cookie Expires Is in the Past
 - [info    ] `cookie-max-age-zero` [header] - Cookie Max-Age=0 Deletion Pattern
@@ -807,17 +806,17 @@ remediation documentation in the docs.
 
 ## Totals
 
-- Total checks: **752**
+- Total checks: **751**
 - Categories: **18** (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
   - medium: 200
   - high: 199
-  - low: 147
+  - low: 146
   - info: 109
   - critical: 97
 - By type:
   - body-pattern: 425
-  - header: 176
+  - header: 175
   - combined: 61
   - header-missing: 55
   - url-check: 14

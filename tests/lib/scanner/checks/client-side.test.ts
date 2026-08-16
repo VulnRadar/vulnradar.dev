@@ -68,6 +68,28 @@ const fixtures: DetectorFixtures = {
       evidenceIncludes: "sensitive configuration data",
     },
   ],
+
+  "prototype-pollution-client": [
+    {
+      description:
+        "explicitly nulling __proto__ is a defensive hardening idiom, not a pollution sink -- does not fire",
+      body: 'function safeMerge(target, key, value) { if (key === "__proto__") return; target["__proto__"] = null; }',
+      expect: "skip",
+    },
+    {
+      description:
+        "guarding with Object.create(null) right after the assignment does not fire",
+      body: 'obj["__proto__"] = Object.create(null);',
+      expect: "skip",
+    },
+    {
+      description:
+        "assigning an actual (non-null) value into __proto__ is a real pollution sink and fires",
+      body: 'target["__proto__"] = source;',
+      expect: "fire",
+      evidenceIncludes: "prototype pollution",
+    },
+  ],
 };
 
 runDetectorTests(detectors, fixtures);

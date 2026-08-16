@@ -48,6 +48,13 @@ function inlineScriptContent(body: string): string {
 interface SecretPattern {
   name: string;
   pattern: RegExp;
+  /** When set, a match only counts if this keyword appears within ~100
+   *  chars of it. For patterns that are just a fixed-length hex/alphanumeric
+   *  shape (no vendor-specific charset like "sk_" or "AKIA" to anchor on),
+   *  format alone collides with unrelated tokens often enough on a large
+   *  enough page (seen live: a Twilio Account SID pattern matching inside
+   *  google.com's minified bundle). */
+  requireNearby?: RegExp;
 }
 
 // No legitimate reason to appear in client-visible source: compromise
@@ -96,6 +103,7 @@ const CRITICAL_SECRET_PATTERNS: SecretPattern[] = [
   {
     name: "Twilio Account SID",
     pattern: /(?<=["'])AC[0-9a-fA-F]{32}(?=["'])/g,
+    requireNearby: /twilio/i,
   },
   {
     name: "SendGrid Key",
@@ -260,11 +268,9 @@ function matchSecretPatterns(
   patterns: SecretPattern[],
 ): string[] {
   const found: string[] = [];
-  for (const { name, pattern } of patterns) {
-    const matches = body.match(pattern);
-    if (!matches) continue;
-    const unique = [...new Set(matches)].filter((m) => {
-      const lower = m.toLowerCase();
+  for (const { name, pattern, requireNearby } of patterns) {
+    const occurrences = [...body.matchAll(pattern)].filter((m) => {
+      const lower = m[0].toLowerCase();
       if (
         lower.includes("example") ||
         lower.includes("your_") ||
@@ -278,9 +284,17 @@ function matchSecretPatterns(
         lower.includes("dummy")
       )
         return false;
-      if (/localhost|127\.0\.0\.1/.test(m)) return false;
+      if (/localhost|127\.0\.0\.1/.test(m[0])) return false;
+      if (requireNearby) {
+        const nearby = body.slice(
+          Math.max(0, m.index - 100),
+          m.index + m[0].length + 100,
+        );
+        if (!requireNearby.test(nearby)) return false;
+      }
       return true;
     });
+    const unique = [...new Set(occurrences.map((m) => m[0]))];
     if (unique.length === 0) continue;
     for (const match of unique.slice(0, 3)) {
       found.push(`${name}: ${redactMatch(match)}`);

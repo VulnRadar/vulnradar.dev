@@ -254,8 +254,8 @@ const fixtures: DetectorFixtures = {
     },
     {
       description:
-        "Twilio SID as a real quoted string literal — genuine embedded credential shape, stays critical",
-      body: "<script>const sid = 'AC1234567890abcdef1234567890abcdef';</script>",
+        "Twilio SID as a real quoted string literal near a Twilio-related identifier — genuine embedded credential shape, stays critical",
+      body: "<script>const twilioAccountSid = 'AC1234567890abcdef1234567890abcdef';</script>",
       expect: "fire",
       evidenceIncludes: "Twilio Account SID",
     },
@@ -263,6 +263,12 @@ const fixtures: DetectorFixtures = {
       description:
         "regression: 'AC' + 32 hex chars occurring unquoted inside an unrelated hash (a cache-busting asset hash, not a credential) must NOT fire — this exact shape misfired on google.com/bing.com bulk-scan output before the quote-boundary fix",
       body: '<html><body><img src="/logo.png?v=ffffACfedcba9876543210fedcba98765432"></body></html>',
+      expect: "skip",
+    },
+    {
+      description:
+        "regression: 'AC' + 32 hex chars quoted but with no Twilio-related keyword anywhere nearby must NOT fire — this exact shape misfired on google.com's minified homepage bundle after the quote-boundary fix alone",
+      body: "<script>const x = 'ACAAACEAAAAAAAAAAAAAAAAAAAAAAAACEA';</script>",
       expect: "skip",
     },
     {

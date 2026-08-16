@@ -5,7 +5,7 @@
     "title": "Cookie Domain Attribute Is Too Broad",
     "category": "cookies",
     "severity": "low",
-    "description": "A cookie is set with an explicit Domain= attribute that covers all subdomains (e.g., Domain=.example.com). This makes the cookie accessible from every subdomain, including potentially untrusted or third-party-hosted ones. Per RFC 6265, a leading dot is stripped and has no effect on browser behavior: Domain=example.com and Domain=.example.com are equally subdomain-wide, hence the same severity as cookie-domain-no-leading-dot.",
+    "description": "A cookie is set with an explicit Domain= attribute that covers all subdomains (e.g., Domain=example.com or Domain=.example.com). This makes the cookie accessible from every subdomain, including potentially untrusted or third-party-hosted ones. Per RFC 6265bis, a leading dot is stripped and has no effect on browser behavior: both forms are equally subdomain-wide.",
     "evidence": "Broad cookie domain.",
     "riskImpact": "A subdomain that is vulnerable to XSS, or that is under attacker control via subdomain takeover, can read or overwrite cookies scoped to the parent domain. Session cookies shared across all subdomains are particularly high-risk.",
     "explanation": "An explicit Domain= attribute (with or without leading dot) causes the browser to send the cookie to all subdomains of the specified domain. Omitting Domain entirely makes the cookie host-only, which is the safer default per RFC 6265bis.",
@@ -239,32 +239,6 @@
     "_idx": 10,
     "cwe": "CWE-200",
     "owasp": "A05:2021"
-  },
-  {
-    "id": "cookie-domain-no-leading-dot",
-    "type": "header",
-    "title": "Domain Attribute Without Leading Dot (RFC 6265bis)",
-    "category": "cookies",
-    "severity": "low",
-    "description": "The Domain= attribute is set without a leading dot (e.g., Domain=example.com instead of Domain=.example.com). RFC 6265bis deprecates the leading dot, and modern browsers treat both forms identically. This is informational.",
-    "evidence": "Cookie issue for `cookies-domain-no-leading-dot`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "The presence of a leading dot has no practical difference in modern browsers: both forms enable subdomain sharing. The real risk is that any explicit Domain= attribute at all shares the cookie with all subdomains.",
-    "explanation": "RFC 6265bis clarified that the leading dot in Domain= has no special meaning; user agents already treat Domain=.example.com and Domain=example.com identically. The important security consideration is whether any Domain= attribute is needed at all.",
-    "fixSteps": [
-      "Drop the leading dot from Domain= attributes to align with RFC 6265bis.",
-      "Consider removing Domain= entirely to make the cookie host-only."
-    ],
-    "codeExamples": [
-      {
-        "label": "Without leading dot (RFC 6265bis)",
-        "language": "http",
-        "code": "Set-Cookie: session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/; Domain=example.com"
-      }
-    ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis"
-    ],
-    "_idx": 12
   },
   {
     "id": "cookie-path-cross-app",

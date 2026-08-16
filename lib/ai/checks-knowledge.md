@@ -1,6 +1,6 @@
 # VulnRadar Scanner Checks: AI Knowledge
 
-_Auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-15._
+_Auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-16._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about specific scanner checks:
@@ -18,17 +18,17 @@ in this file and quote the title, description, and fix steps.
 
 ## Summary
 
-- **Total checks:** 752
+- **Total checks:** 751
 - **Categories:** 18 (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
   - medium: 200
   - high: 199
-  - low: 147
+  - low: 146
   - info: 109
   - critical: 97
 - **By type:**
   - body-pattern: 425
-  - header: 176
+  - header: 175
   - combined: 61
   - header-missing: 55
   - url-check: 14
@@ -10266,12 +10266,12 @@ export default {
 
 ---
 
-## Category: cookies (30 checks)
+## Category: cookies (29 checks)
 
 ### `cookie-domain-broad` [cookies / low / combined]
 **Cookie Domain Attribute Is Too Broad**
 
-A cookie is set with an explicit Domain= attribute that covers all subdomains (e.g., Domain=.example.com). This makes the cookie accessible from every subdomain, including potentially untrusted or third-party-hosted ones. Per RFC 6265, a leading dot is stripped and has no effect on browser behavior: Domain=example.com and Domain=.example.com are equally subdomain-wide, hence the same severity as cookie-domain-no-leading-dot.
+A cookie is set with an explicit Domain= attribute that covers all subdomains (e.g., Domain=example.com or Domain=.example.com). This makes the cookie accessible from every subdomain, including potentially untrusted or third-party-hosted ones. Per RFC 6265bis, a leading dot is stripped and has no effect on browser behavior: both forms are equally subdomain-wide.
 
 **Risk:** A subdomain that is vulnerable to XSS, or that is under attacker control via subdomain takeover, can read or overwrite cookies scoped to the parent domain. Session cookies shared across all subdomains are particularly high-risk.
 
@@ -10461,26 +10461,6 @@ app.use(session({
 ```php
 session_name('__Host-sid');
 session_start();
-```
-
-### `cookie-domain-no-leading-dot` [cookies / low / header]
-**Domain Attribute Without Leading Dot (RFC 6265bis)**
-
-The Domain= attribute is set without a leading dot (e.g., Domain=example.com instead of Domain=.example.com). RFC 6265bis deprecates the leading dot, and modern browsers treat both forms identically. This is informational.
-
-**Risk:** The presence of a leading dot has no practical difference in modern browsers: both forms enable subdomain sharing. The real risk is that any explicit Domain= attribute at all shares the cookie with all subdomains.
-
-**Why it matters:** RFC 6265bis clarified that the leading dot in Domain= has no special meaning; user agents already treat Domain=.example.com and Domain=example.com identically. The important security consideration is whether any Domain= attribute is needed at all.
-
-**References:**
-- https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis
-
-**Fix:**
-- Drop the leading dot from Domain= attributes to align with RFC 6265bis.
-- Consider removing Domain= entirely to make the cookie host-only.
-- **Without leading dot (RFC 6265bis)** (http):
-```http
-Set-Cookie: session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/; Domain=example.com
 ```
 
 ### `cookie-path-cross-app` [cookies / medium / header]

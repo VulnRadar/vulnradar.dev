@@ -150,6 +150,13 @@ const fixtures: DetectorFixtures = {
       evidenceIncludes: "Domain",
     },
     {
+      description:
+        "cookie with Domain but no leading dot -- RFC 6265bis treats it identically to the leading-dot form",
+      cookies: ["session=abc; Domain=example.com"],
+      expect: "fire",
+      evidenceIncludes: "Domain",
+    },
+    {
       description: "cookie with no Domain (recommended — host-only scope)",
       cookies: ["session=abc"],
       expect: "skip",
@@ -158,10 +165,10 @@ const fixtures: DetectorFixtures = {
 
   "cookie-domain-no-leading-dot": [
     {
-      description: "Domain=example.com (no leading dot)",
+      description:
+        "removed — merged into cookie-domain-broad, which now fires on this same input regardless of leading dot",
       cookies: ["session=abc; Domain=example.com"],
-      expect: "fire",
-      evidenceIncludes: "Domain",
+      expect: "skip",
     },
   ],
 

@@ -155,34 +155,34 @@ export const detectors: Record<string, DetectFn> = {
   // misconfiguration have been removed. Only the primary condition (the real
   // bad behaviour) triggers a finding.
 
+  // Per RFC 6265bis, a leading dot on Domain= is stripped and ignored --
+  // Domain=example.com and Domain=.example.com send the cookie to every
+  // subdomain identically. Both syntaxes used to be split into separate
+  // checks (one flagging the leading-dot form, one flagging its absence),
+  // which meant the "no leading dot" check fired on the RFC-6265bis-correct
+  // syntax and told the site to add back the deprecated dot -- backwards
+  // advice for the one form that was already fine. A single check on
+  // whether Domain= is present at all (regardless of dot) covers the real
+  // risk described in riskImpact/explanation above.
   "cookie-domain-broad": (_url, headers) => {
     const cookies = getSetCookies(headers);
     for (const c of cookies) {
       const m = c.match(/domain\s*=\s*([^;,\s]+)/i);
-      if (m && /^\./.test(m[1])) {
-        return `Cookie '${parseCookieName(c)}' uses leading-dot domain '${m[1]}' (sent to all subdomains).`;
+      if (m && /\./.test(m[1])) {
+        return `Cookie '${parseCookieName(c)}' sets Domain=${m[1]} (sent to all subdomains).`;
       }
     }
     return null;
   },
 
-  "cookie-domain-no-leading-dot": (_url, headers) => {
-    const cookies = getSetCookies(headers);
-    for (const c of cookies) {
-      const m = c.match(/domain\s*=\s*([^;,\s]+)/i);
-      if (m && !/^\./.test(m[1]) && /\./.test(m[1])) {
-        return `Cookie '${parseCookieName(c)}' sets Domain=${m[1]} without leading dot — modern guidance recommends omitting Domain altogether.`;
-      }
-    }
-    return null;
-  },
+  "cookie-domain-no-leading-dot": () => null, // merged into cookie-domain-broad, see comment above
 
   "cookie-domain-parent-on-subdomain": () => null, // duplicate of cookie-domain-broad
 
   "cookie-domain-set-too-loose": (_url, _headers) => {
     // Setting an explicit Domain= attribute is extremely common and not a
-    // vulnerability on its own. The real issues (leading dot, cross-subdomain)
-    // are caught by cookie-domain-broad and cookie-domain-no-leading-dot.
+    // vulnerability on its own. The real issue (cross-subdomain sharing) is
+    // caught by cookie-domain-broad.
     return null;
   },
 
