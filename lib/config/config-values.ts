@@ -1049,6 +1049,22 @@ export const CONFIG_POSTURE_DIGEST_WINDOW_DAYS = 7;
 // only the itemized list.
 export const CONFIG_POSTURE_DIGEST_MAX_FINDINGS_LISTED = 15;
 
+// SCHEDULED BACKUPS - periodic pg_dump via scripts/backup-db.mjs (see
+// lib/backup/scheduled-backup-worker.ts). Distinct from the migration-time
+// backup (scripts/migrate/migrate.mjs) and the admin-triggered manual run
+// (POST /api/v3/admin/backup): those only happen when a migration runs or a
+// staff member clicks the button, so a self-hosted instance that never
+// migrates and never has an admin remember to click backup had no backup at
+// all between deploys (AUDIT-010, prodready-05). Deployment-wide switch, off
+// by default -- unlike posture digests, a periodic pg_dump has real disk-
+// space and pg_dump-availability preconditions an operator should opt into
+// deliberately, not discover after the fact.
+export const CONFIG_SCHEDULED_BACKUP_ENABLED = false;
+// How often the in-process worker takes a backup. NOT admin-configurable
+// (see NEVER_CONFIGURABLE in registry.ts): read once when the timer is
+// registered, so a runtime change would not take effect.
+export const CONFIG_SCHEDULED_BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24h
+
 // BILLING / PREMIUM CONFIGURATION - UPDATE IF NEEDED
 
 // Set BILLING_ENABLED to false to disable all billing features and give

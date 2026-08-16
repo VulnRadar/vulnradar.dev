@@ -218,6 +218,7 @@ import {
   CONFIG_POSTURE_DIGEST_ENABLED,
   CONFIG_POSTURE_DIGEST_WINDOW_DAYS,
   CONFIG_POSTURE_DIGEST_MAX_FINDINGS_LISTED,
+  CONFIG_SCHEDULED_BACKUP_ENABLED,
   CONFIG_BILLING_ENABLED,
   CONFIG_BILLING_FREE_LIMIT,
   CONFIG_BILLING_CORE_SUPPORTER_LIMIT,
@@ -732,6 +733,14 @@ export const SETTINGS_REGISTRY = {
     help: "Caps how many individual findings are itemized in one digest email. The summary counts (sites monitored, total new findings, etc.) are never truncated, only the itemized list.",
     min: 1,
     max: 200,
+  },
+  SCHEDULED_BACKUP_ENABLED: {
+    tier: "runtime",
+    type: "bool",
+    default: CONFIG_SCHEDULED_BACKUP_ENABLED,
+    group: "Features",
+    label: "Scheduled database backups",
+    help: "Take an automatic pg_dump backup on a fixed interval, independent of migrations and the admin-triggered manual backup. Off by default: enable once BACKUP_DIR (and, for offsite copies, BACKUP_OFFSITE_UPLOAD_URL) are set up the way you want.",
   },
 
   // BILLING
@@ -2903,6 +2912,8 @@ export const NEVER_CONFIGURABLE = {
     "Read once when the scheduled-scans worker timer is registered, so a runtime change would not take effect.",
   POSTURE_DIGEST_POLL_INTERVAL_MS:
     "Read once when the posture-digest worker timer is registered, so a runtime change would not take effect.",
+  SCHEDULED_BACKUP_INTERVAL_MS:
+    "Read once when the scheduled-backup worker timer is registered, so a runtime change would not take effect.",
   PAGINATION_DEFAULT_PAGE:
     "The first page is always page 1. The constant exists to avoid a magic number, not to be tuned.",
   DB_POOL_MAX:

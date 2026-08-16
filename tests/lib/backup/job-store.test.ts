@@ -36,6 +36,13 @@ describe("backup job-store", () => {
     expect(getJob(job.id)).toEqual(job);
   });
 
+  it("accepts a null startedByUserId for a system/scheduler-triggered backup", () => {
+    const job = createJob(null);
+    expect(job).not.toBeNull();
+    expect(job!.startedByUserId).toBeNull();
+    expect(getActiveJobId()).toBe(job!.id);
+  });
+
   it("appends and trims log lines, splitting on newlines", () => {
     const job = newJob();
     appendLog(job.id, "line one\nline two");

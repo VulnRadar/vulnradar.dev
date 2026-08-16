@@ -2928,6 +2928,23 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         );
       }
 
+      // ── Scheduled database backups ──────────────────────────────────
+      // Off by default (SCHEDULED_BACKUP_ENABLED, see registry.ts) -- the
+      // timer is always registered so flipping the setting on takes effect
+      // on the next tick without a restart, same as posture digests above.
+      // See lib/backup/scheduled-backup-worker.ts.
+      try {
+        const { schedulePeriodicBackup } =
+          await import("./lib/backup/scheduled-backup-worker");
+        schedulePeriodicBackup();
+        console.log(`[${APP_NAME}] Scheduled the periodic backup worker.`);
+      } catch (scheduleError) {
+        console.error(
+          `[${APP_NAME}] Failed to schedule the periodic backup worker:`,
+          scheduleError,
+        );
+      }
+
       // ════════════════════════════════════════════════════════════════
       // HOST BADGES - stable per-user-per-URL token for the "Secured by
       // VulnRadar" embeddable badge (app/badge/page.tsx), so a badge
@@ -3154,7 +3171,24 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       process.on("SIGTERM", gracefulShutdown);
       process.on("SIGINT", gracefulShutdown);
     } catch (error) {
-      console.error(`[${APP_NAME}] Database migration failed:`, error);
+      // A failure partway through this block (CREATE TABLE IF NOT EXISTS /
+      // ALTER TABLE ADD COLUMN IF NOT EXISTS, hundreds of statements) used to
+      // just log and fall through, leaving the app to boot and serve traffic
+      // against a database that might be missing a table or column a later
+      // statement in this same block would have created. Match the schema
+      // version checks above: alert, then refuse to serve traffic on a
+      // database this process cannot vouch for (AUDIT-010, prodready-07).
+      console.error(
+        `[${APP_NAME}] Database schema creation/migration failed:`,
+        error,
+      );
+      const { sendAdminAlert } = await import("./lib/admin/alert-webhook");
+      await sendAdminAlert({
+        event: "boot_schema_creation_failed",
+        severity: "critical",
+        message: `${APP_NAME} failed to start: schema creation/migration errored partway through. The database may be left partially initialized. Run npm run db:migrate, or npm run db:diagnose to inspect the current state.`,
+      });
+      process.exit(1);
     }
   }
 }

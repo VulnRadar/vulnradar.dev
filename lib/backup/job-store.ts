@@ -24,7 +24,10 @@ export interface BackupJob {
   error: string | null;
   startedAt: string;
   finishedAt: string | null;
-  startedByUserId: number;
+  /** null for a backup started by the periodic scheduler
+   *  (lib/backup/scheduled-backup-worker.ts) rather than an admin clicking
+   *  the button. */
+  startedByUserId: number | null;
 }
 
 const MAX_LOG_LINES = 2000;
@@ -62,7 +65,7 @@ function pruneCompletedJobs(): void {
  * POST /api/v3/admin/backup requests can't both reserve the slot and
  * both end up spawning a pg_dump against the same database.
  */
-export function createJob(startedByUserId: number): BackupJob | null {
+export function createJob(startedByUserId: number | null): BackupJob | null {
   if (activeJobId !== null) return null;
   const job: BackupJob = {
     id: randomUUID(),
