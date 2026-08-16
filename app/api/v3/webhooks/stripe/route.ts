@@ -469,11 +469,28 @@ export async function POST(req: NextRequest) {
               ],
             );
           } catch (historyErr) {
-            // billing_history table might not exist - log but don't fail
-            console.log(
-              `[Stripe] Could not record billing history (table may not exist):`,
-              historyErr,
-            );
+            // 42P01 = undefined_table (self-hosted install on a schema
+            // predating this table) -- expected, not worth alarming on.
+            // Anything else (constraint violation, connection drop, a
+            // real bug) goes through console.error so it's captured by
+            // the global error-log wrapper (lib/database/error-log-
+            // capture.ts only wraps console.error, not console.log) and
+            // shows up in the admin Error Logs panel instead of only
+            // ever being visible in raw stdout.
+            const isMissingTable =
+              historyErr instanceof Error &&
+              "code" in historyErr &&
+              historyErr.code === "42P01";
+            if (isMissingTable) {
+              console.log(
+                `[Stripe] billing_history table does not exist -- skipping history record.`,
+              );
+            } else {
+              console.error(
+                `[Stripe] Could not record billing history:`,
+                historyErr,
+              );
+            }
           }
 
           console.log(`[Stripe] Payment succeeded for customer ${customerId}`);

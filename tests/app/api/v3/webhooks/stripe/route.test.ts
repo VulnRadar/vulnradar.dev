@@ -881,11 +881,15 @@ describe("POST /api/v3/webhooks/stripe: invoice events", () => {
     ]);
   });
 
-  it("invoice.payment_succeeded still returns 200 when the billing_history insert fails", async () => {
+  it("invoice.payment_succeeded still returns 200 when billing_history's table is missing (42P01), and logs it as expected via console.log, not console.error", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     withIdempotency("evt_invoice_2");
     mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE subscription_status
     mockQuery.mockRejectedValueOnce(
-      new Error("relation billing_history does not exist"),
+      Object.assign(new Error("relation billing_history does not exist"), {
+        code: "42P01",
+      }),
     );
 
     const res = await POST(
@@ -907,6 +911,51 @@ describe("POST /api/v3/webhooks/stripe: invoice events", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.received).toBe(true);
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining("billing_history table does not exist"),
+    );
+    expect(errorSpy).not.toHaveBeenCalled();
+    logSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
+  it("invoice.payment_succeeded still returns 200 but logs via console.error (so it reaches the admin Error Logs panel) when the billing_history insert fails for a reason OTHER than a missing table", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    withIdempotency("evt_invoice_2b");
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE subscription_status
+    mockQuery.mockRejectedValueOnce(
+      Object.assign(
+        new Error("duplicate key value violates unique constraint"),
+        {
+          code: "23505",
+        },
+      ),
+    );
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_invoice_2b",
+          type: "invoice.payment_succeeded",
+          data: {
+            object: {
+              id: "in_2b",
+              customer: "cus_2",
+              amount_paid: 100,
+              currency: "usd",
+            },
+          },
+        }),
+      ),
+    );
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.received).toBe(true);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Could not record billing history"),
+      expect.anything(),
+    );
+    errorSpy.mockRestore();
   });
 
   it("invoice.payment_failed marks the subscription past_due", async () => {
