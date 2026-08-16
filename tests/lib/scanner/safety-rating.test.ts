@@ -309,12 +309,17 @@ describe("exploitablePatterns wording match for the hardcoded-secrets check", ()
     expect(getDangerScore([legacyTitle])).toBe(10);
   });
 
-  it("matches the three severity-tier siblings split out of hardcoded-secrets", () => {
-    // lib/scanner/checks/code.ts's hardcoded-secrets-high-risk /
-    // -client-exposed / -low-risk all title themselves
-    // "Hard-coded secret in source (...)" -- the "Secrets?" alternative
-    // must catch the singular form these use, not just the original
-    // check's "secret values" plural-adjacent wording.
+  it("only the two genuinely dangerous severity-tier siblings count as exploitable -- client-exposed and low-risk must not, no matter how many pile up", () => {
+    // lib/scanner/checks/code.ts split hardcoded-secrets into four severity
+    // tiers. hardcoded-secrets-high-risk is a real, narrow-blast-radius
+    // secret and should count as exploitable. hardcoded-secrets-client-exposed
+    // (Discord webhooks, Sentry DSNs -- vendor-documented as safe to expose)
+    // and hardcoded-secrets-low-risk (bare identifiers, no credential
+    // material) exist specifically because they are NOT exploitable, and
+    // must never be reclassified into the exploitable tier by an
+    // over-broad title match -- regression test for a real bug: three
+    // harmless client-exposed keys alone used to push a scan from "safe"
+    // to "caution".
     const highRisk: TestFinding = {
       severity: "high",
       title: "Hard-coded secret in source (elevated-risk key)",
@@ -331,7 +336,7 @@ describe("exploitablePatterns wording match for the hardcoded-secrets check", ()
     expect(getSafetyRating([highRisk])).toBe("caution");
     expect(getSafetyRating([clientExposed])).toBe("safe");
     expect(getSafetyRating([clientExposed, clientExposed, clientExposed])).toBe(
-      "caution",
+      "safe",
     );
     expect(getSafetyRating([lowRisk])).toBe("safe");
   });

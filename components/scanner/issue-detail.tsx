@@ -102,10 +102,18 @@ function FindingFeedback({
   findingId,
   findingUrl,
   scanHistoryId,
+  onVerdictChanged,
 }: {
   findingId: string;
   findingUrl: string;
   scanHistoryId?: number | null;
+  /** Called after a verdict is saved successfully. The server already
+   *  recalculates and persists the scan's summary/dangerScore excluding
+   *  false_positive-marked findings (lib/scanner/recompute-scan-score.ts);
+   *  nothing previously told the currently-open view to pick that up, so
+   *  the on-screen risk score looked unchanged until the scan was
+   *  reopened. Callers should refetch/patch their scan state here. */
+  onVerdictChanged?: () => void;
 }) {
   const [verdict, setVerdict] = useState<FeedbackVerdict | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -153,6 +161,7 @@ function FindingFeedback({
       });
       if (!res.ok) throw new Error("Failed to save feedback");
       setVerdict(next);
+      onVerdictChanged?.();
     } catch {
       setError(true);
     } finally {
@@ -205,6 +214,8 @@ interface IssueDetailProps {
    *  this only from an authenticated view of the caller's own scan. */
   findingUrl?: string;
   scanHistoryId?: number | null;
+  /** Forwarded to FindingFeedback -- see its own doc comment. */
+  onVerdictChanged?: () => void;
 }
 
 function CodeBlock({ code, language }: { code: string; language: string }) {
@@ -313,6 +324,7 @@ export function IssueDetail({
   onBack,
   findingUrl,
   scanHistoryId,
+  onVerdictChanged,
 }: IssueDetailProps) {
   const [activeTab, setActiveTab] = useState(0);
   const tone = SEVERITY_TONE[issue.severity] ?? SEVERITY_TONE.info;
@@ -472,6 +484,7 @@ export function IssueDetail({
           findingId={issue.id}
           findingUrl={findingUrl}
           scanHistoryId={scanHistoryId}
+          onVerdictChanged={onVerdictChanged}
         />
       )}
 

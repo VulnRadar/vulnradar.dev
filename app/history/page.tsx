@@ -326,6 +326,33 @@ export default function HistoryPage() {
     setScanDetail((prev) => (prev ? { ...prev, findings } : prev));
   }, []);
 
+  // Marking a finding false_positive already recalculates and persists
+  // summary/dangerScore server-side (lib/scanner/recompute-scan-score.ts),
+  // excluding that finding -- this just picks the corrected numbers back
+  // up for the view that's already open, silently (no detailLoading toggle,
+  // so no skeleton flash mid-review).
+  const handleVerdictChanged = useCallback(async () => {
+    if (!selectedScanId) return;
+    try {
+      const res = await fetch(`${API.HISTORY}/${selectedScanId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const mapped = mapHistoryDetailResponse(data);
+      setScanDetail((prev) =>
+        prev
+          ? {
+              ...prev,
+              dangerScore: mapped.dangerScore,
+              summary: mapped.summary,
+            }
+          : prev,
+      );
+    } catch {
+      // Best-effort: the score is correct server-side either way and will
+      // show up next time this scan is reopened.
+    }
+  }, [selectedScanId]);
+
   const handleSummaryGenerated = useCallback((aiSummary: string) => {
     setScanDetail((prev) => (prev ? { ...prev, aiSummary } : prev));
   }, []);
@@ -393,6 +420,7 @@ export default function HistoryPage() {
                       scanOwnerId === currentUserId ? scanDetail.url : undefined
                     }
                     scanHistoryId={selectedScanId}
+                    onVerdictChanged={handleVerdictChanged}
                   />
                 ) : (
                   <>

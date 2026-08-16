@@ -97,14 +97,27 @@ const exploitablePatterns = [
   "Prototype Pollution",
   // Was "Hardcoded API Keys", which never matched any real check title
   // (the actual check is "Hard-coded secret values in source" — different
-  // wording entirely, so this pattern was dead: hardcoded-secrets findings
-  // only ever reached "exploitable" via the severity-based fallback below,
-  // never via this list). This also covers the three new severity-tier
-  // siblings split out of hardcoded-secrets (hardcoded-secrets-high-risk /
-  // -client-exposed / -low-risk, see lib/scanner/checks/code.ts) — their
-  // titles all read "Hard-coded secret in source (...)", which "Secrets?"
-  // matches.
-  "Hard-?coded (API Keys?|Secrets?)",
+  // wording entirely, so this pattern was dead). A later fix broadened it
+  // to "Hard-?coded (API Keys?|Secrets?)" to actually catch that title, but
+  // overshot: hardcoded-secrets was since split into four severity tiers
+  // (lib/scanner/checks/code.ts) whose titles all read "Hard-coded secret
+  // in source (...)", so the broad pattern also matched
+  // hardcoded-secrets-client-exposed ("... (client-exposed key)", medium —
+  // Discord webhooks, Sentry DSNs, vendor-documented as safe to expose) and
+  // hardcoded-secrets-low-risk ("... (low-risk identifier)", low), pulling
+  // both into the 1.5x "actively exploitable" score multiplier below even
+  // though those two tiers exist specifically because the codebase already
+  // knows they are NOT exploitable. Three harmless client-exposed keys
+  // alone were enough to push a scan from "safe" to "caution". Only the
+  // two genuinely dangerous titles are listed explicitly now — the
+  // parenthetical suffix is what distinguishes the safe tiers, so matching
+  // full title text is required.
+  "Hard-?coded secret values in source",
+  "Hard-?coded secret in source \\(elevated-risk key\\)",
+  // Pre-rename title, unambiguous (no risk-tier qualifier existed yet) --
+  // kept so scan_history rows stored before the tiering split still
+  // classify correctly.
+  "Hardcoded API Keys or Secrets Detected",
   "Authentication Tokens Exposed",
   "Credentials in URL",
   "JWT in URL",

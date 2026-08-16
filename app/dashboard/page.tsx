@@ -45,6 +45,7 @@ import type {
 } from "@/lib/scanner/types";
 import { DEFAULT_SCAN_NOTE, SCANNING } from "@/lib/config/constants";
 import { API } from "@/lib/config/client-constants";
+import { mapHistoryDetailResponse } from "@/lib/scanner/history-detail";
 import { useClientConfig } from "@/lib/hooks/use-client-config";
 import { DashboardRouteSkeleton } from "@/components/dashboard/dashboard-skeleton";
 import {
@@ -306,6 +307,33 @@ function DashboardContent() {
   const handleFindingsUpdated = useCallback((findings: Vulnerability[]) => {
     setResult((prev) => (prev ? { ...prev, findings } : prev));
   }, []);
+
+  // Mirrors app/history/page.tsx's handleVerdictChanged: the server already
+  // recalculates dangerScore/summary excluding false_positive-marked
+  // findings (lib/scanner/recompute-scan-score.ts), this just refetches so
+  // the currently-open live scan view picks it up instead of showing a
+  // stale score until the scan is reopened from history.
+  const handleVerdictChanged = useCallback(async () => {
+    if (!scanHistoryId) return;
+    try {
+      const res = await fetch(`${API.HISTORY}/${scanHistoryId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const mapped = mapHistoryDetailResponse(data);
+      setResult((prev) =>
+        prev
+          ? {
+              ...prev,
+              dangerScore: mapped.dangerScore,
+              summary: mapped.summary,
+            }
+          : prev,
+      );
+    } catch {
+      // Best-effort: the score is correct server-side either way and will
+      // show up next time this scan is reopened.
+    }
+  }, [scanHistoryId]);
 
   async function handleSaveNotes(notes: string) {
     if (!scanHistoryId) return;
@@ -861,6 +889,7 @@ function DashboardContent() {
             }
             onSaveNotes={handleSaveNotes}
             onFindingsUpdated={handleFindingsUpdated}
+            onVerdictChanged={handleVerdictChanged}
           />
         )}
       </main>

@@ -58,6 +58,7 @@ interface DashboardResultsProps {
   onScanSubdomain: (url: string) => void;
   onSaveNotes: (notes: string) => Promise<void>;
   onFindingsUpdated?: (findings: Vulnerability[]) => void;
+  onVerdictChanged?: () => void;
 }
 
 export function DashboardResults({
@@ -75,6 +76,7 @@ export function DashboardResults({
   onScanSubdomain,
   onSaveNotes,
   onFindingsUpdated,
+  onVerdictChanged,
 }: DashboardResultsProps) {
   const [copied, setCopied] = useState(false);
   // scan_history.is_public defaults to true, and this view has no "start
@@ -97,6 +99,7 @@ export function DashboardResults({
           onBack={() => onSelectIssue(null)}
           findingUrl={result.url}
           scanHistoryId={scanHistoryId}
+          onVerdictChanged={onVerdictChanged}
         />
       </div>
     );
