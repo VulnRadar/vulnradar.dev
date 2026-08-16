@@ -1070,6 +1070,68 @@ const fixtures: DetectorFixtures = {
       body: '<html><body><script src="https://js.stripe.com/v3/"></script></body></html>',
       expect: "skip",
     },
+    {
+      // ref: AUDIT-010#scanner-11 — bare googletagmanager.com/google-analytics.com,
+      // Google Ads (googlesyndication.com), PayPal SDK, Facebook Pixel, Segment,
+      // Hotjar, and LinkedIn Insight all serve mutable, unversioned scripts by
+      // design and are documented as SRI-incompatible by their vendors.
+      description: "Google Analytics (bare host) — exempt, dynamically served",
+      url: "https://example.com/",
+      body: '<html><body><script src="https://google-analytics.com/analytics.js"></script></body></html>',
+      expect: "skip",
+    },
+    {
+      description: "Google Tag Manager (bare host) — exempt",
+      url: "https://example.com/",
+      body: '<html><body><script src="https://googletagmanager.com/gtm.js?id=GTM-XXXXXXX"></script></body></html>',
+      expect: "skip",
+    },
+    {
+      description: "Google Ads (googlesyndication.com) — exempt",
+      url: "https://example.com/",
+      body: '<html><body><script src="https://googlesyndication.com/pagead/js/adsbygoogle.js"></script></body></html>',
+      expect: "skip",
+    },
+    {
+      description: "PayPal SDK (www.paypalobjects.com) — exempt",
+      url: "https://example.com/checkout",
+      body: '<html><body><script src="https://www.paypalobjects.com/api/checkout.js"></script></body></html>',
+      expect: "skip",
+    },
+    {
+      description: "Facebook Pixel (connect.facebook.net) — exempt",
+      url: "https://example.com/",
+      body: '<html><body><script src="https://connect.facebook.net/en_US/fbevents.js"></script></body></html>',
+      expect: "skip",
+    },
+    {
+      description: "Segment (cdn.segment.com) — exempt",
+      url: "https://example.com/",
+      body: '<html><body><script src="https://cdn.segment.com/analytics.js/v1/abc/analytics.min.js"></script></body></html>',
+      expect: "skip",
+    },
+    {
+      description: "Hotjar (static.hotjar.com) — exempt",
+      url: "https://example.com/",
+      body: '<html><body><script src="https://static.hotjar.com/c/hotjar-123.js"></script></body></html>',
+      expect: "skip",
+    },
+    {
+      description: "LinkedIn Insight Tag (snap.licdn.com) — exempt",
+      url: "https://example.com/",
+      body: '<html><body><script src="https://snap.licdn.com/li.lms-analytics/insight.min.js"></script></body></html>',
+      expect: "skip",
+    },
+    {
+      // A genuine positive stays a positive: an ordinary self-hosted CDN
+      // script is not on any exempt list and must still fire.
+      description:
+        "unrelated third-party CDN script (not on the exempt list) still fires",
+      url: "https://example.com/",
+      body: '<html><body><script src="https://cdn.some-random-vendor.com/widget.js"></script></body></html>',
+      expect: "fire",
+      evidenceIncludes: "external script",
+    },
   ],
 
   "sri-stylesheet-missing": [
@@ -1086,6 +1148,24 @@ const fixtures: DetectorFixtures = {
       url: "https://example.com/",
       body: '<html><head><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto"></head></html>',
       expect: "skip",
+    },
+    {
+      // ref: AUDIT-010#scanner-12 — Typekit/Adobe Fonts is the same
+      // UA-negotiated-CSS class of CDN as Google Fonts.
+      description:
+        "Typekit/Adobe Fonts stylesheet (use.typekit.net) — exempt, same UA-negotiated-CSS problem as Google Fonts",
+      url: "https://example.com/",
+      body: '<html><head><link rel="stylesheet" href="https://use.typekit.net/abc123.css"></head></html>',
+      expect: "skip",
+    },
+    {
+      // A genuine positive stays a positive.
+      description:
+        "unrelated third-party stylesheet CDN (not exempt) still fires",
+      url: "https://example.com/",
+      body: '<html><head><link rel="stylesheet" href="https://cdn.some-random-vendor.com/theme.css"></head></html>',
+      expect: "fire",
+      evidenceIncludes: "stylesheet",
     },
   ],
 

@@ -22,12 +22,21 @@ export const SRI_EXEMPT_HOSTS = new Set([
   "js.stripe.com",
   "checkout.stripe.com",
   "www.googletagmanager.com",
+  "googletagmanager.com",
   "www.google-analytics.com",
+  "google-analytics.com",
   "www.google.com",
   "www.gstatic.com",
+  "googlesyndication.com",
   "fonts.googleapis.com",
   "widget.intercom.io",
   "js.intercomcdn.com",
+  "www.paypalobjects.com",
+  "connect.facebook.net",
+  "cdn.segment.com",
+  "static.hotjar.com",
+  "snap.licdn.com",
+  "use.typekit.net",
 ]);
 
 // Example/test credentials a vendor publishes in its own docs and that get
