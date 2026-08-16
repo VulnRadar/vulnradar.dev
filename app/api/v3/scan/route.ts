@@ -38,6 +38,7 @@ import {
 } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import { validateScanTarget } from "@/lib/scanner/safe-fetch";
+import { isUrlOwnedByUser } from "@/lib/domains/scope";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { resolveScanIsPublic } from "@/lib/scanner/scan-privacy";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
@@ -287,6 +288,27 @@ export async function POST(request: NextRequest) {
           details:
             "This domain or IP address has been restricted from scanning for security, privacy, or compliance reasons. Access controls are enforced to protect sensitive infrastructure and user data. If you believe this is an error, please contact support.",
           statusCode: "BLOCKED",
+        },
+        { status: 403 },
+      );
+    }
+
+    // Domain ownership: active-probes submits real exploit-attempt
+    // payloads (SQLi/XSS/SSTI canaries, a live GraphQL introspection
+    // query) to the target instead of only reading responses -- it must
+    // never run against a URL the caller hasn't proven control over (see
+    // lib/domains/scope.ts). This is a authorization gate, separate from
+    // (and in addition to) the SSRF/access-rules safety checks above,
+    // which apply regardless of which categories are requested.
+    if (
+      selectedScanners?.includes("active-probes") &&
+      !(await isUrlOwnedByUser(normalizedUrl, authedUserId))
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Active probing requires a verified domain. Verify ownership of this domain (or its parent) in Profile > Domains before requesting active-probes.",
+          statusCode: "DOMAIN_NOT_VERIFIED",
         },
         { status: 403 },
       );

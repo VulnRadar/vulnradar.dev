@@ -73,6 +73,11 @@ vi.mock("@/lib/scanner/access-rules", () => ({
   checkAccessRules: vi.fn(async () => ({ allowed: true })),
 }));
 
+const mockIsUrlOwnedByUser = vi.fn();
+vi.mock("@/lib/domains/scope", () => ({
+  isUrlOwnedByUser: (...args: unknown[]) => mockIsUrlOwnedByUser(...args),
+}));
+
 vi.mock("@/lib/scanner/registry", () => ({
   allChecks: [],
   getChecksByCategory: () => [],
@@ -112,6 +117,8 @@ beforeEach(() => {
   mockGetSession.mockResolvedValue({ userId: 42 });
   mockEstablishScanSession.mockReset();
   mockLogAction.mockClear();
+  mockIsUrlOwnedByUser.mockReset();
+  mockIsUrlOwnedByUser.mockResolvedValue(true);
 });
 
 const FORM_AUTH_BODY = {
@@ -371,5 +378,45 @@ describe("POST /api/v3/scan/authenticated", () => {
     );
     expect(res.status).toBe(400);
     expect(mockEstablishScanSession).not.toHaveBeenCalled();
+  });
+});
+
+describe("active-probes domain ownership gate", () => {
+  it("never checks domain ownership for an ordinary authenticated scan that doesn't request active-probes", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 1 }] });
+    await POST(postRequest(FORM_AUTH_BODY));
+    expect(mockIsUrlOwnedByUser).not.toHaveBeenCalled();
+  });
+
+  it("rejects with 403 when active-probes is requested against an unverified domain, before ever attempting login", async () => {
+    mockIsUrlOwnedByUser.mockResolvedValue(false);
+    const res = await POST(
+      postRequest({
+        ...FORM_AUTH_BODY,
+        scanners: ["headers", "active-probes"],
+      }),
+    );
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.statusCode).toBe("DOMAIN_NOT_VERIFIED");
+    expect(mockEstablishScanSession).not.toHaveBeenCalled();
+  });
+
+  it("proceeds normally when active-probes is requested against a verified domain", async () => {
+    mockIsUrlOwnedByUser.mockResolvedValue(true);
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 2 }] });
+    const res = await POST(
+      postRequest({ ...FORM_AUTH_BODY, scanners: ["active-probes"] }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockEstablishScanSession).toHaveBeenCalledTimes(1);
   });
 });

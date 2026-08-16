@@ -8,6 +8,7 @@ import {
   Key,
   Webhook,
   CalendarClock,
+  ShieldCheck,
   Loader2,
   type LucideIcon,
 } from "lucide-react";
@@ -37,6 +38,7 @@ import type { ConfirmAction, DeveloperSection } from "./developer/types";
 import { ApiKeysSection } from "./developer/api-keys-section";
 import { WebhooksSection } from "./developer/webhooks-section";
 import { SchedulesSection } from "./developer/schedules-section";
+import { DomainsSection } from "./developer/domains-section";
 import { DeveloperTabSkeleton } from "./developer/developer-tab-skeleton";
 import {
   localHourToUtc,
@@ -75,6 +77,7 @@ const DEVELOPER_SECTIONS: Array<{
   { id: "api-keys", label: "API Keys", icon: Key },
   { id: "webhooks", label: "Webhooks", icon: Webhook },
   { id: "schedules", label: "Scheduled Scans", icon: CalendarClock },
+  { id: "domains", label: "Domains", icon: ShieldCheck },
 ];
 
 function getConfirmCopy(action: ConfirmAction) {
@@ -744,6 +747,10 @@ export function ProfileDeveloperTab({
           onCancelEditWebhook={handleCancelEditWebhook}
           onSaveWebhookEdit={handleSaveWebhookEdit}
         />
+      )}
+
+      {activeSection === "domains" && (
+        <DomainsSection setError={setError} setSuccess={setSuccess} />
       )}
 
       {activeSection === "schedules" && (

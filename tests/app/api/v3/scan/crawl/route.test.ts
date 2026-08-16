@@ -56,6 +56,11 @@ vi.mock("@/lib/scanner/access-rules", () => ({
   checkAccessRules: vi.fn(async () => ({ allowed: true })),
 }));
 
+const mockIsUrlOwnedByUser = vi.fn();
+vi.mock("@/lib/domains/scope", () => ({
+  isUrlOwnedByUser: (...args: unknown[]) => mockIsUrlOwnedByUser(...args),
+}));
+
 const mockExecuteCrawlScan = vi.fn();
 vi.mock("@/lib/scanner/execute-crawl-scan", async (importOriginal) => {
   const actual =
@@ -96,6 +101,8 @@ beforeEach(() => {
   mockExecuteCrawlScan.mockReset();
   mockExecuteCrawlScan.mockResolvedValue(undefined);
   mockValidateApiKey.mockReset();
+  mockIsUrlOwnedByUser.mockReset();
+  mockIsUrlOwnedByUser.mockResolvedValue(true);
 });
 
 describe("POST /api/v3/scan/crawl", () => {
@@ -193,5 +200,46 @@ describe("POST /api/v3/scan/crawl", () => {
 
     expect(res.status).toBe(500);
     expect(mockExecuteCrawlScan).not.toHaveBeenCalled();
+  });
+});
+
+describe("active-probes domain ownership gate", () => {
+  it("never checks domain ownership for an ordinary crawl that doesn't request active-probes", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 1 }] });
+    await POST(postRequest({ url: "https://example.com" }));
+    expect(mockIsUrlOwnedByUser).not.toHaveBeenCalled();
+  });
+
+  it("rejects with 403 when active-probes is requested against an unverified domain", async () => {
+    mockIsUrlOwnedByUser.mockResolvedValue(false);
+    const res = await POST(
+      postRequest({
+        url: "https://example.com",
+        scanners: ["headers", "active-probes"],
+      }),
+    );
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.statusCode).toBe("DOMAIN_NOT_VERIFIED");
+    expect(mockExecuteCrawlScan).not.toHaveBeenCalled();
+  });
+
+  it("proceeds normally when active-probes is requested against a verified domain", async () => {
+    mockIsUrlOwnedByUser.mockResolvedValue(true);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 2 }] });
+    const res = await POST(
+      postRequest({
+        url: "https://example.com",
+        scanners: ["active-probes"],
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockExecuteCrawlScan).toHaveBeenCalledTimes(1);
   });
 });

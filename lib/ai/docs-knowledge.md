@@ -913,6 +913,72 @@ Set revoked_at on the key. The key stops working immediately.
 }
 ```
 
+#### `GET /domains`: List Domains
+Your verified and pending domains, plus any assigned to a team you belong to.
+
+- **Response (200):**
+```json
+{
+  "domains": [
+    {
+      "id": 12,
+      "domain": "example.com",
+      "team_id": null,
+      "status": "verified",
+      "verification_method": "dns_txt",
+      "created_at": "2026-08-01T00:00:00.000Z",
+      "verified_at": "2026-08-01T00:05:00.000Z",
+      "last_checked_at": "2026-08-01T00:05:00.000Z",
+      "last_check_error": null,
+      "verificationRecordName": "_vulnradar-verify.example.com"
+    }
+  ]
+}
+```
+
+#### `POST /domains`: Add a Domain
+Add a domain (or subdomain) pending verification. Returns a fresh DNS TXT record to publish. Verifying a domain covers every subdomain under it; it does not require ownership proof up front, since publishing the returned token in DNS is exactly what proves it.
+
+- **Request body:**
+```json
+{
+  "domain": "example.com"
+}
+```
+
+- **Response (200):**
+```json
+{
+  "id": 12,
+  "domain": "example.com",
+  "status": "pending",
+  "createdAt": "2026-08-01T00:00:00.000Z",
+  "verificationRecordName": "_vulnradar-verify.example.com",
+  "verificationRecordValue": "vulnradar-verify=<64-char token>"
+}
+```
+
+#### `POST /domains/{id}/verify`: Verify a Domain Now
+Looks up the DNS TXT record right now and updates the domain's status. Safe to call repeatedly while fixing a typo'd record.
+
+- **Response (200):**
+```json
+{
+  "verified": true,
+  "status": "verified"
+}
+```
+
+#### `DELETE /domains?id={id}`: Remove a Domain
+Removes a domain. Active Probing stops being allowed against it (and its subdomains) immediately.
+
+- **Response (200):**
+```json
+{
+  "success": true
+}
+```
+
 ### Headings
 - Getting a key
 - Headers on a successful response
@@ -1512,7 +1578,7 @@ npm run lint:fix    # auto-fix
 | `/docs/extension` | ✓ | 8 | 1 | 0 | 0 | 0 | 0 | 10 | 2 |
 | `/docs/self-hosting` | - | 15 | 3 | 0 | 11 | 0 | 0 | 14 | 2 |
 | `/docs/config` | - | 9 | 3 | 0 | 2 | 0 | 0 | 23 | 0 |
-| `/docs/api` | - | 8 | 3 | 0 | 4 | 24 | 0 | 9 | 6 |
+| `/docs/api` | - | 8 | 3 | 0 | 4 | 28 | 0 | 9 | 6 |
 | `/docs/webhooks` | ✓ | 6 | 0 | 0 | 3 | 0 | 0 | 5 | 5 |
 | `/docs/rate-limits` | - | 6 | 5 | 0 | 4 | 0 | 0 | 10 | 3 |
 | `/docs/architecture` | - | 5 | 1 | 0 | 4 | 0 | 0 | 8 | 0 |

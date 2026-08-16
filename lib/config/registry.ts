@@ -215,6 +215,7 @@ import {
   CONFIG_FEATURE_BULK_SCANS,
   CONFIG_FEATURE_PDF_REPORTS,
   CONFIG_FEATURE_EMAIL_NOTIFICATIONS,
+  CONFIG_FEATURE_DOMAIN_VERIFICATION,
   CONFIG_POSTURE_DIGEST_ENABLED,
   CONFIG_POSTURE_DIGEST_WINDOW_DAYS,
   CONFIG_POSTURE_DIGEST_MAX_FINDINGS_LISTED,
@@ -709,6 +710,14 @@ export const SETTINGS_REGISTRY = {
     group: "Features",
     label: "Email notifications",
     help: "Transactional mail other than authentication. Security mail is always sent.",
+  },
+  FEATURE_DOMAIN_VERIFICATION: {
+    tier: "runtime",
+    type: "bool",
+    default: CONFIG_FEATURE_DOMAIN_VERIFICATION,
+    group: "Features",
+    label: "Domain verification",
+    help: "DNS TXT-based domain ownership verification. Turning this off also disables active-probes scanning entirely, since that requires a verified domain and there would be no way to become verified.",
   },
   POSTURE_DIGEST_ENABLED: {
     tier: "runtime",

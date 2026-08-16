@@ -763,6 +763,7 @@ export const API_V3 = {
   KEYS: "/api/v3/keys",
   WEBHOOKS: "/api/v3/webhooks",
   SCHEDULES: "/api/v3/schedules",
+  DOMAINS: "/api/v3/domains",
   TEAMS: "/api/v3/teams",
   TEAMS_MEMBERS: "/api/v3/teams/members",
   TEAMS_ACCEPT_INVITE: "/api/v3/teams/accept-invite",

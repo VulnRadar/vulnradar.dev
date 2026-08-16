@@ -33,6 +33,7 @@ import { runAsyncChecks } from "@/lib/scanner/async-checks";
 import { normalizeUrl } from "@/lib/scanner/execute-scan";
 import { validateScanTarget, safeFetch } from "@/lib/scanner/safe-fetch";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
+import { isUrlOwnedByUser } from "@/lib/domains/scope";
 import { redactSensitiveResponseHeaders } from "@/lib/scanner/response-headers";
 import { upsertHostReputation } from "@/lib/scanner/host-reputation";
 import { saveAutoTags, maybeSuggestAiTag } from "@/lib/tags/auto-tags";
@@ -332,6 +333,25 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const access = await checkAccessRules(url);
   if (!access.allowed) {
     return ApiResponse.forbidden("This target cannot be scanned.");
+  }
+
+  // Domain ownership: same gate as POST /api/v3/scan -- see that route's
+  // own comment for why active-probes needs this and the others don't.
+  // Checked before establishScanSession below runs, since an unverified
+  // target should never even get a login attempt for this purpose.
+  if (
+    scanners?.includes("active-probes") &&
+    authedUserId !== null &&
+    !(await isUrlOwnedByUser(url, authedUserId))
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "Active probing requires a verified domain. Verify ownership of this domain (or its parent) in Profile > Domains before requesting active-probes.",
+        statusCode: "DOMAIN_NOT_VERIFIED",
+      },
+      { status: 403 },
+    );
   }
 
   const loginResult = await establishScanSession(auth, url);

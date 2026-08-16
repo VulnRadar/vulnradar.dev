@@ -51,7 +51,8 @@ const endpoints: Endpoint[] = [
       "url accepts a bare hostname (auto-prepended https://), a full URL with an http/https/ws/wss/ftp/ftps/ssh/smtp/imap/imaps/pop3/pop3s/mongodb scheme, or a public IPv4 literal (probe-only mode).",
       "Raw IPv4: web checks (headers, ssl, tls, cookies, content, info, configuration, code, secrets, api) are skipped, because there is no hostname context for them. DNS, email, and your selected service probes still run.",
       'probes is an array of "<service>:<port>" strings. Supported services: ssh, smtp, imap, pop3, ftp, mongodb. Default port is used if you omit it. Each probe opens a TCP socket to the hostname or IP, reads the banner, and reports version disclosure and reachability.',
-      "scanners (advanced) accepts category names to restrict web checks: headers, ssl, tls, content, cookies, configuration, information-disclosure, dns, email, api, code, secrets-extended, vibe-code, client-side, supply-chain, host-validation, reputation, active-probes. Omit to run all 17 default categories. reputation only produces findings when the deployment has WEB_RISK_API_KEY configured. active-probes is opt-in only: it submits real requests to the target and never runs unless you name it explicitly, even if scanners is omitted.",
+      "scanners (advanced) accepts category names to restrict web checks: headers, ssl, tls, content, cookies, configuration, information-disclosure, dns, email, api, code, secrets-extended, vibe-code, client-side, supply-chain, host-validation, reputation, active-probes. Omit to run all 17 default categories. reputation only produces findings when the deployment has WEB_RISK_API_KEY configured. active-probes is opt-in only: it submits real requests to the target (SQLi/XSS/SSTI canary payloads, a live GraphQL introspection query) and never runs unless you name it explicitly, even if scanners is omitted.",
+      "active-probes additionally requires the target's domain (or its parent) to be a verified domain on your account -- see POST /domains below. A request naming active-probes against an unverified domain is rejected with 403 DOMAIN_NOT_VERIFIED before the scan starts.",
       "Service probes are independent of the URL scheme: you can ask for an SSH probe on an https:// target or a raw IPv4.",
       "SSRF protection rejects localhost and private IP targets.",
       "A scan_history row is created before scanning starts, in status pending, then running. Poll GET /scan/status/{scanId} (see below) for progress and the completed result; there is no synchronous response body with findings on this endpoint anymore.",
@@ -62,6 +63,11 @@ const endpoints: Endpoint[] = [
       {
         code: 401,
         description: "Unauthorized (session cookie or Bearer API key required)",
+      },
+      {
+        code: 403,
+        description:
+          "active-probes was requested against a domain you haven't verified (DOMAIN_NOT_VERIFIED)",
       },
       { code: 429, description: "Rate limit or daily quota exceeded" },
       { code: 500, description: "Failed to create the scan job; retry" },
@@ -776,6 +782,128 @@ const endpoints: Endpoint[] = [
     errors: [
       { code: 401, description: "Unauthorized" },
       { code: 404, description: "Key not found" },
+    ],
+  },
+  {
+    id: "get-domains",
+    method: "GET",
+    path: "/domains",
+    title: "List Domains",
+    description:
+      "Your verified and pending domains, plus any assigned to a team you belong to.",
+    responseExample: `{
+  "domains": [
+    {
+      "id": 12,
+      "domain": "example.com",
+      "team_id": null,
+      "status": "verified",
+      "verification_method": "dns_txt",
+      "created_at": "2026-08-01T00:00:00.000Z",
+      "verified_at": "2026-08-01T00:05:00.000Z",
+      "last_checked_at": "2026-08-01T00:05:00.000Z",
+      "last_check_error": null,
+      "verificationRecordName": "_vulnradar-verify.example.com"
+    }
+  ]
+}`,
+    errors: [{ code: 401, description: "Unauthorized" }],
+  },
+  {
+    id: "post-domains",
+    method: "POST",
+    path: "/domains",
+    title: "Add a Domain",
+    description:
+      "Add a domain (or subdomain) pending verification. Returns a fresh DNS TXT record to publish. Verifying a domain covers every subdomain under it; it does not require ownership proof up front, since publishing the returned token in DNS is exactly what proves it.",
+    requestBody: `{
+  "domain": "example.com"
+}`,
+    responseExample: `{
+  "id": 12,
+  "domain": "example.com",
+  "status": "pending",
+  "createdAt": "2026-08-01T00:00:00.000Z",
+  "verificationRecordName": "_vulnradar-verify.example.com",
+  "verificationRecordValue": "vulnradar-verify=<64-char token>"
+}`,
+    notes: [
+      "domain accepts a bare domain, a www.-prefixed domain, or a full URL (only its hostname is used). It is NOT collapsed to its registrable root: adding blog.example.com verifies exactly that (and everything under it), not example.com.",
+      "Publish the returned value as a TXT record at the returned name, then call POST /domains/{id}/verify.",
+      "Re-adding a domain you already have a row for returns that row's existing instructions instead of creating a duplicate (status 200, alreadyExists: true).",
+      "Rate-limited to 20 additions per hour per account.",
+    ],
+    errors: [
+      { code: 400, description: "Missing or invalid domain" },
+      { code: 401, description: "Unauthorized" },
+      {
+        code: 403,
+        description: "Domain verification is disabled on this deployment",
+      },
+      { code: 429, description: "Rate limit exceeded" },
+    ],
+  },
+  {
+    id: "post-domains-verify",
+    method: "POST",
+    path: "/domains/{id}/verify",
+    title: "Verify a Domain Now",
+    description:
+      "Looks up the DNS TXT record right now and updates the domain's status. Safe to call repeatedly while fixing a typo'd record.",
+    pathParams: [
+      {
+        name: "id",
+        type: "number",
+        required: true,
+        description: "Domain ID to verify",
+      },
+    ],
+    responseExample: `{
+  "verified": true,
+  "status": "verified"
+}`,
+    notes: [
+      "DNS changes can take a few minutes to propagate -- a failed check is not final, just retry once the record has had time to spread.",
+      "Rate-limited to 30 attempts per hour per account.",
+    ],
+    errors: [
+      { code: 400, description: "Invalid domain id" },
+      { code: 401, description: "Unauthorized" },
+      {
+        code: 403,
+        description:
+          "Domain verification is disabled on this deployment, or you don't have write access to this domain",
+      },
+      { code: 404, description: "Domain not found" },
+      { code: 429, description: "Rate limit exceeded" },
+    ],
+  },
+  {
+    id: "delete-domains",
+    method: "DELETE",
+    path: "/domains?id={id}",
+    title: "Remove a Domain",
+    description:
+      "Removes a domain. Active Probing stops being allowed against it (and its subdomains) immediately.",
+    queryParams: [
+      {
+        name: "id",
+        type: "number",
+        required: true,
+        description: "Domain ID to remove",
+      },
+    ],
+    responseExample: `{
+  "success": true
+}`,
+    errors: [
+      { code: 400, description: "Missing domain id" },
+      { code: 401, description: "Unauthorized" },
+      {
+        code: 403,
+        description: "You don't have permission to remove this domain",
+      },
+      { code: 404, description: "Domain not found" },
     ],
   },
 ];

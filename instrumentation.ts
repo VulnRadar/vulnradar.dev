@@ -2896,6 +2896,54 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
           );
         });
 
+      // ════════════════════════════════════════════════════════════════
+      // DOMAIN OWNERSHIP VERIFICATION - domains
+      //
+      // DNS TXT-based proof of control over a domain (see
+      // lib/domains/verification.ts), the prerequisite intrusive active
+      // probing checks against (see lib/domains/scope.ts, enforced in
+      // app/api/v3/scan/route.ts and app/api/v3/scan/crawl/route.ts):
+      // active-probes submits real exploit-attempt payloads to the target,
+      // and must never run against a URL the caller hasn't proven control
+      // over. UNIQUE(user_id, domain) rather than a globally-unique domain
+      // column deliberately: two different users can each hold their own
+      // pending row for the same domain (e.g. one no longer controls DNS,
+      // the other genuinely does now) -- only whoever can actually place
+      // their own row's distinct verification_token in DNS ever reaches
+      // 'verified'. status can also be 'reverify_failed' (was verified,
+      // the periodic re-check -- lib/domains/reverify-worker.ts -- no
+      // longer finds the token): scope checks only ever treat 'verified'
+      // as usable, so this alone revokes access without a separate delete.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        CREATE TABLE IF NOT EXISTS domains (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+          domain VARCHAR(255) NOT NULL,
+          status VARCHAR(20) NOT NULL DEFAULT 'pending',
+          verification_token VARCHAR(64) NOT NULL,
+          verification_method VARCHAR(20) NOT NULL DEFAULT 'dns_txt',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          verified_at TIMESTAMPTZ,
+          last_checked_at TIMESTAMPTZ,
+          last_check_error TEXT,
+          UNIQUE(user_id, domain)
+        );
+        CREATE INDEX IF NOT EXISTS idx_domains_user_id ON domains(user_id);
+        CREATE INDEX IF NOT EXISTS idx_domains_team_id ON domains(team_id) WHERE team_id IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_domains_domain_verified ON domains(domain) WHERE status = 'verified';
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create/verify domains (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
       console.log(`[${APP_NAME}] Database schema verified successfully.`);
 
       // ── Seed Default Badges ─────────────────────────────────────

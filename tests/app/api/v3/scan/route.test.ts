@@ -71,6 +71,11 @@ vi.mock("@/lib/scanner/access-rules", () => ({
   checkAccessRules: vi.fn(async () => ({ allowed: true })),
 }));
 
+const mockIsUrlOwnedByUser = vi.fn();
+vi.mock("@/lib/domains/scope", () => ({
+  isUrlOwnedByUser: (...args: unknown[]) => mockIsUrlOwnedByUser(...args),
+}));
+
 vi.mock("@/lib/scanner/engine", () => ({
   getPlannedSyncCategories: () => ["headers", "ssl"],
 }));
@@ -137,6 +142,8 @@ beforeEach(() => {
   mockRecordUsage.mockReset();
   mockSendNotificationEmail.mockReset();
   mockSendNotificationEmail.mockResolvedValue(undefined);
+  mockIsUrlOwnedByUser.mockReset();
+  mockIsUrlOwnedByUser.mockResolvedValue(true);
 });
 
 describe("POST /api/v3/scan", () => {
@@ -403,5 +410,69 @@ describe("POST /api/v3/scan", () => {
     );
 
     expect(res.status).toBe(200);
+  });
+});
+
+describe("active-probes domain ownership gate", () => {
+  it("never checks domain ownership for an ordinary scan that doesn't request active-probes", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 1 }] });
+    await POST(postRequest({ url: "https://example.com" }));
+    expect(mockIsUrlOwnedByUser).not.toHaveBeenCalled();
+  });
+
+  it("rejects with 403 when active-probes is requested against an unverified domain", async () => {
+    mockIsUrlOwnedByUser.mockResolvedValue(false);
+    const res = await POST(
+      postRequest({
+        url: "https://example.com",
+        scanners: ["headers", "active-probes"],
+      }),
+    );
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.statusCode).toBe("DOMAIN_NOT_VERIFIED");
+    expect(mockExecuteScan).not.toHaveBeenCalled();
+    // The gate runs before the scan_history row would be created.
+    expect(
+      mockQuery.mock.calls.some(([sql]) =>
+        String(sql).includes("INSERT INTO scan_history"),
+      ),
+    ).toBe(false);
+  });
+
+  it("checks ownership against the normalized URL for the caller's own user id", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 2 }] });
+    await POST(
+      postRequest({
+        url: "https://example.com/path",
+        scanners: ["active-probes"],
+      }),
+    );
+    expect(mockIsUrlOwnedByUser).toHaveBeenCalledWith(
+      "https://example.com/path",
+      42,
+    );
+  });
+
+  it("proceeds normally when active-probes is requested against a verified domain", async () => {
+    mockIsUrlOwnedByUser.mockResolvedValue(true);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 3 }] });
+    const res = await POST(
+      postRequest({
+        url: "https://example.com",
+        scanners: ["active-probes"],
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockExecuteScan).toHaveBeenCalledTimes(1);
   });
 });

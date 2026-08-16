@@ -1025,6 +1025,13 @@ export const CONFIG_FEATURE_SCHEDULED_SCANS = true;
 export const CONFIG_FEATURE_BULK_SCANS = true;
 export const CONFIG_FEATURE_PDF_REPORTS = true;
 export const CONFIG_FEATURE_EMAIL_NOTIFICATIONS = true;
+// Domain ownership verification (lib/domains/) and, downstream of it,
+// intrusive active-probing scans against a verified domain. Kill switch
+// only -- unlike the flags above, turning this off does not remove the
+// underlying safety requirement, it removes the ability to satisfy it, so
+// disabling it should also be treated as disabling active-probes entirely
+// (see app/api/v3/scan/route.ts's enforcement).
+export const CONFIG_FEATURE_DOMAIN_VERIFICATION = true;
 
 // POSTURE DIGEST - opt-in weekly/monthly cross-site summary email (see
 // lib/notifications/posture-digest.ts). Separate deployment-wide switch

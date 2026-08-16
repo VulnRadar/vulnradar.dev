@@ -143,6 +143,7 @@ export const API = {
   KEYS: `/api/${API_VERSION}/keys`,
   WEBHOOKS: `/api/${API_VERSION}/webhooks`,
   SCHEDULES: `/api/${API_VERSION}/schedules`,
+  DOMAINS: `/api/${API_VERSION}/domains`,
   TEAMS: `/api/${API_VERSION}/teams`,
   TEAMS_MEMBERS: `/api/${API_VERSION}/teams/members`,
   TEAMS_MEMBER_SCANS: `/api/${API_VERSION}/teams/member-scans`,

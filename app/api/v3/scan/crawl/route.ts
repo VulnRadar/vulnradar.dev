@@ -21,6 +21,7 @@ import {
 import { getSetting } from "@/lib/config/runtime-config";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { resolveScanIsPublic } from "@/lib/scanner/scan-privacy";
+import { isUrlOwnedByUser } from "@/lib/domains/scope";
 
 export async function POST(request: NextRequest) {
   // Auth: check API key first (Bearer token), then fall back to session cookie
@@ -192,6 +193,22 @@ export async function POST(request: NextRequest) {
         details:
           "This domain or IP address has been restricted from scanning for security, privacy, or compliance reasons. Access controls are enforced to protect sensitive infrastructure and user data. If you believe this is an error, please contact support.",
         statusCode: "BLOCKED",
+      },
+      { status: 403 },
+    );
+  }
+
+  // Domain ownership: same gate as POST /api/v3/scan -- see that route's
+  // own comment for why active-probes needs this and the others don't.
+  if (
+    scanners?.includes("active-probes") &&
+    !(await isUrlOwnedByUser(normalizedMainUrl, authedUserId))
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "Active probing requires a verified domain. Verify ownership of this domain (or its parent) in Profile > Domains before requesting active-probes.",
+        statusCode: "DOMAIN_NOT_VERIFIED",
       },
       { status: 403 },
     );
