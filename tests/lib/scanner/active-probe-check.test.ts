@@ -481,3 +481,55 @@ describe("checkSstiProbe", () => {
     expect(mockSafeFetch).toHaveBeenCalledTimes(1);
   });
 });
+
+// A cancelled scan must stop sending real requests to the target immediately,
+// not merely fail to start the next check category. These cover the
+// cancelSignal contract shared by all three probes above.
+describe("cancellation", () => {
+  it("never calls safeFetch when cancelSignal is already aborted before the check starts", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const findings = await checkActiveProbes(
+      "https://example.com",
+      controller.signal,
+    );
+    expect(findings).toEqual([]);
+    expect(mockSafeFetch).not.toHaveBeenCalled();
+    expect(mockValidateScanTarget).not.toHaveBeenCalled();
+  });
+
+  it("stops submitting further forms once cancelSignal aborts mid-scan", async () => {
+    const controller = new AbortController();
+    mockSafeFetch
+      .mockResolvedValueOnce(htmlResponse(TWO_SEARCH_FORMS_SAME_ACTION_PAGE))
+      .mockImplementationOnce(async () => {
+        // Cancellation lands while the first form's probe is "in flight".
+        controller.abort();
+        return htmlResponse("<p>no results</p>");
+      });
+
+    const findings = await checkSqlInjectionProbe(
+      "https://example.com/search",
+      controller.signal,
+    );
+
+    expect(findings).toEqual([]);
+    // Baseline page fetch + exactly one form probe, never the second form.
+    expect(mockSafeFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("threads cancelSignal into the probe request's own AbortSignal", async () => {
+    const controller = new AbortController();
+    mockSafeFetch.mockResolvedValueOnce(htmlResponse(SEARCH_PAGE));
+    mockSafeFetch.mockResolvedValueOnce(htmlResponse("<p>no results</p>"));
+
+    await checkSstiProbe("https://example.com/search", controller.signal);
+
+    const probeCall = mockSafeFetch.mock.calls[1];
+    const probeInit = probeCall[1] as RequestInit;
+    expect(probeInit.signal).toBeInstanceOf(AbortSignal);
+    expect(probeInit.signal?.aborted).toBe(false);
+    controller.abort();
+    expect(probeInit.signal?.aborted).toBe(true);
+  });
+});

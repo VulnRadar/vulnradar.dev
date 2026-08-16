@@ -22,6 +22,7 @@ import {
   finalizeScanFailure,
   markScanRunning,
   ScanCancelledError,
+  getCancelSignal,
 } from "./scan-jobs";
 import pool from "@/lib/database/db";
 import {
@@ -243,6 +244,7 @@ async function scanSingleUrl(
   maxBodySize: number,
   scanners?: string[] | null,
   onProgress?: ScanProgressHook,
+  cancelSignal?: AbortSignal,
 ): Promise<{
   url: string;
   findings: Vulnerability[];
@@ -308,7 +310,7 @@ async function scanSingleUrl(
   let asyncFindings: Vulnerability[] = [];
   try {
     asyncFindings = await Promise.race([
-      runAsyncChecks(url, scanners, onProgress),
+      runAsyncChecks(url, scanners, onProgress, cancelSignal),
       new Promise<Vulnerability[]>((resolve) =>
         setTimeout(() => resolve([]), 15000),
       ),
@@ -400,6 +402,7 @@ export async function executeCrawlScan(
     `Crawl scan exceeded the ${crawlTimeoutSeconds}s time limit.`,
   );
   const { onProgress, setTotal } = createProgressTracker(scanId);
+  const cancelSignal = getCancelSignal(scanId);
 
   try {
     await markScanRunning(scanId);
@@ -482,6 +485,7 @@ export async function executeCrawlScan(
         maxBodySize,
         scanners,
         onProgress,
+        cancelSignal,
       );
       pageResults.push(result);
     }

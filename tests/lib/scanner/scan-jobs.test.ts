@@ -33,6 +33,7 @@ const {
   requestCancel,
   isCancelled,
   clearCancel,
+  getCancelSignal,
   createProgressTracker,
   startWatchdog,
   finalizeScanSuccess,
@@ -70,6 +71,46 @@ describe("cancellation registry", () => {
     expect(isCancelled(102)).toBe(false);
     clearCancel(101);
     expect(isCancelled(101)).toBe(false);
+  });
+});
+
+describe("getCancelSignal", () => {
+  it("returns a signal that is not aborted for a scan that was never cancelled", () => {
+    const signal = getCancelSignal(201);
+    expect(signal.aborted).toBe(false);
+    clearCancel(201);
+  });
+
+  it("aborts the signal the moment requestCancel is called for that scan id", () => {
+    const signal = getCancelSignal(202);
+    expect(signal.aborted).toBe(false);
+    requestCancel(202);
+    expect(signal.aborted).toBe(true);
+    clearCancel(202);
+  });
+
+  it("returns an already-aborted signal when requestCancel fired before the first getCancelSignal call", () => {
+    requestCancel(203);
+    const signal = getCancelSignal(203);
+    expect(signal.aborted).toBe(true);
+    clearCancel(203);
+  });
+
+  it("never aborts another scan's signal", () => {
+    const signalA = getCancelSignal(204);
+    const signalB = getCancelSignal(205);
+    requestCancel(204);
+    expect(signalA.aborted).toBe(true);
+    expect(signalB.aborted).toBe(false);
+    clearCancel(204);
+    clearCancel(205);
+  });
+
+  it("returns the same signal instance across repeated calls for one scan id", () => {
+    const first = getCancelSignal(206);
+    const second = getCancelSignal(206);
+    expect(first).toBe(second);
+    clearCancel(206);
   });
 });
 

@@ -4211,6 +4211,13 @@ export async function checkSecurityTxt(
   return [];
 }
 
+// checkGraphQLIntrospection deliberately does NOT live in this bundle: it
+// submits its own live introspection query to well-known GraphQL paths
+// instead of only reading the response already fetched for this URL, the
+// same "sends a real request the target wasn't otherwise going to receive"
+// character as the active-probes checks in active-probe-check.ts. It runs
+// from buildBranches' active-probes branch instead, gated behind the same
+// explicit opt-in.
 export async function checkLiveFetch(url: string): Promise<Vulnerability[]> {
   let parsed: URL;
   try {
@@ -4239,7 +4246,6 @@ export async function checkLiveFetch(url: string): Promise<Vulnerability[]> {
     corsResult,
     methodsResult,
     hostInjectionResult,
-    graphqlResult,
     bucketListingResult,
   ] = await Promise.allSettled([
     checkRobotsTxt(origin),
@@ -4248,7 +4254,6 @@ export async function checkLiveFetch(url: string): Promise<Vulnerability[]> {
     checkActiveCORS(url),
     checkActiveHttpMethods(origin),
     checkXForwardedHostInjection(url),
-    checkGraphQLIntrospection(origin, url),
     checkBucketListing(url),
   ]);
 
@@ -4263,8 +4268,6 @@ export async function checkLiveFetch(url: string): Promise<Vulnerability[]> {
     findings.push(...methodsResult.value);
   if (hostInjectionResult.status === "fulfilled")
     findings.push(...hostInjectionResult.value);
-  if (graphqlResult.status === "fulfilled")
-    findings.push(...graphqlResult.value);
   if (bucketListingResult.status === "fulfilled")
     findings.push(...bucketListingResult.value);
   return findings;
@@ -4316,12 +4319,15 @@ async function boundedBranch(
 function buildBranches(
   url: string,
   categories?: string[] | null,
+  signal?: AbortSignal,
 ): { label: string; promise: Promise<Vulnerability[]> }[] {
   let hostname: string;
+  let origin: string;
   let isHTTPS: boolean;
   try {
     const parsed = new URL(url);
     hostname = parsed.hostname;
+    origin = parsed.origin;
     isHTTPS = parsed.protocol === "https:";
   } catch {
     return [];
@@ -4384,18 +4390,24 @@ function buildBranches(
     branches.push({ label: "reputation", promise: checkReputation(url) });
   }
 
-  // Active probing (canary-reflection XSS) — deliberately NOT gated by
-  // `runAll`, unlike every other branch above. This is the only check that
-  // submits real requests to the target instead of only reading responses,
-  // so it must never run just because a scan omitted a `scanners` filter;
-  // it only runs when a caller names "active-probes" explicitly.
+  // Active probing (canary-reflection XSS/SQLi/SSTI, GraphQL introspection)
+  // — deliberately NOT gated by `runAll`, unlike every other branch above.
+  // These are the only checks that submit real requests to the target
+  // instead of only reading responses already fetched for other checks, so
+  // none of them must ever run just because a scan omitted a `scanners`
+  // filter; they only run when a caller names "active-probes" explicitly.
+  // `signal` is this scan's cancellation signal (see getCancelSignal in
+  // scan-jobs.ts) — the form-submission probes check it between requests
+  // and thread it into safeFetch so a cancelled scan stops sending payloads
+  // to the target immediately instead of finishing whatever was in flight.
   if (allowed?.has("active-probes")) {
     branches.push({
       label: "active-probes",
       promise: Promise.allSettled([
-        checkActiveProbes(url),
-        checkSqlInjectionProbe(url),
-        checkSstiProbe(url),
+        checkActiveProbes(url, signal),
+        checkSqlInjectionProbe(url, signal),
+        checkSstiProbe(url, signal),
+        checkGraphQLIntrospection(origin, url),
       ]).then((results) =>
         results.flatMap((r) => (r.status === "fulfilled" ? r.value : [])),
       ),
@@ -4443,8 +4455,9 @@ export async function runAsyncChecksDetailed(
   url: string,
   categories?: string[] | null,
   onProgress?: ScanProgressHook,
+  signal?: AbortSignal,
 ): Promise<AsyncCheckResult> {
-  const branches = buildBranches(url, categories);
+  const branches = buildBranches(url, categories, signal);
   if (branches.length === 0) return { findings: [], incomplete: [] };
 
   const results = await Promise.allSettled(
@@ -4471,11 +4484,13 @@ export async function runAsyncChecks(
   url: string,
   categories?: string[] | null,
   onProgress?: ScanProgressHook,
+  signal?: AbortSignal,
 ): Promise<Vulnerability[]> {
   const { findings } = await runAsyncChecksDetailed(
     url,
     categories,
     onProgress,
+    signal,
   );
   return findings;
 }

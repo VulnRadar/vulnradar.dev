@@ -31,9 +31,22 @@ export class ScanCancelledError extends Error {
 
 const cancelledScans = new Set<number>();
 
-/** Flag a scan for cancellation. Checked the next time it reports progress. */
+/**
+ * Per-scan AbortControllers, lazily created by `getCancelSignal`. Separate
+ * from `cancelledScans` above: that Set is checked between categories by
+ * `onProgress`, which is enough for work that hasn't started yet, but does
+ * nothing for a request already in flight (e.g. an active-probe form
+ * submission mid-request when cancellation is requested). A signal aborts
+ * that request itself instead of only stopping the next one from starting.
+ */
+const cancelControllers = new Map<number, AbortController>();
+
+/** Flag a scan for cancellation. Checked the next time it reports progress,
+ *  and immediately aborts any in-flight work holding this scan's signal
+ *  (see `getCancelSignal`). */
 export function requestCancel(scanId: number): void {
   cancelledScans.add(scanId);
+  cancelControllers.get(scanId)?.abort();
 }
 
 export function isCancelled(scanId: number): boolean {
@@ -43,6 +56,32 @@ export function isCancelled(scanId: number): boolean {
 /** Forget a scan's cancellation flag once it has reached a terminal state. */
 export function clearCancel(scanId: number): void {
   cancelledScans.delete(scanId);
+  cancelControllers.delete(scanId);
+}
+
+/**
+ * An AbortSignal that fires the instant `requestCancel(scanId)` is called,
+ * for callers that need to actually interrupt an in-flight request rather
+ * than just check a flag before starting the next unit of work. Pass this
+ * into `safeFetch`'s `init.signal` (it combines a caller signal with its
+ * own per-request timeout automatically) wherever a check makes real
+ * requests to the scan target, most importantly the active-probe checks,
+ * which submit real exploit-attempt payloads and must stop sending them the
+ * moment a scan is cancelled.
+ *
+ * Lazily creates the controller on first call so a scan that's never
+ * cancelled never pays for one, and immediately returns an already-aborted
+ * signal if `requestCancel` already fired before this was first called
+ * (closes the race between the two).
+ */
+export function getCancelSignal(scanId: number): AbortSignal {
+  let controller = cancelControllers.get(scanId);
+  if (!controller) {
+    controller = new AbortController();
+    if (isCancelled(scanId)) controller.abort();
+    cancelControllers.set(scanId, controller);
+  }
+  return controller.signal;
 }
 
 export interface ProgressTracker {

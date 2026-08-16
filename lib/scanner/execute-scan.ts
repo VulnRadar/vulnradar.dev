@@ -18,6 +18,7 @@ import {
   finalizeScanFailure,
   markScanRunning,
   ScanCancelledError,
+  getCancelSignal,
 } from "./scan-jobs";
 import pool from "@/lib/database/db";
 import type { Category, Severity, Vulnerability } from "./types";
@@ -572,6 +573,7 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
   );
   const { onProgress, setTotal } = createProgressTracker(scanId);
   setTotal(categoriesTotal);
+  const cancelSignal = getCancelSignal(scanId);
 
   try {
     await markScanRunning(scanId);
@@ -1003,6 +1005,7 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
       normalizedUrl,
       selectedScanners,
       onProgress,
+      cancelSignal,
     );
     // Both onProgress and runSyncChecks below can throw synchronously
     // (cancellation), which would abandon asyncPromise before the

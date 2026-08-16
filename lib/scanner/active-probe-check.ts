@@ -15,6 +15,14 @@
  * different host (a Stripe/Mailchimp embed, an OAuth provider, etc.) is
  * never probed, which also keeps the SSRF/target-pinning behavior every
  * other check in this codebase relies on.
+ *
+ * Every exported check here accepts an optional `cancelSignal` (see
+ * getCancelSignal in scan-jobs.ts): checked between form submissions so a
+ * cancelled scan stops queuing new payload requests, and combined into the
+ * request's own AbortSignal (probeSignal below) so cancellation aborts a
+ * request already in flight too. Submitting real requests to someone else's
+ * site is exactly the behavior a cancelled scan must be able to stop
+ * immediately, not just eventually.
  */
 
 import { randomBytes } from "crypto";
@@ -66,12 +74,28 @@ function buildFinding(
   };
 }
 
+/**
+ * Combine this probe's own per-request timeout with the scan's cancellation
+ * signal (see getCancelSignal in scan-jobs.ts), when one was given. safeFetch
+ * would combine a caller signal with its own internal timeout regardless, but
+ * doing it here too means a cancelled scan aborts the in-flight request the
+ * instant cancellation is requested, not merely by the time the fetch's own
+ * timeout would have fired anyway.
+ */
+function probeSignal(cancelSignal?: AbortSignal): AbortSignal {
+  const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  return cancelSignal
+    ? AbortSignal.any([timeoutSignal, cancelSignal])
+    : timeoutSignal;
+}
+
 function buildProbeRequest(
   action: string,
   method: "GET" | "POST",
   hiddenFields: Record<string, string>,
   testableFields: string[],
   marker: string,
+  cancelSignal?: AbortSignal,
 ): { url: string; init: RequestInit } {
   const body = new URLSearchParams();
   for (const [name, value] of Object.entries(hiddenFields)) {
@@ -91,7 +115,7 @@ function buildProbeRequest(
       init: {
         method: "GET",
         headers: { "User-Agent": USER_AGENT },
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: probeSignal(cancelSignal),
       },
     };
   }
@@ -105,7 +129,7 @@ function buildProbeRequest(
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: body.toString(),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: probeSignal(cancelSignal),
     },
   };
 }
@@ -129,7 +153,10 @@ interface ProbableForm {
  */
 async function discoverProbableForms(
   url: string,
+  cancelSignal?: AbortSignal,
 ): Promise<ProbableForm | null> {
+  if (cancelSignal?.aborted) return null;
+
   const safety = await validateScanTarget(url);
   if (!safety.safe) return null;
 
@@ -146,7 +173,7 @@ async function discoverProbableForms(
       url,
       {
         headers: { "User-Agent": USER_AGENT },
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: probeSignal(cancelSignal),
       },
       [hostname],
     );
@@ -176,14 +203,21 @@ async function discoverProbableForms(
  * the scan or produce a false positive; the worst outcome of an outage is
  * an under-report (this form wasn't probed), never a wrong finding.
  */
-export async function checkActiveProbes(url: string): Promise<Vulnerability[]> {
-  const discovered = await discoverProbableForms(url);
+export async function checkActiveProbes(
+  url: string,
+  cancelSignal?: AbortSignal,
+): Promise<Vulnerability[]> {
+  const discovered = await discoverProbableForms(url, cancelSignal);
   if (!discovered) return [];
   const { hostname, forms } = discovered;
 
   const findings: Vulnerability[] = [];
 
   for (const [formIndex, form] of forms.entries()) {
+    // Cancellation must stop new submissions from going out, not just abort
+    // whichever one is already in flight (that part is handled inside
+    // buildProbeRequest/probeSignal below).
+    if (cancelSignal?.aborted) break;
     // Unique per form: two forms flagged on the same page must not collide
     // on the literal marker one contains showing up in the other's probe.
     const canary = `vr${randomBytes(4).toString("hex")}xss`;
@@ -196,6 +230,7 @@ export async function checkActiveProbes(url: string): Promise<Vulnerability[]> {
         form.hiddenFields,
         form.testableFields,
         marker,
+        cancelSignal,
       );
       const res = await safeFetch(probeUrl, init, [hostname]);
       // A JSON/plaintext API response can contain the literal marker (JSON
@@ -273,8 +308,9 @@ const SQL_ERROR_SIGNATURES: RegExp[] = [
  */
 export async function checkSqlInjectionProbe(
   url: string,
+  cancelSignal?: AbortSignal,
 ): Promise<Vulnerability[]> {
-  const discovered = await discoverProbableForms(url);
+  const discovered = await discoverProbableForms(url, cancelSignal);
   if (!discovered) return [];
   const { hostname, forms, baselineHtml } = discovered;
 
@@ -296,6 +332,7 @@ export async function checkSqlInjectionProbe(
   const findings: Vulnerability[] = [];
 
   for (const [formIndex, form] of forms.entries()) {
+    if (cancelSignal?.aborted) break;
     const hex = randomBytes(4).toString("hex");
     const payload = "vr" + hex + "'";
 
@@ -306,6 +343,7 @@ export async function checkSqlInjectionProbe(
         form.hiddenFields,
         form.testableFields,
         payload,
+        cancelSignal,
       );
       const res = await safeFetch(probeUrl, init, [hostname]);
       const responseText = await res.text();
@@ -380,14 +418,18 @@ function sstiEvaluatedForms(hex: string): string[] {
  *
  * Same fail-open contract as checkActiveProbes.
  */
-export async function checkSstiProbe(url: string): Promise<Vulnerability[]> {
-  const discovered = await discoverProbableForms(url);
+export async function checkSstiProbe(
+  url: string,
+  cancelSignal?: AbortSignal,
+): Promise<Vulnerability[]> {
+  const discovered = await discoverProbableForms(url, cancelSignal);
   if (!discovered) return [];
   const { hostname, forms } = discovered;
 
   const findings: Vulnerability[] = [];
 
   for (const [formIndex, form] of forms.entries()) {
+    if (cancelSignal?.aborted) break;
     const hex = randomBytes(4).toString("hex");
     const marker = sstiMarker(hex);
 
@@ -398,6 +440,7 @@ export async function checkSstiProbe(url: string): Promise<Vulnerability[]> {
         form.hiddenFields,
         form.testableFields,
         marker,
+        cancelSignal,
       );
       const res = await safeFetch(probeUrl, init, [hostname]);
       const responseText = await res.text();
