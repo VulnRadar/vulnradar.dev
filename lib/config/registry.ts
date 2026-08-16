@@ -269,6 +269,10 @@ import {
   CONFIG_BILLING_CORE_SUPPORTER_AI_TOKENS_PER_WINDOW,
   CONFIG_BILLING_PRO_SUPPORTER_AI_TOKENS_PER_WINDOW,
   CONFIG_BILLING_ELITE_SUPPORTER_AI_TOKENS_PER_WINDOW,
+  CONFIG_BILLING_FREE_BROWSERBASE_MINUTES_PER_MONTH,
+  CONFIG_BILLING_CORE_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH,
+  CONFIG_BILLING_PRO_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH,
+  CONFIG_BILLING_ELITE_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH,
 } from "./config-values";
 
 /**
@@ -1268,6 +1272,46 @@ export const SETTINGS_REGISTRY = {
     help: "AI tokens an elite supporter may spend on AI chat, AI finding verification, and AI scan summaries combined per AI_USAGE_WINDOW_HOURS window, using VulnRadar's own AI. A real finite cap — VulnRadar's AI usage runs through subsidized provider capacity, not an unlimited budget, so even the top tier is never -1 (unlimited) for this field. Bringing your own AI key bypasses this cap entirely instead.",
     min: 0,
     max: 100_000_000,
+  },
+  BILLING_FREE_BROWSERBASE_MINUTES_PER_MONTH: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_BILLING_FREE_BROWSERBASE_MINUTES_PER_MONTH,
+    group: "Billing",
+    label: "Free plan Browserbase minutes/month",
+    help: "Live-browser session minutes a free-plan user may use per calendar month (see lib/billing/browserbase-usage.ts). 0 disables the feature on this plan. Never -1 (unlimited) — Browserbase is a real paid third-party API.",
+    min: 0,
+    max: 100_000,
+  },
+  BILLING_CORE_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_BILLING_CORE_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH,
+    group: "Billing",
+    label: "Core supporter Browserbase minutes/month",
+    help: "Live-browser session minutes a core supporter may use per calendar month.",
+    min: 0,
+    max: 100_000,
+  },
+  BILLING_PRO_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_BILLING_PRO_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH,
+    group: "Billing",
+    label: "Pro supporter Browserbase minutes/month",
+    help: "Live-browser session minutes a pro supporter may use per calendar month.",
+    min: 0,
+    max: 100_000,
+  },
+  BILLING_ELITE_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_BILLING_ELITE_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH,
+    group: "Billing",
+    label: "Elite supporter Browserbase minutes/month",
+    help: "Live-browser session minutes an elite supporter may use per calendar month. A real finite cap — Browserbase is a real paid third-party API, not subsidized capacity, so even the top tier is never -1 (unlimited) for this field.",
+    min: 0,
+    max: 100_000,
   },
 
   // RATE LIMITS

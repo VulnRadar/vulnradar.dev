@@ -22,6 +22,7 @@ import {
   Lock,
   Sparkles,
   ExternalLink,
+  Monitor,
 } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
 import { cn } from "@/lib/ui/utils";
@@ -36,6 +37,13 @@ import {
   type SensitiveBillingData,
 } from "../modals/billing-verification-modal";
 import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
+
+/** Whole minutes, one decimal only when there's a fractional remainder worth
+ *  showing (e.g. "1.5 min" for 90s, but "3 min" for 180s, not "3.0 min"). */
+function formatMinutes(seconds: number): string {
+  const minutes = seconds / 60;
+  return (Number.isInteger(minutes) ? minutes : minutes.toFixed(1)).toString();
+}
 
 export function ProfileBillingTab({
   user,
@@ -656,6 +664,197 @@ export function ProfileBillingTab({
                 role="status"
                 aria-live="polite"
                 aria-label="Loading GitHub review usage"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1.5">
+                    <Skeleton className="h-7 w-16" />
+                    <Skeleton className="h-3.5 w-24" />
+                  </div>
+                  <div className="text-right space-y-1.5">
+                    <Skeleton className="h-5 w-8 ml-auto" />
+                    <Skeleton className="h-3.5 w-16" />
+                  </div>
+                </div>
+                <Skeleton className="h-2 w-full rounded-full" />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* Browserbase (live-browser session) Usage Card */}
+      <section>
+        <div className="mb-4">
+          <h2 className="text-base font-semibold tracking-tight text-foreground">
+            Live-browser usage
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Minutes spent in the interactive browser viewer.
+          </p>
+        </div>
+        <Card className="border-border/50 bg-card/50">
+          <CardContent className="pt-6 flex flex-col gap-4">
+            {billingInfo ? (
+              <>
+                {billingInfo.browserbaseUsage.unlimited ? (
+                  <div className="flex items-center gap-3 p-4 rounded-lg bg-[hsl(var(--success)/0.1)] border border-[hsl(var(--success)/0.25)]">
+                    <Monitor
+                      className="h-5 w-5 text-[hsl(var(--success))]"
+                      aria-hidden="true"
+                    />
+                    <div>
+                      <p className="font-medium text-foreground">
+                        Unlimited live-browser minutes
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        No cap applies to your account.
+                      </p>
+                    </div>
+                  </div>
+                ) : billingInfo.browserbaseUsage.limitMinutes === 0 ? (
+                  <div className="flex items-center gap-3 p-4 rounded-lg bg-muted/30 border border-border">
+                    <Monitor
+                      className="h-5 w-5 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                    <div>
+                      <p className="font-medium text-foreground">
+                        Not included on your plan
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Upgrade for access, or buy live-browser minutes below.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-2xl font-bold text-foreground">
+                          {formatMinutes(
+                            billingInfo.browserbaseUsage.usedSeconds,
+                          )}{" "}
+                          <span className="text-muted-foreground text-base font-normal">
+                            / {billingInfo.browserbaseUsage.limitMinutes} min
+                          </span>
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          used this month
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-semibold text-foreground">
+                          {formatMinutes(
+                            Math.max(
+                              0,
+                              billingInfo.browserbaseUsage.limitMinutes * 60 -
+                                billingInfo.browserbaseUsage.usedSeconds,
+                            ),
+                          )}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          min remaining
+                        </p>
+                      </div>
+                    </div>
+                    <Progress
+                      value={Math.min(
+                        100,
+                        (billingInfo.browserbaseUsage.usedSeconds /
+                          (billingInfo.browserbaseUsage.limitMinutes * 60)) *
+                          100,
+                      )}
+                      className="h-2"
+                    />
+                    {billingInfo.browserbaseUsage.usedSeconds >=
+                      billingInfo.browserbaseUsage.limitMinutes * 60 &&
+                      (billingInfo.browserbaseUsage.creditBalanceSeconds > 0 ? (
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
+                          <Sparkles
+                            className="h-4 w-4 text-primary shrink-0"
+                            aria-hidden="true"
+                          />
+                          <p className="text-sm text-foreground">
+                            Free minutes for this month are used up. Sessions
+                            keep working, drawing from your{" "}
+                            {formatMinutes(
+                              billingInfo.browserbaseUsage.creditBalanceSeconds,
+                            )}{" "}
+                            purchased minutes below.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                          <AlertTriangle className="h-4 w-4 text-destructive" />
+                          <p className="text-sm text-destructive">
+                            Live-browser minute limit reached for this month.
+                            Upgrade your plan, buy more minutes below, or wait
+                            for it to reset.
+                          </p>
+                        </div>
+                      ))}
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      <span>
+                        Resets{" "}
+                        {new Date(
+                          billingInfo.browserbaseUsage.resetsAt,
+                        ).toLocaleString([], {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          timeZoneName: "short",
+                        })}
+                      </span>
+                    </div>
+                  </>
+                )}
+                {billingInfo.browserbaseUsage.creditBalanceSeconds > 0 && (
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/30 border border-border">
+                    <Sparkles
+                      className="h-4 w-4 text-primary shrink-0"
+                      aria-hidden="true"
+                    />
+                    <p className="text-sm text-foreground">
+                      <span className="font-semibold">
+                        {formatMinutes(
+                          billingInfo.browserbaseUsage.creditBalanceSeconds,
+                        )}
+                      </span>{" "}
+                      purchased live-browser minutes available, on top of the
+                      plan above
+                    </p>
+                  </div>
+                )}
+                {!billingInfo.browserbaseUsage.unlimited && (
+                  <div className="flex items-center justify-between gap-3 pt-3 border-t border-border">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">
+                        Need more live-browser time?
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Pick a minute amount on the checkout page. Minutes never
+                        expire and are not reset by the month above.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 shrink-0"
+                      asChild
+                    >
+                      <a href="/checkout/browser-credits">Buy more minutes</a>
+                    </Button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div
+                className="flex flex-col gap-4"
+                role="status"
+                aria-live="polite"
+                aria-label="Loading live-browser usage"
               >
                 <div className="flex items-center justify-between">
                   <div className="space-y-1.5">

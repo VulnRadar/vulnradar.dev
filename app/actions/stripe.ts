@@ -14,6 +14,11 @@ import {
   creditGithubCreditPurchase,
   getGithubCreditBalance,
 } from "@/lib/billing/github-review-usage";
+import { getBrowserbaseCreditTier } from "@/lib/billing/browserbase-credit-catalog";
+import {
+  creditBrowserbaseCreditPurchase,
+  getBrowserbaseCreditBalanceSeconds,
+} from "@/lib/billing/browserbase-usage";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "@/lib/billing/subscription-status";
 import { grantPremiumBadge, revokePremiumBadge } from "@/lib/billing/badges";
 import { getSession } from "@/lib/auth/auth";
@@ -644,5 +649,154 @@ export async function confirmGithubCreditPurchase(
     succeeded,
     tokens: succeeded ? tier!.tokens : 0,
     balance,
+  };
+}
+
+export interface CreateBrowserbaseCreditPaymentIntentResult {
+  clientSecret: string;
+  paymentIntentId: string;
+}
+
+/**
+ * Starts a real, one-time Stripe PaymentIntent for a purchased live-browser
+ * (Browserbase) session minute top-up -- mirrors createAiCreditPaymentIntent
+ * above exactly, same customer-resolution block, same Stripe Elements
+ * shape -- for a completely separate catalog/tier/metadata key
+ * (browserbaseCreditTierId, not aiCreditTierId) and balance
+ * (users.browserbase_credit_seconds_balance, not ai_credit_balance). See
+ * lib/billing/browserbase-credit-catalog.ts for the tier catalog and
+ * lib/billing/browserbase-usage.ts for how the resulting balance is spent.
+ */
+export async function createBrowserbaseCreditPaymentIntent(
+  tierId: string,
+): Promise<CreateBrowserbaseCreditPaymentIntentResult> {
+  const sessionUser = await getSession();
+  if (!sessionUser) {
+    throw new Error("User must be logged in to buy Browserbase minutes");
+  }
+  const userId = sessionUser.userId;
+
+  const tier = getBrowserbaseCreditTier(tierId);
+  if (!tier) {
+    throw new Error(`Browserbase credit tier "${tierId}" not found`);
+  }
+
+  const stripe = getStripe();
+  if (!stripe) {
+    throw new Error("Stripe is not configured on this server.");
+  }
+
+  const userResult = await pool.query(
+    `SELECT email, name, stripe_customer_id FROM users WHERE id = $1`,
+    [userId],
+  );
+  const user = userResult.rows[0];
+  if (!user) throw new Error("User not found");
+
+  async function createStripeCustomer(): Promise<string> {
+    const customer = await stripe!.customers.create({
+      email: user.email,
+      name: user.name ?? undefined,
+      metadata: { userId: String(userId) },
+    });
+    await pool.query(`UPDATE users SET stripe_customer_id = $1 WHERE id = $2`, [
+      customer.id,
+      userId,
+    ]);
+    return customer.id;
+  }
+
+  let customerId: string;
+  if (!user.stripe_customer_id) {
+    customerId = await createStripeCustomer();
+  } else {
+    try {
+      const existing = await stripe.customers.retrieve(user.stripe_customer_id);
+      if (existing.deleted) throw new Error("customer deleted");
+      customerId = user.stripe_customer_id;
+    } catch {
+      customerId = await createStripeCustomer();
+    }
+  }
+
+  const paymentIntent = await stripe.paymentIntents.create({
+    amount: tier.priceInCents,
+    currency: "usd",
+    customer: customerId,
+    metadata: {
+      userId: String(userId),
+      browserbaseCreditTierId: tier.id,
+    },
+    automatic_payment_methods: { enabled: true },
+  });
+
+  if (!paymentIntent.client_secret) {
+    throw new Error(
+      "Failed to create payment intent for Browserbase credit purchase",
+    );
+  }
+
+  return {
+    clientSecret: paymentIntent.client_secret,
+    paymentIntentId: paymentIntent.id,
+  };
+}
+
+export interface ConfirmBrowserbaseCreditPurchaseResult {
+  succeeded: boolean;
+  /** The tier's minute amount when succeeded is true, otherwise 0. */
+  minutes: number;
+  /** The account's current purchased balance, in seconds, valid whenever succeeded is true. */
+  balanceSeconds: number;
+}
+
+/**
+ * Confirms a Browserbase credit purchase directly against Stripe via its
+ * PaymentIntent id -- mirrors confirmAiCreditPurchase above exactly. The
+ * webhook's payment_intent.succeeded handler stays the backup path for a
+ * closed tab / lost connection.
+ */
+export async function confirmBrowserbaseCreditPurchase(
+  paymentIntentId: string,
+): Promise<ConfirmBrowserbaseCreditPurchaseResult> {
+  const sessionUser = await getSession();
+  if (!sessionUser) {
+    throw new Error(
+      "User must be logged in to confirm a Browserbase credit purchase",
+    );
+  }
+
+  const stripe = getStripe();
+  if (!stripe) {
+    throw new Error("Stripe is not configured on this server.");
+  }
+
+  const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+
+  if (paymentIntent.metadata?.userId !== String(sessionUser.userId)) {
+    throw new Error("This purchase does not belong to your account");
+  }
+
+  const tier = getBrowserbaseCreditTier(
+    paymentIntent.metadata?.browserbaseCreditTierId || "",
+  );
+  const succeeded = paymentIntent.status === "succeeded" && !!tier;
+
+  if (succeeded) {
+    await creditBrowserbaseCreditPurchase(
+      paymentIntent.id,
+      sessionUser.userId,
+      tier!.minutes * 60,
+    );
+  }
+
+  const balanceSeconds = await getBrowserbaseCreditBalanceSeconds(
+    sessionUser.userId,
+  );
+
+  return {
+    succeeded,
+    minutes: succeeded ? tier!.minutes : 0,
+    balanceSeconds,
   };
 }

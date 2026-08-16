@@ -37,6 +37,20 @@ vi.mock("@/lib/scanner/safe-fetch", () => ({
   validateScanTarget: (...args: unknown[]) => mockValidateScanTarget(...args),
 }));
 
+// Mocked at this library boundary, same as checkRateLimit/validateScanTarget
+// above: this file tests route wiring (is the quota checked before creating
+// a session, is a real elapsed duration recorded when one ends), not the
+// quota-math/accounting logic itself, which lib/billing/browserbase-usage.ts
+// has its own dedicated tests for.
+const mockCheckBrowserbaseQuota = vi.fn();
+const mockRecordBrowserbaseSeconds = vi.fn();
+vi.mock("@/lib/billing/browserbase-usage", () => ({
+  checkBrowserbaseQuota: (...args: unknown[]) =>
+    mockCheckBrowserbaseQuota(...args),
+  recordBrowserbaseSeconds: (...args: unknown[]) =>
+    mockRecordBrowserbaseSeconds(...args),
+}));
+
 const mockCreateBrowserSession = vi.fn();
 const mockEndBrowserSession = vi.fn();
 const mockGetBrowserLiveUrls = vi.fn();
@@ -79,6 +93,16 @@ beforeEach(() => {
   });
   mockValidateScanTarget.mockReset();
   mockValidateScanTarget.mockResolvedValue({ safe: true });
+  mockCheckBrowserbaseQuota.mockReset();
+  mockCheckBrowserbaseQuota.mockResolvedValue({
+    allowed: true,
+    usedSeconds: 0,
+    limitMinutes: 90,
+    periodStart: new Date("2026-08-01T00:00:00Z"),
+    creditBalanceSeconds: 0,
+  });
+  mockRecordBrowserbaseSeconds.mockReset();
+  mockRecordBrowserbaseSeconds.mockResolvedValue(undefined);
   mockCreateBrowserSession.mockReset();
   mockEndBrowserSession.mockReset();
   mockEndBrowserSession.mockResolvedValue(undefined);
@@ -139,6 +163,32 @@ describe("POST /api/v3/browser/sessions", () => {
     const res = await POST(postRequest({}));
     expect(res.status).toBe(429);
     expect(mockCreateBrowserSession).not.toHaveBeenCalled();
+  });
+
+  it("rejects with 402 when the plan's Browserbase minute quota is exhausted", async () => {
+    mockCheckBrowserbaseQuota.mockResolvedValue({
+      allowed: false,
+      usedSeconds: 5400,
+      limitMinutes: 90,
+      periodStart: new Date("2026-08-01T00:00:00Z"),
+      creditBalanceSeconds: 0,
+      message: "quota exceeded",
+    });
+    const res = await POST(postRequest({}));
+    expect(res.status).toBe(402);
+    const json = await res.json();
+    expect(json.error).toBe("quota exceeded");
+    expect(mockCreateBrowserSession).not.toHaveBeenCalled();
+  });
+
+  it("checks the quota before the rate-limited/validated request creates a real session", async () => {
+    mockCreateBrowserSession.mockResolvedValue({
+      id: "sess_quota_checked",
+      status: "RUNNING",
+      url: "",
+    });
+    await POST(postRequest({}));
+    expect(mockCheckBrowserbaseQuota).toHaveBeenCalledWith(42);
   });
 
   describe("TTL clamping (never trusts a client-supplied duration as-is)", () => {
@@ -465,5 +515,25 @@ describe("DELETE /api/v3/browser/sessions", () => {
     const res = await DELETE(getRequest("sess_legacy"));
     expect(res.status).toBe(200);
     expect(mockEndBrowserSession).toHaveBeenCalledWith("sess_legacy");
+  });
+
+  it("records the session's real elapsed duration as plan usage on end", async () => {
+    const createdAt = new Date(Date.now() - 90_000).toISOString(); // 90s ago
+    mockQuery.mockResolvedValue({
+      rows: [{ user_id: 42, created_at: createdAt }],
+    });
+    const res = await DELETE(getRequest("sess_mine"));
+    expect(res.status).toBe(200);
+    expect(mockRecordBrowserbaseSeconds).toHaveBeenCalledTimes(1);
+    const [userId, seconds] = mockRecordBrowserbaseSeconds.mock.calls[0];
+    expect(userId).toBe(42);
+    expect(seconds).toBeGreaterThanOrEqual(89);
+    expect(seconds).toBeLessThanOrEqual(92);
+  });
+
+  it("never records usage when no ownership row exists to compute a duration from", async () => {
+    mockQuery.mockResolvedValue({ rows: [] });
+    await DELETE(getRequest("sess_legacy"));
+    expect(mockRecordBrowserbaseSeconds).not.toHaveBeenCalled();
   });
 });

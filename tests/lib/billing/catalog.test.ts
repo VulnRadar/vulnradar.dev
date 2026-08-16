@@ -26,19 +26,20 @@ describe("PLANS", () => {
     ]);
   });
 
-  it("free plan has zero price and only excludes team features and GitHub AI review", () => {
+  it("free plan has zero price and only excludes team features, GitHub AI review, and Browserbase minutes", () => {
     const free = PLANS.find((p) => p.id === "free")!;
     expect(free.priceInCents).toBe(0);
     expect(free.limits).toEqual({
       dailyScans: 25,
       apiKeys: 1,
       apiRequestsPerDay: 25,
-      // Free never gets team features or GitHub AI review, by design --
-      // everything else on this plan is a real, if modest, allowance
-      // rather than a paid-only "—" like these two stay.
+      // Free never gets team features, GitHub AI review, or live-browser
+      // sessions, by design -- everything else on this plan is a real, if
+      // modest, allowance rather than a paid-only "—" like these three stay.
       teams: 0,
       teamMembers: 0,
       githubReviewTokensPerWindow: 0,
+      browserbaseMinutesPerMonth: 0,
       webhooks: 1,
       scheduledScans: 3,
       bulkScanUrls: 5,

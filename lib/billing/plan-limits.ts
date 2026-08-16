@@ -28,6 +28,7 @@ const PLAN_LIMIT_KEYS: Record<PlanId, Record<keyof PlanLimits, SettingKey>> = {
     bulkScanUrls: "BILLING_FREE_BULK_SCAN_URLS",
     githubReviewTokensPerWindow: "BILLING_FREE_GITHUB_REVIEW_TOKENS_PER_WINDOW",
     aiTokensPerWindow: "BILLING_FREE_AI_TOKENS_PER_WINDOW",
+    browserbaseMinutesPerMonth: "BILLING_FREE_BROWSERBASE_MINUTES_PER_MONTH",
   },
   core_supporter: {
     dailyScans: "BILLING_CORE_SUPPORTER_LIMIT",
@@ -41,6 +42,8 @@ const PLAN_LIMIT_KEYS: Record<PlanId, Record<keyof PlanLimits, SettingKey>> = {
     githubReviewTokensPerWindow:
       "BILLING_CORE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW",
     aiTokensPerWindow: "BILLING_CORE_SUPPORTER_AI_TOKENS_PER_WINDOW",
+    browserbaseMinutesPerMonth:
+      "BILLING_CORE_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH",
   },
   pro_supporter: {
     dailyScans: "BILLING_PRO_SUPPORTER_LIMIT",
@@ -54,6 +57,8 @@ const PLAN_LIMIT_KEYS: Record<PlanId, Record<keyof PlanLimits, SettingKey>> = {
     githubReviewTokensPerWindow:
       "BILLING_PRO_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW",
     aiTokensPerWindow: "BILLING_PRO_SUPPORTER_AI_TOKENS_PER_WINDOW",
+    browserbaseMinutesPerMonth:
+      "BILLING_PRO_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH",
   },
   elite_supporter: {
     dailyScans: "BILLING_ELITE_SUPPORTER_LIMIT",
@@ -67,6 +72,8 @@ const PLAN_LIMIT_KEYS: Record<PlanId, Record<keyof PlanLimits, SettingKey>> = {
     githubReviewTokensPerWindow:
       "BILLING_ELITE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW",
     aiTokensPerWindow: "BILLING_ELITE_SUPPORTER_AI_TOKENS_PER_WINDOW",
+    browserbaseMinutesPerMonth:
+      "BILLING_ELITE_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH",
   },
 };
 
@@ -103,6 +110,9 @@ export async function getUserPlanLimits(
       resolved[keys.githubReviewTokensPerWindow],
     ),
     aiTokensPerWindow: Number(resolved[keys.aiTokensPerWindow]),
+    browserbaseMinutesPerMonth: Number(
+      resolved[keys.browserbaseMinutesPerMonth],
+    ),
   };
 }
 

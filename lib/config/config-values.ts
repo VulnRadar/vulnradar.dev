@@ -1172,6 +1172,22 @@ export const CONFIG_BILLING_CORE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW = 200
 export const CONFIG_BILLING_PRO_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW = 1_000_000;
 export const CONFIG_BILLING_ELITE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW = 5_000_000;
 
+// Browserbase live-browser session minutes allowed per calendar month (see
+// lib/billing/browserbase-usage.ts). Browserbase is a real paid third-party
+// API, not subsidized capacity like the AI fields above, but the same "never
+// unbounded, even at the top tier" reasoning applies: a compromised session
+// cookie or a runaway client shouldn't be able to run up real infra cost
+// against this account without limit. A single session is separately capped
+// at BROWSERBASE_MAX_TTL_SECONDS (6 minutes by default) regardless of how
+// much of this monthly allowance remains. These are starting defaults for
+// the repo owner to tune via the admin Settings UI (and against actual
+// Browserbase wholesale cost per minute) before relying on them, not a
+// final pricing decision.
+export const CONFIG_BILLING_FREE_BROWSERBASE_MINUTES_PER_MONTH = 0;
+export const CONFIG_BILLING_CORE_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH = 30;
+export const CONFIG_BILLING_PRO_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH = 90;
+export const CONFIG_BILLING_ELITE_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH = 300;
+
 // DATABASE CLEANUP RETENTION - UPDATE IF NEEDED
 //
 // How long each table's rows are kept before lib/database/cleanup.ts's

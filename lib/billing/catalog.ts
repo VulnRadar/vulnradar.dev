@@ -52,6 +52,18 @@ export interface PlanLimits {
    * cap entirely (see lib/billing/ai-usage.ts) instead of raising it.
    */
   aiTokensPerWindow: number;
+  /**
+   * Live-browser (Browserbase) session minutes allowed per calendar month
+   * -- see lib/billing/browserbase-usage.ts. A single session is separately
+   * capped at BROWSERBASE_MAX_TTL_SECONDS regardless of how much of this
+   * monthly allowance remains. Unlike dailyScans/apiRequestsPerDay, this is
+   * never -1 (unlimited) at any tier, even elite: Browserbase is a real
+   * paid third-party API, the same "no tier is an unbounded budget"
+   * reasoning as githubReviewTokensPerWindow/aiTokensPerWindow above. A
+   * purchased top-up (users.browserbase_credit_seconds_balance) is spent
+   * only as a fallback once this free monthly allowance is exhausted.
+   */
+  browserbaseMinutesPerMonth: number;
 }
 
 export interface PlanBadge {
@@ -96,6 +108,7 @@ export const PLANS: readonly Plan[] = [
       bulkScanUrls: 5,
       githubReviewTokensPerWindow: 0,
       aiTokensPerWindow: 80_000,
+      browserbaseMinutesPerMonth: 0,
     },
   },
   {
@@ -110,6 +123,7 @@ export const PLANS: readonly Plan[] = [
       "5 scheduled scans",
       "10 URLs per bulk scan",
       `200K AI review tokens / ${AI_USAGE_WINDOW_HOURS}hr window`,
+      "30 live-browser minutes/month",
       "Supporter badge",
     ],
     limits: {
@@ -123,6 +137,7 @@ export const PLANS: readonly Plan[] = [
       bulkScanUrls: 10,
       githubReviewTokensPerWindow: 200_000,
       aiTokensPerWindow: 400_000,
+      browserbaseMinutesPerMonth: 30,
     },
     badge: { text: "Core", color: "#10b981" },
   },
@@ -138,6 +153,7 @@ export const PLANS: readonly Plan[] = [
       "10 scheduled scans",
       "5,000 API requests/day",
       `1M AI review tokens / ${AI_USAGE_WINDOW_HOURS}hr window`,
+      "90 live-browser minutes/month",
       "Pro badge",
     ],
     limits: {
@@ -151,6 +167,7 @@ export const PLANS: readonly Plan[] = [
       bulkScanUrls: 25,
       githubReviewTokensPerWindow: 1_000_000,
       aiTokensPerWindow: 2_000_000,
+      browserbaseMinutesPerMonth: 90,
     },
     badge: { text: "Pro", color: "#3b82f6" },
   },
@@ -165,6 +182,7 @@ export const PLANS: readonly Plan[] = [
       "Unlimited webhooks and scheduled scans",
       "Teams, up to 10 members",
       `5M AI review tokens / ${AI_USAGE_WINDOW_HOURS}hr window`,
+      "300 live-browser minutes/month",
       "Elite badge",
     ],
     limits: {
@@ -182,6 +200,9 @@ export const PLANS: readonly Plan[] = [
       // Same rule as above: never -1 (unlimited), even at the top tier —
       // see the PlanLimits.aiTokensPerWindow doc comment above.
       aiTokensPerWindow: 8_000_000,
+      // Same rule again: never -1 (unlimited), even at the top tier — see
+      // the PlanLimits.browserbaseMinutesPerMonth doc comment above.
+      browserbaseMinutesPerMonth: 300,
     },
     badge: { text: "Elite", color: "#f59e0b" },
   },

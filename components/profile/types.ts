@@ -146,6 +146,24 @@ export interface BillingInfo {
      *  Never a fallback for the hidden 0-limit free-trial state. */
     creditBalance: number;
   };
+  /**
+   * Live-browser (Browserbase) session minutes -- see
+   * lib/billing/browserbase-usage.ts. Resets monthly, not on the fixed
+   * AI_USAGE_WINDOW_HOURS window aiUsage/githubReviewUsage above share.
+   */
+  browserbaseUsage: {
+    /** Real usage, in seconds -- see lib/billing/browserbase-usage.ts's
+     *  own header comment for why this isn't tracked in whole minutes. */
+    usedSeconds: number;
+    /** -1 means unlimited (billing disabled). 0 means the plan doesn't include the feature at all. */
+    limitMinutes: number;
+    resetsAt: string;
+    unlimited: boolean;
+    /** Purchased Browserbase minute balance, in seconds -- never reset by
+     *  the period above, spent only as a fallback once the free monthly
+     *  allowance is exhausted. */
+    creditBalanceSeconds: number;
+  };
 }
 
 export interface WebhookItem {

@@ -27,6 +27,14 @@ let rollbackShouldFail = false;
 // above, since the two are separately-scripted queries in this fake
 // client. Empty by default so existing tests below are unaffected.
 let auditArchiveSelectRows: Record<string, unknown>[] = [];
+// Rows the browser_sessions DELETE ... RETURNING returns -- distinct from
+// its rowCount above (kept at a fixed 4 for the existing stats-aggregation
+// test), used by the plan-usage true-up tests below.
+let expiredBrowserSessionRows: {
+  user_id: number;
+  created_at: string;
+  expires_at: string | null;
+}[] = [];
 
 const clientQuery = vi.fn(async (sql: string, params?: unknown[]) => {
   const s = sql.trim();
@@ -91,7 +99,7 @@ const clientQuery = vi.fn(async (sql: string, params?: unknown[]) => {
   if (s.startsWith("DELETE FROM github_review_usage"))
     return { rowCount: 2, rows: [] };
   if (s.startsWith("DELETE FROM browser_sessions"))
-    return { rowCount: 4, rows: [] };
+    return { rowCount: 4, rows: expiredBrowserSessionRows };
   if (s.startsWith("DELETE FROM cve_kev_cache"))
     return { rowCount: 1, rows: [] };
   if (s.startsWith("DELETE FROM system_error_logs"))
@@ -133,6 +141,17 @@ vi.mock("@/lib/database/db", () => ({
   },
 }));
 
+// Mocked at this library boundary (same reasoning as
+// tests/app/api/v3/browser/sessions/route.test.ts): this file tests
+// whether cleanup calls the true-up with the right (userId, elapsedSeconds)
+// for an expired-without-explicit-DELETE session, not
+// browserbase-usage.ts's own accounting math, which has its own tests.
+const mockRecordBrowserbaseSeconds = vi.fn();
+vi.mock("@/lib/billing/browserbase-usage", () => ({
+  recordBrowserbaseSeconds: (...args: unknown[]) =>
+    mockRecordBrowserbaseSeconds(...args),
+}));
+
 const {
   performDatabaseCleanup,
   formatCleanupStats,
@@ -150,9 +169,12 @@ beforeEach(() => {
   rollbackShouldFail = false;
   retentionSettingsRows = [];
   auditArchiveSelectRows = [];
+  expiredBrowserSessionRows = [];
   clientQuery.mockClear();
   mockConnect.mockClear();
   mockPoolQuery.mockClear();
+  mockRecordBrowserbaseSeconds.mockReset();
+  mockRecordBrowserbaseSeconds.mockResolvedValue(undefined);
   invalidateSettingsCache();
   stopPeriodicCleanup();
 });
@@ -279,6 +301,57 @@ describe("performDatabaseCleanup", () => {
     expect(browserSessions?.sql).toContain(
       "expires_at IS NULL AND created_at < NOW() - INTERVAL '1 day'",
     );
+  });
+
+  it("records plan usage for a session that expired without an explicit DELETE call", async () => {
+    expiredBrowserSessionRows = [
+      {
+        user_id: 42,
+        created_at: "2026-08-16T20:00:00.000Z",
+        expires_at: "2026-08-16T20:06:00.000Z", // 6-minute TTL
+      },
+    ];
+    await performDatabaseCleanup();
+    expect(mockRecordBrowserbaseSeconds).toHaveBeenCalledTimes(1);
+    expect(mockRecordBrowserbaseSeconds).toHaveBeenCalledWith(42, 360);
+  });
+
+  it("records usage for several expired sessions independently, using each one's own duration", async () => {
+    expiredBrowserSessionRows = [
+      {
+        user_id: 1,
+        created_at: "2026-08-16T20:00:00.000Z",
+        expires_at: "2026-08-16T20:02:00.000Z",
+      },
+      {
+        user_id: 2,
+        created_at: "2026-08-16T20:00:00.000Z",
+        expires_at: "2026-08-16T20:05:00.000Z",
+      },
+    ];
+    await performDatabaseCleanup();
+    expect(mockRecordBrowserbaseSeconds).toHaveBeenCalledTimes(2);
+    expect(mockRecordBrowserbaseSeconds).toHaveBeenCalledWith(1, 120);
+    expect(mockRecordBrowserbaseSeconds).toHaveBeenCalledWith(2, 300);
+  });
+
+  it("falls back to now() as the end time for the rare row with no expires_at", async () => {
+    const createdAt = new Date(Date.now() - 45_000).toISOString(); // 45s ago
+    expiredBrowserSessionRows = [
+      { user_id: 7, created_at: createdAt, expires_at: null },
+    ];
+    await performDatabaseCleanup();
+    expect(mockRecordBrowserbaseSeconds).toHaveBeenCalledTimes(1);
+    const [userId, seconds] = mockRecordBrowserbaseSeconds.mock.calls[0];
+    expect(userId).toBe(7);
+    expect(seconds).toBeGreaterThanOrEqual(44);
+    expect(seconds).toBeLessThanOrEqual(47);
+  });
+
+  it("never records usage when no sessions expired this pass", async () => {
+    expiredBrowserSessionRows = [];
+    await performDatabaseCleanup();
+    expect(mockRecordBrowserbaseSeconds).not.toHaveBeenCalled();
   });
 
   it("caps the CVE KEV cache at 7 days -- a performance cache, not user data", async () => {

@@ -8,6 +8,8 @@ import { getAiCreditTier } from "@/lib/billing/ai-credit-catalog";
 import { creditAiCreditPurchase } from "@/lib/billing/ai-usage";
 import { getGithubCreditTier } from "@/lib/billing/github-credit-catalog";
 import { creditGithubCreditPurchase } from "@/lib/billing/github-review-usage";
+import { getBrowserbaseCreditTier } from "@/lib/billing/browserbase-credit-catalog";
+import { creditBrowserbaseCreditPurchase } from "@/lib/billing/browserbase-usage";
 import pool from "@/lib/database/db";
 import Stripe from "stripe";
 
@@ -582,6 +584,38 @@ export async function POST(req: NextRequest) {
           } else {
             console.error(
               `[Stripe] payment_intent.succeeded has githubCreditTierId but missing/invalid userId or an unknown tier (event ${event.id})`,
+            );
+          }
+        }
+
+        // Backup path for a one-time Browserbase minute credit purchase
+        // (app/actions/stripe.ts's createBrowserbaseCreditPaymentIntent) --
+        // mirrors the AI/GitHub credit branches above exactly. A
+        // PaymentIntent only ever carries one of aiCreditTierId/
+        // githubCreditTierId/browserbaseCreditTierId, never more than one,
+        // so this doesn't need to be exclusive with the blocks above.
+        const browserbaseTierId =
+          paymentIntent.metadata?.browserbaseCreditTierId;
+        if (browserbaseTierId) {
+          const browserbaseTier = getBrowserbaseCreditTier(browserbaseTierId);
+          const browserbasePurchaserId = paymentIntent.metadata?.userId
+            ? parseInt(paymentIntent.metadata.userId, 10)
+            : null;
+
+          if (browserbaseTier && browserbasePurchaserId) {
+            const result = await creditBrowserbaseCreditPurchase(
+              paymentIntent.id,
+              browserbasePurchaserId,
+              browserbaseTier.minutes * 60,
+            );
+            if (result.credited) {
+              console.log(
+                `[Stripe] Credited ${browserbaseTier.minutes} Browserbase minutes to user ID ${browserbasePurchaserId} (tier ${browserbaseTier.id}, payment_intent.succeeded)`,
+              );
+            }
+          } else {
+            console.error(
+              `[Stripe] payment_intent.succeeded has browserbaseCreditTierId but missing/invalid userId or an unknown tier (event ${event.id})`,
             );
           }
         }

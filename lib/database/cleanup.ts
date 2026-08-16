@@ -7,6 +7,7 @@ import { DB_CLEANUP_INTERVAL } from "@/lib/config/constants";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import { archiveAdminAuditLogBeforePurge } from "@/lib/database/audit-log-archive";
 import { createFailureEscalator } from "@/lib/admin/failure-escalation";
+import { recordBrowserbaseSeconds } from "@/lib/billing/browserbase-usage";
 
 /**
  * How often the periodic cleanup pass runs. Sourced from
@@ -406,13 +407,22 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     // when set -- same idiom as sessions/device_trust above -- with a
     // 1-day created_at fallback for the rare row that never got one, so
     // this never depends solely on created_at the way a plain log table's
-    // retention would.
-    const browserSessionsRes = await client.query(
+    // retention would. RETURNING the fields the plan-usage true-up below
+    // needs: a session a user never explicitly ended (closed the tab,
+    // let it sit) still consumed real Browserbase minutes -- see the
+    // comment on expiredBrowserSessions after COMMIT.
+    const browserSessionsRes = await client.query<{
+      user_id: number;
+      created_at: string;
+      expires_at: string | null;
+    }>(
       `DELETE FROM browser_sessions
        WHERE (expires_at IS NOT NULL AND expires_at < NOW())
-          OR (expires_at IS NULL AND created_at < NOW() - INTERVAL '1 day')`,
+          OR (expires_at IS NULL AND created_at < NOW() - INTERVAL '1 day')
+       RETURNING user_id, created_at, expires_at`,
     );
     stats.oldBrowserSessions = browserSessionsRes.rowCount || 0;
+    const expiredBrowserSessions = browserSessionsRes.rows;
 
     // cve_kev_cache: whole-feed cache of CISA's Known Exploited
     // Vulnerabilities list (lib/scanner/cve-enrichment.ts), added
@@ -451,6 +461,34 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     stats.oldEmailLogs = emailLogsRes.rowCount || 0;
 
     await client.query("COMMIT");
+
+    // Plan-usage true-up for sessions that expired without an explicit
+    // DELETE /api/v3/browser/sessions call (a closed tab, a crashed
+    // client): app/api/v3/browser/sessions/route.ts's DELETE handler
+    // already records a session's real elapsed duration when the user
+    // actually ends it, but a session nobody explicitly closed would
+    // otherwise never get recorded at all, silently undercounting real
+    // Browserbase cost against the account. keepAlive: true (see
+    // lib/browserbase/client.ts) means the underlying session genuinely
+    // stays alive on Browserbase's side until its TTL, so expires_at -
+    // created_at is a real duration, not an estimate. Deliberately after
+    // COMMIT (a rolled-back cleanup pass must never record usage for
+    // sessions that, from this transaction's perspective, were never
+    // actually deleted) and fire-and-forget, same as the DELETE route's
+    // own true-up -- a failure here must never fail the whole cleanup
+    // pass over a usage-accounting side effect.
+    for (const row of expiredBrowserSessions) {
+      const end = row.expires_at
+        ? new Date(row.expires_at).getTime()
+        : Date.now();
+      const elapsedSeconds = Math.max(
+        0,
+        Math.round((end - new Date(row.created_at).getTime()) / 1000),
+      );
+      if (elapsedSeconds > 0) {
+        recordBrowserbaseSeconds(row.user_id, elapsedSeconds).catch(() => {});
+      }
+    }
 
     return stats;
   } catch (error) {

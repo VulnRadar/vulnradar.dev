@@ -15,6 +15,10 @@ import { getSession } from "@/lib/auth";
 import { validateScanTarget } from "@/lib/scanner/safe-fetch";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp } from "@/lib/api/request-utils";
+import {
+  checkBrowserbaseQuota,
+  recordBrowserbaseSeconds,
+} from "@/lib/billing/browserbase-usage";
 import pool from "@/lib/database/db";
 
 interface CreateBody {
@@ -70,6 +74,19 @@ export const POST = withErrorHandling(async (request: Request) => {
     );
   }
   void ip; // ip reserved for future per-IP layering
+
+  // Plan quota: a live-browser session is a real, metered third-party cost
+  // (see lib/billing/browserbase-usage.ts), separate from the rate limit
+  // above, which only bounds abuse rate, not how much of the plan's actual
+  // monthly minute allowance is left.
+  const quota = await checkBrowserbaseQuota(session.userId);
+  if (!quota.allowed) {
+    return ApiResponse.error(
+      quota.message || "Browserbase minute quota exceeded.",
+      402,
+    );
+  }
+
   const parsed = await parseBody<CreateBody>(request);
   if (!parsed.success) return ApiResponse.badRequest(parsed.error);
   const { url } = parsed.data;
@@ -232,10 +249,12 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
   const id = (request.nextUrl.searchParams.get("id") || "").trim();
   if (!id) return ApiResponse.badRequest("Missing session id.");
 
-  // Ownership check (AUDIT-004#idor-01).
+  // Ownership check (AUDIT-004#idor-01). created_at is fetched in the same
+  // query so the plan-usage true-up below has a real elapsed duration to
+  // record without a second round trip.
   const ownerRow = await pool
-    .query<{ user_id: number }>(
-      "SELECT user_id FROM browser_sessions WHERE id = $1",
+    .query<{ user_id: number; created_at: string }>(
+      "SELECT user_id, created_at FROM browser_sessions WHERE id = $1",
       [id],
     )
     .catch(() => null);
@@ -252,5 +271,22 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
   pool
     .query("DELETE FROM browser_sessions WHERE id = $1", [id])
     .catch(() => {});
+
+  // Plan usage true-up: record the session's real elapsed duration now that
+  // it's known, so the next quota check (and Profile > Billing's usage
+  // card) reflects it. Fire-and-forget, same as the ownership cleanup
+  // above -- a failure here must never block the response to a request
+  // that already successfully ended the real Browserbase session.
+  const row = ownerRow?.rows[0];
+  if (row) {
+    const elapsedSeconds = Math.max(
+      0,
+      Math.round((Date.now() - new Date(row.created_at).getTime()) / 1000),
+    );
+    if (elapsedSeconds > 0) {
+      recordBrowserbaseSeconds(row.user_id, elapsedSeconds).catch(() => {});
+    }
+  }
+
   return ApiResponse.success({ ended: true, id });
 });

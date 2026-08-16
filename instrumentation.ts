@@ -2826,6 +2826,76 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
           );
         });
 
+      // ════════════════════════════════════════════════════════════════
+      // BROWSERBASE MINUTE USAGE + ONE-TIME CREDIT PURCHASES
+      //
+      // browserbaseMinutesPerMonth plan limit (see
+      // lib/billing/browserbase-usage.ts): a calendar-month counter table
+      // (browserbase_usage, same shape as ai_usage above but bucketed by
+      // month instead of a fixed-hour window) plus a purchased top-up
+      // balance (users.browserbase_credit_seconds_balance) bought via a
+      // real one-time Stripe PaymentIntent (mode: "payment" -- see
+      // app/actions/stripe.ts's createBrowserbaseCreditPaymentIntent and
+      // lib/billing/browserbase-credit-catalog.ts's tier list), confirmed
+      // through Stripe Elements on
+      // app/checkout/browser-credits/page.tsx. browserbase_credit_purchases
+      // is the same payment_intent_id-keyed idempotency ledger as
+      // ai_credit_purchases/github_credit_purchases above, guarding against
+      // the fast-path confirm action and the webhook's
+      // payment_intent.succeeded handler each trying to credit the same
+      // successful purchase.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        ALTER TABLE users
+          ADD COLUMN IF NOT EXISTS browserbase_credit_seconds_balance BIGINT NOT NULL DEFAULT 0;
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add users.browserbase_credit_seconds_balance (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      await pool
+        .query(
+          `
+        CREATE TABLE IF NOT EXISTS browserbase_usage (
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          period_start TIMESTAMPTZ NOT NULL,
+          seconds_used INTEGER NOT NULL DEFAULT 0,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (user_id, period_start)
+        );
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create/verify browserbase_usage (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      await pool
+        .query(
+          `
+        CREATE TABLE IF NOT EXISTS browserbase_credit_purchases (
+          payment_intent_id VARCHAR(255) PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          seconds BIGINT NOT NULL,
+          credited_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create/verify browserbase_credit_purchases (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
       console.log(`[${APP_NAME}] Database schema verified successfully.`);
 
       // ── Seed Default Badges ─────────────────────────────────────

@@ -9,6 +9,7 @@ import { canMakeRequest } from "@/lib/rate-limiting/daily-limits";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import { checkAiUsageQuota } from "@/lib/billing/ai-usage";
 import { checkGithubReviewQuota } from "@/lib/billing/github-review-usage";
+import { checkBrowserbaseQuota } from "@/lib/billing/browserbase-usage";
 import { isStaffRole } from "@/lib/auth/permissions-client";
 
 // GET /api/v3/billing - Get user's billing info and usage
@@ -67,6 +68,16 @@ export async function GET() {
     const githubReviewWindowResetsAt = new Date(
       githubReviewQuota.windowStart.getTime() +
         githubReviewQuota.windowHours * 60 * 60 * 1000,
+    ).toISOString();
+    // Live-browser (Browserbase) session minutes -- resets monthly, not on
+    // the fixed AI_USAGE_WINDOW_HOURS window the two quotas above share.
+    const browserbaseQuota = await checkBrowserbaseQuota(session.userId);
+    const browserbasePeriodResetsAt = new Date(
+      Date.UTC(
+        browserbaseQuota.periodStart.getUTCFullYear(),
+        browserbaseQuota.periodStart.getUTCMonth() + 1,
+        1,
+      ),
     ).toISOString();
     // billing: the four plan daily-scan caps shown on the pricing/usage
     // card, resolved live so an admin edit shows up here instead of the
@@ -277,6 +288,13 @@ export async function GET() {
         unlimited: githubReviewQuota.limitTokens === -1,
         usingOwnAi: githubReviewQuota.usingOwnAi,
         creditBalance: githubReviewQuota.creditBalance,
+      },
+      browserbaseUsage: {
+        usedSeconds: browserbaseQuota.usedSeconds,
+        limitMinutes: browserbaseQuota.limitMinutes,
+        resetsAt: browserbasePeriodResetsAt,
+        unlimited: browserbaseQuota.limitMinutes === -1,
+        creditBalanceSeconds: browserbaseQuota.creditBalanceSeconds,
       },
     });
   } catch (error) {
