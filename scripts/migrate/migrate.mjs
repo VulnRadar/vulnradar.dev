@@ -519,10 +519,7 @@ async function main() {
     // that's the state this snapshot can actually restore.
     if (plan.steps.length > 0) {
       section("Step 5 — Back up database");
-      await backupDatabase(process.env.DATABASE_URL, {
-        appVersion: projectMeta.version,
-        schemaVersion: current,
-      });
+      await backupDatabase(process.env.DATABASE_URL, current);
       log("");
     }
 
