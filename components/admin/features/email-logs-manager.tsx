@@ -7,6 +7,12 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { PaginationControl } from "@/components/ui/pagination-control";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Mail,
   Search,
   RefreshCw,
@@ -14,15 +20,19 @@ import {
   CheckCircle2,
   XCircle,
   AlertTriangle,
+  Eye,
 } from "lucide-react";
 import {
   EmptyState,
   DataTableSkeleton,
   ConfirmDialog,
   Toast,
+  escapeHtml,
+  generateEmailPreviewHtml,
 } from "@/components/admin/shared";
 import type { ToastState } from "@/components/admin/types";
 import { cn } from "@/lib/ui/utils";
+import { APP_NAME, APP_URL } from "@/lib/config/constants";
 
 type EmailLogStatus = "sent" | "failed" | "skipped_not_configured";
 
@@ -77,6 +87,15 @@ function formatTimestamp(iso: string): string {
   });
 }
 
+/** redacted_preview is plain text, not HTML -- escape it and turn blank
+ * lines into paragraph breaks before handing it to the branded template. */
+function previewTextToHtml(text: string): string {
+  return text
+    .split(/\n{2,}/)
+    .map((para) => `<p>${escapeHtml(para).replace(/\n/g, "<br />")}</p>`)
+    .join("");
+}
+
 /**
  * Admin > System > Email Logs (AUDIT-010). Every outbound email attempt
  * this app has made, written by lib/email/email.ts's sendEmail() itself
@@ -102,6 +121,7 @@ export function EmailLogsManager() {
   const [status, setStatus] = useState<EmailLogStatus | "">("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [viewLog, setViewLog] = useState<EmailLogEntry | null>(null);
   const searchInitRef = useRef(false);
 
   const fetchLogs = useCallback(
@@ -307,41 +327,39 @@ export function EmailLogsManager() {
                 const meta = STATUS_META[log.status] ?? STATUS_META.failed;
                 const Icon = meta.icon;
                 return (
-                  <div key={log.id} className="px-5 py-3.5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-sm font-medium text-foreground truncate">
-                            {log.subject}
-                          </p>
-                          <Badge
-                            className={cn(
-                              "text-[10px] px-1.5 py-0 gap-1 font-medium shrink-0",
-                              meta.cls,
-                            )}
-                          >
-                            <Icon className="h-3 w-3" aria-hidden="true" />
-                            {meta.label}
-                          </Badge>
-                        </div>
-                        <p className="text-xs text-muted-foreground font-mono mt-0.5 truncate">
-                          {log.recipient}
-                        </p>
-                        {log.redacted_preview && (
-                          <p className="text-xs text-muted-foreground/80 mt-1.5 line-clamp-2">
-                            {log.redacted_preview}
-                          </p>
-                        )}
-                        {log.error_message && (
-                          <p className="text-xs text-destructive mt-1.5 break-words">
-                            {log.error_message}
-                          </p>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground shrink-0 whitespace-nowrap">
-                        {formatTimestamp(log.created_at)}
+                  <div
+                    key={log.id}
+                    className="px-5 py-3 flex items-center justify-between gap-3"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-foreground truncate">
+                        {log.subject}
+                      </p>
+                      <p className="text-xs text-muted-foreground font-mono mt-0.5 truncate">
+                        {log.recipient}
                       </p>
                     </div>
+                    <p className="text-xs text-muted-foreground shrink-0 whitespace-nowrap hidden sm:block">
+                      {formatTimestamp(log.created_at)}
+                    </p>
+                    <Badge
+                      className={cn(
+                        "text-[10px] px-1.5 py-0 gap-1 font-medium shrink-0",
+                        meta.cls,
+                      )}
+                    >
+                      <Icon className="h-3 w-3" aria-hidden="true" />
+                      {meta.label}
+                    </Badge>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2.5 gap-1.5 border-border/40 shrink-0"
+                      onClick={() => setViewLog(log)}
+                    >
+                      <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+                      View
+                    </Button>
                   </div>
                 );
               })}
@@ -377,6 +395,37 @@ export function EmailLogsManager() {
         onConfirm={handleClear}
         onCancel={() => setConfirmOpen(false)}
       />
+
+      <Dialog
+        open={viewLog !== null}
+        onOpenChange={(open) => !open && setViewLog(null)}
+      >
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-auto">
+          <DialogHeader className="pb-2">
+            <DialogTitle>{viewLog?.subject}</DialogTitle>
+          </DialogHeader>
+          {viewLog?.status === "failed" && viewLog.error_message && (
+            <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2 break-words">
+              {viewLog.error_message}
+            </p>
+          )}
+          {viewLog && (
+            <iframe
+              srcDoc={generateEmailPreviewHtml({
+                title: viewLog.subject,
+                bodyHtml: viewLog.redacted_preview
+                  ? previewTextToHtml(viewLog.redacted_preview)
+                  : "<p>No content preview was stored for this email.</p>",
+                appName: APP_NAME,
+                appUrl: APP_URL,
+              })}
+              sandbox=""
+              className="w-full h-[600px] border border-border/50 rounded-lg"
+              title="Email Preview"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
     </div>

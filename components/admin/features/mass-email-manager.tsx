@@ -35,17 +35,8 @@ import {
   EmptyState,
   DataTableSkeleton,
   StatBar,
+  generateEmailPreviewHtml,
 } from "@/components/admin/shared";
-
-/** HTML-escape plain-text fields (the Subject line is not HTML). */
-function escapeHtml(input: string): string {
-  return input
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 interface Broadcast {
   id: string;
@@ -55,87 +46,6 @@ interface Broadcast {
   sent_at?: string;
   created_by_name?: string;
   sent_by_name?: string;
-}
-
-const EMAIL_COLORS = {
-  BG_DARK: "#0a0e13",
-  BG_CARD: "#0f172a",
-  BORDER: "#1e293b",
-  TEXT_PRIMARY: "#f8fafc",
-  TEXT_SECONDARY: "#94a3b8",
-  TEXT_MUTED: "#64748b",
-  TEXT_DARK: "#475569",
-  ACCENT_BLUE: "#2563eb",
-  ACCENT_BLUE_LIGHT: "#3b82f6",
-};
-
-function generatePreviewHtml(title: string, content: string): string {
-  const safeTitle = escapeHtml(title || "Subject");
-  // Content is the "HTML supported" field (see the compose form label) and
-  // is sent to recipients unescaped, so the preview renders it the same
-  // way rather than showing literal escaped tag text.
-  const safeContent = content || "<p>Email content will appear here...</p>";
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <style>body { margin: 0; }</style>
-</head>
-<body style="margin: 0; padding: 0; background-color: ${EMAIL_COLORS.BG_DARK}; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: #e5e7eb;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: ${EMAIL_COLORS.BG_DARK}; padding: 40px 20px;">
-    <tr>
-      <td align="center">
-        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; width: 100%;">
-          <tr>
-            <td style="padding: 0 0 20px 0; text-align: center;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td align="center" style="padding-bottom: 12px;">
-                    <img src="/favicon.svg" alt="${APP_NAME}" width="48" height="48" style="display: block; margin: 0 auto;" />
-                  </td>
-                </tr>
-                <tr>
-                  <td align="center">
-                    <h1 style="margin: 0; font-size: 24px; font-weight: 700; color: ${EMAIL_COLORS.TEXT_PRIMARY}; letter-spacing: -0.3px;">${APP_NAME}</h1>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 0 0 24px 0;">
-              <div style="height: 2px; background: linear-gradient(90deg, ${EMAIL_COLORS.ACCENT_BLUE}, ${EMAIL_COLORS.ACCENT_BLUE_LIGHT}); border-radius: 999px;"></div>
-            </td>
-          </tr>
-          <tr>
-            <td style="background-color: ${EMAIL_COLORS.BG_CARD}; border: 1px solid ${EMAIL_COLORS.BORDER}; border-radius: 12px; padding: 32px 28px;">
-              <h2 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 600; color: ${EMAIL_COLORS.TEXT_PRIMARY};">${safeTitle}</h2>
-              <div style="font-size: 14px; color: ${EMAIL_COLORS.TEXT_SECONDARY}; line-height: 1.6;">${safeContent}</div>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 28px 20px 0 20px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td style="text-align: center;">
-                    <p style="margin: 0 0 8px 0; font-size: 12px; color: ${EMAIL_COLORS.TEXT_MUTED}; line-height: 1.6;">
-                      <a href="${APP_URL}" style="color: ${EMAIL_COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">${new URL(APP_URL).hostname}</a>
-                    </p>
-                    <p style="margin: 0; font-size: 11px; color: ${EMAIL_COLORS.TEXT_DARK}; line-height: 1.5;">
-                      ${APP_NAME} - Web Vulnerability Scanner<br />
-                      This is an automated message. Please do not reply directly.
-                    </p>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
 }
 
 const SEGMENT_LABELS: Record<string, string> = {
@@ -489,7 +399,13 @@ export function MassEmailManager() {
                   <DialogTitle>Email Preview</DialogTitle>
                 </DialogHeader>
                 <iframe
-                  srcDoc={generatePreviewHtml(title, content)}
+                  srcDoc={generateEmailPreviewHtml({
+                    title,
+                    bodyHtml:
+                      content || "<p>Email content will appear here...</p>",
+                    appName: APP_NAME,
+                    appUrl: APP_URL,
+                  })}
                   sandbox=""
                   className="w-full h-[700px] border border-border/50 rounded-lg"
                   title="Email Preview"
