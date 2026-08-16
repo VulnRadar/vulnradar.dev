@@ -296,8 +296,8 @@ const CHANGELOG: Release[] = [
       },
       {
         icon: Bug,
-        label: "Detection Engine v3.2.1: More False-Positive Fixes",
-        desc: "Bulk-scanned roughly 1,200 real sites, popular third-party hosts plus VulnRadar's own authenticated pages, and grouped the findings by title and host to spot systemic false positives instead of one-offs. Fixed: exposed-panel checks (Jenkins, Consul, MinIO, phpMyAdmin, Adminer, RabbitMQ) matching any single-page app's generic shell instead of the real panel; Twilio, Mailgun, and Facebook secret patterns matching substrings buried inside unrelated longer tokens; an XSS detector whose pattern could span across unrelated later code in the page; and a Connection String check that collided with Sentry's own unrelated dsn= convention (caught scanning roblox.com).",
+        label: "Detection Engine v3.2.1: False-Positive Hunt at Scale",
+        desc: "Bulk-scanned roughly 1,200 real sites (popular third-party hosts plus VulnRadar's own site, both public and behind login) and grouped findings by title and host to spot systemic false positives instead of one-offs. Fixed: exposed-panel checks (Jenkins, Consul, MinIO, phpMyAdmin, Adminer, RabbitMQ) matching any single-page app's generic shell instead of the real panel; Twilio, Mailgun, and Facebook secret patterns matching substrings buried inside unrelated longer tokens; an XSS detector whose pattern could span across unrelated later code in the page; a Connection String check that collided with Sentry's own unrelated dsn= convention (caught scanning roblox.com); a cookie check that contradicted its own advice, flagging the modern, correct syntax and telling you to revert to the deprecated one; a prototype-pollution check matching the standard defensive guard against pollution as if it were the vulnerability itself (flagged critical on google.com); and, from scanning our own site specifically: a login form's missing method attribute misread as a real credential-in-URL bug, an OAuth check matching our own privacy policy's plain-English description of an integration, a bearer-token check tripping on our own API docs example, a SQL-error check (and a differently-named duplicate of it) bridging two unrelated sections of a self-hosting guide into one false match, a DOM-clobbering check flagging an ordinary docs heading anchor, a hardcoded-IP check that didn't know about the reserved documentation IP ranges, an admin-path check whose wording claimed something it never actually verified, and a password-strength check that treated a login field the same as a signup field.",
         category: "fixed",
       },
       {
@@ -314,21 +314,9 @@ const CHANGELOG: Release[] = [
         category: "fixed",
       },
       {
-        icon: Bug,
-        label: "Detection Engine v3.2.2: Three More False Positives",
-        desc: "A second bulk-scan pass over the same dataset. A cookie check that contradicted its own advice, flagging the modern, correct cookie syntax and telling you to revert to the deprecated one, got merged into the check that already covers the real risk. A prototype-pollution check was matching the standard defensive guard against pollution as if it were the vulnerability itself (flagged critical on google.com). And a Twilio credential pattern still collided with an unrelated token on a large enough page even after last version's fix, so it now also requires a Twilio-related keyword nearby before firing.",
-        category: "fixed",
-      },
-      {
         icon: Lock,
         label: "Five of Our Own Pages Were Wrongly Gated Behind Login",
         desc: "Found by scanning our own site with our own scanner: the legal index page, the badge page, the post-checkout confirmation page, team invite links, and public host reports were all silently redirecting a logged-out visitor to the login screen instead of showing the page. Team invite links were the worst of it, since an invite is supposed to work for someone who doesn't have an account yet. All five are public now, the same as they were always meant to be.",
-        category: "fixed",
-      },
-      {
-        icon: Bug,
-        label: "Detection Engine v3.2.3: 12 More, From Scanning Ourselves",
-        desc: "Ran the scanner against every page on our own site for the first time this session, logged out and logged in, and worked through everything it found. Most of it was the scanner reading our own documentation's example code and prose as if it were a live vulnerability: a documented API response showing a sample nginx version, a docs page explaining what our webhook and .env paths are for, an OTP example bearer token, a privacy policy describing our OAuth integrations in plain English. Also fixed: a DOM-clobbering check that flagged an ordinary docs heading anchor, a hardcoded-IP check that didn't know about the reserved documentation IP ranges, an admin-path check whose wording claimed something it never actually verified, and a password-strength check that treated a login field the same as a signup field.",
         category: "fixed",
       },
     ],

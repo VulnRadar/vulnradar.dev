@@ -72,52 +72,44 @@ export const CONFIG_MIN_SCHEMA_VERSION = "3.0.0";
 // and host-validation, each verified in both directions (fires on a real
 // vulnerable example, stays silent on a safe/defensive counterexample and
 // on documentation/tutorial context) before being shipped.
-// 3.2.1: bulk-scanned ~1200 real sites (popular third-party hosts plus
-// VulnRadar's own authenticated pages) and grouped findings by title/host
-// frequency to find false positives at scale. Fixed: exposed-panel probes
+// 3.2.1: a real-world false-positive hunt against ~1200 third-party sites
+// plus VulnRadar's own site (both public and behind login), grouping
+// findings by title/host frequency to find systemic patterns at scale
+// instead of reviewing case by case. Fixed: exposed-panel probes
 // (Jenkins/Consul/MinIO/phpMyAdmin/Adminer/RabbitMQ) matching any SPA's
 // catch-all shell response instead of the real panel; Twilio/Mailgun/
-// Facebook secret patterns with no quote boundary matching substrings of
-// unrelated tokens; the tagged-template XSS detector's unbounded regex
-// spanning across unrelated later code; Connection String colliding with
-// Sentry's own dsn= convention; and safety-rating.ts's exploitable-pattern
-// matcher bucketing every hardcoded-secret severity tier (including the
-// deliberately low-risk client-exposed/low-risk ones) as "actively
-// exploitable", which alone could push a scan's danger score to 10/10. No
-// new checks or categories, so a patch bump.
-// 3.2.2: a second bulk-scan sweep over the same dataset found 3 more.
-// cookie-domain-no-leading-dot was a self-contradicting duplicate of
-// cookie-domain-broad (fired on the RFC-6265bis-correct syntax and told
-// the site to revert to the deprecated one) -- merged into
-// cookie-domain-broad and removed, 794 checks total now.
-// prototype-pollution-client matched the standard `= null` /
-// `= Object.create(null)` defensive guard against pollution identically
-// to a real sink (flagged critical on google.com). Twilio Account SID's
-// quote-boundary fix from 3.2.1 wasn't sufficient alone -- format-only
-// matching still collided with an unrelated token on google.com's
-// homepage bundle; now also requires a "twilio" keyword nearby. No new
-// checks or categories, so a patch bump.
-// 3.2.3: scanned VulnRadar's own site with its own scanner for the first
-// time this session (every real page, logged out and logged in) and
-// found 12 more false positives, mostly the check matching a /docs/*
-// page's own documentation prose/examples describing a vulnerability
-// class rather than a live instance of it: form-method-get-sensitive
-// (a React login form's onSubmit+preventDefault() form has no method
-// attribute but never does a native GET submit either), oauth-state-
-// missing, bearer-token-exposed, sql-error-in-page, sensitive-endpoints,
+// Facebook secret patterns and the Twilio Account SID pattern
+// specifically needing a nearby keyword too, since format alone still
+// collided with unrelated tokens on large pages; the tagged-template XSS
+// detector's unbounded regex spanning across unrelated later code;
+// Connection String colliding with Sentry's own dsn= convention;
+// safety-rating.ts's exploitable-pattern matcher bucketing every
+// hardcoded-secret severity tier (including the deliberately low-risk
+// ones) as "actively exploitable"; cookie-domain-no-leading-dot, a
+// self-contradicting duplicate of cookie-domain-broad, merged and
+// removed (794 checks total); prototype-pollution-client matching the
+// standard defensive `= null` guard identically to a real sink; and,
+// from scanning our own site specifically: form-method-get-sensitive (a
+// React form's missing method attribute never means a real native GET
+// submit), oauth-state-missing, bearer-token-exposed, sql-error-in-page
+// and its differently-named twin sql-error-exposure, sensitive-endpoints,
 // debug-endpoint, nginx/apache/iis-version-404-disclosure, source-code-
-// comment, and email-enumeration (several of these from an unbounded
-// regex bridging across unrelated page content, not just missing a doc-
-// block exemption). Also: dom-clobbering-vulnerable's "config" denylist
-// entry (too generic, matches any docs heading anchor), hardcoded-ip-
-// addresses missing the RFC 5737 documentation ranges, admin-endpoint's
-// evidence text overclaiming "publicly accessible" when it only checks
-// URL shape (medium -> low), weak-password-policy matching the leading
-// digit of "12" as "under 6", and vibe-weak-password-policy firing on a
-// login field's autocomplete="current-password" (verifying an existing
-// password, where "strength" is meaningless) same as a signup field.
-// No new checks or categories, so a patch bump.
-export const CONFIG_ENGINE_VERSION = "3.2.3";
+// comment, and email-enumeration (several from an unbounded regex
+// bridging across unrelated page content -- one specifically from
+// stripExampleContent deleting matched regions outright instead of
+// replacing them, which could pull two distant, unrelated mentions
+// directly adjacent to each other). Also recalibrated: dom-clobbering-
+// vulnerable's "config" denylist entry (too generic, matches any docs
+// heading anchor), hardcoded-ip-addresses missing the RFC 5737
+// documentation ranges, admin-endpoint's evidence text overclaiming
+// "publicly accessible" when it only checks URL shape (medium -> low),
+// weak-password-policy matching the leading digit of "12" as "under 6",
+// vibe-weak-password-policy firing on a login/existing-credential
+// field's autocomplete="current-password"/"off" the same as a real
+// signup field, and OCSP-stapling-absent / single-DNS-provider
+// concentration downgraded from low to info. No new checks or
+// categories, so a patch bump.
+export const CONFIG_ENGINE_VERSION = "3.2.1";
 export const CONFIG_APP_DESCRIPTION =
   "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.";
 export const CONFIG_TOTAL_CHECKS_LABEL = GENERATED_CHECKS_LABEL;
