@@ -97,7 +97,27 @@ export const CONFIG_MIN_SCHEMA_VERSION = "3.0.0";
 // matching still collided with an unrelated token on google.com's
 // homepage bundle; now also requires a "twilio" keyword nearby. No new
 // checks or categories, so a patch bump.
-export const CONFIG_ENGINE_VERSION = "3.2.2";
+// 3.2.3: scanned VulnRadar's own site with its own scanner for the first
+// time this session (every real page, logged out and logged in) and
+// found 12 more false positives, mostly the check matching a /docs/*
+// page's own documentation prose/examples describing a vulnerability
+// class rather than a live instance of it: form-method-get-sensitive
+// (a React login form's onSubmit+preventDefault() form has no method
+// attribute but never does a native GET submit either), oauth-state-
+// missing, bearer-token-exposed, sql-error-in-page, sensitive-endpoints,
+// debug-endpoint, nginx/apache/iis-version-404-disclosure, source-code-
+// comment, and email-enumeration (several of these from an unbounded
+// regex bridging across unrelated page content, not just missing a doc-
+// block exemption). Also: dom-clobbering-vulnerable's "config" denylist
+// entry (too generic, matches any docs heading anchor), hardcoded-ip-
+// addresses missing the RFC 5737 documentation ranges, admin-endpoint's
+// evidence text overclaiming "publicly accessible" when it only checks
+// URL shape (medium -> low), weak-password-policy matching the leading
+// digit of "12" as "under 6", and vibe-weak-password-policy firing on a
+// login field's autocomplete="current-password" (verifying an existing
+// password, where "strength" is meaningless) same as a signup field.
+// No new checks or categories, so a patch bump.
+export const CONFIG_ENGINE_VERSION = "3.2.3";
 export const CONFIG_APP_DESCRIPTION =
   "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.";
 export const CONFIG_TOTAL_CHECKS_LABEL = GENERATED_CHECKS_LABEL;

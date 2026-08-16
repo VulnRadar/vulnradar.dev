@@ -319,6 +319,18 @@ const CHANGELOG: Release[] = [
         desc: "A second bulk-scan pass over the same dataset. A cookie check that contradicted its own advice, flagging the modern, correct cookie syntax and telling you to revert to the deprecated one, got merged into the check that already covers the real risk. A prototype-pollution check was matching the standard defensive guard against pollution as if it were the vulnerability itself (flagged critical on google.com). And a Twilio credential pattern still collided with an unrelated token on a large enough page even after last version's fix, so it now also requires a Twilio-related keyword nearby before firing.",
         category: "fixed",
       },
+      {
+        icon: Lock,
+        label: "Five of Our Own Pages Were Wrongly Gated Behind Login",
+        desc: "Found by scanning our own site with our own scanner: the legal index page, the badge page, the post-checkout confirmation page, team invite links, and public host reports were all silently redirecting a logged-out visitor to the login screen instead of showing the page. Team invite links were the worst of it, since an invite is supposed to work for someone who doesn't have an account yet. All five are public now, the same as they were always meant to be.",
+        category: "fixed",
+      },
+      {
+        icon: Bug,
+        label: "Detection Engine v3.2.3: 12 More, From Scanning Ourselves",
+        desc: "Ran the scanner against every page on our own site for the first time this session, logged out and logged in, and worked through everything it found. Most of it was the scanner reading our own documentation's example code and prose as if it were a live vulnerability: a documented API response showing a sample nginx version, a docs page explaining what our webhook and .env paths are for, an OTP example bearer token, a privacy policy describing our OAuth integrations in plain English. Also fixed: a DOM-clobbering check that flagged an ordinary docs heading anchor, a hardcoded-IP check that didn't know about the reserved documentation IP ranges, an admin-path check whose wording claimed something it never actually verified, and a password-strength check that treated a login field the same as a signup field.",
+        category: "fixed",
+      },
     ],
   },
   {
