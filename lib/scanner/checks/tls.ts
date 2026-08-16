@@ -361,7 +361,7 @@ export function checkOcspStapling(
                   "tls-ocsp-stapling-disabled",
                   url,
                   "OCSP Stapling Not Enabled",
-                  "low",
+                  "info",
                   "The server did not staple an OCSP response during the TLS handshake.",
                   `TLS handshake to ${hostname}:${port} completed with a valid, trusted certificate, but no stapled OCSP response was returned (no 'OCSPResponse' event during the handshake).`,
                   "Without OCSP stapling, clients that check revocation status must contact the CA's OCSP responder directly on every visit, adding latency and revealing the visitor's browsing activity to the CA. Some clients soft-fail this check entirely, silently accepting a revoked certificate rather than blocking on a failed OCSP lookup.",

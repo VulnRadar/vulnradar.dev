@@ -73,7 +73,7 @@ describe("checkNsProviderConcentration", () => {
       "https://example.com",
     );
     expect(findings).toHaveLength(1);
-    expect(findings[0].severity).toBe("low");
+    expect(findings[0].severity).toBe("info");
     expect(findings[0].category).toBe("dns");
     expect(findings[0].title).toMatch(/Single Provider/i);
   });

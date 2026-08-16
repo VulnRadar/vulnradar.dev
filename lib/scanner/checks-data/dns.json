@@ -501,7 +501,7 @@
     "type": "header",
     "title": "All Nameservers Concentrated at a Single Provider",
     "category": "dns",
-    "severity": "low",
+    "severity": "info",
     "description": "Every authoritative NS record for this domain shares the same registrable domain (eTLD+1), for example all ns*.example-dns.com. Even though multiple NS records exist, they all depend on one DNS provider's infrastructure.",
     "evidence": "DNS-level finding for `dns-ns-provider-concentration` against {{domain}}.",
     "riskImpact": "An outage, misconfiguration, or targeted attack against that single DNS provider can take every nameserver for this domain offline at once, the same single point of failure the 'at least two NS records' rule exists to prevent, just one layer up the stack.",

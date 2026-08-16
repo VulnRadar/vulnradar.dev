@@ -147,11 +147,29 @@ export const detectors: Record<string, DetectFn> = {
     // the password-field lookahead to this form's own </form> close tag
     // instead of a fixed 500-char window, so a password field belonging to a
     // separate, properly-configured POST form nearby isn't misattributed.
+    //
+    // A <form> with no method attribute at all only defaults to a real,
+    // credential-leaking native GET submission when the browser actually
+    // performs the submit. React/Vue/etc. login forms almost always render
+    // <form onSubmit={handleSubmit}> with no method/action attributes and
+    // call preventDefault() + fetch(..., {method: "POST"}) instead -- the
+    // native default never fires, and onSubmit is a JS prop that never
+    // appears in server-rendered HTML for the scanner to see either way.
+    // Misfired critical on VulnRadar's own /login (a Next.js page built
+    // exactly this way). An explicit method="get" is still real signal
+    // either way -- a developer wrote it, even if some JS layer overrides
+    // it -- so only the "attribute absent" branch gets the framework guard.
+    const isFramework =
+      body.includes("__NEXT_DATA__") ||
+      body.includes("_next/") ||
+      body.includes("__nuxt");
     const formOpenRe = /<form[^>]*>/gi;
     let m: RegExpExecArray | null;
     while ((m = formOpenRe.exec(body))) {
       const f = m[0];
-      if (/method\s*=\s*["']?get/i.test(f) || !f.includes("method")) {
+      const explicitGet = /method\s*=\s*["']?get/i.test(f);
+      const noMethod = !f.includes("method");
+      if (explicitGet || (noMethod && !isFramework)) {
         const closeIdx = body.indexOf("</form>", formOpenRe.lastIndex);
         const after = body.substring(
           formOpenRe.lastIndex,

@@ -177,7 +177,7 @@ export async function checkNsProviderConcentration(
       "dns-ns-single-provider-concentration",
       url,
       "All Nameservers Concentrated at a Single Provider",
-      "low",
+      "info",
       `All ${records.length} authoritative nameservers for ${domain} share the same registrable domain (${provider}), so they all depend on one DNS provider's infrastructure.`,
       `NS records for ${domain}: ${records.join(", ")}, all resolving under ${provider}.`,
       "An outage, misconfiguration, or targeted attack against that single provider takes every nameserver for this domain offline at once: the same single point of failure the 'at least two NS records' rule exists to prevent, just one layer up the stack.",

@@ -429,7 +429,7 @@ remediation documentation in the docs.
 - [medium  ] `dns-caa-no-issue-restriction` [header] - CAA Record Present But Restricts No Certificate Authority
 - [low     ] `dns-caa-wildcard-only-restriction` [header] - CAA Record Restricts Wildcard Certificates Only
 - [info    ] `dns-soa-serial-stale` [header] - SOA Serial Looks Stale (Date-Based Convention)
-- [low     ] `dns-ns-single-provider-concentration` [header] - All Nameservers Concentrated at a Single Provider
+- [info    ] `dns-ns-single-provider-concentration` [header] - All Nameservers Concentrated at a Single Provider
 - [low     ] `dns-wildcard-record-present` [header] - Wildcard DNS Record Detected
 - [info    ] `dns-null-mx-recommended` [header] - Null MX Recommended for Non-Mail Domain
 
@@ -761,7 +761,7 @@ remediation documentation in the docs.
 - [high    ] `tls-cert-expired-ca-chain` [header] - Expired Certificate in CA Chain
 - [medium  ] `tls-http-no-https-upgrade` [header] - Plain HTTP Does Not Redirect to HTTPS
 - [medium  ] `tls-cert-chain-incomplete` [header] - TLS Certificate Chain Missing Intermediate Certificate
-- [low     ] `tls-ocsp-stapling-disabled` [header] - OCSP Stapling Not Enabled
+- [info    ] `tls-ocsp-stapling-disabled` [header] - OCSP Stapling Not Enabled
 
 ### vibe-code (37)
 - [low     ] `vibe-generic-error-message` [body-pattern] - Generic Error Messages Leak No Context
@@ -811,8 +811,8 @@ remediation documentation in the docs.
 - By severity:
   - medium: 200
   - high: 199
-  - low: 146
-  - info: 109
+  - low: 144
+  - info: 111
   - critical: 97
 - By type:
   - body-pattern: 425

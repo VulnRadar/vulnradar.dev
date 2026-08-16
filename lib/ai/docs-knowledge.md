@@ -1,6 +1,6 @@
 # VulnRadar Public Docs: AI Knowledge
 
-_Auto-compiled from `app/docs/*/page.tsx` on 2026-08-15._
+_Auto-compiled from `app/docs/*/page.tsx` on 2026-08-16._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about every public docs page. Edit

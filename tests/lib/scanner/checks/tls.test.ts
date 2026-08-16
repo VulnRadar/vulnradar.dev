@@ -263,7 +263,7 @@ describe("checkOcspStapling", () => {
     );
     expect(findings.length).toBe(1);
     expect(findings[0].title).toMatch(/ocsp stapling not enabled/i);
-    expect(findings[0].severity).toBe("low");
+    expect(findings[0].severity).toBe("info");
   });
 
   it("does not fire when a stapled OCSP response was received during the handshake", async () => {

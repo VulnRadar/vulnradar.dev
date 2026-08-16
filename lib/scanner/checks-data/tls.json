@@ -311,7 +311,7 @@
     "type": "header",
     "title": "OCSP Stapling Not Enabled",
     "category": "tls",
-    "severity": "low",
+    "severity": "info",
     "description": "Async check: opens a TLS connection requesting OCSP status (requestOCSP) and listens for a stapled OCSP response during the handshake. Reports when an otherwise validly-verified certificate has no stapled response.",
     "evidence": "Executed via Node tls.connect({ requestOCSP: true }); presence of a stapled response is read from the socket's 'OCSPResponse' event.",
     "riskImpact": "Without stapling, clients that check revocation must contact the CA's OCSP responder directly on every visit, adding latency and revealing the visitor's browsing activity to the CA. Some clients soft-fail this check entirely, silently accepting a revoked certificate rather than blocking on a failed OCSP lookup.",

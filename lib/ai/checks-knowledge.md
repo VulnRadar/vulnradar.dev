@@ -23,8 +23,8 @@ in this file and quote the title, description, and fix steps.
 - **By severity:**
   - medium: 200
   - high: 199
-  - low: 146
-  - info: 109
+  - low: 144
+  - info: 111
   - critical: 97
 - **By type:**
   - body-pattern: 425
@@ -11386,7 +11386,7 @@ example.com. IN SOA ns1.example.com. hostmaster.example.com. (
 )
 ```
 
-### `dns-ns-single-provider-concentration` [dns / low / header]
+### `dns-ns-single-provider-concentration` [dns / info / header]
 **All Nameservers Concentrated at a Single Provider**
 
 Every authoritative NS record for this domain shares the same registrable domain (eTLD+1), for example all ns*.example-dns.com. Even though multiple NS records exist, they all depend on one DNS provider's infrastructure.
@@ -20612,7 +20612,7 @@ Async check: opens a TLS connection and inspects the certificate chain the serve
 openssl s_client -connect example.com:443 -showcerts < /dev/null 2>/dev/null | grep -c 'BEGIN CERTIFICATE'
 ```
 
-### `tls-ocsp-stapling-disabled` [tls / low / header]
+### `tls-ocsp-stapling-disabled` [tls / info / header]
 **OCSP Stapling Not Enabled**
 
 Async check: opens a TLS connection requesting OCSP status (requestOCSP) and listens for a stapled OCSP response during the handshake. Reports when an otherwise validly-verified certificate has no stapled response.

@@ -2,7 +2,8 @@
  * Per-detector tests for the content category.
  *
  * "sensitive-meta-tags", "service-worker-scope", "bearer-token-exposed",
- * "sensitive-form-no-csrf", and "env-file-reference" have curated fixtures
+ * "sensitive-form-no-csrf", "form-method-get-sensitive", and
+ * "env-file-reference" have curated fixtures
  * (each added alongside a real bug fix -- see lib/scanner/checks/content.ts).
  * The rest of this category's detectors still get smoke coverage only,
  * same as before this file existed.
@@ -130,6 +131,35 @@ const fixtures: DetectorFixtures = {
       body: '<form method="post" action="/api/update-profile"><input name="name"></form>',
       expect: "fire",
       evidenceIncludes: "csrf",
+    },
+  ],
+  "form-method-get-sensitive": [
+    {
+      description:
+        'explicit method="get" with a password field is a real credential-in-URL bug and fires',
+      body: '<form method="get" action="/login"><input type="password" name="password"></form>',
+      expect: "fire",
+      evidenceIncludes: "GET method",
+    },
+    {
+      description:
+        "no method attribute at all with a password field, on a plain (non-framework) page, defaults to native GET and fires",
+      body: '<form action="/login"><input type="password" name="password"></form>',
+      expect: "fire",
+      evidenceIncludes: "GET method",
+    },
+    {
+      description:
+        "React/Next.js login form with no method attribute does not fire -- onSubmit+preventDefault() intercepts native submission and posts via fetch() instead, the exact shape that misfired on VulnRadar's own /login",
+      body: '<div id="__next"><script>window.__NEXT_DATA__ = {}</script><form><input type="password" name="password"></form></div>',
+      expect: "skip",
+    },
+    {
+      description:
+        'explicit method="get" still fires even on a framework page -- a developer wrote it, real signal regardless of any JS layer on top',
+      body: '<div id="__next"><script>window.__NEXT_DATA__ = {}</script><form method="get"><input type="password" name="password"></form></div>',
+      expect: "fire",
+      evidenceIncludes: "GET method",
     },
   ],
   "google-api-key-exposed": [
