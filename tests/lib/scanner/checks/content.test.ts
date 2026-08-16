@@ -159,6 +159,12 @@ const fixtures: DetectorFixtures = {
       expect: "fire",
       evidenceIncludes: "PostgreSQL",
     },
+    {
+      description:
+        'regression: stripping an unrelated <pre> code example out from between two distant mentions must not collapse them adjacent to each other -- stripExampleContent deletes matched regions to "", which briefly re-broke this exact case on VulnRadar\'s own /docs/setup after the first fix above',
+      body: "<p>Configure PostgreSQL for the app.</p><pre>DATABASE_URL=postgresql://user:pass@host/db</pre><p>Error: ECONNREFUSED 127.0.0.1:5432</p>",
+      expect: "skip",
+    },
   ],
   "sensitive-form-no-csrf": [
     {
@@ -311,6 +317,12 @@ const fixtures: DetectorFixtures = {
       body: "<!-- TODO: remove this before shipping -->",
       expect: "fire",
       evidenceIncludes: "developer notes",
+    },
+    {
+      description:
+        "regression: React's own genuinely-empty '<!-- -->' text-node marker sitting a few dozen chars from real page content (a console.log code example) does not fire -- the marker's own content is just a space, nothing to bridge with; a char-count bound alone (an earlier version of this fix) was still too loose for how densely React emits these",
+      body: "<!-- -->temporarily add <code>console.log</code> in your handler<!-- -->",
+      expect: "skip",
     },
   ],
   "sensitive-endpoints": [

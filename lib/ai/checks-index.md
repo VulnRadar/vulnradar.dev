@@ -294,7 +294,7 @@ remediation documentation in the docs.
 - [medium  ] `remember-me-token` [body-pattern] - Remember-Me Token in URL
 - [high    ] `oauth-state-missing` [body-pattern] - OAuth URL Missing State Parameter
 - [low     ] `debug-endpoint` [body-pattern] - Debug Endpoints Referenced
-- [medium  ] `admin-endpoint` [body-pattern] - Admin/Management Path Detected in URL
+- [low     ] `admin-endpoint` [body-pattern] - Admin/Management Path Detected in URL
 - [medium  ] `email-enumeration` [body-pattern] - User Enumeration via Email
 - [low     ] `cdn-fallback-missing` [body-pattern] - CDN Scripts Without Fallback
 - [medium  ] `outdated-jquery` [body-pattern] - Potentially Outdated jQuery
@@ -809,9 +809,9 @@ remediation documentation in the docs.
 - Total checks: **751**
 - Categories: **18** (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
-  - medium: 200
+  - medium: 199
   - high: 199
-  - low: 144
+  - low: 145
   - info: 111
   - critical: 97
 - By type:

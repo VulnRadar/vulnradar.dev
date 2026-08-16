@@ -21,9 +21,9 @@ in this file and quote the title, description, and fix steps.
 - **Total checks:** 751
 - **Categories:** 18 (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
-  - medium: 200
+  - medium: 199
   - high: 199
-  - low: 144
+  - low: 145
   - info: 111
   - critical: 97
 - **By type:**
@@ -7862,7 +7862,7 @@ export async function GET(req: Request) {
 }
 ```
 
-### `admin-endpoint` [content / medium / body-pattern]
+### `admin-endpoint` [content / low / body-pattern]
 **Admin/Management Path Detected in URL**
 
 The scanned URL's path suggests an admin or management panel (e.g. /admin/, /administrator/, /management/). This is a path-shape signal only; the scanner does not check whether the endpoint requires authentication.

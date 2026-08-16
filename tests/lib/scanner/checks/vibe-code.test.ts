@@ -118,6 +118,12 @@ const fixtures: DetectorFixtures = {
       body: '<script>if (password.length < 12) return;</script><input type="password" autocomplete="new-password">',
       expect: "skip",
     },
+    {
+      description:
+        "regression: a password-shaped field for entering an EXISTING credential (autocomplete=off, e.g. our own API-key-paste field on /docs/api) does not fire the same as current-password",
+      body: '<script></script><input type="password" autocomplete="off">',
+      expect: "skip",
+    },
   ],
   "vibe-password-in-comment": [
     {

@@ -172,6 +172,7 @@ export function EndpointPlayground({
                   </label>
                   <Input
                     id={`playground-${endpointId}-${p.name}`}
+                    name={`playground-${endpointId}-${p.name}`}
                     value={values[p.name] ?? ""}
                     onChange={(e) =>
                       setValues((prev) => ({

@@ -532,12 +532,17 @@ const rawDetectors: Record<string, DetectFn> = {
     // Match each password-type input individually and exclude any tagged
     // autocomplete="current-password" (the WHATWG-standard value for a
     // LOGIN field verifying an existing password, vs "new-password" for
-    // signup/reset creating one) -- "strength" has no meaning for a login
-    // form, which fired here on VulnRadar's own /login.
+    // signup/reset creating one -- "strength" has no meaning for a login
+    // form, which fired here on VulnRadar's own /login) or
+    // autocomplete="off" (used the same way on our own API-key-paste
+    // field -- an EXISTING credential being entered, not created, fired
+    // on /docs/api). A field with NO autocomplete attribute at all still
+    // counts, which is the actually-careless case this check exists for.
     const passwordInputs =
       body.match(/<input[^>]*type\s*=\s*["']?password[^>]*>/gi) || [];
     const newPasswordFields = passwordInputs.filter(
-      (tag) => !/autocomplete\s*=\s*["']current-password["']/i.test(tag),
+      (tag) =>
+        !/autocomplete\s*=\s*["'](?:current-password|off)["']/i.test(tag),
     );
     if (newPasswordFields.length === 0) return null;
     const hasPasswordValidation =

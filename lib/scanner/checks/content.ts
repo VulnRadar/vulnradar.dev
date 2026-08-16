@@ -893,7 +893,20 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "sql-error-in-page": (_url, _headers, body) => {
-    const html = stripExampleContent(body);
+    // stripExampleContent deletes each <pre>/<code>/etc region entirely
+    // (replaces with ""), which can pull two previously tag-separated,
+    // unrelated mentions directly adjacent to each other in the result --
+    // "Configure PostgreSQL..." followed by an unrelated <pre>...</pre>
+    // env-var example followed by a troubleshooting "Error: ECONNREFUSED"
+    // collapsed into one string with no "<" left between them at all,
+    // defeating the [^<]{0,N} bound below on VulnRadar's own /docs/setup.
+    // A local variant that replaces each stripped region with a long
+    // placeholder (bigger than any bound this function uses) keeps them
+    // reliably apart instead.
+    const html = body.replace(
+      /<(?:code|pre|kbd|samp|template)\b[^>]*>[\s\S]*?<\/(?:code|pre|kbd|samp|template)\s*>/gi,
+      " ".repeat(200),
+    );
     const patterns = [
       // Bounded to ~80 chars so "MySQL"/"ERROR:" has to actually be part of
       // the same error string, not just somewhere later on an unrelated
@@ -1813,19 +1826,21 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "source-code-comment": (url, _headers, body) => {
-    // Bounded to ~300 chars each side so this only matches an HTML comment
-    // that actually CONTAINS one of these words, not any two <!-- --> pairs
-    // on the whole page with unrelated content bridged between them.
-    // React/Next.js SSR sprinkles its own short hydration/Suspense boundary
-    // markers (<!--$-->, <!--/$-->) throughout every server-rendered page,
-    // and the old unbounded [\s\S]*? happily spanned from one of those
-    // content-free markers across an entire nearby code example (a
-    // "console.log(...)" snippet, a "debuggerUrl" API field name) to the
-    // next marker, misreading real documentation content as a leftover dev
-    // comment.
+    // Match ONE complete comment at a time -- [^-]|-(?!->) so the capture
+    // stops at the first real "-->" instead of running to the LAST one on
+    // the page -- then test that single comment's own content for the
+    // keyword. A char-count bound alone (an earlier version of this fix)
+    // wasn't tight enough: React/Next.js SSR emits large numbers of tiny,
+    // genuinely empty "<!-- -->" text-node markers between interpolated
+    // JSX values, and real page content routinely sits within a few dozen
+    // chars of one of those on any docs page (a "console.log" code
+    // example, a "debuggerUrl" API field name) -- close enough to still
+    // false-positive under a 300-char bound. Matching comment-by-comment
+    // has no such distance assumption to get wrong.
+    const comments = body.match(/<!--(?:[^-]|-(?!->))*-->/gi) || [];
     if (
-      /<!--[\s\S]{0,300}?(?:TODO|FIXME|XXX|HACK|console\.log|debugger)[\s\S]{0,300}?-->/i.test(
-        body,
+      comments.some((c) =>
+        /(?:TODO|FIXME|XXX|HACK|console\.log|debugger)/i.test(c),
       )
     ) {
       return "HTML comment contains developer notes (TODO/FIXME/debugger).";

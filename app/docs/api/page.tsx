@@ -1030,6 +1030,7 @@ export default function APIDocsPage() {
           <div className="relative mt-2 max-w-sm">
             <Input
               id="playground-api-key"
+              name="playground-api-key"
               type={showPlaygroundApiKey ? "text" : "password"}
               value={playgroundApiKey}
               onChange={(e) => setPlaygroundApiKey(e.target.value)}
