@@ -1673,7 +1673,7 @@
     "type": "body-pattern",
     "title": "Admin/Management Path Detected in URL",
     "category": "content",
-    "severity": "medium",
+    "severity": "low",
     "description": "The scanned URL's path suggests an admin or management panel (e.g. /admin/, /administrator/, /management/). This is a path-shape signal only; the scanner does not check whether the endpoint requires authentication.",
     "evidence": "Admin/management path segment found in the scanned URL.",
     "riskImpact": "Knowing admin URLs helps attackers target them for credential stuffing or vulnerability scanning. Manually verify the endpoint requires authentication before treating this as a confirmed exposure.",

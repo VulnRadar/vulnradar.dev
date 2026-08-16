@@ -707,7 +707,11 @@ export const detectors: Record<string, DetectFn> = {
     if (/nginx\/\d+\.\d+\.\d+/i.test(server)) {
       return `Server header exposes nginx version: '${server}' — set 'server_tokens off;' in nginx.conf.`;
     }
-    if (/nginx\/\d+\.\d+\.\d+/i.test(body)) {
+    // stripExampleContent so a docs page's own sample API response (our
+    // /docs/api documents a scan result's responseHeaders shape, which
+    // includes a literal "server": "nginx/1.18.0" example) doesn't flag
+    // itself -- same pairing several sibling checks in content.ts use.
+    if (/nginx\/\d+\.\d+\.\d+/i.test(stripExampleContent(body))) {
       return "Body references 'nginx/X.Y.Z' — a default nginx error page is leaking the version.";
     }
     return null;
@@ -718,13 +722,14 @@ export const detectors: Record<string, DetectFn> = {
     if (/Apache\/\d+\.\d+\.\d+/i.test(server)) {
       return `Server header exposes Apache version: '${server}' — set 'ServerTokens Prod' and 'ServerSignature Off'.`;
     }
-    if (/Apache\/\d+\.\d+\.\d+/i.test(body)) {
+    const html = stripExampleContent(body);
+    if (/Apache\/\d+\.\d+\.\d+/i.test(html)) {
       return "Body references 'Apache/X.Y.Z' — a default Apache error page is leaking the version and modules.";
     }
     if (
-      /<html/i.test(body) &&
-      /\bApache\b/i.test(body) &&
-      /Server at/i.test(body)
+      /<html/i.test(html) &&
+      /\bApache\b/i.test(html) &&
+      /Server at/i.test(html)
     ) {
       return "HTML body contains the Apache 'Server at example.com Port N' footer — default error page disclosure.";
     }
@@ -736,7 +741,7 @@ export const detectors: Record<string, DetectFn> = {
     if (/Microsoft-IIS\/\d+\.\d+/i.test(server)) {
       return `Server header exposes IIS version: '${server}' — use URL Rewrite or web.config to remove the Server header.`;
     }
-    if (/Microsoft-IIS\/\d+\.\d+/i.test(body)) {
+    if (/Microsoft-IIS\/\d+\.\d+/i.test(stripExampleContent(body))) {
       return "Body references 'Microsoft-IIS/X.Y' — a default IIS error page is leaking the version.";
     }
     return null;

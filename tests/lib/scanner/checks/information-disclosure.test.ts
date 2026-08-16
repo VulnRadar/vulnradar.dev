@@ -373,6 +373,12 @@ const fixtures: DetectorFixtures = {
       body: "<html><body>nginx/1.18.0 (Ubuntu)</body></html>",
       expect: "fire",
     },
+    {
+      description:
+        "regression: an nginx version shown inside a documented sample API response does not fire -- fired on VulnRadar's own /docs/api, which documents a scan's responseHeaders shape including a literal 'server': 'nginx/1.18.0' example",
+      body: '<pre>{"responseHeaders": {"server": "nginx/1.18.0"}}</pre>',
+      expect: "skip",
+    },
   ],
 
   "apache-version-404-disclosure": [

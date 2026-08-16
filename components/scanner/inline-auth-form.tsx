@@ -333,6 +333,7 @@ export const InlineAuthForm = forwardRef<
                     </Label>
                     <Input
                       id={`${idPrefix}-username`}
+                      name="target-username"
                       type="text"
                       autoComplete="off"
                       autoCapitalize="none"
@@ -353,6 +354,7 @@ export const InlineAuthForm = forwardRef<
                     <div className="relative">
                       <Input
                         id={`${idPrefix}-password`}
+                        name="target-password"
                         type={showPassword ? "text" : "password"}
                         autoComplete="off"
                         value={password}
@@ -405,6 +407,7 @@ export const InlineAuthForm = forwardRef<
                         </Label>
                         <Input
                           id={`${idPrefix}-login-url`}
+                          name="target-login-url"
                           type="url"
                           placeholder="https://example.com/login"
                           autoComplete="off"
@@ -423,6 +426,7 @@ export const InlineAuthForm = forwardRef<
                         </Label>
                         <Input
                           id={`${idPrefix}-username-field`}
+                          name="target-username-field"
                           type="text"
                           placeholder="Auto-detected"
                           autoComplete="off"
@@ -441,6 +445,7 @@ export const InlineAuthForm = forwardRef<
                         </Label>
                         <Input
                           id={`${idPrefix}-password-field`}
+                          name="target-password-field"
                           type="text"
                           placeholder="Auto-detected"
                           autoComplete="off"
@@ -467,6 +472,7 @@ export const InlineAuthForm = forwardRef<
                   </Label>
                   <Input
                     id={`${idPrefix}-header-name`}
+                    name="target-header-name"
                     type="text"
                     autoComplete="off"
                     value={headerName}
@@ -485,6 +491,7 @@ export const InlineAuthForm = forwardRef<
                   <div className="relative">
                     <Input
                       id={`${idPrefix}-header-value`}
+                      name="target-header-value"
                       type={showHeaderValue ? "text" : "password"}
                       autoComplete="off"
                       placeholder="Bearer eyJ..."
@@ -517,6 +524,7 @@ export const InlineAuthForm = forwardRef<
                       </Label>
                       <Input
                         id={`${idPrefix}-cookie-name-${row.id}`}
+                        name={`target-cookie-name-${row.id}`}
                         type="text"
                         autoComplete="off"
                         spellCheck={false}
@@ -539,6 +547,7 @@ export const InlineAuthForm = forwardRef<
                       <div className="relative">
                         <Input
                           id={`${idPrefix}-cookie-value-${row.id}`}
+                          name={`target-cookie-value-${row.id}`}
                           type={row.show ? "text" : "password"}
                           autoComplete="off"
                           value={row.value}

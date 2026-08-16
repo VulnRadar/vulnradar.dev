@@ -529,8 +529,17 @@ const rawDetectors: Record<string, DetectFn> = {
 
   "vibe-weak-password-policy": (_url, _headers, body) => {
     if (!hasScript(body)) return null;
-    const hasPasswordField = /type\s*=\s*["']?password/i.test(body);
-    if (!hasPasswordField) return null;
+    // Match each password-type input individually and exclude any tagged
+    // autocomplete="current-password" (the WHATWG-standard value for a
+    // LOGIN field verifying an existing password, vs "new-password" for
+    // signup/reset creating one) -- "strength" has no meaning for a login
+    // form, which fired here on VulnRadar's own /login.
+    const passwordInputs =
+      body.match(/<input[^>]*type\s*=\s*["']?password[^>]*>/gi) || [];
+    const newPasswordFields = passwordInputs.filter(
+      (tag) => !/autocomplete\s*=\s*["']current-password["']/i.test(tag),
+    );
+    if (newPasswordFields.length === 0) return null;
     const hasPasswordValidation =
       /(?:minLength|min_length|minlength|password.length|zxcvbn|strength)/i.test(
         body,

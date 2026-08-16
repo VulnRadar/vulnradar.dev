@@ -299,6 +299,118 @@ const fixtures: DetectorFixtures = {
       expect: "skip",
     },
   ],
+  "source-code-comment": [
+    {
+      description:
+        "regression: two unrelated HTML comments (React/Next.js SSR hydration markers) with a code example containing 'console.log' more than 300 chars away does not fire -- the old unbounded [\\s\\S]*? spanned from a content-free marker across real page content to the next one",
+      body: `<!--$-->${"padding ".repeat(60)}console.log(result)${"padding ".repeat(60)}<!--/$-->`,
+      expect: "skip",
+    },
+    {
+      description: "a real leftover TODO inside one HTML comment fires",
+      body: "<!-- TODO: remove this before shipping -->",
+      expect: "fire",
+      evidenceIncludes: "developer notes",
+    },
+  ],
+  "sensitive-endpoints": [
+    {
+      description:
+        "regression: a docs page whose subject matter IS the webhook endpoint (inside a <pre> code example) does not fire",
+      body: "<pre>POST /api/v3/webhook</pre>",
+      expect: "skip",
+    },
+    {
+      description: "the same path referenced outside a code block still fires",
+      body: "<p>Try hitting /api/v3/webhook directly.</p>",
+      expect: "fire",
+      evidenceIncludes: "webhook",
+    },
+  ],
+  "debug-endpoint": [
+    {
+      description:
+        "regression: a documented example URL shape inside a <pre> block does not fire",
+      body: '<pre>"connectUrl": "wss://connect.browserbase.com/debug/..."</pre>',
+      expect: "skip",
+    },
+    {
+      description: "a real /debug/ reference outside a code block fires",
+      body: "<p>Visit /debug/console for diagnostics.</p>",
+      expect: "fire",
+      evidenceIncludes: "Debug endpoints",
+    },
+  ],
+  "email-enumeration": [
+    {
+      description:
+        "regression: 'email' and an unrelated 'already exists' phrase over 60 chars apart does not fire",
+      body:
+        "<p>Enter your email below.</p>" +
+        "<p>padding padding padding padding padding padding padding padding padding</p>" +
+        "<p>Note: a Python SDK already exists for this API.</p>",
+      expect: "skip",
+    },
+    {
+      description: "a real enumeration-revealing error message fires",
+      body: "<p>This email is already registered.</p>",
+      expect: "fire",
+      evidenceIncludes: "enumeration",
+    },
+  ],
+  "dom-clobbering-vulnerable": [
+    {
+      description:
+        'regression: a docs page heading anchor id="config" does not fire -- a compile-time-constant section anchor can\'t be attacker-clobbered, same noise-vs-signal tradeoff as the already-removed submit/action ids',
+      body: '<h2 id="config">Configuration</h2>',
+      expect: "skip",
+    },
+    {
+      description:
+        'id="form" still fires -- a real DOM-global collision target',
+      body: '<div id="form"></div>',
+      expect: "fire",
+      evidenceIncludes: "clobber",
+    },
+  ],
+  "hardcoded-ip-addresses": [
+    {
+      description:
+        "regression: an RFC 5737 TEST-NET-3 documentation address (203.0.113.x) does not fire -- our own scan-form placeholder text uses 203.0.113.10 for exactly this reason",
+      body: '<input placeholder="example.com or 203.0.113.10">',
+      expect: "skip",
+    },
+    {
+      description: "a real public IP address fires",
+      body: "<p>Connect to 198.18.0.5 directly.</p>",
+      expect: "fire",
+      evidenceIncludes: "hardcoded public IP",
+    },
+  ],
+  "admin-endpoint": [
+    {
+      description:
+        "regression: evidence text no longer overclaims 'publicly accessible' -- this check only inspects the URL shape and can't verify auth was skipped",
+      url: "https://example.com/admin",
+      body: "",
+      expect: "fire",
+      evidenceIncludes: "verify this endpoint",
+    },
+  ],
+  "weak-password-policy": [
+    {
+      description:
+        "regression: minlength=\"12\" does not fire -- the old missing (?!\\d) matched just the leading '1', misreading a strong 12-char minimum as under 6",
+      body: '<input type="password" minlength="12">',
+      expect: "skip",
+    },
+    {
+      description: "a real weak minlength (under 6) fires",
+      body: '<input type="password" minlength="4">',
+      expect: "fire",
+      evidenceIncludes: "weak minlength",
+    },
+  ],
 };
 
 runDetectorTests(detectors, fixtures);

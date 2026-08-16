@@ -98,6 +98,27 @@ const fixtures: DetectorFixtures = {
       evidenceIncludes: "exception-handling",
     },
   ],
+  "vibe-weak-password-policy": [
+    {
+      description:
+        "regression: a login form's password field (autocomplete=current-password) does not fire -- 'strength' has no meaning for verifying an existing password, fired on VulnRadar's own /login",
+      body: '<script></script><input type="password" autocomplete="current-password">',
+      expect: "skip",
+    },
+    {
+      description:
+        "a signup field (autocomplete=new-password) with no visible validation fires",
+      body: '<script></script><input type="password" autocomplete="new-password">',
+      expect: "fire",
+      evidenceIncludes: "strength validation",
+    },
+    {
+      description:
+        "a signup field with a visible minLength check does not fire",
+      body: '<script>if (password.length < 12) return;</script><input type="password" autocomplete="new-password">',
+      expect: "skip",
+    },
+  ],
   "vibe-password-in-comment": [
     {
       description: "an ordinary password-validation-rule comment does not fire",

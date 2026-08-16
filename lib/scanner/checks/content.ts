@@ -212,8 +212,13 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "weak-password-policy": (_url, _headers, body) => {
+    // (?!\d) after the digit class -- without it, the optional trailing
+    // quote let this match just the LEADING digit of any multi-digit
+    // value: minlength="12" matched on the "1", flagging a genuinely
+    // strong 12-char minimum as "weak, under 6 characters" (fired on
+    // VulnRadar's own /signup, which actually requires 12).
     if (
-      /<input[^>]*type=["']?password[^>]*minlength=["']?([1-5])["']?/i.test(
+      /<input[^>]*type=["']?password[^>]*minlength=["']?([1-5])(?!\d)["']?/i.test(
         body,
       )
     ) {
@@ -505,6 +510,11 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "sensitive-endpoints": (_url, _headers, body) => {
+    // stripExampleContent so a docs page whose actual subject matter IS one
+    // of these paths (our own /docs/webhooks documenting /api/v3/webhook,
+    // /docs/setup documenting /.env) doesn't flag itself -- same pairing
+    // several sibling checks in this file already use.
+    const html = stripExampleContent(body);
     const endpoints = [
       // "users" and "graphql" removed -- ubiquitous, expected REST/GraphQL
       // surface, not itself sensitive. GraphQL endpoint discovery is
@@ -519,7 +529,7 @@ export const detectors: Record<string, DetectFn> = {
     ];
     const found: string[] = [];
     for (const p of endpoints) {
-      const matches = body.match(p);
+      const matches = html.match(p);
       if (matches) found.push(...matches.slice(0, 2));
     }
     const unique = [...new Set(found)];
@@ -529,17 +539,24 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "debug-endpoint": (_url, _headers, body) => {
-    if (/\/debug\/|\/trace\/|\/profiler\/|\/_debug\//gi.test(body)) {
+    const html = stripExampleContent(body);
+    if (/\/debug\/|\/trace\/|\/profiler\/|\/_debug\//gi.test(html)) {
       return "Debug endpoints referenced in page source.";
     }
     return null;
   },
 
   "admin-endpoint": (url, _headers, _body) => {
+    // URL-shape signal only -- this never checks the response status or
+    // whether the request was authenticated, so it can't actually confirm
+    // "publicly accessible" (that wording used to be unconditional, even
+    // when the scan itself was logged in as an admin to reach the page).
+    // checks-data's own description/riskImpact/fixSteps already frame this
+    // as "manually verify"; the evidence string now matches that honesty.
     if (
       /\/admin(?:\/|$)|\/administrator(?:\/|$)|\/management(?:\/|$)/i.test(url)
     ) {
-      return "Admin/management endpoint is publicly accessible.";
+      return "Admin/management path segment found in the URL — verify this endpoint actually requires authentication.";
     }
     return null;
   },
@@ -1153,8 +1170,14 @@ export const detectors: Record<string, DetectFn> = {
     // Only flag phrasing that directly reveals registration state — not
     // generic "email is invalid" or "email not found" which appear on
     // virtually every validation error page and produce constant FPs.
+    // Bounded to ~60 chars (a realistic error-message length, e.g. "This
+    // email is already registered") -- the old unbounded .* bridged from
+    // any "email" on the page across unrelated later content to any
+    // "already exists"/"is taken" phrase anywhere after it, e.g. matching
+    // "email" on /docs/developers all the way to an unrelated "A Python
+    // SDK already exists" callout much further down the page.
     if (
-      /email.*(?:already (?:exists|registered|in use)|is taken|already has an account)/gi.test(
+      /email[^<]{0,60}(?:already (?:exists|registered|in use)|is taken|already has an account)/gi.test(
         body,
       )
     ) {
@@ -1659,10 +1682,15 @@ export const detectors: Record<string, DetectFn> = {
     let m: RegExpExecArray | null;
     while ((m = idPattern.exec(body))) {
       if (
-        // "form", "cookie", "config" clobber globals that matter.
-        // Removed "submit" (universal button id) and "action" (common link id) —
-        // they fire on nearly every page that has a form, yielding pure noise.
-        ["form", "cookie", "config"].includes(m[1].toLowerCase())
+        // "form" and "cookie" clobber globals that matter. Removed "submit"
+        // (universal button id) and "action" (common link id) — they fire
+        // on nearly every page that has a form, yielding pure noise.
+        // "config" removed too: it's an extremely common docs-page section
+        // anchor id (e.g. our own /docs/architecture's "#config" heading),
+        // and unlike "form"/"cookie" there's no real DOM global lookup
+        // pattern where an app blindly trusts a bare `config` identifier —
+        // same noise-vs-signal tradeoff as submit/action.
+        ["form", "cookie"].includes(m[1].toLowerCase())
       ) {
         clobbers.add(m[1]);
       }
@@ -1785,8 +1813,18 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "source-code-comment": (url, _headers, body) => {
+    // Bounded to ~300 chars each side so this only matches an HTML comment
+    // that actually CONTAINS one of these words, not any two <!-- --> pairs
+    // on the whole page with unrelated content bridged between them.
+    // React/Next.js SSR sprinkles its own short hydration/Suspense boundary
+    // markers (<!--$-->, <!--/$-->) throughout every server-rendered page,
+    // and the old unbounded [\s\S]*? happily spanned from one of those
+    // content-free markers across an entire nearby code example (a
+    // "console.log(...)" snippet, a "debuggerUrl" API field name) to the
+    // next marker, misreading real documentation content as a leftover dev
+    // comment.
     if (
-      /<!--[\s\S]*?(?:TODO|FIXME|XXX|HACK|console\.log|debugger)[\s\S]*?-->/i.test(
+      /<!--[\s\S]{0,300}?(?:TODO|FIXME|XXX|HACK|console\.log|debugger)[\s\S]{0,300}?-->/i.test(
         body,
       )
     ) {
@@ -1921,6 +1959,12 @@ export const detectors: Record<string, DetectFn> = {
       if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return false;
       if (parts[0] === 192 && parts[1] === 168) return false;
       if (parts[0] === 169 && parts[1] === 254) return false;
+      // RFC 5737 TEST-NET ranges: reserved specifically for documentation
+      // and examples, never routable -- our own scan URL input's
+      // placeholder text uses 203.0.113.10 for exactly this reason.
+      if (parts[0] === 192 && parts[1] === 0 && parts[2] === 2) return false;
+      if (parts[0] === 198 && parts[1] === 51 && parts[2] === 100) return false;
+      if (parts[0] === 203 && parts[1] === 0 && parts[2] === 113) return false;
       return true;
     });
     if (publicIps.length > 0)
