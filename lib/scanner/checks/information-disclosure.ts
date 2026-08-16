@@ -477,13 +477,24 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "sql-error-exposure": (_url, _headers, body) => {
-    const html = stripExampleContent(body);
+    // Same two bugs content.ts's sibling sql-error-in-page had, fixed the
+    // same way: (1) the multi-word patterns had no distance bound, so
+    // "PostgreSQL" early on a page and an unrelated "ERROR:" much later
+    // counted as one match; (2) stripExampleContent deletes each matched
+    // <pre>/<code>/etc region entirely (replaces with ""), which can pull
+    // two previously tag-separated, unrelated mentions directly adjacent
+    // to each other -- defeating a [^<]-based bound on its own. A local
+    // strip variant that replaces matched regions with a long placeholder
+    // instead of deleting them keeps them reliably apart.
+    const html = body.replace(
+      /<(?:code|pre|kbd|samp|template)\b[^>]*>[\s\S]*?<\/(?:code|pre|kbd|samp|template)\s*>/gi,
+      " ".repeat(200),
+    );
     const patterns = [
-      /SQL syntax.*MySQL/i,
+      /SQL syntax[^<]{0,80}MySQL/i,
       /ORA-\d{5}/,
-      /Microsoft\s+SQL\s+Server.*Driver/i,
-      // Require "ERROR:" colon to match actual PG error format, not descriptive text like "PostgreSQL errors"
-      /PostgreSQL.*?ERROR:/i,
+      /Microsoft\s+SQL\s+Server[^<]{0,80}Driver/i,
+      /PostgreSQL[^<]{0,80}ERROR:/i,
       /pg_query\(\)/i,
       /sqlite3?\.OperationalError/i,
       /SQLSTATE\[/i,

@@ -260,6 +260,12 @@ const fixtures: DetectorFixtures = {
       body: "<html><body><p>We migrated our backend from MySQL to PostgreSQL. Error handling for failed queries is now centralized in a single wrapper.</p></body></html>",
       expect: "skip",
     },
+    {
+      description:
+        "regression: a self-hosting guide mentioning PostgreSQL in one section, an unrelated <pre> env-var example, and an unrelated 'Error: ECONNREFUSED' troubleshooting entry does not fire -- fired on VulnRadar's own /docs/setup via this check's separate id from content.ts's sql-error-in-page, missed in the first pass because it's a differently-named duplicate",
+      body: "<p>Configure PostgreSQL for the app.</p><pre>DATABASE_URL=postgresql://user:pass@host/db</pre><p>Error: ECONNREFUSED 127.0.0.1:5432</p>",
+      expect: "skip",
+    },
   ],
 
   // ── Cookies / framework versions ────────────────────────────────────
