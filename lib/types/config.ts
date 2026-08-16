@@ -15,6 +15,7 @@ export interface AppConfig {
   repo: string;
   discord_invite_url: string;
   chrome_web_store_url: string;
+  firefox_addon_url: string;
   support_email: string;
   legal_email: string;
   security_email: string;
@@ -177,6 +178,7 @@ import {
   CONFIG_APP_REPO,
   CONFIG_DISCORD_INVITE_URL,
   CONFIG_CHROME_WEB_STORE_URL,
+  CONFIG_FIREFOX_ADDON_URL,
   CONFIG_SUPPORT_EMAIL,
   CONFIG_LEGAL_EMAIL,
   CONFIG_SECURITY_EMAIL,
@@ -265,6 +267,7 @@ export const DEFAULT_CONFIG: VulnRadarConfig = {
     repo: CONFIG_APP_REPO,
     discord_invite_url: CONFIG_DISCORD_INVITE_URL,
     chrome_web_store_url: CONFIG_CHROME_WEB_STORE_URL,
+    firefox_addon_url: CONFIG_FIREFOX_ADDON_URL,
     support_email: CONFIG_SUPPORT_EMAIL,
     legal_email: CONFIG_LEGAL_EMAIL,
     security_email: CONFIG_SECURITY_EMAIL,

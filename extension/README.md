@@ -106,7 +106,7 @@ Not supported in v0.1. Safari Web Extensions require a separate Xcode project + 
 ## Publishing
 
 - **Chrome Web Store:** live. Upload `vulnradar-chrome-vX.Y.Z.zip` at [chrome.google.com/webstore/devconsole](https://chrome.google.com/webstore/devconsole/) for each new release.
-- **Firefox AMO:** pending review. Upload `vulnradar-firefox-vX.Y.Z.zip` at [addons.mozilla.org/developers/addon/submit](https://addons.mozilla.org/developers/addon/submit/). Mozilla review takes a few days.
+- **Firefox AMO:** live as of 2026-08-16, at [addons.mozilla.org/firefox/addon/vulnradar-website-scanner](https://addons.mozilla.org/en-US/firefox/addon/vulnradar-website-scanner/). Upload `vulnradar-firefox-vX.Y.Z.zip` at [addons.mozilla.org/developers/addon/submit](https://addons.mozilla.org/developers/addon/submit/) for each new release; Mozilla review takes a few days.
 
 ## Project structure
 

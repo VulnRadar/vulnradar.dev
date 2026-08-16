@@ -80,6 +80,8 @@ A big one. Scans, webhooks, and scheduled scans can now be shared with a team in
   The score recalculation itself was already correct and saved right away, but the scan view you were looking at didn't know to refresh, so the risk score looked unchanged until you left and reopened the scan. It now updates in place as soon as you mark a finding.
 - [Lock] **[FIXED]** **Five of Our Own Pages Were Wrongly Gated Behind Login**
   Found by scanning our own site with our own scanner: the legal index page, the badge page, the post-checkout confirmation page, team invite links, and public host reports were all silently redirecting a logged-out visitor to the login screen instead of showing the page. Team invite links were the worst of it, since an invite is supposed to work for someone who doesn't have an account yet. All five are public now, the same as they were always meant to be.
+- [Globe] **[ADDED]** **Extension: Live on Firefox Add-ons**
+  The browser extension is now installable straight from Firefox Add-ons (AMO), the same one-click install the Chrome Web Store listing already had. Review took a few days; both browsers now update themselves from their store listing instead of a manual unpacked/packaged install.
 
 ---
 
@@ -1476,6 +1478,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 57
-- **Total changes documented:** 503
+- **Total changes documented:** 504
 - **Latest:** v3.4.0 (August 14, 2026) - Team-Scoped Resources, Admin Security Hardening
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release

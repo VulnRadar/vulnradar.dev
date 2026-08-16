@@ -21,6 +21,7 @@ import {
   CONFIG_APP_REPO,
   CONFIG_DISCORD_INVITE_URL,
   CONFIG_CHROME_WEB_STORE_URL,
+  CONFIG_FIREFOX_ADDON_URL,
   CONFIG_SUPPORT_EMAIL,
   CONFIG_LEGAL_EMAIL,
   CONFIG_SECURITY_EMAIL,
@@ -386,6 +387,14 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_CHROME_WEB_STORE_URL,
     group: "General",
     label: "Chrome Web Store listing URL",
+    help: "Shown as the install link on the extension docs page once the listing is live. Leave empty to fall back to a packaged-release download.",
+  },
+  FIREFOX_ADDON_URL: {
+    tier: "build",
+    type: "url",
+    default: CONFIG_FIREFOX_ADDON_URL,
+    group: "General",
+    label: "Firefox Add-ons listing URL",
     help: "Shown as the install link on the extension docs page once the listing is live. Leave empty to fall back to a packaged-release download.",
   },
   TERMS_UPDATED_AT: {

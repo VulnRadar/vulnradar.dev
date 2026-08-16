@@ -204,7 +204,7 @@ needs the packaged release below until AMO approves it.
 ### Notes
 - The extension is a thin client over the same scan engine and the same account as the web app: it doesn't store findings locally beyond a small recent-history cache, and it doesn't run its own copy of the checks. Two things it can do that the web app can't from a URL bar alone: react to the page you're currently on (the on-page reputation card, auto-scan on navigation) and read a page the way you're actually seeing it, cookies and all, when you ask for that explicitly.
 - One click from the store. Updates itself from here on, no manual re-download.
-- Grab vulnradar-firefox-vX.Y.Z.zip from the GitHub releases page and unzip it.
+- One click from Firefox Add-ons. Updates itself from here on, no manual re-download.
 - Need an API key first? Generate one from #api-keys while logged in.
 - Click the toolbar icon on any page and hit Scan. Quick and Deep mirror the same two modes on the web app's scan form: Quick runs the fast header/TLS/content family checks, Deep also crawls linked pages on the same host. Which check families run is controlled from the extension's own Settings, independent of your web app defaults, so you can keep the popup fast day-to-day and still reach every check when you want it.
 - A scan started from the popup counts against the same daily limit as any other scan on your account and shows up in your regular scan history: there's no separate extension-only history to lose track of.

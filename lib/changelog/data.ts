@@ -319,6 +319,12 @@ const CHANGELOG: Release[] = [
         desc: "Found by scanning our own site with our own scanner: the legal index page, the badge page, the post-checkout confirmation page, team invite links, and public host reports were all silently redirecting a logged-out visitor to the login screen instead of showing the page. Team invite links were the worst of it, since an invite is supposed to work for someone who doesn't have an account yet. All five are public now, the same as they were always meant to be.",
         category: "fixed",
       },
+      {
+        icon: Globe,
+        label: "Extension: Live on Firefox Add-ons",
+        desc: "The browser extension is now installable straight from Firefox Add-ons (AMO), the same one-click install the Chrome Web Store listing already had. Review took a few days; both browsers now update themselves from their store listing instead of a manual unpacked/packaged install.",
+        category: "added",
+      },
     ],
   },
   {

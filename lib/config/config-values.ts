@@ -119,6 +119,10 @@ export const CONFIG_DISCORD_INVITE_URL = "https://discord.gg/Y7R6hdGbNe";
 // Empty until a store listing is live for this fork/deployment.
 export const CONFIG_CHROME_WEB_STORE_URL =
   "https://chromewebstore.google.com/detail/nbmifpplhhejdfokaglpomdnbaifngfj";
+// Firefox AMO review passed 2026-08-16 -- see extension/README.md's status
+// section, updated alongside this.
+export const CONFIG_FIREFOX_ADDON_URL =
+  "https://addons.mozilla.org/en-US/firefox/addon/vulnradar-website-scanner/";
 
 // Emails - UPDATE THESE FOR YOUR DEPLOYMENT
 export const CONFIG_SUPPORT_EMAIL = "support@vulnradar.dev";

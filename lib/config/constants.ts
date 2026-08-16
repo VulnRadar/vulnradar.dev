@@ -39,6 +39,7 @@ import {
   CONFIG_SEO_LICENSE,
   CONFIG_DISCORD_INVITE_URL,
   CONFIG_CHROME_WEB_STORE_URL,
+  CONFIG_FIREFOX_ADDON_URL,
   CONFIG_SESSION_COOKIE_NAME,
   CONFIG_SESSION_MAX_AGE_DAYS,
   CONFIG_VERSION_COOKIE_NAME,
@@ -204,6 +205,7 @@ export const DEFAULT_SCAN_NOTE = `${APP_NAME} v${APP_VERSION} (Detection Engine 
 export const VERSION_CHECK_URL = `https://api.github.com/repos/${APP_REPO}/releases/latest`;
 export const RELEASES_URL = `https://github.com/${APP_REPO}/releases`;
 export const CHROME_WEB_STORE_URL = CONFIG_CHROME_WEB_STORE_URL;
+export const FIREFOX_ADDON_URL = CONFIG_FIREFOX_ADDON_URL;
 
 // BRANDING (from config-values.ts)
 
