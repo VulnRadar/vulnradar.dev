@@ -1,5 +1,5 @@
 import archiver from "archiver";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, unlinkSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,6 +19,18 @@ const outPath = path.join(
   root,
   `vulnradar-extension-v${PKG.version}-source.zip`,
 );
+
+// Same stale-zip cleanup package.mjs already does for the chrome/firefox
+// zips -- otherwise every past build's source zip piles up in the
+// extension root too.
+const sourceZipRe = /^vulnradar-extension-v(.+)-source\.zip$/;
+for (const name of await readdir(root)) {
+  const m = name.match(sourceZipRe);
+  if (m && m[1] !== PKG.version) {
+    unlinkSync(path.join(root, name));
+    console.log(`[package-source] removed stale ${name}`);
+  }
+}
 const output = createWriteStream(outPath);
 const archive = archiver("zip", { zlib: { level: 9 } });
 

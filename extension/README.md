@@ -19,16 +19,15 @@ npm run build:chrome     # builds dist-chrome/
 npm run build:firefox    # builds dist-firefox/
 ```
 
-Or build both at once:
+Or build both at once, already zipped and ready for store submission --
+`npm run build` chains build.mjs (both targets), package.mjs (zips
+dist-{chrome,firefox} into `vulnradar-{browser}-vX.Y.Z.zip`), and
+package-source.mjs (zips this whole directory into
+`vulnradar-extension-vX.Y.Z-source.zip`, which AMO review asks for
+alongside the built package) into one step, no separate commands needed:
 
 ```bash
 npm run build
-```
-
-For store submission, also run:
-
-```bash
-npm run package         # zips dist-{chrome,firefox} into vulnradar-{browser}-vX.Y.Z.zip
 ```
 
 ### Chrome (Chromium / Edge / Brave / Arc / Opera)

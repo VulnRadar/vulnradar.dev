@@ -10,11 +10,12 @@
   },
   "scripts": {
     "dev": "vite build --watch --mode development",
-    "build": "node scripts/build.mjs && node scripts/package.mjs",
+    "build": "node scripts/build.mjs && node scripts/package.mjs && node scripts/package-source.mjs",
     "build:chrome": "node scripts/build.mjs chrome",
     "build:firefox": "node scripts/build.mjs firefox",
     "icons": "node scripts/generate-icons.mjs",
     "package": "node scripts/package.mjs",
+    "package:source": "node scripts/package-source.mjs",
     "clean": "node -e \"import('node:fs').then(fs => fs.promises.rm('dist-chrome',{recursive:true,force:true}).then(()=>fs.promises.rm('dist-firefox',{recursive:true,force:true})))\"",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.{ts,html,css,json,md}\"",
