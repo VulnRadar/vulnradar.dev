@@ -136,11 +136,11 @@ interface Release {
 const CHANGELOG: Release[] = [
   {
     version: "3.4.0",
-    date: "August 14, 2026",
+    date: "August 15, 2026",
     title: "Team-Scoped Resources, Admin Security Hardening",
     highlights: true,
     summary:
-      "A big one. Scans, webhooks, and scheduled scans can now be shared with a team instead of only living under one account, with real owner/admin/member/viewer permissions behind it. Alongside that: a proper audit of the admin panel's own security turned up and fixed a handful of real gaps, including a route that skipped 2FA enforcement entirely and a password re-entry prompt that was never actually checked server-side. A broader sweep for the same underlying bug, UI that claims success without checking whether the request behind it actually succeeded, found and fixed a dozen more instances across the admin panel, checkout, scan history, and every copy-to-clipboard button in the app.",
+      "A big one. Scans, webhooks, and scheduled scans can now be shared with a team instead of only living under one account, with real owner/admin/member/viewer permissions behind it. Alongside that: a proper audit of the admin panel's own security turned up and fixed a handful of real gaps, including a route that skipped 2FA enforcement entirely and a password re-entry prompt that was never actually checked server-side. A broader sweep for the same underlying bug, UI that claims success without checking whether the request behind it actually succeeded, found and fixed a dozen more instances across the admin panel, checkout, scan history, and every copy-to-clipboard button in the app. On top of that: roughly 1,200 real sites got bulk-scanned specifically to hunt down false positives at scale, the browser extension went live on both the Chrome Web Store and Firefox Add-ons, and self-hosted instances now get an automatic database backup before every migration plus an admin alert if a background worker starts failing silently.",
     changes: [
       {
         icon: Users,
@@ -267,7 +267,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Globe,
         label: "Extension: Live on the Chrome Web Store",
-        desc: "The browser extension is now installable straight from the Chrome Web Store instead of a manual unpacked-folder install. Firefox Add-ons review is still in progress; that path still uses the packaged release.",
+        desc: "The browser extension is now installable straight from the Chrome Web Store instead of a manual unpacked-folder install.",
         category: "added",
       },
       {
@@ -320,10 +320,34 @@ const CHANGELOG: Release[] = [
         category: "fixed",
       },
       {
+        icon: RefreshCw,
+        label: "Self-Updater No Longer Builds or Restarts For You",
+        desc: "Applying an update from the admin panel used to run npm run build as its last step, tying up a live production process while it did. The updater job now stops once files are updated, dependencies are installed, and the database is migrated (backed up first): it tells you when that's done, and you run npm run build and restart the server yourself, on your own schedule.",
+        category: "changed",
+      },
+      {
+        icon: Database,
+        label: "Database Is Backed Up Automatically Before Every Migration",
+        desc: "Every migration, whether run from the CLI or the in-app self-updater, now takes a full pg_dump backup first (skipped gracefully, never blocking the migration, if pg_dump isn't installed). Backups are written to databases/v{major}/{schema version}/vulnradar_backup_{timestamp}.sql, so backups from different schema versions can never collide or overwrite each other.",
+        category: "added",
+      },
+      {
+        icon: AlertTriangle,
+        label: "Silent Background & Billing Failures Now Reach the Admin Panel",
+        desc: "Scheduled scans, the cleanup job, and the posture-digest worker could fail on every tick, forever, with nothing but a log line nobody was watching. Each now sends a single admin alert after 3 consecutive failures, not one alert per failure, and resets as soon as it recovers. Separately, a failed billing_history insert after a successful Stripe webhook was logged in a way the admin Error Logs panel never picks up; it now surfaces there like any other real error.",
+        category: "fixed",
+      },
+      {
         icon: Globe,
         label: "Extension: Live on Firefox Add-ons",
         desc: "The browser extension is now installable straight from Firefox Add-ons (AMO), the same one-click install the Chrome Web Store listing already had. Review took a few days; both browsers now update themselves from their store listing instead of a manual unpacked/packaged install.",
         category: "added",
+      },
+      {
+        icon: Mail,
+        label: "Email Logs: Simpler List, Real Preview",
+        desc: "Each row in the admin Email Logs table now shows just who it went to, the subject, and whether it sent, instead of crowding the list with truncated body text and error strings. A new View button renders the redacted body through the same branded template real emails use, so you can see roughly what the recipient actually saw.",
+        category: "changed",
       },
     ],
   },

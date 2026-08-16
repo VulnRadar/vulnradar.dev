@@ -18,10 +18,10 @@ and full description.
 
 ---
 
-## v3.4.0 - August 14, 2026 **(highlights)**
+## v3.4.0 - August 15, 2026 **(highlights)**
 **Team-Scoped Resources, Admin Security Hardening**
 
-A big one. Scans, webhooks, and scheduled scans can now be shared with a team instead of only living under one account, with real owner/admin/member/viewer permissions behind it. Alongside that: a proper audit of the admin panel's own security turned up and fixed a handful of real gaps, including a route that skipped 2FA enforcement entirely and a password re-entry prompt that was never actually checked server-side. A broader sweep for the same underlying bug, UI that claims success without checking whether the request behind it actually succeeded, found and fixed a dozen more instances across the admin panel, checkout, scan history, and every copy-to-clipboard button in the app.
+A big one. Scans, webhooks, and scheduled scans can now be shared with a team instead of only living under one account, with real owner/admin/member/viewer permissions behind it. Alongside that: a proper audit of the admin panel's own security turned up and fixed a handful of real gaps, including a route that skipped 2FA enforcement entirely and a password re-entry prompt that was never actually checked server-side. A broader sweep for the same underlying bug, UI that claims success without checking whether the request behind it actually succeeded, found and fixed a dozen more instances across the admin panel, checkout, scan history, and every copy-to-clipboard button in the app. On top of that: roughly 1,200 real sites got bulk-scanned specifically to hunt down false positives at scale, the browser extension went live on both the Chrome Web Store and Firefox Add-ons, and self-hosted instances now get an automatic database backup before every migration plus an admin alert if a background worker starts failing silently.
 
 ### Changes
 - [Users] **[ADDED]** **Team-Scoped Scans, Webhooks & Schedules**
@@ -63,7 +63,7 @@ A big one. Scans, webhooks, and scheduled scans can now be shared with a team in
 - [GitMerge] **[ADDED]** **GitHub Actions Scan Gate**
   A ready-to-use GitHub Action that scans a URL and fails the build if findings cross a severity threshold you set, so a scan can gate a pull request without writing your own polling loop against the API.
 - [Globe] **[ADDED]** **Extension: Live on the Chrome Web Store**
-  The browser extension is now installable straight from the Chrome Web Store instead of a manual unpacked-folder install. Firefox Add-ons review is still in progress; that path still uses the packaged release.
+  The browser extension is now installable straight from the Chrome Web Store instead of a manual unpacked-folder install.
 - [Bell] **[ADDED]** **Site Notifications Support a Second Action Button**
   A site-wide notification (banner, modal, toast, or bell) can now carry up to two action buttons instead of one, e.g. "Add to Chrome" next to "Add to Firefox" on the same announcement.
 - [Wrench] **[FIXED]** **Extension: Auto-Scan URL Filters Could Be Resized Away**
@@ -80,8 +80,16 @@ A big one. Scans, webhooks, and scheduled scans can now be shared with a team in
   The score recalculation itself was already correct and saved right away, but the scan view you were looking at didn't know to refresh, so the risk score looked unchanged until you left and reopened the scan. It now updates in place as soon as you mark a finding.
 - [Lock] **[FIXED]** **Five of Our Own Pages Were Wrongly Gated Behind Login**
   Found by scanning our own site with our own scanner: the legal index page, the badge page, the post-checkout confirmation page, team invite links, and public host reports were all silently redirecting a logged-out visitor to the login screen instead of showing the page. Team invite links were the worst of it, since an invite is supposed to work for someone who doesn't have an account yet. All five are public now, the same as they were always meant to be.
+- [RefreshCw] **[CHANGED]** **Self-Updater No Longer Builds or Restarts For You**
+  Applying an update from the admin panel used to run npm run build as its last step, tying up a live production process while it did. The updater job now stops once files are updated, dependencies are installed, and the database is migrated (backed up first): it tells you when that's done, and you run npm run build and restart the server yourself, on your own schedule.
+- [Database] **[ADDED]** **Database Is Backed Up Automatically Before Every Migration**
+  Every migration, whether run from the CLI or the in-app self-updater, now takes a full pg_dump backup first (skipped gracefully, never blocking the migration, if pg_dump isn't installed). Backups are written to databases/v{major}/{schema version}/vulnradar_backup_{timestamp}.sql, so backups from different schema versions can never collide or overwrite each other.
+- [AlertTriangle] **[FIXED]** **Silent Background & Billing Failures Now Reach the Admin Panel**
+  Scheduled scans, the cleanup job, and the posture-digest worker could fail on every tick, forever, with nothing but a log line nobody was watching. Each now sends a single admin alert after 3 consecutive failures, not one alert per failure, and resets as soon as it recovers. Separately, a failed billing_history insert after a successful Stripe webhook was logged in a way the admin Error Logs panel never picks up; it now surfaces there like any other real error.
 - [Globe] **[ADDED]** **Extension: Live on Firefox Add-ons**
   The browser extension is now installable straight from Firefox Add-ons (AMO), the same one-click install the Chrome Web Store listing already had. Review took a few days; both browsers now update themselves from their store listing instead of a manual unpacked/packaged install.
+- [Mail] **[CHANGED]** **Email Logs: Simpler List, Real Preview**
+  Each row in the admin Email Logs table now shows just who it went to, the subject, and whether it sent, instead of crowding the list with truncated body text and error strings. A new View button renders the redacted body through the same branded template real emails use, so you can see roughly what the recipient actually saw.
 
 ---
 
@@ -1478,6 +1486,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 57
-- **Total changes documented:** 504
-- **Latest:** v3.4.0 (August 14, 2026) - Team-Scoped Resources, Admin Security Hardening
+- **Total changes documented:** 508
+- **Latest:** v3.4.0 (August 15, 2026) - Team-Scoped Resources, Admin Security Hardening
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release
