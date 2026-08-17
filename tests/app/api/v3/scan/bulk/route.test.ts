@@ -608,10 +608,10 @@ describe("POST /api/v3/scan/bulk - one URL fails, others succeed", () => {
     );
     expect(json.results[1].success).toBe(true);
     // The rejected URL never reaches access-rules or safeFetch. The one
-    // successful scan makes 2 calls: the page fetch, plus the async
-    // bucket-listing check's own follow-up homepage fetch.
+    // successful scan makes 3 calls: the page fetch, plus the async
+    // bucket-listing and OSV-library checks' own follow-up homepage fetches.
     expect(mockCheckAccessRules).toHaveBeenCalledTimes(1);
-    expect(mockSafeFetch).toHaveBeenCalledTimes(2);
+    expect(mockSafeFetch).toHaveBeenCalledTimes(3);
   });
 
   it("reports a per-URL access-rules rejection with a generic message, without aborting the batch", async () => {
@@ -634,9 +634,9 @@ describe("POST /api/v3/scan/bulk - one URL fails, others succeed", () => {
     );
     expect(json.results[0].details).toMatch(/restricted from scanning/);
     expect(json.results[1].success).toBe(true);
-    // The one successful scan makes 2 calls: the page fetch, plus the async
-    // bucket-listing check's own follow-up homepage fetch.
-    expect(mockSafeFetch).toHaveBeenCalledTimes(2);
+    // The one successful scan makes 3 calls: the page fetch, plus the async
+    // bucket-listing and OSV-library checks' own follow-up homepage fetches.
+    expect(mockSafeFetch).toHaveBeenCalledTimes(3);
   });
 });
 
@@ -732,9 +732,9 @@ describe("POST /api/v3/scan/bulk - daily quota", () => {
         error: expect.stringMatching(/Daily scan limit reached/),
       }),
     );
-    // 2 successful scans x 2 calls each: the page fetch, plus the async
-    // bucket-listing check's own follow-up homepage fetch.
-    expect(mockSafeFetch).toHaveBeenCalledTimes(4);
+    // 2 successful scans x 3 calls each: the page fetch, plus the async
+    // bucket-listing and OSV-library checks' own follow-up homepage fetches.
+    expect(mockSafeFetch).toHaveBeenCalledTimes(6);
     expect(mockIncrementDailyCount).toHaveBeenCalledTimes(2);
   });
 });
@@ -801,9 +801,10 @@ describe("POST /api/v3/scan/bulk - API key per-URL rate limiting", () => {
       }),
     );
     // Only the first URL was actually fetched - the loop broke before
-    // url2/url3. That one successful scan makes 2 calls: the page fetch,
-    // plus the async bucket-listing check's own follow-up homepage fetch.
-    expect(mockSafeFetch).toHaveBeenCalledTimes(2);
+    // url2/url3. That one successful scan makes 3 calls: the page fetch,
+    // plus the async bucket-listing and OSV-library checks' own follow-up
+    // homepage fetches.
+    expect(mockSafeFetch).toHaveBeenCalledTimes(3);
     expect(res.headers.get("X-RateLimit-Limit")).toBe("2");
     expect(res.headers.get("X-RateLimit-Remaining")).toBe("0");
   });
@@ -898,9 +899,9 @@ describe("POST /api/v3/scan/bulk - API key per-URL rate limiting", () => {
 
     // Only the first URL was actually fetched - the loop broke on index1
     // before index1's own scan or index2 ran. That one successful scan
-    // makes 2 calls: the page fetch, plus the async bucket-listing check's
-    // own follow-up homepage fetch.
-    expect(mockSafeFetch).toHaveBeenCalledTimes(2);
+    // makes 3 calls: the page fetch, plus the async bucket-listing and
+    // OSV-library checks' own follow-up homepage fetches.
+    expect(mockSafeFetch).toHaveBeenCalledTimes(3);
   });
 });
 

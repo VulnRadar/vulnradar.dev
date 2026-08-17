@@ -1648,18 +1648,20 @@ describe("runAsyncChecks", () => {
 // ── getPlannedAsyncBranches ──────────────────────────────────────────
 
 describe("getPlannedAsyncBranches", () => {
-  it("plans dns + live-fetch for a plain http URL (no tls branch)", () => {
+  it("plans dns + live-fetch + osv-libraries for a plain http URL (no tls branch)", () => {
     expect(getPlannedAsyncBranches("http://example.com")).toEqual([
       "dns",
       "live-fetch",
+      "osv-libraries",
     ]);
   });
 
-  it("plans dns + tls + live-fetch for an https URL", () => {
+  it("plans dns + tls + live-fetch + osv-libraries for an https URL", () => {
     expect(getPlannedAsyncBranches("https://example.com")).toEqual([
       "dns",
       "tls",
       "live-fetch",
+      "osv-libraries",
     ]);
   });
 

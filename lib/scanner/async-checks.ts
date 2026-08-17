@@ -28,6 +28,7 @@ import {
   checkReputation,
   isReputationCheckConfigured,
 } from "@/lib/scanner/reputation-lookup";
+import { checkOsvVulnerableLibraries } from "@/lib/scanner/osv-check";
 import {
   checkActiveProbes,
   checkSqlInjectionProbe,
@@ -4401,6 +4402,20 @@ function buildBranches(
   // run) and skips a pointless network call on deployments without a key.
   if ((runAll || allowed!.has("reputation")) && isReputationCheckConfigured()) {
     branches.push({ label: "reputation", promise: checkReputation(url) });
+  }
+
+  // OSV.dev live dependency lookup — supplements
+  // lib/scanner/checks/page-checks/libraries.ts's small, hand-maintained
+  // vulnerable-library table with a live query against OSV.dev for every
+  // detected client-side library + version. Passive (reads the page once,
+  // queries a third party, never the target), so it runs by default under
+  // "supply-chain" like every other non-active-probes branch above, unlike
+  // active-probes' opt-in-only gate.
+  if (runAll || allowed!.has("supply-chain")) {
+    branches.push({
+      label: "osv-libraries",
+      promise: checkOsvVulnerableLibraries(url, signal),
+    });
   }
 
   // Active probing (canary-reflection XSS/SQLi/SSTI/command-injection, open

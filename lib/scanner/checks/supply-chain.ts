@@ -259,6 +259,15 @@ const rawDetectors: Record<string, DetectFn> = {
     }
     return null;
   },
+
+  // Actually async: queries OSV.dev live for every detected client-side
+  // library, so it needs a real network round-trip a synchronous
+  // (url, headers, body) detector can't make. Runs from
+  // lib/scanner/osv-check.ts (invoked via lib/scanner/async-checks.ts); this
+  // placeholder only exists so the registry's coverage test can map the
+  // JSON id to a known name, the same pattern
+  // lib/scanner/checks/active-probes.ts uses for its own async checks.
+  "osv-vulnerable-library": () => null,
 };
 
 // A raw config/lockfile/dotenv response has no HTML tags, so stripDocBlocks

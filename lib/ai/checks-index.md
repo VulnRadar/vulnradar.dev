@@ -737,7 +737,7 @@ remediation documentation in the docs.
 - [info    ] `ssl-strip-detected` [header] - HSTS Present on HTTP Response (SSL-Strip Indicator)
 - [medium  ] `mixed-protocol-content` [body-pattern] - Mixed-Protocol Content (HTTPS Page Loading HTTP Resources)
 
-### supply-chain (13)
+### supply-chain (14)
 - [medium  ] `supply-chain-lockfile-exposed` [body-pattern] - npm/yarn Lock File Exposed
 - [medium  ] `supply-chain-requirements-exposed` [body-pattern] - Python Requirements File Exposed
 - [medium  ] `supply-chain-gemfile-exposed` [body-pattern] - Ruby Gemfile or Gemfile.lock Exposed
@@ -751,6 +751,7 @@ remediation documentation in the docs.
 - [medium  ] `supply-chain-cargo-lock-exposed` [body-pattern] - Rust Cargo.lock Exposed
 - [medium  ] `supply-chain-go-sum-exposed` [body-pattern] - Go go.sum Checksum File Exposed
 - [critical] `supply-chain-malicious-install-script` [body-pattern] - npm Install Hook Pipes a Remote Download Into a Shell
+- [high    ] `osv-vulnerable-library` [url-check] - Vulnerable Dependency (OSV-Confirmed)
 
 ### tls (11)
 - [high    ] `tls-certificate-expiry` [header] - TLS Certificate Expiry
@@ -808,11 +809,11 @@ remediation documentation in the docs.
 
 ## Totals
 
-- Total checks: **753**
+- Total checks: **754**
 - Categories: **18** (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
   - medium: 200
-  - high: 199
+  - high: 200
   - low: 145
   - info: 111
   - critical: 98
@@ -821,7 +822,7 @@ remediation documentation in the docs.
   - header: 175
   - combined: 61
   - header-missing: 55
-  - url-check: 16
+  - url-check: 17
   - header-value: 10
   - header-present: 10
   - network-probe: 1

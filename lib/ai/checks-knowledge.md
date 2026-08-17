@@ -18,11 +18,11 @@ in this file and quote the title, description, and fix steps.
 
 ## Summary
 
-- **Total checks:** 753
+- **Total checks:** 754
 - **Categories:** 18 (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
   - medium: 200
-  - high: 199
+  - high: 200
   - low: 145
   - info: 111
   - critical: 98
@@ -31,7 +31,7 @@ in this file and quote the title, description, and fix steps.
   - header: 175
   - combined: 61
   - header-missing: 55
-  - url-check: 16
+  - url-check: 17
   - header-value: 10
   - header-present: 10
   - network-probe: 1
@@ -20053,7 +20053,7 @@ export default nextConfig;
 
 ---
 
-## Category: supply-chain (13 checks)
+## Category: supply-chain (14 checks)
 
 ### `supply-chain-lockfile-exposed` [supply-chain / medium / body-pattern]
 **npm/yarn Lock File Exposed**
@@ -20417,6 +20417,31 @@ A publicly accessible package.json has a preinstall, install, or postinstall scr
 
 // GOOD: local script downloads to a file, checks it, then runs it
 // "postinstall": "node scripts/postinstall.js"
+```
+
+### `osv-vulnerable-library` [supply-chain / high / url-check]
+**Vulnerable Dependency (OSV-Confirmed)**
+
+A client-side library loaded by this page, at the exact version detected from its script filename, has a published vulnerability in OSV.dev (the Open Source Vulnerabilities database, which aggregates GitHub Security Advisories, npm audit advisories, and other ecosystem-specific sources). See the finding evidence for which library, version, and advisory.
+
+**Risk:** Depends on the specific advisory; see the finding evidence for the exact CVE/GHSA identifier and its own impact description.
+
+**Why it matters:** The library name and version are read from the script's own filename or CDN URL (e.g. jquery-1.12.4.min.js, or a version-pinned CDN path like unpkg.com/react@18.2.0/...), the same passive, safe-by-construction technique lib/scanner/checks/page-checks/libraries.ts uses. Unlike that check's small, hand-maintained table of known-vulnerable ranges, this one queries OSV.dev live, so it reflects whatever OSV currently knows about the exact detected version rather than a fixed set of CVEs picked at one point in time.
+
+**References:**
+- https://osv.dev/
+
+**Fix:**
+- Upgrade the library past the vulnerable range named in the finding evidence.
+- If the library is bundled rather than loaded from a CDN, update it in the project's dependency manifest (package.json/package-lock.json) and rebuild.
+- Re-run this scan after the fix to confirm OSV.dev no longer returns a match for the new version.
+- **Pin the fixed version instead of the vulnerable one** (html):
+```html
+<!-- Bad: pinned to the version OSV.dev flagged in the finding evidence -->
+<script src="https://code.jquery.com/jquery-1.8.2.min.js"></script>
+
+<!-- Good: pinned to a version at or after the advisory's fixed range -->
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 ```
 
 ---

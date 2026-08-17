@@ -384,5 +384,30 @@
     ],
     "cwe": "CWE-506",
     "owasp": "A08:2021"
+  },
+  {
+    "id": "osv-vulnerable-library",
+    "type": "url-check",
+    "title": "Vulnerable Dependency (OSV-Confirmed)",
+    "category": "supply-chain",
+    "severity": "high",
+    "description": "A client-side library loaded by this page, at the exact version detected from its script filename, has a published vulnerability in OSV.dev (the Open Source Vulnerabilities database, which aggregates GitHub Security Advisories, npm audit advisories, and other ecosystem-specific sources). See the finding evidence for which library, version, and advisory.",
+    "evidence": "OSV.dev query for this exact package name and version returned a matching advisory.",
+    "riskImpact": "Depends on the specific advisory; see the finding evidence for the exact CVE/GHSA identifier and its own impact description.",
+    "explanation": "The library name and version are read from the script's own filename or CDN URL (e.g. jquery-1.12.4.min.js, or a version-pinned CDN path like unpkg.com/react@18.2.0/...), the same passive, safe-by-construction technique lib/scanner/checks/page-checks/libraries.ts uses. Unlike that check's small, hand-maintained table of known-vulnerable ranges, this one queries OSV.dev live, so it reflects whatever OSV currently knows about the exact detected version rather than a fixed set of CVEs picked at one point in time.",
+    "fixSteps": [
+      "Upgrade the library past the vulnerable range named in the finding evidence.",
+      "If the library is bundled rather than loaded from a CDN, update it in the project's dependency manifest (package.json/package-lock.json) and rebuild.",
+      "Re-run this scan after the fix to confirm OSV.dev no longer returns a match for the new version."
+    ],
+    "codeExamples": [
+      {
+        "label": "Pin the fixed version instead of the vulnerable one",
+        "language": "html",
+        "code": "<!-- Bad: pinned to the version OSV.dev flagged in the finding evidence -->\n<script src=\"https://code.jquery.com/jquery-1.8.2.min.js\"></script>\n\n<!-- Good: pinned to a version at or after the advisory's fixed range -->\n<script src=\"https://code.jquery.com/jquery-3.7.1.min.js\"></script>"
+      }
+    ],
+    "references": ["https://osv.dev/"],
+    "cwe": "CWE-1104"
   }
 ]
