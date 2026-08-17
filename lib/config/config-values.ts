@@ -966,11 +966,22 @@ export const CONFIG_TEAM_INVITE_EXPIRY_DAYS = 7;
 // scan_finding_feedback (per-check false-positive rate) and
 // auto_tag_dismissals (per-auto-tag-rule dismissal rate). Both signals
 // share the same two knobs: a rate a check/rule must clear, and a minimum
-// sample size so one grumpy user on one scan can't flag a check. This is
-// reporting only -- nothing reads these values to change detection logic
-// automatically; a human decides what to do with a flagged check.
+// sample size so one grumpy user on one scan can't flag a check. Reporting
+// only for auto-tag dismissals -- a human decides what to do with a
+// flagged rule. For check accuracy, these same two knobs ALSO gate
+// lib/scanner/adaptive-confidence.ts (see ADAPTIVE_CONFIDENCE_ENABLED
+// below): a check only ever gets its findings' confidence discounted once
+// it's already crossed the exact threshold that would flag it here.
 export const CONFIG_ENGINE_FEEDBACK_NOISE_THRESHOLD_PERCENT = 20;
 export const CONFIG_ENGINE_FEEDBACK_MIN_SAMPLE_SIZE = 5;
+
+// Automatically discounts a finding's confidence when its check has a
+// real, statistically meaningful false-positive rate from user feedback
+// (same flagged-check signal the admin Engine Feedback panel already
+// surfaces, see lib/scanner/adaptive-confidence.ts). On by default: a
+// confidence score that never learns from real-world feedback is just a
+// static guess forever.
+export const CONFIG_ADAPTIVE_CONFIDENCE_ENABLED = true;
 
 // PAGINATION DEFAULTS
 
@@ -1044,6 +1055,28 @@ export const CONFIG_FEATURE_EMAIL_NOTIFICATIONS = true;
 // disabling it should also be treated as disabling active-probes entirely
 // (see app/api/v3/scan/route.ts's enforcement).
 export const CONFIG_FEATURE_DOMAIN_VERIFICATION = true;
+
+// Periodic re-verification of already-verified domains (lib/domains/
+// reverify-worker.ts). Without this, a domain verified once keeps
+// standing active-probes permission forever, even after it changes hands
+// (sold, expired, DNS repointed) -- the original account's scan
+// permission for it never expires or gets re-checked. On by default,
+// unlike scheduled backups above: this is a safety mechanism, not an
+// opt-in convenience feature.
+export const CONFIG_DOMAIN_REVERIFY_ENABLED = true;
+// How often the worker tick itself runs, picking up whatever domains are
+// due. Frequent enough to catch a stale domain reasonably promptly
+// relative to the staleness window below, without hammering DNS
+// constantly.
+export const CONFIG_DOMAIN_REVERIFY_TICK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h
+// A verified domain is re-checked once it's been this many days since its
+// last check (initial verification or a previous re-check). 30 days
+// roughly matches typical registrar renewal/grace-period cycles.
+export const CONFIG_DOMAIN_REVERIFY_INTERVAL_DAYS = 30;
+// Caps how many domains one worker tick re-checks, so a large domains
+// table can't turn a single tick into an unbounded burst of DNS lookups.
+// Remaining due domains simply get picked up on the next tick.
+export const CONFIG_DOMAIN_REVERIFY_BATCH_SIZE = 50;
 
 // POSTURE DIGEST - opt-in weekly/monthly cross-site summary email (see
 // lib/notifications/posture-digest.ts). Separate deployment-wide switch

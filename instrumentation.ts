@@ -3046,6 +3046,24 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         );
       }
 
+      // ── Periodic domain re-verification ──────────────────────────────
+      // On by default (DOMAIN_REVERIFY_ENABLED, see registry.ts) -- a
+      // safety mechanism, not an opt-in convenience feature, unlike the
+      // scheduled-backup worker below. Closes the gap where a verified
+      // domain that later changes hands keeps the original account's
+      // active-probes permission forever. See lib/domains/reverify-worker.ts.
+      try {
+        const { schedulePeriodicDomainReverify } =
+          await import("./lib/domains/reverify-worker");
+        schedulePeriodicDomainReverify();
+        console.log(`[${APP_NAME}] Scheduled the domain reverify worker.`);
+      } catch (scheduleError) {
+        console.error(
+          `[${APP_NAME}] Failed to schedule the domain reverify worker:`,
+          scheduleError,
+        );
+      }
+
       // ── Scheduled database backups ──────────────────────────────────
       // Off by default (SCHEDULED_BACKUP_ENABLED, see registry.ts) -- the
       // timer is always registered so flipping the setting on takes effect

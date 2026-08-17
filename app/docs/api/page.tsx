@@ -193,7 +193,7 @@ const endpoints: Endpoint[] = [
     path: "/scan/bulk",
     title: "Bulk Scan",
     description:
-      "Submit up to 100 URLs in one request. Each URL counts as one daily quota unit.",
+      "Submit multiple URLs in one request, up to your plan's URLs-per-bulk-request limit (5/10/25/100 for free/core/pro/elite). Each URL counts as one dailyScans quota unit, checked and consumed atomically per URL as the batch runs, regardless of auth method.",
     requestBody: `{
   "urls": [
     "https://example.com",
@@ -202,16 +202,20 @@ const endpoints: Endpoint[] = [
   ]
 }`,
     responseExample: `{
+  "total": 3,
+  "successful": 2,
+  "failed": 1,
+  "skipped": 0,
   "results": [
-    { "url": "https://example.com", "summary": { "critical": 0, "high": 1, "medium": 2, "low": 1, "info": 0, "total": 4 } },
-    { "url": "https://example.org", "summary": { "critical": 0, "high": 0, "medium": 0, "low": 1, "info": 2, "total": 3 } }
-  ],
-  "totalScans": 3,
-  "totalFindings": 12
+    { "url": "https://example.com/", "success": true, "scanHistoryId": 1001, "summary": { "critical": 0, "high": 1, "medium": 2, "low": 1, "info": 0, "total": 4 } },
+    { "url": "https://example.org/", "success": true, "scanHistoryId": 1002, "summary": { "critical": 0, "high": 0, "medium": 0, "low": 1, "info": 2, "total": 3 } },
+    { "url": "https://example.net/", "success": false, "error": "Could not reach https://example.net/." }
+  ]
 }`,
     notes: [
-      "Max 100 URLs per request (CONFIG_MAX_URLS_BULK).",
+      "Max 100 URLs per request as an absolute server ceiling (CONFIG_MAX_URLS_BULK); your plan's own bulkScanUrls limit is usually lower and applies first.",
       "Returns after all URLs complete; long batches use CONFIG_BULK_SCAN_TIMEOUT_SECONDS.",
+      "URLs beyond your remaining daily quota are reported in results with success: false rather than being scanned.",
     ],
     errors: [
       { code: 400, description: "Missing or invalid urls array" },
@@ -640,24 +644,26 @@ const endpoints: Endpoint[] = [
       "Returns the full catalogue of detection checks. Use this to display human-readable titles, categorize findings, or build SDKs that know every check ID ahead of time.",
     responseExample: `{
   "success": true,
-  "count": 695,
+  "count": 754,
   "categories": {
-    "content": 148,
-    "headers": 130,
-    "code": 112,
-    "secrets-extended": 55,
-    "information-disclosure": 40,
-    "api": 32,
-    "vibe-code": 31,
-    "cookies": 32,
-    "tls": 20,
-    "configuration": 18,
-    "email": 18,
-    "client-side": 16,
-    "supply-chain": 15,
-    "dns": 13,
-    "ssl": 8,
-    "host-validation": 7
+    "content": 144,
+    "headers": 138,
+    "code": 121,
+    "secrets-extended": 58,
+    "information-disclosure": 47,
+    "vibe-code": 37,
+    "api": 36,
+    "client-side": 26,
+    "cookies": 29,
+    "configuration": 24,
+    "email": 22,
+    "supply-chain": 14,
+    "dns": 19,
+    "host-validation": 13,
+    "tls": 11,
+    "ssl": 7,
+    "active-probes": 5,
+    "reputation": 3
   },
   "data": [
     {
@@ -865,6 +871,7 @@ const endpoints: Endpoint[] = [
     notes: [
       "DNS changes can take a few minutes to propagate -- a failed check is not final, just retry once the record has had time to spread.",
       "Rate-limited to 30 attempts per hour per account.",
+      "A verified domain is also periodically re-checked in the background (roughly every 30 days). If the TXT record no longer resolves -- the domain changed hands, DNS was repointed, or it expired -- status moves to reverify_failed and active-probes scope for it is revoked automatically until this endpoint is called again successfully.",
     ],
     errors: [
       { code: 400, description: "Invalid domain id" },

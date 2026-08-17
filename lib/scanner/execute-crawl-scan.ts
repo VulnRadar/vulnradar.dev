@@ -41,6 +41,7 @@ import { checkAccessRules } from "./access-rules";
 import { safeFetch } from "./safe-fetch";
 import { redactSensitiveResponseHeaders } from "./response-headers";
 import { enrichFindingsWithExploitIntel } from "./cve-enrichment";
+import { applyAdaptiveConfidence } from "./adaptive-confidence";
 import { attachCvssScores } from "./cvss";
 import { checkForNewCriticalOrHighFindings } from "./regression-alert";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
@@ -514,6 +515,11 @@ export async function executeCrawlScan(
     // read); the per-page rows persisted directly to scan_history below
     // keep their unenriched findings.
     allFindings = await enrichFindingsWithExploitIntel(allFindings);
+
+    // Adaptive confidence, same as execute-scan.ts: discounts confidence
+    // for a check with a real, statistically meaningful false-positive
+    // rate from user feedback. Fail-open, applied to the merged array only.
+    allFindings = await applyAdaptiveConfidence(allFindings);
 
     // Safety-net pass, same as execute-scan.ts: every finding in the merged
     // array carries a CVSS 3.1 vector/score regardless of which check or

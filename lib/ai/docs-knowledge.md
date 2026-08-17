@@ -1,6 +1,6 @@
 # VulnRadar Public Docs: AI Knowledge
 
-_Auto-compiled from `app/docs/*/page.tsx` on 2026-08-16._
+_Auto-compiled from `app/docs/*/page.tsx` on 2026-08-17._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about every public docs page. Edit
@@ -525,7 +525,7 @@ Scan a single page after logging in first. Credentials are supplied in this one 
 ```
 
 #### `POST /scan/bulk`: Bulk Scan
-Submit up to 100 URLs in one request. Each URL counts as one daily quota unit.
+Submit multiple URLs in one request, up to your plan's URLs-per-bulk-request limit (5/10/25/100 for free/core/pro/elite). Each URL counts as one dailyScans quota unit, checked and consumed atomically per URL as the batch runs, regardless of auth method.
 
 - **Request body:**
 ```json
@@ -541,12 +541,15 @@ Submit up to 100 URLs in one request. Each URL counts as one daily quota unit.
 - **Response (200):**
 ```json
 {
+  "total": 3,
+  "successful": 2,
+  "failed": 1,
+  "skipped": 0,
   "results": [
-    { "url": "https://example.com", "summary": { "critical": 0, "high": 1, "medium": 2, "low": 1, "info": 0, "total": 4 } },
-    { "url": "https://example.org", "summary": { "critical": 0, "high": 0, "medium": 0, "low": 1, "info": 2, "total": 3 } }
-  ],
-  "totalScans": 3,
-  "totalFindings": 12
+    { "url": "https://example.com/", "success": true, "scanHistoryId": 1001, "summary": { "critical": 0, "high": 1, "medium": 2, "low": 1, "info": 0, "total": 4 } },
+    { "url": "https://example.org/", "success": true, "scanHistoryId": 1002, "summary": { "critical": 0, "high": 0, "medium": 0, "low": 1, "info": 2, "total": 3 } },
+    { "url": "https://example.net/", "success": false, "error": "Could not reach https://example.net/." }
+  ]
 }
 ```
 
@@ -808,24 +811,26 @@ Returns the full catalogue of detection checks. Use this to display human-readab
 ```json
 {
   "success": true,
-  "count": 695,
+  "count": 754,
   "categories": {
-    "content": 148,
-    "headers": 130,
-    "code": 112,
-    "secrets-extended": 55,
-    "information-disclosure": 40,
-    "api": 32,
-    "vibe-code": 31,
-    "cookies": 32,
-    "tls": 20,
-    "configuration": 18,
-    "email": 18,
-    "client-side": 16,
-    "supply-chain": 15,
-    "dns": 13,
-    "ssl": 8,
-    "host-validation": 7
+    "content": 144,
+    "headers": 138,
+    "code": 121,
+    "secrets-extended": 58,
+    "information-disclosure": 47,
+    "vibe-code": 37,
+    "api": 36,
+    "client-side": 26,
+    "cookies": 29,
+    "configuration": 24,
+    "email": 22,
+    "supply-chain": 14,
+    "dns": 19,
+    "host-validation": 13,
+    "tls": 11,
+    "ssl": 7,
+    "active-probes": 5,
+    "reputation": 3
   },
   "data": [
     {
@@ -1577,7 +1582,7 @@ npm run lint:fix    # auto-fix
 | `/docs/setup` | - | 12 | 5 | 0 | 22 | 0 | 0 | 28 | 30 |
 | `/docs/extension` | ✓ | 8 | 1 | 0 | 0 | 0 | 0 | 10 | 2 |
 | `/docs/self-hosting` | - | 15 | 3 | 0 | 11 | 0 | 0 | 14 | 2 |
-| `/docs/config` | - | 9 | 3 | 0 | 2 | 0 | 0 | 23 | 0 |
+| `/docs/config` | - | 9 | 3 | 0 | 2 | 0 | 0 | 24 | 0 |
 | `/docs/api` | - | 8 | 3 | 0 | 4 | 28 | 0 | 9 | 6 |
 | `/docs/webhooks` | ✓ | 6 | 0 | 0 | 3 | 0 | 0 | 5 | 5 |
 | `/docs/rate-limits` | - | 6 | 5 | 0 | 4 | 0 | 0 | 10 | 3 |

@@ -824,9 +824,10 @@ lib/types/
           </ul>
           <p className="max-w-[68ch] text-sm text-muted-foreground">
             Optional. When both are set, the &ldquo;View Page&rdquo; button on
-            scan results opens a 5-minute remote BrowserBase session in a popup.
-            The TTL is hard-clamped to 300 seconds. The popup auto-ends the
-            session when it closes, so no history is retained server-side. See{" "}
+            scan results opens a remote BrowserBase session in a popup. Each
+            session is hard-clamped to 360 seconds (6 minutes). The popup
+            auto-ends the session when it closes, so no history is retained
+            server-side. See{" "}
             <a
               href="/docs/api#post-browser-sessions"
               className="text-primary hover:underline"
@@ -834,6 +835,17 @@ lib/types/
               POST /browser/sessions
             </a>
             .
+          </p>
+          <p className="max-w-[68ch] text-sm text-muted-foreground">
+            Two independent limits apply on top of the per-session cap: a
+            monthly minute allowance per plan (30/60/150/400 minutes for
+            free/core/pro/elite, purchasable top-ups available in Profile &gt;
+            Billing once the free allowance runs out), and an account-wide
+            concurrency cap on how many sessions can be open at once across
+            every user combined, matching this deployment&rsquo;s actual
+            BrowserBase plan. A request that arrives at the concurrency cap
+            queues automatically (paid plans admitted ahead of free) instead of
+            failing outright.
           </p>
         </DocsSubSection>
 
