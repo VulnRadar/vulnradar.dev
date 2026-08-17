@@ -40,57 +40,108 @@ function retention(planId: string): CellValue {
   return days === -1 ? "Unlimited" : `${days} days`;
 }
 
-const ROWS: { label: string; values: CellValue[] }[] = [
+interface Row {
+  label: string;
+  values: CellValue[];
+}
+
+interface Section {
+  title: string;
+  rows: Row[];
+}
+
+const SECTIONS: Section[] = [
   {
-    label: "Scans per day",
-    values: PLANS.map((p) => quota(p.limits.dailyScans)),
+    title: "Scanning",
+    rows: [
+      {
+        label: "Scans per day",
+        values: PLANS.map((p) => quota(p.limits.dailyScans)),
+      },
+      {
+        label: "Scans running at once",
+        values: PLANS.map((p) => quota(p.limits.concurrentScans)),
+      },
+      {
+        label: "URLs per bulk request",
+        values: PLANS.map((p) => quota(p.limits.bulkScanUrls)),
+      },
+      {
+        label: "Scheduled scans",
+        values: PLANS.map((p) => quota(p.limits.scheduledScans)),
+      },
+      { label: "Scan history kept", values: PLANS.map((p) => retention(p.id)) },
+    ],
   },
   {
-    label: "API requests per day",
-    values: PLANS.map((p) => quota(p.limits.apiRequestsPerDay)),
-  },
-  { label: "API keys", values: PLANS.map((p) => quota(p.limits.apiKeys)) },
-  { label: "AI chat & AI scan summaries", values: PLANS.map(() => true) },
-  {
-    label: "AI finding verification",
-    values: PLANS.map((p) => aiUsageQuota(p.limits.aiTokensPerWindow)),
-  },
-  {
-    label: "AI GitHub code review",
-    values: PLANS.map((p) =>
-      githubReviewQuota(p.limits.githubReviewTokensPerWindow),
-    ),
-  },
-  { label: "Scan history kept", values: PLANS.map((p) => retention(p.id)) },
-  {
-    label: "URLs per bulk request",
-    values: PLANS.map((p) => quota(p.limits.bulkScanUrls)),
+    title: "AI",
+    rows: [
+      { label: "AI chat & AI scan summaries", values: PLANS.map(() => true) },
+      {
+        label: "AI finding verification",
+        values: PLANS.map((p) => aiUsageQuota(p.limits.aiTokensPerWindow)),
+      },
+      {
+        label: "AI GitHub code review",
+        values: PLANS.map((p) =>
+          githubReviewQuota(p.limits.githubReviewTokensPerWindow),
+        ),
+      },
+    ],
   },
   {
-    label: "Scheduled scans",
-    values: PLANS.map((p) => quota(p.limits.scheduledScans)),
+    title: "Live browser",
+    rows: [
+      {
+        label: "Live-browser minutes/month",
+        values: PLANS.map((p) => quota(p.limits.browserbaseMinutesPerMonth)),
+      },
+      {
+        label: "Priority queue for live-browser sessions",
+        values: PLANS.map((p) => p.id !== "free"),
+      },
+    ],
   },
   {
-    label: "Webhook endpoints",
-    values: PLANS.map((p) => quota(p.limits.webhooks)),
+    title: "API & integrations",
+    rows: [
+      {
+        label: "API requests per day",
+        values: PLANS.map((p) => quota(p.limits.apiRequestsPerDay)),
+      },
+      { label: "API keys", values: PLANS.map((p) => quota(p.limits.apiKeys)) },
+      {
+        label: "Webhook endpoints",
+        values: PLANS.map((p) => quota(p.limits.webhooks)),
+      },
+      { label: "REST API and bearer tokens", values: PLANS.map(() => true) },
+    ],
   },
   {
-    label: "Team members",
-    values: PLANS.map((p) => quota(p.limits.teamMembers)),
+    title: "Team",
+    rows: [
+      {
+        label: "Teams you can create",
+        values: PLANS.map((p) => quota(p.limits.teams)),
+      },
+      {
+        label: "Team members per team",
+        values: PLANS.map((p) => quota(p.limits.teamMembers)),
+      },
+    ],
   },
   {
-    label: "Scans running at once",
-    values: PLANS.map((p) => quota(p.limits.concurrentScans)),
+    title: "Included on every plan",
+    rows: [
+      { label: "Every scanner category", values: PLANS.map(() => true) },
+      { label: "Stable finding IDs", values: PLANS.map(() => true) },
+      { label: "Self-hostable", values: PLANS.map(() => true) },
+      {
+        label: "Verified domains (unlimited)",
+        values: PLANS.map(() => true),
+      },
+    ],
   },
-  {
-    label: "Live-browser minutes/month",
-    values: PLANS.map((p) => quota(p.limits.browserbaseMinutesPerMonth)),
-  },
-  { label: "Every scanner category", values: PLANS.map(() => true) },
-  { label: "Stable finding IDs", values: PLANS.map(() => true) },
-  { label: "REST API and bearer tokens", values: PLANS.map(() => true) },
-  { label: "Self-hostable", values: PLANS.map(() => true) },
-  { label: "Verified domains (unlimited)", values: PLANS.map(() => true) },
 ];
 
 function Cell({ value, label }: { value: CellValue; label: string }) {
@@ -159,29 +210,40 @@ export function PricingFeatures() {
                 ))}
               </tr>
             </thead>
-            <tbody>
-              {ROWS.map((row) => (
-                <tr
-                  key={row.label}
-                  className="border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors"
-                >
+            {SECTIONS.map((section) => (
+              <tbody key={section.title}>
+                <tr className="border-b border-border/40 bg-muted/10">
                   <th
-                    scope="row"
-                    className="px-5 py-3 text-muted-foreground font-normal text-left"
+                    scope="colgroup"
+                    colSpan={PLANS.length + 1}
+                    className="px-5 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
                   >
-                    {row.label}
+                    {section.title}
                   </th>
-                  {row.values.map((v, j) => (
-                    <td
-                      key={j}
-                      className="px-4 py-3 text-center text-foreground"
-                    >
-                      <Cell value={v} label={row.label} />
-                    </td>
-                  ))}
                 </tr>
-              ))}
-            </tbody>
+                {section.rows.map((row) => (
+                  <tr
+                    key={row.label}
+                    className="border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors"
+                  >
+                    <th
+                      scope="row"
+                      className="px-5 py-3 text-muted-foreground font-normal text-left"
+                    >
+                      {row.label}
+                    </th>
+                    {row.values.map((v, j) => (
+                      <td
+                        key={j}
+                        className="px-4 py-3 text-center text-foreground"
+                      >
+                        <Cell value={v} label={row.label} />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            ))}
           </table>
         </div>
       </div>

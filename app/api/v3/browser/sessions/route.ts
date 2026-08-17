@@ -19,6 +19,11 @@ import {
   checkBrowserbaseQuota,
   recordBrowserbaseSeconds,
 } from "@/lib/billing/browserbase-usage";
+import {
+  acquireConcurrencySlot,
+  releaseConcurrencySlot,
+} from "@/lib/browserbase/concurrency-queue";
+import { getUserPlan } from "@/lib/rate-limiting/daily-limits";
 import pool from "@/lib/database/db";
 
 interface CreateBody {
@@ -112,19 +117,53 @@ export const POST = withErrorHandling(async (request: Request) => {
   // BrowserBase's own default is much larger, which makes everything appear
   // tiny when the DevTools viewer is embedded in a 1920×1080 popup.
   const viewport = parsed.data.viewport ?? { width: 1920, height: 1080 };
+
+  // Global concurrency cap + queue: this account's own Browserbase plan has
+  // a real ceiling on how many sessions can run at once across every user
+  // combined, separate from any one user's monthly minute allowance. Paid
+  // plans are admitted ahead of free when both are waiting for the same
+  // freed slot. A slot acquired here MUST be released on every path below
+  // that does NOT end in a real, tracked session (see the catch block and
+  // the "no id" branch) -- otherwise it leaks and the cap silently shrinks.
+  const plan = await getUserPlan(session.userId);
+  const slot = await acquireConcurrencySlot(plan !== "free");
+  if (!slot.acquired) {
+    return ApiResponse.error(
+      "Live-browser capacity is full right now. Try again in a moment.",
+      503,
+    );
+  }
+
+  // Isolated from the try/catch below: any failure here means no real
+  // session was ever created, so the slot reserved above must be released.
+  // A failure AFTER this point means a real Browserbase session (and a
+  // real concurrency slot) genuinely exists regardless of what our own
+  // bookkeeping code does next, so the slot must stay held until the
+  // session actually ends (its DELETE handler, or the periodic cleanup
+  // sweep reclaiming one nobody explicitly closed).
+  let created: Awaited<ReturnType<typeof createBrowserSession>>;
   try {
-    const created = await createBrowserSession({
+    created = await createBrowserSession({
       timeoutSeconds: timeout,
       viewport,
       keepAlive: true,
     });
     if (!created.id) {
+      await releaseConcurrencySlot();
       return ApiResponse.error(
         "BrowserBase returned a session with no id.",
         502,
       );
     }
+  } catch (err) {
+    await releaseConcurrencySlot();
+    if (err instanceof BrowserBaseError) {
+      return ApiResponse.error(err.message, err.status);
+    }
+    throw err;
+  }
 
+  try {
     // Navigate to the target URL via CDP (fire-and-forget).
     // Browserbase has no REST "startUrl" param — CDP is the only way to
     // control navigation after session creation. Errors are swallowed
@@ -286,6 +325,12 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
     if (elapsedSeconds > 0) {
       recordBrowserbaseSeconds(row.user_id, elapsedSeconds).catch(() => {});
     }
+    // Free the concurrency slot this session held, admitting the next
+    // queued request (if any) immediately rather than waiting for its own
+    // poll/timeout. Only sessions with a tracked row ever held a slot (see
+    // POST's acquireConcurrencySlot) -- a row-less session predates
+    // ownership tracking and never went through that reservation.
+    releaseConcurrencySlot().catch(() => {});
   }
 
   return ApiResponse.success({ ended: true, id });

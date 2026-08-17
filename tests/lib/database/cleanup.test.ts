@@ -152,6 +152,15 @@ vi.mock("@/lib/billing/browserbase-usage", () => ({
     mockRecordBrowserbaseSeconds(...args),
 }));
 
+// Same reasoning as recordBrowserbaseSeconds above: this file tests that
+// cleanup releases exactly one concurrency slot per reclaimed row, not
+// lib/browserbase/concurrency-queue.ts's own admit/priority logic.
+const mockReleaseConcurrencySlot = vi.fn();
+vi.mock("@/lib/browserbase/concurrency-queue", () => ({
+  releaseConcurrencySlot: (...args: unknown[]) =>
+    mockReleaseConcurrencySlot(...args),
+}));
+
 const {
   performDatabaseCleanup,
   formatCleanupStats,
@@ -175,6 +184,8 @@ beforeEach(() => {
   mockPoolQuery.mockClear();
   mockRecordBrowserbaseSeconds.mockReset();
   mockRecordBrowserbaseSeconds.mockResolvedValue(undefined);
+  mockReleaseConcurrencySlot.mockReset();
+  mockReleaseConcurrencySlot.mockResolvedValue(undefined);
   invalidateSettingsCache();
   stopPeriodicCleanup();
 });
@@ -314,6 +325,9 @@ describe("performDatabaseCleanup", () => {
     await performDatabaseCleanup();
     expect(mockRecordBrowserbaseSeconds).toHaveBeenCalledTimes(1);
     expect(mockRecordBrowserbaseSeconds).toHaveBeenCalledWith(42, 360);
+    // Each reclaimed row held a global concurrency slot that nobody ever
+    // released via an explicit DELETE -- cleanup must free it too.
+    expect(mockReleaseConcurrencySlot).toHaveBeenCalledTimes(1);
   });
 
   it("records usage for several expired sessions independently, using each one's own duration", async () => {
@@ -333,6 +347,7 @@ describe("performDatabaseCleanup", () => {
     expect(mockRecordBrowserbaseSeconds).toHaveBeenCalledTimes(2);
     expect(mockRecordBrowserbaseSeconds).toHaveBeenCalledWith(1, 120);
     expect(mockRecordBrowserbaseSeconds).toHaveBeenCalledWith(2, 300);
+    expect(mockReleaseConcurrencySlot).toHaveBeenCalledTimes(2);
   });
 
   it("falls back to now() as the end time for the rare row with no expires_at", async () => {

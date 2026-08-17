@@ -51,6 +51,25 @@ vi.mock("@/lib/billing/browserbase-usage", () => ({
     mockRecordBrowserbaseSeconds(...args),
 }));
 
+// Mocked at this library boundary, same reasoning as checkBrowserbaseQuota
+// above: this file tests route wiring (is a slot acquired before creating a
+// session, is it released on every failure path), not the queue's own
+// admit/priority/timeout logic, which has its own dedicated tests in
+// tests/lib/browserbase/concurrency-queue.test.ts.
+const mockAcquireConcurrencySlot = vi.fn();
+const mockReleaseConcurrencySlot = vi.fn();
+vi.mock("@/lib/browserbase/concurrency-queue", () => ({
+  acquireConcurrencySlot: (...args: unknown[]) =>
+    mockAcquireConcurrencySlot(...args),
+  releaseConcurrencySlot: (...args: unknown[]) =>
+    mockReleaseConcurrencySlot(...args),
+}));
+
+const mockGetUserPlan = vi.fn();
+vi.mock("@/lib/rate-limiting/daily-limits", () => ({
+  getUserPlan: (...args: unknown[]) => mockGetUserPlan(...args),
+}));
+
 const mockCreateBrowserSession = vi.fn();
 const mockEndBrowserSession = vi.fn();
 const mockGetBrowserLiveUrls = vi.fn();
@@ -103,6 +122,15 @@ beforeEach(() => {
   });
   mockRecordBrowserbaseSeconds.mockReset();
   mockRecordBrowserbaseSeconds.mockResolvedValue(undefined);
+  mockAcquireConcurrencySlot.mockReset();
+  mockAcquireConcurrencySlot.mockResolvedValue({
+    acquired: true,
+    queued: false,
+  });
+  mockReleaseConcurrencySlot.mockReset();
+  mockReleaseConcurrencySlot.mockResolvedValue(undefined);
+  mockGetUserPlan.mockReset();
+  mockGetUserPlan.mockResolvedValue("free");
   mockCreateBrowserSession.mockReset();
   mockEndBrowserSession.mockReset();
   mockEndBrowserSession.mockResolvedValue(undefined);
@@ -295,7 +323,7 @@ describe("POST /api/v3/browser/sessions", () => {
     });
   });
 
-  it("returns 502 when BrowserBase returns a session with no id", async () => {
+  it("returns 502 when BrowserBase returns a session with no id, and releases the reserved slot", async () => {
     mockCreateBrowserSession.mockResolvedValue({
       status: "RUNNING",
       url: "",
@@ -304,6 +332,60 @@ describe("POST /api/v3/browser/sessions", () => {
     expect(res.status).toBe(502);
     const json = await res.json();
     expect(json.error).toBe("BrowserBase returned a session with no id.");
+    expect(mockReleaseConcurrencySlot).toHaveBeenCalledTimes(1);
+  });
+
+  describe("concurrency queue", () => {
+    it("returns 503 without ever calling createBrowserSession when the queue times out", async () => {
+      mockAcquireConcurrencySlot.mockResolvedValue({
+        acquired: false,
+        queued: true,
+      });
+      const res = await POST(postRequest({}));
+      expect(res.status).toBe(503);
+      expect(mockCreateBrowserSession).not.toHaveBeenCalled();
+      expect(mockReleaseConcurrencySlot).not.toHaveBeenCalled();
+    });
+
+    it("requests a non-priority slot for a free-plan caller", async () => {
+      mockGetUserPlan.mockResolvedValue("free");
+      mockCreateBrowserSession.mockResolvedValue({
+        id: "sess_free",
+        status: "RUNNING",
+        url: "",
+      });
+      await POST(postRequest({}));
+      expect(mockAcquireConcurrencySlot).toHaveBeenCalledWith(false);
+    });
+
+    it("requests a priority slot for a paid-plan caller", async () => {
+      mockGetUserPlan.mockResolvedValue("elite_supporter");
+      mockCreateBrowserSession.mockResolvedValue({
+        id: "sess_elite",
+        status: "RUNNING",
+        url: "",
+      });
+      await POST(postRequest({}));
+      expect(mockAcquireConcurrencySlot).toHaveBeenCalledWith(true);
+    });
+
+    it("releases the reserved slot when createBrowserSession itself throws", async () => {
+      mockCreateBrowserSession.mockRejectedValue(new Error("network error"));
+      const res = await POST(postRequest({}));
+      expect(res.status).toBe(500);
+      expect(mockReleaseConcurrencySlot).toHaveBeenCalledTimes(1);
+    });
+
+    it("does NOT release the slot on a successful creation (it stays held until the session ends)", async () => {
+      mockCreateBrowserSession.mockResolvedValue({
+        id: "sess_ok",
+        status: "RUNNING",
+        url: "",
+      });
+      const res = await POST(postRequest({}));
+      expect(res.status).toBe(200);
+      expect(mockReleaseConcurrencySlot).not.toHaveBeenCalled();
+    });
   });
 
   it("navigates using the target URL unchanged when it already has a scheme", async () => {
@@ -497,7 +579,7 @@ describe("DELETE /api/v3/browser/sessions", () => {
     expect(mockEndBrowserSession).not.toHaveBeenCalled();
   });
 
-  it("ends a session owned by the caller and cleans up the ownership row", async () => {
+  it("ends a session owned by the caller, cleans up the ownership row, and releases its concurrency slot", async () => {
     mockQuery.mockResolvedValue({ rows: [{ user_id: 42 }] });
     const res = await DELETE(getRequest("sess_mine"));
     expect(res.status).toBe(200);
@@ -508,13 +590,15 @@ describe("DELETE /api/v3/browser/sessions", () => {
       expect.stringContaining("DELETE FROM browser_sessions"),
       ["sess_mine"],
     );
+    expect(mockReleaseConcurrencySlot).toHaveBeenCalledTimes(1);
   });
 
-  it("fails open (ends the session) when no ownership row exists", async () => {
+  it("fails open (ends the session) when no ownership row exists, and never releases a slot it never held", async () => {
     mockQuery.mockResolvedValue({ rows: [] });
     const res = await DELETE(getRequest("sess_legacy"));
     expect(res.status).toBe(200);
     expect(mockEndBrowserSession).toHaveBeenCalledWith("sess_legacy");
+    expect(mockReleaseConcurrencySlot).not.toHaveBeenCalled();
   });
 
   it("records the session's real elapsed duration as plan usage on end", async () => {

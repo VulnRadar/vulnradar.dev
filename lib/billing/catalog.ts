@@ -123,7 +123,7 @@ export const PLANS: readonly Plan[] = [
       bulkScanUrls: 5,
       githubReviewTokensPerWindow: 0,
       aiTokensPerWindow: 80_000,
-      browserbaseMinutesPerMonth: 0,
+      browserbaseMinutesPerMonth: 30,
       concurrentScans: 1,
     },
   },
@@ -139,7 +139,8 @@ export const PLANS: readonly Plan[] = [
       "5 scheduled scans",
       "10 URLs per bulk scan",
       `200K AI review tokens / ${AI_USAGE_WINDOW_HOURS}hr window`,
-      "30 live-browser minutes/month",
+      "60 live-browser minutes/month",
+      "Priority live-browser queue",
       "2 scans running at once",
       "Supporter badge",
     ],
@@ -154,7 +155,7 @@ export const PLANS: readonly Plan[] = [
       bulkScanUrls: 10,
       githubReviewTokensPerWindow: 200_000,
       aiTokensPerWindow: 400_000,
-      browserbaseMinutesPerMonth: 30,
+      browserbaseMinutesPerMonth: 60,
       concurrentScans: 2,
     },
     badge: { text: "Core", color: "#10b981" },
@@ -171,7 +172,7 @@ export const PLANS: readonly Plan[] = [
       "10 scheduled scans",
       "5,000 API requests/day",
       `1M AI review tokens / ${AI_USAGE_WINDOW_HOURS}hr window`,
-      "90 live-browser minutes/month",
+      "150 live-browser minutes/month",
       "3 scans running at once",
       "Pro badge",
     ],
@@ -186,7 +187,7 @@ export const PLANS: readonly Plan[] = [
       bulkScanUrls: 25,
       githubReviewTokensPerWindow: 1_000_000,
       aiTokensPerWindow: 2_000_000,
-      browserbaseMinutesPerMonth: 90,
+      browserbaseMinutesPerMonth: 150,
       concurrentScans: 3,
     },
     badge: { text: "Pro", color: "#3b82f6" },
@@ -202,7 +203,7 @@ export const PLANS: readonly Plan[] = [
       "Unlimited webhooks and scheduled scans",
       "Teams, up to 10 members",
       `5M AI review tokens / ${AI_USAGE_WINDOW_HOURS}hr window`,
-      "300 live-browser minutes/month",
+      "400 live-browser minutes/month",
       "5 scans running at once",
       "Elite badge",
     ],
@@ -223,7 +224,7 @@ export const PLANS: readonly Plan[] = [
       aiTokensPerWindow: 8_000_000,
       // Same rule again: never -1 (unlimited), even at the top tier — see
       // the PlanLimits.browserbaseMinutesPerMonth doc comment above.
-      browserbaseMinutesPerMonth: 300,
+      browserbaseMinutesPerMonth: 400,
       // Unlike the three fields above, concurrentScans IS a valid -1 kind
       // of field (see its own doc comment) -- 5, not unlimited, because
       // VulnRadar's single-process architecture makes this a real shared-

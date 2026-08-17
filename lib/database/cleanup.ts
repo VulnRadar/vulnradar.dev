@@ -8,6 +8,7 @@ import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import { archiveAdminAuditLogBeforePurge } from "@/lib/database/audit-log-archive";
 import { createFailureEscalator } from "@/lib/admin/failure-escalation";
 import { recordBrowserbaseSeconds } from "@/lib/billing/browserbase-usage";
+import { releaseConcurrencySlot } from "@/lib/browserbase/concurrency-queue";
 
 /**
  * How often the periodic cleanup pass runs. Sourced from
@@ -488,6 +489,12 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
       if (elapsedSeconds > 0) {
         recordBrowserbaseSeconds(row.user_id, elapsedSeconds).catch(() => {});
       }
+      // Each reclaimed row held a global concurrency slot (see POST
+      // /api/v3/browser/sessions' acquireConcurrencySlot) that nobody ever
+      // released via an explicit DELETE -- free it now so a queued request
+      // waiting on lib/browserbase/concurrency-queue.ts is admitted instead
+      // of waiting out its own poll interval or timing out.
+      releaseConcurrencySlot().catch(() => {});
     }
 
     return stats;

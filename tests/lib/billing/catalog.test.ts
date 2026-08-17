@@ -26,25 +26,33 @@ describe("PLANS", () => {
     ]);
   });
 
-  it("free plan has zero price and only excludes team features, GitHub AI review, and Browserbase minutes", () => {
+  it("free plan has zero price and only excludes team features and GitHub AI review", () => {
     const free = PLANS.find((p) => p.id === "free")!;
     expect(free.priceInCents).toBe(0);
     expect(free.limits).toEqual({
       dailyScans: 25,
       apiKeys: 1,
       apiRequestsPerDay: 25,
-      // Free never gets team features, GitHub AI review, or live-browser
-      // sessions, by design -- everything else on this plan is a real, if
-      // modest, allowance rather than a paid-only "—" like these three stay.
+      // Free never gets team features or GitHub AI review, by design --
+      // everything else on this plan is a real, if modest, allowance
+      // rather than a paid-only "—" like these two stay.
       teams: 0,
       teamMembers: 0,
       githubReviewTokensPerWindow: 0,
-      browserbaseMinutesPerMonth: 0,
+      // Not excluded -- a real, if modest, allowance (30 min/month), the
+      // same reasoning as concurrentScans below. Sized conservatively
+      // against this account's own 100-hour/month Browserbase plan (see
+      // CONFIG_BILLING_*_BROWSERBASE_MINUTES_PER_MONTH's own comment) --
+      // the global concurrency cap + queue
+      // (lib/browserbase/concurrency-queue.ts) is the real-time backstop,
+      // this is about not letting a handful of accounts eat a month's
+      // budget on their own.
+      browserbaseMinutesPerMonth: 30,
       webhooks: 1,
       scheduledScans: 3,
       bulkScanUrls: 5,
       aiTokensPerWindow: 80_000,
-      // Not excluded like the three above -- a real, if minimal, allowance
+      // Not excluded like the two above -- a real, if minimal, allowance
       // (1 scan running at a time), same reasoning as dailyScans/apiKeys.
       concurrentScans: 1,
     });

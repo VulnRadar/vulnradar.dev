@@ -34,6 +34,11 @@ export const PRICING_FAQ: { question: string; answer: string }[] = [
       "VulnRadar runs as one server process, not a fleet of workers, so every scan that's actually in progress right now shares that process with everyone else's. Your daily quota is how many scans you can run in a day; this is how many can be running at once. Queue one up and it starts the moment a slot frees, which is usually seconds.",
   },
   {
+    question: "How does the live-browser minute limit work?",
+    answer:
+      "Live-browser sessions run on a real, metered third-party service, so they're capped separately from ordinary scans: a monthly minute allowance per plan, plus an account-wide cap on how many sessions can be open at once. Hit the concurrency cap and your request queues automatically (paid plans get priority) instead of failing outright. Run out of monthly minutes and you can buy more in Profile > Billing, or wait for next month's reset.",
+  },
+  {
     question: "Do you give refunds?",
     answer:
       "All purchases are final. The free tier exists so you can find out whether the tool works for you before any money changes hands.",

@@ -875,6 +875,18 @@ export const CONFIG_BROWSERBASE_DEFAULT_TTL_SECONDS = 360;
 // polls GET /api/v3/browser/sessions/logs for new network/console log lines.
 export const CONFIG_BROWSERBASE_LOGS_POLL_INTERVAL_MS = 10_000;
 
+// Live-browser sessions run against VulnRadar's own Browserbase account,
+// which itself has a real concurrency ceiling (how many sessions the
+// account can run AT ONCE, independent of any single user's monthly
+// minute allowance) -- set this to match that account's actual plan.
+// lib/browserbase/concurrency-queue.ts enforces it across every user
+// combined and queues a request that arrives while at capacity instead of
+// failing it outright.
+export const CONFIG_BROWSERBASE_MAX_CONCURRENT_SESSIONS = 25;
+// How long a session-creation request waits in the queue for a slot to
+// free before giving up and returning 503 to the caller.
+export const CONFIG_BROWSERBASE_QUEUE_MAX_WAIT_MS = 30_000;
+
 // AUTHENTICATED SCANNING CONFIGURATION - UPDATE IF NEEDED
 //
 // Authenticated scanning is fully ephemeral: a caller supplies login material
@@ -1189,11 +1201,19 @@ export const CONFIG_BILLING_ELITE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW = 5_
 // much of this monthly allowance remains. These are starting defaults for
 // the repo owner to tune via the admin Settings UI (and against actual
 // Browserbase wholesale cost per minute) before relying on them, not a
-// final pricing decision.
-export const CONFIG_BILLING_FREE_BROWSERBASE_MINUTES_PER_MONTH = 0;
-export const CONFIG_BILLING_CORE_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH = 30;
-export const CONFIG_BILLING_PRO_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH = 90;
-export const CONFIG_BILLING_ELITE_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH = 300;
+// final pricing decision. This account's own Browserbase plan is capped at
+// 100 hours (6,000 minutes) TOTAL per month, shared across every user
+// combined -- these per-plan allowances are sized so a modest number of
+// users maxing out their allowance in the same month, even at the top
+// tier, can't burn through that whole account-wide budget on their own.
+// The concurrency cap + queue above (CONFIG_BROWSERBASE_MAX_CONCURRENT_SESSIONS)
+// is the real-time backstop against simultaneous cost; this number is
+// about not letting a handful of accounts monopolize a month's worth of
+// capacity, not the primary safety mechanism.
+export const CONFIG_BILLING_FREE_BROWSERBASE_MINUTES_PER_MONTH = 30;
+export const CONFIG_BILLING_CORE_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH = 60;
+export const CONFIG_BILLING_PRO_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH = 150;
+export const CONFIG_BILLING_ELITE_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH = 400;
 
 // Max scans a user may have in status 'pending'/'running' at once (see
 // lib/rate-limiting/concurrent-scans.ts). VulnRadar runs as one persistent
