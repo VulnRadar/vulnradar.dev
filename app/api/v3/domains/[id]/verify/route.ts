@@ -81,8 +81,8 @@ export async function POST(
   const status = result.verified ? "verified" : "failed";
   await pool.query(
     `UPDATE domains
-     SET status = $1,
-         verified_at = CASE WHEN $1 = 'verified' THEN NOW() ELSE verified_at END,
+     SET status = $1::varchar,
+         verified_at = CASE WHEN $1::varchar = 'verified' THEN NOW() ELSE verified_at END,
          last_checked_at = NOW(),
          last_check_error = $2
      WHERE id = $3`,

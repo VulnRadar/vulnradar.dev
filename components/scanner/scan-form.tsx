@@ -178,7 +178,8 @@ const CHECK_FAMILIES: readonly CheckFamily[] = [
   },
   {
     id: "active-probes",
-    label: "XSS, SQLi & SSTI probe",
+    label:
+      "XSS, SQLi, SSTI, command injection, open redirect, CORS, HTTP methods & host-header probes",
     shortLabel: "Active probing",
     group: "Active probing (writes to target)",
   },

@@ -141,8 +141,15 @@ describe("POST /api/v3/domains/[id]/verify", () => {
     expect(json).toEqual({ verified: true, status: "verified" });
 
     const [updateSql, updateParams] = mockQuery.mock.calls[1];
-    expect(updateSql).toContain("SET status = $1");
-    expect(updateSql).toContain("verified_at = CASE WHEN $1 = 'verified'");
+    // Both usages of $1 must carry the SAME explicit cast -- Postgres raises
+    // "42P08 inconsistent types deduced for parameter" (text vs character
+    // varying) when the same unadorned parameter is compared to a string
+    // literal in a CASE expression AND assigned to a varchar column in the
+    // same query, reproduced against the real database while fixing this.
+    expect(updateSql).toContain("SET status = $1::varchar");
+    expect(updateSql).toContain(
+      "verified_at = CASE WHEN $1::varchar = 'verified'",
+    );
     expect(updateParams).toEqual(["verified", null, 1]);
   });
 

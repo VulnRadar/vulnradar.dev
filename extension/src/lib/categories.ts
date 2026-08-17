@@ -139,9 +139,9 @@ export const CATEGORIES: readonly CategoryMeta[] = [
   },
   {
     id: "active-probes",
-    label: "XSS, SQLi & SSTI Probe",
+    label: "Active Probing",
     description:
-      "Submits real values through forms found on the page and checks for reflected XSS, error-based SQL injection, and server-side template injection. Unlike every other check, this writes real requests to the target. Off by default, only scan sites you're authorized to test this way.",
+      "Submits real values through forms and endpoints found on the page: reflected XSS, error-based SQL injection, server-side template injection, OS command injection, and open redirect canaries, plus CORS origin reflection, dangerous HTTP methods, X-Forwarded-Host injection, and GraphQL introspection. Unlike every other check, this writes real requests to the target, and requires the domain to be verified on your account first. Off by default, only scan sites you're authorized to test this way.",
     defaultEnabled: false,
   },
 ] as const;
