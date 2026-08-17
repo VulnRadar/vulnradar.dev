@@ -101,6 +101,9 @@ import {
   checkRobotsTxt,
   checkSecurityTxt,
   checkLiveFetch,
+  checkActiveCORS,
+  checkActiveHttpMethods,
+  checkXForwardedHostInjection,
   checkBucketListing,
   runAsyncChecks,
   runAsyncChecksDetailed,
@@ -1226,6 +1229,220 @@ describe("checkLiveFetch", () => {
     const findings = await checkLiveFetch("https://example.com");
     const titles = findings.map((f) => f.title);
     expect(titles.some((t) => /sensitive|robots/i.test(t))).toBe(true);
+  });
+
+  it("never reports CORS origin reflection, dangerous HTTP methods, or X-Forwarded-Host injection, even when every response would trigger them", async () => {
+    // These three probes moved out of checkLiveFetch's bundle into the
+    // active-probes branch (gated behind explicit opt-in + verified domain
+    // ownership) since they send crafted requests to the target itself. A
+    // mock that would trip all three if they were still wired in here
+    // proves the exclusion, not just an absence of test setup.
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve("reflects vulnradar-host-probe.invalid"),
+      headers: {
+        get: (name: string) => {
+          const key = name.toLowerCase();
+          if (key === "access-control-allow-origin")
+            return "https://cors-probe.vulnradar.test";
+          if (key === "access-control-allow-credentials") return "true";
+          if (key === "allow") return "GET, POST, TRACE, CONNECT";
+          if (key === "location") return null;
+          return null;
+        },
+      },
+    });
+    const findings = await checkLiveFetch("https://example.com");
+    const titles = findings.map((f) => f.title);
+    expect(titles.some((t) => /cors/i.test(t))).toBe(false);
+    expect(titles.some((t) => /trace|connect method/i.test(t))).toBe(false);
+    expect(titles.some((t) => /host header injection/i.test(t))).toBe(false);
+  });
+});
+
+// ── checkActiveCORS / checkActiveHttpMethods / checkXForwardedHostInjection ──
+// These moved out of checkLiveFetch's unconditional bundle and now run only
+// from buildBranches' active-probes branch (see the checkLiveFetch exclusion
+// test above), the same domain-ownership-gated treatment checkGraphQLIntrospection
+// already got. Tested directly here since they're no longer reachable through
+// checkLiveFetch.
+
+describe("checkActiveCORS", () => {
+  it("reports reflected-Origin CORS with credentials at critical severity", async () => {
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: {
+        get: (name: string) => {
+          const key = name.toLowerCase();
+          if (key === "access-control-allow-origin")
+            return "https://cors-probe.vulnradar.test";
+          if (key === "access-control-allow-credentials") return "true";
+          return null;
+        },
+      },
+    });
+    const findings = await checkActiveCORS("https://example.com");
+    expect(findings).toHaveLength(1);
+    expect(findings[0].severity).toBe("critical");
+    expect(findings[0].title).toMatch(/credentials/i);
+  });
+
+  it("reports reflected-Origin CORS without credentials at high severity", async () => {
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: {
+        get: (name: string) =>
+          name.toLowerCase() === "access-control-allow-origin"
+            ? "https://cors-probe.vulnradar.test"
+            : null,
+      },
+    });
+    const findings = await checkActiveCORS("https://example.com");
+    expect(findings).toHaveLength(1);
+    expect(findings[0].severity).toBe("high");
+  });
+
+  it("reports nothing when the server does not reflect the probe Origin", async () => {
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+    });
+    const findings = await checkActiveCORS("https://example.com");
+    expect(findings).toEqual([]);
+  });
+
+  it("reports nothing for a wildcard Access-Control-Allow-Origin (handled by the passive check instead)", async () => {
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: {
+        get: (name: string) =>
+          name.toLowerCase() === "access-control-allow-origin" ? "*" : null,
+      },
+    });
+    const findings = await checkActiveCORS("https://example.com");
+    expect(findings).toEqual([]);
+  });
+});
+
+describe("checkActiveHttpMethods", () => {
+  it("reports confirmed TRACE at medium severity when the TRACE request echoes the request", async () => {
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_input: unknown, init?: RequestInit) => {
+        if (init?.method === "TRACE") {
+          return {
+            ok: true,
+            status: 200,
+            text: () =>
+              Promise.resolve("TRACE / HTTP/1.1\r\nUser-Agent: test\r\n"),
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          headers: {
+            get: (name: string) => (name === "allow" ? "GET, TRACE" : null),
+          },
+        };
+      },
+    );
+    const findings = await checkActiveHttpMethods("https://example.com");
+    expect(findings).toHaveLength(1);
+    expect(findings[0].title).toBe("HTTP TRACE Method Enabled");
+    expect(findings[0].severity).toBe("medium");
+  });
+
+  it("reports advertised-but-unconfirmed TRACE at low severity when the TRACE request fails", async () => {
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_input: unknown, init?: RequestInit) => {
+        if (init?.method === "TRACE") throw new Error("blocked");
+        return {
+          ok: true,
+          status: 200,
+          headers: {
+            get: (name: string) => (name === "allow" ? "GET, TRACE" : null),
+          },
+        };
+      },
+    );
+    const findings = await checkActiveHttpMethods("https://example.com");
+    expect(findings).toHaveLength(1);
+    expect(findings[0].title).toBe("HTTP TRACE Advertised in Allow Header");
+    expect(findings[0].severity).toBe("low");
+  });
+
+  it("reports CONNECT exposure separately from TRACE", async () => {
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: {
+        get: (name: string) => (name === "allow" ? "GET, CONNECT" : null),
+      },
+    });
+    const findings = await checkActiveHttpMethods("https://example.com");
+    expect(findings).toHaveLength(1);
+    expect(findings[0].title).toBe("HTTP CONNECT Method Exposed");
+  });
+
+  it("reports nothing when the Allow header only lists ordinary methods", async () => {
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: {
+        get: (name: string) => (name === "allow" ? "GET, POST, HEAD" : null),
+      },
+    });
+    const findings = await checkActiveHttpMethods("https://example.com");
+    expect(findings).toEqual([]);
+  });
+});
+
+describe("checkXForwardedHostInjection", () => {
+  it("reports host header injection when the probed host is reflected in the response body", async () => {
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: () =>
+        Promise.resolve(
+          '<link rel="canonical" href="https://vulnradar-host-probe.invalid/">',
+        ),
+      headers: { get: () => null },
+    });
+    const findings = await checkXForwardedHostInjection("https://example.com");
+    expect(findings).toHaveLength(1);
+    expect(findings[0].title).toBe("Host Header Injection Risk");
+  });
+
+  it("reports host header injection when the probed host is reflected in a Location header", async () => {
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      status: 302,
+      text: () => Promise.resolve(""),
+      headers: {
+        get: (name: string) =>
+          name.toLowerCase() === "location"
+            ? "https://vulnradar-host-probe.invalid/reset"
+            : null,
+      },
+    });
+    const findings = await checkXForwardedHostInjection("https://example.com");
+    expect(findings).toHaveLength(1);
+    expect(findings[0].evidence).toMatch(/Location header/);
+  });
+
+  it("reports nothing when the probed host is not reflected anywhere", async () => {
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve("<html>ordinary page</html>"),
+      headers: { get: () => null },
+    });
+    const findings = await checkXForwardedHostInjection("https://example.com");
+    expect(findings).toEqual([]);
   });
 });
 

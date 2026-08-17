@@ -1,6 +1,6 @@
 # VulnRadar Scanner Checks: AI Index (compact)
 
-_Compact index auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-16._
+_Compact index auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-17._
 
 One line per check. Format: `[severity] check-id - title`.
 Full details (fix steps, code examples, references) live in
@@ -15,10 +15,12 @@ remediation documentation in the docs.
 
 ## All checks (by category)
 
-### active-probes (3)
+### active-probes (5)
 - [critical] `reflected-input-xss` [url-check] - Reflected Cross-Site Scripting (XSS)
 - [critical] `sql-injection-error-based` [url-check] - SQL Injection (Error-Based)
 - [critical] `server-side-template-injection` [url-check] - Server-Side Template Injection (SSTI)
+- [critical] `os-command-injection` [url-check] - OS Command Injection
+- [medium  ] `confirmed-open-redirect` [url-check] - Confirmed Open Redirect
 
 ### api (36)
 - [low     ] `api-rest-allow-methods-trace` [body-pattern] - TRACE method referenced in API response body
@@ -806,20 +808,20 @@ remediation documentation in the docs.
 
 ## Totals
 
-- Total checks: **751**
+- Total checks: **753**
 - Categories: **18** (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
-  - medium: 199
+  - medium: 200
   - high: 199
   - low: 145
   - info: 111
-  - critical: 97
+  - critical: 98
 - By type:
   - body-pattern: 425
   - header: 175
   - combined: 61
   - header-missing: 55
-  - url-check: 14
+  - url-check: 16
   - header-value: 10
   - header-present: 10
   - network-probe: 1

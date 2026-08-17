@@ -32,7 +32,9 @@ import {
   checkActiveProbes,
   checkSqlInjectionProbe,
   checkSstiProbe,
-} from "@/lib/scanner/active-probe-check";
+  checkCommandInjectionProbe,
+  checkOpenRedirectProbe,
+} from "@/lib/scanner/active-probes";
 import { getSetting } from "@/lib/config/runtime-config";
 import {
   checkNsProviderConcentration,
@@ -3421,7 +3423,23 @@ async function checkExposedFiles(
 
 // ── Active CORS Origin Reflection Test ───────────────────────────────────────
 
-async function checkActiveCORS(url: string): Promise<Vulnerability[]> {
+/**
+ * A 5s request timeout combined with this scan's cancellation signal (see
+ * getCancelSignal in scan-jobs.ts), the same "stop sending payloads to the
+ * target the moment a scan is cancelled" contract lib/scanner/active-probes/
+ * shared.ts's probeSignal applies to the form-submission probes.
+ */
+function activeProbeSignal(cancelSignal?: AbortSignal): AbortSignal {
+  const timeoutSignal = AbortSignal.timeout(5000);
+  return cancelSignal
+    ? AbortSignal.any([timeoutSignal, cancelSignal])
+    : timeoutSignal;
+}
+
+export async function checkActiveCORS(
+  url: string,
+  cancelSignal?: AbortSignal,
+): Promise<Vulnerability[]> {
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return [];
@@ -3440,7 +3458,7 @@ async function checkActiveCORS(url: string): Promise<Vulnerability[]> {
     // codeql[js/request-forgery]
     const res = await fetch(url, {
       ...FETCH_OPTS,
-      signal: AbortSignal.timeout(5000),
+      signal: activeProbeSignal(cancelSignal),
       headers: {
         ...FETCH_OPTS.headers,
         Origin: testOrigin,
@@ -3493,8 +3511,9 @@ async function checkActiveCORS(url: string): Promise<Vulnerability[]> {
 
 // ── Active HTTP Method Probing ────────────────────────────────────────────────
 
-async function checkActiveHttpMethods(
+export async function checkActiveHttpMethods(
   origin: string,
+  cancelSignal?: AbortSignal,
 ): Promise<Vulnerability[]> {
   try {
     const parsed = new URL(origin);
@@ -3514,7 +3533,7 @@ async function checkActiveHttpMethods(
     const res = await fetch(origin, {
       method: "OPTIONS",
       ...FETCH_OPTS,
-      signal: AbortSignal.timeout(5000),
+      signal: activeProbeSignal(cancelSignal),
     });
 
     const allow = res.headers.get("allow") ?? "";
@@ -3531,7 +3550,7 @@ async function checkActiveHttpMethods(
         const traceRes = await fetch(origin, {
           method: "TRACE",
           ...FETCH_OPTS,
-          signal: AbortSignal.timeout(5000),
+          signal: activeProbeSignal(cancelSignal),
         });
         const traceBody = await traceRes.text();
         confirmed =
@@ -3596,8 +3615,9 @@ async function checkActiveHttpMethods(
 
 // ── X-Forwarded-Host Header Injection Test ───────────────────────────────────
 
-async function checkXForwardedHostInjection(
+export async function checkXForwardedHostInjection(
   url: string,
+  cancelSignal?: AbortSignal,
 ): Promise<Vulnerability[]> {
   try {
     const parsed = new URL(url);
@@ -3621,7 +3641,7 @@ async function checkXForwardedHostInjection(
         ...FETCH_OPTS.headers,
         "X-Forwarded-Host": testHost,
       },
-      signal: AbortSignal.timeout(5000),
+      signal: activeProbeSignal(cancelSignal),
     });
 
     const body = (await res.text()).slice(0, 8192);
@@ -4211,13 +4231,17 @@ export async function checkSecurityTxt(
   return [];
 }
 
-// checkGraphQLIntrospection deliberately does NOT live in this bundle: it
-// submits its own live introspection query to well-known GraphQL paths
-// instead of only reading the response already fetched for this URL, the
-// same "sends a real request the target wasn't otherwise going to receive"
-// character as the active-probes checks in active-probe-check.ts. It runs
-// from buildBranches' active-probes branch instead, gated behind the same
-// explicit opt-in.
+// checkGraphQLIntrospection, checkActiveCORS, checkActiveHttpMethods and
+// checkXForwardedHostInjection deliberately do NOT live in this bundle: each
+// submits its own live request (a spoofed Origin, OPTIONS/TRACE, a spoofed
+// X-Forwarded-Host, or an introspection query) to the target instead of only
+// reading a response already fetched for this URL — the same "sends a real
+// request the target wasn't otherwise going to receive" character as the
+// active-probes checks in lib/scanner/active-probes/. They run from
+// buildBranches' active-probes branch instead, gated behind the same
+// explicit opt-in and domain-ownership check. checkBucketListing stays here:
+// its probes target third-party bucket hosts the page already publicly
+// references, not the scanned origin itself, and it sends no spoofed headers.
 export async function checkLiveFetch(url: string): Promise<Vulnerability[]> {
   let parsed: URL;
   try {
@@ -4243,17 +4267,11 @@ export async function checkLiveFetch(url: string): Promise<Vulnerability[]> {
     robotsResult,
     securityResult,
     exposedFilesResult,
-    corsResult,
-    methodsResult,
-    hostInjectionResult,
     bucketListingResult,
   ] = await Promise.allSettled([
     checkRobotsTxt(origin),
     checkSecurityTxt(origin),
     checkExposedFiles(origin, url),
-    checkActiveCORS(url),
-    checkActiveHttpMethods(origin),
-    checkXForwardedHostInjection(url),
     checkBucketListing(url),
   ]);
 
@@ -4263,11 +4281,6 @@ export async function checkLiveFetch(url: string): Promise<Vulnerability[]> {
     findings.push(...securityResult.value);
   if (exposedFilesResult.status === "fulfilled")
     findings.push(...exposedFilesResult.value);
-  if (corsResult.status === "fulfilled") findings.push(...corsResult.value);
-  if (methodsResult.status === "fulfilled")
-    findings.push(...methodsResult.value);
-  if (hostInjectionResult.status === "fulfilled")
-    findings.push(...hostInjectionResult.value);
   if (bucketListingResult.status === "fulfilled")
     findings.push(...bucketListingResult.value);
   return findings;
@@ -4390,15 +4403,17 @@ function buildBranches(
     branches.push({ label: "reputation", promise: checkReputation(url) });
   }
 
-  // Active probing (canary-reflection XSS/SQLi/SSTI, GraphQL introspection)
-  // — deliberately NOT gated by `runAll`, unlike every other branch above.
-  // These are the only checks that submit real requests to the target
-  // instead of only reading responses already fetched for other checks, so
-  // none of them must ever run just because a scan omitted a `scanners`
-  // filter; they only run when a caller names "active-probes" explicitly.
-  // `signal` is this scan's cancellation signal (see getCancelSignal in
-  // scan-jobs.ts) — the form-submission probes check it between requests
-  // and thread it into safeFetch so a cancelled scan stops sending payloads
+  // Active probing (canary-reflection XSS/SQLi/SSTI/command-injection, open
+  // redirect, GraphQL introspection, CORS origin reflection, dangerous HTTP
+  // methods, X-Forwarded-Host injection) — deliberately NOT gated by
+  // `runAll`, unlike every other branch above. These are the only checks
+  // that submit real requests to the target instead of only reading
+  // responses already fetched for other checks, so none of them must ever
+  // run just because a scan omitted a `scanners` filter; they only run when
+  // a caller names "active-probes" explicitly. `signal` is this scan's
+  // cancellation signal (see getCancelSignal in scan-jobs.ts) — the
+  // form-submission probes check it between requests, and every probe here
+  // threads it into its request so a cancelled scan stops sending payloads
   // to the target immediately instead of finishing whatever was in flight.
   if (allowed?.has("active-probes")) {
     branches.push({
@@ -4407,7 +4422,12 @@ function buildBranches(
         checkActiveProbes(url, signal),
         checkSqlInjectionProbe(url, signal),
         checkSstiProbe(url, signal),
+        checkCommandInjectionProbe(url, signal),
+        checkOpenRedirectProbe(url, signal),
         checkGraphQLIntrospection(origin, url),
+        checkActiveCORS(url, signal),
+        checkActiveHttpMethods(origin, signal),
+        checkXForwardedHostInjection(url, signal),
       ]).then((results) =>
         results.flatMap((r) => (r.status === "fulfilled" ? r.value : [])),
       ),

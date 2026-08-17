@@ -1,6 +1,6 @@
 # VulnRadar Scanner Checks: AI Knowledge
 
-_Auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-16._
+_Auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-17._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about specific scanner checks:
@@ -18,27 +18,27 @@ in this file and quote the title, description, and fix steps.
 
 ## Summary
 
-- **Total checks:** 751
+- **Total checks:** 753
 - **Categories:** 18 (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
-  - medium: 199
+  - medium: 200
   - high: 199
   - low: 145
   - info: 111
-  - critical: 97
+  - critical: 98
 - **By type:**
   - body-pattern: 425
   - header: 175
   - combined: 61
   - header-missing: 55
-  - url-check: 14
+  - url-check: 16
   - header-value: 10
   - header-present: 10
   - network-probe: 1
 
 ---
 
-## Category: active-probes (3 checks)
+## Category: active-probes (5 checks)
 
 ### `reflected-input-xss` [active-probes / critical / url-check]
 **Reflected Cross-Site Scripting (XSS)**
@@ -124,6 +124,61 @@ return render_template_string(f"Hello {request.args.get('name')}")
 
 # Good: user input is only ever a variable inside a fixed, developer-authored template
 return render_template('greeting.html', name=request.args.get('name'))
+```
+
+### `os-command-injection` [active-probes / critical / url-check]
+**OS Command Injection**
+
+A form on this page was submitted with a shell metacharacter followed by a tagged arithmetic expression, and the response contained the CALCULATED result. This proves the input reaches a shell command and is executed, not treated as inert text.
+
+**Risk:** OS command injection typically leads to full remote code execution on the server: an attacker who can inject shell commands can read and modify files, exfiltrate secrets and environment variables, pivot to internal systems, or take over the host entirely.
+
+**Why it matters:** This is a confirmed, active finding: the scanner submitted a value designed to remain inert if only reflected as text, and observed the shell-computed result in the live response, meaning the input actually reached and was executed by a shell. The active-probing category that produced it is opt-in and off by default, since submitting real requests to a target is a materially different action than reading its responses.
+
+**References:**
+- https://owasp.org/www-community/attacks/Command_Injection
+- https://portswigger.net/web-security/os-command-injection
+
+**Fix:**
+- Never build a shell command string by concatenating or interpolating user input. Use an API that runs a program directly with an argument array (e.g. Node's execFile/spawn, Python's subprocess.run([...])) instead of a shell-invoking exec/system call.
+- If a shell is unavoidable, use your language's shell-escaping/quoting primitive for every user-controlled argument, and validate the input against a strict allowlist first.
+- Apply least-privilege to the process account running the application, so even a successful injection is limited in blast radius.
+- Re-run this scan after the fix to confirm the expression is no longer evaluated.
+- **Run a program directly, never through a shell string** (javascript):
+```javascript
+// Bad: user input concatenated into a shell command string
+exec(`ping -c 1 <value>`);
+
+// Good: no shell involved, arguments passed directly to the program
+execFile('ping', ['-c', '1', host]);
+```
+
+### `confirmed-open-redirect` [active-probes / medium / url-check]
+**Confirmed Open Redirect**
+
+A same-host link or form on this page uses a well-known redirect-parameter name (redirect, next, return_to, and similar), and setting that parameter to an external URL made the endpoint send a 3xx redirect to that exact external URL. This confirms the redirect target is not validated against an allowlist -- unlike the pattern-based 'Potential Open Redirect Parameters' finding, this one was actively verified by making the target actually redirect.
+
+**Risk:** An attacker can craft a link to this site's own domain (which victims and email/spam filters trust) that silently forwards to a phishing page, a malware download, or an OAuth consent-theft page, borrowing the target's trusted domain and reputation.
+
+**Why it matters:** This is a confirmed, active finding: the scanner only probed a redirect parameter the page itself already discloses using (found in a same-host link or form action), never a guessed endpoint, and observed a live 3xx response whose Location header echoed the canary target back exactly. The active-probing category that produced it is opt-in and off by default, since submitting real requests to a target is a materially different action than reading its responses.
+
+**References:**
+- https://owasp.org/www-community/attacks/Unvalidated_Redirects_and_Forwards_Cheat_Sheet
+- https://portswigger.net/kb/issues/00500100_open-redirection-reflected
+
+**Fix:**
+- Validate any redirect target against an explicit allowlist of permitted paths or domains before issuing a redirect.
+- Prefer relative, same-origin redirect targets (a path, not a full URL) wherever the use case allows it.
+- If redirecting to a partner/third-party domain is a legitimate feature, use an intermediate confirmation page that shows the destination before leaving your site.
+- Re-run this scan after the fix to confirm the endpoint no longer redirects to the canary URL.
+- **Allowlist the redirect target** (typescript):
+```typescript
+// Bad: redirects wherever the query string says
+res.redirect(req.query.next);
+
+// Good: only ever redirect to a known-safe, same-origin path
+const ALLOWED = new Set(['/dashboard', '/settings', '/']);
+res.redirect(ALLOWED.has(req.query.next) ? req.query.next : '/');
 ```
 
 ---

@@ -603,11 +603,11 @@ export const CONFIG_HISTORY_LIST_MAX_ROWS = 100;
 // per URL, so it needs its own, typically lower, ceiling.
 export const CONFIG_BULK_SCAN_CLIENT_URL_LIMIT = 10;
 
-// Discovered forms given a canary-reflection XSS submission per scan
-// (lib/scanner/active-probe-check.ts). NOT admin-configurable (see
-// NEVER_CONFIGURABLE in registry.ts): this is the only check that submits
-// real writes to the target, and raising it directly increases live traffic
-// sent to someone else's site.
+// Discovered forms given a canary-reflection submission per scan by each
+// form-submitting probe in lib/scanner/active-probes/. NOT admin-configurable
+// (see NEVER_CONFIGURABLE in registry.ts): these are the only checks that
+// submit real writes to the target, and raising it directly increases live
+// traffic sent to someone else's site.
 export const CONFIG_SCANNER_ACTIVE_PROBE_MAX_FORMS = 10;
 
 // API CONFIGURATION
