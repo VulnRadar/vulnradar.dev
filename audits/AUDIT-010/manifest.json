@@ -1,15 +1,7 @@
 {
   "id": "AUDIT-010",
   "title": "Comprehensive scanner FP/correctness audit + post-badge-feature security review",
-  "scopes": [
-    "scanner",
-    "privacy",
-    "idor",
-    "csrf",
-    "secrets",
-    "db",
-    "infra"
-  ],
+  "scopes": ["scanner", "privacy", "idor", "csrf", "secrets", "db", "infra"],
   "createdAt": "2026-08-13T23:05:18.610Z",
   "status": "shipped",
   "summary": "All 41 findings verified against current code: the 4 security/privacy findings and 26 of 31 scanner findings were already fixed in earlier commits (mostly e4bdf065, some individually tagged AUDIT-010#id) whose fixes never got recorded back here; scanner-11/scanner-12 (SRI vendor allowlist gaps) fixed in e0599680; prodready-06/08/09 already addressed by existing infra (sweepStaleScans, sendAdminAlert push webhook, GitHub quota gate ordering); prodready-05 (no periodic backup) and prodready-07 (swallowed schema-creation failure) fixed in c58d0481.",
