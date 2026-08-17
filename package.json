@@ -80,7 +80,7 @@
     "@stripe/react-stripe-js": "6.8.0",
     "@stripe/stripe-js": "9.12.1",
     "@vitest/coverage-v8": "4.1.10",
-    "ai": "^7.0.56",
+    "ai": "^7.0.65",
     "autoprefixer": "10.5.4",
     "bcryptjs": "3.0.3",
     "class-variance-authority": "0.7.1",
