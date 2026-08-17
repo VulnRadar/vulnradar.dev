@@ -48,6 +48,11 @@ export interface MeResponse {
   githubName: string | null;
   githubAvatarUrl: string | null;
   plan: string;
+  /** Real, admin-configurable per-plan limit (lib/billing/plan-limits.ts),
+   *  -1 meaning unlimited (billing disabled) -- see
+   *  components/scanner/scan-form.tsx, which uses this to cap bulk-scan
+   *  URL entry at what the caller's plan actually allows. */
+  bulkScanUrls: number;
   subscriptionStatus: string | null;
   giftedSubscription: {
     plan: string;

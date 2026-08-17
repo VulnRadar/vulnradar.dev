@@ -9,6 +9,7 @@ import {
   BEARER_PREFIX,
 } from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
+import { getUserPlanLimits } from "@/lib/billing/plan-limits";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   // Bearer token path: used by the browser extension and API clients.
@@ -37,6 +38,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     ]);
     const user = userResult.rows[0];
     const effectivePlan = giftResult.rows[0]?.plan || user?.plan || "free";
+    // Real, admin-configurable limit (lib/billing/plan-limits.ts), not a
+    // static copy of the marketing plan table -- the dashboard's bulk-scan
+    // form uses this to cap URL entry at what the caller's plan actually
+    // allows, so the pricing page's "URLs per bulk request" row can never
+    // silently drift from what the UI itself enforces.
+    const keyPlanLimits = await getUserPlanLimits(keyData.userId);
     return ApiResponse.success({
       userId: keyData.userId,
       email: keyData.email,
@@ -48,6 +55,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       isAdmin: user?.role === STAFF_ROLES.ADMIN,
       avatarUrl: user?.avatar_url || null,
       scansPrivateByDefault: user?.scans_private_by_default || false,
+      bulkScanUrls: keyPlanLimits?.bulkScanUrls ?? -1,
     });
   }
 
@@ -62,35 +70,47 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // Resolved through the runtime config (database, then env, then the
   // shipped default) rather than the build-time CONFIG_ constant, so an
   // admin's edit to the terms date/summary takes effect on the next request.
-  const [userResult, badgesResult, giftResult, discordResult, termsSettings] =
-    await Promise.all([
-      pool.query(
-        `SELECT totp_enabled, two_factor_method, onboarding_completed, role, avatar_url,
+  const [
+    userResult,
+    badgesResult,
+    giftResult,
+    discordResult,
+    termsSettings,
+    planLimits,
+  ] = await Promise.all([
+    pool.query(
+      `SELECT totp_enabled, two_factor_method, onboarding_completed, role, avatar_url,
                 backup_codes, plan, subscription_status, discord_id,
                 (password_hash IS NOT NULL) AS has_password,
                 google_id, google_email, google_name, google_avatar_url,
                 github_id, github_email, github_name, github_avatar_url,
                 scans_private_by_default
            FROM users WHERE id = $1`,
-        [session.userId],
-      ),
-      pool.query(
-        `SELECT b.id, b.name, b.display_name, b.description, b.icon, b.color, b.priority, ub.awarded_at
+      [session.userId],
+    ),
+    pool.query(
+      `SELECT b.id, b.name, b.display_name, b.description, b.icon, b.color, b.priority, ub.awarded_at
        FROM user_badges ub JOIN badges b ON ub.badge_id = b.id
        WHERE ub.user_id = $1 ORDER BY b.priority DESC`,
-        [session.userId],
-      ),
-      pool.query(
-        `SELECT plan, expires_at FROM gifted_subscriptions
+      [session.userId],
+    ),
+    pool.query(
+      `SELECT plan, expires_at FROM gifted_subscriptions
        WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > NOW()`,
-        [session.userId],
-      ),
-      pool.query(
-        `SELECT discord_id, discord_username, discord_avatar FROM discord_connections WHERE user_id = $1`,
-        [session.userId],
-      ),
-      getSettings(["TERMS_UPDATED_AT", "TERMS_CHANGE_SUMMARY"] as const),
-    ]);
+      [session.userId],
+    ),
+    pool.query(
+      `SELECT discord_id, discord_username, discord_avatar FROM discord_connections WHERE user_id = $1`,
+      [session.userId],
+    ),
+    getSettings(["TERMS_UPDATED_AT", "TERMS_CHANGE_SUMMARY"] as const),
+    // Real, admin-configurable limit (lib/billing/plan-limits.ts), not a
+    // static copy of the marketing plan table -- the dashboard's
+    // bulk-scan form uses this to cap URL entry at what the caller's
+    // plan actually allows, so the pricing page's "URLs per bulk
+    // request" row can never silently drift from what the UI enforces.
+    getUserPlanLimits(session.userId),
+  ]);
   const user = userResult.rows[0];
   const badges = badgesResult.rows;
   const giftedSubscription = giftResult.rows[0] || null;
@@ -162,6 +182,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
           expiresAt: giftedSubscription.expires_at,
         }
       : null,
+    // Real per-plan limit, resolved live -- see the getUserPlanLimits call
+    // above. -1 (billing disabled) means unlimited, the same convention
+    // every other -1 limit in this codebase uses.
+    bulkScanUrls: planLimits?.bulkScanUrls ?? -1,
     // Badges (last for cleaner JSON structure)
     badges,
   });

@@ -35,6 +35,7 @@ import {
   type InlineAuthValue,
 } from "@/components/scanner/inline-auth-form";
 import { BULK_SCAN_CLIENT_URL_LIMIT } from "@/lib/config/constants";
+import { useAuth } from "@/components/providers/auth-provider";
 export type ScanMode = "quick" | "deep" | "bulk";
 export type { InlineAuthValue };
 
@@ -230,11 +231,17 @@ interface ScanFormProps {
 }
 
 /**
- * Client-side cap on a bulk run. Deliberately independent of the
- * server-enforced MAX_URLS_BULK setting because this form fans out one
- * request per URL instead of hitting the batch endpoint.
+ * Absolute fallback cap on a bulk run, used only until the caller's real
+ * plan limit (me.bulkScanUrls) has loaded, or for a plan with no cap at
+ * all (billing disabled). Deliberately independent of the server-enforced
+ * MAX_URLS_BULK setting because this form fans out one request per URL
+ * instead of hitting the batch endpoint.
  */
-const BULK_URL_LIMIT = BULK_SCAN_CLIENT_URL_LIMIT;
+const BULK_URL_FALLBACK_LIMIT = BULK_SCAN_CLIENT_URL_LIMIT;
+/** Sane ceiling for an "unlimited" (-1) plan -- this form still fans out
+ *  one sequential request per URL, so an actually-unbounded paste would
+ *  let a single submission run for a very long time and hang the tab. */
+const BULK_URL_UNLIMITED_CEILING = 500;
 
 const FOCUS_RING =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -339,6 +346,17 @@ export function ScanForm({
   status,
   defaultPrivate,
 }: ScanFormProps) {
+  const { me } = useAuth();
+  // The caller's real, admin-configurable bulk-scan cap (see
+  // app/api/v3/auth/me/route.ts), not a flat constant -- this is exactly
+  // the number the pricing page advertises per plan (5/10/25/100), so it
+  // must be the one the UI actually enforces.
+  const bulkUrlLimit =
+    me?.bulkScanUrls === undefined
+      ? BULK_URL_FALLBACK_LIMIT
+      : me.bulkScanUrls === -1
+        ? BULK_URL_UNLIMITED_CEILING
+        : me.bulkScanUrls;
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
   const [mode, setMode] = useState<ScanMode>(() =>
@@ -543,9 +561,9 @@ export function ScanForm({
       setBulkError("Enter at least one URL.");
       return;
     }
-    if (lines.length > BULK_URL_LIMIT) {
+    if (lines.length > bulkUrlLimit) {
       setBulkError(
-        `${lines.length} URLs entered. A bulk run takes at most ${BULK_URL_LIMIT}.`,
+        `${lines.length} URLs entered. A bulk run takes at most ${bulkUrlLimit}.`,
       );
       return;
     }
@@ -618,7 +636,7 @@ export function ScanForm({
           <span className="ml-auto hidden pr-1 text-[11px] text-muted-foreground sm:block">
             {mode === "quick" && "One page, every enabled family"}
             {mode === "deep" && "Crawl first, then pick the pages to scan"}
-            {mode === "bulk" && `Up to ${BULK_URL_LIMIT} URLs, one per line`}
+            {mode === "bulk" && `Up to ${bulkUrlLimit} URLs, one per line`}
           </span>
         </div>
 
@@ -1035,12 +1053,12 @@ export function ScanForm({
               <span
                 className={cn(
                   "font-mono text-xs tabular-nums",
-                  bulkCount > BULK_URL_LIMIT
+                  bulkCount > bulkUrlLimit
                     ? "text-destructive"
                     : "text-muted-foreground",
                 )}
               >
-                {bulkCount}/{BULK_URL_LIMIT}
+                {bulkCount}/{bulkUrlLimit}
               </span>
               {bulkUrls && (
                 <button
