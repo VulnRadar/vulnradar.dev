@@ -309,14 +309,31 @@ describe("checkAndRecordRequest", () => {
     expect(result.remaining).toBe(BILLING_PLAN_LIMITS.free - 1);
   });
 
-  it("denies once the atomic increment pushes the total past the limit", async () => {
-    mockPlanAndUpsert(
-      { plan: "free", role: "user", gifted_plan: null },
-      String(BILLING_PLAN_LIMITS.free + 1),
-    );
+  it("denies without incrementing once already at the limit, reporting the real unchanged count", async () => {
+    // The WHERE guard on DO UPDATE means an already-at-cap caller gets
+    // zero rows back from the CTE (see checkAndRecordRequest's own
+    // comment) -- the code then re-reads the real, untouched count with a
+    // plain SELECT rather than trusting a phantom incremented value.
+    mockQuery.mockImplementation(async (sql: string) => {
+      const s = String(sql).trim();
+      if (s.startsWith("SELECT key, value FROM system_settings")) {
+        return { rows: [] };
+      }
+      if (s.includes("LEFT JOIN gifted_subscriptions gs")) {
+        return { rows: [{ plan: "free", role: "user", gifted_plan: null }] };
+      }
+      if (s.includes("WITH ins AS")) {
+        return { rows: [] }; // blocked: WHERE guard skipped the update
+      }
+      if (s.startsWith('SELECT "count" FROM rate_limits')) {
+        return { rows: [{ count: BILLING_PLAN_LIMITS.free }] };
+      }
+      return { rows: [] };
+    });
 
     const result = await checkAndRecordRequest(1);
     expect(result.allowed).toBe(false);
+    expect(result.used).toBe(BILLING_PLAN_LIMITS.free);
     expect(result.remaining).toBe(0);
   });
 
@@ -330,16 +347,80 @@ describe("checkAndRecordRequest", () => {
     expect(result.used).toBe(50);
   });
 
-  it("denies a staff account once the atomic increment pushes past the Pro Supporter limit", async () => {
-    mockPlanAndUpsert(
-      { plan: "free", role: "admin", gifted_plan: null },
-      String(BILLING_PLAN_LIMITS.pro_supporter + 1),
-    );
+  it("denies a staff account without incrementing once already at the Pro Supporter limit", async () => {
+    mockQuery.mockImplementation(async (sql: string) => {
+      const s = String(sql).trim();
+      if (s.startsWith("SELECT key, value FROM system_settings")) {
+        return { rows: [] };
+      }
+      if (s.includes("LEFT JOIN gifted_subscriptions gs")) {
+        return { rows: [{ plan: "free", role: "admin", gifted_plan: null }] };
+      }
+      if (s.includes("WITH ins AS")) {
+        return { rows: [] };
+      }
+      if (s.startsWith('SELECT "count" FROM rate_limits')) {
+        return { rows: [{ count: BILLING_PLAN_LIMITS.pro_supporter }] };
+      }
+      return { rows: [] };
+    });
 
     const result = await checkAndRecordRequest(1);
     expect(result.allowed).toBe(false);
     expect(result.limit).toBe(BILLING_PLAN_LIMITS.pro_supporter);
+    expect(result.used).toBe(BILLING_PLAN_LIMITS.pro_supporter);
     expect(result.remaining).toBe(0);
+  });
+
+  it("regression: repeated attempts past the limit never inflate the stored count past the cap (was: every rejected attempt still incremented it)", async () => {
+    // A tiny in-memory stand-in for the rate_limits row, honoring the same
+    // WHERE-guard semantics as the real SQL: the conditional UPDATE only
+    // applies while count < limit. The cap used here is whatever the free
+    // plan's own mocked settings resolve to, so it always matches what
+    // getDailyLimit actually returns.
+    const realLimit = BILLING_PLAN_LIMITS.free;
+    let storedCount: number | null = null;
+
+    mockQuery.mockImplementation(async (sql: string) => {
+      const s = String(sql).trim();
+      if (s.startsWith("SELECT key, value FROM system_settings")) {
+        return { rows: [] };
+      }
+      if (s.includes("LEFT JOIN gifted_subscriptions gs")) {
+        return { rows: [{ plan: "free", role: "user", gifted_plan: null }] };
+      }
+      if (s.includes("WITH ins AS")) {
+        if (storedCount === null) {
+          storedCount = 1;
+          return { rows: [{ new_count: String(storedCount) }] };
+        }
+        if (storedCount < realLimit) {
+          storedCount += 1;
+          return { rows: [{ new_count: String(storedCount) }] };
+        }
+        return { rows: [] }; // WHERE guard blocks the update
+      }
+      if (s.startsWith('SELECT "count" FROM rate_limits')) {
+        return { rows: [{ count: storedCount }] };
+      }
+      return { rows: [] };
+    });
+
+    storedCount = realLimit - 1; // one request away from the cap
+
+    const first = await checkAndRecordRequest(1); // reaches the cap exactly
+    expect(first.allowed).toBe(true);
+    expect(first.used).toBe(realLimit);
+
+    const second = await checkAndRecordRequest(1); // already at cap
+    const third = await checkAndRecordRequest(1); // still at cap
+    expect(second.allowed).toBe(false);
+    expect(third.allowed).toBe(false);
+    expect(second.used).toBe(realLimit);
+    expect(third.used).toBe(realLimit);
+    // The stored count itself never exceeded the cap, no matter how many
+    // more times a request was rejected.
+    expect(storedCount).toBe(realLimit);
   });
 
   it("fails closed (denies, does not issue a permit) when the atomic increment query throws", async () => {

@@ -224,10 +224,18 @@ export async function canMakeRequest(userId: number): Promise<{
  *
  * Implementation note: the old version did a read-then-increment across two
  * SQL statements (`canMakeRequest` then `incrementDailyCount`), which let
- * concurrent requests race past the limit. The fixed version does the
- * increment atomically with a CTE that only updates if the running total is
- * still under the per-plan cap, then re-reads the total once at the end so
- * the response shape stays the same for callers.
+ * concurrent requests race past the limit. A later "fixed" version moved to
+ * a single INSERT ... ON CONFLICT DO UPDATE statement, but the UPDATE had
+ * no WHERE guard — it always incremented, THEN checked whether the new
+ * total exceeded the cap. That meant a request rejected for being over
+ * quota still permanently burned a slot: at 25/25, one more attempt showed
+ * 26/25 forever, even though the scan itself never ran. This version adds
+ * `WHERE rate_limits."count" < $2` to the ON CONFLICT DO UPDATE clause, so
+ * the increment itself is skipped (not just the response's `allowed` flag)
+ * once the caller is already at/over the cap — Postgres returns zero rows
+ * from the CTE in that case, which the code below reads as "already at
+ * cap, don't touch the counter" and re-reads the untouched current count
+ * to report back accurately.
  */
 export async function checkAndRecordRequest(userId: number): Promise<{
   allowed: boolean;
@@ -244,54 +252,95 @@ export async function checkAndRecordRequest(userId: number): Promise<{
 
   const key = `daily_scan:${userId}`;
 
-  // Atomically: ensure a row exists for today, increment it, and return
-  // the new total. Wrapped in a CTE so the increment-and-check happens in
-  // a single statement — no TOCTOU window between SELECT and UPDATE.
-  let newTotal = 0;
+  const tomorrow = new Date();
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  tomorrow.setUTCHours(0, 0, 0, 0);
+  const resetsAt = tomorrow.toISOString();
+
+  // No real plan currently ships a 0 (or negative) dailyScans cap, but
+  // guard it explicitly anyway: the INSERT path below has no cap check of
+  // its own (a fresh day's first row is always written), so without this
+  // guard a 0-limit plan's very first attempt of the day would still
+  // increment once before being rejected.
+  if (!unlimited && limit <= 0) {
+    return { allowed: false, used: 0, limit, remaining: 0, resetsAt };
+  }
+
+  if (unlimited) {
+    try {
+      const result = await pool.query<{ new_count: string }>(
+        `INSERT INTO rate_limits (key, "count", window_start)
+         VALUES ($1, 1, date_trunc('day', NOW()))
+         ON CONFLICT (key, window_start)
+         DO UPDATE SET "count" = rate_limits."count" + 1
+         RETURNING "count" AS new_count`,
+        [key],
+      );
+      const newTotal = Number(result.rows[0]?.new_count ?? 0);
+      return {
+        allowed: true,
+        used: newTotal,
+        limit: -1,
+        remaining: -1,
+        resetsAt,
+      };
+    } catch (error) {
+      console.error(
+        "[DailyLimits] Error atomically incrementing daily count:",
+        error,
+      );
+      return { allowed: false, used: 0, limit: -1, remaining: -1, resetsAt };
+    }
+  }
+
   try {
+    // Atomically: ensure a row exists for today, increment it ONLY if
+    // still under the cap, and return the new total. The WHERE clause on
+    // DO UPDATE means a caller already at/over the cap gets zero rows back
+    // instead of a phantom increment — no TOCTOU window between the check
+    // and the write either way, since it's still one statement.
     const result = await pool.query<{ new_count: string }>(
       `WITH ins AS (
          INSERT INTO rate_limits (key, "count", window_start)
          VALUES ($1, 1, date_trunc('day', NOW()))
          ON CONFLICT (key, window_start)
          DO UPDATE SET "count" = rate_limits."count" + 1
+         WHERE rate_limits."count" < $2
          RETURNING "count"
        )
        SELECT "count" AS new_count FROM ins`,
-      [key],
+      [key, limit],
     );
-    newTotal = Number(result.rows[0]?.new_count ?? 0);
+
+    if (result.rows.length === 0) {
+      // Already at/over cap: the WHERE guard skipped the increment
+      // entirely. Re-read the real (untouched) current count so the
+      // caller sees an accurate used/remaining instead of a guess.
+      const current = await pool.query<{ count: number }>(
+        `SELECT "count" FROM rate_limits
+         WHERE key = $1 AND window_start = date_trunc('day', NOW())`,
+        [key],
+      );
+      const used = current.rows[0]?.count ?? limit;
+      return { allowed: false, used, limit, remaining: 0, resetsAt };
+    }
+
+    const newTotal = Number(result.rows[0].new_count);
+    return {
+      allowed: true,
+      used: newTotal,
+      limit,
+      remaining: Math.max(0, limit - newTotal),
+      resetsAt,
+    };
   } catch (error) {
     console.error(
       "[DailyLimits] Error atomically incrementing daily count:",
       error,
     );
     // Fail closed: if we can't talk to the DB, don't issue a permit.
-    const tomorrow = new Date();
-    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
-    tomorrow.setUTCHours(0, 0, 0, 0);
-    return {
-      allowed: false,
-      used: 0,
-      limit: unlimited ? -1 : limit,
-      remaining: unlimited ? -1 : limit,
-      resetsAt: tomorrow.toISOString(),
-    };
+    return { allowed: false, used: 0, limit, remaining: limit, resetsAt };
   }
-
-  const allowed = unlimited || newTotal <= limit;
-
-  const tomorrow = new Date();
-  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
-  tomorrow.setUTCHours(0, 0, 0, 0);
-
-  return {
-    allowed,
-    used: newTotal,
-    limit: unlimited ? -1 : limit,
-    remaining: unlimited ? -1 : Math.max(0, limit - newTotal),
-    resetsAt: tomorrow.toISOString(),
-  };
 }
 
 /**
