@@ -53,13 +53,10 @@ vi.mock("@/lib/rate-limiting/rate-limit", async (importOriginal) => {
   };
 });
 
+const mockCheckAndRecordRequest = vi.fn();
 vi.mock("@/lib/rate-limiting/daily-limits", () => ({
-  checkAndRecordRequest: vi.fn(async () => ({
-    allowed: true,
-    limit: 100,
-    used: 1,
-    resetsAt: new Date().toISOString(),
-  })),
+  checkAndRecordRequest: (...args: unknown[]) =>
+    mockCheckAndRecordRequest(...args),
   getRateLimitHeaders: () => ({}),
 }));
 
@@ -137,6 +134,13 @@ beforeEach(() => {
   mockExecuteScan.mockReset();
   mockExecuteScan.mockResolvedValue(undefined);
   mockValidateApiKey.mockReset();
+  mockCheckAndRecordRequest.mockReset();
+  mockCheckAndRecordRequest.mockResolvedValue({
+    allowed: true,
+    limit: 100,
+    used: 1,
+    resetsAt: new Date().toISOString(),
+  });
   mockCheckApiKeyRateLimit.mockReset();
   mockCheckApiKeyRateLimit.mockResolvedValue({
     allowed: true,
@@ -289,6 +293,22 @@ describe("POST /api/v3/scan", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
+  it("rejects a session-auth request with 429 when the account's dailyScans quota is exhausted", async () => {
+    mockCheckAndRecordRequest.mockResolvedValue({
+      allowed: false,
+      limit: 25,
+      used: 25,
+      resetsAt: new Date().toISOString(),
+    });
+    const res = await POST(postRequest({ url: "https://example.com" }));
+    expect(res.status).toBe(429);
+    const json = await res.json();
+    expect(json.error).toMatch(/daily scan limit reached/i);
+    expect(mockCheckAndRecordRequest).toHaveBeenCalledWith(42);
+    expect(mockExecuteScan).not.toHaveBeenCalled();
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
   it("records API key usage and returns rate limit headers for API-key auth", async () => {
     mockValidateApiKey.mockResolvedValue({
       keyId: 9,
@@ -313,6 +333,38 @@ describe("POST /api/v3/scan", () => {
     expect(res.headers.get("X-RateLimit-Limit")).toBe("50");
     const json = await res.json();
     expect(json.scanId).toBe(88);
+    // dailyScans applies to API-key auth too, not just session cookies --
+    // it's a distinct, usually much smaller cap than apiRequestsPerDay
+    // (keyData.dailyLimit above), which alone used to bound API-triggered
+    // scans (unbounded on a plan with apiRequestsPerDay: -1).
+    expect(mockCheckAndRecordRequest).toHaveBeenCalledWith(42);
+  });
+
+  it("rejects an API-key request with 429 when the account's dailyScans quota is exhausted, even though the key's own rate limit still has room", async () => {
+    mockValidateApiKey.mockResolvedValue({
+      keyId: 9,
+      userId: 42,
+      dailyLimit: 5000, // plenty of apiRequestsPerDay room left
+      needsTermsAcceptance: false,
+    });
+    mockCheckAndRecordRequest.mockResolvedValue({
+      allowed: false,
+      limit: 150,
+      used: 150,
+      resetsAt: new Date().toISOString(),
+    });
+
+    const res = await POST(
+      postRequest(
+        { url: "https://example.com" },
+        { authorization: "Bearer vr_live_testkey" },
+      ),
+    );
+
+    expect(res.status).toBe(429);
+    const json = await res.json();
+    expect(json.error).toMatch(/daily scan limit reached/i);
+    expect(mockExecuteScan).not.toHaveBeenCalled();
   });
 
   it("emails the key owner (api_usage_alerts) and returns 429 without dispatching a scan when the API key is rate limited", async () => {

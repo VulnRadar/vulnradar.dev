@@ -61,10 +61,11 @@ vi.mock("@/lib/rate-limiting/rate-limit", async (importOriginal) => {
 });
 
 const mockCanMakeRequest = vi.fn();
-const mockIncrementDailyCount = vi.fn();
+const mockCheckAndRecordRequest = vi.fn();
 vi.mock("@/lib/rate-limiting/daily-limits", () => ({
   canMakeRequest: (...args: unknown[]) => mockCanMakeRequest(...args),
-  incrementDailyCount: (...args: unknown[]) => mockIncrementDailyCount(...args),
+  checkAndRecordRequest: (...args: unknown[]) =>
+    mockCheckAndRecordRequest(...args),
   getRateLimitHeaders: (info: { limit: number; remaining: number }) => ({
     "X-RateLimit-Limit": info.limit === -1 ? "unlimited" : String(info.limit),
     "X-RateLimit-Remaining":
@@ -216,8 +217,14 @@ beforeEach(() => {
     remaining: 100,
     resetsAt: new Date().toISOString(),
   });
-  mockIncrementDailyCount.mockReset();
-  mockIncrementDailyCount.mockResolvedValue(1);
+  mockCheckAndRecordRequest.mockReset();
+  mockCheckAndRecordRequest.mockResolvedValue({
+    allowed: true,
+    limit: 100,
+    used: 1,
+    remaining: 99,
+    resetsAt: new Date().toISOString(),
+  });
 
   mockValidateApiKey.mockReset();
   mockCheckApiKeyRateLimit.mockReset();
@@ -478,7 +485,7 @@ describe("POST /api/v3/scan/bulk - single URL scan and persistence", () => {
     expect(params[7]).toBe("web"); // source
   });
 
-  it("records source='api' and does not touch session daily-quota bookkeeping for API-key auth", async () => {
+  it("records source='api' and still enforces dailyScans quota for API-key auth (distinct from the key's own apiRequestsPerDay rate limit)", async () => {
     mockValidateApiKey.mockResolvedValue({
       keyId: 1,
       userId: 99,
@@ -500,8 +507,39 @@ describe("POST /api/v3/scan/bulk - single URL scan and persistence", () => {
     expect(params[0]).toBe(99);
     expect(params[7]).toBe("api");
 
-    expect(mockIncrementDailyCount).not.toHaveBeenCalled();
-    expect(mockCanMakeRequest).not.toHaveBeenCalled();
+    // dailyScans applies regardless of auth method -- API-key requests used
+    // to skip it entirely, bounded only by apiRequestsPerDay (unbounded on
+    // a plan with apiRequestsPerDay: -1).
+    expect(mockCanMakeRequest).toHaveBeenCalledWith(99);
+    expect(mockCheckAndRecordRequest).toHaveBeenCalledWith(99);
+  });
+
+  it("rejects an API-key bulk request with 429 when dailyScans is exhausted, even though the key's own apiRequestsPerDay limit has room", async () => {
+    mockValidateApiKey.mockResolvedValue({
+      keyId: 1,
+      userId: 99,
+      dailyLimit: 5000,
+      needsTermsAcceptance: false,
+    });
+    mockCanMakeRequest.mockResolvedValue({
+      allowed: false,
+      limit: 150,
+      used: 150,
+      remaining: 0,
+      resetsAt: new Date().toISOString(),
+    });
+
+    const res = await POST(
+      postRequest(
+        { urls: ["https://example.com"] },
+        { authorization: "Bearer vr_live_testkey" },
+      ),
+    );
+
+    expect(res.status).toBe(429);
+    const json = await res.json();
+    expect(json.error).toMatch(/daily scan limit reached/i);
+    expect(mockSafeFetch).not.toHaveBeenCalled();
   });
 
   it("inserts is_public=true by default and upserts host_reputation for the batch", async () => {
@@ -582,7 +620,7 @@ describe("POST /api/v3/scan/bulk - one URL fails, others succeed", () => {
     expect(json.results[1].success).toBe(true);
 
     // Daily quota is still consumed for the URL that failed to fetch.
-    expect(mockIncrementDailyCount).toHaveBeenCalledTimes(2);
+    expect(mockCheckAndRecordRequest).toHaveBeenCalledTimes(2);
     // Only the successful scan reaches the DB insert.
     const rows = await insertedRows();
     expect(rows).toHaveLength(1);
@@ -735,7 +773,7 @@ describe("POST /api/v3/scan/bulk - daily quota", () => {
     // 2 successful scans x 3 calls each: the page fetch, plus the async
     // bucket-listing and OSV-library checks' own follow-up homepage fetches.
     expect(mockSafeFetch).toHaveBeenCalledTimes(6);
-    expect(mockIncrementDailyCount).toHaveBeenCalledTimes(2);
+    expect(mockCheckAndRecordRequest).toHaveBeenCalledTimes(2);
   });
 });
 

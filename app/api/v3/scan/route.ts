@@ -168,25 +168,6 @@ export async function POST(request: NextRequest) {
           { status: 429 },
         );
       }
-
-      // Check daily quota based on subscription plan
-      const dailyQuota = await checkAndRecordRequest(session.userId);
-      if (!dailyQuota.allowed) {
-        return NextResponse.json(
-          {
-            error:
-              "Daily scan limit reached. Upgrade your plan or wait until midnight UTC for the limit to reset.",
-            limit: dailyQuota.limit,
-            used: dailyQuota.used,
-            remaining: 0,
-            resets_at: dailyQuota.resetsAt,
-          },
-          {
-            status: 429,
-            headers: getRateLimitHeaders(dailyQuota),
-          },
-        );
-      }
     }
 
     // Both branches above either return early or assign authedUserId; this
@@ -196,6 +177,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "Unauthorized. Please sign in to scan." },
         { status: 401 },
+      );
+    }
+
+    // Daily scan quota, based on subscription plan (dailyScans) -- distinct
+    // from the API key's own dailyLimit/rate limit above (apiRequestsPerDay,
+    // a broader "total API calls" throttle, not "scans triggered"). Applies
+    // uniformly to both auth paths: this used to run only inside the
+    // session-cookie branch, which meant an API-key caller's scan creation
+    // was bounded only by apiRequestsPerDay -- unlimited on Elite
+    // (apiRequestsPerDay: -1) even though dailyScans is a real, finite cap
+    // (500) at every tier.
+    const dailyQuota = await checkAndRecordRequest(authedUserId);
+    if (!dailyQuota.allowed) {
+      return NextResponse.json(
+        {
+          error:
+            "Daily scan limit reached. Upgrade your plan or wait until midnight UTC for the limit to reset.",
+          limit: dailyQuota.limit,
+          used: dailyQuota.used,
+          remaining: 0,
+          resets_at: dailyQuota.resetsAt,
+        },
+        {
+          status: 429,
+          headers: getRateLimitHeaders(dailyQuota),
+        },
       );
     }
 

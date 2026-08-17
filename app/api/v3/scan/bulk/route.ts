@@ -3,7 +3,7 @@ import { getSession } from "@/lib/auth";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import {
   canMakeRequest,
-  incrementDailyCount,
+  checkAndRecordRequest,
   getRateLimitHeaders,
 } from "@/lib/rate-limiting/daily-limits";
 import {
@@ -557,16 +557,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Check daily quota: each URL in the bulk scan counts as 1 scan (skip for API key auth)
-  const quotaCheck = isApiKeyAuth
-    ? {
-        allowed: true,
-        limit: -1,
-        used: 0,
-        remaining: validUrls.length,
-        resetsAt: "",
-      }
-    : await canMakeRequest(authedUserId!);
+  // Check daily quota (dailyScans): each URL in the bulk scan counts as 1
+  // scan, regardless of auth method. API-key callers used to skip this
+  // entirely, bounded only by apiRequestsPerDay below (a different, much
+  // broader "total API calls" limit -- unlimited on Elite), which meant an
+  // API key had no dailyScans cap on bulk-triggered scans at all. This is
+  // a fast-path upper-bound estimate only; the real, race-safe enforcement
+  // is the atomic checkAndRecordRequest call inside the loop below.
+  const quotaCheck = await canMakeRequest(authedUserId!);
   if (!quotaCheck.allowed) {
     return NextResponse.json(
       {
@@ -617,6 +615,35 @@ export async function POST(request: NextRequest) {
       });
       continue;
     }
+    // Atomic check-and-increment per URL, regardless of auth method -- this,
+    // not the upfront canMakeRequest estimate above, is what actually
+    // enforces the cap. Closes the TOCTOU race a separate read-then-
+    // increment would have against concurrent requests (another bulk call,
+    // a single-URL scan, another tab) consuming quota in between.
+    const dailyQuota = await checkAndRecordRequest(authedUserId!);
+    if (!dailyQuota.allowed) {
+      results.push({
+        url: scanUrl,
+        success: false,
+        error:
+          "Daily scan limit reached. Upgrade your plan or wait until midnight UTC for the limit to reset.",
+      });
+      // Push remaining URLs as quota-exceeded too. Uses the loop index (not
+      // urlsToScan.indexOf(scanUrl)) because indexOf resolves to the FIRST
+      // occurrence of a duplicate URL, not the one currently being
+      // processed -- with duplicates in the batch that would re-push
+      // already-scanned URLs as quota-exceeded and skip the real remainder.
+      for (const remainingUrl of urlsToScan.slice(i + 1)) {
+        results.push({
+          url: remainingUrl,
+          success: false,
+          error:
+            "Daily scan limit reached. Upgrade your plan or wait until midnight UTC for the limit to reset.",
+        });
+      }
+      break;
+    }
+
     if (
       isApiKeyAuth &&
       apiKeyId !== null &&
@@ -634,12 +661,6 @@ export async function POST(request: NextRequest) {
           success: false,
           error: "API key daily limit reached mid-scan.",
         });
-        // Push remaining URLs as quota-exceeded too. Uses the loop index
-        // (not urlsToScan.indexOf(scanUrl)) because indexOf resolves to the
-        // FIRST occurrence of a duplicate URL, not the one currently being
-        // processed -- with duplicates in the batch that would re-push
-        // already-scanned URLs as quota-exceeded and skip the real
-        // remainder.
         for (const remainingUrl of urlsToScan.slice(i + 1)) {
           results.push({
             url: remainingUrl,
@@ -649,9 +670,6 @@ export async function POST(request: NextRequest) {
         }
         break;
       }
-    } else {
-      // Increment daily count before each scan (session auth)
-      await incrementDailyCount(authedUserId!);
     }
     const scanResult = await runSingleScan(
       scanUrl,

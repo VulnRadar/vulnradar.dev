@@ -67,6 +67,13 @@ vi.mock("@/lib/rate-limiting/concurrent-scans", () => ({
     mockCheckConcurrentScanLimit(...args),
 }));
 
+const mockCheckAndRecordRequest = vi.fn();
+vi.mock("@/lib/rate-limiting/daily-limits", () => ({
+  checkAndRecordRequest: (...args: unknown[]) =>
+    mockCheckAndRecordRequest(...args),
+  getRateLimitHeaders: () => ({}),
+}));
+
 const mockExecuteCrawlScan = vi.fn();
 vi.mock("@/lib/scanner/execute-crawl-scan", async (importOriginal) => {
   const actual =
@@ -114,6 +121,14 @@ beforeEach(() => {
     allowed: true,
     current: 0,
     limit: 3,
+  });
+  mockCheckAndRecordRequest.mockReset();
+  mockCheckAndRecordRequest.mockResolvedValue({
+    allowed: true,
+    used: 1,
+    limit: 150,
+    remaining: 149,
+    resetsAt: new Date().toISOString(),
   });
 });
 
@@ -212,6 +227,37 @@ describe("POST /api/v3/scan/crawl", () => {
 
     expect(res.status).toBe(500);
     expect(mockExecuteCrawlScan).not.toHaveBeenCalled();
+  });
+});
+
+describe("daily scan quota gate", () => {
+  it("rejects with 429 when the caller has no remaining daily quota, for either auth method", async () => {
+    mockCheckAndRecordRequest.mockResolvedValue({
+      allowed: false,
+      used: 150,
+      limit: 150,
+      remaining: 0,
+      resetsAt: new Date().toISOString(),
+    });
+    const res = await POST(postRequest({ url: "https://example.com" }));
+    expect(res.status).toBe(429);
+    const json = await res.json();
+    expect(json.error).toMatch(/daily scan limit reached/i);
+    expect(mockCheckAndRecordRequest).toHaveBeenCalledWith(42);
+    expect(mockExecuteCrawlScan).not.toHaveBeenCalled();
+    // Checked before the concurrency gate -- neither DB call for the
+    // tracker row nor the concurrency check should ever run.
+    expect(mockCheckConcurrentScanLimit).not.toHaveBeenCalled();
+  });
+
+  it("proceeds normally when daily quota remains", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 7 }] });
+    const res = await POST(postRequest({ url: "https://example.com" }));
+    expect(res.status).toBe(200);
+    expect(mockExecuteCrawlScan).toHaveBeenCalledTimes(1);
   });
 });
 

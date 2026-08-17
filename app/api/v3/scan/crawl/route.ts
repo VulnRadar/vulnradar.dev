@@ -19,6 +19,10 @@ import {
   DEFAULT_SCAN_NOTE,
 } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
+import {
+  checkAndRecordRequest,
+  getRateLimitHeaders,
+} from "@/lib/rate-limiting/daily-limits";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { resolveScanIsPublic } from "@/lib/scanner/scan-privacy";
 import { isUrlOwnedByUser } from "@/lib/domains/scope";
@@ -131,6 +135,28 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: "Unauthorized. Please sign in to scan." },
       { status: 401 },
+    );
+  }
+
+  // Daily scan quota, based on subscription plan (dailyScans) -- this route
+  // never checked it at all, for either auth method, even though a single
+  // crawl can trigger many page scans. Same check and reasoning as POST
+  // /api/v3/scan's identical call.
+  const dailyQuota = await checkAndRecordRequest(authedUserId);
+  if (!dailyQuota.allowed) {
+    return NextResponse.json(
+      {
+        error:
+          "Daily scan limit reached. Upgrade your plan or wait until midnight UTC for the limit to reset.",
+        limit: dailyQuota.limit,
+        used: dailyQuota.used,
+        remaining: 0,
+        resets_at: dailyQuota.resetsAt,
+      },
+      {
+        status: 429,
+        headers: getRateLimitHeaders(dailyQuota),
+      },
     );
   }
 
