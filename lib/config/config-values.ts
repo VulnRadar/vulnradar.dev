@@ -18,7 +18,7 @@ import {
 // App metadata - UPDATE THESE FOR YOUR DEPLOYMENT
 export const CONFIG_APP_NAME = "VulnRadar";
 export const CONFIG_APP_SLUG = "vulnradar";
-export const CONFIG_APP_VERSION = "3.4.0";
+export const CONFIG_APP_VERSION = "3.5.0";
 // The minimum database schema version this app requires.
 // App 3.0.0 requires schema v3.0.0 (ai_conversations + email unsubscribe).
 // 3.0.1 made no schema changes. 3.0.2 and 3.1.0 both added tables/columns
@@ -109,7 +109,23 @@ export const CONFIG_MIN_SCHEMA_VERSION = "3.0.0";
 // signup field, and OCSP-stapling-absent / single-DNS-provider
 // concentration downgraded from low to info. No new checks or
 // categories, so a patch bump.
-export const CONFIG_ENGINE_VERSION = "3.2.1";
+//
+// 3.3.0: active-probes modularized into lib/scanner/active-probes/ (one
+// module per probe), with 3 previously-ungated checks (CORS origin
+// reflection, dangerous HTTP methods, X-Forwarded-Host injection) moved
+// behind the same active-probes opt-in + verified-domain gate
+// checkGraphQLIntrospection already had, plus 2 new probes: os-command-
+// injection (shell-arithmetic canary) and confirmed-open-redirect
+// (only probes a redirect parameter the page already discloses using).
+// New supply-chain check osv-vulnerable-library queries OSV.dev live for
+// every detected client-side library + version, supplementing the old
+// static ~8-library CVE table. Finding confidence is now adaptive: a
+// check with a real, statistically meaningful false-positive rate from
+// user feedback has its findings' confidence discounted automatically
+// (lib/scanner/adaptive-confidence.ts), closing a loop the admin Engine
+// Feedback panel's aggregation already computed but never applied. New
+// checks and a new engine-wide scoring behavior, so a minor bump.
+export const CONFIG_ENGINE_VERSION = "3.3.0";
 export const CONFIG_APP_DESCRIPTION =
   "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.";
 export const CONFIG_TOTAL_CHECKS_LABEL = GENERATED_CHECKS_LABEL;

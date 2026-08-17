@@ -1,6 +1,6 @@
 # VulnRadar Changelog - AI Knowledge
 
-_Auto-compiled from `lib/changelog/data.ts` on 2026-08-16._
+_Auto-compiled from `lib/changelog/data.ts` on 2026-08-17._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about specific versions, release
@@ -15,6 +15,47 @@ config (see `lib/config/config-values.ts`).
 Each release entry shows: version, date, title, summary, and every
 change with its category tag (added/changed/fixed/security/performance)
 and full description.
+
+---
+
+## v3.5.0 - August 17, 2026 **(highlights)**
+**Domain Verification, Live-Browser Metering, Quota Bypass Fixes**
+
+Active-probes scanning (real exploit-attempt payloads, not just passive checks) now requires proving you own the target domain first, via a DNS TXT record, the same model Google Search Console and ACME certificate issuance use. Three of the existing active probes (CORS origin reflection, dangerous HTTP methods, X-Forwarded-Host injection) turned out to run unconditionally on every scan instead of being gated behind that opt-in, so they're fixed alongside two new ones: OS command injection and open redirect. Live-browser sessions are now a real metered plan limit with an account-wide concurrency queue instead of an unbounded feature, and dependency scanning gained a live OSV.dev lookup on top of the old static CVE table. The rest is a run of real quota and account-safety bugs found by auditing every per-plan limit end to end: the daily scan quota was fully bypassable via API key, never enforced on crawl scans at all, and a rejected scan could still permanently burn a quota slot; the bulk-scan URL limit ignored your actual plan; and account deletion was completely broken for every account, full stop.
+
+### Changes
+- [Globe] **[ADDED]** **Domain Ownership Verification**
+  Active-probes scanning (form-submission canaries, CORS/method/host-header probes, GraphQL introspection) now requires verifying you control the target domain first: publish a one-time token as a DNS TXT record, then confirm it. Verifying a domain covers its subdomains, matching how DNS-zone-control verification works everywhere else. Manage domains from Profile > Developer.
+- [ShieldAlert] **[SECURITY]** **Three Active Probes Ran on Every Scan, Not Just When You Opted In**
+  CORS origin reflection, dangerous HTTP method, and X-Forwarded-Host injection checks each submit a crafted request to the target instead of only reading a response already fetched for another check, the same category of action GraphQL introspection was already correctly gated behind. These three weren't: they ran unconditionally on every scan, including ones that never asked for active probing. Moved behind the same active-probes opt-in and domain-verification requirement as every other active check.
+- [Target] **[ADDED]** **Two New Active Probes: Command Injection & Open Redirect**
+  Command injection uses a shell-metacharacter canary tagged with an arithmetic expression, flagging a form only when the expression comes back genuinely evaluated by a shell, not just echoed back as text. Open redirect never guesses an endpoint blindly: it only probes a redirect-shaped parameter (redirect, next, return_to, and similar) that the page itself already discloses using, then checks whether swapping in a canary URL produces a live redirect to it.
+- [Package] **[ADDED]** **Live Dependency Scanning via OSV.dev**
+  Client-side library detection (jQuery, Bootstrap, Lodash, Vue, React, and others) now queries OSV.dev live for the exact detected version, instead of relying only on a small, hand-picked table of CVEs frozen at whatever was known when it was written. Findings carry real per-instance CVSS scores parsed from OSV's own advisory data when available.
+- [Timer] **[ADDED]** **Live-Browser Sessions Now Have an Account-Wide Concurrency Queue**
+  This account's own BrowserBase plan has a real ceiling on how many live-browser sessions can run at once, independent of any one user's monthly minute allowance, and nothing previously tracked it. A request that arrives once that ceiling is hit now queues automatically (paid plans admitted ahead of free) instead of failing outright.
+- [CreditCard] **[ADDED]** **Live-Browser Minutes Are a Real, Metered Plan Limit**
+  Monthly minute allowances (30/60/150/400 for free/core/pro/elite) replace what was effectively unbounded usage, sized conservatively against this account's actual BrowserBase plan so a handful of accounts can't burn a shared monthly budget on their own. Extra minutes can be purchased in Profile > Billing once the free allowance runs out.
+- [Gauge] **[ADDED]** **Concurrent-Scan Capacity Limit**
+  How many scans a single account can have running at once (1/2/3/5 for free/core/pro/elite) is now a real, enforced plan limit, separate from the daily scan quota. VulnRadar runs as one server process, not a fleet of workers, so every scan actually in progress shares that process's resources with everyone else's.
+- [RefreshCw] **[SECURITY]** **Periodic Domain Re-Verification**
+  A verified domain's active-probes permission never expired or got re-checked, so a domain that later changed hands (sold, expired, DNS repointed) kept the original account's scan permission for it indefinitely. Verified domains are now re-checked roughly every 30 days in the background, and permission is automatically revoked the moment the DNS record no longer verifies.
+- [Search] **[ADDED]** **Adaptive Confidence Scoring**
+  A check with a real, statistically meaningful false-positive rate from user feedback (the same signal the admin Engine Feedback panel already surfaced, previously reporting-only) now has its findings' confidence automatically discounted. A check most users confirm as accurate is untouched either way.
+- [Bug] **[FIXED]** **Domain Verification Crashed on Every Failed Attempt**
+  Checking a domain that hadn't actually had its DNS record set up yet failed with a database error instead of a normal "not verified yet" response, because the update query reused the same parameter as both a plain value and a comparison inside a CASE expression, which Postgres can't always resolve to one type. Reproduced and confirmed fixed against the real database.
+- [AlertTriangle] **[FIXED]** **Bulk-Scan URL Limit Ignored Your Actual Plan**
+  The dashboard's bulk-scan box capped entry at a flat 10 URLs for every plan, regardless of the pricing page's advertised 5/10/25/100 tiers: free accounts could enter more than promised, paid accounts less. The form now reads the caller's real, live plan limit instead of a hardcoded number.
+- [Bug] **[FIXED]** **A Rejected Scan Could Still Burn a Daily Quota Slot**
+  Hitting your daily scan limit and trying one more time bumped the stored count past the limit (25/25 becoming 26/25) even though that scan never actually ran, because the counter incremented unconditionally before checking whether the new total was over the cap. Every rejected attempt afterward kept inflating it further. Fixed at the query level so an already-exhausted quota is never touched at all.
+- [ShieldAlert] **[SECURITY]** **Daily Scan Quota Was Bypassable via API Key, Unenforced on Crawls**
+  Found by auditing every per-plan limit's real enforcement end to end. An API-key request to trigger a scan was bounded only by the key's own request-rate limit (unlimited on the top plan), never by the actual daily-scans cap every plan advertises, and crawl scans never checked the daily quota at all, for either auth method, despite one crawl being able to trigger many page scans. Both routes, and the bulk-scan endpoint's own separate copy of the same gap, now enforce the real quota atomically regardless of how the request is authenticated.
+- [Trash2] **[FIXED]** **Account Deletion Was Completely Broken**
+  The delete-account button sent the wrong HTTP method with no request body to an endpoint that required one, so every deletion attempt failed outright for every account, regardless of type. Fixed the request, and while in that code: an account with no password set (Google/GitHub/Discord sign-up) could never have deleted itself either way, since there was nothing to verify a password against. It no longer needs one.
+- [GitMerge] **[CHANGED]** **Active Probing Reorganized Into Modules**
+  The single 470-line file behind every active probe is now one module per probe under lib/scanner/active-probes/, sharing common request/cancellation/finding-building infrastructure, so a new probe no longer means editing one increasingly large file.
+- [ShieldAlert] **[CHANGED]** **Engine Version 3.3.0**
+  The scanning engine's version number moved to 3.3.0: two new active probes, a new live dependency-vulnerability check, and confidence scores that now adapt to real user feedback instead of staying static forever.
 
 ---
 
@@ -1485,7 +1526,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ## Quick reference
 
-- **Total releases:** 57
-- **Total changes documented:** 508
-- **Latest:** v3.4.0 (August 15, 2026) - Team-Scoped Resources, Admin Security Hardening
+- **Total releases:** 58
+- **Total changes documented:** 524
+- **Latest:** v3.5.0 (August 17, 2026) - Domain Verification, Live-Browser Metering, Quota Bypass Fixes
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release
