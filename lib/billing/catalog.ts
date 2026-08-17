@@ -64,6 +64,21 @@ export interface PlanLimits {
    * only as a fallback once this free monthly allowance is exhausted.
    */
   browserbaseMinutesPerMonth: number;
+  /**
+   * Max scans a user may have in status 'pending' or 'running' at once --
+   * see lib/rate-limiting/concurrent-scans.ts. Distinct from dailyScans
+   * (a calendar-day total): VulnRadar runs as one persistent Node process
+   * with no job queue (see lib/scanner/execute-scan.ts), so every
+   * concurrently-running scan shares that one process's resources. This is
+   * a real capacity limit, not a demand-shaping one -- a single URL scan
+   * (POST /scan) and a crawl's own tracker row both count; a crawl's
+   * individual page rows do not (they're written directly as 'completed'
+   * once already scanned, never occupy a 'pending'/'running' slot of
+   * their own). -1 is a valid value here (unlimited), unlike the AI/
+   * Browserbase fields above, since a scan is VulnRadar's own compute, not
+   * a metered third-party API with a real per-unit cost.
+   */
+  concurrentScans: number;
 }
 
 export interface PlanBadge {
@@ -109,6 +124,7 @@ export const PLANS: readonly Plan[] = [
       githubReviewTokensPerWindow: 0,
       aiTokensPerWindow: 80_000,
       browserbaseMinutesPerMonth: 0,
+      concurrentScans: 1,
     },
   },
   {
@@ -124,6 +140,7 @@ export const PLANS: readonly Plan[] = [
       "10 URLs per bulk scan",
       `200K AI review tokens / ${AI_USAGE_WINDOW_HOURS}hr window`,
       "30 live-browser minutes/month",
+      "2 scans running at once",
       "Supporter badge",
     ],
     limits: {
@@ -138,6 +155,7 @@ export const PLANS: readonly Plan[] = [
       githubReviewTokensPerWindow: 200_000,
       aiTokensPerWindow: 400_000,
       browserbaseMinutesPerMonth: 30,
+      concurrentScans: 2,
     },
     badge: { text: "Core", color: "#10b981" },
   },
@@ -154,6 +172,7 @@ export const PLANS: readonly Plan[] = [
       "5,000 API requests/day",
       `1M AI review tokens / ${AI_USAGE_WINDOW_HOURS}hr window`,
       "90 live-browser minutes/month",
+      "3 scans running at once",
       "Pro badge",
     ],
     limits: {
@@ -168,6 +187,7 @@ export const PLANS: readonly Plan[] = [
       githubReviewTokensPerWindow: 1_000_000,
       aiTokensPerWindow: 2_000_000,
       browserbaseMinutesPerMonth: 90,
+      concurrentScans: 3,
     },
     badge: { text: "Pro", color: "#3b82f6" },
   },
@@ -183,6 +203,7 @@ export const PLANS: readonly Plan[] = [
       "Teams, up to 10 members",
       `5M AI review tokens / ${AI_USAGE_WINDOW_HOURS}hr window`,
       "300 live-browser minutes/month",
+      "5 scans running at once",
       "Elite badge",
     ],
     limits: {
@@ -203,6 +224,11 @@ export const PLANS: readonly Plan[] = [
       // Same rule again: never -1 (unlimited), even at the top tier — see
       // the PlanLimits.browserbaseMinutesPerMonth doc comment above.
       browserbaseMinutesPerMonth: 300,
+      // Unlike the three fields above, concurrentScans IS a valid -1 kind
+      // of field (see its own doc comment) -- 5, not unlimited, because
+      // VulnRadar's single-process architecture makes this a real shared-
+      // capacity limit, not just a monetization tier.
+      concurrentScans: 5,
     },
     badge: { text: "Elite", color: "#f59e0b" },
   },

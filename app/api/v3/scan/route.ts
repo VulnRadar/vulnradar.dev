@@ -39,6 +39,7 @@ import {
 import { getSetting } from "@/lib/config/runtime-config";
 import { validateScanTarget } from "@/lib/scanner/safe-fetch";
 import { isUrlOwnedByUser } from "@/lib/domains/scope";
+import { checkConcurrentScanLimit } from "@/lib/rate-limiting/concurrent-scans";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { resolveScanIsPublic } from "@/lib/scanner/scan-privacy";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
@@ -195,6 +196,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "Unauthorized. Please sign in to scan." },
         { status: 401 },
+      );
+    }
+
+    // Capacity, not demand-shaping: VulnRadar runs as one persistent
+    // process with no job queue, so every 'pending'/'running' scan shares
+    // that process's resources with everyone else's. See
+    // lib/rate-limiting/concurrent-scans.ts.
+    const concurrency = await checkConcurrentScanLimit(authedUserId);
+    if (!concurrency.allowed) {
+      return NextResponse.json(
+        { error: concurrency.message, statusCode: "CONCURRENT_SCAN_LIMIT" },
+        { status: 429 },
       );
     }
 

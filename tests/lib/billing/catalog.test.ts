@@ -44,6 +44,9 @@ describe("PLANS", () => {
       scheduledScans: 3,
       bulkScanUrls: 5,
       aiTokensPerWindow: 80_000,
+      // Not excluded like the three above -- a real, if minimal, allowance
+      // (1 scan running at a time), same reasoning as dailyScans/apiKeys.
+      concurrentScans: 1,
     });
   });
 

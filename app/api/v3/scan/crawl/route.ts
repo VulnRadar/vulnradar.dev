@@ -22,6 +22,7 @@ import { getSetting } from "@/lib/config/runtime-config";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { resolveScanIsPublic } from "@/lib/scanner/scan-privacy";
 import { isUrlOwnedByUser } from "@/lib/domains/scope";
+import { checkConcurrentScanLimit } from "@/lib/rate-limiting/concurrent-scans";
 
 export async function POST(request: NextRequest) {
   // Auth: check API key first (Bearer token), then fall back to session cookie
@@ -130,6 +131,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: "Unauthorized. Please sign in to scan." },
       { status: 401 },
+    );
+  }
+
+  // Capacity, not demand-shaping -- see POST /api/v3/scan's identical
+  // check and lib/rate-limiting/concurrent-scans.ts. A crawl's own tracker
+  // row counts as one slot, same as a single-URL scan.
+  const concurrency = await checkConcurrentScanLimit(authedUserId);
+  if (!concurrency.allowed) {
+    return NextResponse.json(
+      { error: concurrency.message, statusCode: "CONCURRENT_SCAN_LIMIT" },
+      { status: 429 },
     );
   }
 

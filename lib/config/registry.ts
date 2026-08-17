@@ -274,6 +274,10 @@ import {
   CONFIG_BILLING_CORE_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH,
   CONFIG_BILLING_PRO_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH,
   CONFIG_BILLING_ELITE_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH,
+  CONFIG_BILLING_FREE_CONCURRENT_SCANS,
+  CONFIG_BILLING_CORE_SUPPORTER_CONCURRENT_SCANS,
+  CONFIG_BILLING_PRO_SUPPORTER_CONCURRENT_SCANS,
+  CONFIG_BILLING_ELITE_SUPPORTER_CONCURRENT_SCANS,
 } from "./config-values";
 
 /**
@@ -1321,6 +1325,46 @@ export const SETTINGS_REGISTRY = {
     help: "Live-browser session minutes an elite supporter may use per calendar month. A real finite cap — Browserbase is a real paid third-party API, not subsidized capacity, so even the top tier is never -1 (unlimited) for this field.",
     min: 0,
     max: 100_000,
+  },
+  BILLING_FREE_CONCURRENT_SCANS: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_BILLING_FREE_CONCURRENT_SCANS,
+    group: "Billing",
+    label: "Free plan concurrent scans",
+    help: "Max scans a free-plan user may have running (status pending/running) at once. VulnRadar runs as one persistent process with no job queue, so this is a real shared-capacity limit. Use -1 for unlimited.",
+    min: -1,
+    max: 1000,
+  },
+  BILLING_CORE_SUPPORTER_CONCURRENT_SCANS: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_BILLING_CORE_SUPPORTER_CONCURRENT_SCANS,
+    group: "Billing",
+    label: "Core supporter concurrent scans",
+    help: "Max scans a core supporter may have running at once.",
+    min: -1,
+    max: 1000,
+  },
+  BILLING_PRO_SUPPORTER_CONCURRENT_SCANS: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_BILLING_PRO_SUPPORTER_CONCURRENT_SCANS,
+    group: "Billing",
+    label: "Pro supporter concurrent scans",
+    help: "Max scans a pro supporter may have running at once.",
+    min: -1,
+    max: 1000,
+  },
+  BILLING_ELITE_SUPPORTER_CONCURRENT_SCANS: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_BILLING_ELITE_SUPPORTER_CONCURRENT_SCANS,
+    group: "Billing",
+    label: "Elite supporter concurrent scans",
+    help: "Max scans an elite supporter may have running at once. Kept modest even at the top tier -- this shares one process's resources with every other scan currently running, for every user.",
+    min: -1,
+    max: 1000,
   },
 
   // RATE LIMITS

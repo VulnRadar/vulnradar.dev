@@ -29,6 +29,7 @@ const PLAN_LIMIT_KEYS: Record<PlanId, Record<keyof PlanLimits, SettingKey>> = {
     githubReviewTokensPerWindow: "BILLING_FREE_GITHUB_REVIEW_TOKENS_PER_WINDOW",
     aiTokensPerWindow: "BILLING_FREE_AI_TOKENS_PER_WINDOW",
     browserbaseMinutesPerMonth: "BILLING_FREE_BROWSERBASE_MINUTES_PER_MONTH",
+    concurrentScans: "BILLING_FREE_CONCURRENT_SCANS",
   },
   core_supporter: {
     dailyScans: "BILLING_CORE_SUPPORTER_LIMIT",
@@ -44,6 +45,7 @@ const PLAN_LIMIT_KEYS: Record<PlanId, Record<keyof PlanLimits, SettingKey>> = {
     aiTokensPerWindow: "BILLING_CORE_SUPPORTER_AI_TOKENS_PER_WINDOW",
     browserbaseMinutesPerMonth:
       "BILLING_CORE_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH",
+    concurrentScans: "BILLING_CORE_SUPPORTER_CONCURRENT_SCANS",
   },
   pro_supporter: {
     dailyScans: "BILLING_PRO_SUPPORTER_LIMIT",
@@ -59,6 +61,7 @@ const PLAN_LIMIT_KEYS: Record<PlanId, Record<keyof PlanLimits, SettingKey>> = {
     aiTokensPerWindow: "BILLING_PRO_SUPPORTER_AI_TOKENS_PER_WINDOW",
     browserbaseMinutesPerMonth:
       "BILLING_PRO_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH",
+    concurrentScans: "BILLING_PRO_SUPPORTER_CONCURRENT_SCANS",
   },
   elite_supporter: {
     dailyScans: "BILLING_ELITE_SUPPORTER_LIMIT",
@@ -74,6 +77,7 @@ const PLAN_LIMIT_KEYS: Record<PlanId, Record<keyof PlanLimits, SettingKey>> = {
     aiTokensPerWindow: "BILLING_ELITE_SUPPORTER_AI_TOKENS_PER_WINDOW",
     browserbaseMinutesPerMonth:
       "BILLING_ELITE_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH",
+    concurrentScans: "BILLING_ELITE_SUPPORTER_CONCURRENT_SCANS",
   },
 };
 
@@ -113,6 +117,7 @@ export async function getUserPlanLimits(
     browserbaseMinutesPerMonth: Number(
       resolved[keys.browserbaseMinutesPerMonth],
     ),
+    concurrentScans: Number(resolved[keys.concurrentScans]),
   };
 }
 

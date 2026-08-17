@@ -78,10 +78,19 @@ const ROWS: { label: string; values: CellValue[] }[] = [
     label: "Team members",
     values: PLANS.map((p) => quota(p.limits.teamMembers)),
   },
+  {
+    label: "Scans running at once",
+    values: PLANS.map((p) => quota(p.limits.concurrentScans)),
+  },
+  {
+    label: "Live-browser minutes/month",
+    values: PLANS.map((p) => quota(p.limits.browserbaseMinutesPerMonth)),
+  },
   { label: "Every scanner category", values: PLANS.map(() => true) },
   { label: "Stable finding IDs", values: PLANS.map(() => true) },
   { label: "REST API and bearer tokens", values: PLANS.map(() => true) },
   { label: "Self-hostable", values: PLANS.map(() => true) },
+  { label: "Verified domains (unlimited)", values: PLANS.map(() => true) },
 ];
 
 function Cell({ value, label }: { value: CellValue; label: string }) {

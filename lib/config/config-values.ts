@@ -1195,6 +1195,15 @@ export const CONFIG_BILLING_CORE_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH = 30;
 export const CONFIG_BILLING_PRO_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH = 90;
 export const CONFIG_BILLING_ELITE_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH = 300;
 
+// Max scans a user may have in status 'pending'/'running' at once (see
+// lib/rate-limiting/concurrent-scans.ts). VulnRadar runs as one persistent
+// Node process with no job queue, so this is a real shared-capacity limit,
+// not just a monetization tier -- keep these modest even at the top plan.
+export const CONFIG_BILLING_FREE_CONCURRENT_SCANS = 1;
+export const CONFIG_BILLING_CORE_SUPPORTER_CONCURRENT_SCANS = 2;
+export const CONFIG_BILLING_PRO_SUPPORTER_CONCURRENT_SCANS = 3;
+export const CONFIG_BILLING_ELITE_SUPPORTER_CONCURRENT_SCANS = 5;
+
 // DATABASE CLEANUP RETENTION - UPDATE IF NEEDED
 //
 // How long each table's rows are kept before lib/database/cleanup.ts's

@@ -29,6 +29,11 @@ export const PRICING_FAQ: { question: string; answer: string }[] = [
       "No. The detection engine is identical on every plan, down to the check IDs. Paying raises daily scan quotas, it does not unlock findings.",
   },
   {
+    question: "Why is there a limit on scans running at the same time?",
+    answer:
+      "VulnRadar runs as one server process, not a fleet of workers, so every scan that's actually in progress right now shares that process with everyone else's. Your daily quota is how many scans you can run in a day; this is how many can be running at once. Queue one up and it starts the moment a slot frees, which is usually seconds.",
+  },
+  {
     question: "Do you give refunds?",
     answer:
       "All purchases are final. The free tier exists so you can find out whether the tool works for you before any money changes hands.",

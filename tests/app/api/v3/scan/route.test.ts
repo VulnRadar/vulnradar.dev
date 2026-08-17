@@ -76,6 +76,12 @@ vi.mock("@/lib/domains/scope", () => ({
   isUrlOwnedByUser: (...args: unknown[]) => mockIsUrlOwnedByUser(...args),
 }));
 
+const mockCheckConcurrentScanLimit = vi.fn();
+vi.mock("@/lib/rate-limiting/concurrent-scans", () => ({
+  checkConcurrentScanLimit: (...args: unknown[]) =>
+    mockCheckConcurrentScanLimit(...args),
+}));
+
 vi.mock("@/lib/scanner/engine", () => ({
   getPlannedSyncCategories: () => ["headers", "ssl"],
 }));
@@ -144,6 +150,12 @@ beforeEach(() => {
   mockSendNotificationEmail.mockResolvedValue(undefined);
   mockIsUrlOwnedByUser.mockReset();
   mockIsUrlOwnedByUser.mockResolvedValue(true);
+  mockCheckConcurrentScanLimit.mockReset();
+  mockCheckConcurrentScanLimit.mockResolvedValue({
+    allowed: true,
+    current: 0,
+    limit: 3,
+  });
 });
 
 describe("POST /api/v3/scan", () => {
@@ -410,6 +422,52 @@ describe("POST /api/v3/scan", () => {
     );
 
     expect(res.status).toBe(200);
+  });
+});
+
+describe("concurrent-scan capacity gate", () => {
+  it("rejects with 429 when the caller is already at their plan's concurrent-scan limit", async () => {
+    mockCheckConcurrentScanLimit.mockResolvedValue({
+      allowed: false,
+      current: 3,
+      limit: 3,
+      message: "capacity message",
+    });
+    const res = await POST(postRequest({ url: "https://example.com" }));
+    expect(res.status).toBe(429);
+    const json = await res.json();
+    expect(json.statusCode).toBe("CONCURRENT_SCAN_LIMIT");
+    expect(json.error).toBe("capacity message");
+    expect(mockExecuteScan).not.toHaveBeenCalled();
+    expect(
+      mockQuery.mock.calls.some(([sql]) =>
+        String(sql).includes("INSERT INTO scan_history"),
+      ),
+    ).toBe(false);
+  });
+
+  it("checks capacity for the caller's own user id before parsing the request body", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 4 }] });
+    await POST(postRequest({ url: "https://example.com" }));
+    expect(mockCheckConcurrentScanLimit).toHaveBeenCalledWith(42);
+  });
+
+  it("proceeds normally when under the concurrent-scan limit", async () => {
+    mockCheckConcurrentScanLimit.mockResolvedValue({
+      allowed: true,
+      current: 1,
+      limit: 3,
+    });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 5 }] });
+    const res = await POST(postRequest({ url: "https://example.com" }));
+    expect(res.status).toBe(200);
+    expect(mockExecuteScan).toHaveBeenCalledTimes(1);
   });
 });
 
