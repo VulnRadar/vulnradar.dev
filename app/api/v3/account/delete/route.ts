@@ -33,23 +33,40 @@ export const POST = withErrorHandling(async (request: Request) => {
   // before deletion. Without this, a stolen session cookie is enough
   // to permanently destroy the account. The grace-period follow-up
   // (mark-disabled-then-purge-after-7d) is tracked separately.
-  const parsed = await parseBody<{ currentPassword?: string }>(request);
-  if (!parsed.success) return ApiResponse.badRequest(parsed.error);
-  const { currentPassword } = parsed.data;
-  if (typeof currentPassword !== "string" || currentPassword.length === 0) {
-    return ApiResponse.badRequest(
-      "Re-enter your password to confirm account deletion.",
-    );
-  }
-  const pwRow = await pool.query<{ password_hash: string }>(
+  //
+  // An OAuth-only account (Google/GitHub/Discord sign-up that never set a
+  // password -- see users.password_hash, and the same hasPassword check
+  // the Security tab uses) has nothing to re-enter here: skip the
+  // password check for it rather than permanently locking it out of
+  // deleting its own account. The frontend's "type DELETE to confirm"
+  // step is still required either way.
+  const pwRow = await pool.query<{ password_hash: string | null }>(
     "SELECT password_hash FROM users WHERE id = $1",
     [session.userId],
   );
-  if (
-    !pwRow.rows[0] ||
-    !(await verifyPassword(currentPassword, pwRow.rows[0].password_hash))
-  ) {
+  // No row at all (a stale/corrupted session referencing an already-gone
+  // user) must fail closed, the same as a wrong password -- distinct from
+  // a real row whose password_hash is legitimately null (OAuth-only),
+  // which is the only case that skips the check below.
+  if (!pwRow.rows[0]) {
     return ApiResponse.badRequest("Password is incorrect.");
+  }
+  const hasPassword = !!pwRow.rows[0].password_hash;
+
+  if (hasPassword) {
+    const parsed = await parseBody<{ currentPassword?: string }>(request);
+    if (!parsed.success) return ApiResponse.badRequest(parsed.error);
+    const { currentPassword } = parsed.data;
+    if (typeof currentPassword !== "string" || currentPassword.length === 0) {
+      return ApiResponse.badRequest(
+        "Re-enter your password to confirm account deletion.",
+      );
+    }
+    if (
+      !(await verifyPassword(currentPassword, pwRow.rows[0]!.password_hash))
+    ) {
+      return ApiResponse.badRequest("Password is incorrect.");
+    }
   }
 
   // Shares the exact same deletion logic app/api/v3/admin/route.ts's

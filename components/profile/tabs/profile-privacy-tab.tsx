@@ -35,6 +35,7 @@ export function ProfilePrivacyTab({
   const [requestingData, setRequestingData] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleteCurrentPassword, setDeleteCurrentPassword] = useState("");
   const [deleting, setDeleting] = useState(false);
 
   // "Scans are private by default" -- the account-level counterpart to the
@@ -212,7 +213,11 @@ export function ProfilePrivacyTab({
     setDeleting(true);
     setError(null);
     try {
-      const res = await fetch(API.ACCOUNT, { method: "DELETE" });
+      const res = await fetch(API.ACCOUNT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword: deleteCurrentPassword }),
+      });
       const data = await res.json();
       if (res.ok) {
         setSuccess("Account deletion initiated. Redirecting to login...");
@@ -513,10 +518,30 @@ export function ProfilePrivacyTab({
                 autoComplete="off"
               />
             </div>
+            {user?.hasPassword !== false && (
+              <div className="flex flex-col gap-1.5 max-w-sm">
+                <Label htmlFor="delete-account-password" className="text-xs">
+                  Current password
+                </Label>
+                <Input
+                  id="delete-account-password"
+                  type="password"
+                  placeholder="Re-enter your password"
+                  value={deleteCurrentPassword}
+                  onChange={(e) => setDeleteCurrentPassword(e.target.value)}
+                  className="bg-card"
+                  autoComplete="current-password"
+                />
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <Button
                 variant="destructive"
-                disabled={deleteConfirmText !== "DELETE" || deleting}
+                disabled={
+                  deleteConfirmText !== "DELETE" ||
+                  (user?.hasPassword !== false && !deleteCurrentPassword) ||
+                  deleting
+                }
                 onClick={handleDeleteAccount}
                 className="gap-2"
               >
@@ -535,6 +560,7 @@ export function ProfilePrivacyTab({
                 onClick={() => {
                   setShowDeleteConfirm(false);
                   setDeleteConfirmText("");
+                  setDeleteCurrentPassword("");
                 }}
                 disabled={deleting}
               >

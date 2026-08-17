@@ -121,19 +121,26 @@ describe("POST /api/v3/account/delete", () => {
     expect(mockDestroySession).not.toHaveBeenCalled();
   });
 
-  it("requires currentPassword in the body", async () => {
+  it("requires currentPassword in the body when the account has a password set", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ password_hash: realHash }] });
     const res = await POST(deleteRequest({}));
     expect(res.status).toBe(400);
-    expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it("rejects deletion when the user row is missing", async () => {
+  it("rejects deletion (fails closed) when the user row is missing entirely", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     const res = await POST(deleteRequest({ currentPassword: REAL_PASSWORD }));
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json.error).toMatch(/incorrect/);
   });
+
+  it("skips the password check entirely for an OAuth-only account with no password set, using only the frontend's DELETE confirmation", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ password_hash: null }] });
+    const res = await POST(deleteRequest({})); // no currentPassword needed
+    expect(res.status).toBe(200);
+    expect(mockDestroySession).toHaveBeenCalledTimes(1);
+  }, 20000);
 
   it("rejects deletion when the password is wrong (real verifyPassword)", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ password_hash: realHash }] });
