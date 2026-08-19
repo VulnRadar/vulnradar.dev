@@ -393,7 +393,14 @@ async function querySpamhausDblUncached(
   timeoutMs: number,
 ): Promise<ThreatIntelSource> {
   const name = "Spamhaus DBL";
-  const query = `${host}.dbl.spamhaus.org`;
+  // Spamhaus blocks the public dbl.spamhaus.org zone from shared/cloud resolvers
+  // (it answers 127.255.255.x, "query blocked"). A free Data Query Service key
+  // routes the same lookup through the authenticated DQS zone, which returns
+  // real listings. Falls back to the public zone when no key is set.
+  const dqsKey = process.env.SPAMHAUS_DQS_KEY;
+  const query = dqsKey
+    ? `${host}.${dqsKey}.dbl.dq.spamhaus.net`
+    : `${host}.dbl.spamhaus.org`;
   let ips: string[];
   try {
     ips = await Promise.race([

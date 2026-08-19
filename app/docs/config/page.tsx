@@ -813,6 +813,44 @@ lib/types/
           </p>
         </DocsSubSection>
 
+        <DocsSubSection title="Threat reputation & CVE intelligence">
+          <p className="text-sm text-muted-foreground">
+            The reputation check and the software-inventory CVE correlation are
+            all optional. Each source is skipped when its key is unset, and never
+            reports a clean result it could not actually verify (a missing key or
+            error reads as unavailable, not clean).
+          </p>
+          <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
+            <li>
+              <InlineCode>WEB_RISK_API_KEY</InlineCode>: Google Web Risk (malware,
+              phishing, unwanted-software listings). Enable the Web Risk API in
+              Google Cloud and create a key.
+            </li>
+            <li>
+              <InlineCode>URLHAUS_AUTH_KEY</InlineCode>: URLhaus (abuse.ch) host
+              lookup. abuse.ch now requires a free Auth-Key: register at{" "}
+              <InlineCode>auth.abuse.ch</InlineCode>.
+            </li>
+            <li>
+              <InlineCode>SPAMHAUS_DQS_KEY</InlineCode>: Spamhaus DBL domain
+              blocklist. The public zone blocks shared and cloud resolvers, so a
+              free Data Query Service (DQS) key is required (sign up at{" "}
+              <InlineCode>spamhaus.com/free-trial</InlineCode>). The lookup then
+              uses the authenticated DQS zone{" "}
+              <InlineCode>
+                &lt;host&gt;.&lt;key&gt;.dbl.dq.spamhaus.net
+              </InlineCode>
+              .
+            </li>
+            <li>
+              <InlineCode>NVD_API_KEY</InlineCode>: optional. The software
+              inventory correlates detected versions to CVEs via OSV.dev and the
+              NVD REST API. NVD works keyless at a low rate limit; a free key from{" "}
+              <InlineCode>nvd.nist.gov/developers</InlineCode> raises it.
+            </li>
+          </ul>
+        </DocsSubSection>
+
         <DocsSubSection title="BrowserBase (live browser sessions)">
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
