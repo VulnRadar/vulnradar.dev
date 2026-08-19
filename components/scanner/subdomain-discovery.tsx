@@ -8,6 +8,7 @@ import {
   ExternalLink,
   ChevronDown,
   ChevronRight,
+  Globe,
   Radar,
   RefreshCw,
   Clock,
@@ -168,7 +169,9 @@ export function SubdomainDiscovery({
   // Auto-discovered (and shared) results start expanded so the subdomains are
   // visible immediately; an owner view with nothing discovered yet stays
   // collapsed behind the "Discover subdomains" button.
-  const [expanded, setExpanded] = useState(readOnly || !!initialResult);
+  // Collapsed by default on every page, like the other result panels. A manual
+  // Discover/refresh still expands it (setExpanded(true) in handleDiscover).
+  const [expanded, setExpanded] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState("");
@@ -306,6 +309,10 @@ export function SubdomainDiscovery({
         <div className="rounded-md border border-border bg-card p-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-start gap-2.5">
+              <Globe
+                aria-hidden
+                className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
+              />
               <div>
                 <h3 className="text-sm font-semibold text-foreground">
                   Subdomain discovery
@@ -388,6 +395,10 @@ export function SubdomainDiscovery({
           onClick={() => setExpanded(!expanded)}
           className="flex items-center gap-2 w-full px-4 py-3 text-left hover:bg-muted/50 transition-colors"
         >
+          <Globe
+            aria-hidden
+            className="h-4 w-4 shrink-0 text-muted-foreground"
+          />
           <span className="text-sm font-semibold text-foreground flex-1">
             Subdomain discovery
           </span>

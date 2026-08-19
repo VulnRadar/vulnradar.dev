@@ -1,7 +1,13 @@
 "use client";
 
 import { useId, useState } from "react";
-import { ChevronDown, ChevronRight, Loader2, RefreshCw } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Loader2,
+  RefreshCw,
+  Server,
+} from "lucide-react";
 import type { ClosedPort, PortScanResult } from "@/lib/scanner/port-scan";
 import { API } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
@@ -82,6 +88,10 @@ export function PortScanPanel({
         aria-controls={panelId}
         className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
+        <Server
+          aria-hidden
+          className="h-4 w-4 shrink-0 text-muted-foreground"
+        />
         <span className="flex-1 text-sm font-medium text-foreground">
           Open ports
         </span>
