@@ -10,7 +10,8 @@ import {
   type ApiKeyScope,
 } from "@/lib/api/api-key-scopes";
 import { requestCancel, finalizeScanFailure } from "@/lib/scanner/scan-jobs";
-import type { ScanJobStatus } from "@/lib/scanner/types";
+import type { ScanJobStatus, Vulnerability } from "@/lib/scanner/types";
+import { attachRemediation } from "@/lib/scanner/remediation-store";
 
 interface ScanHistoryRow {
   id: number;
@@ -183,11 +184,20 @@ export async function GET(
       "SELECT tag, source FROM scan_tags WHERE scan_id = $1 AND user_id = $2 ORDER BY source, tag",
       [row.id, row.user_id],
     );
+    // Cross-rescan remediation: getOwnedScan already scoped this to the
+    // owner, so attach their current per-finding status by stable
+    // finding_id -- a finding marked "fixed" on an earlier scan of this
+    // target shows as "fixed" on this freshly completed one too.
+    const findingsWithRemediation = await attachRemediation(
+      row.user_id,
+      row.url,
+      (row.findings ?? []) as Vulnerability[],
+    );
     responseBody.result = {
       url: row.url,
       scannedAt: row.scanned_at,
       duration: row.duration,
-      findings: row.findings ?? [],
+      findings: findingsWithRemediation,
       summary: row.summary ?? {
         critical: 0,
         high: 0,

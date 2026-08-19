@@ -20,6 +20,12 @@ import { cn } from "@/lib/ui/utils";
 import { copyToClipboard } from "@/lib/ui/clipboard";
 import { API } from "@/lib/config/constants";
 import {
+  REMEDIATION_STATUSES,
+  REMEDIATION_LABELS,
+  type RemediationStatus,
+  type FindingRemediation,
+} from "@/lib/scanner/remediation";
+import {
   getQueryParam,
   removeQueryParam,
   QUERY_CHANGE_EVENT,
@@ -210,6 +216,242 @@ function FindingFeedback({
   );
 }
 
+/**
+ * The owner's per-finding remediation lifecycle: Open / In progress / Fixed
+ * / Accepted risk / Won't fix, plus an optional note and free-text assignee,
+ * saved via app/api/v3/scan/remediation/route.ts. Distinct from
+ * FindingFeedback above: that records whether the finding is accurate (and
+ * feeds the global confidence model); THIS records what the user has done
+ * about it, and persists across rescans of the same target because it is
+ * keyed on the stable finding_id (see lib/scanner/remediation.ts).
+ *
+ * Same gating as FindingFeedback: only rendered when the caller supplies
+ * `findingUrl` (the owner's own authenticated scan), so the public host
+ * page and shared share-token page never show it.
+ */
+function RemediationControl({
+  findingId,
+  findingUrl,
+  initial,
+  onChanged,
+}: {
+  findingId: string;
+  findingUrl: string;
+  /** Server-attached current status for this finding, if any. */
+  initial?: FindingRemediation;
+  /** Called after a status/note change saves, so the list badge can update
+   *  in-session without a refetch. `null` means reset to the implicit
+   *  "open" default (the row was cleared). */
+  onChanged?: (
+    findingId: string,
+    remediation: FindingRemediation | null,
+  ) => void;
+}) {
+  const [status, setStatus] = useState<RemediationStatus>(
+    initial?.status ?? "open",
+  );
+  const [note, setNote] = useState(initial?.note ?? "");
+  const [assignee, setAssignee] = useState(initial?.assignee ?? "");
+  const [saving, setSaving] = useState(false);
+  const [savedDetails, setSavedDetails] = useState(false);
+  const [error, setError] = useState(false);
+  const noteFieldId = useId();
+  const assigneeFieldId = useId();
+
+  // Freshest value wins: seed from the server-attached status, then confirm
+  // against the API on mount (it may have changed in another tab/session).
+  useEffect(() => {
+    let cancelled = false;
+    fetch(
+      `${API.SCAN_REMEDIATION}?url=${encodeURIComponent(findingUrl)}&findingId=${encodeURIComponent(findingId)}`,
+    )
+      .then((res) => (res.ok ? res.json() : null))
+      .then(
+        (
+          data: {
+            remediation?: {
+              status: RemediationStatus;
+              note: string | null;
+              assignee: string | null;
+            }[];
+          } | null,
+        ) => {
+          if (cancelled || !data?.remediation?.length) return;
+          const row = data.remediation[0];
+          setStatus(row.status);
+          setNote(row.note ?? "");
+          setAssignee(row.assignee ?? "");
+        },
+      )
+      .catch(() => {
+        /* best-effort preload; the control still works without it */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [findingId, findingUrl]);
+
+  async function save(
+    nextStatus: RemediationStatus,
+    opts: { note: string; assignee: string },
+  ) {
+    setSaving(true);
+    setError(false);
+    setSavedDetails(false);
+    try {
+      if (nextStatus === "open") {
+        const res = await fetch(
+          `${API.SCAN_REMEDIATION}?url=${encodeURIComponent(findingUrl)}&findingId=${encodeURIComponent(findingId)}`,
+          { method: "DELETE" },
+        );
+        if (!res.ok) throw new Error("Failed to clear status");
+        onChanged?.(findingId, null);
+      } else {
+        const res = await fetch(API.SCAN_REMEDIATION, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            findingId,
+            findingUrl,
+            status: nextStatus,
+            note: opts.note.trim() || undefined,
+            assignee: opts.assignee.trim() || undefined,
+          }),
+        });
+        if (!res.ok) throw new Error("Failed to save remediation status");
+        onChanged?.(findingId, {
+          status: nextStatus,
+          note: opts.note.trim() || null,
+          assignee: opts.assignee.trim() || null,
+        });
+      }
+      return true;
+    } catch {
+      setError(true);
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function selectStatus(next: RemediationStatus) {
+    setStatus(next);
+    await save(next, { note, assignee });
+  }
+
+  async function saveDetails() {
+    const ok = await save(status, { note, assignee });
+    if (ok) {
+      setSavedDetails(true);
+      setTimeout(() => setSavedDetails(false), 2000);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-md border border-primary/20 bg-primary/5 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span className="text-xs font-semibold text-foreground">
+          Your remediation tracking
+        </span>
+        <div
+          role="group"
+          aria-label="Remediation status"
+          className="flex flex-wrap gap-1.5"
+        >
+          {REMEDIATION_STATUSES.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => selectStatus(s)}
+              disabled={saving}
+              aria-pressed={status === s}
+              className={cn(
+                "inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-60",
+                status === s
+                  ? "border-primary/40 bg-primary/15 text-primary"
+                  : "border-border/60 bg-card text-muted-foreground hover:border-border hover:text-foreground",
+                FOCUS_RING,
+              )}
+            >
+              {REMEDIATION_LABELS[s]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <p className="text-[11px] leading-relaxed text-muted-foreground">
+        Kept separate from the accuracy feedback above, and remembered the
+        next time you scan this target.
+      </p>
+
+      {status !== "open" && (
+        <div className="flex flex-col gap-2 border-t border-primary/15 pt-3">
+          <div className="flex flex-col gap-1.5 sm:flex-row">
+            <div className="flex flex-1 flex-col gap-1">
+              <label
+                htmlFor={noteFieldId}
+                className="text-[11px] font-medium text-muted-foreground"
+              >
+                Note (optional)
+              </label>
+              <input
+                id={noteFieldId}
+                type="text"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                maxLength={2000}
+                placeholder="e.g. patched in release 4.2, ticket VR-118"
+                className={cn(
+                  "h-8 rounded-md border border-border bg-card px-2.5 text-xs text-foreground placeholder:text-muted-foreground",
+                  FOCUS_RING,
+                )}
+              />
+            </div>
+            <div className="flex flex-col gap-1 sm:w-44">
+              <label
+                htmlFor={assigneeFieldId}
+                className="text-[11px] font-medium text-muted-foreground"
+              >
+                Assignee (optional)
+              </label>
+              <input
+                id={assigneeFieldId}
+                type="text"
+                value={assignee}
+                onChange={(e) => setAssignee(e.target.value)}
+                maxLength={120}
+                placeholder="name or handle"
+                className={cn(
+                  "h-8 rounded-md border border-border bg-card px-2.5 text-xs text-foreground placeholder:text-muted-foreground",
+                  FOCUS_RING,
+                )}
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={saveDetails}
+              disabled={saving}
+              className={cn("h-7 px-2.5 text-xs", FOCUS_RING)}
+            >
+              {saving ? "Saving..." : savedDetails ? "Saved" : "Save details"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <span className="text-xs text-[hsl(var(--severity-high))]">
+          Couldn&apos;t save that, try again.
+        </span>
+      )}
+    </div>
+  );
+}
+
 interface IssueDetailProps {
   issue: Vulnerability;
   onBack: () => void;
@@ -220,6 +462,13 @@ interface IssueDetailProps {
   scanHistoryId?: string | number | null;
   /** Forwarded to FindingFeedback -- see its own doc comment. */
   onVerdictChanged?: () => void;
+  /** Forwarded to RemediationControl: called after the owner changes this
+   *  finding's remediation status, so the caller can update the list badge
+   *  in-session. `null` means the status was cleared back to open. */
+  onRemediationChanged?: (
+    findingId: string,
+    remediation: FindingRemediation | null,
+  ) => void;
 }
 
 function CodeBlock({ code, language }: { code: string; language: string }) {
@@ -329,6 +578,7 @@ export function IssueDetail({
   findingUrl,
   scanHistoryId,
   onVerdictChanged,
+  onRemediationChanged,
 }: IssueDetailProps) {
   const [activeTab, setActiveTab] = useState(0);
   const tone = SEVERITY_TONE[issue.severity] ?? SEVERITY_TONE.info;
@@ -489,6 +739,16 @@ export function IssueDetail({
           findingUrl={findingUrl}
           scanHistoryId={scanHistoryId}
           onVerdictChanged={onVerdictChanged}
+        />
+      )}
+
+      {findingUrl && (
+        <RemediationControl
+          key={issue.id}
+          findingId={issue.id}
+          findingUrl={findingUrl}
+          initial={issue.remediation}
+          onChanged={onRemediationChanged}
         />
       )}
 

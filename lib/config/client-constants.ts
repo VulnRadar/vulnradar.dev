@@ -177,6 +177,13 @@ export const API = {
    *  (app/api/v3/scan/feedback/route.ts). GET reads back the caller's own
    *  verdicts; POST upserts one. */
   SCAN_FEEDBACK: `/api/${API_VERSION}/scan/feedback`,
+  /** The owner's per-finding remediation status (Open / In progress / Fixed
+   *  / Accepted risk / Won't fix) with an optional note + free-text
+   *  assignee, keyed on the stable finding_id so it persists across rescans
+   *  (app/api/v3/scan/remediation/route.ts). GET reads the caller's own
+   *  statuses for a target/finding; POST upserts one (status 'open' clears
+   *  it); DELETE clears one. Distinct from SCAN_FEEDBACK's accuracy verdict. */
+  SCAN_REMEDIATION: `/api/${API_VERSION}/scan/remediation`,
   AI_INFO: `/api/${API_VERSION}/ai/info`,
   ACCOUNT: `/api/${API_VERSION}/account/delete`,
   FINDING_TYPES: `/api/${API_VERSION}/finding-types`,

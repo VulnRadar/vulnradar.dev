@@ -34,6 +34,8 @@ describe("2.0.0-to-3.0.0 migration: exports", () => {
         "ai_conversations",
         "browser_sessions",
         "scan_finding_feedback",
+        // Per-finding remediation status lifecycle, persisted across rescans.
+        "finding_remediation",
         "user_notifications",
         "host_reputation",
         // Stable per-user-per-URL token for the auto-updating embed badge.
@@ -65,7 +67,27 @@ describe("2.0.0-to-3.0.0 migration: exports", () => {
         "ai_credit_purchases",
       ]),
     );
-    expect(names).toHaveLength(17);
+    expect(names).toHaveLength(18);
+  });
+
+  it("upgrade adds the finding_remediation table (per-finding remediation status lifecycle)", () => {
+    const table = migration.upgrade.addTables.find(
+      (t: { name: string }) => t.name === "finding_remediation",
+    );
+    expect(table).toBeDefined();
+    expect(table?.sql).toContain(
+      "user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE",
+    );
+    expect(table?.sql).toContain("finding_id TEXT NOT NULL");
+    expect(table?.sql).toContain("finding_url TEXT NOT NULL");
+    expect(table?.sql).toContain(
+      "CHECK (status IN ('open', 'in_progress', 'fixed', 'accepted_risk', 'wont_fix'))",
+    );
+    // Keyed on the stable (user_id, finding_id, finding_url), NOT the scan
+    // row id -- this is what makes a status survive rescans of the target.
+    expect(table?.sql).toContain(
+      "ON finding_remediation (user_id, finding_id, finding_url)",
+    );
   });
 
   it("upgrade adds the ai_credit_purchases table (AI credit purchase idempotency ledger)", () => {
@@ -260,6 +282,7 @@ describe("2.0.0-to-3.0.0 migration: exports", () => {
         "ai_conversations",
         "browser_sessions",
         "scan_finding_feedback",
+        "finding_remediation",
         "user_notifications",
         "host_reputation",
         "host_badges",
@@ -277,7 +300,7 @@ describe("2.0.0-to-3.0.0 migration: exports", () => {
       ]),
     );
     expect(migration.downgrade.dropTables).not.toContain("scan_credentials");
-    expect(migration.downgrade.dropTables).toHaveLength(17);
+    expect(migration.downgrade.dropTables).toHaveLength(18);
   });
 
   it("downgrade drops every AUDIT-009 migration-01 column, except columns on tables it already drops wholesale", () => {
@@ -351,6 +374,24 @@ describe("2.0.0-to-3.0.0 migration: registry + planner wiring", () => {
     expect(v.fingerprint.tables.has("github_connections")).toBe(true);
     expect(v.fingerprint.tables.has("github_review_usage")).toBe(true);
     expect(v.fingerprint.tables.has("ai_usage")).toBe(true);
+  });
+
+  it("the 3.0.0 fingerprint includes finding_remediation and its columns", () => {
+    const v = getVersion("3.0.0");
+    expect(v.fingerprint.tables.has("finding_remediation")).toBe(true);
+    expect(v.fingerprint.columns.finding_remediation).toEqual(
+      new Set([
+        "id",
+        "user_id",
+        "finding_id",
+        "finding_url",
+        "status",
+        "note",
+        "assignee",
+        "created_at",
+        "updated_at",
+      ]),
+    );
   });
 
   it("the 3.0.0 fingerprint's ai_usage columns match the unified AI usage table shape", () => {
@@ -461,8 +502,10 @@ describe("2.0.0-to-3.0.0 migration: registry + planner wiring", () => {
     // + 1 for admin-promoted auto-tag rules (promoted_auto_tag_rules),
     // + 1 for the AI credit purchase idempotency ledger
     // (ai_credit_purchases),
-    // + 1 for the auto-updating embed badge tokens (host_badges).
-    expect(createTableSteps.length).toBe(17);
+    // + 1 for the auto-updating embed badge tokens (host_badges),
+    // + 1 for the per-finding remediation status lifecycle
+    // (finding_remediation).
+    expect(createTableSteps.length).toBe(18);
     expect(
       createTableSteps.some((s: { label: string }) =>
         s.label.includes("scan_credentials"),
@@ -476,7 +519,7 @@ describe("2.0.0-to-3.0.0 migration: registry + planner wiring", () => {
     const dropTableSteps = plan.steps.filter(
       (s: { kind: string }) => s.kind === "dropTable",
     );
-    expect(dropTableSteps.length).toBe(17);
+    expect(dropTableSteps.length).toBe(18);
     expect(
       dropTableSteps.every((s: { destructive: boolean }) => s.destructive),
     ).toBe(true);

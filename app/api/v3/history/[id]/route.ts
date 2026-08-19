@@ -17,6 +17,8 @@ import {
   getAssignableTeamIds,
 } from "@/lib/auth/team-resource-access";
 import { resolveScanRow } from "@/lib/history/resolve-scan";
+import { attachRemediation } from "@/lib/scanner/remediation-store";
+import type { Vulnerability } from "@/lib/scanner/types";
 
 export async function GET(
   request: NextRequest,
@@ -118,6 +120,17 @@ export async function GET(
       await recordUsage(apiKeyId);
     }
 
+    // Cross-rescan remediation: attach the owner's current per-finding
+    // status (fixed / accepted_risk / ...) by stable finding_id, so a
+    // finding they marked on an earlier scan of this target shows the same
+    // status here. Owner-only -- deliberately NOT done in the team-member
+    // branch below, since remediation tracking is private to its owner.
+    const ownedFindings = await attachRemediation(
+      authedUserId,
+      scan.url,
+      (scan.findings || []) as Vulnerability[],
+    );
+
     return NextResponse.json({
       // Internal numeric id: the opaque public_id addresses this route, but
       // per-finding feedback (POST /api/v3/scan/feedback) keys its ownership
@@ -128,7 +141,7 @@ export async function GET(
       scannedAt: scan.scanned_at,
       duration: scan.duration,
       summary: scan.summary,
-      findings: scan.findings || [],
+      findings: ownedFindings,
       responseHeaders: scan.response_headers || undefined,
       notes: scan.notes || "",
       userId: scan.user_id,

@@ -98,6 +98,11 @@ const MIGRATE_TABLES = [
   "ai_conversations",
   "browser_sessions",
   "scan_finding_feedback",
+  // Per-finding remediation status (open / in_progress / fixed / ...),
+  // keyed on the stable finding_id so it persists across rescans. Copied
+  // for the same "whatever exists in the source" consistency as the other
+  // v3.0.0-only tables; references users, so it comes after users above.
+  "finding_remediation",
   "user_notifications",
   "host_reputation",
   "github_connections",
@@ -670,7 +675,7 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
     const LABELS = {
       "1.0.0": "v1 baseline (19 tables, pre-MVP)",
       "2.0.0": "v2 / production schema (34 tables)",
-      "3.0.0": "v3.0 / production schema (45 tables)",
+      "3.0.0": "v3.0 / production schema (46 tables)",
     };
     log("");
     log(

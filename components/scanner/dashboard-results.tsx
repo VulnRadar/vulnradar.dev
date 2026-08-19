@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { AlertTriangle, Check, Copy, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import dynamic from "next/dynamic";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
+import type { FindingRemediation } from "@/lib/scanner/remediation";
 import type { ScanAuthReport } from "@/lib/scanner/auth/types";
 import {
   HistoryNotes,
@@ -93,16 +94,49 @@ export function DashboardResults({
   // displayResult below falls back to whatever result.aiSummary already had
   // (e.g. re-opening a scan that was summarized in an earlier session).
   const [aiSummary, setAiSummary] = useState<string | undefined>(undefined);
+  // In-session remediation overrides so the list badge updates the moment a
+  // status changes in the detail view, without refetching the whole scan.
+  // `null` value means "cleared back to open". Merged over the server-
+  // attached result.findings[].remediation below.
+  const [remediationOverrides, setRemediationOverrides] = useState<
+    Map<string, FindingRemediation | null>
+  >(new Map());
+
+  const findingsWithRemediation = useMemo(() => {
+    if (remediationOverrides.size === 0) return result.findings;
+    return result.findings.map((f) => {
+      if (!remediationOverrides.has(f.id)) return f;
+      const override = remediationOverrides.get(f.id);
+      return override
+        ? { ...f, remediation: override }
+        : { ...f, remediation: undefined };
+    });
+  }, [result.findings, remediationOverrides]);
+
+  const handleRemediationChanged = useCallback(
+    (findingId: string, remediation: FindingRemediation | null) => {
+      setRemediationOverrides((prev) => {
+        const next = new Map(prev);
+        next.set(findingId, remediation);
+        return next;
+      });
+    },
+    [],
+  );
 
   if (selectedIssue) {
+    const displayIssue =
+      findingsWithRemediation.find((f) => f.id === selectedIssue.id) ??
+      selectedIssue;
     return (
       <div className="pt-6">
         <IssueDetail
-          issue={selectedIssue}
+          issue={displayIssue}
           onBack={() => onSelectIssue(null)}
           findingUrl={result.url}
           scanHistoryId={scanHistoryId}
           onVerdictChanged={onVerdictChanged}
+          onRemediationChanged={handleRemediationChanged}
         />
       </div>
     );
@@ -234,7 +268,10 @@ export function DashboardResults({
       </div>
 
       {result.findings.length > 0 ? (
-        <ResultsList findings={result.findings} onSelectIssue={onSelectIssue} />
+        <ResultsList
+          findings={findingsWithRemediation}
+          onSelectIssue={onSelectIssue}
+        />
       ) : (
         <div
           className={cn(

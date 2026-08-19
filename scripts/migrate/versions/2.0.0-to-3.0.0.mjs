@@ -254,6 +254,33 @@ const SCAN_FINDING_FEEDBACK_SQL = `
     ON scan_finding_feedback (user_id, created_at DESC);
 `;
 
+// Per-finding remediation lifecycle (the owner's own status tracking:
+// open / in_progress / fixed / accepted_risk / wont_fix + optional note +
+// free-text assignee). Private to the user (ON DELETE CASCADE, unlike
+// scan_finding_feedback's SET NULL global-learning row). Keyed on
+// (user_id, finding_id, finding_url), NOT scan_history_id, so a status
+// persists across rescans of the same target. `open` is the implicit
+// default (absence of a row).
+const FINDING_REMEDIATION_SQL = `
+  CREATE TABLE IF NOT EXISTS finding_remediation (
+    id BIGSERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    finding_id TEXT NOT NULL,
+    finding_url TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('open', 'in_progress', 'fixed', 'accepted_risk', 'wont_fix')),
+    note TEXT,
+    assignee TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_finding_remediation_unique
+    ON finding_remediation (user_id, finding_id, finding_url);
+
+  CREATE INDEX IF NOT EXISTS idx_finding_remediation_user
+    ON finding_remediation (user_id, updated_at DESC);
+`;
+
 const USER_NOTIFICATIONS_SQL = `
   CREATE TABLE IF NOT EXISTS user_notifications (
     id SERIAL PRIMARY KEY,
@@ -505,7 +532,9 @@ const BACKFILL_STAFF_PLAN_SQL = `
 export const upgrade = {
   description:
     "Squashed v2.0.0 -> v3.0.0: ai_conversations, browser_sessions, " +
-    "scan_finding_feedback, user_notifications, host_reputation, " +
+    "scan_finding_feedback, finding_remediation (per-finding remediation " +
+    "status lifecycle, persisted across rescans), user_notifications, " +
+    "host_reputation, " +
     "host_badges (stable per-user-per-URL tokens for the auto-updating " +
     "embed badge), " +
     "github_connections, github_review_usage, processed_stripe_events, " +
@@ -541,6 +570,7 @@ export const upgrade = {
     { name: "ai_conversations", sql: V3_NEW_TABLES.ai_conversations },
     { name: "browser_sessions", sql: V3_NEW_TABLES.browser_sessions },
     { name: "scan_finding_feedback", sql: SCAN_FINDING_FEEDBACK_SQL },
+    { name: "finding_remediation", sql: FINDING_REMEDIATION_SQL },
     { name: "user_notifications", sql: USER_NOTIFICATIONS_SQL },
     { name: "host_reputation", sql: HOST_REPUTATION_SQL },
     { name: "host_badges", sql: HOST_BADGES_SQL },
@@ -1177,6 +1207,7 @@ export const downgrade = {
     "host_reputation",
     "host_badges",
     "user_notifications",
+    "finding_remediation",
     "scan_finding_feedback",
     "browser_sessions",
     "ai_conversations",

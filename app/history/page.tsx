@@ -34,6 +34,7 @@ import {
 } from "@/lib/ui/url-state";
 import { useAuth } from "@/components/providers/auth-provider";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
+import type { FindingRemediation } from "@/lib/scanner/remediation";
 import { mapHistoryDetailResponse } from "@/lib/scanner/history-detail";
 
 import {
@@ -363,6 +364,27 @@ export default function HistoryPage() {
     setScanDetail((prev) => (prev ? { ...prev, aiSummary } : prev));
   }, []);
 
+  // Owner changed a finding's remediation status in the detail view: patch
+  // that finding in place so the list badge reflects it without a refetch.
+  // `null` clears the status back to open (drops the remediation field).
+  const handleRemediationChanged = useCallback(
+    (findingId: string, remediation: FindingRemediation | null) => {
+      setScanDetail((prev) =>
+        prev
+          ? {
+              ...prev,
+              findings: prev.findings.map((f) =>
+                f.id === findingId
+                  ? { ...f, remediation: remediation ?? undefined }
+                  : f,
+              ),
+            }
+          : prev,
+      );
+    },
+    [],
+  );
+
   const handleSaveNotes = async (notes: string) => {
     if (!selectedScanId) return;
     const res = await fetch(`${API.HISTORY}/${selectedScanId}`, {
@@ -427,6 +449,7 @@ export default function HistoryPage() {
                     }
                     scanHistoryId={scanNumericId}
                     onVerdictChanged={handleVerdictChanged}
+                    onRemediationChanged={handleRemediationChanged}
                   />
                 ) : (
                   <>

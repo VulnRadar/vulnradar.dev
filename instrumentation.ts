@@ -1391,6 +1391,49 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         });
 
       // ════════════════════════════════════════════════════════════════
+      // FINDING REMEDIATION - the OWNER's per-finding status lifecycle
+      // (open / in_progress / fixed / accepted_risk / wont_fix + optional
+      // note + free-text assignee). Private to the user (ON DELETE CASCADE,
+      // unlike scan_finding_feedback which is SET NULL because it feeds the
+      // global learning model). Keyed on (user_id, finding_id, finding_url),
+      // NOT scan_history_id, so a status set on one scan persists across
+      // rescans of the same target -- finding_id is the stable
+      // <checkId>--<hash> id from generateId (lib/scanner/_helpers.ts).
+      // `open` is the implicit default: absence of a row.
+      //
+      // Part of the v2.0.0-to-3.0.0.mjs squashed migration, applied here too
+      // so a fresh `docker compose up` gets this table without an explicit
+      // `npm run db:migrate` -- same auto-create-on-boot + explicit-migration
+      // dual path as scan_finding_feedback above.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        CREATE TABLE IF NOT EXISTS finding_remediation (
+          id BIGSERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          finding_id TEXT NOT NULL,
+          finding_url TEXT NOT NULL,
+          status TEXT NOT NULL CHECK (status IN ('open', 'in_progress', 'fixed', 'accepted_risk', 'wont_fix')),
+          note TEXT,
+          assignee TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_finding_remediation_unique
+          ON finding_remediation (user_id, finding_id, finding_url);
+        CREATE INDEX IF NOT EXISTS idx_finding_remediation_user
+          ON finding_remediation (user_id, updated_at DESC);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create/verify finding_remediation (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ════════════════════════════════════════════════════════════════
       // SCAN CREDENTIALS REMOVED (v5.5.0) — authenticated scanning is
       // fully ephemeral: a caller supplies login material directly in a
       // single scan request (see app/api/v3/scan/authenticated/route.ts

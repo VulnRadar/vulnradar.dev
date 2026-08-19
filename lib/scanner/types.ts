@@ -12,6 +12,7 @@
 
 import type { DnsRecords } from "./dns-records";
 import type { DiscoveryResult } from "./subdomain-types";
+import type { FindingRemediation } from "./remediation";
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
@@ -174,6 +175,18 @@ export interface Vulnerability {
   cvssVector?: string;
   /** CVSS 3.1 base score (0.0-10.0) computed from cvssVector via the spec's own Roundup formula. */
   cvssScore?: number;
+  /**
+   * The OWNER's remediation tracking for this finding (Open / In progress /
+   * Fixed / Accepted risk / Won't fix, plus an optional note and free-text
+   * assignee). Distinct from `aiVerdict` and from the accuracy feedback:
+   * this is the user's own "what have I done about it" status, keyed on the
+   * stable finding_id so it persists across rescans of the same target (see
+   * lib/scanner/remediation.ts). Attached server-side only on an owner's own
+   * result-load (history/[id], scan/status/[id]); never populated on the
+   * public /shared or /host views, so it never leaks. Absent when the owner
+   * has set no status (the implicit "open" default).
+   */
+  remediation?: FindingRemediation;
 }
 
 export interface ScanResult {

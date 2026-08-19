@@ -18,6 +18,7 @@ import {
   SEVERITY_TONE,
 } from "@/components/scanner/severity-badge";
 import type { Severity, Vulnerability, Category } from "@/lib/scanner/types";
+import { REMEDIATION_BADGE } from "@/lib/scanner/remediation";
 import { cn } from "@/lib/ui/utils";
 import { SEVERITY_PRIORITY } from "@/lib/config/constants";
 import { CATEGORY_META } from "@/lib/scanner/category-meta";
@@ -532,7 +533,19 @@ function FindingRow({
   const tone = SEVERITY_TONE[issue.severity] ?? SEVERITY_TONE.info;
   const verdict = issue.aiVerdict ? AI_VERDICT[issue.aiVerdict] : null;
   const VerdictIcon = verdict?.icon;
-  const demoted = issue.aiVerdict === "possible_fp";
+  const remediation = issue.remediation;
+  const remediationBadge =
+    remediation && remediation.status !== "open"
+      ? REMEDIATION_BADGE[remediation.status]
+      : null;
+  // Findings the user has closed out (fixed / accepted / won't fix) dim
+  // slightly so the still-open work stands out, but stay fully visible and
+  // clickable. In-progress is active work, so it is not dimmed.
+  const resolved =
+    remediation?.status === "fixed" ||
+    remediation?.status === "accepted_risk" ||
+    remediation?.status === "wont_fix";
+  const demoted = issue.aiVerdict === "possible_fp" || resolved;
 
   return (
     <button
@@ -585,6 +598,16 @@ function FindingRow({
           <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
             {categoryLabel(issue.category)}
           </span>
+          {remediationBadge && (
+            <span
+              className={cn(
+                "inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-medium",
+                remediationBadge.className,
+              )}
+            >
+              {remediationBadge.label}
+            </span>
+          )}
           {verdict && VerdictIcon && (
             <span
               className={cn(

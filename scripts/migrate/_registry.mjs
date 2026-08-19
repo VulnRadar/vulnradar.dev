@@ -196,7 +196,7 @@ export const VERSIONS = [
   },
   {
     name: "3.0.0",
-    label: "v3.0 / production schema (46 tables)",
+    label: "v3.0 / production schema (47 tables)",
     // Squashed target: this used to be reached via nine intermediate
     // schema versions (3.0.0 through 5.9.0 under the old numbering), none
     // of which ever ran in production. This fingerprint is the exact NET
@@ -252,6 +252,12 @@ export const VERSIONS = [
         "ai_conversations",
         "browser_sessions",
         "scan_finding_feedback",
+        // Per-finding remediation status lifecycle (open / in_progress /
+        // fixed / accepted_risk / wont_fix), keyed on the stable finding_id
+        // so it persists across rescans. Folded into this same squashed step
+        // for the same "schema v3.0.0 never shipped" reason as the tables
+        // below it.
+        "finding_remediation",
         "user_notifications",
         "host_reputation",
         "host_badges",
@@ -476,6 +482,17 @@ export const VERSIONS = [
           "user_id",
           "tokens",
           "credited_at",
+        ]),
+        finding_remediation: new Set([
+          "id",
+          "user_id",
+          "finding_id",
+          "finding_url",
+          "status",
+          "note",
+          "assignee",
+          "created_at",
+          "updated_at",
         ]),
         // Auto tags (lib/tags/auto-tags.ts) -- see
         // scripts/migrate/versions/2.0.0-to-3.0.0.mjs's header comment.
