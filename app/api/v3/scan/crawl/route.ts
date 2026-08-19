@@ -12,10 +12,6 @@ import {
   API_KEY_SCOPES,
 } from "@/lib/api/api-key-scopes";
 import { executeCrawlScan } from "@/lib/scanner/execute-crawl-scan";
-import {
-  VALID_SERVICE_PROBES,
-  SERVICE_PROBE_PORTS,
-} from "@/lib/scanner/execute-scan";
 import pool from "@/lib/database/db";
 import {
   APP_NAME,
@@ -191,47 +187,6 @@ export async function POST(request: NextRequest) {
   // ExecuteCrawlScanParams.portScan). Off unless explicitly requested and held
   // to the same verified-domain gate active probing uses, enforced below.
   const portScan = body.portScan === true;
-  // Service probes, parsed exactly like POST /api/v3/scan so a deep/crawl
-  // scan honors the same ?probes= selection (both string "ssh:22" and
-  // { id, port } object forms). Previously dropped here, so a deep scan with
-  // probes selected produced nothing.
-  const requestedProbes: Array<{ service: string; port: number }> = Array.isArray(
-    body.probes,
-  )
-    ? body.probes
-        .map((p: unknown) => {
-          if (typeof p === "string") {
-            const [idPart, portPart] = p.split(":");
-            const service = idPart;
-            if (!VALID_SERVICE_PROBES.has(service)) return null;
-            const port = portPart
-              ? parseInt(portPart, 10)
-              : SERVICE_PROBE_PORTS[service];
-            if (!Number.isFinite(port) || port < 1 || port > 65535) return null;
-            return { service, port };
-          }
-          if (
-            p &&
-            typeof p === "object" &&
-            "id" in (p as Record<string, unknown>) &&
-            typeof (p as Record<string, unknown>).id === "string" &&
-            VALID_SERVICE_PROBES.has((p as Record<string, unknown>).id as string)
-          ) {
-            const obj = p as { id: string; port?: number };
-            const port =
-              typeof obj.port === "number" && obj.port >= 1 && obj.port <= 65535
-                ? obj.port
-                : SERVICE_PROBE_PORTS[obj.id];
-            return { service: obj.id, port };
-          }
-          return null;
-        })
-        .filter(
-          (
-            p: { service: string; port: number } | null,
-          ): p is { service: string; port: number } => p !== null,
-        )
-    : [];
 
   if (!url || typeof url !== "string") {
     return NextResponse.json({ error: "URL is required" }, { status: 400 });
@@ -366,7 +321,6 @@ export async function POST(request: NextRequest) {
     mainOrigin: mainUrl.origin,
     selectedUrls,
     scanners,
-    requestedProbes,
     authedUserId,
     isApiKeyAuth,
     captureScreenshot,

@@ -7,8 +7,6 @@ import {
   isRawIpv4,
   isValidUrl,
   getProtocolType,
-  VALID_SERVICE_PROBES,
-  SERVICE_PROBE_PORTS,
 } from "@/lib/scanner/execute-scan";
 import { getSession } from "@/lib/auth";
 import {
@@ -220,7 +218,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { url, scanners, probes, isPublic } = body;
+    const { url, scanners, isPublic } = body;
     // Opt-in page screenshot (see ExecuteScanParams.captureScreenshot). Only
     // ever true when the caller explicitly asked for it; a screenshot spins
     // up a real, metered BrowserBase session, so it is never implied.
@@ -232,43 +230,6 @@ export async function POST(request: NextRequest) {
     const portScan = body.portScan === true;
     const selectedScanners: string[] | null =
       Array.isArray(scanners) && scanners.length > 0 ? scanners : null;
-    const requestedProbes: Array<{ service: string; port: number }> =
-      Array.isArray(probes)
-        ? probes
-            .map((p: unknown) => {
-              if (typeof p === "string") {
-                const [idPart, portPart] = p.split(":");
-                const service = idPart;
-                if (!VALID_SERVICE_PROBES.has(service)) return null;
-                const port = portPart
-                  ? parseInt(portPart, 10)
-                  : SERVICE_PROBE_PORTS[service];
-                if (!Number.isFinite(port) || port < 1 || port > 65535)
-                  return null;
-                return { service, port };
-              }
-              if (
-                p &&
-                typeof p === "object" &&
-                "id" in (p as Record<string, unknown>) &&
-                typeof (p as Record<string, unknown>).id === "string" &&
-                VALID_SERVICE_PROBES.has(
-                  (p as Record<string, unknown>).id as string,
-                )
-              ) {
-                const obj = p as { id: string; port?: number };
-                const port =
-                  typeof obj.port === "number" &&
-                  obj.port >= 1 &&
-                  obj.port <= 65535
-                    ? obj.port
-                    : SERVICE_PROBE_PORTS[obj.id];
-                return { service: obj.id, port };
-              }
-              return null;
-            })
-            .filter((p): p is { service: string; port: number } => p !== null)
-        : [];
 
     if (!url || typeof url !== "string") {
       return NextResponse.json({ error: "URL is required" }, { status: 400 });
@@ -364,8 +325,7 @@ export async function POST(request: NextRequest) {
       normalizedUrl,
       selectedScanners,
     );
-    const categoriesTotal =
-      plannedSync.length + plannedAsync.length + requestedProbes.length;
+    const categoriesTotal = plannedSync.length + plannedAsync.length;
 
     // Public unless the request explicitly says otherwise, or (when it
     // says nothing) the account's own "scans are private by default"
@@ -426,7 +386,6 @@ export async function POST(request: NextRequest) {
       protocolType,
       isRawIpTarget,
       selectedScanners,
-      requestedProbes,
       authedUserId,
       categoriesTotal,
       captureScreenshot,

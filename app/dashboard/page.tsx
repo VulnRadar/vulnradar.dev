@@ -191,7 +191,6 @@ function DashboardContent() {
     | ((
         url: string,
         crawlUrls?: string[],
-        probes?: { id: string; port: number }[],
         mode?: ScanMode,
         categoryFilter?: string[],
         auth?: InlineAuthValue,
@@ -245,9 +244,6 @@ function DashboardContent() {
   const [crawlDiscovering, setCrawlDiscovering] = useState(false);
   const [showCrawlSelector, setShowCrawlSelector] = useState(false);
   const [pendingCrawlUrl, setPendingCrawlUrl] = useState("");
-  const [pendingScanners, setPendingScanners] = useState<
-    { id: string; port: number }[] | undefined
-  >(undefined);
   const [pendingIsPublic, setPendingIsPublic] = useState<boolean | undefined>(
     undefined,
   );
@@ -401,14 +397,11 @@ function DashboardContent() {
       url,
       mode,
       scanners,
-      probes,
       auth,
       isPublic,
       captureScreenshot,
       portScan,
     } = payload;
-    const probeEntries = probes.length > 0 ? probes : undefined;
-    setPendingScanners(probeEntries);
     setPendingIsPublic(isPublic);
     setPendingScreenshot(!!captureScreenshot);
     setPendingPortScan(!!portScan);
@@ -443,7 +436,6 @@ function DashboardContent() {
     runScanRef.current?.(
       url,
       undefined,
-      probeEntries,
       mode,
       scanners,
       auth,
@@ -457,7 +449,6 @@ function DashboardContent() {
     async (
       url: string,
       crawlUrls?: string[],
-      probes?: { id: string; port: number }[],
       mode: ScanMode = "quick",
       categoryFilter?: string[],
       auth?: InlineAuthValue,
@@ -488,9 +479,6 @@ function DashboardContent() {
       setShowAiModal(false);
       setAiSummary(undefined);
 
-      const probePayload = probes?.length
-        ? probes.map((p) => `${p.id}:${p.port}`)
-        : undefined;
       const scannerPayload =
         categoryFilter && categoryFilter.length > 0
           ? categoryFilter
@@ -499,7 +487,7 @@ function DashboardContent() {
       // Authenticated scanning lives entirely behind its own request shape
       // (POST /api/v3/scan/authenticated, ephemeral login material in the
       // body, never crawls). Everything else keeps using the plain
-      // scan/crawl endpoints. Probes and crawl URLs have no meaning to the
+      // scan/crawl endpoints. Crawl URLs have no meaning to the
       // authenticated endpoint's schema, so they are left out entirely
       // rather than sent and silently dropped.
       const endpoint = auth
@@ -522,7 +510,6 @@ function DashboardContent() {
         : {
             ...(isCrawl ? { url, urls: crawlUrls } : { url }),
             ...(scannerPayload ? { scanners: scannerPayload } : {}),
-            ...(probePayload ? { probes: probePayload } : {}),
             ...(typeof isPublic === "boolean" ? { isPublic } : {}),
             // Opt-in page screenshot: only sent when true, so a normal scan
             // never even mentions it. Not applicable to the authenticated
@@ -709,7 +696,6 @@ function DashboardContent() {
     runScan(
       pendingCrawlUrl,
       selectedUrls,
-      pendingScanners,
       "deep",
       undefined,
       undefined,
@@ -783,7 +769,7 @@ function DashboardContent() {
     // is a saved scan the effect above redirects to History instead.
     if (scanUrl && scanParamIsTarget(scanUrl) && status === "idle") {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers an async scan; setState only fires after its own awaited network calls resolve, not synchronously here
-      handleScan({ url: scanUrl, mode: "quick", probes: [] });
+      handleScan({ url: scanUrl, mode: "quick" });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
@@ -939,7 +925,7 @@ function DashboardContent() {
             authReport={authReport}
             onReset={handleReset}
             onScanSubdomain={(subUrl) =>
-              handleScan({ url: subUrl, mode: "quick", probes: [] })
+              handleScan({ url: subUrl, mode: "quick" })
             }
             onSaveNotes={handleSaveNotes}
             onFindingsUpdated={handleFindingsUpdated}

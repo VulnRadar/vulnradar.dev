@@ -56,14 +56,6 @@ vi.mock("@/lib/scanner/async-checks", () => ({
   getPlannedAsyncBranches: () => ["dns"],
 }));
 
-// Probe behavior is covered end-to-end in execute-scan-probes.test.ts; here
-// we only need to prove the crawl path wires the helper up (calls it once
-// against the main host and merges its findings), so mock it.
-const mockRunServiceProbes = vi.fn();
-vi.mock("@/lib/scanner/service-probes", () => ({
-  runServiceProbes: (...args: unknown[]) => mockRunServiceProbes(...args),
-}));
-
 const { executeCrawlScan } = await import("@/lib/scanner/execute-crawl-scan");
 
 function installDefaultQueryMock() {
@@ -86,7 +78,6 @@ function baseParams(
     mainOrigin: "https://example.com",
     selectedUrls: ["https://example.com/", "https://example.com/about"],
     scanners: null,
-    requestedProbes: [],
     authedUserId: 42,
     isApiKeyAuth: false,
     ...overrides,
@@ -126,8 +117,6 @@ beforeEach(() => {
   });
   mockRunAsyncChecks.mockReset();
   mockRunAsyncChecks.mockResolvedValue([]);
-  mockRunServiceProbes.mockReset();
-  mockRunServiceProbes.mockResolvedValue([]);
 });
 
 describe("executeCrawlScan", () => {
@@ -222,49 +211,5 @@ describe("executeCrawlScan", () => {
     );
     expect(resultMeta.crawl.pagesSkipped).toBe(1);
     expect(resultMeta.crawl.pagesScanned).toBe(1);
-  });
-
-  it("runs service probes once against the main host and merges their findings", async () => {
-    mockRunServiceProbes.mockResolvedValue([
-      {
-        id: "probe-ssh-reachable-22",
-        title: "SSH service reachable on port 22",
-        severity: "info",
-        category: "configuration",
-        description: "x",
-        evidence: "x",
-        riskImpact: "x",
-        explanation: "x",
-        fixSteps: [],
-        codeExamples: [],
-      },
-    ]);
-
-    await executeCrawlScan(
-      baseParams({ scanId: 14, requestedProbes: [{ service: "ssh", port: 22 }] }),
-    );
-
-    // Probes run once for the whole crawl, against the main host (not per page).
-    expect(mockRunServiceProbes).toHaveBeenCalledTimes(1);
-    expect(mockRunServiceProbes).toHaveBeenCalledWith(
-      "example.com",
-      "https://example.com/",
-      [{ service: "ssh", port: 22 }],
-      expect.anything(),
-    );
-
-    const completedCall = mockQuery.mock.calls.find(
-      ([sql, params]) =>
-        (sql as string).includes("status = 'completed'") &&
-        (params as unknown[])[8] === 14,
-    );
-    expect(completedCall).toBeDefined();
-    const findings = JSON.parse((completedCall![1] as unknown[])[0] as string);
-    expect(
-      findings.some(
-        (f: { title: string }) =>
-          f.title === "SSH service reachable on port 22",
-      ),
-    ).toBe(true);
   });
 });

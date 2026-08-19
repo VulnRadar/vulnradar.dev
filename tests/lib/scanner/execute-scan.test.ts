@@ -101,7 +101,6 @@ function baseParams(
     protocolType: "http" as const,
     isRawIpTarget: false,
     selectedScanners: null,
-    requestedProbes: [],
     authedUserId: 42,
     categoriesTotal: 2,
     ...overrides,

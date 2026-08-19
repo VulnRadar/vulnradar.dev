@@ -36,12 +36,11 @@ import {
   probeMongoUnauthenticated,
 } from "./protocols/banner";
 import {
-  runServiceProbes,
   buildMongoAuthFindings,
   buildVersionDisclosureFinding,
   buildStartTlsFindings,
   buildSshFindings,
-} from "./service-probes";
+} from "./protocol-findings";
 import { safeFetch } from "./safe-fetch";
 import { redactSensitiveResponseHeaders } from "./response-headers";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
@@ -95,25 +94,6 @@ export const SUPPORTED_PROTOCOLS = [
   "pop3s:",
   "mongodb:",
 ];
-
-export const SERVICE_PROBE_PORTS: Record<string, number> = {
-  ssh: 22,
-  sftp: 22,
-  smtp: 587,
-  smtps: 465,
-  imap: 143,
-  imaps: 993,
-  pop3: 110,
-  pop3s: 995,
-  ftp: 21,
-  ftps: 990,
-  mongodb: 27017,
-  redis: 6379,
-  elasticsearch: 9200,
-  memcached: 11211,
-};
-
-export const VALID_SERVICE_PROBES = new Set(Object.keys(SERVICE_PROBE_PORTS));
 
 export function normalizeUrl(input: string): string {
   const trimmed = input.trim();
@@ -225,7 +205,6 @@ export interface ExecuteScanParams {
   protocolType: ProtocolType;
   isRawIpTarget: boolean;
   selectedScanners: string[] | null;
-  requestedProbes: Array<{ service: string; port: number }>;
   authedUserId: number;
   categoriesTotal: number;
   /**
@@ -282,7 +261,6 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     protocolType,
     isRawIpTarget,
     selectedScanners,
-    requestedProbes,
     authedUserId,
     categoriesTotal,
     silenceRoutineEmail = false,
@@ -535,43 +513,6 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
           throw new Error(
             `Could not reach the target URL: ${message}. The site may be down, blocking automated requests, or not publicly accessible.`,
           );
-        }
-      }
-    }
-
-    // Service probes (opt-in via ?probes=ssh,smtp,...). Each selected probe
-    // opens a TCP socket (or, for Elasticsearch, an HTTP GET) to the target
-    // hostname on its well-known port and reports reachability, version, and
-    // whether the service accepts unauthenticated commands. Independent of
-    // the URL scheme, so users can ask "does github.com also run SSH?"
-    // without constructing ssh://github.com. Runs through the shared
-    // runServiceProbes helper (lib/scanner/service-probes.ts) so the crawl
-    // scan path (lib/scanner/execute-crawl-scan.ts) produces identical
-    // findings from the same code.
-    if (requestedProbes.length > 0) {
-      let probeHost: string | null = null;
-      try {
-        probeHost = new URL(normalizedUrl).hostname;
-      } catch {
-        /* ignore */
-      }
-      if (probeHost) {
-        // Each probe is one unit of the progress denominator (categoriesTotal
-        // already counts them, see app/api/v3/scan/route.ts). "start" is also
-        // the cancellation checkpoint; "done" advances the bar.
-        for (const probe of requestedProbes) {
-          onProgress(`Service probe: ${probe.service}`, "start");
-        }
-        protocolSpecificFindings.push(
-          ...(await runServiceProbes(
-            probeHost,
-            normalizedUrl,
-            requestedProbes,
-            cancelSignal,
-          )),
-        );
-        for (const probe of requestedProbes) {
-          onProgress(`Service probe: ${probe.service}`, "done");
         }
       }
     }

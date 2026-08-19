@@ -10,7 +10,6 @@ import {
   ListChecks,
   Check,
   X,
-  Plug,
   ListFilter,
   Crosshair,
   Lock,
@@ -50,70 +49,6 @@ import { BULK_SCAN_CLIENT_URL_LIMIT } from "@/lib/config/constants";
 import { useAuth } from "@/components/providers/auth-provider";
 export type ScanMode = "quick" | "deep" | "bulk";
 export type { InlineAuthValue };
-
-export type ServiceProbe = "ssh" | "smtp" | "imap" | "pop3" | "ftp" | "mongodb";
-
-export const DEFAULT_PROBE_PORTS: Record<ServiceProbe, number> = {
-  ssh: 22,
-  smtp: 25,
-  imap: 143,
-  pop3: 110,
-  ftp: 21,
-  mongodb: 27017,
-};
-
-interface ServiceProbeOption {
-  id: ServiceProbe;
-  label: string;
-  description: string;
-  defaultPort: number;
-  altPorts: readonly number[];
-}
-
-const SERVICE_PROBES: readonly ServiceProbeOption[] = [
-  {
-    id: "ssh",
-    label: "SSH",
-    description: "Grabs the SSH banner to identify the server and version on port 22.",
-    defaultPort: 22,
-    altPorts: [2222, 222, 2200],
-  },
-  {
-    id: "smtp",
-    label: "SMTP",
-    description: "Reads the mail server greeting and capabilities on port 25.",
-    defaultPort: 25,
-    altPorts: [587, 465, 2525],
-  },
-  {
-    id: "imap",
-    label: "IMAP",
-    description: "Checks the IMAP service banner on port 143.",
-    defaultPort: 143,
-    altPorts: [993],
-  },
-  {
-    id: "pop3",
-    label: "POP3",
-    description: "Checks the POP3 service banner on port 110.",
-    defaultPort: 110,
-    altPorts: [995],
-  },
-  {
-    id: "ftp",
-    label: "FTP",
-    description: "Reads the FTP welcome banner on port 21.",
-    defaultPort: 21,
-    altPorts: [990, 2121],
-  },
-  {
-    id: "mongodb",
-    label: "MongoDB",
-    description: "Tests for an unauthenticated MongoDB instance on port 27017.",
-    defaultPort: 27017,
-    altPorts: [27018, 27019],
-  },
-];
 
 interface CheckFamily {
   id: Category;
@@ -229,11 +164,6 @@ const CHECK_FAMILIES: readonly CheckFamily[] = [
  *  the API holds every one of them to the verified-domain-ownership gate. */
 const ACTIVE_PROBE_GROUP = "Active probing (writes to target)";
 
-export interface ScanFormProbe {
-  id: ServiceProbe;
-  port: number;
-}
-
 export interface ScanFormPayload {
   url: string;
   mode: ScanMode;
@@ -241,7 +171,6 @@ export interface ScanFormPayload {
    *  selectors (see lib/scanner/active-probe-catalog.ts). String-typed rather
    *  than `Category[]` because the probe selectors are not categories. */
   scanners?: string[];
-  probes: ScanFormProbe[];
   /** Ephemeral login material for this one scan, present only when the
    *  "Sign in first" section is open and filled in. See
    *  components/scanner/inline-auth-form.tsx. */
@@ -327,7 +256,7 @@ function looksLikeIp(input: string): boolean {
  *
  *   http://example.com     -> no TLS, no SSL
  *   example.com (no scheme) -> assume https -> all on
- *   raw IPv4                -> no HTTP checks, probes only (set later)
+ *   raw IPv4                -> no HTTP checks (DNS/email only)
  */
 function autoDisableFamilies(rawUrl: string): Set<Category> {
   const disabled = new Set<Category>();
@@ -362,31 +291,6 @@ function parseModeFromQuery(raw: string | null): ScanMode {
   return "quick";
 }
 
-function parseProbesFromQuery(raw: string | null): ScanFormProbe[] {
-  if (!raw) return [];
-  return raw
-    .split(",")
-    .map((entry) => entry.trim().toLowerCase())
-    .filter(Boolean)
-    .map((entry) => {
-      const [idPart, portPart] = entry.split(":");
-      const id = idPart as ServiceProbe;
-      if (!DEFAULT_PROBE_PORTS[id]) return null;
-      const port = portPart ? parseInt(portPart, 10) : DEFAULT_PROBE_PORTS[id];
-      const safePort =
-        Number.isFinite(port) && port >= 1 && port <= 65535
-          ? port
-          : DEFAULT_PROBE_PORTS[id];
-      return { id, port: safePort };
-    })
-    .filter((p): p is ScanFormProbe => p !== null);
-}
-
-function serializeProbesToQuery(probes: ScanFormProbe[]): string | null {
-  if (probes.length === 0) return null;
-  return probes.map((p) => `${p.id}:${p.port}`).join(",");
-}
-
 export function ScanForm({
   onScan,
   onBulkScan,
@@ -411,9 +315,6 @@ export function ScanForm({
   const [mode, setMode] = useState<ScanMode>(() =>
     parseModeFromQuery(getQueryParam("mode")),
   );
-  const [probes, setProbes] = useState<ScanFormProbe[]>(() =>
-    parseProbesFromQuery(getQueryParam("probes")),
-  );
   const [enabledFamilies, setEnabledFamilies] = useState<Set<Category>>(
     () =>
       new Set(
@@ -422,14 +323,13 @@ export function ScanForm({
         ),
       ),
   );
-  // Which of the nine active probes are selected. Opt-in and off by default
-  // (like service probes), so the seed is empty unless the URL names some.
+  // Which of the nine active probes are selected. Opt-in and off by default,
+  // so the seed is empty unless the URL names some.
   const [selectedActiveProbes, setSelectedActiveProbes] = useState<
     Set<ActiveProbeId>
   >(() => new Set(parseActiveProbeIds(getQueryParam("active_probes"))));
   const [scannersOpen, setScannersOpen] = useState(false);
   const [activeProbesOpen, setActiveProbesOpen] = useState(false);
-  const [probesOpen, setProbesOpen] = useState(false);
 
   // Both popovers are Radix Popover.Content, which is `position: fixed`
   // and re-runs its Floating UI position calculation on every scroll
@@ -441,7 +341,7 @@ export function ScanForm({
   // fighting that: once the user is actually scrolling, tracking the
   // trigger's position isn't useful anyway.
   useEffect(() => {
-    if (!scannersOpen && !activeProbesOpen && !probesOpen) return;
+    if (!scannersOpen && !activeProbesOpen) return;
     // Registered on window with capture so it also sees scroll events from
     // nested scrollable elements (they don't bubble, but capture-phase
     // listeners fire regardless of bubbling) -- both popovers have their
@@ -455,7 +355,6 @@ export function ScanForm({
       if (event.target !== document) return;
       setScannersOpen(false);
       setActiveProbesOpen(false);
-      setProbesOpen(false);
     }
     window.addEventListener("scroll", handleScroll, {
       passive: true,
@@ -463,7 +362,7 @@ export function ScanForm({
     });
     return () =>
       window.removeEventListener("scroll", handleScroll, { capture: true });
-  }, [scannersOpen, activeProbesOpen, probesOpen]);
+  }, [scannersOpen, activeProbesOpen]);
   const [bulkUrls, setBulkUrls] = useState("");
   const [bulkError, setBulkError] = useState("");
   const [authValue, setAuthValue] = useState<InlineAuthValue | null>(null);
@@ -525,7 +424,6 @@ export function ScanForm({
     // even the default state should be explicit in the URL.
     setQueryParams({
       mode,
-      probes: serializeProbesToQuery(probes),
       active_probes: serializeActiveProbeIds(selectedActiveProbes),
       screenshot: captureScreenshot ? "1" : null,
       port_scan: portScan ? "1" : null,
@@ -538,7 +436,6 @@ export function ScanForm({
     }
   }, [
     mode,
-    probes,
     enabledFamilies,
     selectedActiveProbes,
     captureScreenshot,
@@ -561,32 +458,6 @@ export function ScanForm({
       else next.add(id);
       return next;
     });
-  }
-
-  function toggleProbe(id: ServiceProbe) {
-    setProbes((prev) => {
-      const existing = prev.find((p) => p.id === id);
-      if (existing) {
-        return prev.filter((p) => p.id !== id);
-      }
-      return [...prev, { id, port: DEFAULT_PROBE_PORTS[id] }];
-    });
-  }
-
-  function setProbePort(id: ServiceProbe, port: number) {
-    setProbes((prev) =>
-      prev.map((p) =>
-        p.id === id
-          ? {
-              ...p,
-              port:
-                Number.isFinite(port) && port >= 1 && port <= 65535
-                  ? port
-                  : DEFAULT_PROBE_PORTS[id],
-            }
-          : p,
-      ),
-    );
   }
 
   function enableAllFamilies() {
@@ -628,7 +499,6 @@ export function ScanForm({
       url: normalizeInput(url),
       mode,
       scanners,
-      probes,
       auth: authValue ?? undefined,
       isPublic: !keepPrivate,
       captureScreenshot,
@@ -678,18 +548,12 @@ export function ScanForm({
 
   let targetNote: string | null = null;
   if (probeOnly) {
-    targetNote =
-      "IPv4 target. DNS and the service probes you pick will run, web checks need a hostname.";
+    targetNote = "IPv4 target. DNS runs, web checks need a hostname.";
   } else if (isHttpScheme) {
     targetNote =
       "Plain HTTP target. Certificate and TLS checks are skipped for this run.";
   } else if (trimmedUrl && looksLikeDomain(trimmedUrl)) {
     const extras: string[] = [];
-    if (probes.length > 0) {
-      extras.push(
-        `${probes.length} service ${probes.length === 1 ? "probe" : "probes"}`,
-      );
-    }
     if (activeProbeCount > 0) {
       extras.push(
         `${activeProbeCount} active ${activeProbeCount === 1 ? "probe" : "probes"}`,
@@ -1029,164 +893,6 @@ export function ScanForm({
                 </PopoverContent>
               </Popover>
 
-              <Popover open={probesOpen} onOpenChange={setProbesOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={isScanning}
-                    className={cn(
-                      "h-11 shrink-0 gap-1.5 bg-transparent px-3 text-sm",
-                      probes.length > 0 && "border-primary/40 text-primary",
-                      FOCUS_RING,
-                    )}
-                    aria-label={`Service probes, ${probes.length} of ${SERVICE_PROBES.length} selected`}
-                  >
-                    <Plug aria-hidden className="h-4 w-4" />
-                    <span className="font-mono tabular-nums">
-                      {probes.length}/{SERVICE_PROBES.length}
-                    </span>
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent
-                  align="end"
-                  sideOffset={6}
-                  className="w-72 overflow-hidden p-0"
-                >
-                  <div className="border-b border-border bg-muted/30 px-3 pb-2 pt-3">
-                    <div className="mb-0.5 flex items-center justify-between gap-2">
-                      <h3 className="text-xs font-semibold text-foreground">
-                        Service probes
-                      </h3>
-                      <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
-                        {probes.length}/{SERVICE_PROBES.length}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground">
-                      Opens a TCP socket per service and reads the greeting.
-                    </p>
-                  </div>
-                  <div className="max-h-72 space-y-0.5 overflow-y-auto p-1">
-                    {SERVICE_PROBES.map(
-                      ({ id, label, description, defaultPort, altPorts }) => {
-                        const probe = probes.find((p) => p.id === id);
-                        const active = !!probe;
-                        return (
-                          <div
-                            key={id}
-                            className={cn(
-                              "rounded transition-colors",
-                              active && "border border-primary/30 bg-primary/5",
-                            )}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => toggleProbe(id)}
-                              disabled={isScanning}
-                              aria-pressed={active}
-                              className={cn(
-                                "group flex w-full items-center gap-2 rounded px-2 py-1.5 text-left transition-colors",
-                                active
-                                  ? "hover:bg-primary/10"
-                                  : "hover:bg-muted/60",
-                                FOCUS_RING,
-                              )}
-                            >
-                              <span className="flex min-w-0 flex-col gap-0.5">
-                                <span
-                                  className={cn(
-                                    "text-xs font-medium",
-                                    active
-                                      ? "text-foreground"
-                                      : "text-muted-foreground",
-                                  )}
-                                >
-                                  {label}
-                                </span>
-                                <span className="text-[11px] font-normal leading-snug text-muted-foreground/70">
-                                  {description}
-                                </span>
-                              </span>
-                              <span className="ml-auto mr-1 shrink-0 self-start font-mono text-[11px] text-muted-foreground/70">
-                                :{defaultPort}
-                              </span>
-                              <span
-                                aria-hidden
-                                className={cn(
-                                  "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border",
-                                  active
-                                    ? "border-primary bg-primary text-primary-foreground"
-                                    : "border-border bg-transparent group-hover:border-muted-foreground/50",
-                                )}
-                              >
-                                {active && (
-                                  <Check
-                                    className="h-2.5 w-2.5"
-                                    strokeWidth={3}
-                                  />
-                                )}
-                              </span>
-                            </button>
-                            {active && probe && (
-                              <div className="mt-0.5 flex items-center gap-1.5 border-t border-primary/20 px-2 pb-1.5 pt-1">
-                                <label
-                                  htmlFor={`probe-port-${id}`}
-                                  className="shrink-0 font-mono text-[11px] text-muted-foreground"
-                                >
-                                  Port
-                                </label>
-                                <Input
-                                  id={`probe-port-${id}`}
-                                  type="number"
-                                  min={1}
-                                  max={65535}
-                                  value={probe.port}
-                                  onChange={(e) =>
-                                    setProbePort(
-                                      id,
-                                      parseInt(e.target.value, 10),
-                                    )
-                                  }
-                                  disabled={isScanning}
-                                  className={cn(
-                                    "h-7 w-20 bg-background px-1.5 font-mono text-base sm:text-[11px] tabular-nums",
-                                    FOCUS_RING,
-                                  )}
-                                  aria-label={`${label} port`}
-                                />
-                                <div className="flex items-center gap-1 overflow-x-auto">
-                                  {[defaultPort, ...altPorts]
-                                    .filter((p, i, arr) => arr.indexOf(p) === i)
-                                    .slice(0, 4)
-                                    .map((alt) => (
-                                      <button
-                                        key={alt}
-                                        type="button"
-                                        onClick={() => setProbePort(id, alt)}
-                                        disabled={isScanning}
-                                        aria-pressed={probe.port === alt}
-                                        className={cn(
-                                          "shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] tabular-nums transition-colors",
-                                          probe.port === alt
-                                            ? "bg-primary/20 text-primary"
-                                            : "bg-muted text-muted-foreground hover:text-foreground",
-                                          FOCUS_RING,
-                                        )}
-                                      >
-                                        {alt}
-                                      </button>
-                                    ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      },
-                    )}
-                  </div>
-                </PopoverContent>
-              </Popover>
-
               <Button
                 type="submit"
                 size="lg"
@@ -1423,5 +1129,3 @@ export function ScanForm({
     </div>
   );
 }
-
-export { SERVICE_PROBES, parseProbesFromQuery, serializeProbesToQuery };

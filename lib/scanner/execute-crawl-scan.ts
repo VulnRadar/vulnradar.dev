@@ -47,7 +47,6 @@ import { enrichFindingsWithExploitIntel } from "./cve-enrichment";
 import { applyAdaptiveConfidence } from "./adaptive-confidence";
 import { attachCvssScores } from "./cvss";
 import { checkForNewCriticalOrHighFindings } from "./regression-alert";
-import { runServiceProbes } from "./service-probes";
 import {
   captureAndStoreScreenshot,
   shouldCaptureScreenshot,
@@ -365,7 +364,6 @@ export interface ExecuteCrawlScanParams {
   mainOrigin: string;
   selectedUrls: string[] | undefined;
   scanners: string[] | null;
-  requestedProbes: Array<{ service: string; port: number }>;
   authedUserId: number;
   isApiKeyAuth: boolean;
   /**
@@ -411,7 +409,6 @@ export async function executeCrawlScan(
     mainOrigin,
     selectedUrls,
     scanners,
-    requestedProbes,
     authedUserId,
     isApiKeyAuth,
     captureScreenshot = false,
@@ -547,9 +544,7 @@ export async function executeCrawlScan(
     const perPageUnits =
       getPlannedSyncCategories(scanners as Category[] | null).length +
       getPlannedAsyncBranches(normalizedMainUrl, scanners).length;
-    // Probes run once for the whole crawl (against the main host), so each
-    // one is a single extra unit on top of the per-page work.
-    setTotal(pagesToScan.length * perPageUnits + requestedProbes.length);
+    setTotal(pagesToScan.length * perPageUnits);
 
     // Scan each page
     const pageResults: Array<{
@@ -587,45 +582,11 @@ export async function executeCrawlScan(
       }
     }
 
-    // Service probes run once for the whole crawl, against the main host --
-    // ssh/smtp/mongodb/etc. are host-level, not per-page, so probing every
-    // discovered page would just repeat the same TCP connect. Merged into the
-    // same array that becomes the persisted findings. Probe finding IDs are
-    // derived from the main URL and never collide with a page's HTTP findings.
-    if (requestedProbes.length > 0) {
-      let probeHost: string | null = null;
-      try {
-        probeHost = new URL(normalizedMainUrl).hostname;
-      } catch {
-        /* ignore */
-      }
-      if (probeHost) {
-        for (const probe of requestedProbes) {
-          onProgress(`Service probe: ${probe.service}`, "start");
-        }
-        const probeFindings = await runServiceProbes(
-          probeHost,
-          normalizedMainUrl,
-          requestedProbes,
-          cancelSignal,
-        );
-        for (const f of probeFindings) {
-          if (!seenIds.has(f.id)) {
-            seenIds.add(f.id);
-            allFindings.push(f);
-          }
-        }
-        for (const probe of requestedProbes) {
-          onProgress(`Service probe: ${probe.service}`, "done");
-        }
-      }
-    }
-
     // Curated port sweep result, captured concurrently above (host-level, once
     // per crawl). scanPorts never rejects; null when not opted in, unsafe, or
-    // cancelled. Its risky open ports merge into the same array that becomes
-    // the persisted findings (deduped by id, like the probe findings), and the
-    // full structured result is stored in result_meta below.
+    // cancelled. Its risky open ports merge (deduped by id) into the same array
+    // that becomes the persisted findings, and the full structured result is
+    // stored in result_meta below.
     let portScanResult: PortScanResult | null = null;
     try {
       portScanResult = await portScanPromise;

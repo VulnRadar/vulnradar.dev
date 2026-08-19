@@ -298,7 +298,6 @@ export async function processSchedule(
       protocolType,
       isRawIpTarget,
       selectedScanners: null,
-      requestedProbes: [],
       authedUserId: schedule.user_id,
       categoriesTotal,
       silenceRoutineEmail: true,

@@ -5,8 +5,7 @@
 // well-known service ports (COMMON_PORTS below). For each open port the scan
 // records the port, the service usually found there, and any banner the
 // service volunteered on connect. Nessus/Qualys/Intruder do a port + service
-// sweep as a matter of course; VulnRadar otherwise only banner-probes a
-// handful of named services (lib/scanner/service-probes.ts).
+// sweep as a matter of course; this is VulnRadar's equivalent.
 //
 // ── Why this is gated the way it is ─────────────────────────────────────────
 // Port-scanning arbitrary hosts from a shared server turns that server into a
@@ -456,8 +455,8 @@ export async function scanPorts(
 // The structured `open` list above is the primary output. On top of it we emit
 // a small number of Vulnerability findings for open ports that are notably
 // dangerous to expose to the public internet -- databases, remote-access
-// services, and unauthenticated control planes -- reusing the service-probe
-// finding shape (configuration category, deterministic id). This is
+// services, and unauthenticated control planes -- in the standard finding
+// shape (configuration category, deterministic id). This is
 // deliberately narrow so a normal host never floods the results: a bare web
 // host has 80/443 open, none of which are in this set.
 
@@ -598,8 +597,8 @@ const RISKY_PORTS: ReadonlyMap<number, RiskyPort> = new Map<number, RiskyPort>([
 
 /**
  * Build one finding per open port that is notably risky to expose (see
- * RISKY_PORTS). Reuses the configuration-category, deterministic-id shape of
- * the service-probe findings. Returns an empty array when no risky port is
+ * RISKY_PORTS). Uses the standard configuration-category, deterministic-id
+ * finding shape. Returns an empty array when no risky port is
  * open, which is the common case for a normal web host.
  */
 export function buildRiskyPortFindings(
