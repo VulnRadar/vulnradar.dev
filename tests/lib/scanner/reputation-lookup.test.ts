@@ -5,7 +5,7 @@
  * Every external boundary is mocked at the network layer, never the DB:
  *   - global fetch  -> Google Web Risk + URLhaus (dispatched by URL so the
  *     order of the parallel calls never matters).
- *   - dns/promises  -> Spamhaus DBL (resolve4).
+ *   - dns/promises  -> Quad9 (Resolver.resolve4 over two servers).
  *   - runtime-config -> resolves the per-source timeout from the shipped
  *     registry default, so no real DB connection is attempted.
  *
@@ -26,14 +26,32 @@ vi.mock("@/lib/config/runtime-config", async () => {
   };
 });
 
+// Quad9 resolves the host through two dns.Resolver instances (Quad9 9.9.9.9 and
+// a neutral resolver). resolverResolve4 stands in for both; tests dispatch on
+// the server passed as its first argument.
+const { resolverResolve4 } = vi.hoisted(() => ({
+  resolverResolve4: vi.fn(
+    async (_server: string, _host: string): Promise<string[]> => {
+      throw Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" });
+    },
+  ),
+}));
+
 vi.mock("dns/promises", () => ({
-  // Spamhaus DBL lookup. Defaults to NXDOMAIN (host not listed = clean).
+  // Module-level resolve4 kept for any other importer (safe-fetch's lookup).
   resolve4: vi.fn(async () => {
     throw Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" });
   }),
-  // safe-fetch imports lookup(); never called from these code paths, but
-  // present so the mocked module has the export.
   lookup: vi.fn(),
+  Resolver: class {
+    private servers: string[] = ["9.9.9.9"];
+    setServers(s: string[]) {
+      this.servers = s;
+    }
+    resolve4(host: string) {
+      return resolverResolve4(this.servers[0], host);
+    }
+  },
 }));
 
 import * as dns from "dns/promises";
@@ -41,7 +59,7 @@ import {
   checkReputation,
   isReputationCheckConfigured,
   queryUrlhaus,
-  querySpamhausDbl,
+  queryQuad9,
   readThreatIntel,
   __resetReputationCachesForTests,
 } from "@/lib/scanner/reputation-lookup";
@@ -83,6 +101,12 @@ beforeEach(() => {
   __resetReputationCachesForTests();
   dnsMock.resolve4.mockReset();
   dnsMock.resolve4.mockRejectedValue(
+    Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" }),
+  );
+  // Quad9: both resolvers NXDOMAIN by default -> the neutral resolver not
+  // resolving means "clean" (the domain does not exist to be a threat signal).
+  resolverResolve4.mockReset();
+  resolverResolve4.mockRejectedValue(
     Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" }),
   );
 });
@@ -270,53 +294,57 @@ describe("queryUrlhaus", () => {
   });
 });
 
-// ── Spamhaus DBL source ─────────────────────────────────────────────────────
+// ── Quad9 source ────────────────────────────────────────────────────────────
 
-describe("querySpamhausDbl", () => {
-  it("reports clean on NXDOMAIN (host not listed)", async () => {
-    dnsMock.resolve4.mockRejectedValue(
-      Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" }),
-    );
-    const res = await querySpamhausDbl("example.com", 5000);
+describe("queryQuad9", () => {
+  it("reports clean when both resolvers return addresses", async () => {
+    resolverResolve4.mockResolvedValue(["93.184.216.34"]);
+    const res = await queryQuad9("example.com", 5000);
     expect(res.verdict).toBe("clean");
   });
 
-  it("reports flagged with the mapped category on a 127.0.1.x listing code", async () => {
-    dnsMock.resolve4.mockResolvedValue(["127.0.1.5"]); // malware domain
-    const res = await querySpamhausDbl("evil.example.com", 5000);
+  it("reports flagged when Quad9 refuses a host the neutral resolver resolves", async () => {
+    resolverResolve4.mockImplementation(async (server: string) => {
+      if (server === "9.9.9.9") {
+        throw Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" });
+      }
+      return ["93.184.216.34"];
+    });
+    const res = await queryQuad9("evil.example.com", 5000);
     expect(res.verdict).toBe("flagged");
     expect(res.categories).toEqual(["malware"]);
   });
 
-  it("treats a 127.255.255.x error code as unavailable, NOT clean", async () => {
-    dnsMock.resolve4.mockResolvedValue(["127.255.255.254"]); // public-resolver block
-    const res = await querySpamhausDbl("example.com", 5000);
-    expect(res.verdict).toBe("unavailable");
+  it("reports clean when the domain resolves nowhere (not a threat signal)", async () => {
+    resolverResolve4.mockRejectedValue(
+      Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" }),
+    );
+    const res = await queryQuad9("nonexistent.example", 5000);
+    expect(res.verdict).toBe("clean");
   });
 
   it("reports unavailable on a transient DNS error (SERVFAIL)", async () => {
-    dnsMock.resolve4.mockRejectedValue(
+    resolverResolve4.mockRejectedValue(
       Object.assign(new Error("ESERVFAIL"), { code: "ESERVFAIL" }),
     );
-    const res = await querySpamhausDbl("example.com", 5000);
+    const res = await queryQuad9("example.com", 5000);
     expect(res.verdict).toBe("unavailable");
   });
 
   it("reports unavailable on a timeout rather than hanging or throwing", async () => {
-    dnsMock.resolve4.mockImplementation(
-      () => new Promise((resolve) => setTimeout(() => resolve(["127.0.1.2"]), 100)),
+    resolverResolve4.mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve(["1.2.3.4"]), 100)),
     );
-    const res = await querySpamhausDbl("slow.example.com", 20);
+    const res = await queryQuad9("slow.example.com", 20);
     expect(res.verdict).toBe("unavailable");
   });
 
   it("caches per host: a second call within the TTL makes no new DNS query", async () => {
-    dnsMock.resolve4.mockRejectedValue(
-      Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" }),
-    );
-    await querySpamhausDbl("cache-dbl.example.com", 5000);
-    await querySpamhausDbl("cache-dbl.example.com", 5000);
-    expect(dnsMock.resolve4).toHaveBeenCalledTimes(1);
+    resolverResolve4.mockResolvedValue(["93.184.216.34"]);
+    await queryQuad9("cache-q9.example.com", 5000);
+    await queryQuad9("cache-q9.example.com", 5000);
+    // Two resolvers per uncached lookup; the cached second call adds none.
+    expect(resolverResolve4).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -368,9 +396,9 @@ describe("checkReputation: aggregation", () => {
     const summary = readThreatIntel("example.com");
     expect(summary).toBeDefined();
     const urlhaus = summary!.sources.find((s) => s.source.startsWith("URLhaus"));
-    const dbl = summary!.sources.find((s) => s.source === "Spamhaus DBL");
+    const quad9 = summary!.sources.find((s) => s.source === "Quad9");
     expect(urlhaus?.verdict).toBe("unavailable");
-    expect(dbl?.verdict).toBe("clean");
+    expect(quad9?.verdict).toBe("clean");
     // Only the reachable (clean) source counts toward reachableCount.
     expect(summary!.reachableCount).toBe(1);
     expect(summary!.flaggedCount).toBe(0);
@@ -379,7 +407,7 @@ describe("checkReputation: aggregation", () => {
   it("never throws even when every source errors at the network boundary", async () => {
     delete process.env.WEB_RISK_API_KEY;
     stubFetch({ urlhaus: () => { throw new Error("net"); } });
-    dnsMock.resolve4.mockRejectedValue(
+    resolverResolve4.mockRejectedValue(
       Object.assign(new Error("ESERVFAIL"), { code: "ESERVFAIL" }),
     );
     await expect(checkReputation("https://example.com")).resolves.toEqual([]);
@@ -399,7 +427,7 @@ describe("checkReputation: aggregation", () => {
       String(c[0]).includes("urlhaus"),
     );
     expect(urlhausCalled).toBe(false);
-    expect(dnsMock.resolve4).not.toHaveBeenCalled();
+    expect(resolverResolve4).not.toHaveBeenCalled();
     // No domain to check and Web Risk unconfigured: no summary recorded.
     expect(readThreatIntel("93.184.216.34")).toBeUndefined();
   });

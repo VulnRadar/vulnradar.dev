@@ -832,15 +832,11 @@ lib/types/
               <InlineCode>auth.abuse.ch</InlineCode>.
             </li>
             <li>
-              <InlineCode>SPAMHAUS_DQS_KEY</InlineCode>: Spamhaus DBL domain
-              blocklist. The public zone blocks shared and cloud resolvers, so a
-              free Data Query Service (DQS) key is required (sign up at{" "}
-              <InlineCode>spamhaus.com/free-trial</InlineCode>). The lookup then
-              uses the authenticated DQS zone{" "}
-              <InlineCode>
-                &lt;host&gt;.&lt;key&gt;.dbl.dq.spamhaus.net
-              </InlineCode>
-              .
+              <strong className="text-foreground">Quad9</strong>: a third
+              reputation source that needs no key. Quad9 (9.9.9.9) is a security
+              DNS resolver; the scan resolves the host through Quad9 and a
+              neutral resolver and flags the host when Quad9 blocks it via its
+              threat feed. Nothing to configure.
             </li>
             <li>
               <InlineCode>NVD_API_KEY</InlineCode>: optional. The software

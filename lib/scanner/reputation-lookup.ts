@@ -25,12 +25,12 @@
  *                            sent when set (abuse.ch has been tightening to
  *                            per-key auth), and an unauthorized/error response
  *                            degrades to "unavailable", never a false "clean".
- *   3. Spamhaus DBL       -- free domain DNS blocklist queried over node:dns
- *                            (<host>.dbl.spamhaus.org). A 127.0.1.x answer is a
- *                            real listing; a 127.255.255.x answer is one of
- *                            Spamhaus's own "query blocked / via public
- *                            resolver / excessive volume" error codes and is
- *                            treated as "unavailable", never "clean".
+ *   3. Quad9              -- free security DNS resolver (9.9.9.9), no key. We
+ *                            resolve the host through Quad9 and a neutral
+ *                            resolver; if the neutral one returns addresses but
+ *                            Quad9 returns none, Quad9's threat feed is blocking
+ *                            the domain (a real listing). Any resolver error or
+ *                            timeout is "unavailable", never a false "clean".
  *
  * Deliberately NOT wired (documented so the choice is explicit): PhishTank
  * needs an API key, and OpenPhish's community feed is a large flat text list
@@ -40,8 +40,8 @@
  *
  * SSRF: only the scanned host's own name is ever used, and only as data.
  * URLhaus is a POST of the host string to a FIXED api URL (the host itself is
- * never fetched), and the DBL lookup only prepends the host label under the
- * fixed .dbl.spamhaus.org suffix (no fetch at all). The host-based sources are
+ * never fetched), and the Quad9 check only resolves the host name through fixed
+ * resolvers (the host is never fetched). The host-based sources are
  * skipped for raw IP literals and refused for any private/internal hostname,
  * and the host is validated to a DNS-label charset before use.
  */
@@ -238,7 +238,7 @@ interface CacheEntry {
 
 const SOURCE_CACHE_TTL_MS = 10 * 60 * 1000;
 const urlhausCache = new Map<string, CacheEntry>();
-const dblCache = new Map<string, CacheEntry>();
+const quad9Cache = new Map<string, CacheEntry>();
 
 function readCache(cache: Map<string, CacheEntry>, host: string): ThreatIntelSource | undefined {
   const entry = cache.get(host);
@@ -343,68 +343,43 @@ async function queryUrlhausUncached(
   }
 }
 
-// ── Spamhaus DBL (source 3, free, no key, DNS) ──────────────────────────────
-
-/** Map a DBL return-code address (127.0.1.x) to a threat category. Returns
- *  null for anything that is not a real listing code -- in particular the
- *  127.255.255.x error codes, which the caller treats as "unavailable". */
-function dblCategory(ip: string): string | null {
-  const m = /^127\.0\.1\.(\d+)$/.exec(ip);
-  if (!m) return null;
-  switch (Number(m[1])) {
-    case 2:
-    case 102:
-    case 103:
-      return "spam";
-    case 4:
-    case 104:
-      return "phishing";
-    case 5:
-    case 105:
-      return "malware";
-    case 6:
-    case 106:
-      return "botnet";
-    default:
-      return "abuse";
-  }
-}
+// ── Quad9 security resolver (source 3, free, no key, DNS) ───────────────────
 
 /**
- * Spamhaus DBL domain-blocklist lookup over DNS. Cached per host. Best-effort:
- * a genuine "not listed" (NXDOMAIN) is "clean"; a listing code is "flagged";
- * a Spamhaus error/blocked code, a timeout, or a transient DNS error is
- * "unavailable" -- never a false "clean".
+ * Quad9 (9.9.9.9) is a free security resolver that refuses to resolve domains
+ * on its threat feed (known malware, phishing, and command-and-control). We
+ * resolve the host through Quad9 and through a neutral resolver: if the neutral
+ * resolver returns addresses but Quad9 returns none, Quad9 is blocking the
+ * domain, which is a real threat signal. No key, no signup, works from any
+ * server. Cached per host. Best-effort: any error/timeout on either resolver is
+ * "unavailable", never a false "clean".
  */
-export async function querySpamhausDbl(
+export async function queryQuad9(
   host: string,
   timeoutMs: number,
 ): Promise<ThreatIntelSource> {
-  const cached = readCache(dblCache, host);
+  const cached = readCache(quad9Cache, host);
   if (cached) return cached;
 
-  const result = await querySpamhausDblUncached(host, timeoutMs);
-  writeCache(dblCache, host, result);
+  const result = await queryQuad9Uncached(host, timeoutMs);
+  writeCache(quad9Cache, host, result);
   return result;
 }
 
-async function querySpamhausDblUncached(
+/** Resolve `host` through one specific DNS server. Returns the A records, or
+ *  the sentinel "nxdomain" for a genuine not-found. Throws on timeout or a
+ *  transient error so the caller can mark the whole check unavailable rather
+ *  than guess. */
+async function resolveVia(
+  server: string,
   host: string,
   timeoutMs: number,
-): Promise<ThreatIntelSource> {
-  const name = "Spamhaus DBL";
-  // Spamhaus blocks the public dbl.spamhaus.org zone from shared/cloud resolvers
-  // (it answers 127.255.255.x, "query blocked"). A free Data Query Service key
-  // routes the same lookup through the authenticated DQS zone, which returns
-  // real listings. Falls back to the public zone when no key is set.
-  const dqsKey = process.env.SPAMHAUS_DQS_KEY;
-  const query = dqsKey
-    ? `${host}.${dqsKey}.dbl.dq.spamhaus.net`
-    : `${host}.dbl.spamhaus.org`;
-  let ips: string[];
+): Promise<string[] | "nxdomain"> {
+  const resolver = new dns.Resolver();
+  resolver.setServers([server]);
   try {
-    ips = await Promise.race([
-      dns.resolve4(query),
+    return await Promise.race([
+      resolver.resolve4(host),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("timeout")), timeoutMs),
       ),
@@ -414,11 +389,34 @@ async function querySpamhausDblUncached(
       err && typeof err === "object" && "code" in err
         ? (err as { code: string }).code
         : "";
-    // NXDOMAIN / no record: the domain is genuinely not on the DBL.
     if (code === "ENOTFOUND" || code === "ENODATA" || code === "ENOENT") {
+      return "nxdomain";
+    }
+    throw err;
+  }
+}
+
+async function queryQuad9Uncached(
+  host: string,
+  timeoutMs: number,
+): Promise<ThreatIntelSource> {
+  const name = "Quad9";
+  try {
+    const [quad9Res, neutralRes] = await Promise.all([
+      resolveVia("9.9.9.9", host, timeoutMs),
+      resolveVia("1.1.1.1", host, timeoutMs),
+    ]);
+    // The neutral resolver could not resolve it either: the domain simply does
+    // not exist, so Quad9 refusing it is not a threat signal.
+    if (neutralRes === "nxdomain") {
       return { source: name, verdict: "clean" };
     }
-    // Timeout, SERVFAIL, or any other transient error: cannot determine.
+    // Neutral resolves but Quad9 refuses: Quad9's threat feed is blocking it.
+    if (quad9Res === "nxdomain") {
+      return { source: name, verdict: "flagged", categories: ["malware"] };
+    }
+    return { source: name, verdict: "clean" };
+  } catch (err: unknown) {
     return {
       source: name,
       verdict: "unavailable",
@@ -426,22 +424,6 @@ async function querySpamhausDblUncached(
         err instanceof Error && err.message === "timeout" ? "timeout" : "DNS error",
     };
   }
-
-  const listed = Array.from(
-    new Set(ips.map(dblCategory).filter((c): c is string => c !== null)),
-  );
-  if (listed.length > 0) {
-    return { source: name, verdict: "flagged", categories: listed };
-  }
-  // A successful resolve that is not a listing code is one of Spamhaus's error
-  // return codes (e.g. 127.255.255.254 = queried via a public/open resolver,
-  // 127.255.255.252 = anonymous query blocked). That is an availability
-  // problem on our side, not a clean verdict for the host.
-  return {
-    source: name,
-    verdict: "unavailable",
-    detail: "query blocked or rate-limited by Spamhaus",
-  };
 }
 
 // ── Aggregated blocklist finding ────────────────────────────────────────────
@@ -474,8 +456,8 @@ function buildBlocklistFinding(
         if (s.source.startsWith("URLhaus")) {
           return ["https://urlhaus.abuse.ch/"];
         }
-        if (s.source.startsWith("Spamhaus")) {
-          return ["https://www.spamhaus.org/dbl/", "https://check.spamhaus.org/"];
+        if (s.source.startsWith("Quad9")) {
+          return ["https://quad9.net/"];
         }
         return [];
       }),
@@ -499,7 +481,7 @@ function buildBlocklistFinding(
     fixSteps: [
       "Confirm the listing directly with each source named above before acting.",
       "If the site was compromised, audit for injected scripts, unauthorized uploads, or a vulnerable plugin or CMS version, then rotate all credentials.",
-      "Request delisting from each source once the host is clean. URLhaus and Spamhaus both publish a removal process, and a listing clears once the feed re-confirms the host is no longer abusive.",
+      "Clean up whatever got the host listed, then request delisting. URLhaus publishes a removal process, and Quad9 clears a host once the upstream threat feeds it draws from no longer list it.",
     ],
     codeExamples: [],
     references,
@@ -585,13 +567,13 @@ export async function checkReputation(url: string): Promise<Vulnerability[]> {
   // never reject the batch. Each query already swallows its own errors, so a
   // rejection here would only be a genuine bug, and it still degrades to "no
   // contribution" rather than failing the scan.
-  const [webRiskSettled, urlhausSettled, dblSettled] = await Promise.allSettled([
+  const [webRiskSettled, urlhausSettled, quad9Settled] = await Promise.allSettled([
     queryWebRisk(url, timeoutMs),
     host
       ? queryUrlhaus(host, timeoutMs)
       : Promise.resolve<ThreatIntelSource | null>(null),
     host
-      ? querySpamhausDbl(host, timeoutMs)
+      ? queryQuad9(host, timeoutMs)
       : Promise.resolve<ThreatIntelSource | null>(null),
   ]);
 
@@ -609,8 +591,8 @@ export async function checkReputation(url: string): Promise<Vulnerability[]> {
   const urlhaus =
     urlhausSettled.status === "fulfilled" ? urlhausSettled.value : null;
   if (urlhaus) hostSources.push(urlhaus);
-  const dbl = dblSettled.status === "fulfilled" ? dblSettled.value : null;
-  if (dbl) hostSources.push(dbl);
+  const quad9 = quad9Settled.status === "fulfilled" ? quad9Settled.value : null;
+  if (quad9) hostSources.push(quad9);
   sources.push(...hostSources);
 
   // Emit ONE aggregated finding for the host-based sources when any of them
@@ -660,6 +642,6 @@ export function isReputationCheckConfigured(): boolean {
  *  cases don't leak cached verdicts into each other. */
 export function __resetReputationCachesForTests(): void {
   urlhausCache.clear();
-  dblCache.clear();
+  quad9Cache.clear();
   summaryStore.clear();
 }
