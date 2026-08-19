@@ -15,6 +15,7 @@ import {
   Lock,
   ScrollText,
   Share2,
+  ShieldCheck,
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,7 @@ import { AiSummaryModal } from "./ai-summary-modal";
 import { generatePdfReport } from "@/lib/reports/pdf-report";
 import { generateSarifReport } from "@/lib/reports/sarif-report";
 import { generateMarkdownReport } from "@/lib/reports/markdown-report";
+import { generateComplianceReport } from "@/lib/reports/compliance-report";
 import {
   API,
   APP_NAME,
@@ -274,6 +276,12 @@ export function ScanActionsMenu({
     const md = generateMarkdownReport(result);
     const blob = new Blob([md], { type: "text/markdown" });
     downloadBlob(blob, `${APP_SLUG}-${hostname}-${date}.md`);
+  }
+
+  function exportCompliance() {
+    const md = generateComplianceReport(result);
+    const blob = new Blob([md], { type: "text/markdown" });
+    downloadBlob(blob, `${APP_SLUG}-${hostname}-compliance-${date}.md`);
   }
 
   async function requestShare() {
@@ -534,6 +542,12 @@ export function ScanActionsMenu({
       label: "Export as Markdown",
       icon: FileType,
       onSelect: exportMarkdown,
+    },
+    {
+      key: "compliance",
+      label: "Compliance report",
+      icon: ShieldCheck,
+      onSelect: exportCompliance,
     },
     { separator: true },
     ...(scanId
