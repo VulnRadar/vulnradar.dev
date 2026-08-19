@@ -28,6 +28,10 @@ import {
 } from "@/lib/config/constants";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import type { Category, Vulnerability } from "@/lib/scanner/types";
+import {
+  getDangerScore,
+  getEngineConfidence,
+} from "@/lib/scanner/safety-rating";
 import { runSyncChecks } from "@/lib/scanner/engine";
 import { runAsyncChecks } from "@/lib/scanner/async-checks";
 import { normalizeUrl } from "@/lib/scanner/execute-scan";
@@ -468,6 +472,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     reason: session.lost ? (session.reason ?? undefined) : undefined,
   };
 
+  // Headline signals, same as a normal scan (getDangerScore/getEngineConfidence
+  // are pure over the findings). Without these an authenticated scan showed
+  // only duration + scanned time on the summary; they are also stored in
+  // result_meta so the History view of this scan matches every other result.
+  const dangerScore = getDangerScore(findings);
+  const engineConfidence = getEngineConfidence(findings);
+  const resultMeta = { dangerScore, engineConfidence };
+
   let scanHistoryId: number | null = null;
   try {
     // Never a credential_id column, never any credential material: only
@@ -475,8 +487,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     const insertResult = await pool.query(
       `INSERT INTO scan_history
          (user_id, url, summary, findings, findings_count, duration, scanned_at,
-          source, response_headers, notes, authenticated, is_public)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8, $9, true, $10)
+          source, response_headers, notes, authenticated, is_public, result_meta)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8, $9, true, $10, $11)
        RETURNING id`,
       [
         authedUserId,
@@ -489,6 +501,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         JSON.stringify(redactedHeaders),
         DEFAULT_SCAN_NOTE,
         requestedIsPublic,
+        JSON.stringify(resultMeta),
       ],
     );
     scanHistoryId = insertResult.rows[0]?.id ?? null;
@@ -552,5 +565,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     summary,
     responseHeaders: redactedHeaders,
     authReport,
+    dangerScore,
+    engineConfidence,
   });
 });
