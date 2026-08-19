@@ -98,6 +98,8 @@ describe("fetchOAuthUserInfo: google", () => {
       name: "Ada Lovelace",
       avatarUrl: "https://example.com/pic.png",
     });
+    // Google has no @handle: the github-only login field stays absent.
+    expect(info?.login).toBeUndefined();
   });
 
   it("returns a null id when the provider response has no `sub` claim", async () => {
@@ -161,8 +163,38 @@ describe("fetchOAuthUserInfo: github", () => {
       email: "primary@example.com",
       emailVerified: true,
       name: "Ada Lovelace",
+      login: "ada",
       avatarUrl: "a.png",
     });
+  });
+
+  it("captures the @handle (login) separately from the display name", async () => {
+    // The display name and the login differ, and only the login forms a
+    // valid github.com/<login> URL -- so both must be kept, not just one.
+    mockFetch
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 7,
+            login: "Shito-HENG",
+            name: "x5n4k33y35x",
+            email: null,
+            avatar_url: "a.png",
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([
+            { email: "s@example.com", primary: true, verified: true },
+          ]),
+          { status: 200 },
+        ),
+      );
+    const info = await fetchOAuthUserInfo("github", "tok");
+    expect(info?.name).toBe("x5n4k33y35x");
+    expect(info?.login).toBe("Shito-HENG");
   });
 
   it("returns a null id when the /user response has no numeric id", async () => {
@@ -255,6 +287,8 @@ describe("fetchOAuthUserInfo: discord", () => {
       name: "TestUser",
       avatarUrl: "https://cdn.discordapp.com/avatars/999/avatarhash.png",
     });
+    // Discord has no @handle either: the github-only login field stays absent.
+    expect(info?.login).toBeUndefined();
   });
 
   it("treats verified: false as unverified", async () => {

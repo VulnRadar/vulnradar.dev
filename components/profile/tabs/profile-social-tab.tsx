@@ -54,6 +54,9 @@ type OAuthIdentity = {
   name: string | null;
   email: string | null;
   avatarUrl: string | null;
+  // GitHub's @handle (login), linkable to github.com/<login>. Only GitHub
+  // populates this; Google has no equivalent, so it stays null there.
+  login?: string | null;
 };
 
 /**
@@ -190,6 +193,16 @@ function OAuthIdentityCard({
                   <p className="font-medium text-foreground truncate">
                     {identity.name || "Unknown"}
                   </p>
+                  {identity.login && (
+                    <a
+                      href={`https://github.com/${identity.login}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block text-xs text-primary hover:underline truncate mt-0.5"
+                    >
+                      @{identity.login}
+                    </a>
+                  )}
                   {identity.email && (
                     <p className="text-xs text-muted-foreground truncate mt-0.5">
                       {identity.email}
@@ -578,6 +591,7 @@ export function ProfileSocialTab({
         name: user.githubName ?? null,
         email: user.githubEmail ?? null,
         avatarUrl: user.githubAvatarUrl ?? null,
+        login: user.githubLogin ?? null,
       }
     : null;
 

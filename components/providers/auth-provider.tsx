@@ -46,6 +46,7 @@ export interface MeResponse {
   githubId: string | null;
   githubEmail: string | null;
   githubName: string | null;
+  githubLogin: string | null;
   githubAvatarUrl: string | null;
   plan: string;
   /** Real, admin-configurable per-plan limit (lib/billing/plan-limits.ts),

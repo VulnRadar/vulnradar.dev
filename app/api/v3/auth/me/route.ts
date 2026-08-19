@@ -83,7 +83,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
                 backup_codes, plan, subscription_status, discord_id,
                 (password_hash IS NOT NULL) AS has_password,
                 google_id, google_email, google_name, google_avatar_url,
-                github_id, github_email, github_name, github_avatar_url,
+                github_id, github_email, github_name, github_avatar_url, github_login,
                 scans_private_by_default
            FROM users WHERE id = $1`,
       [session.userId],
@@ -167,6 +167,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     githubId: user?.github_id || null,
     githubEmail: user?.github_email || null,
     githubName: user?.github_name || null,
+    githubLogin: user?.github_login || null,
     githubAvatarUrl: user?.github_avatar_url || null,
     // Account-level scan privacy default (Privacy tab; see
     // lib/scanner/scan-privacy.ts for how this is applied).

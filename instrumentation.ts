@@ -2105,7 +2105,14 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
           ADD COLUMN IF NOT EXISTS github_id VARCHAR(64) UNIQUE,
           ADD COLUMN IF NOT EXISTS github_email VARCHAR(255),
           ADD COLUMN IF NOT EXISTS github_name VARCHAR(255),
-          ADD COLUMN IF NOT EXISTS github_avatar_url TEXT;
+          ADD COLUMN IF NOT EXISTS github_avatar_url TEXT,
+          -- github_login: the GitHub @handle (login) for a GitHub SIGN-IN,
+          -- captured by the oauth-userinfo login field. Distinct from
+          -- github_name (the display name, which is NOT a valid github.com
+          -- URL) and from github_connections.github_username (the separate
+          -- repo-connect feature). Populated on next sign-in for rows that
+          -- predate this column; NULL until then.
+          ADD COLUMN IF NOT EXISTS github_login TEXT;
       `,
         )
         .catch((err) => {

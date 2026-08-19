@@ -33,6 +33,7 @@ export interface ProfileUser {
   githubId?: string | null;
   githubEmail?: string | null;
   githubName?: string | null;
+  githubLogin?: string | null;
   githubAvatarUrl?: string | null;
 }
 

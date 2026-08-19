@@ -137,7 +137,7 @@ export async function DELETE(
       );
     } else {
       await pool.query(
-        `UPDATE users SET github_id = NULL, github_email = NULL, github_name = NULL, github_avatar_url = NULL WHERE id = $1`,
+        `UPDATE users SET github_id = NULL, github_email = NULL, github_name = NULL, github_avatar_url = NULL, github_login = NULL WHERE id = $1`,
         [session.userId],
       );
     }

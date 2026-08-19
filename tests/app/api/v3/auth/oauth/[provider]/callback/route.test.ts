@@ -57,6 +57,9 @@ let googleLinkUpdateThrowsUniqueViolation = false;
 let byProviderIdRow: { id: number; disabled_at: string | null } | null = null;
 let backfillIdentityCalls: { sql: string; params: unknown[] }[] = [];
 
+// github_login persistence (persistGithubLogin) fixtures.
+let githubLoginUpdateCalls: { sql: string; params: unknown[] }[] = [];
+
 // GitHub repo-connect (?purpose=github-connect / handleGithubConnect) fixtures.
 let githubConnectionInsertCalls: unknown[][] = [];
 let githubTokenExchangeOk = true;
@@ -120,6 +123,10 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   }
   if (s.startsWith("UPDATE users SET avatar_url")) {
     avatarUpdateCalls.push(params);
+    return { rows: [] };
+  }
+  if (s.startsWith("UPDATE users SET github_login")) {
+    githubLoginUpdateCalls.push({ sql: s, params });
     return { rows: [] };
   }
   if (
@@ -231,6 +238,17 @@ const mockFetch = vi.fn(async (input: RequestInfo | URL) => {
       return new Response("unauthorized", { status: 401 });
     return new Response(JSON.stringify(githubUserFixture), { status: 200 });
   }
+  // GitHub SIGN-IN (fetchGithubUserInfo) reads the verified primary email
+  // here. The repo-connect flow (fetchGithubUser) never calls this endpoint,
+  // so it's inert for those tests.
+  if (url === "https://api.github.com/user/emails") {
+    return new Response(
+      JSON.stringify([
+        { email: "octo@example.com", primary: true, verified: true },
+      ]),
+      { status: 200 },
+    );
+  }
   return new Response(null, { status: 404 });
 });
 vi.stubGlobal("fetch", mockFetch);
@@ -288,6 +306,7 @@ beforeEach(async () => {
   googleLinkUpdateThrowsUniqueViolation = false;
   byProviderIdRow = null;
   backfillIdentityCalls = [];
+  githubLoginUpdateCalls = [];
   githubConnectionInsertCalls = [];
   githubTokenExchangeOk = true;
   githubUserFetchOk = true;
@@ -778,6 +797,62 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
 
       expect(sessionInsertCalls).toHaveLength(1);
       expect(locationOf(res).pathname).toBe("/dashboard");
+    });
+  });
+
+  describe("github_login (@handle) persistence", () => {
+    it("persists the GitHub @handle on a new GitHub sign-up", async () => {
+      userByEmailRow = null;
+      byProviderIdRow = null;
+      const state = signOAuthState("github", { intent: "signup" });
+
+      const res = await GET(
+        callbackRequest("github", { code: "somecode", state }),
+        ctx("github"),
+      );
+
+      expect(insertUserCalls).toHaveLength(1);
+      expect(githubLoginUpdateCalls).toHaveLength(1);
+      // COALESCE order guarantees a null login can never wipe an existing one.
+      expect(githubLoginUpdateCalls[0].sql).toContain(
+        "COALESCE($1, github_login)",
+      );
+      expect(githubLoginUpdateCalls[0].params).toEqual(["octocat", 900]);
+      expect(locationOf(res).pathname).toBe("/dashboard");
+    });
+
+    it("persists the GitHub @handle when an existing account signs in via provider-id match", async () => {
+      // A returning GitHub user whose row predates this column gets
+      // github_login filled in on this next sign-in, without any extra
+      // GitHub API call at boot.
+      userByEmailRow = null;
+      byProviderIdRow = { id: 777, disabled_at: null };
+      const state = signOAuthState("github", { intent: "login" });
+
+      const res = await GET(
+        callbackRequest("github", { code: "somecode", state }),
+        ctx("github"),
+      );
+
+      expect(sessionInsertCalls[0][1]).toBe(777);
+      expect(githubLoginUpdateCalls).toHaveLength(1);
+      expect(githubLoginUpdateCalls[0].sql).toContain(
+        "COALESCE($1, github_login)",
+      );
+      expect(githubLoginUpdateCalls[0].params).toEqual(["octocat", 777]);
+      expect(locationOf(res).pathname).toBe("/dashboard");
+    });
+
+    it("does not write github_login for a Google sign-in", async () => {
+      userByEmailRow = null;
+      const state = signOAuthState("google", { intent: "signup" });
+
+      await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      expect(githubLoginUpdateCalls).toHaveLength(0);
     });
   });
 

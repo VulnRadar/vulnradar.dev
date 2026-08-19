@@ -31,6 +31,12 @@ export interface OAuthUserInfo {
   emailVerified: boolean;
   name: string | null;
   avatarUrl: string | null;
+  // GitHub's @handle (the `login`), kept SEPARATE from `name` (which stays
+  // the display name, falling back to the login only when no display name is
+  // set). Unlike the display name, the login is the account's real
+  // github.com/<login> URL. Populated only for the github provider; absent
+  // (undefined) for Google and Discord, which have no equivalent handle.
+  login?: string | null;
 }
 
 // GitHub's API rejects requests with no User-Agent header.
@@ -191,6 +197,9 @@ async function fetchGithubUserInfo(
         : typeof user.login === "string"
           ? user.login
           : null,
+    // The @handle itself, unconditionally -- not the display-name fallback
+    // above. This is what forms a real github.com/<login> URL.
+    login: typeof user.login === "string" ? user.login : null,
     avatarUrl: typeof user.avatar_url === "string" ? user.avatar_url : null,
   };
 }

@@ -174,6 +174,7 @@ export async function GET(
             `${baseUrl}/signup?error=oauth_already_exists&message=${encodeURIComponent(message)}`,
           );
         }
+        await persistGithubLogin(provider, linked.id, userInfo.login);
         return signInOAuthUser(linked.id, ip, userAgent, baseUrl);
       }
     }
@@ -224,6 +225,8 @@ export async function GET(
           [userInfo.avatarUrl, created.id],
         );
       }
+
+      await persistGithubLogin(provider, created.id, userInfo.login);
 
       await createSession(created.id, ip, userAgent);
       return NextResponse.redirect(`${baseUrl}/dashboard`);
@@ -282,11 +285,42 @@ export async function GET(
         });
     }
 
+    await persistGithubLogin(provider, row.id, userInfo.login);
     return signInOAuthUser(row.id, ip, userAgent, baseUrl);
   } catch (err) {
     console.error(`[OAuth:${provider}] callback error:`, err);
     return NextResponse.redirect(`${baseUrl}/login?error=oauth_failed`);
   }
+}
+
+// Persist the GitHub @handle (login) captured by fetchOAuthUserInfo onto the
+// signed-in user's row. Separate from github_name (the display name, which is
+// NOT a valid github.com URL) and from github_connections.github_username (the
+// distinct repo-connect feature) -- this is the value that forms a real
+// github.com/<login> link in the admin panel. COALESCE order writes a fresh
+// non-null login (so a changed handle is picked up on the next sign-in) but
+// never overwrites an existing github_login with null: a re-auth that somehow
+// lacked the login can't wipe a handle already on file. No-op for any provider
+// other than github, or when the provider returned no login (older rows just
+// keep showing the display name + numeric id). Non-fatal: a failure here must
+// never block signing in.
+async function persistGithubLogin(
+  provider: OAuthProviderId,
+  userId: number,
+  login: string | null | undefined,
+): Promise<void> {
+  if (provider !== "github" || !login) return;
+  await pool
+    .query(
+      `UPDATE users SET github_login = COALESCE($1, github_login) WHERE id = $2`,
+      [login, userId],
+    )
+    .catch((err) => {
+      console.error(
+        "[OAuth:github] github_login persist failed (non-fatal):",
+        err,
+      );
+    });
 }
 
 // Same provider that created/linked the account: log in, honoring 2FA the
@@ -452,13 +486,17 @@ async function handleOAuthLink(
           ],
         );
       } else {
+        // github_login (the @handle) joins the four columns here; COALESCE
+        // keeps an existing handle if this response somehow lacked a login,
+        // matching persistGithubLogin()'s no-null-overwrite guard.
         await pool.query(
-          `UPDATE users SET github_id = $1, github_email = $2, github_name = $3, github_avatar_url = $4 WHERE id = $5`,
+          `UPDATE users SET github_id = $1, github_email = $2, github_name = $3, github_avatar_url = $4, github_login = COALESCE($5, github_login) WHERE id = $6`,
           [
             userInfo.id,
             userInfo.email,
             userInfo.name,
             userInfo.avatarUrl,
+            userInfo.login ?? null,
             session.userId,
           ],
         );

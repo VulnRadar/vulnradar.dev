@@ -37,6 +37,10 @@ export interface AdminUser {
   github_id: string | null;
   github_email: string | null;
   github_name: string | null;
+  // The GitHub @handle (login) for a GitHub SIGN-IN. Null for rows created
+  // before this column existed (they get it on next sign-in) and for accounts
+  // with no GitHub sign-in. Distinct from a repo connection's github_username.
+  github_login: string | null;
 }
 
 export interface BadgeDef {

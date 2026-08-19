@@ -215,6 +215,9 @@ describe("DELETE /api/v3/account/oauth/[provider]", () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     await DELETE(req, ctx("github"));
     expect(mockQuery.mock.calls[1][0]).toContain("github_id = NULL");
+    // The @handle column is cleared alongside the rest so a later reconnect
+    // starts fresh and the admin panel never shows a stale handle.
+    expect(mockQuery.mock.calls[1][0]).toContain("github_login = NULL");
   });
 
   it("returns 500 on a database error", async () => {
