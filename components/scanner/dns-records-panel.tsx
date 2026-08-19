@@ -21,7 +21,14 @@ import {
   PREMIUM_FEATURES,
   hasFeatureAccess,
 } from "@/components/modals/premium-upgrade-modal";
-import { formatAge } from "@/lib/ui/relative-time";
+import { formatAge, formatRefreshAvailability } from "@/lib/ui/relative-time";
+
+/**
+ * Matches lib/scanner/dns-records.ts RECORDS_TTL_MS: a refresh within this
+ * window returns the cached resolve, so "Available to refresh in Xm" tells the
+ * user when a genuinely fresh lookup is next available.
+ */
+const REFRESH_COOLDOWN_MS = 5 * 60 * 1000;
 
 interface DnsRecordsPanelProps {
   records?: DnsRecords | null;
@@ -178,6 +185,13 @@ export function DnsRecordsPanel({
 
   const total = groups.reduce((n, g) => n + g.rows.length, 0);
   const fetchedAge = formatAge(records.resolvedAt);
+  const refreshAvail = records.resolvedAt
+    ? formatRefreshAvailability(
+        new Date(
+          new Date(records.resolvedAt).getTime() + REFRESH_COOLDOWN_MS,
+        ).toISOString(),
+      )
+    : null;
 
   return (
     <>
@@ -239,6 +253,7 @@ export function DnsRecordsPanel({
                       className="h-3 w-3 text-[hsl(var(--warning))]"
                     />
                     Fetched {fetchedAge}
+                    {refreshAvail && ` · ${refreshAvail}`}
                   </span>
                 )}
                 <button

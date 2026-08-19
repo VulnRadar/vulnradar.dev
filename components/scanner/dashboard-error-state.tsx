@@ -118,7 +118,7 @@ const ERROR_META: Record<
   validation: {
     title: "The scanner rejected that input",
     description:
-      "The URL or the scan options did not pass validation. Drop the scheme and any trailing path, so example.com rather than https://example.com/page?a=1, and try again.",
+      "We could not validate that URL or those scan options. A bare domain like example.com works, and so does a full https:// link with a path. Double-check the address and options, then try again.",
     icon: AlertCircle,
     rail: "bg-[hsl(var(--severity-medium))]",
     accent: "text-[hsl(var(--severity-medium))]",

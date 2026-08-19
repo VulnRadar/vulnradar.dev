@@ -48,6 +48,7 @@ export function SoftwareInventoryPanel({
         aria-controls={panelId}
         className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
+        <Boxes aria-hidden className="h-4 w-4 shrink-0 text-muted-foreground" />
         <span className="flex-1 text-sm font-medium text-foreground">
           Software inventory
         </span>

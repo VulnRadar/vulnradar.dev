@@ -370,14 +370,14 @@ export function Dashboard() {
             </p>
           ) : (
             <ul className="divide-y divide-border">
-              {data.recentScans.map((scan) => {
+              {data.recentScans.slice(0, 6).map((scan) => {
                 const worst = worstSeverity(scan.summary);
                 const tone = worst ? SEVERITY_TONE[worst] : null;
                 return (
                   <li key={scan.id}>
                     <a
                       href={`${ROUTES.HISTORY}?scan=${scan.id}`}
-                      className="group relative flex items-center gap-3 py-3 pl-4 pr-4 transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                      className="group relative flex items-center gap-3 py-2 pl-4 pr-4 transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                     >
                       <span
                         aria-hidden
@@ -386,7 +386,7 @@ export function Dashboard() {
                           tone ? tone.solid : "bg-[hsl(var(--success))]",
                         )}
                       />
-                      <span className="min-w-0 flex-1">
+                      <span className="min-w-0 flex-1 leading-tight">
                         <span className="block truncate font-mono text-sm text-foreground group-hover:text-primary">
                           {getHostname(scan.url)}
                         </span>

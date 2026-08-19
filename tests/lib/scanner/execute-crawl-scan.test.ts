@@ -188,6 +188,17 @@ describe("executeCrawlScan", () => {
     expect(failedCall![1][0]).toMatch(/No scannable pages/);
   });
 
+  it("caps pre-selected pages to the plan's crawlPageLimit", async () => {
+    await executeCrawlScan(baseParams({ scanId: 14, crawlPageLimit: 1 }));
+
+    const perPageInserts = mockQuery.mock.calls.filter(([sql]) =>
+      (sql as string).includes("INSERT INTO scan_history"),
+    );
+    // Two URLs pre-selected, but the plan cap of 1 slices it to one.
+    expect(perPageInserts.length).toBe(1);
+    expect(mockIncrementDailyCount).toHaveBeenCalledTimes(1);
+  });
+
   it("caps pages scanned to the remaining daily quota and reports the skipped count", async () => {
     mockCanMakeRequest.mockResolvedValue({
       allowed: true,

@@ -274,4 +274,164 @@ describe("POST /api/v3/scan/crawl/discover: crawl behavior", () => {
     expect(res.status).toBe(200);
     expect(json.urls).toEqual(["https://example.com/"]);
   });
+
+  it("crawls a discovered page for ITS links, going deeper than one level", async () => {
+    mockSafeFetch.mockImplementation(async (url: string) => {
+      if (url === "https://example.com/") {
+        return htmlResponse(url, `<a href="/docs">Docs</a>`);
+      }
+      if (url === "https://example.com/docs") {
+        return htmlResponse(url, `<a href="/docs/self-hosting">Self hosting</a>`);
+      }
+      if (url === "https://example.com/docs/self-hosting") {
+        return htmlResponse(
+          url,
+          `<a href="/docs/self-hosting/config">Config</a>`,
+        );
+      }
+      return htmlResponse(url, "<html></html>");
+    });
+
+    const res = await POST(postRequest({ url: "https://example.com/" }));
+    const json = await res.json();
+
+    // /docs is depth 1, /docs/self-hosting depth 2, /docs/self-hosting/config
+    // depth 3 -- each discovered page is crawled for its own links, not treated
+    // as a dead end after one hop.
+    expect(json.urls).toEqual(
+      expect.arrayContaining([
+        "https://example.com/",
+        "https://example.com/docs",
+        "https://example.com/docs/self-hosting",
+        "https://example.com/docs/self-hosting/config",
+      ]),
+    );
+  });
+
+  it("lists more than the old 20-page cap when the entry links to many pages", async () => {
+    const links = Array.from(
+      { length: 30 },
+      (_, i) => `<a href="/page-${i}">Page ${i}</a>`,
+    ).join("\n");
+    mockSafeFetch.mockImplementation(async (url: string) => {
+      if (url === "https://example.com/") return htmlResponse(url, links);
+      return htmlResponse(url, "<html></html>");
+    });
+
+    const res = await POST(postRequest({ url: "https://example.com/" }));
+    const json = await res.json();
+
+    expect(json.urls.length).toBeGreaterThan(20);
+    expect(json.urls).toContain("https://example.com/page-29");
+  });
+});
+
+describe("POST /api/v3/scan/crawl/discover: sitemap as a URL source", () => {
+  it("seeds discovery from /sitemap.xml <url><loc> entries", async () => {
+    mockSafeFetch.mockImplementation(async (url: string) => {
+      if (url === "https://example.com/sitemap.xml") {
+        return htmlResponse(
+          url,
+          `<?xml version="1.0"?><urlset>
+             <url><loc>https://example.com/pricing</loc></url>
+             <url><loc>https://example.com/docs/deep/page</loc></url>
+           </urlset>`,
+          "application/xml",
+        );
+      }
+      return htmlResponse(url, "<html></html>");
+    });
+
+    const res = await POST(postRequest({ url: "https://example.com/" }));
+    const json = await res.json();
+
+    expect(json.urls).toEqual(
+      expect.arrayContaining([
+        "https://example.com/",
+        "https://example.com/pricing",
+        "https://example.com/docs/deep/page",
+      ]),
+    );
+  });
+
+  it("follows a sitemap INDEX to its child sitemaps", async () => {
+    mockSafeFetch.mockImplementation(async (url: string) => {
+      if (url === "https://example.com/sitemap.xml") {
+        return htmlResponse(
+          url,
+          `<sitemapindex>
+             <sitemap><loc>https://example.com/sitemap-pages.xml</loc></sitemap>
+           </sitemapindex>`,
+          "application/xml",
+        );
+      }
+      if (url === "https://example.com/sitemap-pages.xml") {
+        return htmlResponse(
+          url,
+          `<urlset><url><loc>https://example.com/from-child</loc></url></urlset>`,
+          "application/xml",
+        );
+      }
+      return htmlResponse(url, "<html></html>");
+    });
+
+    const res = await POST(postRequest({ url: "https://example.com/" }));
+    const json = await res.json();
+
+    expect(json.urls).toContain("https://example.com/from-child");
+  });
+
+  it("honors a Sitemap directive in /robots.txt", async () => {
+    mockSafeFetch.mockImplementation(async (url: string) => {
+      if (url === "https://example.com/robots.txt") {
+        return htmlResponse(
+          url,
+          "User-agent: *\nDisallow:\nSitemap: https://example.com/custom-sitemap.xml\n",
+          "text/plain",
+        );
+      }
+      if (url === "https://example.com/custom-sitemap.xml") {
+        return htmlResponse(
+          url,
+          `<urlset><url><loc>https://example.com/via-robots</loc></url></urlset>`,
+          "application/xml",
+        );
+      }
+      return htmlResponse(url, "<html></html>");
+    });
+
+    const res = await POST(postRequest({ url: "https://example.com/" }));
+    const json = await res.json();
+
+    expect(json.urls).toContain("https://example.com/via-robots");
+  });
+
+  it("keeps only same-origin http(s) sitemap URLs (drops subdomains, other hosts, non-http)", async () => {
+    mockSafeFetch.mockImplementation(async (url: string) => {
+      if (url === "https://example.com/sitemap.xml") {
+        return htmlResponse(
+          url,
+          `<urlset>
+             <url><loc>https://example.com/keep</loc></url>
+             <url><loc>https://evil.com/nope</loc></url>
+             <url><loc>https://sub.example.com/nope</loc></url>
+             <url><loc>ftp://example.com/nope</loc></url>
+             <url><loc>https://example.com/sitemap-other.xml</loc></url>
+           </urlset>`,
+          "application/xml",
+        );
+      }
+      return htmlResponse(url, "<html></html>");
+    });
+
+    const res = await POST(postRequest({ url: "https://example.com/" }));
+    const json = await res.json();
+
+    expect(json.urls).toContain("https://example.com/keep");
+    expect(json.urls).not.toContain("https://evil.com/nope");
+    expect(json.urls).not.toContain("https://sub.example.com/nope");
+    expect(json.urls.some((u: string) => u.startsWith("ftp:"))).toBe(false);
+    // The sitemap file itself is a URL SOURCE, never a listed scan target.
+    expect(json.urls).not.toContain("https://example.com/sitemap-other.xml");
+  });
 });

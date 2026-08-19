@@ -5,6 +5,9 @@ import { ArrowRight, Check, Loader2, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/ui/utils";
 import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
+import { useAuth } from "@/components/providers/auth-provider";
+import { getCrawlPageSelectionLimit } from "@/lib/billing/crawl-page-limits";
+import { BILLING_ENABLED } from "@/lib/config/constants";
 
 interface CrawlUrlSelectorProps {
   urls: string[];
@@ -39,23 +42,42 @@ export function CrawlUrlSelector({
   onConfirm,
   onCancel,
 }: CrawlUrlSelectorProps) {
-  const [selected, setSelected] = useState<Set<string>>(new Set(urls));
+  const { me } = useAuth();
+  // Per-plan cap on how many pages the user may SELECT to scan. Same source the
+  // server route enforces (lib/billing/crawl-page-limits.ts), so the two never
+  // disagree. Billing off (self-hosted) means no cap.
+  const selectionLimit = BILLING_ENABLED
+    ? getCrawlPageSelectionLimit(me?.plan)
+    : Number.POSITIVE_INFINITY;
+  const isCapped = Number.isFinite(selectionLimit);
+  const maxSelectable = Math.min(urls.length, selectionLimit);
+
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(urls.slice(0, maxSelectable)),
+  );
   const [filter, setFilter] = useState("");
 
-  // Select all URLs by default as they arrive from discovery
+  // Select up to the plan cap by default as URLs arrive from discovery.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs local selection state from a changed prop
-    setSelected(new Set(urls));
-  }, [urls]);
+    setSelected(new Set(urls.slice(0, maxSelectable)));
+  }, [urls, maxSelectable]);
 
-  const allSelected = selected.size === urls.length && urls.length > 0;
+  const allSelectableSelected =
+    selected.size >= maxSelectable && maxSelectable > 0;
+  const atCap = selected.size >= selectionLimit;
   const noneSelected = selected.size === 0;
 
   function toggleUrl(url: string) {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(url)) next.delete(url);
-      else next.add(url);
+      if (next.has(url)) {
+        next.delete(url);
+      } else {
+        // At the plan cap: refuse to add more (the row is also disabled below).
+        if (next.size >= selectionLimit) return prev;
+        next.add(url);
+      }
       return next;
     });
   }
@@ -147,16 +169,27 @@ export function CrawlUrlSelector({
               <button
                 type="button"
                 onClick={() =>
-                  setSelected(allSelected ? new Set() : new Set(urls))
+                  setSelected(
+                    allSelectableSelected
+                      ? new Set()
+                      : new Set(urls.slice(0, maxSelectable)),
+                  )
                 }
                 className={cn(
                   "shrink-0 rounded px-1.5 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10",
                   FOCUS_RING,
                 )}
               >
-                {allSelected ? "Clear all" : "Select all"}
+                {allSelectableSelected ? "Clear all" : "Select all"}
               </button>
             </div>
+
+            {isCapped && urls.length > selectionLimit && (
+              <div className="border-b border-border bg-primary/5 px-3 py-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                Your plan scans up to {selectionLimit} pages per crawl. Upgrade
+                to select more.
+              </div>
+            )}
 
             <ul className="min-h-0 flex-1 overflow-y-auto p-1.5">
               {filtered.map((url, i) => {
@@ -167,8 +200,12 @@ export function CrawlUrlSelector({
                       type="button"
                       onClick={() => toggleUrl(url)}
                       aria-pressed={isChecked}
+                      disabled={!isChecked && atCap}
                       className={cn(
                         "flex w-full items-center gap-2.5 rounded px-2.5 py-1.5 text-left transition-colors hover:bg-muted/60",
+                        !isChecked &&
+                          atCap &&
+                          "cursor-not-allowed opacity-40 hover:bg-transparent",
                         FOCUS_RING,
                       )}
                     >
@@ -216,6 +253,9 @@ export function CrawlUrlSelector({
         <div className="flex items-center justify-between gap-3 border-t border-border bg-muted/30 px-5 py-3">
           <span className="text-xs tabular-nums text-muted-foreground">
             {selected.size} of {urls.length} selected
+            {isCapped && urls.length > selectionLimit
+              ? ` (max ${selectionLimit})`
+              : ""}
           </span>
           <div className="flex gap-2">
             <Button

@@ -19,7 +19,14 @@ import {
   PREMIUM_FEATURES,
   hasFeatureAccess,
 } from "@/components/modals/premium-upgrade-modal";
-import { formatAge } from "@/lib/ui/relative-time";
+import { formatAge, formatRefreshAvailability } from "@/lib/ui/relative-time";
+
+/**
+ * Matches lib/scanner/port-scan.ts PORT_SCAN_TTL_MS: a refresh within this
+ * window returns the cached sweep, so "Available to refresh in Xm" tells the
+ * user when a genuinely fresh sweep is next available.
+ */
+const REFRESH_COOLDOWN_MS = 5 * 60 * 1000;
 
 interface PortScanPanelProps {
   portScan?: PortScanResult | null;
@@ -101,6 +108,13 @@ export function PortScanPanel({
   const closed = portScan.closed ?? [];
   const showRefresh = Boolean(scanId);
   const fetchedAge = formatAge(portScan.scannedAt);
+  const refreshAvail = portScan.scannedAt
+    ? formatRefreshAvailability(
+        new Date(
+          new Date(portScan.scannedAt).getTime() + REFRESH_COOLDOWN_MS,
+        ).toISOString(),
+      )
+    : null;
 
   return (
     <>
@@ -171,6 +185,7 @@ export function PortScanPanel({
                       className="h-3 w-3 text-[hsl(var(--warning))]"
                     />
                     Fetched {fetchedAge}
+                    {refreshAvail && ` · ${refreshAvail}`}
                   </span>
                 )}
                 <button

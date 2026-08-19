@@ -573,13 +573,21 @@ export const CONFIG_SUBDOMAIN_DISCOVERY_HTTP_CONCURRENCY = 25;
 
 // Caps for the link-following crawl-discovery endpoint (POST
 // /api/v3/scan/crawl/discover), distinct from the main crawl-scan job below.
-export const CONFIG_CRAWL_DISCOVER_MAX_PAGES = 20;
+// How many pages the picker may FIND and list. Kept generous (not the per-plan
+// selection cap) because sitemap URLs are listed cheaply, not fetched, and the
+// link crawl bounds its own fetch budget internally
+// (lib/scanner/crawl-discovery.ts). What a user may actually SELECT to scan is
+// the smaller per-plan cap in lib/billing/crawl-page-limits.ts.
+export const CONFIG_CRAWL_DISCOVER_MAX_PAGES = 500;
 export const CONFIG_CRAWL_DISCOVER_FETCH_TIMEOUT_MS = 8000;
 export const CONFIG_CRAWL_DISCOVER_BODY_MAX_BYTES = 512 * 1024;
 
 // Caps for an actual crawl scan job (lib/scanner/execute-crawl-scan.ts, the
-// background job body for POST /api/v3/scan/crawl).
-export const CONFIG_CRAWL_SCAN_MAX_PAGES = 15;
+// background job body for POST /api/v3/scan/crawl). A hard ceiling only: the
+// binding per-user governor is the plan's page-selection cap
+// (lib/billing/crawl-page-limits.ts), which executeCrawlScan min()s against
+// this, plus the daily quota and CRAWL_SCAN_TIMEOUT_SECONDS.
+export const CONFIG_CRAWL_SCAN_MAX_PAGES = 500;
 export const CONFIG_CRAWL_PAGE_FETCH_TIMEOUT_MS = 8000;
 
 // Bytes read from a page's response body before content-based checks run,

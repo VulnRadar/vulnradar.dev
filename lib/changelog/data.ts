@@ -140,7 +140,7 @@ const CHANGELOG: Release[] = [
     title: "Domain Verification, Live-Browser Metering, Quota Bypass Fixes",
     highlights: true,
     summary:
-      "Active-probes scanning (real exploit-attempt payloads, not just passive checks) now requires proving you own the target domain first, via a DNS TXT record, the same model Google Search Console and ACME certificate issuance use. Three of the existing active probes (CORS origin reflection, dangerous HTTP methods, X-Forwarded-Host injection) turned out to run unconditionally on every scan instead of being gated behind that opt-in, so they're fixed alongside two new ones: OS command injection and open redirect. Live-browser sessions are now a real metered plan limit with an account-wide concurrency queue instead of an unbounded feature, and dependency scanning gained a live OSV.dev lookup on top of the old static CVE table. The rest is a run of real quota and account-safety bugs found by auditing every per-plan limit end to end: the daily scan quota was fully bypassable via API key, never enforced on crawl scans at all, and a rejected scan could still permanently burn a quota slot; the bulk-scan URL limit ignored your actual plan; and account deletion was completely broken for every account, full stop.",
+      "Active-probes scanning (real exploit-attempt payloads, not just passive checks) now requires proving you own the target domain first, via a DNS TXT record, the same model Google Search Console and ACME certificate issuance use. Three of the existing active probes (CORS origin reflection, dangerous HTTP methods, X-Forwarded-Host injection) turned out to run unconditionally on every scan instead of being gated behind that opt-in, so they're fixed alongside two new ones: OS command injection and open redirect. Live-browser sessions are now a real metered plan limit with an account-wide concurrency queue instead of an unbounded feature, and dependency scanning gained a live OSV.dev lookup on top of the old static CVE table. The rest is a run of real quota and account-safety bugs found by auditing every per-plan limit end to end: the daily scan quota was fully bypassable via API key, never enforced on crawl scans at all, and a rejected scan could still permanently burn a quota slot; the bulk-scan URL limit ignored your actual plan; and account deletion was completely broken for every account, full stop. Results also grew a lot richer this release: multi-source threat reputation, a curated open-port sweep, opt-in page screenshots, a software inventory with CVE correlation, and remediation status that survives rescans, all shown consistently on your own, shared, and public result pages. Authenticated scanning and crawling now reach the pages behind a login, credentials never leaving memory for the request, and compliance-mapping reports line findings up against PCI DSS, SOC 2, ISO 27001, and OWASP ASVS as prioritization guidance, not certification.",
     changes: [
       {
         icon: ShieldCheck,
@@ -158,6 +158,18 @@ const CHANGELOG: Release[] = [
         icon: ScanSearch,
         label: "Subdomains Are Discovered Automatically",
         desc: "Subdomain discovery used to be a button you had to press. Now every scan runs it automatically, so a finished result already lists the related subdomains it found, with the same certificate-transparency, passive-DNS, and brute-force sources as before.",
+        category: "changed",
+      },
+      {
+        icon: Network,
+        label: "More Subdomain Discovery Sources",
+        desc: "Subdomain discovery now aggregates nine free, no-key passive sources (crt.sh, AlienVault OTX, certspotter, urlscan, the Wayback Machine, and more) on top of the DNS brute-force, each self-bounding so one slow or rate-limited source can never stall or empty the results. That surfaces far more related hosts, including ones that do not currently resolve, which show up under the unreachable list.",
+        category: "changed",
+      },
+      {
+        icon: Radar,
+        label: "Deeper Crawls With Sitemap Discovery and Higher Page Limits",
+        desc: "Crawl page discovery now reads the site's sitemap (sitemap indexes and robots.txt references included) and follows links up to three levels deep instead of one, so nested pages are actually found. It surfaces up to 500 pages instead of stopping at 20, while how many you can scan at once follows your plan (25 on the free tier). Crawls stay on the one application's own pages, never subdomains or other hosts.",
         category: "changed",
       },
       {
@@ -306,6 +318,72 @@ const CHANGELOG: Release[] = [
         label: "Active Probing Reorganized Into Modules",
         desc: "The single 470-line file behind every active probe is now one module per probe under lib/scanner/active-probes/, sharing common request/cancellation/finding-building infrastructure, so a new probe no longer means editing one increasingly large file.",
         category: "changed",
+      },
+      {
+        icon: ShieldAlert,
+        label: "Multi-Source Threat Reputation on Every Scan",
+        desc: "Every scan now checks the target against several threat-intelligence sources at once (URLhaus, Google Web Risk, and Quad9's security DNS), shown as a reputation panel on the result. A source that cannot be reached reads as \"unavailable\" rather than a false all-clear, so an outage never looks like a clean bill of health.",
+        category: "added",
+      },
+      {
+        icon: Image,
+        label: "Opt-In Page Screenshots",
+        desc: "A scan can now capture a screenshot of the page it scanned, rendered in a real browser and shown as a collapsible preview that carries through to shared and history views. Off unless you ask for it, since it spins up a metered live-browser session, and re-capturable on demand.",
+        category: "added",
+      },
+      {
+        icon: Server,
+        label: "Curated Open-Port Sweep",
+        desc: "An opt-in sweep of common service ports reports which are open, with any banner it grabbed, and lists the checked-but-closed ports in a separate collapsed section instead of flooding the findings list. Held to the same verified-domain requirement as active probing, since it makes this server a scan source against the target.",
+        category: "added",
+      },
+      {
+        icon: Layers,
+        label: "Software Inventory With CVE Correlation",
+        desc: "Results now include a structured inventory of the software the scan fingerprinted on the host, each component with its category and, where a version is known, a CVE verdict from correlating that version against known advisories. Version-with-known-CVEs items also raise real findings in the list above.",
+        category: "added",
+      },
+      {
+        icon: CheckCircle2,
+        label: "Remediation Status That Survives Rescans",
+        desc: "Mark a finding fixed or accepted-risk and that status now persists across future scans of the same target, so a rescan shows what you have already triaged instead of resetting every finding to new. Previously the only per-finding signal was accuracy feedback.",
+        category: "added",
+      },
+      {
+        icon: FileText,
+        label: "Compliance Mapping Reports",
+        desc: "Export a report that maps your scan's findings to common frameworks (PCI DSS, SOC 2, ISO 27001, OWASP ASVS) to show where you stand at a glance. Clearly labeled as guidance to prioritize work, not a certification or an audit.",
+        category: "added",
+      },
+      {
+        icon: Lock,
+        label: "Authenticated Scanning and Crawling",
+        desc: "Scan the pages behind a login, not just the public ones: supply a session cookie, an auth header, or real form credentials, and the scanner authenticates once and scans, or crawls the whole site, as a logged-in user. Credentials live only in memory for that one request, never written to the database, a log, or any response, and an authenticated scan stays private unless you explicitly publish it.",
+        category: "added",
+      },
+      {
+        icon: RefreshCw,
+        label: "Refresh DNS, Ports, Subdomains and Screenshots on Demand",
+        desc: "The DNS, open-ports, subdomain, and screenshot panels each show how long ago they were captured and when a fresh pull is next available, with a one-click refresh that updates the result in place. On-demand refresh is a Pro feature, gated on the server so it cannot be bypassed from the page.",
+        category: "added",
+      },
+      {
+        icon: Columns3,
+        label: "Every Result Surface Shows the Same Panels",
+        desc: "The DNS, ports, subdomains, screenshot, reputation, SSL grade, and software-inventory panels now render identically on your own result, its history entry, a shared link, and the public host page, so a shared or saved result is as complete as the one you first saw. Authenticated scans also show the risk score and engine confidence, not just a duration.",
+        category: "changed",
+      },
+      {
+        icon: Smartphone,
+        label: "Mobile Fixes for Notifications and Screenshots",
+        desc: "Site notifications (banner, modal, and toast) and the page-screenshot preview were cramped or overflowed on phone-width screens. They now wrap, stack, and size to the viewport, and a notification modal with a corner close no longer also shows a redundant dismiss button.",
+        category: "fixed",
+      },
+      {
+        icon: Layout,
+        label: "Dashboard Recent Scans and Result Links",
+        desc: "The dashboard's recent-scans list now fits all six entries without scrolling, and finishing a scan lands on a clean, shareable ?scan= result link instead of leaving the long scan-option URL sitting in the address bar.",
+        category: "fixed",
       },
       {
         icon: ShieldAlert,

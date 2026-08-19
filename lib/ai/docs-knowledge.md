@@ -1582,7 +1582,7 @@ npm run lint:fix    # auto-fix
 | `/docs/setup` | - | 12 | 5 | 0 | 22 | 0 | 0 | 28 | 30 |
 | `/docs/extension` | ✓ | 8 | 1 | 0 | 0 | 0 | 0 | 10 | 2 |
 | `/docs/self-hosting` | - | 15 | 3 | 0 | 11 | 0 | 0 | 14 | 2 |
-| `/docs/config` | - | 9 | 3 | 0 | 2 | 0 | 0 | 24 | 0 |
+| `/docs/config` | - | 9 | 3 | 0 | 2 | 0 | 0 | 25 | 0 |
 | `/docs/api` | - | 8 | 3 | 0 | 4 | 28 | 0 | 9 | 6 |
 | `/docs/webhooks` | ✓ | 6 | 0 | 0 | 3 | 0 | 0 | 5 | 5 |
 | `/docs/rate-limits` | - | 6 | 5 | 0 | 4 | 0 | 0 | 10 | 3 |

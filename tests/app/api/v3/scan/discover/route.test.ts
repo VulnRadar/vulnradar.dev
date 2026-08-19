@@ -2,7 +2,8 @@
  * Route-level tests for POST /api/v3/scan/discover.
  *
  * This route enumerates subdomains for a target (passive sources: crt.sh,
- * hackertarget, subdomain.center, rapiddns; plus a ~150-prefix DNS
+ * hackertarget, subdomain.center, rapiddns, alienvault, anubis, certspotter,
+ * urlscan, wayback; plus a ~150-prefix DNS
  * brute-force), filters dead entries via DNS, then HTTP-probes the
  * survivors for reachability. Every discovered host is re-validated with
  * validateScanTarget immediately before it is actually probed, which is
@@ -532,6 +533,11 @@ describe("POST /api/v3/scan/discover - full discovery pipeline (cache miss)", ()
       hackertarget: 2,
       "subdomain.center": 2,
       rapiddns: 1,
+      alienvault: 0,
+      anubis: 0,
+      certspotter: 0,
+      urlscan: 0,
+      wayback: 0,
       "brute-force": 3,
     });
 
@@ -734,6 +740,90 @@ describe("POST /api/v3/scan/discover - passive-source sanitization (default DNS:
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.sources.hackertarget).toBe(0);
+  });
+});
+
+describe("POST /api/v3/scan/discover - additional passive sources", () => {
+  it("merges and dedupes a new source's hosts with the existing sources, tagging each host by source", async () => {
+    mockFetch.mockImplementation(async (input: unknown) => {
+      const url = String(input);
+      if (url.includes("crt.sh")) {
+        return {
+          ok: true,
+          json: async () => [
+            {
+              common_name: "shared.example.com",
+              name_value: "shared.example.com",
+            },
+          ],
+        };
+      }
+      // AlienVault OTX passive DNS shape: { passive_dns: [{ hostname }] }.
+      if (url.includes("otx.alienvault.com")) {
+        return {
+          ok: true,
+          json: async () => ({
+            passive_dns: [
+              { hostname: "shared.example.com" }, // overlaps crt.sh -> merge sources
+              { hostname: "otx-only.example.com" }, // unique -> newly discovered
+              { hostname: "off-target.example.net" }, // wrong domain -> filtered out
+            ],
+          }),
+        };
+      }
+      return { ok: false, json: async () => [], text: async () => "" };
+    });
+
+    const res = await POST(postRequest({ url: "https://example.com" }));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+
+    const byName = subdomainMap(json.subdomains);
+    // A host only the new source found is discovered and tagged with it.
+    expect(byName.get("otx-only.example.com")?.sources).toEqual(["alienvault"]);
+    // A host both sources found carries BOTH tags, as a single deduped entry.
+    expect(byName.get("shared.example.com")?.sources).toEqual([
+      "crt.sh",
+      "alienvault",
+    ]);
+    expect(
+      json.subdomains.filter(
+        (s: DiscoveredSubdomainResult) => s.subdomain === "shared.example.com",
+      ),
+    ).toHaveLength(1);
+    // A host outside the target registrable domain is never merged in.
+    expect(byName.has("off-target.example.net")).toBe(false);
+    // The per-source roll-up reflects the new source (post domain-filter count).
+    expect(json.sources.alienvault).toBe(2);
+    expect(json.sources["crt.sh"]).toBe(1);
+  });
+
+  it("swallows a passive source that throws and still returns the other sources' results", async () => {
+    mockFetch.mockImplementation(async (input: unknown) => {
+      const url = String(input);
+      if (url.includes("api.certspotter.com")) {
+        throw new Error("certspotter exploded");
+      }
+      if (url.includes("crt.sh")) {
+        return {
+          ok: true,
+          json: async () => [
+            { common_name: "crt.example.com", name_value: "crt.example.com" },
+          ],
+        };
+      }
+      return { ok: false, json: async () => [], text: async () => "" };
+    });
+
+    const res = await POST(postRequest({ url: "https://example.com" }));
+
+    // The throwing source degrades to zero results, never a failed request.
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.sources.certspotter).toBe(0);
+    // The healthy source's result is unaffected by the neighbour throwing.
+    const byName = subdomainMap(json.subdomains);
+    expect(byName.get("crt.example.com")?.sources).toEqual(["crt.sh"]);
   });
 });
 

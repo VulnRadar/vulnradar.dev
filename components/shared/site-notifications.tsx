@@ -159,92 +159,100 @@ export function SiteBanner({ notification }: { notification: Notification }) {
         aria-hidden="true"
       />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div
-            className={cn(
-              "flex-shrink-0 flex items-center justify-center h-8 w-8 rounded-lg",
-              config.iconBg,
-            )}
-          >
-            <Megaphone className={cn("h-4 w-4", config.iconColor)} />
-          </div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-start sm:items-center gap-3 sm:gap-4">
+        <div
+          className={cn(
+            "flex-shrink-0 flex items-center justify-center h-8 w-8 rounded-lg",
+            config.iconBg,
+          )}
+        >
+          <Megaphone className={cn("h-4 w-4", config.iconColor)} />
+        </div>
+
+        {/* Middle block: text stacks above the action buttons on mobile,
+            sits inline with them on larger screens. min-w-0 lets the text
+            truncate/wrap instead of forcing the row wider than the viewport. */}
+        <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
           <div className="flex flex-col sm:flex-row sm:items-baseline gap-x-2 gap-y-0.5 min-w-0">
             {notification.title && (
               <span className="font-semibold text-sm text-foreground shrink-0">
                 {notification.title}
               </span>
             )}
-            <span className="text-sm text-foreground/80 truncate">
+            <span className="text-sm text-foreground/80 break-words sm:truncate">
               {notification.message}
             </span>
           </div>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {notification.action_url && (
-            <Button
-              size="sm"
-              asChild
-              className={cn(
-                "h-8 px-3 text-xs font-semibold",
-                config.iconColor,
-                config.bg,
-                "border",
-                config.border,
-                "hover:opacity-90",
+
+          {(notification.action_url || notification.action_url_2) && (
+            <div className="flex flex-wrap items-center gap-2 sm:flex-shrink-0">
+              {notification.action_url && (
+                <Button
+                  size="sm"
+                  asChild
+                  className={cn(
+                    "h-8 px-3 text-xs font-semibold",
+                    config.iconColor,
+                    config.bg,
+                    "border",
+                    config.border,
+                    "hover:opacity-90",
+                  )}
+                >
+                  <a
+                    href={notification.action_url}
+                    target={notification.action_external ? "_blank" : "_self"}
+                    rel={
+                      notification.action_external
+                        ? "noopener noreferrer"
+                        : undefined
+                    }
+                    className="flex items-center gap-1.5"
+                  >
+                    {notification.action_label || "Learn more"}
+                    {notification.action_external && (
+                      <ExternalLink className="h-3 w-3" />
+                    )}
+                  </a>
+                </Button>
               )}
-            >
-              <a
-                href={notification.action_url}
-                target={notification.action_external ? "_blank" : "_self"}
-                rel={
-                  notification.action_external
-                    ? "noopener noreferrer"
-                    : undefined
-                }
-                className="flex items-center gap-1.5"
-              >
-                {notification.action_label || "Learn more"}
-                {notification.action_external && (
-                  <ExternalLink className="h-3 w-3" />
-                )}
-              </a>
-            </Button>
-          )}
-          {notification.action_url_2 && (
-            <Button
-              size="sm"
-              variant="outline"
-              asChild
-              className="h-8 px-3 text-xs font-semibold"
-            >
-              <a
-                href={notification.action_url_2}
-                target={notification.action_external_2 ? "_blank" : "_self"}
-                rel={
-                  notification.action_external_2
-                    ? "noopener noreferrer"
-                    : undefined
-                }
-                className="flex items-center gap-1.5"
-              >
-                {notification.action_label_2 || "Learn more"}
-                {notification.action_external_2 && (
-                  <ExternalLink className="h-3 w-3" />
-                )}
-              </a>
-            </Button>
-          )}
-          {notification.is_dismissible && (
-            <button
-              onClick={handleDismiss}
-              className="flex-shrink-0 flex items-center justify-center h-7 w-7 rounded-md text-foreground/60 hover:text-foreground hover:bg-foreground/10 transition-colors"
-              aria-label="Dismiss notification"
-            >
-              <X className="h-4 w-4" />
-            </button>
+              {notification.action_url_2 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  asChild
+                  className="h-8 px-3 text-xs font-semibold"
+                >
+                  <a
+                    href={notification.action_url_2}
+                    target={notification.action_external_2 ? "_blank" : "_self"}
+                    rel={
+                      notification.action_external_2
+                        ? "noopener noreferrer"
+                        : undefined
+                    }
+                    className="flex items-center gap-1.5"
+                  >
+                    {notification.action_label_2 || "Learn more"}
+                    {notification.action_external_2 && (
+                      <ExternalLink className="h-3 w-3" />
+                    )}
+                  </a>
+                </Button>
+              )}
+            </div>
           )}
         </div>
+
+        {notification.is_dismissible && (
+          <button
+            onClick={handleDismiss}
+            className="flex-shrink-0 flex items-center justify-center h-7 w-7 rounded-md text-foreground/60 hover:text-foreground hover:bg-foreground/10 transition-colors"
+            aria-label="Dismiss notification"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
     </div>
   );
@@ -333,52 +341,59 @@ export function SiteModal({
           </p>
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-2 p-4 pt-0">
-          {notification.is_dismissible && (
-            <Button variant="ghost" size="sm" onClick={handleClose}>
-              Dismiss
-            </Button>
-          )}
-          {notification.action_url_2 && (
-            <Button size="sm" variant="outline" asChild>
-              <a
-                href={notification.action_url_2}
-                target={notification.action_external_2 ? "_blank" : "_self"}
-                rel={
-                  notification.action_external_2
-                    ? "noopener noreferrer"
-                    : undefined
-                }
-                className="flex items-center gap-1.5"
+        {/* Footer: the top-right X already closes the modal (it renders under
+            the same is_dismissible condition the old "Dismiss" button used),
+            so we don't repeat a redundant "Dismiss" button here. Only action
+            buttons live in the footer, and it's omitted entirely when the
+            notification has no actions, leaving the X as the way to close.
+            Buttons stack full width on mobile so long labels don't clip. */}
+        {(notification.action_url || notification.action_url_2) && (
+          <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 p-4 pt-0">
+            {notification.action_url_2 && (
+              <Button
+                size="sm"
+                variant="outline"
+                asChild
+                className="w-full sm:w-auto"
               >
-                {notification.action_label_2 || "Learn more"}
-                {notification.action_external_2 && (
-                  <ExternalLink className="h-3.5 w-3.5" />
-                )}
-              </a>
-            </Button>
-          )}
-          {notification.action_url && (
-            <Button size="sm" asChild>
-              <a
-                href={notification.action_url}
-                target={notification.action_external ? "_blank" : "_self"}
-                rel={
-                  notification.action_external
-                    ? "noopener noreferrer"
-                    : undefined
-                }
-                className="flex items-center gap-1.5"
-              >
-                {notification.action_label || "Learn more"}
-                {notification.action_external && (
-                  <ExternalLink className="h-3.5 w-3.5" />
-                )}
-              </a>
-            </Button>
-          )}
-        </div>
+                <a
+                  href={notification.action_url_2}
+                  target={notification.action_external_2 ? "_blank" : "_self"}
+                  rel={
+                    notification.action_external_2
+                      ? "noopener noreferrer"
+                      : undefined
+                  }
+                  className="flex items-center justify-center gap-1.5"
+                >
+                  {notification.action_label_2 || "Learn more"}
+                  {notification.action_external_2 && (
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  )}
+                </a>
+              </Button>
+            )}
+            {notification.action_url && (
+              <Button size="sm" asChild className="w-full sm:w-auto">
+                <a
+                  href={notification.action_url}
+                  target={notification.action_external ? "_blank" : "_self"}
+                  rel={
+                    notification.action_external
+                      ? "noopener noreferrer"
+                      : undefined
+                  }
+                  className="flex items-center justify-center gap-1.5"
+                >
+                  {notification.action_label || "Learn more"}
+                  {notification.action_external && (
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  )}
+                </a>
+              </Button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -437,7 +452,7 @@ export function SiteToast({
   return (
     <div
       className={cn(
-        "pointer-events-auto w-full max-w-sm rounded-lg border border-border bg-card shadow-lg overflow-hidden transition-all duration-150",
+        "pointer-events-auto w-full max-w-[calc(100vw-2rem)] sm:max-w-sm rounded-lg border border-border bg-card shadow-lg overflow-hidden transition-all duration-150",
         exiting
           ? "opacity-0 translate-x-4 scale-95"
           : "opacity-100 translate-x-0 scale-100",
@@ -474,7 +489,7 @@ export function SiteToast({
             )}
             <p
               className={cn(
-                "text-sm text-muted-foreground leading-snug whitespace-pre-wrap",
+                "text-sm text-muted-foreground leading-snug whitespace-pre-wrap break-words",
                 notification.title && "mt-0.5",
               )}
             >
@@ -638,7 +653,7 @@ export function SiteNotifications({
 
       {/* Toast container - bottom right */}
       {toastQueue.length > 0 && (
-        <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
+        <div className="fixed bottom-4 right-4 left-4 sm:left-auto z-50 flex flex-col gap-2 pointer-events-none">
           {toastQueue.slice(0, 3).map((notification) => (
             <SiteToast
               key={notification.id}

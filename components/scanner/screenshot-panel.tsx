@@ -148,11 +148,11 @@ export function ScreenshotPanel({
         className="flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors hover:bg-muted/50"
       >
         <Camera aria-hidden className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <span className="flex-1 text-sm font-medium text-foreground">
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
           Page screenshot
         </span>
         {captured && (
-          <span className="shrink-0 text-xs text-muted-foreground">
+          <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
             {captured}
           </span>
         )}
@@ -172,7 +172,7 @@ export function ScreenshotPanel({
         <div className="border-t border-border">
           {scanId && (
             <div className="flex items-center gap-2 border-b border-border bg-muted/30 px-4 py-1.5">
-              <span className="text-[11px] text-muted-foreground">
+              <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
                 {captured ? `Captured ${captured}` : "Page screenshot"}
               </span>
               <button
@@ -180,7 +180,7 @@ export function ScreenshotPanel({
                 onClick={handleRefresh}
                 disabled={refreshing}
                 className={cn(
-                  "ml-auto inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50",
+                  "inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-50",
                   canRefresh
                     ? "text-foreground hover:bg-muted"
                     : "text-primary hover:bg-primary/10",
@@ -231,7 +231,7 @@ export function ScreenshotPanel({
                   height={height}
                   loading="lazy"
                   onError={() => setBroken(true)}
-                  className="max-h-[420px] w-full object-cover object-top"
+                  className="block aspect-[4/3] max-h-[280px] w-full object-cover object-top sm:aspect-auto sm:max-h-[420px]"
                 />
                 <span className="absolute right-2 top-2 flex items-center gap-1 rounded bg-background/85 px-1.5 py-0.5 text-[11px] font-medium text-foreground opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
                   <Maximize2 aria-hidden className="h-3 w-3" />

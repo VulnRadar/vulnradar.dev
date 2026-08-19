@@ -4,7 +4,11 @@ import { useState, useCallback, useEffect, Suspense, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { ROUTES } from "@/lib/config/client-constants";
-import { setQueryParam, removeQueryParam } from "@/lib/ui/url-state";
+import {
+  setQueryParam,
+  setQueryParams,
+  removeQueryParam,
+} from "@/lib/ui/url-state";
 import { Header } from "@/components/scanner/header";
 import { ScanHero } from "@/components/scanner/scan-hero";
 import {
@@ -282,7 +286,19 @@ function DashboardContent() {
   const updateUrlWithScan = useCallback((id: string | number | null) => {
     if (typeof window === "undefined") return;
     if (id) {
-      setQueryParam("scan", String(id));
+      // Land on a clean, shareable ?scan=<id> result URL. The scan-option
+      // params the form wrote while configuring the scan (mode, screenshot,
+      // port_scan, active_probes) are cleared in the same history entry, so a
+      // finished result reads as its own result link instead of the long
+      // ?mode=...&screenshot=1&port_scan=1&active_probes=... URL it was
+      // launched from -- which never looked like it had navigated to a result.
+      setQueryParams({
+        scan: String(id),
+        mode: null,
+        screenshot: null,
+        port_scan: null,
+        active_probes: null,
+      });
     } else {
       removeQueryParam("scan", { replace: true });
     }

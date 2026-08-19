@@ -43,6 +43,7 @@ import type {
 } from "./types";
 import { checkAccessRules } from "./access-rules";
 import { safeFetch } from "./safe-fetch";
+import { discoverPages } from "./crawl-discovery";
 import type { ScanSessionBinding, ScanAuthReport } from "./auth/types";
 import { redactSensitiveResponseHeaders } from "./response-headers";
 import { enrichFindingsWithExploitIntel } from "./cve-enrichment";
@@ -108,162 +109,6 @@ async function safeReadBody(
     }
   }
   return chunks.join("");
-}
-
-/**
- * Crawl a page and extract same-origin internal links.
- * Skips external domains, anchors, mailto, tel, and asset files.
- */
-async function discoverInternalLinks(
-  startUrl: string,
-  crawlSettings: {
-    maxPages: number;
-    fetchTimeoutMs: number;
-    maxBodySize: number;
-  },
-  session?: ScanSessionBinding,
-): Promise<string[]> {
-  const {
-    maxPages: MAX_PAGES,
-    fetchTimeoutMs: CRAWL_TIMEOUT,
-    maxBodySize: MAX_BODY_SIZE,
-  } = crawlSettings;
-  const origin = new URL(startUrl).origin;
-  const visited = new Set<string>([startUrl]);
-  const queue = [startUrl];
-  const found: string[] = [startUrl];
-
-  const skipExtensions =
-    /\.(png|jpg|jpeg|gif|svg|webp|ico|css|js|mjs|cjs|woff2?|ttf|eot|otf|pdf|zip|tar|gz|mp4|mp3|wav|ogg|webm|avif|map|xml|rss|atom|json|wasm|txt)$/i;
-  const skipPathSegments =
-    /(\/_next\/|\/static\/|\/assets\/|\/api\/|\/favicon|\/robots\.txt|\/sitemap|\/manifest|\/sw\.js|\/workbox)/i;
-
-  function isCleanUrl(href: string): boolean {
-    // Skip anything with encoded brackets, regex-like patterns, or non-printable chars
-    if (
-      /[%\[\]{}|\\^`<>]/.test(href) &&
-      /%5[bBdD]|%5[eE]|%7[bBdD]|%3[eE]|%3[cC]/.test(href)
-    )
-      return false;
-    // Skip data URIs
-    if (href.startsWith("data:")) return false;
-    // Skip fragments-only and empty
-    if (!href || href === "#" || href.startsWith("#")) return false;
-    // Skip non-HTTP
-    if (
-      href.startsWith("mailto:") ||
-      href.startsWith("tel:") ||
-      href.startsWith("javascript:") ||
-      href.startsWith("vbscript:")
-    )
-      return false;
-    return true;
-  }
-
-  while (queue.length > 0 && found.length < MAX_PAGES) {
-    const url = queue.shift()!;
-    try {
-      // Validate URL to prevent SSRF - check protocol and parse URL
-      if (!url.startsWith("http://") && !url.startsWith("https://")) {
-        continue;
-      }
-
-      let urlObj: URL;
-      try {
-        urlObj = new URL(url);
-      } catch {
-        continue;
-      }
-
-      // Only allow http and https protocols
-      if (urlObj.protocol !== "http:" && urlObj.protocol !== "https:") {
-        continue;
-      }
-
-      // Must match the origin hostname
-      if (urlObj.hostname !== new URL(origin).hostname) {
-        continue;
-      }
-
-      // Use safeFetch which validates the URL internally to prevent SSRF
-      // Pass the entry hostname as the only allowed hostname to prevent redirect-based SSRF.
-      // When an authenticated crawl is running, the session is attached only
-      // to same-origin hops (safeFetch enforces the scoping), so pages behind
-      // the login are discovered while a cross-host redirect never leaks it.
-      const res = await safeFetch(
-        urlObj.href,
-        {
-          method: "GET",
-          headers: { "User-Agent": `${APP_NAME}/1.0 (Crawler)` },
-          redirect: "follow",
-          signal: AbortSignal.timeout(CRAWL_TIMEOUT),
-        },
-        [new URL(origin).hostname],
-        session,
-      );
-
-      // Only allow redirects that stay on the exact same hostname
-      const redirectedUrl = new URL(res.url);
-      const entryHostname = new URL(origin).hostname;
-      if (redirectedUrl.hostname !== entryHostname) continue;
-
-      // Use the actual (post-redirect) URL as the base for resolving relative links
-      const actualUrl = res.url;
-
-      // If redirected to a different path on the same host, track it (but avoid duplicating "/")
-      const redirectNormalized =
-        redirectedUrl.origin + redirectedUrl.pathname + redirectedUrl.search;
-      if (!visited.has(redirectNormalized)) {
-        visited.add(redirectNormalized);
-        if (!found.includes(redirectNormalized)) found.push(redirectNormalized);
-      }
-
-      const contentType = res.headers.get("content-type") || "";
-      if (!contentType.includes("text/html")) continue;
-
-      const body = await safeReadBody(res, MAX_BODY_SIZE);
-
-      // Extract href values from <a> tags only (not link/script/img tags)
-      const anchorRegex = /<a\s[^>]*href=["']([^"'#]+?)["']/gi;
-      let match: RegExpExecArray | null;
-      while ((match = anchorRegex.exec(body)) !== null) {
-        const href = match[1].trim();
-
-        if (!isCleanUrl(href)) continue;
-        if (skipExtensions.test(href)) continue;
-
-        // Resolve relative URLs against the actual (post-redirect) URL
-        let resolved: URL;
-        try {
-          resolved = new URL(href, actualUrl);
-        } catch {
-          continue;
-        }
-
-        // Must be exact same hostname (no subdomains)
-        if (resolved.hostname !== entryHostname) continue;
-
-        // Skip asset/internal paths
-        const fullPath = resolved.pathname + resolved.search;
-        if (skipPathSegments.test(fullPath)) continue;
-        if (skipExtensions.test(resolved.pathname)) continue;
-
-        // Normalize: remove hash, keep pathname + search
-        const normalized =
-          resolved.origin + resolved.pathname + resolved.search;
-
-        if (!visited.has(normalized) && found.length < MAX_PAGES) {
-          visited.add(normalized);
-          found.push(normalized);
-          queue.push(normalized);
-        }
-      }
-    } catch {
-      // Timeout or network error: skip this page
-    }
-  }
-
-  return found;
 }
 
 async function scanSingleUrl(
@@ -430,6 +275,14 @@ export interface ExecuteCrawlScanParams {
    * credential material behind it never is.
    */
   authenticated?: boolean;
+  /**
+   * The caller's per-plan cap on how many pages one crawl may cover, resolved
+   * by the route (lib/billing/crawl-page-limits.ts). Bounds BOTH the
+   * pre-selected page list and the engine's own discovery below the shipped
+   * CRAWL_SCAN_MAX_PAGES ceiling, so a plan's selection cap governs. Omitted or
+   * -1 means no per-plan cap (billing disabled / self-hosted).
+   */
+  crawlPageLimit?: number;
 }
 
 /**
@@ -463,12 +316,13 @@ export async function executeCrawlScan(
     portScan = false,
     session,
     authenticated = false,
+    crawlPageLimit,
   } = params;
 
   const startTime = Date.now();
   const {
     CRAWL_SCAN_TIMEOUT_SECONDS: crawlTimeoutSeconds,
-    CRAWL_SCAN_MAX_PAGES: maxPages,
+    CRAWL_SCAN_MAX_PAGES: maxPagesCeiling,
     CRAWL_PAGE_FETCH_TIMEOUT_MS: fetchTimeoutMs,
     SCANNER_MAX_RESPONSE_BODY_BYTES: maxBodySize,
   } = await getSettings([
@@ -477,6 +331,15 @@ export async function executeCrawlScan(
     "CRAWL_PAGE_FETCH_TIMEOUT_MS",
     "SCANNER_MAX_RESPONSE_BODY_BYTES",
   ] as const);
+  // The shipped ceiling (CRAWL_SCAN_MAX_PAGES) is a hard upper bound; the real
+  // per-user governor is the plan's page-selection cap. min() of the two so a
+  // plan can never exceed the ceiling and the ceiling never overrides a
+  // smaller plan cap. crawlPageLimit -1/undefined (billing off) leaves the
+  // ceiling in charge.
+  const maxPages =
+    crawlPageLimit !== undefined && crawlPageLimit > 0
+      ? Math.min(maxPagesCeiling, crawlPageLimit)
+      : maxPagesCeiling;
   const crawlSettings = { maxPages, fetchTimeoutMs, maxBodySize };
   const watchdog = startWatchdog(
     scanId,
@@ -554,11 +417,7 @@ export async function executeCrawlScan(
       }
       pages = checkedUrls;
     } else {
-      pages = await discoverInternalLinks(
-        normalizedMainUrl,
-        crawlSettings,
-        session,
-      );
+      pages = await discoverPages(normalizedMainUrl, crawlSettings, session);
     }
 
     if (pages.length === 0) {

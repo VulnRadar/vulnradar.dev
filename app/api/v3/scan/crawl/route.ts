@@ -22,7 +22,9 @@ import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import {
   checkAndRecordRequest,
   getRateLimitHeaders,
+  getUserPlan,
 } from "@/lib/rate-limiting/daily-limits";
+import { getCrawlPageSelectionLimit } from "@/lib/billing/crawl-page-limits";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { resolveScanIsPublic } from "@/lib/scanner/scan-privacy";
 import { isUrlOwnedByUser } from "@/lib/domains/scope";
@@ -233,9 +235,41 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Per-plan cap on how many pages ONE crawl may cover. Discovery
+  // (CRAWL_DISCOVER_MAX_PAGES) can surface far more pages than this so the
+  // picker lists options; the cap here is how many the caller may actually
+  // queue for scanning. The client picker enforces the same number from the
+  // same source (lib/billing/crawl-page-limits.ts), so a longer selectedUrls
+  // array here is a bypass attempt and is rejected. Billing off (self-hosted)
+  // is unlimited (-1) and never consults the plan. Also threaded into
+  // executeCrawlScan so the engine's own discovery path respects the same cap.
+  const billingEnabled = await getSetting("BILLING_ENABLED");
+  const crawlPageLimit = billingEnabled
+    ? getCrawlPageSelectionLimit(await getUserPlan(authedUserId))
+    : -1;
+  if (
+    Array.isArray(selectedUrls) &&
+    crawlPageLimit !== -1 &&
+    selectedUrls.length > crawlPageLimit
+  ) {
+    return NextResponse.json(
+      {
+        error: `Your plan lets you scan up to ${crawlPageLimit} pages per crawl. Deselect some pages or upgrade your plan for more.`,
+        statusCode: "CRAWL_PAGE_LIMIT",
+      },
+      { status: 403 },
+    );
+  }
+
+  // Accept a bare domain (example.com) exactly like POST /api/v3/scan and the
+  // authenticated route: prepend https:// via normalizeUrl before parsing, so
+  // the crawl entry never 400s on input the single-page scan accepts. Without
+  // this a bare "example.com" from the crawl page-picker hit new URL() raw and
+  // failed with "Invalid URL", the rejection the picker's "Scan N pages" step
+  // was showing.
   let mainUrl: URL;
   try {
-    mainUrl = new URL(url);
+    mainUrl = new URL(normalizeUrl(url));
   } catch {
     return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
   }
@@ -425,6 +459,7 @@ export async function POST(request: NextRequest) {
     isApiKeyAuth,
     captureScreenshot,
     portScan,
+    crawlPageLimit,
     // In-memory session only when the crawl authenticated -- never persisted.
     ...(session ? { session, authenticated: true } : {}),
   });

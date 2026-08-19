@@ -19,6 +19,7 @@ import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/ui/utils";
 import { animations } from "@/lib/ui/animations";
 import { API, ROUTES } from "@/lib/config/constants";
+import { formatRefreshAvailability } from "@/lib/ui/relative-time";
 import { useAuth } from "@/components/providers/auth-provider";
 import {
   PremiumUpgradeModal,
@@ -83,20 +84,6 @@ function statusBucket(code?: number): string {
   if (code >= 300 && code < 400) return "blue";
   if (code >= 400 && code < 500) return "amber";
   return "red";
-}
-
-function formatTimeRemaining(expiresAt: string): string {
-  const now = new Date();
-  const expires = new Date(expiresAt);
-  const diffMs = expires.getTime() - now.getTime();
-  if (diffMs <= 0) return "expired";
-  const diffMins = Math.floor(diffMs / 60000);
-  if (diffMins < 60) return `${diffMins}m`;
-  const diffHours = Math.floor(diffMins / 60);
-  const remainingMins = diffMins % 60;
-  return remainingMins > 0
-    ? `${diffHours}h ${remainingMins}m`
-    : `${diffHours}h`;
 }
 
 /** How long ago `iso` was, as a compact relative label ("just now", "5 min
@@ -442,9 +429,11 @@ export function SubdomainDiscovery({
                       : "Latest known result"}
                     {effectiveResult.cached && effectiveResult.expiresAt && (
                       <>
-                        {" · Refreshes in "}
+                        {" · "}
                         <span className="font-medium text-foreground">
-                          {formatTimeRemaining(effectiveResult.expiresAt)}
+                          {formatRefreshAvailability(
+                            effectiveResult.expiresAt,
+                          )}
                         </span>
                       </>
                     )}

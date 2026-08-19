@@ -70,10 +70,12 @@ vi.mock("@/lib/rate-limiting/concurrent-scans", () => ({
 }));
 
 const mockCheckAndRecordRequest = vi.fn();
+const mockGetUserPlan = vi.fn();
 vi.mock("@/lib/rate-limiting/daily-limits", () => ({
   checkAndRecordRequest: (...args: unknown[]) =>
     mockCheckAndRecordRequest(...args),
   getRateLimitHeaders: () => ({}),
+  getUserPlan: (...args: unknown[]) => mockGetUserPlan(...args),
 }));
 
 const mockExecuteCrawlScan = vi.fn();
@@ -148,6 +150,8 @@ beforeEach(() => {
     remaining: 149,
     resetsAt: new Date().toISOString(),
   });
+  mockGetUserPlan.mockReset();
+  mockGetUserPlan.mockResolvedValue("free");
   mockEstablishScanSession.mockReset();
   mockLogAction.mockClear();
   mockGetSetting.mockReset();
@@ -547,5 +551,65 @@ describe("authenticated crawl", () => {
     const params = mockExecuteCrawlScan.mock.calls[0][0];
     expect(params.session).toBeUndefined();
     expect(params.authenticated).toBeUndefined();
+  });
+});
+
+describe("crawl page-selection plan cap", () => {
+  it("rejects a selectedUrls array longer than the caller's plan limit, before any row is created", async () => {
+    mockGetUserPlan.mockResolvedValue("free"); // free selection cap = 25
+    const urls = Array.from(
+      { length: 26 },
+      (_, i) => `https://example.com/p${i}`,
+    );
+
+    const res = await POST(postRequest({ url: "https://example.com", urls }));
+
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.statusCode).toBe("CRAWL_PAGE_LIMIT");
+    expect(mockExecuteCrawlScan).not.toHaveBeenCalled();
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("accepts a selectedUrls array within the plan limit and threads crawlPageLimit into the job", async () => {
+    mockGetUserPlan.mockResolvedValue("free");
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 601 }] });
+    const urls = Array.from(
+      { length: 10 },
+      (_, i) => `https://example.com/p${i}`,
+    );
+
+    const res = await POST(postRequest({ url: "https://example.com", urls }));
+
+    expect(res.status).toBe(200);
+    expect(mockExecuteCrawlScan).toHaveBeenCalledWith(
+      expect.objectContaining({ crawlPageLimit: 25 }),
+    );
+  });
+
+  it("does not cap selection when billing is disabled (self-hosted)", async () => {
+    mockGetSetting.mockImplementation(async (key: SettingKey) =>
+      key === "BILLING_ENABLED" ? false : registryDefault(key),
+    );
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 602 }] });
+    const urls = Array.from(
+      { length: 300 },
+      (_, i) => `https://example.com/p${i}`,
+    );
+
+    const res = await POST(postRequest({ url: "https://example.com", urls }));
+
+    expect(res.status).toBe(200);
+    // Billing off resolves to -1 (unlimited); the plan lookup is never made.
+    expect(mockGetUserPlan).not.toHaveBeenCalled();
+    expect(mockExecuteCrawlScan).toHaveBeenCalledWith(
+      expect.objectContaining({ crawlPageLimit: -1 }),
+    );
   });
 });

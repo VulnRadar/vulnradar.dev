@@ -33,6 +33,13 @@ import type {
 
 const DISCOVERY_USER_AGENT = `Mozilla/5.0 (compatible; ${APP_NAME}/1.0)`;
 
+// Hard backstop on any single passive source. Each source also sets its own
+// (smaller) AbortSignal.timeout; this is the belt-and-suspenders ceiling that
+// guarantees one hung source can never stall the whole sweep, even if it
+// ignores its abort. Kept just above the largest per-source timeout (crt.sh,
+// 15s) so a healthy-but-slow source is never cut short by the backstop.
+const PASSIVE_SOURCE_CEILING_MS = 16_000;
+
 // ─── Cache (subdomain_cache table) ─────────────────────────
 // TTL is admin-configurable (SUBDOMAIN_CACHE_TTL_HOURS); shared with the
 // read-only lookup in lib/scanner/subdomain-cache.ts and the cleanup job's
@@ -311,15 +318,18 @@ export async function discoverSubdomainsForRoot(
 ): Promise<DiscoveryResult> {
   const { requestId = null } = opts;
 
-  // Run all passive data sources in parallel
+  // Run all passive data sources in parallel. Every source is best-effort and
+  // self-bounded (runPassiveSource can neither throw nor exceed
+  // PASSIVE_SOURCE_CEILING_MS), so a slow or broken source degrades to fewer
+  // results and adding more sources only ever adds coverage, never latency or
+  // a failure mode for the whole sweep. allSettled is the aggregation boundary
+  // even though runPassiveSource never rejects.
   setDiscoveryStage(requestId, "querying_sources");
-  const [ctResults, hackerTargetResults, subdomainCenterResults, rapidDnsResults] =
-    await Promise.all([
-      fetchCrtSh(rootDomain),
-      fetchHackerTarget(rootDomain),
-      fetchSubdomainCenter(rootDomain),
-      fetchRapidDns(rootDomain),
-    ]);
+  const passiveSettled = await Promise.allSettled(
+    PASSIVE_SOURCES.map(({ label, fetch: fn }) =>
+      runPassiveSource(label, fn, rootDomain),
+    ),
+  );
 
   // Collect all passive subdomains with their sources
   const passiveMap = new Map<string, string[]>();
@@ -339,10 +349,20 @@ export async function discoverSubdomainsForRoot(
     }
   }
 
-  addPassive(ctResults, "crt.sh");
-  addPassive(hackerTargetResults, "hackertarget");
-  addPassive(subdomainCenterResults, "subdomain.center");
-  addPassive(rapidDnsResults, "rapiddns");
+  // Per-source counts for the response `sources` roll-up, tagging each host
+  // with the source that found it. Insertion order follows PASSIVE_SOURCES so
+  // the UI badge row reads crt.sh, hackertarget, ... in a stable order.
+  const sourceCounts: Record<string, number> = {};
+  for (const settled of passiveSettled) {
+    // runPassiveSource never rejects; the rejected branch is belt-and-suspenders.
+    const { label, hosts } =
+      settled.status === "fulfilled"
+        ? settled.value
+        : { label: "", hosts: [] as string[] };
+    if (!label) continue;
+    sourceCounts[label] = hosts.length;
+    addPassive(hosts, label);
+  }
 
   // Brute-force DNS: check common prefixes in parallel (fast, DNS-only)
   setDiscoveryStage(requestId, "brute_force");
@@ -403,10 +423,7 @@ export async function discoverSubdomainsForRoot(
     subdomains: results,
     cached: false,
     sources: {
-      "crt.sh": ctResults.length,
-      hackertarget: hackerTargetResults.length,
-      "subdomain.center": subdomainCenterResults.length,
-      rapiddns: rapidDnsResults.length,
+      ...sourceCounts,
       "brute-force": bruteResults.size,
     },
   };
@@ -525,6 +542,241 @@ async function fetchRapidDns(domain: string): Promise<string[]> {
     return Array.from(names);
   } catch {
     return [];
+  }
+}
+
+/**
+ * AlienVault OTX passive DNS: every hostname OTX has ever observed resolving
+ * under the domain. Response shape: { passive_dns: [{ hostname, address }] }.
+ */
+async function fetchAlienVault(domain: string): Promise<string[]> {
+  try {
+    const res = await fetch(
+      `https://otx.alienvault.com/api/v1/indicators/domain/${encodeURIComponent(domain)}/passive_dns`,
+      {
+        signal: AbortSignal.timeout(10000),
+        headers: {
+          "User-Agent": DISCOVERY_USER_AGENT,
+          Accept: "application/json",
+        },
+      },
+    );
+    if (!res.ok) return [];
+
+    const data = await res.json();
+    const records = data?.passive_dns;
+    if (!Array.isArray(records)) return [];
+
+    const names = new Set<string>();
+    for (const rec of records) {
+      const host =
+        typeof rec?.hostname === "string"
+          ? rec.hostname.trim().toLowerCase().replace(/^\*\./, "")
+          : "";
+      if (host.endsWith(`.${domain}`)) names.add(host);
+    }
+    return Array.from(names);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Anubis (jldc.me) subdomain DB. Response shape: a flat JSON array of
+ * hostname strings. The host 301-redirects (jldc.me -> jonlu.ca); Node's
+ * fetch follows that automatically.
+ */
+async function fetchAnubis(domain: string): Promise<string[]> {
+  try {
+    const res = await fetch(
+      `https://jldc.me/anubis-db/subdomains/${encodeURIComponent(domain)}`,
+      {
+        signal: AbortSignal.timeout(10000),
+        headers: {
+          "User-Agent": DISCOVERY_USER_AGENT,
+          Accept: "application/json",
+        },
+      },
+    );
+    if (!res.ok) return [];
+
+    const data = await res.json();
+    if (!Array.isArray(data)) return [];
+
+    const names = new Set<string>();
+    for (const entry of data) {
+      if (typeof entry !== "string") continue;
+      const host = entry.trim().toLowerCase().replace(/^\*\./, "");
+      if (host.endsWith(`.${domain}`)) names.add(host);
+    }
+    return Array.from(names);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * SSLMate Cert Spotter CT-log issuances. Response shape: an array of
+ * issuance objects, each with a dns_names[] array (wildcards included, so
+ * strip a leading "*."). Without an API token this is rate-limited and a
+ * limit response is a { message } object rather than an array -- guarded by
+ * the Array.isArray check, which degrades it to no results.
+ */
+async function fetchCertSpotter(domain: string): Promise<string[]> {
+  try {
+    const res = await fetch(
+      `https://api.certspotter.com/v1/issuances?domain=${encodeURIComponent(domain)}&include_subdomains=true&expand=dns_names`,
+      {
+        signal: AbortSignal.timeout(10000),
+        headers: {
+          "User-Agent": DISCOVERY_USER_AGENT,
+          Accept: "application/json",
+        },
+      },
+    );
+    if (!res.ok) return [];
+
+    const data = await res.json();
+    if (!Array.isArray(data)) return [];
+
+    const names = new Set<string>();
+    for (const issuance of data) {
+      const dnsNames = issuance?.dns_names;
+      if (!Array.isArray(dnsNames)) continue;
+      for (const n of dnsNames) {
+        if (typeof n !== "string") continue;
+        const host = n.trim().toLowerCase().replace(/^\*\./, "");
+        if (host.endsWith(`.${domain}`)) names.add(host);
+      }
+    }
+    return Array.from(names);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * urlscan.io public search. Response shape: { results: [{ page: { domain },
+ * task: { domain } }] }. The query matches the domain in any field, so
+ * off-target hosts come back too -- the endsWith filter drops them.
+ */
+async function fetchUrlscan(domain: string): Promise<string[]> {
+  try {
+    const res = await fetch(
+      `https://urlscan.io/api/v1/search/?q=domain:${encodeURIComponent(domain)}`,
+      {
+        signal: AbortSignal.timeout(10000),
+        headers: {
+          "User-Agent": DISCOVERY_USER_AGENT,
+          Accept: "application/json",
+        },
+      },
+    );
+    if (!res.ok) return [];
+
+    const data = await res.json();
+    const results = data?.results;
+    if (!Array.isArray(results)) return [];
+
+    const names = new Set<string>();
+    for (const r of results) {
+      for (const candidate of [r?.page?.domain, r?.task?.domain]) {
+        if (typeof candidate !== "string") continue;
+        const host = candidate.trim().toLowerCase().replace(/^\*\./, "");
+        if (host.endsWith(`.${domain}`)) names.add(host);
+      }
+    }
+    return Array.from(names);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Wayback Machine CDX index: every archived URL under the domain, from which
+ * we pull hostnames. Response shape: an array of rows, each [original]; the
+ * first row is the ["original"] header (its "original" value is not a URL, so
+ * URL parsing skips it).
+ */
+async function fetchWayback(domain: string): Promise<string[]> {
+  try {
+    const res = await fetch(
+      `https://web.archive.org/cdx/search/cdx?url=*.${encodeURIComponent(domain)}/*&output=json&fl=original&collapse=urlkey&limit=10000`,
+      {
+        signal: AbortSignal.timeout(12000),
+        headers: {
+          "User-Agent": DISCOVERY_USER_AGENT,
+          Accept: "application/json",
+        },
+      },
+    );
+    if (!res.ok) return [];
+
+    const data = await res.json();
+    if (!Array.isArray(data)) return [];
+
+    const names = new Set<string>();
+    for (const row of data) {
+      const original = Array.isArray(row) ? row[0] : row;
+      if (typeof original !== "string") continue;
+      let host: string;
+      try {
+        host = new URL(original).hostname.toLowerCase();
+      } catch {
+        continue;
+      }
+      if (host.endsWith(`.${domain}`)) names.add(host);
+    }
+    return Array.from(names);
+  } catch {
+    return [];
+  }
+}
+
+// ─── Passive source registry ───────────────────────────────
+// All free, no-API-key sources. Each is best-effort and self-bounded: a
+// failure (down host, quota, bot-block, shape drift, timeout) returns [] and
+// never rejects, so redundancy is the point -- one working source is enough to
+// surface CT-log / passive-DNS hosts that the DNS brute-force alone misses.
+
+interface PassiveSource {
+  label: string;
+  fetch: (domain: string) => Promise<string[]>;
+}
+
+const PASSIVE_SOURCES: PassiveSource[] = [
+  { label: "crt.sh", fetch: fetchCrtSh },
+  { label: "hackertarget", fetch: fetchHackerTarget },
+  { label: "subdomain.center", fetch: fetchSubdomainCenter },
+  { label: "rapiddns", fetch: fetchRapidDns },
+  { label: "alienvault", fetch: fetchAlienVault },
+  { label: "anubis", fetch: fetchAnubis },
+  { label: "certspotter", fetch: fetchCertSpotter },
+  { label: "urlscan", fetch: fetchUrlscan },
+  { label: "wayback", fetch: fetchWayback },
+];
+
+/**
+ * Run one passive source with a hard ceiling and total error containment.
+ * Never throws and never rejects: any failure (or exceeding
+ * PASSIVE_SOURCE_CEILING_MS) resolves to no hosts, so the aggregation above
+ * can treat every source uniformly.
+ */
+async function runPassiveSource(
+  label: string,
+  fn: (domain: string) => Promise<string[]>,
+  domain: string,
+): Promise<{ label: string; hosts: string[] }> {
+  try {
+    const hosts = await Promise.race<string[]>([
+      fn(domain),
+      new Promise<string[]>((resolve) =>
+        setTimeout(() => resolve([]), PASSIVE_SOURCE_CEILING_MS),
+      ),
+    ]);
+    return { label, hosts: Array.isArray(hosts) ? hosts : [] };
+  } catch {
+    return { label, hosts: [] };
   }
 }
 
