@@ -100,6 +100,8 @@ interface ScanStatusResult {
   crawl?: CrawlInfo;
   authReport?: ScanAuthReport;
   scanHistoryId?: number;
+  /** Opaque id for the ?scan= URL, distinct from the numeric scanHistoryId. */
+  scanPublicId?: string | null;
   tags?: ScanTag[];
   [key: string]: unknown;
 }
@@ -274,7 +276,7 @@ function DashboardContent() {
       .catch(() => {});
   }, [me?.userId]);
 
-  const updateUrlWithScan = useCallback((id: number | null) => {
+  const updateUrlWithScan = useCallback((id: string | number | null) => {
     if (typeof window === "undefined") return;
     if (id) {
       setQueryParam("scan", String(id));
@@ -634,7 +636,13 @@ function DashboardContent() {
         setStatus("done");
 
         if (historyId) {
-          updateUrlWithScan(historyId);
+          // Prefer the opaque public id for the URL; fall back to the numeric
+          // id only if the response predates it (e.g. the ephemeral auth path).
+          updateUrlWithScan(
+            typeof finalData.scanPublicId === "string"
+              ? finalData.scanPublicId
+              : historyId,
+          );
         }
 
         if (historyId) {

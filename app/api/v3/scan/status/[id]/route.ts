@@ -14,6 +14,7 @@ import type { ScanJobStatus } from "@/lib/scanner/types";
 
 interface ScanHistoryRow {
   id: number;
+  public_id: string | null;
   user_id: number;
   url: string;
   status: ScanJobStatus;
@@ -127,9 +128,10 @@ async function getOwnedScan(
   userId: number,
 ): Promise<ScanHistoryRow | null> {
   const result = await pool.query<ScanHistoryRow>(
-    `SELECT id, user_id, url, status, current_category, categories_completed,
-            categories_total, started_at, duration, scanned_at, summary,
-            findings, response_headers, result_meta, error_message
+    `SELECT id, public_id, user_id, url, status, current_category,
+            categories_completed, categories_total, started_at, duration,
+            scanned_at, summary, findings, response_headers, result_meta,
+            error_message
      FROM scan_history
      WHERE id = $1`,
     [id],
@@ -196,6 +198,10 @@ export async function GET(
       },
       responseHeaders: row.response_headers ?? undefined,
       scanHistoryId: row.id,
+      // Opaque id for the URL (?scan=), so a finished scan shows the same
+      // non-enumerable token as History rather than the sequential row id.
+      // scanHistoryId stays numeric for the feedback route that needs it.
+      scanPublicId: row.public_id,
       tags: tagsResult.rows,
       ...meta,
     };

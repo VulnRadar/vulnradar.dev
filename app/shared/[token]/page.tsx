@@ -90,26 +90,21 @@ export default function SharedScanPage() {
     null,
   );
   const [copied, setCopied] = useState(false);
-  // Only show a back button when we arrived via in-app navigation (e.g.
-  // clicked from Public Scans or the Shares page) -- document.referrer is
-  // same-origin in that case. A link opened directly (typed URL, Discord/
-  // email, a new tab) has no page to go back to, so router.back() would
-  // either do nothing or leave the app; hiding the button in that case is
-  // more honest than showing a button that doesn't work.
-  const [canGoBack, setCanGoBack] = useState(false);
   const router = useRouter();
 
-  useEffect(() => {
-    try {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- reads document.referrer (unavailable during SSR) to seed initial state
-      setCanGoBack(
-        !!document.referrer &&
-          new URL(document.referrer).origin === window.location.origin,
-      );
-    } catch {
-      setCanGoBack(false);
+  // Always offer a way back. Client-side (Link) navigation does not update
+  // document.referrer, so an in-app arrival can look like a direct hit; the
+  // history length is the reliable signal. When there is nowhere in-app to
+  // return to (a link opened cold from Discord, email, or a typed URL), fall
+  // back to the site home instead of hiding the control or a back() that
+  // would leave the app.
+  function handleBack() {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+    } else {
+      router.push("/");
     }
-  }, []);
+  }
 
   useEffect(() => {
     async function load() {
@@ -188,19 +183,17 @@ export default function SharedScanPage() {
               />
             ) : (
               <>
-                {canGoBack && (
-                  <button
-                    type="button"
-                    onClick={() => router.back()}
-                    className="group inline-flex w-fit items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <ArrowLeft
-                      aria-hidden
-                      className="h-4 w-4 transition-transform group-hover:-translate-x-0.5"
-                    />
-                    Back
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  className="group inline-flex w-fit items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <ArrowLeft
+                    aria-hidden
+                    className="h-4 w-4 transition-transform group-hover:-translate-x-0.5"
+                  />
+                  Back
+                </button>
 
                 {/* First screen: what this is and who shared it. The verdict
                     itself (safe/caution/unsafe, severity breakdown) lives in
