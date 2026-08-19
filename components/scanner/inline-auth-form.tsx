@@ -356,7 +356,7 @@ export const InlineAuthForm = forwardRef<
                         id={`${idPrefix}-password`}
                         name="target-password"
                         type={showPassword ? "text" : "password"}
-                        autoComplete="off"
+                        autoComplete="current-password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         disabled={disabled}
