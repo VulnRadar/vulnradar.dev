@@ -28,7 +28,6 @@ import { verifyCosignSignature } from "@/lib/updater/cosign";
 import { commandAvailable, runCommand } from "@/lib/updater/exec";
 import { copyTreeOverlay } from "@/lib/updater/copy-with-excludes";
 import { reapplyStartPort } from "@/lib/updater/preserve-start-port";
-import { getAvatarStorageDir } from "@/lib/uploads/avatar-storage";
 import {
   appendLog,
   setStatus,
@@ -221,8 +220,6 @@ export async function runUpdateJob(
       /* first run, or an unreadable/malformed package.json -- nothing to preserve */
     }
 
-    const avatarsDir = getAvatarStorageDir();
-    const avatarsRelative = path.relative(appRoot, avatarsDir);
     // Dev-only trees that `npm ci` / `npm run build` / `npm run db:migrate`
     // never read: excluding them keeps the copy fast and keeps a
     // production install free of things that have no reason to be there
@@ -238,12 +235,6 @@ export async function runUpdateJob(
       "vitest.config.ts",
     ];
     const excludePrefixes = [".git", "node_modules", ...DEV_ONLY_PREFIXES];
-    if (
-      !avatarsRelative.startsWith("..") &&
-      !path.isAbsolute(avatarsRelative)
-    ) {
-      excludePrefixes.push(avatarsRelative.split(path.sep).join("/"));
-    }
     const copyResult = await copyTreeOverlay(sourceRoot, appRoot, {
       excludeNames: [".git", "node_modules"],
       excludePrefixes,

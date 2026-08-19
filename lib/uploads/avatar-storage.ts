@@ -1,103 +1,42 @@
 /**
- * Local-disk avatar file storage.
+ * Database-backed avatar storage.
  *
- * Deployment note (read before changing the storage path):
+ * There is one image-storage mechanism in this app: Postgres. Scan
+ * screenshots already live in scan_screenshots (image_data BYTEA); an
+ * uploaded profile avatar lives the same way in user_avatars, one row per
+ * user, and is served back through GET /api/v3/avatar/[userId]. Nothing is
+ * written to the local filesystem, so this behaves identically on every
+ * deployment target (self-hosted Docker and serverless alike) with no
+ * fallback path to reason about.
  *
- * This app ships two officially documented deployment targets (see
- * app/docs/self-hosting and app/docs/setup): self-hosted Docker (a single
- * persistent Node process with a writable, persistent filesystem) and
- * Vercel (serverless — a read-only filesystem outside /tmp, /tmp itself is
- * wiped between invocations, and concurrent invocations don't share disk
- * at all). Writing avatar files to local disk only works on the first
- * target. isLocalAvatarStorageAvailable() detects the second (Vercel
- * always sets the VERCEL env var) so callers can fall back to the
- * pre-existing base64-data-URL-in-the-database behavior instead of
- * silently losing every uploaded avatar on the next cold start.
- *
- * On the Docker target, the storage directory defaults to
- * `<cwd>/data/avatars` — a sibling of `public/`, deliberately NOT inside
- * it. `public/` is copied into the runtime image at build time
- * (Dockerfile: `COPY --from=builder /app/public ./public`) and gets fully
- * replaced by that build-time snapshot on every image rebuild or
- * container recreation, so anything written under `public/` at runtime
- * would vanish the next time someone runs `docker compose pull && up -d`.
- * `data/avatars` is mounted as its own named Docker volume (see
- * docker-compose.yml's `avatar_data` volume) so it survives container
- * recreation the same way `postgres_data` already does. Override the
- * directory with the AVATAR_STORAGE_DIR env var if a self-hoster mounts
- * their volume somewhere else.
+ * Scope: only locally-uploaded avatars (a validated PNG/JPEG that arrived
+ * as a `data:image/...;base64,...` URL -- see lib/uploads/avatar.ts) are
+ * stored here. External OAuth avatars (cdn.discordapp.com, Google, GitHub)
+ * are plain URLs kept as-is in users.avatar_url; they are not ours to
+ * store and never touch this table.
  */
 
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
-import path from "node:path";
+import { Buffer } from "node:buffer";
+import pool from "@/lib/database/db";
 
-const EXT_BY_MIME: Record<"image/png" | "image/jpeg", string> = {
-  "image/png": "png",
-  "image/jpeg": "jpg",
-};
-
-const MIME_BY_EXT: Record<string, string> = {
-  png: "image/png",
-  jpg: "image/jpeg",
-};
-
-/** Vercel's serverless filesystem cannot durably hold uploaded files. */
+/**
+ * Whether uploaded avatars can be durably stored. Always true now that
+ * avatars live in Postgres, which is available on every deployment target.
+ * Kept as an export so existing call sites keep compiling; callers no
+ * longer need to branch on it (the database path is always taken).
+ */
 export function isLocalAvatarStorageAvailable(): boolean {
-  return !process.env.VERCEL;
-}
-
-export function getAvatarStorageDir(): string {
-  return (
-    process.env.AVATAR_STORAGE_DIR ||
-    path.join(process.cwd(), "data", "avatars")
-  );
-}
-
-function filePathFor(userId: number, ext: string): string {
-  return path.join(getAvatarStorageDir(), `${userId}.${ext}`);
-}
-
-async function unlinkIfExists(filePath: string): Promise<void> {
-  try {
-    await unlink(filePath);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") throw err;
-  }
-}
-
-/** Remove any stored avatar file(s) for a user, regardless of extension. */
-export async function deleteAvatarFiles(userId: number): Promise<void> {
-  await Promise.all(
-    Object.values(EXT_BY_MIME).map((ext) =>
-      unlinkIfExists(filePathFor(userId, ext)),
-    ),
-  );
+  return true;
 }
 
 /**
- * Best-effort avatar-file cleanup: no-ops on a deployment with no local
- * storage (Vercel) and never throws. Use this at every write site that
- * replaces or clears avatar_url, so a re-upload, a Discord avatar sync, an
- * admin "clear avatar" action, or an account deletion never leaves an
- * orphaned file behind.
- */
-export async function deleteAvatarFilesIfLocal(userId: number): Promise<void> {
-  if (!isLocalAvatarStorageAvailable()) return;
-  try {
-    await deleteAvatarFiles(userId);
-  } catch (err) {
-    console.error("[avatar-storage] Failed to delete avatar file(s):", err);
-  }
-}
-
-/**
- * Write validated image bytes to disk for `userId`, removing any
- * previously stored avatar first (so a re-upload that changes format,
- * e.g. PNG to JPEG, never leaves the old file orphaned).
+ * Upsert validated image bytes for `userId` (one row per user, so a
+ * re-upload -- even one that changes format, PNG to JPEG -- overwrites in
+ * place and never orphans anything).
  *
  * Returns the URL to store in users.avatar_url: a same-origin path the
- * new GET /api/v3/avatar/[userId] route resolves back to this file, with
- * a cache-busting `v` query param (the write timestamp) so a re-upload at
+ * GET /api/v3/avatar/[userId] route resolves back to these bytes, with a
+ * cache-busting `v` query param (the write timestamp) so a re-upload at
  * the same path doesn't keep showing a browser-cached old image.
  */
 export async function saveAvatarFile(
@@ -105,24 +44,58 @@ export async function saveAvatarFile(
   mime: "image/png" | "image/jpeg",
   bytes: Buffer,
 ): Promise<string> {
-  const dir = getAvatarStorageDir();
-  await mkdir(dir, { recursive: true });
-  await deleteAvatarFiles(userId);
-  await writeFile(filePathFor(userId, EXT_BY_MIME[mime]), bytes);
+  await pool.query(
+    `INSERT INTO user_avatars (user_id, image_data, content_type, updated_at)
+       VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (user_id) DO UPDATE
+       SET image_data = EXCLUDED.image_data,
+           content_type = EXCLUDED.content_type,
+           updated_at = NOW()`,
+    [userId, bytes, mime],
+  );
   return `/api/v3/avatar/${userId}?v=${Date.now()}`;
 }
 
-/** Read the stored avatar file for a user, trying each known extension. */
+/**
+ * Read a user's stored avatar bytes and content type, or null when they
+ * have no uploaded avatar. Mirrors readScanScreenshot's BYTEA read in
+ * lib/scanner/page-screenshot.ts.
+ */
 export async function readAvatarFile(
   userId: number,
 ): Promise<{ bytes: Buffer; mime: string } | null> {
-  for (const [ext, mime] of Object.entries(MIME_BY_EXT)) {
-    try {
-      const bytes = await readFile(filePathFor(userId, ext));
-      return { bytes, mime };
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") throw err;
-    }
+  const res = await pool.query<{
+    image_data: Buffer;
+    content_type: string | null;
+  }>(
+    `SELECT image_data, content_type FROM user_avatars WHERE user_id = $1`,
+    [userId],
+  );
+  const row = res.rows[0];
+  if (!row?.image_data) return null;
+  return {
+    bytes: row.image_data,
+    mime: row.content_type || "image/png",
+  };
+}
+
+/** Remove a user's stored avatar row, if any. */
+export async function deleteAvatarFiles(userId: number): Promise<void> {
+  await pool.query("DELETE FROM user_avatars WHERE user_id = $1", [userId]);
+}
+
+/**
+ * Best-effort avatar cleanup: never throws. Use this at every write site
+ * that replaces or clears avatar_url (a re-upload, a Discord avatar sync,
+ * an admin "clear avatar" action, an account deletion) so a stored avatar
+ * row is never left behind. Kept under the historical "IfLocal" name so
+ * callers keep compiling; it is now the same database delete as
+ * deleteAvatarFiles, just guarded so it can never surface an error.
+ */
+export async function deleteAvatarFilesIfLocal(userId: number): Promise<void> {
+  try {
+    await deleteAvatarFiles(userId);
+  } catch (err) {
+    console.error("[avatar-storage] Failed to delete avatar row(s):", err);
   }
-  return null;
 }

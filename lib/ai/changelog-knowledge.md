@@ -104,6 +104,10 @@ Active-probes scanning (real exploit-attempt payloads, not just passive checks) 
   Site notifications (banner, modal, and toast) and the page-screenshot preview were cramped or overflowed on phone-width screens. They now wrap, stack, and size to the viewport, and a notification modal with a corner close no longer also shows a redundant dismiss button.
 - [Layout] **[FIXED]** **Dashboard Recent Scans and Result Links**
   The dashboard's recent-scans list now fits all six entries without scrolling, and finishing a scan lands on a clean, shareable ?scan= result link instead of leaving the long scan-option URL sitting in the address bar.
+- [Fingerprint] **[SECURITY]** **Screenshot Links Use the Opaque Scan Id**
+  The page-screenshot image link carried the internal sequential scan number; it now uses the same random, non-guessable id the result links already do, so a screenshot URL gives away nothing about how many scans exist or which ids are real.
+- [Image] **[CHANGED]** **Uploaded Avatars Moved Into the Database**
+  Uploaded profile pictures were stored as files on disk with a base64 fallback on serverless, a second image-storage mechanism alongside the database-backed screenshots. They now live in one place, the database, served through the same access-controlled route, with a one-command migration that converts existing avatars over. Sign-in pictures from Google, GitHub, and Discord stay as their own provider URLs.
 - [ShieldAlert] **[CHANGED]** **Engine Version 3.3.0**
   The scanning engine's version number moved to 3.3.0: two new active probes, a new live dependency-vulnerability check, and confidence scores that now adapt to real user feedback instead of staying static forever.
 
@@ -1577,6 +1581,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 58
-- **Total changes documented:** 549
+- **Total changes documented:** 551
 - **Latest:** v3.5.0 (August 17, 2026) - Domain Verification, Live-Browser Metering, Quota Bypass Fixes
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release

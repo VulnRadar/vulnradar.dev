@@ -67,6 +67,11 @@ interface DashboardResultsProps {
   selectedIssue: Vulnerability | null;
   onSelectIssue: (issue: Vulnerability | null) => void;
   scanHistoryId: string | number | null;
+  /** Opaque public id for the completed scan. Preferred over the numeric
+   *  scanHistoryId for the screenshot URL and its refresh route so neither
+   *  exposes the internal numeric id. Falls back to scanHistoryId when a
+   *  record predates it. */
+  scanPublicId?: string | null;
   scanNotes: string;
   scanTags: ScanTag[];
   onAddTag: (scanId: string | number, tag: string) => void;
@@ -85,6 +90,7 @@ export function DashboardResults({
   selectedIssue,
   onSelectIssue,
   scanHistoryId,
+  scanPublicId,
   scanNotes,
   scanTags,
   onAddTag,
@@ -270,12 +276,12 @@ export function DashboardResults({
 
         {displayResult.screenshot && scanHistoryId && (
           <ScreenshotPanel
-            src={API.SCAN_SCREENSHOT(scanHistoryId)}
+            src={API.SCAN_SCREENSHOT(scanPublicId ?? scanHistoryId)}
             url={result.url}
             width={displayResult.screenshot.width}
             height={displayResult.screenshot.height}
             capturedAt={displayResult.screenshot.capturedAt}
-            scanId={scanHistoryId}
+            scanId={scanPublicId ?? scanHistoryId}
             onRefreshed={setScreenshotOverride}
           />
         )}

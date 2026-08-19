@@ -489,7 +489,7 @@ export default function HistoryPage() {
                       </h2>
                       {scanDetail.screenshot && scanNumericId && (
                         <ScreenshotPanel
-                          src={API.SCAN_SCREENSHOT(scanNumericId)}
+                          src={API.SCAN_SCREENSHOT(selectedScanId)}
                           url={scanDetail.url}
                           width={scanDetail.screenshot.width}
                           height={scanDetail.screenshot.height}

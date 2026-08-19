@@ -216,6 +216,12 @@ function DashboardContent() {
   const [showLimitModal, setShowLimitModal] = useState(false);
   const [result, setResult] = useState<ScanResult | null>(null);
   const [scanHistoryId, setScanHistoryId] = useState<number | null>(null);
+  // Opaque public id for the completed scan, mirrored alongside scanHistoryId.
+  // Used for the screenshot URL and its refresh route so neither exposes the
+  // internal numeric id. Falls back to the numeric id only for a record that
+  // predates it (e.g. the ephemeral authenticated path, which has no public id
+  // here yet).
+  const [scanPublicId, setScanPublicId] = useState<string | null>(null);
   // The in-flight job's id, tracked separately from scanHistoryId (which
   // only gets set once a scan actually finishes) -- this is what "Cancel
   // scan" targets while status === "scanning". Cleared whenever the poll
@@ -315,6 +321,7 @@ function DashboardContent() {
           setStatus("idle");
           setResult(null);
           setScanHistoryId(null);
+          setScanPublicId(null);
           setError(null);
           setErrorDetails(null);
           setSelectedIssue(null);
@@ -475,6 +482,7 @@ function DashboardContent() {
       setStatus("scanning");
       setResult(null);
       setScanHistoryId(null);
+      setScanPublicId(null);
       setError(null);
       setErrorDetails(null);
       setErrorStatus(null);
@@ -657,6 +665,11 @@ function DashboardContent() {
         setAuthReport(finalData.authReport ?? null);
         const historyId = finalData.scanHistoryId || null;
         setScanHistoryId(historyId);
+        setScanPublicId(
+          typeof finalData.scanPublicId === "string"
+            ? finalData.scanPublicId
+            : null,
+        );
         // Populated for a regular scan/crawl (its result comes from
         // GET /api/v3/scan/status/[id], which includes tags once auto-
         // tagging has run). The ephemeral authenticated-scan path
@@ -850,6 +863,7 @@ function DashboardContent() {
     setStatus("idle");
     setResult(null);
     setScanHistoryId(null);
+    setScanPublicId(null);
     setScanTags([]);
     setError(null);
     setErrorDetails(null);
@@ -933,6 +947,7 @@ function DashboardContent() {
             selectedIssue={selectedIssue}
             onSelectIssue={setSelectedIssue}
             scanHistoryId={scanHistoryId}
+            scanPublicId={scanPublicId}
             scanNotes={scanNotes}
             scanTags={scanTags}
             onAddTag={handleAddTag}

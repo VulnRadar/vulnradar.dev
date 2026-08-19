@@ -1387,6 +1387,57 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         });
 
       // ════════════════════════════════════════════════════════════════
+      // USER AVATARS - uploaded profile pictures, one row per user
+      //
+      // Modeled on scan_screenshots above: image bytes live here as BYTEA
+      // rather than as a base64 data URL in users.avatar_url or as a file
+      // on disk, so there is a single image-storage mechanism (Postgres)
+      // that works identically on self-hosted Docker and serverless. The
+      // image is served by app/api/v3/avatar/[userId]/route.ts, which reads
+      // it back through lib/uploads/avatar-storage.ts. ON DELETE CASCADE so
+      // a deleted user's avatar goes with them. Only locally-uploaded,
+      // validated PNG/JPEG bytes land here; external OAuth avatar URLs
+      // (cdn.discordapp.com, Google, GitHub) stay as plain URLs in
+      // users.avatar_url and never touch this table.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        CREATE TABLE IF NOT EXISTS user_avatars (
+          user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+          image_data BYTEA NOT NULL,
+          content_type TEXT NOT NULL,
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create/verify user_avatars (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // One-time import of any legacy on-disk avatars (data/avatars/<id>.png
+      // on self-hosted Docker) into the user_avatars table now that it
+      // exists. Idempotent (skips a user that already has a row) and a clean
+      // no-op when there is no data/avatars directory, e.g. on serverless --
+      // where legacy avatars were base64 data URLs, converted instead by the
+      // pure-database step in scripts/migrate/versions/3.0.0-to-3.5.0.mjs.
+      // Never throws.
+      try {
+        const { migrateAvatarFilesToDatabase } = await import(
+          "./lib/uploads/avatar-migration"
+        );
+        await migrateAvatarFilesToDatabase();
+      } catch (err) {
+        console.error(
+          `[${APP_NAME}] Avatar file-to-database import failed (non-fatal):`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+
+      // ════════════════════════════════════════════════════════════════
       // SCAN FINDING FEEDBACK - user verdicts for scanner learning
       //
       // Part of the v2.0.0-to-3.0.0.mjs squashed migration, applied here too

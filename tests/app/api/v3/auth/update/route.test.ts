@@ -4,14 +4,9 @@ import {
   expect,
   beforeAll,
   beforeEach,
-  afterEach,
-  afterAll,
   vi,
 } from "vitest";
 import { NextRequest } from "next/server";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import {
   makeCookieStore,
   makeHeaderStore,
@@ -24,39 +19,12 @@ import {
  * Mocked at the network/database boundary only (see tests/README.md): the
  * pg pool and outbound email sends. getSession, verifyPassword,
  * hashPassword, deleteAllSessions, createSession, checkRateLimit,
- * validateAvatarDataUrl, and the real avatar-storage filesystem calls all
- * run for real against the mocked pool, a fake next/headers cookie/header
- * store, and (for avatar file writes) a temp AVATAR_STORAGE_DIR that's
- * created fresh per test and removed afterward.
+ * validateAvatarDataUrl, and the real avatar-storage code all run for real
+ * against the mocked pool and a fake next/headers cookie/header store.
+ * Avatars live in the user_avatars table now, so an avatar upload is an
+ * INSERT the mocked pool records (avatarStoreCalls) rather than a file on
+ * disk, and clearing/switching issues a DELETE (avatarDeleteCalls).
  */
-
-let avatarTmpDirs: string[] = [];
-const originalAvatarStorageDir = process.env.AVATAR_STORAGE_DIR;
-const originalVercel = process.env.VERCEL;
-
-function freshAvatarTmpDir(): string {
-  const dir = mkdtempSync(join(tmpdir(), "vulnradar-auth-update-avatar-"));
-  avatarTmpDirs.push(dir);
-  process.env.AVATAR_STORAGE_DIR = dir;
-  return dir;
-}
-
-afterEach(() => {
-  for (const dir of avatarTmpDirs) {
-    rmSync(dir, { recursive: true, force: true });
-  }
-  avatarTmpDirs = [];
-  if (originalVercel === undefined) delete process.env.VERCEL;
-  else process.env.VERCEL = originalVercel;
-});
-
-afterAll(() => {
-  if (originalAvatarStorageDir === undefined) {
-    delete process.env.AVATAR_STORAGE_DIR;
-  } else {
-    process.env.AVATAR_STORAGE_DIR = originalAvatarStorageDir;
-  }
-});
 
 const queries: { sql: string; params: unknown[] }[] = [];
 const rateLimitCounts = new Map<string, number>();
@@ -70,6 +38,8 @@ let updatedUserRow: Record<string, unknown> | null = null;
 let nameUpdateCalls: unknown[][] = [];
 let emailUpdateCalls: unknown[][] = [];
 let avatarUpdateCalls: unknown[][] = [];
+let avatarStoreCalls: unknown[][] = [];
+let avatarDeleteCalls: unknown[][] = [];
 let passwordUpdateCalls: unknown[][] = [];
 let sessionDeleteCalls: unknown[][] = [];
 let sessionInsertCalls: unknown[][] = [];
@@ -113,6 +83,14 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   }
   if (s.startsWith("UPDATE users SET avatar_url = $1 WHERE id = $2")) {
     avatarUpdateCalls.push(params);
+    return { rows: [] };
+  }
+  if (s.startsWith("INSERT INTO user_avatars")) {
+    avatarStoreCalls.push(params);
+    return { rows: [] };
+  }
+  if (s.startsWith("DELETE FROM user_avatars")) {
+    avatarDeleteCalls.push(params);
     return { rows: [] };
   }
   if (s.startsWith("UPDATE users SET password_hash = $1 WHERE id = $2")) {
@@ -219,6 +197,8 @@ beforeEach(async () => {
   nameUpdateCalls = [];
   emailUpdateCalls = [];
   avatarUpdateCalls = [];
+  avatarStoreCalls = [];
+  avatarDeleteCalls = [];
   passwordUpdateCalls = [];
   sessionDeleteCalls = [];
   sessionInsertCalls = [];
@@ -383,7 +363,6 @@ describe("PATCH /api/v3/auth/update", () => {
     const pngDataUrl = `data:image/png;base64,${Buffer.concat([pngMagic, Buffer.from("fake-rest-of-png")]).toString("base64")}`;
 
     it("allows clearing the avatar with an empty string", async () => {
-      freshAvatarTmpDir();
       logIn();
       const res = await PATCH(
         updateRequest({ avatarUrl: "", currentPassword: CURRENT_PASSWORD }),
@@ -399,7 +378,6 @@ describe("PATCH /api/v3/auth/update", () => {
     // handleCroppedAvatar and components/profile/tabs/profile-general-tab.tsx's
     // handleRemoveAvatar).
     it("uploads a new avatar with no currentPassword at all", async () => {
-      freshAvatarTmpDir();
       logIn();
       const res = await PATCH(updateRequest({ avatarUrl: pngDataUrl }));
       expect(res.status).toBe(200);
@@ -407,26 +385,18 @@ describe("PATCH /api/v3/auth/update", () => {
       expect(avatarUpdateCalls[0][1]).toBe(7);
     });
 
-    it("deletes a previously stored avatar file when clearing the avatar", async () => {
-      const dir = freshAvatarTmpDir();
+    it("deletes any stored avatar row when clearing the avatar", async () => {
       logIn();
-      // Upload first so there's a real file on disk to clean up.
-      await PATCH(
-        updateRequest({
-          avatarUrl: pngDataUrl,
-          currentPassword: CURRENT_PASSWORD,
-        }),
-      );
-      expect(existsSync(join(dir, "7.png"))).toBe(true);
-
       await PATCH(
         updateRequest({ avatarUrl: "", currentPassword: CURRENT_PASSWORD }),
       );
-      expect(existsSync(join(dir, "7.png"))).toBe(false);
+      // Clearing issues a DELETE FROM user_avatars for this user so no row
+      // is left behind, and nulls the column.
+      expect(avatarDeleteCalls).toContainEqual([7]);
+      expect(avatarUpdateCalls).toEqual([[null, 7]]);
     });
 
     it("allows a Discord CDN avatar URL without further validation", async () => {
-      freshAvatarTmpDir();
       logIn();
       const discordUrl = "https://cdn.discordapp.com/avatars/123/abc.png";
       const res = await PATCH(
@@ -436,31 +406,24 @@ describe("PATCH /api/v3/auth/update", () => {
         }),
       );
       expect(res.status).toBe(200);
+      // The external URL is stored as-is (not moved into user_avatars)...
       expect(avatarUpdateCalls).toEqual([[discordUrl, 7]]);
+      expect(avatarStoreCalls).toHaveLength(0);
     });
 
-    it("deletes a previously stored avatar file when switching to a Discord CDN URL", async () => {
-      const dir = freshAvatarTmpDir();
+    it("deletes any stored avatar row when switching to a Discord CDN URL", async () => {
       logIn();
-      await PATCH(
-        updateRequest({
-          avatarUrl: pngDataUrl,
-          currentPassword: CURRENT_PASSWORD,
-        }),
-      );
-      expect(existsSync(join(dir, "7.png"))).toBe(true);
-
       await PATCH(
         updateRequest({
           avatarUrl: "https://cdn.discordapp.com/avatars/123/abc.png",
           currentPassword: CURRENT_PASSWORD,
         }),
       );
-      expect(existsSync(join(dir, "7.png"))).toBe(false);
+      // Switching to an external avatar drops any previously uploaded row.
+      expect(avatarDeleteCalls).toContainEqual([7]);
     });
 
     it("rejects an SVG data URL avatar via the real validator (XSS vector)", async () => {
-      freshAvatarTmpDir();
       logIn();
       const svgDataUrl = `data:image/svg+xml;base64,${Buffer.from("<svg onload=alert(1)></svg>").toString("base64")}`;
       const res = await PATCH(
@@ -474,10 +437,10 @@ describe("PATCH /api/v3/auth/update", () => {
       expect(res.status).toBe(400);
       expect(json.error).toMatch(/SVG is not allowed/i);
       expect(avatarUpdateCalls).toHaveLength(0);
+      expect(avatarStoreCalls).toHaveLength(0);
     });
 
-    it("writes a valid PNG data URL avatar to disk and stores the serving URL", async () => {
-      const dir = freshAvatarTmpDir();
+    it("stores a valid PNG data URL avatar in user_avatars and points avatar_url at the serving route", async () => {
       logIn();
       const res = await PATCH(
         updateRequest({
@@ -486,25 +449,40 @@ describe("PATCH /api/v3/auth/update", () => {
         }),
       );
       expect(res.status).toBe(200);
+
+      // The validated bytes are upserted into user_avatars for user 7...
+      expect(avatarStoreCalls).toHaveLength(1);
+      expect(avatarStoreCalls[0][0]).toBe(7);
+      expect(avatarStoreCalls[0][2]).toBe("image/png");
+
+      // ...and avatar_url is set to the same-origin serving path.
       expect(avatarUpdateCalls).toHaveLength(1);
       const [storedValue, userId] = avatarUpdateCalls[0];
       expect(storedValue).toMatch(/^\/api\/v3\/avatar\/7\?v=\d+$/);
       expect(userId).toBe(7);
-      expect(existsSync(join(dir, "7.png"))).toBe(true);
     });
 
-    it("falls back to storing the data URL directly when local avatar storage is unavailable (e.g. Vercel)", async () => {
-      freshAvatarTmpDir();
+    // There is no serverless data-URL fallback anymore: avatars always go
+    // into the database, so setting VERCEL changes nothing.
+    it("stores the avatar in the database regardless of environment (no data-URL fallback)", async () => {
       process.env.VERCEL = "1";
-      logIn();
-      const res = await PATCH(
-        updateRequest({
-          avatarUrl: pngDataUrl,
-          currentPassword: CURRENT_PASSWORD,
-        }),
-      );
-      expect(res.status).toBe(200);
-      expect(avatarUpdateCalls).toEqual([[pngDataUrl, 7]]);
+      try {
+        logIn();
+        const res = await PATCH(
+          updateRequest({
+            avatarUrl: pngDataUrl,
+            currentPassword: CURRENT_PASSWORD,
+          }),
+        );
+        expect(res.status).toBe(200);
+        expect(avatarStoreCalls).toHaveLength(1);
+        const [storedValue] = avatarUpdateCalls[0];
+        expect(storedValue).toMatch(/^\/api\/v3\/avatar\/7\?v=\d+$/);
+        // The raw data URL is never what gets stored in the column now.
+        expect(storedValue).not.toBe(pngDataUrl);
+      } finally {
+        delete process.env.VERCEL;
+      }
     });
   });
 

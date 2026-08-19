@@ -1,49 +1,45 @@
-import { describe, it, expect, beforeEach, afterEach, afterAll } from "vitest";
-import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 
 /**
- * lib/uploads/avatar-storage.ts writes real files to disk (per this
- * repo's "mock at the network/database boundary, not below it" rule —
- * tests/README.md — there is no DB or network boundary here at all, so
- * nothing is mocked). Every test points AVATAR_STORAGE_DIR at a fresh
- * temp directory so nothing touches the real repo's data/avatars/, and
- * that directory is removed again in afterEach/afterAll.
+ * lib/uploads/avatar-storage.ts is database-backed: uploaded avatars live
+ * in the user_avatars BYTEA table (served by GET /api/v3/avatar/[userId]),
+ * the same single Postgres image-storage mechanism scan_screenshots uses.
+ * Per this repo's "mock at the database boundary" rule (tests/README.md),
+ * the pg pool is mocked with a small in-memory store keyed by user_id that
+ * emulates the upsert / select / delete the storage layer issues.
  */
 
-let tmpDirs: string[] = [];
-const originalStorageDir = process.env.AVATAR_STORAGE_DIR;
-const originalVercel = process.env.VERCEL;
+type Row = { image_data: Buffer; content_type: string };
+const store = new Map<number, Row>();
 
-function freshTmpDir(): string {
-  const dir = mkdtempSync(join(tmpdir(), "vulnradar-avatar-test-"));
-  tmpDirs.push(dir);
-  process.env.AVATAR_STORAGE_DIR = dir;
-  return dir;
-}
-
-beforeEach(() => {
-  delete process.env.VERCEL;
-});
-
-afterEach(() => {
-  for (const dir of tmpDirs) {
-    rmSync(dir, { recursive: true, force: true });
+const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
+  const s = sql.trim();
+  if (s.startsWith("INSERT INTO user_avatars")) {
+    const [userId, bytes, mime] = params as [number, Buffer, string];
+    store.set(userId, { image_data: bytes, content_type: mime });
+    return { rows: [], rowCount: 1 };
   }
-  tmpDirs = [];
+  if (s.startsWith("SELECT image_data, content_type FROM user_avatars")) {
+    const [userId] = params as [number];
+    const row = store.get(userId);
+    return { rows: row ? [row] : [] };
+  }
+  if (s.startsWith("DELETE FROM user_avatars")) {
+    const [userId] = params as [number];
+    store.delete(userId);
+    return { rows: [], rowCount: 1 };
+  }
+  return { rows: [] };
 });
 
-afterAll(() => {
-  if (originalStorageDir === undefined) delete process.env.AVATAR_STORAGE_DIR;
-  else process.env.AVATAR_STORAGE_DIR = originalStorageDir;
-  if (originalVercel === undefined) delete process.env.VERCEL;
-  else process.env.VERCEL = originalVercel;
-});
+vi.mock("@/lib/database/db", () => ({
+  default: {
+    query: (sql: string, params?: unknown[]) => mockQuery(sql, params),
+  },
+}));
 
 const {
   isLocalAvatarStorageAvailable,
-  getAvatarStorageDir,
   saveAvatarFile,
   deleteAvatarFiles,
   deleteAvatarFilesIfLocal,
@@ -55,40 +51,27 @@ const PNG_BYTES = Buffer.from([
 ]);
 const JPEG_BYTES = Buffer.from([0xff, 0xd8, 0xff, 4, 5, 6]);
 
-describe("isLocalAvatarStorageAvailable", () => {
-  it("is true when VERCEL is unset", () => {
-    delete process.env.VERCEL;
-    expect(isLocalAvatarStorageAvailable()).toBe(true);
-  });
-
-  it("is false when VERCEL is set", () => {
-    process.env.VERCEL = "1";
-    expect(isLocalAvatarStorageAvailable()).toBe(false);
-    delete process.env.VERCEL;
-  });
+beforeEach(() => {
+  store.clear();
+  mockQuery.mockClear();
 });
 
-describe("getAvatarStorageDir", () => {
-  it("honors AVATAR_STORAGE_DIR when set", () => {
-    const dir = freshTmpDir();
-    expect(getAvatarStorageDir()).toBe(dir);
+describe("isLocalAvatarStorageAvailable", () => {
+  it("is always true now that avatars live in the database", () => {
+    expect(isLocalAvatarStorageAvailable()).toBe(true);
   });
 });
 
 describe("saveAvatarFile / readAvatarFile", () => {
-  it("writes the file to disk and returns a cache-busting avatar URL", async () => {
-    freshTmpDir();
+  it("upserts the bytes and returns a cache-busting avatar URL", async () => {
     const url = await saveAvatarFile(42, "image/png", PNG_BYTES);
 
     expect(url).toMatch(/^\/api\/v3\/avatar\/42\?v=\d+$/);
-
-    const filePath = join(getAvatarStorageDir(), "42.png");
-    expect(existsSync(filePath)).toBe(true);
-    expect(readFileSync(filePath)).toEqual(PNG_BYTES);
+    expect(store.get(42)?.image_data).toEqual(PNG_BYTES);
+    expect(store.get(42)?.content_type).toBe("image/png");
   });
 
   it("round-trips through readAvatarFile", async () => {
-    freshTmpDir();
     await saveAvatarFile(7, "image/jpeg", JPEG_BYTES);
 
     const file = await readAvatarFile(7);
@@ -98,71 +81,48 @@ describe("saveAvatarFile / readAvatarFile", () => {
   });
 
   it("returns null for a user with no stored avatar", async () => {
-    freshTmpDir();
-    const file = await readAvatarFile(999);
-    expect(file).toBeNull();
+    expect(await readAvatarFile(999)).toBeNull();
   });
 
-  it("removes the old file when a re-upload changes format (no orphaned file)", async () => {
-    freshTmpDir();
+  it("overwrites the single row when a re-upload changes format (no orphan)", async () => {
     await saveAvatarFile(5, "image/jpeg", JPEG_BYTES);
-    expect(existsSync(join(getAvatarStorageDir(), "5.jpg"))).toBe(true);
-
     await saveAvatarFile(5, "image/png", PNG_BYTES);
 
-    expect(existsSync(join(getAvatarStorageDir(), "5.jpg"))).toBe(false);
-    expect(existsSync(join(getAvatarStorageDir(), "5.png"))).toBe(true);
     const file = await readAvatarFile(5);
     expect(file?.mime).toBe("image/png");
-  });
-
-  it("creates the storage directory if it doesn't exist yet", async () => {
-    const parent = mkdtempSync(join(tmpdir(), "vulnradar-avatar-test-"));
-    tmpDirs.push(parent);
-    process.env.AVATAR_STORAGE_DIR = join(parent, "nested", "avatars");
-
-    await saveAvatarFile(1, "image/png", PNG_BYTES);
-    expect(existsSync(join(getAvatarStorageDir(), "1.png"))).toBe(true);
+    expect(file?.bytes).toEqual(PNG_BYTES);
+    // One row per user: the JPEG did not linger alongside the PNG.
+    expect(store.size).toBe(1);
   });
 });
 
 describe("deleteAvatarFiles", () => {
-  it("removes a stored avatar file", async () => {
-    freshTmpDir();
+  it("removes a stored avatar row", async () => {
     await saveAvatarFile(3, "image/png", PNG_BYTES);
     await deleteAvatarFiles(3);
     expect(await readAvatarFile(3)).toBeNull();
   });
 
-  it("is a no-op (does not throw) when no file exists", async () => {
-    freshTmpDir();
+  it("is a no-op (does not throw) when no row exists", async () => {
     await expect(deleteAvatarFiles(12345)).resolves.toBeUndefined();
   });
 });
 
 describe("deleteAvatarFilesIfLocal", () => {
-  it("deletes the file when local storage is available", async () => {
-    freshTmpDir();
+  it("deletes the stored avatar row", async () => {
     await saveAvatarFile(9, "image/png", PNG_BYTES);
     await deleteAvatarFilesIfLocal(9);
     expect(await readAvatarFile(9)).toBeNull();
   });
 
-  it("does nothing on a deployment with no local storage (VERCEL set)", async () => {
-    freshTmpDir();
-    await saveAvatarFile(9, "image/png", PNG_BYTES);
-    process.env.VERCEL = "1";
-
-    await deleteAvatarFilesIfLocal(9);
-
-    delete process.env.VERCEL;
-    // The file is still there -- deleteAvatarFilesIfLocal skipped the fs
-    // call entirely rather than deleting it.
-    expect(await readAvatarFile(9)).not.toBeNull();
+  it("never throws even when the delete query fails (best-effort)", async () => {
+    mockQuery.mockImplementationOnce(async () => {
+      throw new Error("db down");
+    });
+    await expect(deleteAvatarFilesIfLocal(1)).resolves.toBeUndefined();
   });
 
-  it("never throws even when there is nothing to delete", async () => {
-    freshTmpDir();
+  it("never throws when there is nothing to delete", async () => {
     await expect(deleteAvatarFilesIfLocal(12345)).resolves.toBeUndefined();
   });
 });

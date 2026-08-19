@@ -386,6 +386,18 @@ const CHANGELOG: Release[] = [
         category: "fixed",
       },
       {
+        icon: Fingerprint,
+        label: "Screenshot Links Use the Opaque Scan Id",
+        desc: "The page-screenshot image link carried the internal sequential scan number; it now uses the same random, non-guessable id the result links already do, so a screenshot URL gives away nothing about how many scans exist or which ids are real.",
+        category: "security",
+      },
+      {
+        icon: Image,
+        label: "Uploaded Avatars Moved Into the Database",
+        desc: "Uploaded profile pictures were stored as files on disk with a base64 fallback on serverless, a second image-storage mechanism alongside the database-backed screenshots. They now live in one place, the database, served through the same access-controlled route, with a one-command migration that converts existing avatars over. Sign-in pictures from Google, GitHub, and Discord stay as their own provider URLs.",
+        category: "changed",
+      },
+      {
         icon: ShieldAlert,
         label: "Engine Version 3.3.0",
         desc: "The scanning engine's version number moved to 3.3.0: two new active probes, a new live dependency-vulnerability check, and confidence scores that now adapt to real user feedback instead of staying static forever.",

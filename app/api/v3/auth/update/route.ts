@@ -231,22 +231,20 @@ export async function PATCH(request: NextRequest) {
       // in the DB, ready to render as XSS. Now uses lib/uploads/avatar.ts
       // to enforce MIME allowlist (png/jpeg only — SVG is rejected),
       // magic-bytes check, and a 5 MiB cap.
-      const {
-        deleteAvatarFilesIfLocal,
-        isLocalAvatarStorageAvailable,
-        saveAvatarFile,
-      } = await import("@/lib/uploads/avatar-storage");
+      const { deleteAvatarFilesIfLocal, saveAvatarFile } = await import(
+        "@/lib/uploads/avatar-storage"
+      );
 
       let storedValue: string | null;
       if (avatarUrl === "") {
-        // Clearing: drop any stored file (self-hosted Docker) and null
-        // the column so no orphaned file survives the removal.
+        // Clearing: drop any stored avatar row and null the column so
+        // nothing is left behind.
         await deleteAvatarFilesIfLocal(session.userId);
         storedValue = null;
       } else if (avatarUrl.startsWith("https://cdn.discordapp.com/")) {
-        // Pre-cleared Discord CDN URL from OAuth: already an external
-        // reference, nothing to write to disk. Drop any previously
-        // uploaded local file so it doesn't linger as an orphan.
+        // Pre-cleared Discord CDN URL from OAuth: an external reference we
+        // store as-is. Drop any previously uploaded avatar so it doesn't
+        // linger.
         await deleteAvatarFilesIfLocal(session.userId);
         storedValue = avatarUrl;
       } else {
@@ -255,13 +253,14 @@ export async function PATCH(request: NextRequest) {
         if (!result.valid) {
           return NextResponse.json({ error: result.reason }, { status: 400 });
         }
-        // Store real files on a self-hosted deployment (see
-        // lib/uploads/avatar-storage.ts). Vercel's filesystem can't hold
-        // them durably, so fall back there to the original behavior:
-        // the validated data URL goes straight into the column.
-        storedValue = isLocalAvatarStorageAvailable()
-          ? await saveAvatarFile(session.userId, result.mime, result.bytes)
-          : avatarUrl;
+        // The validated bytes go into the user_avatars table (Postgres);
+        // avatar_url holds the same-origin path the GET /api/v3/avatar
+        // route resolves back to them.
+        storedValue = await saveAvatarFile(
+          session.userId,
+          result.mime,
+          result.bytes,
+        );
       }
       await pool.query("UPDATE users SET avatar_url = $1 WHERE id = $2", [
         storedValue,

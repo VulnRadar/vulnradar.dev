@@ -1,54 +1,39 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-  afterAll,
-  vi,
-} from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 /**
- * Route-level tests for GET /api/v3/avatar/[userId]. The route itself
- * never touches the database — it reads straight off disk via
- * lib/uploads/avatar-storage.ts, so per this repo's "mock at the
- * network/database boundary, not below it" rule, the real filesystem
- * code runs against a temp AVATAR_STORAGE_DIR for the duration of the
- * suite. @/lib/database/db is still mocked here only because
- * lib/api/api-utils.ts (used for ApiResponse/withErrorHandling)
- * transitively imports it, and that module throws at import time when
- * DATABASE_URL isn't set in the test environment.
+ * Route-level tests for GET /api/v3/avatar/[userId]. The route reads the
+ * avatar bytes from the user_avatars table via lib/uploads/avatar-storage.ts,
+ * so per this repo's "mock at the database boundary" rule (tests/README.md)
+ * the pg pool is mocked with a small in-memory store keyed by user_id. That
+ * same @/lib/database/db mock also covers the transitive import in
+ * lib/api/api-utils.ts (used for ApiResponse/withErrorHandling), which
+ * otherwise throws at import time when DATABASE_URL isn't set.
  */
 
-vi.mock("@/lib/database/db", () => ({
-  default: { query: vi.fn(async () => ({ rows: [] })) },
-}));
+type Row = { image_data: Buffer; content_type: string };
+const store = new Map<number, Row>();
 
-let tmpDirs: string[] = [];
-const originalStorageDir = process.env.AVATAR_STORAGE_DIR;
-
-function freshTmpDir(): string {
-  const dir = mkdtempSync(join(tmpdir(), "vulnradar-avatar-route-test-"));
-  tmpDirs.push(dir);
-  process.env.AVATAR_STORAGE_DIR = dir;
-  return dir;
-}
-
-afterEach(() => {
-  for (const dir of tmpDirs) {
-    rmSync(dir, { recursive: true, force: true });
+const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
+  const s = sql.trim();
+  if (s.startsWith("INSERT INTO user_avatars")) {
+    const [userId, bytes, mime] = params as [number, Buffer, string];
+    store.set(userId, { image_data: bytes, content_type: mime });
+    return { rows: [] };
   }
-  tmpDirs = [];
+  if (s.startsWith("SELECT image_data, content_type FROM user_avatars")) {
+    const [userId] = params as [number];
+    const row = store.get(userId);
+    return { rows: row ? [row] : [] };
+  }
+  return { rows: [] };
 });
 
-afterAll(() => {
-  if (originalStorageDir === undefined) delete process.env.AVATAR_STORAGE_DIR;
-  else process.env.AVATAR_STORAGE_DIR = originalStorageDir;
-});
+vi.mock("@/lib/database/db", () => ({
+  default: {
+    query: (sql: string, params?: unknown[]) => mockQuery(sql, params),
+  },
+}));
 
 const { saveAvatarFile } = await import("@/lib/uploads/avatar-storage");
 const { GET } = await import("@/app/api/v3/avatar/[userId]/route");
@@ -61,11 +46,12 @@ function makeParams(userId: string) {
   return { params: Promise.resolve({ userId }) };
 }
 
-describe("GET /api/v3/avatar/[userId]", () => {
-  beforeEach(() => {
-    freshTmpDir();
-  });
+beforeEach(() => {
+  store.clear();
+  mockQuery.mockClear();
+});
 
+describe("GET /api/v3/avatar/[userId]", () => {
   it("serves a stored avatar with the right content type and bytes", async () => {
     await saveAvatarFile(11, "image/png", PNG_BYTES);
 
@@ -81,7 +67,7 @@ describe("GET /api/v3/avatar/[userId]", () => {
     expect(body).toEqual(PNG_BYTES);
   });
 
-  it("returns 404 when the user has no stored avatar file", async () => {
+  it("returns 404 when the user has no stored avatar", async () => {
     const res = await GET(
       new NextRequest("http://localhost/api/v3/avatar/999"),
       makeParams("999"),
