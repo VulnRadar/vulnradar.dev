@@ -12,6 +12,8 @@ import {
   SUPPORT_EMAIL,
   DISCORD_INVITE_URL,
   TOTAL_CHECKS_LABEL,
+  CHROME_WEB_STORE_URL,
+  FIREFOX_ADDON_URL,
 } from "@/lib/config/constants";
 
 /**
@@ -65,7 +67,17 @@ const WEBSITE_ID = `${APP_URL}/#website`;
  * the other blocks point at these instead of repeating them.
  */
 export function SiteStructuredData({ nonce }: { nonce?: string }) {
-  const sameAs = [SEO_GITHUB_URL, DISCORD_INVITE_URL].filter(Boolean);
+  // sameAs links the entity to its verified profiles elsewhere, which is what
+  // answer engines use to resolve "VulnRadar" to one thing. All real and
+  // config-derived: the source repo, the community server, and the two
+  // published extension store listings. Store URLs are empty on a fork that
+  // has not published one, so filter(Boolean) drops them cleanly.
+  const sameAs = [
+    SEO_GITHUB_URL,
+    DISCORD_INVITE_URL,
+    CHROME_WEB_STORE_URL,
+    FIREFOX_ADDON_URL,
+  ].filter(Boolean);
 
   return (
     <>
@@ -213,6 +225,46 @@ export function FaqStructuredData({
           "@type": "Question",
           name: item.question,
           acceptedAnswer: { "@type": "Answer", text: item.answer },
+        })),
+      }}
+    />
+  );
+}
+
+/**
+ * HowTo. The per-check fix guides are literally ordered remediation steps, so
+ * marking them up as a HowTo lets generative engines lift the exact sequence
+ * to answer a "how do I fix X" question. Only render this where the page
+ * actually shows those steps, so the structured data never claims a procedure
+ * the reader cannot see (which Google also penalises).
+ */
+export function HowToStructuredData({
+  name,
+  description,
+  steps,
+  path,
+  nonce,
+}: {
+  name: string;
+  description: string;
+  steps: string[];
+  path: string;
+  nonce?: string;
+}) {
+  return (
+    <JsonLd
+      nonce={nonce}
+      data={{
+        "@context": "https://schema.org",
+        "@type": "HowTo",
+        name,
+        description,
+        url: `${APP_URL}${path}`,
+        inLanguage: SEO_LANGUAGE,
+        step: steps.map((text, i) => ({
+          "@type": "HowToStep",
+          position: i + 1,
+          text,
         })),
       }}
     />

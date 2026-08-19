@@ -20,6 +20,7 @@ import { PricingCards } from "@/components/pricing/pricing-cards";
 import { PricingFeatures } from "@/components/pricing/pricing-features";
 import { PricingFaq } from "@/components/pricing/pricing-faq";
 import { PricingCta } from "@/components/pricing/pricing-cta";
+import { PRICING_MODEL_FAQ } from "./pricing-model-faq";
 
 // Generate pricing page plans from centralized config
 function getRetentionLabel(planId: string): string {
@@ -89,6 +90,51 @@ export default function PricingPage() {
               <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>
+
+          <section className="mt-16 pt-10 border-t border-border/50">
+            <h2 className="text-2xl font-semibold tracking-tight mb-3">
+              How {APP_NAME} is priced
+            </h2>
+            <p className="text-muted-foreground leading-relaxed mb-6 max-w-2xl">
+              For reference, the hosted {APP_NAME} service is priced by scan
+              volume rather than per target. Vulnerability assessment pricing
+              stays simple: a free tier, then paid plans that raise daily scan
+              quotas and history retention. The same detection engine runs on
+              every plan.
+            </p>
+            <ul className="divide-y divide-border/50 border-y border-border/50 mb-10">
+              {PLANS.map((plan) => (
+                <li
+                  key={plan.id}
+                  className="flex items-baseline justify-between gap-4 py-3"
+                >
+                  <span className="font-medium text-foreground">
+                    {plan.name}
+                  </span>
+                  <span className="text-sm text-muted-foreground tabular-nums">
+                    {plan.price === 0 ? "Free" : `$${plan.price}/mo`} ·{" "}
+                    {plan.scansPerDay} scans/day
+                  </span>
+                </li>
+              ))}
+            </ul>
+
+            <h2 className="text-2xl font-semibold tracking-tight mb-6">
+              Pricing questions
+            </h2>
+            <dl className="divide-y divide-border/50 border-t border-border/50">
+              {PRICING_MODEL_FAQ.map((faq) => (
+                <div key={faq.question} className="py-6">
+                  <dt className="font-medium text-foreground mb-2 text-balance">
+                    {faq.question}
+                  </dt>
+                  <dd className="text-sm text-muted-foreground leading-relaxed">
+                    {faq.answer}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </section>
         </main>
         <Footer />
       </div>

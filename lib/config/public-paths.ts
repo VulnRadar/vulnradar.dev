@@ -61,6 +61,18 @@ export const PUBLIC_PATHS = [
   ROUTES.CONTACT,
   ROUTES.GDPR_REQUEST,
 
+  // ─── SEO Content Pages ─────────────────────────────────────────
+  // Prefix-matched below, so each entry also covers its sub-routes:
+  // /checks (index + /checks/[id] + /checks/category/[category]),
+  // /alternatives (index + /alternatives/[competitor]), and /tools
+  // (index + /tools/api-scanner + /tools/link-checker). These are in
+  // the sitemap and are meant to rank, so a logged-out visitor (and
+  // Googlebot, which never carries a session) must reach them instead
+  // of being 307'd to /login.
+  "/checks",
+  "/alternatives",
+  "/tools",
+
   // ─── SEO Files ───────────────────────────────────────────────────
   // Crawlers (Googlebot etc.) never carry a session cookie. Without
   // these, a request for /sitemap.xml or /robots.txt fell through to
@@ -69,6 +81,16 @@ export const PUBLIC_PATHS = [
   // followed the redirect and got the login page back instead of XML.
   "/sitemap.xml",
   "/robots.txt",
+
+  // ─── AEO / GEO Files ─────────────────────────────────────────────
+  // llms.txt (llmstxt.org convention) and its detailed companion are the
+  // machine-readable site map AI answer engines read. Same reasoning as the
+  // SEO files above: an AI crawler carries no session, so without these both
+  // paths would 307 to /login and the engine would get the login page back
+  // instead of the Markdown map. Listed separately because middleware
+  // prefix-matches and "/llms-full.txt" does not start with "/llms.txt".
+  "/llms.txt",
+  "/llms-full.txt",
 
   // ─── Public System Endpoints ───────────────────────────────────
   // Readiness probe. Must be reachable without a session cookie or the

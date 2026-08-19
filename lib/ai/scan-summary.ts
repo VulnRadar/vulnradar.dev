@@ -52,12 +52,14 @@ const SEVERITY_RANK: Record<Severity, number> = {
   info: 4,
 };
 
-const SUMMARY_SYSTEM_PROMPT = `You are ${APP_NAME}'s scan summarizer. You are given the results of one completed vulnerability scan: a safety rating, a 1-10 danger score, severity counts, and the titles of its highest-severity findings (not the full finding list).
+const SUMMARY_SYSTEM_PROMPT = `You are ${APP_NAME}'s scan summarizer. You are given the results of one completed vulnerability scan: a safety rating, a 1-10 danger score, an SSL/TLS letter grade (A+ to F, or n/a for HTTP-only targets), severity counts, and the titles of its highest-severity findings (not the full finding list).
 
 Write a 3 to 5 sentence plain-English summary a non-technical stakeholder could paste directly into a report. Cover, in prose (no headings, no bullet points):
 1. The overall risk posture, stated plainly (e.g. what a critical/high finding actually means for the site, not just "there are N findings").
 2. The single most important thing to fix first.
 3. Any pattern worth naming across the findings you were given -- for example, if several titles point at the same root cause (a missing CSP, several missing security headers, repeated hardcoded secrets), say that once instead of treating them as unrelated. If there is no such pattern, skip this rather than inventing one.
+
+When ssl_grade is a letter (not n/a), you may cite it, especially a weak grade of C or below. The same scan also captures the domain's full DNS record set and auto-discovers subdomains, so never imply it only checks headers; but those specifics are not in this input, so do not invent DNS records or subdomain names.
 
 Do not list every finding individually. Do not invent findings, counts, or details you were not given. Be specific and direct: say what happens, not that the posture is "strong" or "robust" -- those words are meaningless without a reason attached. No em dashes. No markdown formatting of any kind.
 
@@ -83,6 +85,7 @@ function buildPrompt(result: ScanResult, topFindingsLimit: number): string {
   return `url: ${result.url}
 safety_rating: ${rating}
 danger_score: ${result.dangerScore ?? "n/a"}/10
+ssl_grade: ${result.sslGrade ?? "n/a"}
 finding_counts: critical=${summary.critical} high=${summary.high} medium=${summary.medium} low=${summary.low} info=${summary.info} total=${summary.total}
 
 highest-severity findings${omittedCount > 0 ? ` (top ${topFindingsLimit} of ${findings.length} total, ${omittedCount} more not shown)` : ""}:

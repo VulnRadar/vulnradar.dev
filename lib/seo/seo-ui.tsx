@@ -22,18 +22,6 @@ export function SeoPageShell({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Full literal class strings per severity so Tailwind's JIT emits them
-// (the same reason ROLE_BADGE_STYLES lists them out in client-constants.ts).
-const SEVERITY_PILL: Record<Severity, string> = {
-  critical:
-    "bg-[hsl(var(--severity-critical))]/10 text-[hsl(var(--severity-critical))] border-[hsl(var(--severity-critical))]/25",
-  high: "bg-[hsl(var(--severity-high))]/10 text-[hsl(var(--severity-high))] border-[hsl(var(--severity-high))]/25",
-  medium:
-    "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/25",
-  low: "bg-[hsl(var(--severity-low))]/10 text-[hsl(var(--severity-low))] border-[hsl(var(--severity-low))]/25",
-  info: "bg-[hsl(var(--severity-info))]/10 text-[hsl(var(--severity-info))] border-[hsl(var(--severity-info))]/25",
-};
-
 const SEVERITY_TEXT: Record<Severity, string> = {
   critical: "Critical",
   high: "High",
@@ -42,6 +30,14 @@ const SEVERITY_TEXT: Record<Severity, string> = {
   info: "Informational",
 };
 
+/**
+ * Severity badge. Colours come from the shared --severity-* CSS variables via
+ * inline style rather than Tailwind arbitrary classes: this component lives in
+ * lib/, which is outside Tailwind's content globs, so a class like
+ * `bg-[hsl(var(--severity-info))]/10` would never be generated. The vars hold
+ * space-separated HSL triplets, so `hsl(var(--x) / 0.1)` is valid and stays
+ * theme-aware in light and dark mode automatically.
+ */
 export function SeverityPill({
   severity,
   className,
@@ -49,11 +45,16 @@ export function SeverityPill({
   severity: Severity;
   className?: string;
 }) {
+  const v = `var(--severity-${severity})`;
   return (
     <span
+      style={{
+        color: `hsl(${v})`,
+        backgroundColor: `hsl(${v} / 0.1)`,
+        borderColor: `hsl(${v} / 0.25)`,
+      }}
       className={cn(
         "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold",
-        SEVERITY_PILL[severity],
         className,
       )}
     >

@@ -177,6 +177,18 @@ Safety rating: safe / caution / unsafe. A 3-tier overall verdict. Any critical e
 Danger score: an integer 0-10 (0 = no findings, higher = worse), shown in the UI as "Risk score". 1-2 info/low only, 3-4 hardening gaps, 5-6 significant gaps or one exploitable medium, 7-8 exploitable highs, 9-10 critical exploitable. Anchored to the safety tier so a safe site never reads 10.
 Engine confidence: a 0-100% figure for how confident the engine is in the findings. Higher for binary header/TLS checks (94-97%), lower for body-pattern regex (60-70%).
 
+━━━ MORE PER-SCAN OUTPUTS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SSL grade: every scan of an HTTPS target gets an SSL Labs style letter grade (A+, A, B, C, D, F), shown in the UI next to the Risk score as "SSL grade" and stored in result_meta.sslGrade. Computed from the negotiated TLS protocol (TLS 1.3 is A+ eligible, anything below TLS 1.2 caps at F), certificate trust (expired, self-signed, hostname mismatch, or missing SAN cap it at F), key strength, and negotiated cipher, with small OCSP/HSTS nudges. HTTP-only targets return null (not graded), never "F".
+
+DNS records: every scan captures the domain's full DNS record set (A, AAAA, CNAME, MX, NS, TXT, CAA, SOA) as a structured panel on the result and on shared result pages. Captured fresh per scan; there is no scheduled auto-refresh.
+
+Subdomains: subdomain discovery now runs automatically on every scan (it used to be a manual button), so a finished result already lists related subdomains found via certificate-transparency logs, passive DNS, and brute-force DNS.
+
+Export formats: a completed scan exports as JSON, CSV, SARIF, PDF, and Markdown.
+
+History links: scan history links use random, non-guessable ids, not sequential numbers.
+
 ━━━ PLANS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 | Plan | Daily scans | Daily API calls | History retention |
@@ -228,7 +240,11 @@ probes: tcp banner checks: ssh, smtp, imap, pop3, ftp, mongodb.
 scanners: restrict to specific categories, omit to run all ${categoryCount}.
 SSRF protection rejects localhost and RFC-1918 targets.
 
-━━━ COMMON FINDINGS AND FIXES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ ACTIVE PROBES (opt-in, verified domains only) ━━━━━━━━━━━━━━━━━━━━━━━
+
+Active probing is nine independent, individually selectable probes, each OFF by default and each requiring a verified domain (you can only actively probe a site whose ownership you have proven): reflected XSS, SQL injection, template injection (SSTI), OS command injection, open redirect, GraphQL introspection, CORS reflection, dangerous HTTP methods, and X-Forwarded-Host. These are distinct from the tcp banner \`probes\` field (ssh/smtp/...). Request them per probe in the \`scanners\` array as active-probes:<id> (e.g. active-probes:xss); all of them file findings under the single active-probes category.
+
+━━━ COMMON FINDINGS AND FIXES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 hsts-missing (medium): browser won't enforce HTTPS; downgrade attacks possible
   nginx:   add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
@@ -365,6 +381,10 @@ docker compose path. If the user wants zero-ops → give Render/Fly.
 
 Configure at Dashboard → Settings → Webhooks. Supports Slack, Discord, or any HTTP endpoint.
 A test button sends a sample payload to confirm delivery.
+
+━━━ ACCOUNT AND BILLING EMAILS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+VulnRadar sends transactional emails for billing and account events: payment receipts, payment-failed, subscription upgraded/downgraded/canceled/renewed, account-deleted, sign-out-everywhere, and team membership changes.
 
 ━━━ GITHUB ACTIONS EXAMPLE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

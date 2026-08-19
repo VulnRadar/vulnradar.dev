@@ -6,6 +6,7 @@ import {
   Clock,
   Copy,
   Gauge,
+  HelpCircle,
   Lock,
   MessageCircle,
   ShieldCheck,
@@ -15,6 +16,11 @@ import {
 import { useState } from "react";
 import type { ScanResult } from "@/lib/scanner/types";
 import { cn } from "@/lib/ui/utils";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { copyToClipboard } from "@/lib/ui/clipboard";
 import { SeverityDistribution } from "@/components/scanner/severity-badge";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
@@ -123,11 +129,12 @@ function sslGradeStyle(grade: string): {
   return { tone: "destructive", valueClass: "text-destructive" };
 }
 
-/** SSL/TLS letter-grade cell, mirroring Stat's layout but colored by tier. */
+/** SSL/TLS letter-grade cell, mirroring Stat's layout but colored by tier.
+ * The "?" opens a plain-language explainer of what the grade measures. */
 function SslGradeStat({ grade }: { grade: string }) {
   const style = sslGradeStyle(grade);
   return (
-    <div className="flex min-w-0 flex-1 basis-24 items-center gap-2.5 px-3 py-2 sm:px-4">
+    <div className="flex min-w-0 flex-1 basis-24 items-center gap-2 px-3 py-2 sm:px-4">
       <StatIcon icon={Lock} tone={style.tone} size="sm" />
       <div className="flex min-w-0 flex-col gap-0.5">
         <span
@@ -142,6 +149,49 @@ function SslGradeStat({ grade }: { grade: string }) {
           SSL grade
         </span>
       </div>
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            aria-label="What does the SSL grade mean?"
+            className={cn(
+              "ml-0.5 shrink-0 rounded-full p-0.5 text-muted-foreground/60 transition-colors hover:text-foreground",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            )}
+          >
+            <HelpCircle aria-hidden className="h-3.5 w-3.5" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-72 text-left">
+          <p className="text-xs font-semibold text-foreground">
+            SSL/TLS grade
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+            A letter grade for this site&apos;s HTTPS setup, in the style of SSL
+            Labs. It comes from the TLS protocol version, the certificate&apos;s
+            validity and chain, the key strength, and the negotiated cipher.
+            Only sites served over HTTPS are graded.
+          </p>
+          <div className="mt-2.5 grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-1 text-[11px]">
+            <span className="font-semibold text-[hsl(var(--success))]">
+              A+ / A
+            </span>
+            <span className="text-muted-foreground">Strong, modern TLS</span>
+            <span className="font-semibold text-primary">B</span>
+            <span className="text-muted-foreground">Solid, with minor gaps</span>
+            <span className="font-semibold text-[hsl(var(--severity-medium))]">
+              C
+            </span>
+            <span className="text-muted-foreground">
+              Dated config worth fixing
+            </span>
+            <span className="font-semibold text-destructive">D / F</span>
+            <span className="text-muted-foreground">
+              Weak or broken: expired, self-signed, or an old protocol
+            </span>
+          </div>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }

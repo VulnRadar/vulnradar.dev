@@ -143,6 +143,78 @@ const CHANGELOG: Release[] = [
       "Active-probes scanning (real exploit-attempt payloads, not just passive checks) now requires proving you own the target domain first, via a DNS TXT record, the same model Google Search Console and ACME certificate issuance use. Three of the existing active probes (CORS origin reflection, dangerous HTTP methods, X-Forwarded-Host injection) turned out to run unconditionally on every scan instead of being gated behind that opt-in, so they're fixed alongside two new ones: OS command injection and open redirect. Live-browser sessions are now a real metered plan limit with an account-wide concurrency queue instead of an unbounded feature, and dependency scanning gained a live OSV.dev lookup on top of the old static CVE table. The rest is a run of real quota and account-safety bugs found by auditing every per-plan limit end to end: the daily scan quota was fully bypassable via API key, never enforced on crawl scans at all, and a rejected scan could still permanently burn a quota slot; the bulk-scan URL limit ignored your actual plan; and account deletion was completely broken for every account, full stop.",
     changes: [
       {
+        icon: ShieldCheck,
+        label: "SSL/TLS Letter Grade",
+        desc: "Every scan of an HTTPS site now gets an SSL Labs style letter grade, A+ down to F, computed from the negotiated protocol, the certificate's validity and chain, key strength, and the negotiated cipher. It sits next to the risk score on the result and carries through to shared result pages.",
+        category: "added",
+      },
+      {
+        icon: Network,
+        label: "Full DNS Records on Every Result",
+        desc: "Scans now capture the domain's full DNS record set (A, AAAA, MX, NS, TXT, CAA, SOA) as a structured, copyable panel, instead of only reading those records internally to raise findings. It appears automatically on your results and on shared ones.",
+        category: "added",
+      },
+      {
+        icon: ScanSearch,
+        label: "Subdomains Are Discovered Automatically",
+        desc: "Subdomain discovery used to be a button you had to press. Now every scan runs it automatically, so a finished result already lists the related subdomains it found, with the same certificate-transparency, passive-DNS, and brute-force sources as before.",
+        category: "changed",
+      },
+      {
+        icon: Crosshair,
+        label: "Active Probes Are Now Nine Separate Toggles",
+        desc: "The single active-probing switch became nine independent, individually selectable probes (reflected XSS, SQL injection, template injection, command injection, open redirect, GraphQL introspection, CORS reflection, dangerous HTTP methods, X-Forwarded-Host), each with a plain description of what it sends. Each is off by default and still held to the same verified-domain requirement.",
+        category: "changed",
+      },
+      {
+        icon: FileDown,
+        label: "Markdown Report Export",
+        desc: "Scan results now export as Markdown alongside JSON, CSV, SARIF, and PDF: a clean report grouped by severity with fix steps, ready to paste straight into a pull request, issue, or wiki.",
+        category: "added",
+      },
+      {
+        icon: Mail,
+        label: "Every Email Redesigned",
+        desc: "All transactional emails were rebuilt on one consistent, brand-colored layout and rewritten in plain, specific language, replacing the old one-size template and its rhetorical-question boxes. Colors now come from a single brand source, so an email can no longer drift off-palette.",
+        category: "changed",
+      },
+      {
+        icon: CreditCard,
+        label: "Billing and Account Emails You Were Missing",
+        desc: "Payments and subscription changes were completely silent before. You now get a receipt on every successful payment, a heads-up when one fails, and a note when your plan is upgraded, downgraded, canceled, or renewed, plus confirmations for account deletion, sign-out-everywhere, and team membership changes.",
+        category: "added",
+      },
+      {
+        icon: Fingerprint,
+        label: "Scan History Links Are No Longer Sequential",
+        desc: "A scan's link used a plain counting number, so anyone could guess neighboring scans by changing it. Every scan, old and new, now carries a random, non-guessable id in its link. Existing bookmarks and the History tab keep working exactly as before.",
+        category: "security",
+      },
+      {
+        icon: ServerCog,
+        label: "Service Probes Now Report on Every Scan",
+        desc: "Service probes (SSH, SMTP, IMAP, POP3, FTP, MongoDB banner grabs) were silently dropped on deep and crawl scans, and showed nothing on a normal site whose ports are closed. They now run on every scan type, and each probe you select always reports back: the banner it found, or a plain note that no service was reachable on that port so you can see it ran.",
+        category: "fixed",
+      },
+      {
+        icon: List,
+        label: "Every Scan Option Explains Itself",
+        desc: "Each check family and service probe in the scan options now shows a one-line description of what it does, and the selector shows an exact count of what is enabled instead of a vague \"All\" that hid whether the opt-in active probes were part of it.",
+        category: "changed",
+      },
+      {
+        icon: Database,
+        label: "Database Backups in the Admin Panel",
+        desc: "The finished database-backup tool was fully built but had no way to open it. It now has its own admin tab: run a backup, watch its status, and review past backups and their logs.",
+        category: "fixed",
+      },
+      {
+        icon: FileSearch,
+        label: "A Fix Guide for Every Check",
+        desc: "Every one of the scanner's checks now has its own reference page explaining the issue, why it matters, and how to fix it with copyable examples, alongside per-category overviews and honest comparison pages. Useful on its own, and it helps people find VulnRadar when they search for the specific problem they are hitting.",
+        category: "added",
+      },
+      {
         icon: Globe,
         label: "Domain Ownership Verification",
         desc: "Active-probes scanning (form-submission canaries, CORS/method/host-header probes, GraphQL introspection) now requires verifying you control the target domain first: publish a one-time token as a DNS TXT record, then confirm it. Verifying a domain covers its subdomains, matching how DNS-zone-control verification works everywhere else. Manage domains from Profile > Developer.",

@@ -485,6 +485,7 @@ export function ScanForm({
   );
   const totalFamilies = CHECK_FAMILIES.length;
   const activeProbeCount = selectedActiveProbes.size;
+  const totalActiveProbes = ACTIVE_PROBE_OPTIONS.length;
 
   useEffect(() => {
     // scanner: always set ?mode=... so the URL reflects the current
@@ -785,9 +786,7 @@ export function ScanForm({
                   >
                     <ListFilter aria-hidden className="h-4 w-4" />
                     <span className="font-mono tabular-nums">
-                      {allFamiliesSelected
-                        ? "All"
-                        : `${effectiveFamilies}/${totalFamilies}`}
+                      {effectiveFamilies}/{totalFamilies}
                       {activeProbeCount > 0 ? ` +${activeProbeCount}` : ""}
                     </span>
                   </Button>
@@ -901,9 +900,14 @@ export function ScanForm({
                         the families above, each submits a real request to the
                         target, so the API holds every one to the verified
                         domain-ownership gate. */}
-                    <p className="px-2 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wide text-primary/70">
-                      {ACTIVE_PROBE_GROUP}
-                    </p>
+                    <div className="flex items-center justify-between gap-2 px-2 pb-0.5 pt-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-primary/70">
+                        {ACTIVE_PROBE_GROUP}
+                      </p>
+                      <span className="font-mono text-[10px] tabular-nums text-primary/70">
+                        {activeProbeCount}/{totalActiveProbes}
+                      </span>
+                    </div>
                     <p className="px-2 pb-1 text-[11px] leading-snug text-muted-foreground/70">
                       Each sends real payloads to the target and needs a
                       verified domain. Off by default.

@@ -197,6 +197,13 @@ export const CONFIG_SEO_KEYWORDS = [
   "API security testing",
   "self-hosted vulnerability scanner",
   "CI security scanning",
+  // High-intent commercial queries the scanner genuinely answers.
+  "vulnerability assessment",
+  "vulnerability assessment pricing",
+  "vulnerability management pricing",
+  "vulnerability scanning service pricing",
+  "api scanner online",
+  "online vulnerability scanner",
 ];
 
 // Social card image, relative to the app root. 1200x630 is the size Twitter,

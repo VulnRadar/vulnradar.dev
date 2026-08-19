@@ -11,6 +11,7 @@
  */
 
 import type { DnsRecords } from "./dns-records";
+import type { DiscoveryResult } from "./subdomain-types";
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 

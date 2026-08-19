@@ -6,6 +6,7 @@ import { pageMetadata } from "@/lib/seo/metadata";
 import {
   BreadcrumbStructuredData,
   FaqStructuredData,
+  HowToStructuredData,
   TechArticleStructuredData,
 } from "@/components/seo/structured-data";
 import { CodeBlock, InlineCode } from "@/components/docs";
