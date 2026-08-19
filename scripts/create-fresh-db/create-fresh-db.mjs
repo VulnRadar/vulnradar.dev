@@ -64,10 +64,17 @@ let DRY_RUN = false;
 // actually creates. When a new schema version ships: freeze the current
 // instrumentation.ts into schemas/instrumentation-v<old>.ts, then repoint
 // the previous "newest" entry at that new snapshot file.
+// The newest entry points at the live instrumentation.ts, which today
+// creates the full v3.5.0 schema (it already includes user_avatars,
+// scan_screenshots, and the rest accreted since v3.0.0 -- a fresh DB built
+// from it genuinely IS v3.5.0, not a clean v3.0.0). There is no frozen
+// v3.0.0 snapshot to offer, so v3.0.0 is not a fresh-build option: an
+// existing v3.0.0 database upgrades to v3.5.0 through the migrate registry
+// (scripts/migrate/versions/3.0.0-to-3.5.0.mjs) instead.
 const SCHEMA_FILES = {
   "1.0.0": resolve(SCHEMAS_DIR, "instrumentation-v1.ts"),
   "2.0.0": resolve(SCHEMAS_DIR, "instrumentation-v2.ts"),
-  "3.0.0": resolve(ROOT, "instrumentation.ts"),
+  "3.5.0": resolve(ROOT, "instrumentation.ts"),
 };
 
 // Tables that contain user data worth migrating (in FK-safe order).
@@ -560,7 +567,7 @@ Usage:
   npm run db:create                        # interactive (full flow)
   npm run db:create:dry-run                # preview only, no DB changes
 
-The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
+The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.5.0).
 `);
       process.exit(0);
     } else {
@@ -675,7 +682,7 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
     const LABELS = {
       "1.0.0": "v1 baseline (19 tables, pre-MVP)",
       "2.0.0": "v2 / production schema (34 tables)",
-      "3.0.0": "v3.0 / production schema (46 tables)",
+      "3.5.0": "v3.5 / current schema (avatars stored in the database)",
     };
     log("");
     log(

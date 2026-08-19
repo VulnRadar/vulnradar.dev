@@ -177,7 +177,7 @@ lib/types/
             </li>
             <li>
               <InlineCode>CONFIG_MIN_SCHEMA_VERSION</InlineCode>: minimum schema
-              version this app accepts (default: <InlineCode>3.0.0</InlineCode>
+              version this app accepts (default: <InlineCode>3.5.0</InlineCode>
               ). The app refuses to start if{" "}
               <InlineCode>vulnradar_schema_meta.schema_version</InlineCode> is
               lower.
