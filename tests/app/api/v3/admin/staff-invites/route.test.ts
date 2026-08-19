@@ -51,7 +51,9 @@ vi.mock("@/lib/email/email", async (importOriginal) => {
   return { ...actual, sendEmail: (params: unknown) => mockSendEmail(params) };
 });
 
-const { POST } = await import("@/app/api/v3/admin/staff-invites/route");
+const { POST, GET, DELETE } = await import(
+  "@/app/api/v3/admin/staff-invites/route"
+);
 const { hashStaffInviteToken } = await import("@/lib/admin/staff-invites");
 
 // requireAdmin: SELECT id, role, totp_enabled FROM users WHERE id = $1
@@ -64,6 +66,14 @@ function queueRole(role: string | null, id = 1) {
 function postRequest(body: unknown): NextRequest {
   return new NextRequest("http://localhost/api/v3/admin/staff-invites", {
     method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+function deleteRequest(body: unknown): NextRequest {
+  return new NextRequest("http://localhost/api/v3/admin/staff-invites", {
+    method: "DELETE",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
@@ -264,5 +274,134 @@ describe("POST /api/v3/admin/staff-invites — invite lifecycle", () => {
       postRequest({ email: "new@example.com", role: "support" }),
     );
     expect(res.status).toBe(200);
+  });
+});
+
+describe("GET /api/v3/admin/staff-invites — authorization", () => {
+  it("requires authentication", async () => {
+    mockGetSession.mockResolvedValue(null);
+    const res = await GET();
+    expect(res.status).toBe(401);
+    // requireAdmin returns before any table lookup runs.
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("rejects a moderator (below the admin tier requireAdmin enforces)", async () => {
+    queueRole("moderator");
+    const res = await GET();
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects a support account", async () => {
+    queueRole("support");
+    const res = await GET();
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("GET /api/v3/admin/staff-invites — listing", () => {
+  it("returns only pending (unaccepted, unexpired) invites for an admin", async () => {
+    queueRole("admin");
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // ensureStaffInvitesTable
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 7,
+          email: "pending@example.com",
+          role: "support",
+          created_at: "2026-08-18T00:00:00.000Z",
+          expires_at: "2026-08-25T00:00:00.000Z",
+          invited_by_name: "Root Admin",
+          invited_by_email: "root@example.com",
+        },
+      ],
+    });
+
+    const res = await GET();
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.invites).toHaveLength(1);
+    expect(json.invites[0].email).toBe("pending@example.com");
+
+    // The listing query filters to still-actionable rows only.
+    const selectCall = mockQuery.mock.calls[2];
+    expect(selectCall[0]).toContain("FROM staff_invites");
+    expect(selectCall[0]).toContain("accepted_at IS NULL");
+    expect(selectCall[0]).toContain("expires_at > NOW()");
+  });
+
+  it("returns an empty list when nothing is pending", async () => {
+    queueRole("admin");
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // ensureStaffInvitesTable
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // no pending invites
+
+    const res = await GET();
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.invites).toEqual([]);
+  });
+});
+
+describe("DELETE /api/v3/admin/staff-invites — authorization", () => {
+  it("requires authentication", async () => {
+    mockGetSession.mockResolvedValue(null);
+    const res = await DELETE(deleteRequest({ id: 7 }));
+    expect(res.status).toBe(401);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("rejects a moderator (below the admin tier requireAdmin enforces)", async () => {
+    queueRole("moderator");
+    const res = await DELETE(deleteRequest({ id: 7 }));
+    expect(res.status).toBe(401);
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+});
+
+describe("DELETE /api/v3/admin/staff-invites — revoke", () => {
+  it("rejects a missing or non-numeric invite id", async () => {
+    queueRole("admin");
+    const res = await DELETE(deleteRequest({ id: "not-a-number" }));
+    expect(res.status).toBe(400);
+    // Only requireAdmin's own lookup ran; no table touch, no delete.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  it("deletes a pending invite row and audit-logs the revoke", async () => {
+    queueRole("admin", 1);
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // ensureStaffInvitesTable
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ email: "pending@example.com", role: "support" }],
+    }); // DELETE ... RETURNING
+
+    const res = await DELETE(deleteRequest({ id: 7 }));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json).toEqual({ success: true, id: 7 });
+
+    // The revoke only ever removes a still-pending row.
+    const deleteCall = mockQuery.mock.calls[2];
+    expect(deleteCall[0]).toContain("DELETE FROM staff_invites");
+    expect(deleteCall[0]).toContain("accepted_at IS NULL");
+    expect(deleteCall[1]).toEqual([7]);
+
+    expect(mockLogAction).toHaveBeenCalledWith(
+      1,
+      null,
+      "staff_invite_revoked",
+      expect.stringContaining("pending@example.com"),
+      "127.0.0.1",
+    );
+  });
+
+  it("returns 404 when no pending invite matches that id", async () => {
+    queueRole("admin");
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // ensureStaffInvitesTable
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // DELETE matched nothing
+
+    const res = await DELETE(deleteRequest({ id: 999 }));
+    expect(res.status).toBe(404);
+    expect(mockLogAction).not.toHaveBeenCalled();
   });
 });

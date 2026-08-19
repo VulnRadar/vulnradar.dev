@@ -60,6 +60,12 @@ export const PUBLIC_PATHS = [
   ROUTES.CHANGELOG,
   ROUTES.CONTACT,
   ROUTES.GDPR_REQUEST,
+  // Human security & responsible-disclosure page (app/security/page.tsx).
+  // Must be reachable logged-out: security researchers land here with no
+  // session, and it's in the sitemap. Prefix-matched, but no protected
+  // route starts with "/security" (the machine-readable /security.txt and
+  // /.well-known/security.txt are listed separately below).
+  "/security",
 
   // ─── SEO Content Pages ─────────────────────────────────────────
   // Prefix-matched below, so each entry also covers its sub-routes:

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Shield,
   RefreshCw,
@@ -21,6 +21,7 @@ import {
   UserPlus,
   Loader2,
   Check,
+  Trash2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -81,6 +82,17 @@ const INVITABLE_STAFF_ROLES: readonly StaffRole[] = Object.values(
   (role) => role !== STAFF_ROLES.USER && role !== STAFF_ROLES.SUPER_ADMIN,
 );
 
+// One outstanding staff invite, as returned by GET /api/v3/admin/staff-invites.
+interface PendingInvite {
+  id: number;
+  email: string;
+  role: string;
+  created_at: string;
+  expires_at: string;
+  invited_by_name: string | null;
+  invited_by_email: string | null;
+}
+
 export function StaffList({
   activeAdmins,
   adminsLoading,
@@ -101,6 +113,34 @@ export function StaffList({
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState("");
   const [inviteSuccess, setInviteSuccess] = useState("");
+
+  // Pending invites (GET /api/v3/admin/staff-invites): the outstanding
+  // invites nobody has accepted yet, so a wrong address or wrong role can be
+  // revoked before it is used instead of being stuck live until it expires.
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
+  const [invitesLoading, setInvitesLoading] = useState(false);
+  const [revokingId, setRevokingId] = useState<number | null>(null);
+
+  const fetchPendingInvites = useCallback(async () => {
+    setInvitesLoading(true);
+    try {
+      const res = await fetch("/api/v3/admin/staff-invites");
+      if (!res.ok) return;
+      const data = await res.json();
+      setPendingInvites(Array.isArray(data.invites) ? data.invites : []);
+    } catch {
+      // Non-blocking: the send-invite form still works without the list.
+    } finally {
+      setInvitesLoading(false);
+    }
+  }, []);
+
+  // Load the pending list whenever the modal opens, so it reflects invites
+  // sent from another admin's session too, not just this tab's own sends.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-open: kicks off an async load when the modal opens; the loading flag it sets is for that request, not synchronous derived state
+    if (inviteOpen) fetchPendingInvites();
+  }, [inviteOpen, fetchPendingInvites]);
 
   function closeInviteModal() {
     setInviteOpen(false);
@@ -134,10 +174,34 @@ export function StaffList({
       }
       setInviteSuccess(`Invite sent to ${inviteEmail.trim()}.`);
       setInviteEmail("");
+      // Reflect the just-created invite in the pending list right away.
+      fetchPendingInvites();
     } catch {
       setInviteError("Something went wrong. Please try again.");
     } finally {
       setInviting(false);
+    }
+  }
+
+  async function handleRevokeInvite(id: number) {
+    setRevokingId(id);
+    setInviteError("");
+    try {
+      const res = await fetch("/api/v3/admin/staff-invites", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}) as { error?: string });
+        setInviteError(data.error || "Failed to revoke invite.");
+        return;
+      }
+      setPendingInvites((prev) => prev.filter((invite) => invite.id !== id));
+    } catch {
+      setInviteError("Something went wrong revoking that invite.");
+    } finally {
+      setRevokingId(null);
     }
   }
 
@@ -571,7 +635,7 @@ export function StaffList({
           onClick={closeInviteModal}
         >
           <div
-            className="bg-card border border-border rounded-xl w-full max-w-md mx-4 shadow-2xl"
+            className="bg-card border border-border rounded-xl w-full max-w-lg mx-4 shadow-2xl max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
             {...inviteDialogProps}
           >
@@ -664,6 +728,89 @@ export function StaffList({
                   )}
                   {inviting ? "Sending..." : "Send invite"}
                 </Button>
+              </div>
+
+              {/* Pending invites: the outstanding ones nobody has accepted
+                  yet. Revoke deletes the row, which is the whole revoke --
+                  the emailed link stops resolving the moment it is gone. */}
+              <div className="pt-4 border-t border-border/50">
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <h4 className="text-sm font-semibold text-foreground">
+                    Pending invites
+                  </h4>
+                  {pendingInvites.length > 0 && (
+                    <Badge
+                      variant="secondary"
+                      className="text-[11px] font-medium h-5 px-2"
+                    >
+                      {pendingInvites.length}
+                    </Badge>
+                  )}
+                </div>
+
+                {invitesLoading && pendingInvites.length === 0 ? (
+                  <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    Loading pending invites...
+                  </div>
+                ) : pendingInvites.length === 0 ? (
+                  <p className="py-3 text-sm text-muted-foreground">
+                    No invites are waiting to be accepted.
+                  </p>
+                ) : (
+                  <ul className="flex flex-col gap-2">
+                    {pendingInvites.map((invite) => (
+                      <li
+                        key={invite.id}
+                        className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-muted/30 px-3 py-2.5"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-foreground">
+                            {invite.email}
+                          </p>
+                          <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <span>
+                              {STAFF_ROLE_LABELS[invite.role] || invite.role}
+                            </span>
+                            <span aria-hidden="true">·</span>
+                            <Calendar
+                              className="h-3 w-3 shrink-0"
+                              aria-hidden="true"
+                            />
+                            <span>
+                              expires{" "}
+                              {new Date(
+                                invite.expires_at,
+                              ).toLocaleDateString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              })}
+                            </span>
+                          </p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 gap-1.5 shrink-0 text-destructive hover:text-destructive"
+                          onClick={() => handleRevokeInvite(invite.id)}
+                          disabled={revokingId === invite.id}
+                          aria-label={`Revoke invite for ${invite.email}`}
+                        >
+                          {revokingId === invite.id ? (
+                            <Loader2
+                              className="h-4 w-4 animate-spin"
+                              aria-hidden="true"
+                            />
+                          ) : (
+                            <Trash2 className="h-4 w-4" aria-hidden="true" />
+                          )}
+                          <span className="hidden sm:inline">Revoke</span>
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </div>
           </div>

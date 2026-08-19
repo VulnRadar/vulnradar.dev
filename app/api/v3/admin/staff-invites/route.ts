@@ -149,3 +149,89 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   return ApiResponse.success({ success: true, inviteId, expiresAt });
 });
+
+interface PendingInviteRow {
+  id: number;
+  email: string;
+  role: string;
+  created_at: string;
+  expires_at: string;
+  invited_by_name: string | null;
+  invited_by_email: string | null;
+}
+
+/**
+ * GET /api/v3/admin/staff-invites -- list the invites that are still
+ * outstanding (never accepted, not yet expired). Same admin gate the POST
+ * uses: only an admin (or the super_admin) can see who has a pending staff
+ * invite, since the list is a map of who is about to gain a staff role.
+ *
+ * Accepted or expired rows are deliberately omitted -- there is nothing to
+ * act on for them, and an accepted invite's role change already shows up in
+ * the staff directory.
+ */
+export const GET = withErrorHandling(async () => {
+  const admin = await requireAdmin();
+  if (!admin) return ApiResponse.unauthorized("Admins only.");
+
+  await ensureStaffInvitesTable();
+
+  const { rows } = await pool.query<PendingInviteRow>(
+    `SELECT si.id, si.email, si.role, si.created_at, si.expires_at,
+            u.name AS invited_by_name, u.email AS invited_by_email
+       FROM staff_invites si
+       LEFT JOIN users u ON u.id = si.invited_by
+      WHERE si.accepted_at IS NULL AND si.expires_at > NOW()
+      ORDER BY si.created_at DESC`,
+  );
+
+  return ApiResponse.success({ invites: rows });
+});
+
+/**
+ * DELETE /api/v3/admin/staff-invites -- revoke a pending invite by id. The
+ * emailed token is single-use and only ever validated against the row (its
+ * SHA-256 hash), so deleting the row is the revoke: the link in the email
+ * stops resolving the moment the row is gone. Same admin gate as POST/GET.
+ *
+ * Only a still-pending row can be revoked -- an already-accepted invite has
+ * nothing left to cancel (the role was granted at accept time, and undoing
+ * that is a separate staff-directory action, not an invite revoke).
+ */
+export const DELETE = withErrorHandling(async (request: NextRequest) => {
+  const admin = await requireAdmin();
+  if (!admin) return ApiResponse.unauthorized("Admins only.");
+
+  const parsed = await parseBody<{ id?: number }>(request);
+  if (!parsed.success) return ApiResponse.badRequest(parsed.error);
+
+  const id =
+    typeof parsed.data.id === "number" ? parsed.data.id : Number(parsed.data.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return ApiResponse.badRequest("A valid invite id is required.");
+  }
+
+  await ensureStaffInvitesTable();
+
+  const deleted = await pool.query<{ email: string; role: string }>(
+    `DELETE FROM staff_invites
+      WHERE id = $1 AND accepted_at IS NULL
+      RETURNING email, role`,
+    [id],
+  );
+  if (deleted.rows.length === 0) {
+    return ApiResponse.notFound("No pending invite with that id.");
+  }
+
+  const { email, role } = deleted.rows[0];
+  const ip = (await getClientIp()) || undefined;
+  await logAction(
+    admin.id,
+    null,
+    "staff_invite_revoked",
+    `Revoked pending staff invite for ${email} (role "${role}")`,
+    ip,
+  );
+
+  return ApiResponse.success({ success: true, id });
+});
