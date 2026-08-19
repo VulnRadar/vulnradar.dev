@@ -48,6 +48,11 @@ import { applyAdaptiveConfidence } from "./adaptive-confidence";
 import { attachCvssScores } from "./cvss";
 import { checkForNewCriticalOrHighFindings } from "./regression-alert";
 import { runServiceProbes } from "./service-probes";
+import {
+  captureAndStoreScreenshot,
+  shouldCaptureScreenshot,
+  type ScanScreenshotRef,
+} from "./page-screenshot";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { criticalFindingsEmail } from "@/lib/email/email";
 
@@ -358,6 +363,14 @@ export interface ExecuteCrawlScanParams {
   requestedProbes: Array<{ service: string; port: number }>;
   authedUserId: number;
   isApiKeyAuth: boolean;
+  /**
+   * Opt-in: capture one above-the-fold screenshot of the crawl's MAIN URL
+   * through BrowserBase (lib/scanner/page-screenshot.ts). One screenshot per
+   * crawl for v1 (the entry page), not one per discovered page. Best-effort,
+   * bounded, and metered exactly like the single-URL path -- see
+   * ExecuteScanParams.captureScreenshot.
+   */
+  captureScreenshot?: boolean;
 }
 
 /**
@@ -388,6 +401,7 @@ export async function executeCrawlScan(
     requestedProbes,
     authedUserId,
     isApiKeyAuth,
+    captureScreenshot = false,
   } = params;
 
   const startTime = Date.now();
@@ -423,6 +437,26 @@ export async function executeCrawlScan(
       signal: cancelSignal,
     });
     autoSubdomainsPromise.catch(() => {});
+
+    // Opt-in page screenshot of the crawl's MAIN URL, kicked off concurrently
+    // with discovery and the per-page scans, then awaited (bounded) before
+    // result_meta is assembled. One per crawl for v1 (per-page capture is a
+    // follow-up). Best-effort and self-gated inside captureAndStoreScreenshot
+    // (config, plan/meter, concurrency, timeout) -- never fails or stalls the
+    // crawl. A crawl is always a real http(s) host, so the only gate here is
+    // the opt-in flag.
+    const screenshotPromise: Promise<ScanScreenshotRef | null> =
+      shouldCaptureScreenshot({
+        optedIn: captureScreenshot,
+        protocolType: "http",
+        isRawIpTarget: false,
+      })
+        ? captureAndStoreScreenshot(scanId, normalizedMainUrl, {
+            userId: authedUserId,
+            signal: cancelSignal,
+          })
+        : Promise.resolve(null);
+    screenshotPromise.catch(() => {});
 
     // Use pre-selected URLs if provided, otherwise discover them.
     let pages: string[];
@@ -664,6 +698,16 @@ export async function executeCrawlScan(
       /* malformed URL: no subdomains */
     }
 
+    // Opt-in main-URL screenshot reference, captured concurrently above.
+    // Never rejects; null when not opted in / unconfigured / meter
+    // exhausted / capture failed. Only the reference is stored, not bytes.
+    let screenshot: ScanScreenshotRef | null = null;
+    try {
+      screenshot = await screenshotPromise;
+    } catch {
+      /* never: captureAndStoreScreenshot swallows its own errors */
+    }
+
     const applied = await finalizeScanSuccess(scanId, {
       summary: mergedSummary,
       findings: allFindings,
@@ -674,6 +718,7 @@ export async function executeCrawlScan(
         ...(sslGrade ? { sslGrade } : {}),
         ...(dnsRecords ? { dnsRecords } : {}),
         ...(subdomains ? { subdomains } : {}),
+        ...(screenshot ? { screenshot } : {}),
         crawl: {
           pagesDiscovered: pages.length,
           pagesScanned: pageResults.length,

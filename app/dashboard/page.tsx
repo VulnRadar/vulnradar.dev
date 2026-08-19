@@ -196,6 +196,7 @@ function DashboardContent() {
         categoryFilter?: string[],
         auth?: InlineAuthValue,
         isPublic?: boolean,
+        captureScreenshot?: boolean,
       ) => Promise<void>)
     | null
   >(null);
@@ -249,6 +250,10 @@ function DashboardContent() {
   const [pendingIsPublic, setPendingIsPublic] = useState<boolean | undefined>(
     undefined,
   );
+  // Carried across the crawl-URL-selector step so a "deep" scan that opted
+  // into a screenshot still requests one once the user confirms which pages
+  // to scan (handleCrawlConfirm runs runScan after the selector closes).
+  const [pendingScreenshot, setPendingScreenshot] = useState(false);
   const [bulkStatus, setBulkStatus] = useState<"idle" | "scanning" | "done">(
     "idle",
   );
@@ -390,10 +395,12 @@ function DashboardContent() {
   };
 
   const handleScan = useCallback(async (payload: ScanFormPayload) => {
-    const { url, mode, scanners, probes, auth, isPublic } = payload;
+    const { url, mode, scanners, probes, auth, isPublic, captureScreenshot } =
+      payload;
     const probeEntries = probes.length > 0 ? probes : undefined;
     setPendingScanners(probeEntries);
     setPendingIsPublic(isPublic);
+    setPendingScreenshot(!!captureScreenshot);
     setScanningMode(mode);
     // Ephemeral authenticated scanning (POST /api/v3/scan/authenticated) is
     // single-page only: it never crawls. A login was supplied, so this run
@@ -430,6 +437,7 @@ function DashboardContent() {
       scanners,
       auth,
       isPublic,
+      captureScreenshot,
     );
   }, []);
 
@@ -442,6 +450,7 @@ function DashboardContent() {
       categoryFilter?: string[],
       auth?: InlineAuthValue,
       isPublic?: boolean,
+      captureScreenshot?: boolean,
     ) => {
       setStatus("scanning");
       setResult(null);
@@ -502,6 +511,10 @@ function DashboardContent() {
             ...(scannerPayload ? { scanners: scannerPayload } : {}),
             ...(probePayload ? { probes: probePayload } : {}),
             ...(typeof isPublic === "boolean" ? { isPublic } : {}),
+            // Opt-in page screenshot: only sent when true, so a normal scan
+            // never even mentions it. Not applicable to the authenticated
+            // endpoint (auth branch above), whose schema doesn't take it.
+            ...(captureScreenshot ? { captureScreenshot: true } : {}),
           };
 
       try {
@@ -685,6 +698,7 @@ function DashboardContent() {
       undefined,
       undefined,
       pendingIsPublic,
+      pendingScreenshot,
     );
   }
 

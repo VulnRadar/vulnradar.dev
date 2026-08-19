@@ -119,6 +119,9 @@ export const API = {
   },
   SCAN: `/api/${API_VERSION}/scan`,
   SCAN_STATUS: (id: string | number) => `/api/${API_VERSION}/scan/status/${id}`,
+  /** Opt-in page screenshot bytes for one scan (owner/team/public gate). */
+  SCAN_SCREENSHOT: (id: string | number) =>
+    `/api/${API_VERSION}/scan/screenshot/${id}`,
   SCAN_BULK: `/api/${API_VERSION}/scan/bulk`,
   SCAN_TAGS: `/api/${API_VERSION}/scan/tags`,
   SCAN_DISCOVER: `/api/${API_VERSION}/scan/discover`,

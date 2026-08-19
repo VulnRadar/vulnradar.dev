@@ -1355,6 +1355,38 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         });
 
       // ════════════════════════════════════════════════════════════════
+      // SCAN SCREENSHOTS - opt-in above-the-fold capture of the scanned page
+      //
+      // One row per scan (scan_id PRIMARY KEY, a re-capture overwrites). The
+      // image bytes live here as BYTEA rather than in scan_history.result_meta
+      // so the owner/shared/status result payloads stay small -- result_meta
+      // only carries a tiny {width,height,capturedAt} reference. Captured
+      // through the same BrowserBase infrastructure the browser-driven login
+      // uses (lib/scanner/page-screenshot.ts), gated behind the metered
+      // live-browser minute allowance. ON DELETE CASCADE so a deleted scan's
+      // screenshot goes with it.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        CREATE TABLE IF NOT EXISTS scan_screenshots (
+          scan_id INTEGER PRIMARY KEY REFERENCES scan_history(id) ON DELETE CASCADE,
+          image_data BYTEA NOT NULL,
+          content_type VARCHAR(40) NOT NULL DEFAULT 'image/jpeg',
+          width INTEGER,
+          height INTEGER,
+          captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create/verify scan_screenshots (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ════════════════════════════════════════════════════════════════
       // SCAN FINDING FEEDBACK - user verdicts for scanner learning
       //
       // Part of the v2.0.0-to-3.0.0.mjs squashed migration, applied here too

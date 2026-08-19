@@ -262,6 +262,22 @@ export interface ScanResult {
    * never generated automatically as part of the scan itself.
    */
   aiSummary?: string;
+  /**
+   * Reference to an opt-in above-the-fold screenshot of the scanned page,
+   * captured through BrowserBase (lib/scanner/page-screenshot.ts) and stored
+   * as bytes in the scan_screenshots table -- NOT the image itself, so
+   * result_meta stays small. Only its metadata rides here; the bytes are
+   * fetched separately from GET /api/v3/scan/screenshot/[id] (owner/public)
+   * or GET /api/v3/shared/[token]/screenshot (shared link). Absent when the
+   * user did not opt in, when BrowserBase is not configured, or when the
+   * capture failed or the live-browser minute allowance was exhausted --
+   * consumers render nothing rather than a broken image.
+   */
+  screenshot?: {
+    width: number;
+    height: number;
+    capturedAt: string;
+  };
 }
 
 export type ScanStatus = "idle" | "scanning" | "done" | "failed";

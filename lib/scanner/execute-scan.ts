@@ -59,6 +59,11 @@ import { applyAdaptiveConfidence } from "./adaptive-confidence";
 import { attachCvssScores } from "./cvss";
 import { deliverWebhook } from "@/lib/webhooks/delivery";
 import { checkForNewCriticalOrHighFindings } from "./regression-alert";
+import {
+  captureAndStoreScreenshot,
+  shouldCaptureScreenshot,
+  type ScanScreenshotRef,
+} from "./page-screenshot";
 
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0,
@@ -232,6 +237,16 @@ export interface ExecuteScanParams {
    * (app/api/v3/scan/route.ts) keeps its current behavior unchanged.
    */
   silenceRoutineEmail?: boolean;
+  /**
+   * Opt-in: capture one above-the-fold screenshot of the scanned page
+   * through BrowserBase (lib/scanner/page-screenshot.ts). Off by default --
+   * a screenshot spins up a real, metered headless-browser session, so it
+   * only runs when the user turned it on in the scan form. Best-effort and
+   * bounded: a failed or skipped capture (BrowserBase not configured, meter
+   * exhausted, timeout) never slows or fails the scan, it just means the
+   * result carries no screenshot reference.
+   */
+  captureScreenshot?: boolean;
 }
 
 /**
@@ -255,6 +270,7 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     authedUserId,
     categoriesTotal,
     silenceRoutineEmail = false,
+    captureScreenshot = false,
   } = params;
 
   const startTime = Date.now();
@@ -276,6 +292,26 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
 
   try {
     await markScanRunning(scanId);
+
+    // Opt-in page screenshot: kicked off here so the (expensive, metered)
+    // BrowserBase capture runs concurrently with the rest of the scan, then
+    // awaited (bounded) just before result_meta is assembled. Best-effort
+    // and self-gated inside captureAndStoreScreenshot (config, plan/meter,
+    // concurrency, timeout), so it can never fail or stall the scan. Only
+    // for real HTTP web hosts -- a raw IP or non-HTTP protocol has no page
+    // to render. Uses cancelSignal so a cancelled scan abandons the capture.
+    const screenshotPromise: Promise<ScanScreenshotRef | null> =
+      shouldCaptureScreenshot({
+        optedIn: captureScreenshot,
+        protocolType,
+        isRawIpTarget,
+      })
+        ? captureAndStoreScreenshot(scanId, normalizedUrl, {
+            userId: authedUserId,
+            signal: cancelSignal,
+          })
+        : Promise.resolve(null);
+    screenshotPromise.catch(() => {});
 
     let response: Response | null = null;
     let responseBody = "";
@@ -705,6 +741,19 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
       /* malformed URL: no subdomains */
     }
 
+    // Opt-in page screenshot reference, captured concurrently above. The
+    // promise never rejects (captureAndStoreScreenshot swallows every
+    // failure and resolves null), so this await just settles the bounded
+    // capture before result_meta is written. null when the user did not opt
+    // in, BrowserBase is unconfigured, the meter was exhausted, or capture
+    // failed -- only the tiny reference is stored, never the image bytes.
+    let screenshot: ScanScreenshotRef | null = null;
+    try {
+      screenshot = await screenshotPromise;
+    } catch {
+      /* never: captureAndStoreScreenshot swallows its own errors */
+    }
+
     const scannedAt = new Date().toISOString();
 
     const applied = await finalizeScanSuccess(scanId, {
@@ -720,6 +769,7 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
         ...(sslGrade ? { sslGrade } : {}),
         ...(dnsRecords ? { dnsRecords } : {}),
         ...(subdomains ? { subdomains } : {}),
+        ...(screenshot ? { screenshot } : {}),
         ...(incomplete.length > 0 ? { incomplete } : {}),
       },
       finalUrl: finalScanUrl,

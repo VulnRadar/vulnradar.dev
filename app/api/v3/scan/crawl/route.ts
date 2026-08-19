@@ -183,6 +183,10 @@ export async function POST(request: NextRequest) {
     Array.isArray(body.scanners) && body.scanners.length > 0
       ? body.scanners
       : null;
+  // Opt-in main-URL screenshot (see ExecuteCrawlScanParams.captureScreenshot).
+  // Never implied -- a screenshot spins up a real, metered BrowserBase
+  // session, so it only runs when explicitly requested.
+  const captureScreenshot = body.captureScreenshot === true;
   // Service probes, parsed exactly like POST /api/v3/scan so a deep/crawl
   // scan honors the same ?probes= selection (both string "ssh:22" and
   // { id, port } object forms). Previously dropped here, so a deep scan with
@@ -356,6 +360,7 @@ export async function POST(request: NextRequest) {
     requestedProbes,
     authedUserId,
     isApiKeyAuth,
+    captureScreenshot,
   });
 
   // Record API key usage against the request that was accepted.

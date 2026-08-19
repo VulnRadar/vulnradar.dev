@@ -17,8 +17,10 @@ import { ScanSummary } from "./scan-summary";
 import { ResultsList } from "./results-list";
 import { CrawlPagesInfo } from "./crawl-pages-info";
 import { SubdomainDiscovery } from "./subdomain-discovery";
+import { ScreenshotPanel } from "./screenshot-panel";
 import { cn } from "@/lib/ui/utils";
 import { copyToClipboard } from "@/lib/ui/clipboard";
+import { API } from "@/lib/config/client-constants";
 
 const ScanActionsMenu = dynamic(() =>
   import("./scan-actions-menu").then((m) => ({ default: m.ScanActionsMenu })),
@@ -236,6 +238,16 @@ export function DashboardResults({
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           More about this host
         </h2>
+
+        {result.screenshot && scanHistoryId && (
+          <ScreenshotPanel
+            src={API.SCAN_SCREENSHOT(scanHistoryId)}
+            url={result.url}
+            width={result.screenshot.width}
+            height={result.screenshot.height}
+            capturedAt={result.screenshot.capturedAt}
+          />
+        )}
 
         {result.responseHeaders &&
           Object.keys(result.responseHeaders).length > 0 && (

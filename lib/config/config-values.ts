@@ -965,6 +965,41 @@ export const CONFIG_SCAN_AUTH_BROWSER_SESSION_TIMEOUT_SECONDS = 90;
 // the plain-HTTP path.
 export const CONFIG_SCAN_AUTH_BROWSER_MAX_HTML_CHARS = 500_000;
 
+// PAGE SCREENSHOT (opt-in) - an optional above-the-fold capture of the
+// scanned page, taken through the same BrowserBase infrastructure the
+// browser-driven login uses (see lib/scanner/page-screenshot.ts). Every
+// value here is a hard bound: a screenshot is best-effort and must never
+// slow or fail the scan, so a stuck capture is abandoned rather than waited
+// on. Kept as compiled constants (not admin registry settings) because a
+// capture is already gated behind the metered live-browser minute allowance.
+
+// Viewport the remote browser renders at for the capture. 16:10 above-the-fold.
+export const CONFIG_SCAN_SCREENSHOT_VIEWPORT_WIDTH = 1280;
+export const CONFIG_SCAN_SCREENSHOT_VIEWPORT_HEIGHT = 800;
+
+// How long to wait for the page's `load` event before capturing anyway.
+export const CONFIG_SCAN_SCREENSHOT_NAV_TIMEOUT_MS = 15_000;
+
+// After `load` (or the nav timeout), a short settle so late paint/layout
+// finishes before the frame is grabbed.
+export const CONFIG_SCAN_SCREENSHOT_SETTLE_MS = 1_200;
+
+// Hard wall-clock ceiling on the whole capture (session open, navigate,
+// settle, grab). Past this the capture is abandoned and returns null.
+export const CONFIG_SCAN_SCREENSHOT_MAX_WAIT_MS = 30_000;
+
+// BrowserBase session TTL for one capture. Short: the browser is only open
+// long enough to render one page and read one frame.
+export const CONFIG_SCAN_SCREENSHOT_SESSION_TIMEOUT_SECONDS = 45;
+
+// JPEG quality (0-100) for the captured frame. 70 keeps a page thumbnail
+// legible while holding the stored bytes to tens/low-hundreds of KB.
+export const CONFIG_SCAN_SCREENSHOT_JPEG_QUALITY = 70;
+
+// Upper bound on the stored image. A frame larger than this is discarded
+// rather than persisted -- a sanity cap, not an expected size.
+export const CONFIG_SCAN_SCREENSHOT_MAX_BYTES = 5 * 1024 * 1024;
+
 // DEMO MODE CONFIGURATION - UPDATE IF NEEDED
 
 export const CONFIG_DEMO_SCAN_LIMIT = 5;

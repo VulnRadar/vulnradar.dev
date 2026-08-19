@@ -13,6 +13,7 @@ import {
   Plug,
   ListFilter,
   Lock,
+  Camera,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -250,6 +251,11 @@ export interface ScanFormPayload {
    *  ?scan=id URL, "scan this subdomain") can omit it and let the API's
    *  own account-default fallback decide. See lib/scanner/scan-privacy.ts. */
   isPublic?: boolean;
+  /** From the "Capture page screenshot" toggle. Opt-in and off by default:
+   *  a screenshot spins up a real, metered BrowserBase session, so it is
+   *  only ever sent when the user turned it on. Single-target scans only
+   *  (quick/deep) -- bulk runs never request one. */
+  captureScreenshot?: boolean;
 }
 
 interface ScanFormProps {
@@ -463,6 +469,14 @@ export function ScanForm({
     if (!userTouchedPrivacyRef.current) setKeepPrivate(!!defaultPrivate);
   }, [defaultPrivate]);
 
+  // "Capture page screenshot" -- opt-in, off by default. A screenshot spins
+  // up a real, metered live-browser session, so it is never on unless the
+  // user turns it on. Seeded from the URL so a shared ?screenshot=1 link
+  // pre-selects it.
+  const [captureScreenshot, setCaptureScreenshot] = useState(
+    () => getQueryParam("screenshot") === "1",
+  );
+
   const isScanning = status === "scanning";
   const isBulkScanning = bulkStatus === "scanning";
 
@@ -496,6 +510,7 @@ export function ScanForm({
       mode,
       probes: serializeProbesToQuery(probes),
       active_probes: serializeActiveProbeIds(selectedActiveProbes),
+      screenshot: captureScreenshot ? "1" : null,
     });
     for (const family of CHECK_FAMILIES) {
       setQueryParam(
@@ -503,7 +518,7 @@ export function ScanForm({
         enabledFamilies.has(family.id) ? null : "0",
       );
     }
-  }, [mode, probes, enabledFamilies, selectedActiveProbes]);
+  }, [mode, probes, enabledFamilies, selectedActiveProbes, captureScreenshot]);
 
   function toggleFamily(id: Category) {
     setEnabledFamilies((prev) => {
@@ -591,6 +606,7 @@ export function ScanForm({
       probes,
       auth: authValue ?? undefined,
       isPublic: !keepPrivate,
+      captureScreenshot,
     });
     // The one request this login material was for has just been built and
     // handed off above. Wipe it immediately: nothing here survives a
@@ -1151,6 +1167,34 @@ export function ScanForm({
             disabled={isScanning}
             onChange={setAuthValue}
           />
+
+          {/* Opt-in page screenshot. Its own row (not in either popover)
+              because it's a single boolean, not a set of families/probes.
+              Off by default: a capture opens a real, metered live-browser
+              session, so the helper text says so plainly. */}
+          <div className="flex items-center gap-2.5 border-t border-border px-3 py-2">
+            <Camera
+              aria-hidden
+              className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+            />
+            <label
+              htmlFor="scan-capture-screenshot"
+              className="text-xs font-medium text-foreground"
+            >
+              Capture page screenshot
+            </label>
+            <span className="hidden text-[11px] text-muted-foreground sm:block">
+              Opens a real browser once. Uses your live-browser minutes.
+            </span>
+            <Switch
+              id="scan-capture-screenshot"
+              checked={captureScreenshot}
+              onCheckedChange={setCaptureScreenshot}
+              disabled={isScanning}
+              aria-label="Capture page screenshot"
+              className="ml-auto"
+            />
+          </div>
 
           {(error || targetNote) && (
             <div className="border-t border-border px-3 py-2">

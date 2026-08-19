@@ -21,6 +21,8 @@ export interface HistoryDetailResponse {
   incomplete?: string[];
   /** From scan_history.result_meta once a "Generate AI summary" action has run. */
   aiSummary?: string;
+  /** From scan_history.result_meta when an opt-in page screenshot was captured. */
+  screenshot?: ScanResult["screenshot"];
 }
 
 /**
@@ -54,5 +56,6 @@ export function mapHistoryDetailResponse(
     engineConfidence: data.engineConfidence,
     incomplete: data.incomplete,
     aiSummary: data.aiSummary,
+    screenshot: data.screenshot,
   };
 }

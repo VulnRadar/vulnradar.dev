@@ -221,6 +221,10 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const { url, scanners, probes, isPublic } = body;
+    // Opt-in page screenshot (see ExecuteScanParams.captureScreenshot). Only
+    // ever true when the caller explicitly asked for it; a screenshot spins
+    // up a real, metered BrowserBase session, so it is never implied.
+    const captureScreenshot = body.captureScreenshot === true;
     const selectedScanners: string[] | null =
       Array.isArray(scanners) && scanners.length > 0 ? scanners : null;
     const requestedProbes: Array<{ service: string; port: number }> =
@@ -413,6 +417,7 @@ export async function POST(request: NextRequest) {
       requestedProbes,
       authedUserId,
       categoriesTotal,
+      captureScreenshot,
     });
 
     // Record API key usage and add rate limit headers against the request

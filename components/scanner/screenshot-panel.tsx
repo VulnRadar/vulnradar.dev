@@ -1,0 +1,104 @@
+"use client";
+
+import { useState } from "react";
+import { Camera, Maximize2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+
+interface ScreenshotPanelProps {
+  /** Image URL served by the screenshot route (owner/public or token-scoped). */
+  src: string;
+  /** The scanned URL, for the caption and image alt text. */
+  url: string;
+  /** Capture viewport dimensions, for the intrinsic image box (avoids layout shift). */
+  width?: number;
+  height?: number;
+  capturedAt?: string;
+}
+
+function formatCapturedAt(iso?: string): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+/**
+ * The opt-in page screenshot, rendered as a thumbnail card that opens a
+ * full-size view on click. Bows out entirely (renders nothing) if the image
+ * fails to load -- a screenshot is best-effort, so a scan whose reference is
+ * present but whose bytes can't be served (revoked visibility, missing row)
+ * degrades to no panel rather than a broken image, matching how the other
+ * "More about this host" panels render nothing when they have nothing.
+ */
+export function ScreenshotPanel({
+  src,
+  url,
+  width,
+  height,
+  capturedAt,
+}: ScreenshotPanelProps) {
+  const [broken, setBroken] = useState(false);
+  if (broken) return null;
+
+  const captured = formatCapturedAt(capturedAt);
+  const alt = `Screenshot of ${url}`;
+
+  return (
+    <div className="overflow-hidden rounded-md border border-border bg-card">
+      <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
+        <Camera aria-hidden className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <span className="flex-1 text-sm font-medium text-foreground">
+          Page screenshot
+        </span>
+        {captured && (
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {captured}
+          </span>
+        )}
+      </div>
+      <Dialog>
+        <DialogTrigger asChild>
+          <button
+            type="button"
+            className="group relative block w-full bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            aria-label="Enlarge page screenshot"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element -- served from
+                a dynamic same-origin API route; next/image would need a loader
+                and remotePatterns config for what is a simple <img>. */}
+            <img
+              src={src}
+              alt={alt}
+              width={width}
+              height={height}
+              loading="lazy"
+              onError={() => setBroken(true)}
+              className="max-h-[420px] w-full object-cover object-top"
+            />
+            <span className="absolute right-2 top-2 flex items-center gap-1 rounded bg-background/85 px-1.5 py-0.5 text-[11px] font-medium text-foreground opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+              <Maximize2 aria-hidden className="h-3 w-3" />
+              Enlarge
+            </span>
+          </button>
+        </DialogTrigger>
+        <DialogContent className="max-w-4xl p-2 sm:p-3">
+          <DialogTitle className="sr-only">{alt}</DialogTitle>
+          {/* eslint-disable-next-line @next/next/no-img-element -- see above. */}
+          <img
+            src={src}
+            alt={alt}
+            className="h-auto max-h-[80vh] w-full rounded object-contain"
+          />
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

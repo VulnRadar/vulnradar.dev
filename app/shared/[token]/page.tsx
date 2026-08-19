@@ -25,6 +25,7 @@ import { AuthenticatedBadge } from "@/components/scanner/authenticated-badge";
 import { CrawlPagesInfo } from "@/components/scanner/crawl-pages-info";
 import { ResponseHeaders } from "@/components/scanner/response-headers";
 import { DnsRecordsPanel } from "@/components/scanner/dns-records-panel";
+import { ScreenshotPanel } from "@/components/scanner/screenshot-panel";
 import { SharedScanSkeleton } from "@/components/scanner/shared-scan-skeleton";
 import {
   SubdomainDiscovery,
@@ -329,6 +330,15 @@ export default function SharedScanPage() {
                   <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     More about this host
                   </h2>
+                  {result.screenshot && (
+                    <ScreenshotPanel
+                      src={`${API.SHARED}/${token}/screenshot`}
+                      url={result.url}
+                      width={result.screenshot.width}
+                      height={result.screenshot.height}
+                      capturedAt={result.screenshot.capturedAt}
+                    />
+                  )}
                   {result.responseHeaders &&
                     Object.keys(result.responseHeaders).length > 0 && (
                       <ResponseHeaders headers={result.responseHeaders} />
