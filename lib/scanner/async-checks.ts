@@ -30,10 +30,7 @@ import {
   hasAnyDnsRecords,
 } from "@/lib/scanner/dns-records";
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
-import {
-  checkReputation,
-  isReputationCheckConfigured,
-} from "@/lib/scanner/reputation-lookup";
+import { checkReputation } from "@/lib/scanner/reputation-lookup";
 import { checkOsvVulnerableLibraries } from "@/lib/scanner/osv-check";
 import {
   checkActiveProbes,
@@ -4475,12 +4472,14 @@ function buildBranches(
     branches.push({ label: "live-fetch", promise: checkLiveFetch(url) });
   }
 
-  // Reputation (Google Web Risk) — only planned when WEB_RISK_API_KEY is
-  // actually configured, same "invisible until configured" rule as the AI
-  // and Turnstile integrations. This keeps getPlannedAsyncBranches accurate
-  // (no branch appears in a scan's progress denominator that will never
-  // run) and skips a pointless network call on deployments without a key.
-  if ((runAll || allowed!.has("reputation")) && isReputationCheckConfigured()) {
+  // Reputation (multi-source threat intel) — planned whenever the reputation
+  // category is in scope, with NO API-key gate. Google Web Risk is still
+  // key-gated internally (invisible until configured), but the other sources
+  // (URLhaus, Spamhaus DBL) run with no key, so the branch does real work on
+  // every deployment. Each source is best-effort, bounded, and cached per
+  // host (see lib/scanner/reputation-lookup.ts), so always planning this
+  // branch never hammers an external service or slows the scan.
+  if (runAll || allowed!.has("reputation")) {
     branches.push({ label: "reputation", promise: checkReputation(url) });
   }
 

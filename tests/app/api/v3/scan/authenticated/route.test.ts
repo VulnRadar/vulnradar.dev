@@ -248,7 +248,7 @@ describe("POST /api/v3/scan/authenticated", () => {
     const insertCall = mockQuery.mock.calls[0];
     expect(insertCall[0]).toContain("is_public");
     // requestedIsPublic is the last bound param ($10 in the VALUES list).
-    expect(insertCall[1].at(-1)).toBe(false);
+    expect(insertCall[1].at(-2)).toBe(false);
 
     const reputationCalls = mockQuery.mock.calls.filter(([sql]) =>
       String(sql).includes("INSERT INTO host_reputation"),
@@ -281,7 +281,7 @@ describe("POST /api/v3/scan/authenticated", () => {
     await POST(postRequest({ ...FORM_AUTH_BODY, isPublic: false }));
 
     const insertCall = mockQuery.mock.calls[0];
-    expect(insertCall[1].at(-1)).toBe(false);
+    expect(insertCall[1].at(-2)).toBe(false);
 
     const reputationCalls = mockQuery.mock.calls.filter(([sql]) =>
       String(sql).includes("INSERT INTO host_reputation"),
@@ -299,7 +299,7 @@ describe("POST /api/v3/scan/authenticated", () => {
     await POST(postRequest({ ...FORM_AUTH_BODY, isPublic: true }));
 
     const insertCall = mockQuery.mock.calls[0];
-    expect(insertCall[1].at(-1)).toBe(true);
+    expect(insertCall[1].at(-2)).toBe(true);
 
     const reputationCalls = mockQuery.mock.calls.filter(([sql]) =>
       String(sql).includes("INSERT INTO host_reputation"),

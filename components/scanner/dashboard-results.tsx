@@ -34,6 +34,11 @@ const DnsRecordsPanel = dynamic(() =>
 const PortScanPanel = dynamic(() =>
   import("./port-scan-panel").then((m) => ({ default: m.PortScanPanel })),
 );
+const ThreatIntelPanel = dynamic(() =>
+  import("./threat-intel-panel").then((m) => ({
+    default: m.ThreatIntelPanel,
+  })),
+);
 const IssueDetail = dynamic(() =>
   import("./issue-detail").then((m) => ({ default: m.IssueDetail })),
 );
@@ -286,6 +291,8 @@ export function DashboardResults({
           scanId={scanHistoryId}
           onRefreshed={setPortScanOverride}
         />
+
+        <ThreatIntelPanel threatIntel={displayResult.threatIntel} />
 
         <SubdomainDiscovery
           url={result.url}

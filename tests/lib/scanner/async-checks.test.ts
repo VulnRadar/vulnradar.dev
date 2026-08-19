@@ -1648,19 +1648,23 @@ describe("runAsyncChecks", () => {
 // ── getPlannedAsyncBranches ──────────────────────────────────────────
 
 describe("getPlannedAsyncBranches", () => {
-  it("plans dns + live-fetch + osv-libraries for a plain http URL (no tls branch)", () => {
+  it("plans dns + live-fetch + reputation + osv-libraries for a plain http URL (no tls branch)", () => {
+    // reputation is always planned now (multi-source threat intel runs with no
+    // API key), regardless of whether WEB_RISK_API_KEY is set.
     expect(getPlannedAsyncBranches("http://example.com")).toEqual([
       "dns",
       "live-fetch",
+      "reputation",
       "osv-libraries",
     ]);
   });
 
-  it("plans dns + tls + live-fetch + osv-libraries for an https URL", () => {
+  it("plans dns + tls + live-fetch + reputation + osv-libraries for an https URL", () => {
     expect(getPlannedAsyncBranches("https://example.com")).toEqual([
       "dns",
       "tls",
       "live-fetch",
+      "reputation",
       "osv-libraries",
     ]);
   });
@@ -1675,7 +1679,7 @@ describe("getPlannedAsyncBranches", () => {
     expect(getPlannedAsyncBranches("not a url")).toEqual([]);
   });
 
-  describe("reputation branch (gated on WEB_RISK_API_KEY)", () => {
+  describe("reputation branch (multi-source; runs with no API key)", () => {
     const originalKey = process.env.WEB_RISK_API_KEY;
 
     afterEach(() => {
@@ -1683,9 +1687,9 @@ describe("getPlannedAsyncBranches", () => {
       else process.env.WEB_RISK_API_KEY = originalKey;
     });
 
-    it("is not planned when WEB_RISK_API_KEY is unset, even with no category filter", () => {
+    it("is planned even when WEB_RISK_API_KEY is unset (the keyless sources still run)", () => {
       delete process.env.WEB_RISK_API_KEY;
-      expect(getPlannedAsyncBranches("https://example.com")).not.toContain(
+      expect(getPlannedAsyncBranches("https://example.com")).toContain(
         "reputation",
       );
     });
@@ -1697,15 +1701,15 @@ describe("getPlannedAsyncBranches", () => {
       );
     });
 
-    it("is not planned when the key is set but the category filter excludes it", () => {
-      process.env.WEB_RISK_API_KEY = "test-key";
+    it("is not planned when the category filter excludes it", () => {
+      delete process.env.WEB_RISK_API_KEY;
       expect(
         getPlannedAsyncBranches("https://example.com", ["dns"]),
       ).not.toContain("reputation");
     });
 
-    it("is planned when the key is set and the category filter explicitly includes it", () => {
-      process.env.WEB_RISK_API_KEY = "test-key";
+    it("is planned when the category filter explicitly includes it, with no key", () => {
+      delete process.env.WEB_RISK_API_KEY;
       expect(
         getPlannedAsyncBranches("https://example.com", ["reputation"]),
       ).toEqual(["reputation"]);

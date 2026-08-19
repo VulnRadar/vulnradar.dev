@@ -26,6 +26,7 @@ import { CrawlPagesInfo } from "@/components/scanner/crawl-pages-info";
 import { ResponseHeaders } from "@/components/scanner/response-headers";
 import { DnsRecordsPanel } from "@/components/scanner/dns-records-panel";
 import { PortScanPanel } from "@/components/scanner/port-scan-panel";
+import { ThreatIntelPanel } from "@/components/scanner/threat-intel-panel";
 import { ScreenshotPanel } from "@/components/scanner/screenshot-panel";
 import { SharedScanSkeleton } from "@/components/scanner/shared-scan-skeleton";
 import {
@@ -346,6 +347,7 @@ export default function SharedScanPage() {
                     )}
                   <DnsRecordsPanel records={result.dnsRecords} />
                   <PortScanPanel portScan={result.portScan} />
+                  <ThreatIntelPanel threatIntel={result.threatIntel} />
                   <SubdomainDiscovery
                     url={result.url}
                     readOnly

@@ -14,6 +14,7 @@ import type { DnsRecords } from "./dns-records";
 import type { DiscoveryResult } from "./subdomain-types";
 import type { FindingRemediation } from "./remediation";
 import type { PortScanResult } from "./port-scan";
+import type { ThreatIntelSummary } from "./reputation-lookup";
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
@@ -290,6 +291,19 @@ export interface ScanResult {
    * owner/shared/status pages via the result_meta spread, no route edits.
    */
   portScan?: PortScanResult;
+  /**
+   * Multi-source threat-intelligence summary for the scanned host: which
+   * reputation/blocklist sources were checked (Google Web Risk, URLhaus,
+   * Spamhaus DBL) and what each one said (clean / flagged / unavailable), from
+   * lib/scanner/reputation-lookup.ts. Structured data for the "Threat
+   * intelligence" panel, not findings -- a host actually LISTED by a source
+   * also raises a real reputation finding. "unavailable" is reported distinctly
+   * from "clean", so a source that could not be reached is never shown as a
+   * clean verdict. Stored in result_meta.threatIntel and reaches owner/shared/
+   * status pages via the result_meta spread, no route edits. Absent when the
+   * target had no domain to check (raw IP) and Web Risk is unconfigured.
+   */
+  threatIntel?: ThreatIntelSummary;
 }
 
 export type ScanStatus = "idle" | "scanning" | "done" | "failed";

@@ -12,6 +12,7 @@
 import { runSyncChecks } from "./engine";
 import { runAsyncChecksDetailed, type AsyncCheckResult } from "./async-checks";
 import { readSslGrade } from "./ssl-grade";
+import { readThreatIntel } from "./reputation-lookup";
 import { readDnsRecords } from "./dns-records";
 import { readSubdomains, autoDiscoverSubdomains } from "./subdomain-auto";
 import {
@@ -721,6 +722,18 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
       /* malformed URL: no records */
     }
 
+    // Multi-source threat-intel summary, aggregated during the reputation
+    // branch and left in the same per-host side channel
+    // (lib/scanner/reputation-lookup.ts). Absent when no source produced a
+    // verdict (raw IP with Web Risk unconfigured) or the branch timed out, so
+    // only stored when present -- exactly like sslGrade / dnsRecords above.
+    let threatIntel: ReturnType<typeof readThreatIntel>;
+    try {
+      threatIntel = readThreatIntel(new URL(normalizedUrl).hostname);
+    } catch {
+      /* malformed URL: no summary */
+    }
+
     // Auto-discovered subdomains, captured concurrently above and left in the
     // per-host side channel (lib/scanner/subdomain-auto.ts). autoDiscover
     // never rejects, so this await is safe; it just ensures we read the
@@ -769,6 +782,7 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
         ...(subdomains ? { subdomains } : {}),
         ...(screenshot ? { screenshot } : {}),
         ...(portScanResult ? { portScan: portScanResult } : {}),
+        ...(threatIntel ? { threatIntel } : {}),
         ...(incomplete.length > 0 ? { incomplete } : {}),
       },
       finalUrl: finalScanUrl,

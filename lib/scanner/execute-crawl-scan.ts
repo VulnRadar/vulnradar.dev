@@ -16,6 +16,7 @@ import {
 import { runSyncChecks, getPlannedSyncCategories } from "./engine";
 import { runAsyncChecks, getPlannedAsyncBranches } from "./async-checks";
 import { readSslGrade } from "./ssl-grade";
+import { readThreatIntel } from "./reputation-lookup";
 import { readDnsRecords } from "./dns-records";
 import { readSubdomains, autoDiscoverSubdomains } from "./subdomain-auto";
 import {
@@ -700,6 +701,18 @@ export async function executeCrawlScan(
       /* malformed URL: no records */
     }
 
+    // Multi-source threat-intel summary for the crawl's main host. Every
+    // same-host page's reputation branch records under one hostname key
+    // (host-based sources are cached, so the query runs once for the whole
+    // crawl), so reading by the main host resolves the shared summary. Only
+    // stored when present.
+    let threatIntel: ReturnType<typeof readThreatIntel>;
+    try {
+      threatIntel = readThreatIntel(new URL(normalizedMainUrl).hostname);
+    } catch {
+      /* malformed URL: no summary */
+    }
+
     // Auto-discovered subdomains for the crawl's main host, captured
     // concurrently above and read from the same per-host side channel
     // (lib/scanner/subdomain-auto.ts). Only stored when present.
@@ -737,6 +750,7 @@ export async function executeCrawlScan(
         ...(subdomains ? { subdomains } : {}),
         ...(screenshot ? { screenshot } : {}),
         ...(portScanResult ? { portScan: portScanResult } : {}),
+        ...(threatIntel ? { threatIntel } : {}),
         crawl: {
           pagesDiscovered: pages.length,
           pagesScanned: pageResults.length,
