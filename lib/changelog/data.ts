@@ -394,8 +394,14 @@ const CHANGELOG: Release[] = [
       {
         icon: Image,
         label: "Uploaded Avatars Moved Into the Database",
-        desc: "Uploaded profile pictures were stored as files on disk with a base64 fallback on serverless, a second image-storage mechanism alongside the database-backed screenshots. They now live in one place, the database, served through the same access-controlled route, with a one-command migration that converts existing avatars over. Sign-in pictures from Google, GitHub, and Discord stay as their own provider URLs.",
+        desc: "Uploaded profile pictures were stored as files on disk with a base64 fallback on serverless, a second image-storage mechanism alongside the database-backed screenshots. They now live in one place, the database, served through the same access-controlled route, and existing avatars convert over automatically on the next start. Sign-in pictures from Google, GitHub, and Discord stay as their own provider URLs.",
         category: "changed",
+      },
+      {
+        icon: Database,
+        label: "Backups Encrypt by Default and Fail Loudly Without pg_dump",
+        desc: "Database backups fell back to plaintext when only the base encryption key was set. They now encrypt with that base key automatically, and restores understand the same fallback, so a separate backup key is optional rather than the only thing standing between you and an unencrypted dump. A backup on a host that has no pg_dump (like a minimal Node container) now reports a clear \"install postgresql-client\" message instead of failing silently, and the self-hosting docs and .env.example spell out every backup setting.",
+        category: "fixed",
       },
       {
         icon: ShieldAlert,
