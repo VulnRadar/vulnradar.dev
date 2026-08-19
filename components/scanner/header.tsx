@@ -30,7 +30,6 @@ const NAV_LINKS = [
   { href: ROUTES.SHARES, label: "Shared" },
   { href: ROUTES.TEAMS, label: "Teams" },
   { href: ROUTES.BADGE, label: "Badge" },
-  { href: DEVELOPER_HREF, label: "Developer" },
   { href: ROUTES.PROFILE, label: "Profile" },
 ];
 
@@ -82,10 +81,9 @@ export function Header() {
   function isNavActive(href: string): boolean {
     if (href === DEVELOPER_HREF) return onDeveloperTab;
     const base = href.split("?")[0].split("#")[0];
-    // Profile stays lit for the rest of /profile, but not while the
-    // Developer tab (its own nav entry) is the one showing.
+    // Profile stays lit for the rest of /profile.
     if (href === ROUTES.PROFILE) {
-      return pathname.startsWith(base) && !onDeveloperTab;
+      return pathname.startsWith(base);
     }
     return (
       pathname === base ||

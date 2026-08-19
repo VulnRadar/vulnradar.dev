@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Camera, Maximize2 } from "lucide-react";
+import { Camera, Maximize2, ChevronDown, ChevronRight } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -46,6 +46,9 @@ export function ScreenshotPanel({
   capturedAt,
 }: ScreenshotPanelProps) {
   const [broken, setBroken] = useState(false);
+  // Collapsed by default: a screenshot is a large visual, so it starts folded
+  // like the other "More about this host" panels and expands on click.
+  const [expanded, setExpanded] = useState(false);
   if (broken) return null;
 
   const captured = formatCapturedAt(capturedAt);
@@ -53,7 +56,12 @@ export function ScreenshotPanel({
 
   return (
     <div className="overflow-hidden rounded-md border border-border bg-card">
-      <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        aria-expanded={expanded}
+        className="flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors hover:bg-muted/50"
+      >
         <Camera aria-hidden className="h-4 w-4 shrink-0 text-muted-foreground" />
         <span className="flex-1 text-sm font-medium text-foreground">
           Page screenshot
@@ -63,12 +71,24 @@ export function ScreenshotPanel({
             {captured}
           </span>
         )}
-      </div>
+        {expanded ? (
+          <ChevronDown
+            aria-hidden
+            className="h-4 w-4 shrink-0 text-muted-foreground"
+          />
+        ) : (
+          <ChevronRight
+            aria-hidden
+            className="h-4 w-4 shrink-0 text-muted-foreground"
+          />
+        )}
+      </button>
+      {expanded && (
       <Dialog>
         <DialogTrigger asChild>
           <button
             type="button"
-            className="group relative block w-full bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            className="group relative block w-full border-t border-border bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             aria-label="Enlarge page screenshot"
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- served from
@@ -99,6 +119,7 @@ export function ScreenshotPanel({
           />
         </DialogContent>
       </Dialog>
+      )}
     </div>
   );
 }

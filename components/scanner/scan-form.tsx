@@ -12,6 +12,7 @@ import {
   X,
   Plug,
   ListFilter,
+  Crosshair,
   Lock,
   Camera,
   Network,
@@ -427,6 +428,7 @@ export function ScanForm({
     Set<ActiveProbeId>
   >(() => new Set(parseActiveProbeIds(getQueryParam("active_probes"))));
   const [scannersOpen, setScannersOpen] = useState(false);
+  const [activeProbesOpen, setActiveProbesOpen] = useState(false);
   const [probesOpen, setProbesOpen] = useState(false);
 
   // Both popovers are Radix Popover.Content, which is `position: fixed`
@@ -439,7 +441,7 @@ export function ScanForm({
   // fighting that: once the user is actually scrolling, tracking the
   // trigger's position isn't useful anyway.
   useEffect(() => {
-    if (!scannersOpen && !probesOpen) return;
+    if (!scannersOpen && !activeProbesOpen && !probesOpen) return;
     // Registered on window with capture so it also sees scroll events from
     // nested scrollable elements (they don't bubble, but capture-phase
     // listeners fire regardless of bubbling) -- both popovers have their
@@ -452,6 +454,7 @@ export function ScanForm({
     function handleScroll(event: Event) {
       if (event.target !== document) return;
       setScannersOpen(false);
+      setActiveProbesOpen(false);
       setProbesOpen(false);
     }
     window.addEventListener("scroll", handleScroll, {
@@ -460,7 +463,7 @@ export function ScanForm({
     });
     return () =>
       window.removeEventListener("scroll", handleScroll, { capture: true });
-  }, [scannersOpen, probesOpen]);
+  }, [scannersOpen, activeProbesOpen, probesOpen]);
   const [bulkUrls, setBulkUrls] = useState("");
   const [bulkError, setBulkError] = useState("");
   const [authValue, setAuthValue] = useState<InlineAuthValue | null>(null);
@@ -813,20 +816,14 @@ export function ScanForm({
                     disabled={isScanning}
                     className={cn(
                       "h-11 shrink-0 gap-1.5 bg-transparent px-3 text-sm",
-                      (!allFamiliesSelected || activeProbeCount > 0) &&
-                        "border-primary/40 text-primary",
+                      !allFamiliesSelected && "border-primary/40 text-primary",
                       FOCUS_RING,
                     )}
-                    aria-label={`Check families, ${effectiveFamilies} of ${totalFamilies} enabled${
-                      activeProbeCount > 0
-                        ? `, plus ${activeProbeCount} active ${activeProbeCount === 1 ? "probe" : "probes"}`
-                        : ""
-                    }`}
+                    aria-label={`Check families, ${effectiveFamilies} of ${totalFamilies} enabled`}
                   >
                     <ListFilter aria-hidden className="h-4 w-4" />
                     <span className="font-mono tabular-nums">
                       {effectiveFamilies}/{totalFamilies}
-                      {activeProbeCount > 0 ? ` +${activeProbeCount}` : ""}
                     </span>
                   </Button>
                 </PopoverTrigger>
@@ -934,23 +931,52 @@ export function ScanForm({
                         );
                       },
                     )}
+                  </div>
+                </PopoverContent>
+              </Popover>
 
-                    {/* Active probing: nine independent opt-in probes. Unlike
-                        the families above, each submits a real request to the
-                        target, so the API holds every one to the verified
-                        domain-ownership gate. */}
-                    <div className="flex items-center justify-between gap-2 px-2 pb-0.5 pt-2">
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-primary/70">
+              <Popover
+                open={activeProbesOpen}
+                onOpenChange={setActiveProbesOpen}
+              >
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isScanning}
+                    className={cn(
+                      "h-11 shrink-0 gap-1.5 bg-transparent px-3 text-sm",
+                      activeProbeCount > 0 && "border-primary/40 text-primary",
+                      FOCUS_RING,
+                    )}
+                    aria-label={`Active probing, ${activeProbeCount} of ${totalActiveProbes} enabled`}
+                  >
+                    <Crosshair aria-hidden className="h-4 w-4" />
+                    <span className="font-mono tabular-nums">
+                      {activeProbeCount}/{totalActiveProbes}
+                    </span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="end"
+                  sideOffset={6}
+                  className="w-72 overflow-hidden p-0"
+                >
+                  <div className="border-b border-border bg-muted/30 px-3 pb-2 pt-3">
+                    <div className="mb-0.5 flex items-center justify-between gap-2">
+                      <h3 className="text-xs font-semibold text-foreground">
                         {ACTIVE_PROBE_GROUP}
-                      </p>
-                      <span className="font-mono text-[10px] tabular-nums text-primary/70">
+                      </h3>
+                      <span className="font-mono text-[11px] tabular-nums text-primary/70">
                         {activeProbeCount}/{totalActiveProbes}
                       </span>
                     </div>
-                    <p className="px-2 pb-1 text-[11px] leading-snug text-muted-foreground/70">
+                    <p className="text-[11px] leading-snug text-muted-foreground">
                       Each sends real payloads to the target and needs a
                       verified domain. Off by default.
                     </p>
+                  </div>
+                  <div className="max-h-72 space-y-0.5 overflow-y-auto p-1">
                     {ACTIVE_PROBE_OPTIONS.map(({ id, label, description }) => {
                       const active = selectedActiveProbes.has(id);
                       return (
