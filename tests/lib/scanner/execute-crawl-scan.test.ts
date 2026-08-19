@@ -213,3 +213,92 @@ describe("executeCrawlScan", () => {
     expect(resultMeta.crawl.pagesScanned).toBe(1);
   });
 });
+
+describe("executeCrawlScan (authenticated)", () => {
+  function fakeSession(
+    overrides: Record<string, unknown> = {},
+  ): Parameters<typeof executeCrawlScan>[0]["session"] {
+    return {
+      origin: "https://example.com",
+      authHeadersFor: () => null,
+      observe: () => {},
+      lost: false,
+      authType: "cookie",
+      reason: null,
+      ...overrides,
+    };
+  }
+
+  it("threads the session into every page fetch and persists authenticated + authReport", async () => {
+    const session = fakeSession();
+
+    await executeCrawlScan(
+      baseParams({ scanId: 20, session, authenticated: true }),
+    );
+
+    // One safeFetch per pre-selected page, each carrying the session as its
+    // 4th argument (safeFetch scopes it to same-origin hops internally).
+    expect(mockSafeFetch).toHaveBeenCalledTimes(2);
+    for (const call of mockSafeFetch.mock.calls) {
+      expect(call[3]).toBe(session);
+    }
+
+    const completedCall = mockQuery.mock.calls.find(
+      ([sql, params]) =>
+        (sql as string).includes("status = 'completed'") &&
+        (params as unknown[])[8] === 20,
+    );
+    expect(completedCall).toBeDefined();
+    // authenticated is the last bound param of the finalize UPDATE.
+    expect((completedCall![1] as unknown[])[9]).toBe(true);
+    const resultMeta = JSON.parse(
+      (completedCall![1] as unknown[])[6] as string,
+    );
+    expect(resultMeta.authReport).toEqual({
+      status: "authenticated",
+      method: "cookie",
+    });
+  });
+
+  it("reflects a session lost mid-crawl as authReport.status 'lost' with the reason", async () => {
+    const session = fakeSession({
+      lost: true,
+      reason: "The target cleared the session cookie during the scan.",
+    });
+
+    await executeCrawlScan(
+      baseParams({ scanId: 21, session, authenticated: true }),
+    );
+
+    const completedCall = mockQuery.mock.calls.find(
+      ([sql, params]) =>
+        (sql as string).includes("status = 'completed'") &&
+        (params as unknown[])[8] === 21,
+    );
+    const resultMeta = JSON.parse(
+      (completedCall![1] as unknown[])[6] as string,
+    );
+    expect(resultMeta.authReport.status).toBe("lost");
+    expect(resultMeta.authReport.reason).toMatch(/cleared the session cookie/i);
+  });
+
+  it("writes no authenticated flag or authReport for an ordinary crawl", async () => {
+    await executeCrawlScan(baseParams({ scanId: 22 }));
+
+    const completedCall = mockQuery.mock.calls.find(
+      ([sql, params]) =>
+        (sql as string).includes("status = 'completed'") &&
+        (params as unknown[])[8] === 22,
+    );
+    // authenticated param is null -> COALESCE leaves the column's false default.
+    expect((completedCall![1] as unknown[])[9]).toBeNull();
+    const resultMeta = JSON.parse(
+      (completedCall![1] as unknown[])[6] as string,
+    );
+    expect(resultMeta.authReport).toBeUndefined();
+    // ...and safeFetch was called without a session.
+    for (const call of mockSafeFetch.mock.calls) {
+      expect(call[3]).toBeUndefined();
+    }
+  });
+});

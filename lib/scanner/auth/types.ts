@@ -68,6 +68,17 @@ export interface ScanSessionBinding {
   observe(url: string, status: number, headers: Headers): void;
   /** True once the session is known to have stopped working mid-scan. */
   readonly lost: boolean;
+  /**
+   * Which mechanism authenticated this session. Non-secret, so it is safe to
+   * surface in a scan's `authReport` (see the crawl engine, which builds the
+   * report from the binding rather than from the credential material).
+   */
+  readonly authType?: ScanAuthType;
+  /**
+   * Non-secret explanation once `lost` is true, mirroring `ScanAuthReport`'s
+   * own `reason`. Never carries credential material.
+   */
+  readonly reason?: string | null;
 }
 
 /** What the scan reports back to the user about its authentication state. */

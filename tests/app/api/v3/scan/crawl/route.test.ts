@@ -9,6 +9,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { SETTINGS_REGISTRY } from "@/lib/config/registry";
 
 const mockQuery = vi.fn();
 vi.mock("@/lib/database/db", () => ({
@@ -19,19 +20,20 @@ vi.mock("@/lib/database/db", () => ({
 // production; mocked here at the module boundary so it does not consume the
 // mockQuery call sequence the tracker-row assertions below depend on. The
 // shipped registry default keeps the resolved value identical to the old
-// static SCANNING.MAX_URL_LENGTH constant.
-vi.mock("@/lib/config/runtime-config", async () => {
-  const { SETTINGS_REGISTRY } = await import("@/lib/config/registry");
-  return {
-    getSetting: vi.fn(
-      async (key: keyof typeof SETTINGS_REGISTRY) =>
-        SETTINGS_REGISTRY[key].default,
-    ),
-    getSettings: vi.fn(async (keys: (keyof typeof SETTINGS_REGISTRY)[]) =>
-      Object.fromEntries(keys.map((k) => [k, SETTINGS_REGISTRY[k].default])),
-    ),
-  };
-});
+// static SCANNING.MAX_URL_LENGTH constant. Exposed as controllable spies so
+// the authenticated-crawl tests below can flip SCAN_AUTH_ENABLED to false.
+type SettingKey = keyof typeof SETTINGS_REGISTRY;
+const registryDefault = (key: SettingKey) => SETTINGS_REGISTRY[key].default;
+const mockGetSetting = vi.fn(async (key: SettingKey) => registryDefault(key));
+const mockGetSettings = vi.fn(async (keys: SettingKey[]) =>
+  Object.fromEntries(keys.map((k) => [k, registryDefault(k)])),
+);
+vi.mock("@/lib/config/runtime-config", () => ({
+  getSetting: (...args: unknown[]) =>
+    mockGetSetting(...(args as [SettingKey])),
+  getSettings: (...args: unknown[]) =>
+    mockGetSettings(...(args as [SettingKey[]])),
+}));
 
 const mockGetSession = vi.fn();
 vi.mock("@/lib/auth", async (importOriginal) => {
@@ -97,6 +99,22 @@ vi.mock("@/lib/api/api-keys", () => ({
   recordUsage: vi.fn(async () => undefined),
 }));
 
+// The route establishes the session in-process; the login mechanics have
+// their own suites (tests/lib/scanner/auth/), so this replaces the whole
+// module and drives outcomes from the test body.
+const mockEstablishScanSession = vi.fn();
+vi.mock("@/lib/scanner/auth/login", () => ({
+  establishScanSession: (...args: unknown[]) =>
+    mockEstablishScanSession(...args),
+}));
+
+const mockLogAction = vi.fn(async (..._args: unknown[]) => undefined);
+vi.mock("@/lib/auth/authorization", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/auth/authorization")>();
+  return { ...actual, logAction: mockLogAction };
+});
+
 const { POST } = await import("@/app/api/v3/scan/crawl/route");
 
 function postRequest(body: unknown) {
@@ -130,6 +148,16 @@ beforeEach(() => {
     remaining: 149,
     resetsAt: new Date().toISOString(),
   });
+  mockEstablishScanSession.mockReset();
+  mockLogAction.mockClear();
+  mockGetSetting.mockReset();
+  mockGetSetting.mockImplementation(async (key: SettingKey) =>
+    registryDefault(key),
+  );
+  mockGetSettings.mockReset();
+  mockGetSettings.mockImplementation(async (keys: SettingKey[]) =>
+    Object.fromEntries(keys.map((k) => [k, registryDefault(k)])),
+  );
 });
 
 describe("POST /api/v3/scan/crawl", () => {
@@ -368,5 +396,156 @@ describe("port-scan domain ownership gate", () => {
     expect(mockExecuteCrawlScan).toHaveBeenCalledWith(
       expect.objectContaining({ portScan: true }),
     );
+  });
+});
+
+describe("authenticated crawl", () => {
+  const FORM_AUTH = {
+    method: "form" as const,
+    username: "admin",
+    password: "hunter2-super-secret",
+  };
+
+  it("establishes a session and threads it (plus authenticated:true) into executeCrawlScan", async () => {
+    const fakeSession = {
+      lost: false,
+      reason: null as string | null,
+      authType: "form" as const,
+    };
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: fakeSession,
+    });
+    // No account-default lookup for an authenticated crawl: only the tracker
+    // INSERT runs.
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 500 }] });
+
+    const res = await POST(
+      postRequest({ url: "https://app.example.com/dashboard", auth: FORM_AUTH }),
+    );
+
+    expect(res.status).toBe(200);
+    // The session was established against the normalized main URL.
+    expect(mockEstablishScanSession).toHaveBeenCalledTimes(1);
+    expect(mockEstablishScanSession.mock.calls[0][1]).toBe(
+      "https://app.example.com/dashboard",
+    );
+    // ...and threaded into the crawl job alongside the authenticated flag.
+    expect(mockExecuteCrawlScan).toHaveBeenCalledWith(
+      expect.objectContaining({ authenticated: true, session: fakeSession }),
+    );
+  });
+
+  it("aborts with 422 BEFORE creating a scan row when the login fails, and never dispatches a crawl", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: false,
+      reason: "The target answered 401 to the authenticated request.",
+    });
+
+    const res = await POST(
+      postRequest({ url: "https://app.example.com/dashboard", auth: FORM_AUTH }),
+    );
+
+    expect(res.status).toBe(422);
+    const json = await res.json();
+    expect(json.authReport.status).toBe("failed");
+    expect(json.authReport.method).toBe("form");
+    expect(json.authReport.reason).toMatch(/401/);
+    // No scan_history INSERT, no crawl dispatch: the login never succeeded.
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockExecuteCrawlScan).not.toHaveBeenCalled();
+    // The plaintext password never appears in the aborted response.
+    expect(JSON.stringify(json)).not.toContain("hunter2-super-secret");
+  });
+
+  it("is private by default (is_public=false) and skips the account-default lookup unless isPublic:true", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null, authType: "form" },
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 501 }] });
+
+    await POST(
+      postRequest({ url: "https://app.example.com/dashboard", auth: FORM_AUTH }),
+    );
+
+    // Only the tracker INSERT ran -- no resolveScanIsPublic account lookup.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    const insertCall = mockQuery.mock.calls[0];
+    expect(insertCall[0]).toContain("INSERT INTO scan_history");
+    // is_public is the 5th bound param ($5).
+    expect(insertCall[1][4]).toBe(false);
+
+    // Explicit opt-in flips it to public.
+    mockQuery.mockReset();
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 502 }] });
+    await POST(
+      postRequest({
+        url: "https://app.example.com/dashboard",
+        auth: FORM_AUTH,
+        isPublic: true,
+      }),
+    );
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockQuery.mock.calls[0][1][4]).toBe(true);
+  });
+
+  it("persists and logs only the non-secret fact, never any credential value", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null, authType: "form" },
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 503 }] });
+
+    await POST(
+      postRequest({ url: "https://app.example.com/dashboard", auth: FORM_AUTH }),
+    );
+
+    // No bound value in any DB call carries the username or password.
+    const allDbArgs = JSON.stringify(mockQuery.mock.calls);
+    expect(allDbArgs).not.toContain("hunter2-super-secret");
+    expect(allDbArgs).not.toContain("admin");
+
+    // The audit line records only origin, method, and outcome.
+    expect(mockLogAction).toHaveBeenCalledTimes(1);
+    const [, , action, details] = mockLogAction.mock.calls[0];
+    expect(action).toBe("scan.authenticated");
+    expect(String(details)).not.toContain("hunter2-super-secret");
+    expect(String(details)).not.toContain("admin");
+    expect(String(details)).toMatch(/authenticated/i);
+    expect(String(details)).toContain("https://app.example.com");
+  });
+
+  it("gates on SCAN_AUTH_ENABLED: 403 when disabled, before any login attempt or scan row", async () => {
+    mockGetSetting.mockImplementation(async (key: SettingKey) =>
+      key === "SCAN_AUTH_ENABLED" ? false : registryDefault(key),
+    );
+
+    const res = await POST(
+      postRequest({ url: "https://app.example.com/dashboard", auth: FORM_AUTH }),
+    );
+
+    expect(res.status).toBe(403);
+    expect(mockEstablishScanSession).not.toHaveBeenCalled();
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockExecuteCrawlScan).not.toHaveBeenCalled();
+  });
+
+  it("leaves an ordinary crawl (no auth block) completely unchanged", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 504 }] });
+
+    const res = await POST(postRequest({ url: "https://example.com" }));
+
+    expect(res.status).toBe(200);
+    // Never touches the login layer or the audit log.
+    expect(mockEstablishScanSession).not.toHaveBeenCalled();
+    expect(mockLogAction).not.toHaveBeenCalled();
+    // No session/authenticated flag reaches the crawl job.
+    const params = mockExecuteCrawlScan.mock.calls[0][0];
+    expect(params.session).toBeUndefined();
+    expect(params.authenticated).toBeUndefined();
   });
 });

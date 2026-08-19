@@ -228,6 +228,7 @@ describe("finalizeScanSuccess", () => {
       JSON.stringify({ checksRun: 10, dangerScore: 2 }),
       null, // finalUrl not passed -- COALESCE(NULL, url) leaves url untouched
       5,
+      null, // authenticated not passed -- COALESCE(NULL, authenticated) leaves it
     ]);
     // Transaction wrapped and committed: BEGIN, UPDATE, COMMIT.
     expect(mockClientQuery.mock.calls[0][0]).toBe("BEGIN");

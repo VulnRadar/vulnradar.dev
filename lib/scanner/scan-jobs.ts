@@ -185,6 +185,15 @@ export interface ScanSuccessData {
    * page's own URL individually) is unaffected.
    */
   finalUrl?: string;
+  /**
+   * Set true by an authenticated crawl (lib/scanner/execute-crawl-scan.ts) to
+   * record the non-secret fact that the crawl ran behind a login. Only the
+   * boolean reaches this column -- never any credential material. Left
+   * undefined by every other caller (single-URL scans), in which case the
+   * COALESCE below leaves the column exactly as the tracker-row INSERT wrote
+   * it (its false default).
+   */
+  authenticated?: boolean;
 }
 
 /**
@@ -238,6 +247,7 @@ export async function finalizeScanSuccess(
            response_headers = $6,
            result_meta = $7,
            url = COALESCE($8, url),
+           authenticated = COALESCE($10, authenticated),
            current_category = NULL,
            categories_completed = categories_total,
            error_message = NULL
@@ -253,6 +263,7 @@ export async function finalizeScanSuccess(
         JSON.stringify(data.resultMeta),
         data.finalUrl ?? null,
         scanId,
+        data.authenticated ?? null,
       ],
     );
 

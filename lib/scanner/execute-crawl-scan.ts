@@ -43,6 +43,7 @@ import type {
 } from "./types";
 import { checkAccessRules } from "./access-rules";
 import { safeFetch } from "./safe-fetch";
+import type { ScanSessionBinding, ScanAuthReport } from "./auth/types";
 import { redactSensitiveResponseHeaders } from "./response-headers";
 import { enrichFindingsWithExploitIntel } from "./cve-enrichment";
 import { applyAdaptiveConfidence } from "./adaptive-confidence";
@@ -120,6 +121,7 @@ async function discoverInternalLinks(
     fetchTimeoutMs: number;
     maxBodySize: number;
   },
+  session?: ScanSessionBinding,
 ): Promise<string[]> {
   const {
     maxPages: MAX_PAGES,
@@ -184,7 +186,10 @@ async function discoverInternalLinks(
       }
 
       // Use safeFetch which validates the URL internally to prevent SSRF
-      // Pass the entry hostname as the only allowed hostname to prevent redirect-based SSRF
+      // Pass the entry hostname as the only allowed hostname to prevent redirect-based SSRF.
+      // When an authenticated crawl is running, the session is attached only
+      // to same-origin hops (safeFetch enforces the scoping), so pages behind
+      // the login are discovered while a cross-host redirect never leaks it.
       const res = await safeFetch(
         urlObj.href,
         {
@@ -194,6 +199,7 @@ async function discoverInternalLinks(
           signal: AbortSignal.timeout(CRAWL_TIMEOUT),
         },
         [new URL(origin).hostname],
+        session,
       );
 
       // Only allow redirects that stay on the exact same hostname
@@ -266,6 +272,7 @@ async function scanSingleUrl(
   scanners?: string[] | null,
   onProgress?: ScanProgressHook,
   cancelSignal?: AbortSignal,
+  session?: ScanSessionBinding,
 ): Promise<{
   url: string;
   findings: Vulnerability[];
@@ -285,7 +292,10 @@ async function scanSingleUrl(
     }
 
     // Use safeFetch which validates the URL internally to prevent SSRF
-    // Pass the original hostname as the only allowed hostname to prevent redirect-based SSRF
+    // Pass the original hostname as the only allowed hostname to prevent redirect-based SSRF.
+    // The session (when present) is attached only to same-origin hops by
+    // safeFetch, so an authenticated crawl scans the page as the logged-in
+    // user while a redirect off-host still drops the credentials.
     response = await safeFetch(
       urlObj.href,
       {
@@ -295,6 +305,7 @@ async function scanSingleUrl(
         signal: AbortSignal.timeout(15000),
       },
       [urlObj.hostname],
+      session,
     );
   } catch {
     return {
@@ -403,6 +414,22 @@ export interface ExecuteCrawlScanParams {
    * ExecuteScanParams.portScan for the bounds and safety posture.
    */
   portScan?: boolean;
+  /**
+   * In-memory authenticated session for an authenticated crawl, established
+   * once by the route (POST /api/v3/scan/crawl) before the row was created
+   * and threaded into every page fetch. safeFetch attaches it only to
+   * same-origin hops, so pages behind the login are crawled and scanned while
+   * a cross-host redirect never carries the credentials. Lives only for this
+   * in-process call: it is never written to the DB, a log line, or a
+   * response. Absent for an ordinary crawl.
+   */
+  session?: ScanSessionBinding;
+  /**
+   * The non-secret fact that this crawl ran authenticated. Persisted to
+   * scan_history.authenticated on completion (via finalizeScanSuccess); the
+   * credential material behind it never is.
+   */
+  authenticated?: boolean;
 }
 
 /**
@@ -434,6 +461,8 @@ export async function executeCrawlScan(
     isApiKeyAuth,
     captureScreenshot = false,
     portScan = false,
+    session,
+    authenticated = false,
   } = params;
 
   const startTime = Date.now();
@@ -525,7 +554,11 @@ export async function executeCrawlScan(
       }
       pages = checkedUrls;
     } else {
-      pages = await discoverInternalLinks(normalizedMainUrl, crawlSettings);
+      pages = await discoverInternalLinks(
+        normalizedMainUrl,
+        crawlSettings,
+        session,
+      );
     }
 
     if (pages.length === 0) {
@@ -587,6 +620,7 @@ export async function executeCrawlScan(
         scanners,
         onProgress,
         cancelSignal,
+        session,
       );
       pageResults.push(result);
     }
@@ -796,13 +830,33 @@ export async function executeCrawlScan(
       /* never: captureAndStoreScreenshot swallows its own errors */
     }
 
+    // Authentication outcome for an authenticated crawl, mirroring the
+    // single-URL authenticated route so the result UI can show the same auth
+    // badge. Built from the session binding (its non-secret authType/lost/
+    // reason), never from the credential material -- which stayed in the
+    // route and never reached this function. "lost" when the target dropped
+    // the session at some point during the multi-page crawl; "authenticated"
+    // when it held to the end. Absent for an ordinary crawl.
+    const authReport: ScanAuthReport | undefined =
+      authenticated && session
+        ? {
+            status: session.lost ? "lost" : "authenticated",
+            method: session.authType ?? "form",
+            reason:
+              session.lost && session.reason ? session.reason : undefined,
+          }
+        : undefined;
+
     const applied = await finalizeScanSuccess(scanId, {
       summary: mergedSummary,
       findings: allFindings,
       duration: totalDuration,
       scannedAt,
       responseHeaders: mainHeaders,
+      // Non-secret boolean fact only; the session and credentials never persist.
+      ...(authenticated ? { authenticated: true } : {}),
       resultMeta: {
+        ...(authReport ? { authReport } : {}),
         ...(sslGrade ? { sslGrade } : {}),
         ...(dnsRecords ? { dnsRecords } : {}),
         ...(subdomains ? { subdomains } : {}),

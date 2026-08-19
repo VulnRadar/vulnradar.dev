@@ -18,7 +18,7 @@ import {
   BEARER_PREFIX,
   DEFAULT_SCAN_NOTE,
 } from "@/lib/config/constants";
-import { getSetting } from "@/lib/config/runtime-config";
+import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import {
   checkAndRecordRequest,
   getRateLimitHeaders,
@@ -28,6 +28,18 @@ import { resolveScanIsPublic } from "@/lib/scanner/scan-privacy";
 import { isUrlOwnedByUser } from "@/lib/domains/scope";
 import { requestsActiveProbing } from "@/lib/scanner/active-probe-catalog";
 import { checkConcurrentScanLimit } from "@/lib/rate-limiting/concurrent-scans";
+import { logAction } from "@/lib/auth/authorization";
+import { normalizeUrl } from "@/lib/scanner/execute-scan";
+import { establishScanSession } from "@/lib/scanner/auth/login";
+import {
+  buildAuthRequestSchema,
+  toEphemeralAuth,
+} from "@/lib/scanner/auth/request-schema";
+import type {
+  EphemeralAuthInput,
+  ScanAuthReport,
+  ScanSessionBinding,
+} from "@/lib/scanner/auth/types";
 
 export async function POST(request: NextRequest) {
   // Auth: check API key first (Bearer token), then fall back to session cookie
@@ -187,6 +199,12 @@ export async function POST(request: NextRequest) {
   // ExecuteCrawlScanParams.portScan). Off unless explicitly requested and held
   // to the same verified-domain gate active probing uses, enforced below.
   const portScan = body.portScan === true;
+  // Optional authenticated crawl. When an `auth` block is present the crawl
+  // establishes a session once and threads it through every page fetch, using
+  // the same admin toggle, schema, and limits as the single-page
+  // authenticated route. When absent, this route behaves exactly as before:
+  // no session, no authenticated flag, unchanged privacy.
+  const authRequested = body.auth != null && typeof body.auth === "object";
 
   if (!url || typeof url !== "string") {
     return NextResponse.json({ error: "URL is required" }, { status: 400 });
@@ -231,6 +249,50 @@ export async function POST(request: NextRequest) {
 
   const normalizedMainUrl = mainUrl.href;
 
+  // Validate the optional auth block up front: gate on the same admin setting
+  // the single-page route uses (identical 403), normalize a bare-domain
+  // loginUrl, and parse it against the shared schema/limits. The session
+  // itself is established later, only after the safety and ownership checks
+  // below pass. Credential material never leaves this handler.
+  let ephemeralAuth: EphemeralAuthInput | null = null;
+  if (authRequested) {
+    const scanAuthEnabled = await getSetting("SCAN_AUTH_ENABLED");
+    if (!scanAuthEnabled) {
+      return NextResponse.json(
+        { error: "Authenticated scanning is disabled on this deployment." },
+        { status: 403 },
+      );
+    }
+    // Same gap-fix as the single-page route: normalize a bare-domain loginUrl
+    // (prepend https://) before it reaches the schema's z.string().url() check.
+    const authBody = body.auth as Record<string, unknown>;
+    if (typeof authBody.loginUrl === "string" && authBody.loginUrl !== "") {
+      authBody.loginUrl = normalizeUrl(authBody.loginUrl);
+    }
+    const { SCAN_AUTH_MAX_SECRET_LENGTH, SCAN_AUTH_MAX_COOKIES } =
+      await getSettings([
+        "SCAN_AUTH_MAX_SECRET_LENGTH",
+        "SCAN_AUTH_MAX_COOKIES",
+      ] as const);
+    const authSchema = buildAuthRequestSchema({
+      maxSecretLength: SCAN_AUTH_MAX_SECRET_LENGTH,
+      maxCookies: SCAN_AUTH_MAX_COOKIES,
+    });
+    const parsedAuth = authSchema.safeParse(body.auth);
+    if (!parsedAuth.success) {
+      return NextResponse.json(
+        {
+          error: parsedAuth.error.issues[0]?.message || "Invalid auth block.",
+        },
+        { status: 400 },
+      );
+    }
+    // Credential material lives only in this local for the rest of the
+    // request. It is never assigned anywhere that outlives this handler, and
+    // never reaches the DB, a log line, or a response.
+    ephemeralAuth = toEphemeralAuth(parsedAuth.data);
+  }
+
   // Check access rules (blacklist/whitelist) for the main URL
   const accessCheck = await checkAccessRules(normalizedMainUrl);
   if (!accessCheck.allowed) {
@@ -266,6 +328,35 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Establish the authenticated session once, after the safety and ownership
+  // checks above, and abort before creating any scan row if the login cannot
+  // be trusted -- exactly like the single-page authenticated route. On failure
+  // nothing is persisted and no credential material is echoed: the 422 body
+  // carries only the non-secret authReport (status/method/reason).
+  let session: ScanSessionBinding | null = null;
+  if (ephemeralAuth) {
+    const loginResult = await establishScanSession(
+      ephemeralAuth,
+      normalizedMainUrl,
+    );
+    if (!loginResult.ok) {
+      const authReport: ScanAuthReport = {
+        status: "failed",
+        method: ephemeralAuth.method,
+        reason: loginResult.reason,
+      };
+      return NextResponse.json(
+        {
+          error: `Authenticated crawl aborted: ${loginResult.reason}`,
+          status: 422,
+          authReport,
+        },
+        { status: 422 },
+      );
+    }
+    session = loginResult.session;
+  }
+
   // Public by default (matches scan_history.is_public's DB default), unless
   // the request explicitly says otherwise, or (when it says nothing) the
   // account's own "scans are private by default" setting says otherwise.
@@ -273,10 +364,19 @@ export async function POST(request: NextRequest) {
   // account-default lookup. See lib/scanner/scan-jobs.ts's
   // finalizeScanSuccess, the shared completion path for this and
   // scan/route.ts.
-  const requestedIsPublic = await resolveScanIsPublic(
-    authedUserId,
-    typeof body.isPublic === "boolean" ? body.isPublic : undefined,
-  );
+  //
+  // An authenticated crawl is the exception: it sees whatever a logged-in
+  // area renders, a strictly more sensitive default than any logged-out crawl,
+  // so it is private unless THIS request explicitly sets isPublic:true --
+  // never the is_public default and never the account "private by default"
+  // setting, from either direction. Mirrors the single-page route's
+  // requestedIsPublic.
+  const requestedIsPublic = ephemeralAuth
+    ? body.isPublic === true
+    : await resolveScanIsPublic(
+        authedUserId,
+        typeof body.isPublic === "boolean" ? body.isPublic : undefined,
+      );
 
   // Create the tracker row immediately so there is something to poll. Page
   // discovery and the daily-quota check both depend on work that happens
@@ -325,7 +425,23 @@ export async function POST(request: NextRequest) {
     isApiKeyAuth,
     captureScreenshot,
     portScan,
+    // In-memory session only when the crawl authenticated -- never persisted.
+    ...(session ? { session, authenticated: true } : {}),
   });
+
+  // Audit the non-secret fact that an authenticated crawl ran: origin, method,
+  // and the login outcome only -- never a username, password, header value, or
+  // cookie value reaches this string.
+  if (ephemeralAuth && session) {
+    await logAction(
+      authedUserId,
+      authedUserId,
+      "scan.authenticated",
+      `Ran an authenticated crawl of ${mainUrl.origin} (${ephemeralAuth.method} auth, result: ${
+        session.lost ? "lost" : "authenticated"
+      }).`,
+    );
+  }
 
   // Record API key usage against the request that was accepted.
   if (isApiKeyAuth && apiKeyId && typeof apiKeyDailyLimit === "number") {

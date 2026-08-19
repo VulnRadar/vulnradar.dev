@@ -43,10 +43,11 @@ import { redactSensitiveResponseHeaders } from "@/lib/scanner/response-headers";
 import { upsertHostReputation } from "@/lib/scanner/host-reputation";
 import { saveAutoTags, maybeSuggestAiTag } from "@/lib/tags/auto-tags";
 import { establishScanSession, readCappedBody } from "@/lib/scanner/auth/login";
-import type {
-  EphemeralAuthInput,
-  ScanAuthReport,
-} from "@/lib/scanner/auth/types";
+import {
+  buildAuthRequestSchema,
+  toEphemeralAuth,
+} from "@/lib/scanner/auth/request-schema";
+import type { ScanAuthReport } from "@/lib/scanner/auth/types";
 
 /**
  * POST /api/v3/scan/authenticated
@@ -108,77 +109,22 @@ function buildRequestSchema(opts: {
   maxCookies: number;
   maxUrlLength: number;
 }) {
-  const secretString = z.string().min(1).max(opts.maxSecretLength);
-
-  const FormAuthSchema = z.object({
-    method: z.literal("form"),
-    username: secretString,
-    password: secretString,
-    loginUrl: z.string().url().max(2048).optional(),
-    usernameField: z.string().max(200).optional(),
-    passwordField: z.string().max(200).optional(),
-  });
-
-  const HeaderAuthSchema = z.object({
-    method: z.literal("header"),
-    headerName: z.string().max(200).optional(),
-    headerValue: secretString,
-  });
-
-  const CookieAuthSchema = z.object({
-    method: z.literal("cookie"),
-    cookies: z
-      .array(
-        z.object({
-          name: z.string().min(1).max(200),
-          value: secretString,
-        }),
-      )
-      .min(1)
-      .max(opts.maxCookies),
-  });
-
-  const AuthSchema = z.discriminatedUnion("method", [
-    FormAuthSchema,
-    HeaderAuthSchema,
-    CookieAuthSchema,
-  ]);
-
   return z.object({
     url: z.string().url().max(opts.maxUrlLength),
     scanners: z.array(z.string()).optional(),
-    auth: AuthSchema,
+    // Shared with POST /api/v3/scan/crawl via buildAuthRequestSchema, so both
+    // authenticated scan paths accept the identical `auth` block held to the
+    // same admin-configurable limits.
+    auth: buildAuthRequestSchema({
+      maxSecretLength: opts.maxSecretLength,
+      maxCookies: opts.maxCookies,
+    }),
     // Private unless the caller explicitly opts in with `true`. See the
     // requestedIsPublic comment below for why this is the one scan-creation
     // path that does NOT fall back to scan_history.is_public's normal true
     // default or the account-level "scans are private by default" setting.
     isPublic: z.boolean().optional(),
   });
-}
-
-type RequestSchemaType = ReturnType<typeof buildRequestSchema>;
-type AuthSchemaInput = z.infer<RequestSchemaType>["auth"];
-
-function toEphemeralAuth(parsed: AuthSchemaInput): EphemeralAuthInput {
-  switch (parsed.method) {
-    case "form":
-      return {
-        method: "form",
-        username: parsed.username,
-        password: parsed.password,
-        loginUrl: parsed.loginUrl,
-        usernameField: parsed.usernameField,
-        passwordField: parsed.passwordField,
-      };
-    case "header":
-      return {
-        method: "header",
-        headerName: parsed.headerName,
-        headerValue: parsed.headerValue,
-      };
-    case "cookie":
-      return { method: "cookie", cookies: parsed.cookies };
-  }
 }
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
