@@ -7,6 +7,7 @@ import {
   Maximize2,
   ChevronDown,
   ChevronRight,
+  Crown,
   RefreshCw,
 } from "lucide-react";
 import {
@@ -16,6 +17,13 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { API } from "@/lib/config/client-constants";
+import { cn } from "@/lib/ui/utils";
+import { useAuth } from "@/components/providers/auth-provider";
+import {
+  PremiumUpgradeModal,
+  PREMIUM_FEATURES,
+  hasFeatureAccess,
+} from "@/components/modals/premium-upgrade-modal";
 
 interface ScreenshotPanelProps {
   /** Image URL served by the screenshot route (owner/public or token-scoped). */
@@ -75,13 +83,26 @@ export function ScreenshotPanel({
   const [expanded, setExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   // Bumped after a successful re-capture to bust the served image's private
   // cache (the screenshot route sets Cache-Control: max-age=3600), so the
   // fresh frame actually loads instead of the stale cached one.
   const [cacheBust, setCacheBust] = useState<string | null>(null);
+  const { me, isStaff } = useAuth();
+  const userPlan = me?.plan || "free";
+  // Same premium gate as the subdomain refresh: staff always pass, everyone
+  // else needs the dns_refetch plan (Pro). A free user gets the upgrade modal
+  // instead of a silent 402 from the route.
+  const canRefresh =
+    isStaff ||
+    hasFeatureAccess(userPlan, PREMIUM_FEATURES.dns_refetch.requiredPlan);
 
   async function handleRefresh() {
     if (!scanId || refreshing) return;
+    if (!canRefresh) {
+      setShowUpgradeModal(true);
+      return;
+    }
     setRefreshing(true);
     setError(null);
     try {
@@ -112,7 +133,14 @@ export function ScreenshotPanel({
     : src;
 
   return (
-    <div className="overflow-hidden rounded-md border border-border bg-card">
+    <>
+      <PremiumUpgradeModal
+        open={showUpgradeModal}
+        onOpenChange={setShowUpgradeModal}
+        feature={PREMIUM_FEATURES.dns_refetch}
+        currentPlan={userPlan}
+      />
+      <div className="overflow-hidden rounded-md border border-border bg-card">
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
@@ -151,16 +179,33 @@ export function ScreenshotPanel({
                 type="button"
                 onClick={handleRefresh}
                 disabled={refreshing}
-                className="ml-auto inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
-                title="Re-capture the page screenshot now"
-                aria-label="Re-capture the page screenshot now"
+                className={cn(
+                  "ml-auto inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50",
+                  canRefresh
+                    ? "text-foreground hover:bg-muted"
+                    : "text-primary hover:bg-primary/10",
+                )}
+                title={
+                  canRefresh
+                    ? "Re-capture the page screenshot now"
+                    : "Premium feature, upgrade to Pro"
+                }
+                aria-label={
+                  canRefresh
+                    ? "Re-capture the page screenshot now"
+                    : "Premium feature, upgrade to Pro"
+                }
               >
                 {refreshing ? (
                   <Loader2 aria-hidden className="h-3.5 w-3.5 animate-spin" />
-                ) : (
+                ) : canRefresh ? (
                   <RefreshCw aria-hidden className="h-3.5 w-3.5" />
+                ) : (
+                  <Crown aria-hidden className="h-3.5 w-3.5" />
                 )}
-                <span className="hidden sm:inline">Refresh</span>
+                <span className="hidden sm:inline">
+                  {canRefresh ? "Refresh" : "Pro"}
+                </span>
               </button>
             </div>
           )}
@@ -206,6 +251,7 @@ export function ScreenshotPanel({
           </Dialog>
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }

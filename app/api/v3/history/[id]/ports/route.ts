@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
-import { scanPorts } from "@/lib/scanner/port-scan";
+import { scanPorts, readPortScan, recordPortScan } from "@/lib/scanner/port-scan";
 import { isUrlOwnedByUser } from "@/lib/domains/scope";
 import {
   resolveOwnedScan,
+  requireRefreshPlan,
   mergeResultMeta,
   scanHostname,
 } from "@/lib/history/refresh-scan";
@@ -24,6 +25,12 @@ export const maxDuration = 30;
  * unverified domain gets the same 403 (DOMAIN_NOT_VERIFIED). scanPorts is
  * best-effort, never throws, and refuses any internal/SSRF target as defence
  * in depth.
+ *
+ * Premium-gated (requireRefreshPlan), matching the subdomain panel's refresh
+ * control: on the hosted SaaS a re-run is a paid feature, but a self-hosted
+ * deployment (BILLING_ENABLED=false) allows it for everyone. A short per-host
+ * TTL cache (readPortScan/recordPortScan) means repeat refreshes of the same
+ * host within the window reuse the last sweep instead of re-scanning.
  */
 export async function POST(
   _request: NextRequest,
@@ -34,6 +41,9 @@ export async function POST(
   const owned = await resolveOwnedScan(id);
   if (!owned.ok) return owned.response;
   const { scan, userId } = owned;
+
+  const gate = await requireRefreshPlan(userId);
+  if (!gate.ok) return gate.response;
 
   const rl = await checkRateLimit({
     key: `refresh-ports:${userId}`,
@@ -68,15 +78,22 @@ export async function POST(
     );
   }
 
-  const portScan = await scanPorts(hostname, AbortSignal.timeout(20_000));
+  // Reuse a fresh sweep for this host if the short TTL cache still has one;
+  // otherwise re-run the sweep and record it for the next refresh in the window.
+  let portScan = readPortScan(hostname);
   if (!portScan) {
-    return NextResponse.json(
-      {
-        error:
-          "The port sweep could not run against this host (it may be unresolvable or resolve to an internal address).",
-      },
-      { status: 422 },
-    );
+    const fresh = await scanPorts(hostname, AbortSignal.timeout(20_000));
+    if (!fresh) {
+      return NextResponse.json(
+        {
+          error:
+            "The port sweep could not run against this host (it may be unresolvable or resolve to an internal address).",
+        },
+        { status: 422 },
+      );
+    }
+    recordPortScan(hostname, fresh);
+    portScan = fresh;
   }
 
   await mergeResultMeta(scan.id, userId, { portScan });

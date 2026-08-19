@@ -145,6 +145,66 @@ describe("autoDiscoverSubdomains - fresh discovery (cache miss)", () => {
   });
 });
 
+describe("autoDiscoverSubdomains - persists unreachable subdomains (BUG 1 regression)", () => {
+  // A DiscoveryResult carries BOTH reachable and unreachable hosts. The auto
+  // path must record the WHOLE result into the side channel (which
+  // execute-scan then stores verbatim into result_meta.subdomains), never a
+  // reachable-only subset -- otherwise History shows fewer subdomains than the
+  // manual "Discover" refresh, which keeps the unreachables.
+  const mixed: DiscoveryResult = {
+    domain: "mixed.com",
+    total: 3,
+    reachable: 1,
+    cached: false,
+    subdomains: [
+      {
+        subdomain: "api.mixed.com",
+        url: "https://api.mixed.com",
+        reachable: true,
+        statusCode: 200,
+        sources: ["crt.sh"],
+      },
+      {
+        subdomain: "dev.mixed.com",
+        url: "https://dev.mixed.com",
+        reachable: false,
+        sources: ["crt.sh"],
+      },
+      {
+        subdomain: "old.mixed.com",
+        url: "https://old.mixed.com",
+        reachable: false,
+        sources: ["brute-force"],
+      },
+    ],
+  };
+
+  it("records the unreachable hosts from a fresh (cache-miss) discovery", async () => {
+    mockDiscover.mockResolvedValue(mixed);
+
+    await autoDiscoverSubdomains("https://mixed.com");
+
+    const recorded = readSubdomains("mixed.com");
+    expect(recorded?.subdomains).toHaveLength(3);
+    expect(recorded?.subdomains.filter((s) => !s.reachable).map((s) => s.subdomain)).toEqual([
+      "dev.mixed.com",
+      "old.mixed.com",
+    ]);
+    // The whole result round-trips, not a reachable-only slice.
+    expect(recorded).toEqual(mixed);
+  });
+
+  it("records the unreachable hosts from a cache hit", async () => {
+    mockGetCachedSnapshot.mockResolvedValue({ ...mixed, domain: "cached-mixed.com", cached: true });
+
+    await autoDiscoverSubdomains("https://cached-mixed.com");
+
+    const recorded = readSubdomains("cached-mixed.com");
+    expect(recorded?.subdomains.filter((s) => !s.reachable)).toHaveLength(2);
+    expect(mockDiscover).not.toHaveBeenCalled();
+  });
+});
+
 describe("autoDiscoverSubdomains - targets with no registrable domain", () => {
   it("skips a raw IPv4 target without touching the cache or engine", async () => {
     await autoDiscoverSubdomains("https://93.184.216.34/");

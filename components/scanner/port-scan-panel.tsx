@@ -4,6 +4,8 @@ import { useId, useState } from "react";
 import {
   ChevronDown,
   ChevronRight,
+  Clock,
+  Crown,
   Loader2,
   RefreshCw,
   Server,
@@ -11,6 +13,13 @@ import {
 import type { ClosedPort, PortScanResult } from "@/lib/scanner/port-scan";
 import { API } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
+import { useAuth } from "@/components/providers/auth-provider";
+import {
+  PremiumUpgradeModal,
+  PREMIUM_FEATURES,
+  hasFeatureAccess,
+} from "@/components/modals/premium-upgrade-modal";
+import { formatAge } from "@/lib/ui/relative-time";
 
 interface PortScanPanelProps {
   portScan?: PortScanResult | null;
@@ -48,9 +57,22 @@ export function PortScanPanel({
   const [expanded, setExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const { me, isStaff } = useAuth();
+  const userPlan = me?.plan || "free";
+  // Same premium gate as the subdomain refresh: staff always pass, everyone
+  // else needs the dns_refetch plan (Pro). A free user gets the upgrade modal
+  // instead of a silent 402 from the route.
+  const canRefresh =
+    isStaff ||
+    hasFeatureAccess(userPlan, PREMIUM_FEATURES.dns_refetch.requiredPlan);
 
   async function handleRefresh() {
     if (!scanId || refreshing) return;
+    if (!canRefresh) {
+      setShowUpgradeModal(true);
+      return;
+    }
     setRefreshing(true);
     setError(null);
     try {
@@ -77,10 +99,18 @@ export function PortScanPanel({
 
   const openCount = portScan.open.length;
   const closed = portScan.closed ?? [];
-  const canRefresh = Boolean(scanId);
+  const showRefresh = Boolean(scanId);
+  const fetchedAge = formatAge(portScan.scannedAt);
 
   return (
-    <div className="overflow-hidden rounded-md border border-border bg-card">
+    <>
+      <PremiumUpgradeModal
+        open={showUpgradeModal}
+        onOpenChange={setShowUpgradeModal}
+        feature={PREMIUM_FEATURES.dns_refetch}
+        currentPlan={userPlan}
+      />
+      <div className="overflow-hidden rounded-md border border-border bg-card">
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
@@ -132,22 +162,50 @@ export function PortScanPanel({
             <span className="text-[11px] tabular-nums text-muted-foreground">
               {openCount} open
             </span>
-            {canRefresh && (
-              <button
-                type="button"
-                onClick={handleRefresh}
-                disabled={refreshing}
-                className="ml-auto inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
-                title="Re-run the port sweep now"
-                aria-label="Re-run the port sweep now"
-              >
-                {refreshing ? (
-                  <Loader2 aria-hidden className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <RefreshCw aria-hidden className="h-3.5 w-3.5" />
+            {showRefresh && (
+              <div className="ml-auto flex items-center gap-2">
+                {fetchedAge && (
+                  <span className="hidden items-center gap-1 text-[11px] text-muted-foreground sm:inline-flex">
+                    <Clock
+                      aria-hidden
+                      className="h-3 w-3 text-[hsl(var(--warning))]"
+                    />
+                    Fetched {fetchedAge}
+                  </span>
                 )}
-                <span className="hidden sm:inline">Refresh</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50",
+                    canRefresh
+                      ? "text-foreground hover:bg-muted"
+                      : "text-primary hover:bg-primary/10",
+                  )}
+                  title={
+                    canRefresh
+                      ? "Re-run the port sweep now"
+                      : "Premium feature, upgrade to Pro"
+                  }
+                  aria-label={
+                    canRefresh
+                      ? "Re-run the port sweep now"
+                      : "Premium feature, upgrade to Pro"
+                  }
+                >
+                  {refreshing ? (
+                    <Loader2 aria-hidden className="h-3.5 w-3.5 animate-spin" />
+                  ) : canRefresh ? (
+                    <RefreshCw aria-hidden className="h-3.5 w-3.5" />
+                  ) : (
+                    <Crown aria-hidden className="h-3.5 w-3.5" />
+                  )}
+                  <span className="hidden sm:inline">
+                    {canRefresh ? "Refresh" : "Pro"}
+                  </span>
+                </button>
+              </div>
             )}
           </div>
 
@@ -200,7 +258,8 @@ export function PortScanPanel({
           )}
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }
 

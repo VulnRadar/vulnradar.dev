@@ -23,6 +23,7 @@ vi.mock("@/lib/config/runtime-config", () => ({
 const {
   planMeetsMinimum,
   userMeetsScheduleFrequency,
+  userMeetsMinimumPlan,
   withinPlanLimit,
   planLimitMessage,
 } = await import("@/lib/billing/plan-limits");
@@ -90,6 +91,36 @@ describe("userMeetsScheduleFrequency", () => {
     mockGetUserPlan.mockResolvedValue("elite_supporter");
     expect(await userMeetsScheduleFrequency(1, "elite_supporter")).toBe(true);
     expect(await userMeetsScheduleFrequency(1, "pro_supporter")).toBe(true);
+  });
+});
+
+describe("userMeetsMinimumPlan (result-panel refresh gate: DNS / ports / screenshot)", () => {
+  it("bypasses the gate entirely when BILLING_ENABLED is false (self-hosted)", async () => {
+    mockGetSetting.mockResolvedValue(false);
+    expect(await userMeetsMinimumPlan(1, "pro_supporter")).toBe(true);
+    expect(mockGetUserPlan).not.toHaveBeenCalled();
+  });
+
+  it("blocks a free user from the Pro-gated refresh", async () => {
+    mockGetUserPlan.mockResolvedValue("free");
+    expect(await userMeetsMinimumPlan(1, "pro_supporter")).toBe(false);
+  });
+
+  it("blocks a core_supporter user (below Pro)", async () => {
+    mockGetUserPlan.mockResolvedValue("core_supporter");
+    expect(await userMeetsMinimumPlan(1, "pro_supporter")).toBe(false);
+  });
+
+  it("allows a pro_supporter and an elite_supporter user", async () => {
+    mockGetUserPlan.mockResolvedValue("pro_supporter");
+    expect(await userMeetsMinimumPlan(1, "pro_supporter")).toBe(true);
+    mockGetUserPlan.mockResolvedValue("elite_supporter");
+    expect(await userMeetsMinimumPlan(1, "pro_supporter")).toBe(true);
+  });
+
+  it("resolves a staff account to Pro Supporter (meets the Pro refresh gate)", async () => {
+    mockGetUserPlan.mockResolvedValue("staff");
+    expect(await userMeetsMinimumPlan(1, "pro_supporter")).toBe(true);
   });
 });
 

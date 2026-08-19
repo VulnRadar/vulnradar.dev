@@ -180,3 +180,26 @@ export async function userMeetsScheduleFrequency(
 
   return planMeetsMinimum(effectivePlan, minPlan);
 }
+
+/**
+ * True when the user's plan is at or above `minPlan`. Applies the same
+ * "billing off = allowed" (self-host) and staff = pro_supporter substitution
+ * as userMeetsScheduleFrequency, so a self-hosted deployment
+ * (BILLING_ENABLED=false) never hits a plan wall.
+ *
+ * Used to gate the premium result-panel refreshes (DNS / ports / screenshot)
+ * on the server, mirroring the client's PREMIUM_FEATURES.dns_refetch gate
+ * (whose requiredPlan is "pro_supporter").
+ */
+export async function userMeetsMinimumPlan(
+  userId: number,
+  minPlan: PlanId,
+): Promise<boolean> {
+  const billingEnabled = await getSetting("BILLING_ENABLED");
+  if (!billingEnabled) return true;
+
+  const plan = await getUserPlan(userId);
+  const effectivePlan: PlanId = plan === "staff" ? "pro_supporter" : plan;
+
+  return planMeetsMinimum(effectivePlan, minPlan);
+}

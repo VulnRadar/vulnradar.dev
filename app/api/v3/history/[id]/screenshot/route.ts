@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { captureAndStoreScreenshot } from "@/lib/scanner/page-screenshot";
-import { resolveOwnedScan, mergeResultMeta } from "@/lib/history/refresh-scan";
+import {
+  resolveOwnedScan,
+  requireRefreshPlan,
+  mergeResultMeta,
+} from "@/lib/history/refresh-scan";
 
 export const runtime = "nodejs";
 // A real headless-browser capture: give it room above the capture's own
@@ -19,6 +23,11 @@ export const maxDuration = 60;
  * concurrency queue, and is best-effort -- any failure (unconfigured
  * BrowserBase, exhausted meter, timeout) returns null and we surface a 502
  * rather than overwriting the existing screenshot.
+ *
+ * Premium-gated (requireRefreshPlan), matching the subdomain panel's refresh
+ * control: on the hosted SaaS a re-capture is a paid feature, but a
+ * self-hosted deployment (BILLING_ENABLED=false) allows it for everyone. This
+ * is on top of captureAndStoreScreenshot's own browser-minutes metering.
  */
 export async function POST(
   _request: NextRequest,
@@ -29,6 +38,9 @@ export async function POST(
   const owned = await resolveOwnedScan(id);
   if (!owned.ok) return owned.response;
   const { scan, userId } = owned;
+
+  const gate = await requireRefreshPlan(userId);
+  if (!gate.ok) return gate.response;
 
   const rl = await checkRateLimit({
     key: `refresh-screenshot:${userId}`,

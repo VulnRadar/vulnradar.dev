@@ -451,6 +451,45 @@ export async function scanPorts(
   };
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// PER-HOST SIDE CHANNEL (short TTL)
+//
+// Mirrors lib/scanner/dns-records.ts's recordsStore. The owner-only port
+// refresh route (app/api/v3/history/[id]/ports) checks this before re-running
+// the sweep so repeat refreshes of the same host within the window reuse the
+// last result instead of re-scanning -- a curated port sweep is far heavier
+// than a DNS resolve, so this matters more here. Keyed by hostname; reads peek
+// (don't delete) and entries are pruned by TTL on write, so the map can never
+// grow unbounded.
+// ════════════════════════════════════════════════════════════════════════════
+
+const PORT_SCAN_TTL_MS = 5 * 60 * 1000;
+const portScanStore = new Map<string, { result: PortScanResult; at: number }>();
+
+function prunePortScanStore(now: number): void {
+  for (const [key, entry] of portScanStore) {
+    if (now - entry.at > PORT_SCAN_TTL_MS) portScanStore.delete(key);
+  }
+}
+
+/** Stash a freshly captured port sweep for `hostname`. */
+export function recordPortScan(hostname: string, result: PortScanResult): void {
+  const now = Date.now();
+  prunePortScanStore(now);
+  portScanStore.set(hostname.toLowerCase(), { result, at: now });
+}
+
+/** Read back the sweep recorded for `hostname`, or undefined if none/stale. */
+export function readPortScan(hostname: string): PortScanResult | undefined {
+  const entry = portScanStore.get(hostname.toLowerCase());
+  if (!entry) return undefined;
+  if (Date.now() - entry.at > PORT_SCAN_TTL_MS) {
+    portScanStore.delete(hostname.toLowerCase());
+    return undefined;
+  }
+  return entry.result;
+}
+
 // ── Findings for notably risky open ports ───────────────────────────────────
 // The structured `open` list above is the primary output. On top of it we emit
 // a small number of Vulnerability findings for open ports that are notably

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { resolveScanRow, type ScanHistoryRow } from "@/lib/history/resolve-scan";
+import { userMeetsMinimumPlan } from "@/lib/billing/plan-limits";
+import type { PlanId } from "@/lib/billing/catalog";
 
 /**
  * Shared owner-resolution + result_meta merge for the per-scan "refresh this
@@ -44,6 +46,40 @@ export async function resolveOwnedScan(id: string): Promise<OwnedScanResult> {
     };
   }
   return { ok: true, scan, userId: session.userId };
+}
+
+/**
+ * The plan a result-panel refresh (DNS / ports / screenshot) requires. Mirrors
+ * the client-side gate PREMIUM_FEATURES.dns_refetch.requiredPlan in
+ * components/modals/premium-upgrade-modal.tsx, so the server and the button
+ * agree on the tier. Kept as a plain constant here rather than imported from
+ * that client component (which pulls in Dialog/Link and cannot be loaded into
+ * a server route).
+ */
+const REFRESH_MIN_PLAN: PlanId = "pro_supporter";
+
+/**
+ * Gate a refresh to a paid plan, matching the subdomain refresh's premium
+ * gate. Returns ok when the caller's plan is high enough (or billing is
+ * disabled entirely, i.e. self-hosted), otherwise a 402 with an upgrade
+ * message. Call after resolveOwnedScan so it only ever runs for the owner.
+ */
+export async function requireRefreshPlan(
+  userId: number,
+): Promise<{ ok: true } | { ok: false; response: NextResponse }> {
+  const allowed = await userMeetsMinimumPlan(userId, REFRESH_MIN_PLAN);
+  if (allowed) return { ok: true };
+  return {
+    ok: false,
+    response: NextResponse.json(
+      {
+        error:
+          "Refreshing this capture is a premium feature. Upgrade to Pro Supporter or higher to re-run it.",
+        statusCode: "UPGRADE_REQUIRED",
+      },
+      { status: 402 },
+    ),
+  };
 }
 
 /**

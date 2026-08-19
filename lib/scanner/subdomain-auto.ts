@@ -39,8 +39,18 @@ import type { DiscoveryResult } from "./subdomain-types";
 
 export type { DiscoveryResult } from "./subdomain-types";
 
-/** Hard cap on how long a scan will wait for a fresh (cache-miss) discovery. */
-const DEFAULT_AUTO_TIMEOUT_MS = 10_000;
+/**
+ * Hard cap on how long a scan will wait for a fresh (cache-miss) discovery.
+ * Aligned to the scan's own async-check ceiling (executeScan runs this
+ * concurrently with runAsyncChecksDetailed, which already races ~15s), so the
+ * first scan of a fresh domain can actually capture the passive sources -- most
+ * of the unreachable/CT-log subdomains come from crt.sh, whose own request
+ * timeout is 15s. A 10s cap here would always cut crt.sh off, so the first scan
+ * would surface nothing and only the background cache-warm made the *next* scan
+ * complete. Since discovery overlaps the async checks, this rarely adds
+ * wall-clock beyond what the scan already spends.
+ */
+const DEFAULT_AUTO_TIMEOUT_MS = 15_000;
 
 /** True for a bare IPv4 or IPv6 literal, which has no registrable domain to enumerate. */
 function isIpLiteral(host: string): boolean {
