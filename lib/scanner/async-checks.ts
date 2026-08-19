@@ -23,6 +23,12 @@ import {
   safeFetch,
 } from "@/lib/scanner/safe-fetch";
 import { extractRootDomain } from "@/lib/scanner/root-domain";
+import { computeSslGrade, recordSslGrade } from "@/lib/scanner/ssl-grade";
+import {
+  resolveDnsRecords,
+  recordDnsRecords,
+  hasAnyDnsRecords,
+} from "@/lib/scanner/dns-records";
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
 import {
   checkReputation,
@@ -36,6 +42,7 @@ import {
   checkCommandInjectionProbe,
   checkOpenRedirectProbe,
 } from "@/lib/scanner/active-probes";
+import { resolveSelectedActiveProbes } from "@/lib/scanner/active-probe-catalog";
 import { getSetting } from "@/lib/config/runtime-config";
 import {
   checkNsProviderConcentration,
@@ -2183,6 +2190,22 @@ export async function checkDNSSecurity(
   const mxResult = await checkMX(domain, url, hasSPF);
   findings.push(...mxResult);
 
+  // Capture the full structured DNS record set for the "fetch full DNS" panel.
+  // This is additive structured data, not findings: it is recorded via a
+  // per-host side channel (lib/scanner/dns-records.ts) that execute-scan.ts /
+  // execute-crawl-scan.ts read back into result_meta, exactly like the SSL
+  // grade. Run last, after the finding sub-checks above, so it can never
+  // reorder or alter the DNS findings this function returns; its own resolver
+  // failures are swallowed and an all-empty result (raw IP, unreachable)
+  // records nothing, leaving result_meta.dnsRecords absent so the panel
+  // renders nothing rather than an empty shell.
+  try {
+    const records = await resolveDnsRecords(domain);
+    if (hasAnyDnsRecords(records)) recordDnsRecords(domain, records);
+  } catch {
+    /* structured DNS capture never affects findings */
+  }
+
   return findings;
 }
 
@@ -2223,15 +2246,22 @@ export function checkTLSCert(
             const cert = socket!.getPeerCertificate(true);
             const authorized = socket!.authorized;
             const protocol = socket!.getProtocol();
+            // Hoisted out of the `if (!authorized)` block below so the SSL
+            // letter grade computed at the end of this callback can classify
+            // the trust failure without re-deriving it.
+            const authError = socket!.authorizationError;
+            const authCode = String(
+              (authError as NodeJS.ErrnoException | null)?.code ??
+                authError?.message ??
+                "",
+            );
+            // Collected as the findings below run, then handed to the SSL
+            // grade at the end. Kept separate from the findings themselves so
+            // grading never alters what gets reported.
+            let gradeChainHasExpiredCert = false;
+            let gradeDaysUntilExpiry: number | undefined;
 
             if (!authorized) {
-              const authError = socket!.authorizationError;
-              const authCode = String(
-                (authError as NodeJS.ErrnoException | null)?.code ??
-                  authError?.message ??
-                  "",
-              );
-
               if (authCode === "CERT_HAS_EXPIRED") {
                 const expiredOn = cert?.valid_to ?? "unknown";
                 const daysAgo = cert?.valid_to
@@ -2311,6 +2341,7 @@ export function checkTLSCert(
               const daysUntilExpiry = Math.floor(
                 (expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24),
               );
+              gradeDaysUntilExpiry = daysUntilExpiry;
 
               if (daysUntilExpiry <= 14) {
                 findings.push(
@@ -2387,6 +2418,7 @@ export function checkTLSCert(
               let depth = 0;
               while (current && current.valid_to && depth < 6) {
                 if (new Date(current.valid_to).getTime() < Date.now()) {
+                  gradeChainHasExpiredCert = true;
                   findings.push(
                     makeVuln(
                       url,
@@ -2534,6 +2566,54 @@ export function checkTLSCert(
                   ),
                 );
               }
+            }
+
+            // ── SSL/TLS letter grade ──────────────────────────────────────
+            // Score this endpoint from the same handshake signals gathered
+            // above (plus the negotiated cipher, captured here) and stash the
+            // letter in a per-host side channel that execute-scan.ts /
+            // execute-crawl-scan.ts read back into result_meta. Wrapped in its
+            // own guard so a grading hiccup can never change the findings.
+            try {
+              const cipher = socket!.getCipher();
+              const certForGrade = cert as {
+                bits?: number;
+                asn1Curve?: string;
+                nistCurve?: string;
+                subject?: unknown;
+                subjectaltname?: string;
+              } | null;
+              const graded = computeSslGrade({
+                reachedTls: true,
+                protocol,
+                authorized,
+                certExpired: authCode === "CERT_HAS_EXPIRED",
+                certSelfSigned:
+                  authCode === "DEPTH_ZERO_SELF_SIGNED_CERT" ||
+                  authCode === "SELF_SIGNED_CERT_IN_CHAIN",
+                hostnameMismatch: authCode === "ERR_TLS_CERT_ALTNAME_INVALID",
+                incompleteChain:
+                  authCode === "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+                chainHasExpiredCert: gradeChainHasExpiredCert,
+                missingSan: Boolean(
+                  certForGrade &&
+                    certForGrade.subject &&
+                    !certForGrade.subjectaltname,
+                ),
+                keyBits:
+                  typeof certForGrade?.bits === "number"
+                    ? certForGrade.bits
+                    : undefined,
+                isEcKey: Boolean(
+                  certForGrade?.asn1Curve || certForGrade?.nistCurve,
+                ),
+                nistCurve: certForGrade?.nistCurve,
+                cipherName: cipher?.name,
+                daysUntilExpiry: gradeDaysUntilExpiry,
+              });
+              if (graded) recordSslGrade(hostname, graded.grade);
+            } catch {
+              /* grade is best-effort and never affects findings */
             }
           } catch {
             /* cert inspection failed */
@@ -4425,25 +4505,38 @@ function buildBranches(
   // that submit real requests to the target instead of only reading
   // responses already fetched for other checks, so none of them must ever
   // run just because a scan omitted a `scanners` filter; they only run when
-  // a caller names "active-probes" explicitly. `signal` is this scan's
-  // cancellation signal (see getCancelSignal in scan-jobs.ts) — the
-  // form-submission probes check it between requests, and every probe here
-  // threads it into its request so a cancelled scan stops sending payloads
-  // to the target immediately instead of finishing whatever was in flight.
-  if (allowed?.has("active-probes")) {
+  // a caller names one explicitly. Each of the nine is independently
+  // selectable via an `active-probes:<id>` selector in `scanners`; the legacy
+  // bare `active-probes` selector expands to all nine (see
+  // resolveSelectedActiveProbes for the back-compat mapping). Only the probes
+  // actually named run, so selecting one no longer fires the other eight.
+  // The whole batch still runs as a single labeled branch so the progress
+  // denominator counts active probing as one unit regardless of how many are
+  // picked. `signal` is this scan's cancellation signal (see getCancelSignal
+  // in scan-jobs.ts) — the form-submission probes check it between requests,
+  // and every probe here threads it into its request so a cancelled scan
+  // stops sending payloads to the target immediately.
+  const selectedProbes = new Set(resolveSelectedActiveProbes(categories));
+  if (selectedProbes.size > 0) {
+    const tasks: Promise<Vulnerability[]>[] = [];
+    if (selectedProbes.has("xss")) tasks.push(checkActiveProbes(url, signal));
+    if (selectedProbes.has("sqli"))
+      tasks.push(checkSqlInjectionProbe(url, signal));
+    if (selectedProbes.has("ssti")) tasks.push(checkSstiProbe(url, signal));
+    if (selectedProbes.has("command-injection"))
+      tasks.push(checkCommandInjectionProbe(url, signal));
+    if (selectedProbes.has("open-redirect"))
+      tasks.push(checkOpenRedirectProbe(url, signal));
+    if (selectedProbes.has("graphql"))
+      tasks.push(checkGraphQLIntrospection(origin, url));
+    if (selectedProbes.has("cors")) tasks.push(checkActiveCORS(url, signal));
+    if (selectedProbes.has("http-methods"))
+      tasks.push(checkActiveHttpMethods(origin, signal));
+    if (selectedProbes.has("x-forwarded-host"))
+      tasks.push(checkXForwardedHostInjection(url, signal));
     branches.push({
       label: "active-probes",
-      promise: Promise.allSettled([
-        checkActiveProbes(url, signal),
-        checkSqlInjectionProbe(url, signal),
-        checkSstiProbe(url, signal),
-        checkCommandInjectionProbe(url, signal),
-        checkOpenRedirectProbe(url, signal),
-        checkGraphQLIntrospection(origin, url),
-        checkActiveCORS(url, signal),
-        checkActiveHttpMethods(origin, signal),
-        checkXForwardedHostInjection(url, signal),
-      ]).then((results) =>
+      promise: Promise.allSettled(tasks).then((results) =>
         results.flatMap((r) => (r.status === "fulfilled" ? r.value : [])),
       ),
     });

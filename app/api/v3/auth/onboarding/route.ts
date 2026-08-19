@@ -19,3 +19,20 @@ export async function POST() {
 
   return NextResponse.json({ success: true });
 }
+
+export async function DELETE() {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json(
+      { error: ERROR_MESSAGES.UNAUTHORIZED },
+      { status: 401 },
+    );
+  }
+
+  await pool.query(
+    "UPDATE users SET onboarding_completed = false WHERE id = $1",
+    [session.userId],
+  );
+
+  return NextResponse.json({ success: true });
+}

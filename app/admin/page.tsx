@@ -34,6 +34,7 @@ import {
   UserPlus,
   Share2,
   DownloadCloud,
+  DatabaseBackup,
   Bug,
   Gauge,
   ListOrdered,
@@ -48,6 +49,7 @@ import { SystemSettingsManager } from "@/components/admin/features/system-settin
 import { MassEmailManager } from "@/components/admin/features/mass-email-manager";
 import { AIChatsManager } from "@/components/admin/features/ai-chats-manager";
 import { UpdaterManager } from "@/components/admin/features/updater-manager";
+import { BackupManager } from "@/components/admin/features/backup-manager";
 import { ErrorLogsManager } from "@/components/admin/features/error-logs-manager";
 import { EmailLogsManager } from "@/components/admin/features/email-logs-manager";
 import { EngineFeedbackManager } from "@/components/admin/features/engine-feedback-manager";
@@ -115,6 +117,7 @@ const VALID_TABS = [
   "broadcast",
   "ai-chats",
   "updater",
+  "backup",
   "queue-status",
   "error-logs",
   "email-logs",
@@ -153,6 +156,7 @@ type ActiveTab =
   | "broadcast"
   | "ai-chats"
   | "updater"
+  | "backup"
   | "queue-status"
   | "error-logs"
   | "email-logs"
@@ -766,6 +770,12 @@ function AdminContent() {
           key: "updater" as const,
           label: "Updater",
           icon: DownloadCloud,
+          permission: STAFF_PERMISSIONS.TRIGGER_MAINTENANCE,
+        },
+        {
+          key: "backup" as const,
+          label: "Backups",
+          icon: DatabaseBackup,
           permission: STAFF_PERMISSIONS.TRIGGER_MAINTENANCE,
         },
         {
@@ -1588,6 +1598,7 @@ function AdminContent() {
             {activeTab === "notifications" && <NotificationsManager />}
             {activeTab === "ai-chats" && <AIChatsManager />}
             {activeTab === "updater" && <UpdaterManager />}
+            {activeTab === "backup" && <BackupManager />}
             {activeTab === "queue-status" && <QueueStatusManager />}
             {activeTab === "error-logs" && <ErrorLogsManager />}
             {activeTab === "email-logs" && <EmailLogsManager />}

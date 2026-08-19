@@ -36,7 +36,9 @@ export const GET = withErrorHandling(async () => {
       [userId],
     ),
     pool.query(
-      `SELECT id, url, summary, findings_count, duration, scanned_at, source
+      // public_id, aliased to id, so the "Recent scans" widget links to the
+      // opaque ?scan= handle the History tab resolves, never the numeric one.
+      `SELECT public_id AS id, url, summary, findings_count, duration, scanned_at, source
        FROM scan_history WHERE user_id = $1
        ORDER BY scanned_at DESC LIMIT $2`,
       [userId, widgetLimit],

@@ -109,7 +109,7 @@ describe("POST /api/v3/history/[id]/share", () => {
     const [sql, sqlParams] = mockQuery.mock.calls[2];
     expect(sql).toContain("UPDATE scan_history SET share_token = $1");
     expect(sql).toContain("share_publicly_listed = $3");
-    expect(sqlParams).toEqual([json.token, null, true, "55"]);
+    expect(sqlParams).toEqual([json.token, null, true, 55]);
   });
 
   it("stores a computed expiry when expiresInDays is provided", async () => {
@@ -132,7 +132,7 @@ describe("POST /api/v3/history/[id]/share", () => {
     expect(expiresMs).toBeLessThan(before + 31 * 86400000);
 
     const [, sqlParams] = mockQuery.mock.calls[2];
-    expect(sqlParams).toEqual([json.token, json.expiresAt, true, "55"]);
+    expect(sqlParams).toEqual([json.token, json.expiresAt, true, 55]);
   });
 
   it("resolves publiclyListed to false when the scan owner's account default is off", async () => {
@@ -149,7 +149,7 @@ describe("POST /api/v3/history/[id]/share", () => {
 
     expect(json.publiclyListed).toBe(false);
     const [, sqlParams] = mockQuery.mock.calls[2];
-    expect(sqlParams).toEqual([json.token, null, false, "55"]);
+    expect(sqlParams).toEqual([json.token, null, false, 55]);
   });
 
   it("honors an explicit publiclyListed override in the request body, skipping the account-default lookup", async () => {
@@ -165,7 +165,7 @@ describe("POST /api/v3/history/[id]/share", () => {
     expect(json.publiclyListed).toBe(false);
     expect(mockQuery).toHaveBeenCalledTimes(2);
     const [, sqlParams] = mockQuery.mock.calls[1];
-    expect(sqlParams).toEqual([json.token, null, false, "55"]);
+    expect(sqlParams).toEqual([json.token, null, false, 55]);
   });
 
   it("rejects a non-boolean publiclyListed value before touching the database", async () => {
@@ -220,7 +220,7 @@ describe("POST /api/v3/history/[id]/share", () => {
     expect(sql).toContain(
       "UPDATE scan_history SET share_expires_at = $1 WHERE id = $2",
     );
-    expect(sqlParams).toEqual([json.expiresAt, "55"]);
+    expect(sqlParams).toEqual([json.expiresAt, 55]);
   });
 
   it("clears an existing token's expiry when expiresInDays is explicitly null", async () => {
@@ -242,7 +242,7 @@ describe("POST /api/v3/history/[id]/share", () => {
     expect(res.status).toBe(200);
     expect(json.expiresAt).toBeNull();
     const [, sqlParams] = mockQuery.mock.calls[1];
-    expect(sqlParams).toEqual([null, "55"]);
+    expect(sqlParams).toEqual([null, 55]);
   });
 
   it("issues a fresh token when the existing one has already expired, instead of resurrecting it", async () => {
@@ -270,7 +270,7 @@ describe("POST /api/v3/history/[id]/share", () => {
 
     const [sql, sqlParams] = mockQuery.mock.calls[2];
     expect(sql).toContain("UPDATE scan_history SET share_token = $1");
-    expect(sqlParams).toEqual([json.token, null, true, "55"]);
+    expect(sqlParams).toEqual([json.token, null, true, 55]);
   });
 
   it("lets a team admin create a share on behalf of the scan owner, resolving the listing default against the OWNER's account, not the admin's", async () => {
@@ -344,7 +344,7 @@ describe("DELETE /api/v3/history/[id]/share", () => {
   });
 
   it("revokes the token for the owner", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 7 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 55, user_id: 7 }] });
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const res = await DELETE(deleteRequest(), params());
@@ -355,11 +355,11 @@ describe("DELETE /api/v3/history/[id]/share", () => {
 
     const [sql, sqlParams] = mockQuery.mock.calls[1];
     expect(sql).toContain("UPDATE scan_history SET share_token = NULL");
-    expect(sqlParams).toEqual(["55"]);
+    expect(sqlParams).toEqual([55]);
   });
 
   it("lets a team owner revoke on behalf of the scan owner", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 99 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 55, user_id: 99 }] });
     mockQuery.mockResolvedValueOnce({ rows: [{ role: "owner" }] });
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
@@ -369,7 +369,7 @@ describe("DELETE /api/v3/history/[id]/share", () => {
   });
 
   it("blocks a team viewer and an unrelated user alike with 404", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 99 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 55, user_id: 99 }] });
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const res = await DELETE(deleteRequest(), params());

@@ -116,7 +116,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // matching exclusion in this route's DELETE handler below.
   const result = await pool.query(
     retentionDays <= 0
-      ? `SELECT sh.id, sh.url, sh.summary, sh.findings_count, sh.duration, sh.scanned_at, sh.source,
+      ? `SELECT sh.public_id AS id, sh.url, sh.summary, sh.findings_count, sh.duration, sh.scanned_at, sh.source,
          COALESCE(
            (SELECT json_agg(json_build_object('tag', st.tag, 'source', st.source) ORDER BY st.source, st.tag)
             FROM scan_tags st WHERE st.scan_id = sh.id AND st.user_id = $1),
@@ -126,7 +126,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
        WHERE sh.user_id = $1 AND (sh.scan_type IS NULL OR sh.scan_type != 'github')
        ORDER BY sh.scanned_at DESC
        LIMIT $2`
-      : `SELECT sh.id, sh.url, sh.summary, sh.findings_count, sh.duration, sh.scanned_at, sh.source,
+      : `SELECT sh.public_id AS id, sh.url, sh.summary, sh.findings_count, sh.duration, sh.scanned_at, sh.source,
          COALESCE(
            (SELECT json_agg(json_build_object('tag', st.tag, 'source', st.source) ORDER BY st.source, st.tag)
             FROM scan_tags st WHERE st.scan_id = sh.id AND st.user_id = $1),

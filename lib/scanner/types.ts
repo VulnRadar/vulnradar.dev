@@ -10,6 +10,8 @@
  *     slot in without breaking the existing surface.
  */
 
+import type { DnsRecords } from "./dns-records";
+
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
 export type Category =
@@ -193,6 +195,24 @@ export interface ScanResult {
    * Based on severity distribution and exploitability of findings.
    */
   dangerScore?: number;
+  /**
+   * SSL Labs-style TLS letter grade for the scanned host: "A+", "A", "B",
+   * "C", "D", or "F". Computed by lib/scanner/ssl-grade.ts from the TLS
+   * handshake (protocol, key strength, cipher, certificate trust) and stored
+   * in result_meta.sslGrade. Absent when the target was HTTP-only or the TLS
+   * endpoint was never reached, so a missing grade never means "F".
+   */
+  sslGrade?: string;
+  /**
+   * Full structured DNS record set (A, AAAA, CNAME, MX, NS, TXT, CAA, SOA)
+   * for the scanned host, resolved during the DNS branch by
+   * lib/scanner/dns-records.ts and stored in result_meta.dnsRecords. This is
+   * structured data for the "full DNS" panel, not findings. Absent when the
+   * target had no resolvable records (raw IP, unreachable) -- consumers render
+   * nothing rather than an empty panel. Designed so a later scheduled-refresh
+   * pass can update this shape in place.
+   */
+  dnsRecords?: DnsRecords;
   /**
    * 0–100: how confident the engine is in the accuracy of these results.
    * Reflects check type determinism and completeness of the scan.

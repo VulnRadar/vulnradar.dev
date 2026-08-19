@@ -34,6 +34,7 @@ import { normalizeUrl } from "@/lib/scanner/execute-scan";
 import { validateScanTarget, safeFetch } from "@/lib/scanner/safe-fetch";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { isUrlOwnedByUser } from "@/lib/domains/scope";
+import { requestsActiveProbing } from "@/lib/scanner/active-probe-catalog";
 import { redactSensitiveResponseHeaders } from "@/lib/scanner/response-headers";
 import { upsertHostReputation } from "@/lib/scanner/host-reputation";
 import { saveAutoTags, maybeSuggestAiTag } from "@/lib/tags/auto-tags";
@@ -340,7 +341,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Checked before establishScanSession below runs, since an unverified
   // target should never even get a login attempt for this purpose.
   if (
-    scanners?.includes("active-probes") &&
+    requestsActiveProbing(scanners) &&
     authedUserId !== null &&
     !(await isUrlOwnedByUser(url, authedUserId))
   ) {

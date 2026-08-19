@@ -4,6 +4,7 @@ import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import { scanNumericId } from "@/lib/history/resolve-scan";
 
 // Get all tags for the user (auto and user-added alike -- both are valid
 // values to filter scan history by, see app/history/page.tsx's tag filter).
@@ -55,9 +56,12 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { scanId, tag, action } = await request.json();
+  // scanId arrives as the opaque public_id (a string) or a legacy numeric id;
+  // the ownership check below resolves either shape to the numeric primary
+  // key every scan_tags / auto_tag_dismissals row keys on.
+  const { scanId: scanIdParam, tag, action } = await request.json();
 
-  if (!scanId || !tag || typeof tag !== "string") {
+  if (!scanIdParam || !tag || typeof tag !== "string") {
     return NextResponse.json(
       { error: "scanId and tag are required." },
       { status: 400 },
@@ -70,13 +74,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid tag." }, { status: 400 });
 
   // Verify scan belongs to user
+  const idParam = String(scanIdParam);
   const scanCheck = await pool.query(
-    "SELECT id FROM scan_history WHERE id = $1 AND user_id = $2",
-    [scanId, session.userId],
+    `SELECT id FROM scan_history
+     WHERE (public_id = $1 OR ($2::bigint IS NOT NULL AND id = $2)) AND user_id = $3`,
+    [idParam, scanNumericId(idParam), session.userId],
   );
   if (scanCheck.rows.length === 0) {
     return NextResponse.json({ error: "Scan not found." }, { status: 404 });
   }
+  // The numeric primary key, used for every scan_tags / auto_tag_dismissals
+  // read and write below.
+  const scanId = scanCheck.rows[0].id;
 
   if (action === "remove") {
     // An auto or ai tag is a computed fact about the scan's findings, so

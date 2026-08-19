@@ -11,6 +11,7 @@ import pool from "@/lib/database/db";
 import { generateScanSummary } from "@/lib/ai/scan-summary";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { checkAiUsageQuota } from "@/lib/billing/ai-usage";
+import { scanNumericId } from "@/lib/history/resolve-scan";
 import type { ScanResult } from "@/lib/scanner/types";
 
 export const runtime = "nodejs";
@@ -68,10 +69,6 @@ export async function POST(
   }
 
   const { id } = await params;
-  const scanId = Number(id);
-  if (!Number.isInteger(scanId)) {
-    return NextResponse.json({ error: "Invalid scan id." }, { status: 400 });
-  }
 
   // Check the user hasn't disabled AI, same check scan/verify/route.ts makes.
   try {
@@ -89,10 +86,13 @@ export async function POST(
     /* no row = AI enabled by default */
   }
 
+  // Resolve by opaque public_id, or a legacy numeric id, still scoped to the
+  // caller (an owner-only action): a non-owned or unknown scan returns 404.
   const scanResult = await pool.query(
-    `SELECT url, scanned_at, duration, findings, summary, response_headers, result_meta, authenticated
-     FROM scan_history WHERE id = $1 AND user_id = $2`,
-    [scanId, userId],
+    `SELECT id, url, scanned_at, duration, findings, summary, response_headers, result_meta, authenticated
+     FROM scan_history
+     WHERE (public_id = $1 OR ($2::bigint IS NOT NULL AND id = $2)) AND user_id = $3`,
+    [id, scanNumericId(id), userId],
   );
 
   if (scanResult.rows.length === 0) {
@@ -173,7 +173,7 @@ export async function POST(
     `UPDATE scan_history
      SET result_meta = COALESCE(result_meta, '{}'::jsonb) || $1::jsonb
      WHERE id = $2 AND user_id = $3`,
-    [JSON.stringify({ aiSummary: summaryText }), scanId, userId],
+    [JSON.stringify({ aiSummary: summaryText }), row.id, userId],
   );
 
   return NextResponse.json({ success: true, summary: summaryText });

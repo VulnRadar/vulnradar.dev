@@ -24,6 +24,15 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/ui/utils";
 import type { Category, ScanStatus } from "@/lib/scanner/types";
+import { CATEGORY_META } from "@/lib/scanner/category-meta";
+import {
+  ACTIVE_PROBE_OPTIONS,
+  ACTIVE_PROBE_IDS,
+  activeProbeScanner,
+  parseActiveProbeIds,
+  serializeActiveProbeIds,
+  type ActiveProbeId,
+} from "@/lib/scanner/active-probe-catalog";
 import {
   getQueryParam,
   setQueryParam,
@@ -53,19 +62,51 @@ export const DEFAULT_PROBE_PORTS: Record<ServiceProbe, number> = {
 interface ServiceProbeOption {
   id: ServiceProbe;
   label: string;
+  description: string;
   defaultPort: number;
   altPorts: readonly number[];
 }
 
 const SERVICE_PROBES: readonly ServiceProbeOption[] = [
-  { id: "ssh", label: "SSH", defaultPort: 22, altPorts: [2222, 222, 2200] },
-  { id: "smtp", label: "SMTP", defaultPort: 25, altPorts: [587, 465, 2525] },
-  { id: "imap", label: "IMAP", defaultPort: 143, altPorts: [993] },
-  { id: "pop3", label: "POP3", defaultPort: 110, altPorts: [995] },
-  { id: "ftp", label: "FTP", defaultPort: 21, altPorts: [990, 2121] },
+  {
+    id: "ssh",
+    label: "SSH",
+    description: "Grabs the SSH banner to identify the server and version on port 22.",
+    defaultPort: 22,
+    altPorts: [2222, 222, 2200],
+  },
+  {
+    id: "smtp",
+    label: "SMTP",
+    description: "Reads the mail server greeting and capabilities on port 25.",
+    defaultPort: 25,
+    altPorts: [587, 465, 2525],
+  },
+  {
+    id: "imap",
+    label: "IMAP",
+    description: "Checks the IMAP service banner on port 143.",
+    defaultPort: 143,
+    altPorts: [993],
+  },
+  {
+    id: "pop3",
+    label: "POP3",
+    description: "Checks the POP3 service banner on port 110.",
+    defaultPort: 110,
+    altPorts: [995],
+  },
+  {
+    id: "ftp",
+    label: "FTP",
+    description: "Reads the FTP welcome banner on port 21.",
+    defaultPort: 21,
+    altPorts: [990, 2121],
+  },
   {
     id: "mongodb",
     label: "MongoDB",
+    description: "Tests for an unauthenticated MongoDB instance on port 27017.",
     defaultPort: 27017,
     altPorts: [27018, 27019],
   },
@@ -177,21 +218,13 @@ const CHECK_FAMILIES: readonly CheckFamily[] = [
     shortLabel: "Reputation",
     group: "Network",
   },
-  {
-    id: "active-probes",
-    label:
-      "XSS, SQLi, SSTI, command injection, open redirect, CORS, HTTP methods & host-header probes",
-    shortLabel: "Active probing",
-    group: "Active probing (writes to target)",
-  },
 ];
 
-/** Categories that must never be on by default: unlike every other check
- *  family, these submit real requests to the target rather than only
- *  reading its responses. Excluded from "Enable all" and from the initial
- *  checked state, and only ever sent to the API as an explicit inclusion
- *  in `scanners`, never implied by an omitted filter. */
-const OPT_IN_FAMILIES = new Set<Category>(["active-probes"]);
+/** Copy shown above the nine active-probe toggles. These submit real
+ *  requests to the target rather than only reading its responses, so they are
+ *  their own opt-in group (never in CHECK_FAMILIES, never on by default) and
+ *  the API holds every one of them to the verified-domain-ownership gate. */
+const ACTIVE_PROBE_GROUP = "Active probing (writes to target)";
 
 export interface ScanFormProbe {
   id: ServiceProbe;
@@ -201,7 +234,10 @@ export interface ScanFormProbe {
 export interface ScanFormPayload {
   url: string;
   mode: ScanMode;
-  scanners?: Category[];
+  /** Selected check-family category ids plus any `active-probes:<id>` probe
+   *  selectors (see lib/scanner/active-probe-catalog.ts). String-typed rather
+   *  than `Category[]` because the probe selectors are not categories. */
+  scanners?: string[];
   probes: ScanFormProbe[];
   /** Ephemeral login material for this one scan, present only when the
    *  "Sign in first" section is open and filled in. See
@@ -368,13 +404,16 @@ export function ScanForm({
   const [enabledFamilies, setEnabledFamilies] = useState<Set<Category>>(
     () =>
       new Set(
-        CHECK_FAMILIES.map((f) => f.id).filter((id) =>
-          OPT_IN_FAMILIES.has(id)
-            ? getQueryParam(`family_${id}`) === "1"
-            : getQueryParam(`family_${id}`) !== "0",
+        CHECK_FAMILIES.map((f) => f.id).filter(
+          (id) => getQueryParam(`family_${id}`) !== "0",
         ),
       ),
   );
+  // Which of the nine active probes are selected. Opt-in and off by default
+  // (like service probes), so the seed is empty unless the URL names some.
+  const [selectedActiveProbes, setSelectedActiveProbes] = useState<
+    Set<ActiveProbeId>
+  >(() => new Set(parseActiveProbeIds(getQueryParam("active_probes"))));
   const [scannersOpen, setScannersOpen] = useState(false);
   const [probesOpen, setProbesOpen] = useState(false);
 
@@ -445,9 +484,7 @@ export function ScanForm({
     [enabledFamilies, autoDisabled],
   );
   const totalFamilies = CHECK_FAMILIES.length;
-  const defaultFamilyCount = CHECK_FAMILIES.filter(
-    (f) => !OPT_IN_FAMILIES.has(f.id),
-  ).length;
+  const activeProbeCount = selectedActiveProbes.size;
 
   useEffect(() => {
     // scanner: always set ?mode=... so the URL reflects the current
@@ -457,6 +494,7 @@ export function ScanForm({
     setQueryParams({
       mode,
       probes: serializeProbesToQuery(probes),
+      active_probes: serializeActiveProbeIds(selectedActiveProbes),
     });
     for (const family of CHECK_FAMILIES) {
       setQueryParam(
@@ -464,10 +502,19 @@ export function ScanForm({
         enabledFamilies.has(family.id) ? null : "0",
       );
     }
-  }, [mode, probes, enabledFamilies]);
+  }, [mode, probes, enabledFamilies, selectedActiveProbes]);
 
   function toggleFamily(id: Category) {
     setEnabledFamilies((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleActiveProbe(id: ActiveProbeId) {
+    setSelectedActiveProbes((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -502,13 +549,7 @@ export function ScanForm({
   }
 
   function enableAllFamilies() {
-    setEnabledFamilies(
-      new Set(
-        CHECK_FAMILIES.map((f) => f.id).filter(
-          (id) => !OPT_IN_FAMILIES.has(id),
-        ),
-      ),
-    );
+    setEnabledFamilies(new Set(CHECK_FAMILIES.map((f) => f.id)));
   }
 
   function resetAllFamilies() {
@@ -525,17 +566,23 @@ export function ScanForm({
     const familyList = CHECK_FAMILIES.map((f) => f.id).filter(
       (id) => enabledFamilies.has(id) && !autoDisabled.has(id),
     );
-    // Omitting `scanners` means "run every default category" server-side
-    // (see async-checks.ts's buildBranches), which never includes an
-    // OPT_IN_FAMILIES member. So this can only take the shortcut of
-    // omitting the filter when every non-opt-in family is selected AND no
-    // opt-in family is -- if active-probes is checked, the explicit list
-    // is the only way to actually tell the server to run it.
-    const includesOptIn = familyList.some((id) => OPT_IN_FAMILIES.has(id));
-    const scanners =
-      !includesOptIn && familyList.length === defaultFamilyCount
+    // Each selected active probe rides in `scanners` as its own
+    // `active-probes:<id>` selector, so the engine runs exactly the probes
+    // picked (see lib/scanner/active-probe-catalog.ts). These are opt-in and
+    // never implied by an omitted filter.
+    const activeProbeSelectors = ACTIVE_PROBE_IDS.filter((id) =>
+      selectedActiveProbes.has(id),
+    ).map(activeProbeScanner);
+    // Omitting `scanners` means "run every default category" server-side (see
+    // async-checks.ts's buildBranches), which never includes any active
+    // probe. So the filter can only be omitted when every family is enabled
+    // AND no active probe is selected -- any active-probe pick needs an
+    // explicit list to tell the server to run it.
+    const scanners: string[] | undefined =
+      activeProbeSelectors.length === 0 &&
+      familyList.length === CHECK_FAMILIES.length
         ? undefined
-        : familyList;
+        : [...familyList, ...activeProbeSelectors];
     onScan({
       url: normalizeInput(url),
       mode,
@@ -594,10 +641,19 @@ export function ScanForm({
     targetNote =
       "Plain HTTP target. Certificate and TLS checks are skipped for this run.";
   } else if (trimmedUrl && looksLikeDomain(trimmedUrl)) {
+    const extras: string[] = [];
+    if (probes.length > 0) {
+      extras.push(
+        `${probes.length} service ${probes.length === 1 ? "probe" : "probes"}`,
+      );
+    }
+    if (activeProbeCount > 0) {
+      extras.push(
+        `${activeProbeCount} active ${activeProbeCount === 1 ? "probe" : "probes"}`,
+      );
+    }
     targetNote = `${effectiveFamilies} of ${totalFamilies} check families will run${
-      probes.length > 0
-        ? `, plus ${probes.length} service ${probes.length === 1 ? "probe" : "probes"}.`
-        : "."
+      extras.length > 0 ? `, plus ${extras.join(" and ")}.` : "."
     }`;
   }
 
@@ -717,16 +773,22 @@ export function ScanForm({
                     disabled={isScanning}
                     className={cn(
                       "h-11 shrink-0 gap-1.5 bg-transparent px-3 text-sm",
-                      !allFamiliesSelected && "border-primary/40 text-primary",
+                      (!allFamiliesSelected || activeProbeCount > 0) &&
+                        "border-primary/40 text-primary",
                       FOCUS_RING,
                     )}
-                    aria-label={`Check families, ${effectiveFamilies} of ${totalFamilies} enabled`}
+                    aria-label={`Check families, ${effectiveFamilies} of ${totalFamilies} enabled${
+                      activeProbeCount > 0
+                        ? `, plus ${activeProbeCount} active ${activeProbeCount === 1 ? "probe" : "probes"}`
+                        : ""
+                    }`}
                   >
                     <ListFilter aria-hidden className="h-4 w-4" />
                     <span className="font-mono tabular-nums">
                       {allFamiliesSelected
                         ? "All"
                         : `${effectiveFamilies}/${totalFamilies}`}
+                      {activeProbeCount > 0 ? ` +${activeProbeCount}` : ""}
                     </span>
                   </Button>
                 </PopoverTrigger>
@@ -762,9 +824,10 @@ export function ScanForm({
                   </div>
                   <div className="max-h-72 space-y-0.5 overflow-y-auto p-1">
                     {CHECK_FAMILIES.map(
-                      ({ id, label, shortLabel, group, requiresTls }, i) => {
+                      ({ id, shortLabel, group, requiresTls }, i) => {
                         const autoOff = requiresTls && autoDisabled.has(id);
                         const active = !autoOff && enabledFamilies.has(id);
+                        const blurb = CATEGORY_META[id]?.blurb ?? "";
                         const newGroup =
                           i === 0 || CHECK_FAMILIES[i - 1].group !== group;
                         return (
@@ -793,19 +856,23 @@ export function ScanForm({
                                 FOCUS_RING,
                               )}
                             >
-                              <span
-                                className={cn(
-                                  "text-xs font-medium",
-                                  active
-                                    ? "text-foreground"
-                                    : "text-muted-foreground",
-                                  autoOff && "line-through",
-                                )}
-                              >
-                                {shortLabel}
-                                <span className="ml-1 hidden font-normal text-muted-foreground/70 sm:inline">
-                                  {label.replace(shortLabel, "").trim()}
+                              <span className="flex min-w-0 flex-col gap-0.5">
+                                <span
+                                  className={cn(
+                                    "text-xs font-medium",
+                                    active
+                                      ? "text-foreground"
+                                      : "text-muted-foreground",
+                                    autoOff && "line-through",
+                                  )}
+                                >
+                                  {shortLabel}
                                 </span>
+                                {blurb && (
+                                  <span className="text-[11px] font-normal leading-snug text-muted-foreground/70">
+                                    {blurb}
+                                  </span>
+                                )}
                               </span>
                               <span
                                 aria-hidden
@@ -829,6 +896,66 @@ export function ScanForm({
                         );
                       },
                     )}
+
+                    {/* Active probing: nine independent opt-in probes. Unlike
+                        the families above, each submits a real request to the
+                        target, so the API holds every one to the verified
+                        domain-ownership gate. */}
+                    <p className="px-2 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wide text-primary/70">
+                      {ACTIVE_PROBE_GROUP}
+                    </p>
+                    <p className="px-2 pb-1 text-[11px] leading-snug text-muted-foreground/70">
+                      Each sends real payloads to the target and needs a
+                      verified domain. Off by default.
+                    </p>
+                    {ACTIVE_PROBE_OPTIONS.map(({ id, label, description }) => {
+                      const active = selectedActiveProbes.has(id);
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => toggleActiveProbe(id)}
+                          disabled={isScanning}
+                          aria-pressed={active}
+                          className={cn(
+                            "group relative flex w-full items-center gap-2 rounded px-2 py-1.5 text-left transition-colors",
+                            active && "bg-primary/5 hover:bg-primary/10",
+                            !active && "hover:bg-muted/60",
+                            isScanning && "cursor-not-allowed opacity-50",
+                            FOCUS_RING,
+                          )}
+                        >
+                          <span className="flex min-w-0 flex-col gap-0.5">
+                            <span
+                              className={cn(
+                                "text-xs font-medium",
+                                active
+                                  ? "text-foreground"
+                                  : "text-muted-foreground",
+                              )}
+                            >
+                              {label}
+                            </span>
+                            <span className="text-[11px] font-normal leading-snug text-muted-foreground/70">
+                              {description}
+                            </span>
+                          </span>
+                          <span
+                            aria-hidden
+                            className={cn(
+                              "ml-auto flex h-3.5 w-3.5 shrink-0 items-center justify-center self-start rounded border",
+                              active
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-border bg-transparent group-hover:border-muted-foreground/50",
+                            )}
+                          >
+                            {active && (
+                              <Check className="h-2.5 w-2.5" strokeWidth={3} />
+                            )}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </PopoverContent>
               </Popover>
@@ -872,7 +999,7 @@ export function ScanForm({
                   </div>
                   <div className="max-h-72 space-y-0.5 overflow-y-auto p-1">
                     {SERVICE_PROBES.map(
-                      ({ id, label, defaultPort, altPorts }) => {
+                      ({ id, label, description, defaultPort, altPorts }) => {
                         const probe = probes.find((p) => p.id === id);
                         const active = !!probe;
                         return (
@@ -896,17 +1023,22 @@ export function ScanForm({
                                 FOCUS_RING,
                               )}
                             >
-                              <span
-                                className={cn(
-                                  "text-xs font-medium",
-                                  active
-                                    ? "text-foreground"
-                                    : "text-muted-foreground",
-                                )}
-                              >
-                                {label}
+                              <span className="flex min-w-0 flex-col gap-0.5">
+                                <span
+                                  className={cn(
+                                    "text-xs font-medium",
+                                    active
+                                      ? "text-foreground"
+                                      : "text-muted-foreground",
+                                  )}
+                                >
+                                  {label}
+                                </span>
+                                <span className="text-[11px] font-normal leading-snug text-muted-foreground/70">
+                                  {description}
+                                </span>
                               </span>
-                              <span className="ml-auto mr-1 font-mono text-[11px] text-muted-foreground/70">
+                              <span className="ml-auto mr-1 shrink-0 self-start font-mono text-[11px] text-muted-foreground/70">
                                 :{defaultPort}
                               </span>
                               <span

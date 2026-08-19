@@ -39,6 +39,7 @@ import {
 import { getSetting } from "@/lib/config/runtime-config";
 import { validateScanTarget } from "@/lib/scanner/safe-fetch";
 import { isUrlOwnedByUser } from "@/lib/domains/scope";
+import { requestsActiveProbing } from "@/lib/scanner/active-probe-catalog";
 import { checkConcurrentScanLimit } from "@/lib/rate-limiting/concurrent-scans";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { resolveScanIsPublic } from "@/lib/scanner/scan-privacy";
@@ -321,7 +322,7 @@ export async function POST(request: NextRequest) {
     // (and in addition to) the SSRF/access-rules safety checks above,
     // which apply regardless of which categories are requested.
     if (
-      selectedScanners?.includes("active-probes") &&
+      requestsActiveProbing(selectedScanners) &&
       !(await isUrlOwnedByUser(normalizedUrl, authedUserId))
     ) {
       return NextResponse.json(
@@ -347,7 +348,8 @@ export async function POST(request: NextRequest) {
       normalizedUrl,
       selectedScanners,
     );
-    const categoriesTotal = plannedSync.length + plannedAsync.length;
+    const categoriesTotal =
+      plannedSync.length + plannedAsync.length + requestedProbes.length;
 
     // Public unless the request explicitly says otherwise, or (when it
     // says nothing) the account's own "scans are private by default"

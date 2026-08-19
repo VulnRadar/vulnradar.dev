@@ -16,6 +16,7 @@ import {
   getTeamResourceAccess,
   getAssignableTeamIds,
 } from "@/lib/auth/team-resource-access";
+import { resolveScanRow } from "@/lib/history/resolve-scan";
 
 export async function GET(
   request: NextRequest,
@@ -89,19 +90,11 @@ export async function GET(
 
   const { id } = await params;
 
-  // First, get the scan and its owner
-  const scanResult = await pool.query(
-    `SELECT id, url, summary, findings, findings_count, duration, scanned_at, user_id, response_headers, notes, result_meta, authenticated, is_public
-     FROM scan_history
-     WHERE id = $1`,
-    [id],
-  );
-
-  if (scanResult.rows.length === 0) {
+  // Resolve the opaque public_id (or a legacy numeric id) to the scan row.
+  const scan = await resolveScanRow(id);
+  if (!scan) {
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }
-
-  const scan = scanResult.rows[0];
   // checksRun, dangerScore, engineConfidence, incomplete and (for crawl
   // scans) crawl all live in here -- see lib/scanner/scan-jobs.ts's
   // finalizeScanSuccess, the same place app/api/v3/scan/status/[id]/route.ts
@@ -114,7 +107,7 @@ export async function GET(
   // sees the owner's tags, same as they see the owner's notes.
   const tagsResult = await pool.query(
     `SELECT tag, source FROM scan_tags WHERE scan_id = $1 AND user_id = $2 ORDER BY source, tag`,
-    [id, scan.user_id],
+    [scan.id, scan.user_id],
   );
   const tags = tagsResult.rows;
 
@@ -126,6 +119,11 @@ export async function GET(
     }
 
     return NextResponse.json({
+      // Internal numeric id: the opaque public_id addresses this route, but
+      // per-finding feedback (POST /api/v3/scan/feedback) keys its ownership
+      // check and score-recompute on the numeric primary key, so an owner
+      // viewing this scan needs it to mark a finding a false positive.
+      id: scan.id,
       url: scan.url,
       scannedAt: scan.scanned_at,
       duration: scan.duration,
@@ -158,6 +156,7 @@ export async function GET(
 
     // They're on the same team, allow access but don't show delete option
     return NextResponse.json({
+      id: scan.id,
       url: scan.url,
       scannedAt: scan.scanned_at,
       duration: scan.duration,
@@ -269,14 +268,10 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid teamId" }, { status: 400 });
   }
 
-  const scanRes = await pool.query<{
-    user_id: number;
-    team_id: number | null;
-  }>("SELECT user_id, team_id FROM scan_history WHERE id = $1", [id]);
-  if (scanRes.rows.length === 0) {
+  const scan = await resolveScanRow(id);
+  if (!scan) {
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }
-  const scan = scanRes.rows[0];
 
   // anti-enumeration: a caller with no relationship to this scan at all
   // (not the owner, not a co-member of its team) gets the same 404 as a
@@ -340,7 +335,7 @@ export async function PATCH(
     setClauses.push(`team_id = $${values.length + 1}`);
     values.push(teamId);
   }
-  values.push(id);
+  values.push(scan.id);
 
   const result = await pool.query(
     `UPDATE scan_history SET ${setClauses.join(", ")}
@@ -363,7 +358,7 @@ export async function PATCH(
   // scan wasn't the current source (already superseded, or never public).
   if (hasIsPublic && isPublic === false) {
     await pool.query(`DELETE FROM host_reputation WHERE source_scan_id = $1`, [
-      id,
+      scan.id,
     ]);
   }
 
@@ -453,14 +448,10 @@ export async function DELETE(
 
   const { id } = await params;
 
-  const scanRes = await pool.query<{
-    user_id: number;
-    team_id: number | null;
-  }>("SELECT user_id, team_id FROM scan_history WHERE id = $1", [id]);
-  if (scanRes.rows.length === 0) {
+  const scan = await resolveScanRow(id);
+  if (!scan) {
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }
-  const scan = scanRes.rows[0];
 
   const access = await getTeamResourceAccess(
     authedUserId,
@@ -481,7 +472,7 @@ export async function DELETE(
 
   const result = await pool.query(
     `DELETE FROM scan_history WHERE id = $1 RETURNING id`,
-    [id],
+    [scan.id],
   );
 
   if (result.rows.length === 0) {

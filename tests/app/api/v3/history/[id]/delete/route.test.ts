@@ -94,7 +94,8 @@ describe("DELETE /api/v3/history/[id]/delete", () => {
     expect(sql).toContain(
       "DELETE FROM scan_history WHERE id = $1 AND user_id = $2",
     );
-    expect(sqlParams).toEqual(["55", 7]);
+    // Resolved to the numeric primary key (55), not the raw param.
+    expect(sqlParams).toEqual([55, 7]);
   });
 
   it("returns 500 when the DELETE itself fails", async () => {

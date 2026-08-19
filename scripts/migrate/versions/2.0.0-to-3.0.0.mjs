@@ -835,6 +835,22 @@ export const upgrade = {
       column: "share_publicly_listed",
       definition: "BOOLEAN NOT NULL DEFAULT false",
     },
+    // Opaque, non-enumerable handle the scan-history URLs and API resolve by
+    // instead of the sequential SERIAL id (see lib/history/resolve-scan.ts).
+    // Same volatile-DEFAULT trick as webhooks.secret: ADD COLUMN evaluates
+    // gen_random_uuid() once per existing row (a table rewrite, since it's
+    // volatile), back-filling every pre-existing scan with its own distinct
+    // 32-hex-char value, and fills every new row automatically without any
+    // insert site setting it. The numeric id stays the primary key -- four
+    // FKs still reference it, unchanged. The UNIQUE index is created in
+    // dataUpdates below (not inline UNIQUE) so it shares the exact index name
+    // instrumentation.ts uses, keeping the boot path and this path idempotent
+    // against each other.
+    {
+      table: "scan_history",
+      column: "public_id",
+      definition: "TEXT DEFAULT (replace(gen_random_uuid()::text, '-', ''))",
+    },
     // Account-level default for the column above -- see this file's
     // header comment. Defaults to true, unlike scans_private_by_default's
     // false, per the product decision for this feature.
@@ -1001,6 +1017,23 @@ export const upgrade = {
         "Backfill pre_staff_plan + plan='pro_supporter' for every existing " +
         "admin/moderator/support account on free/core/pro (idempotent, " +
         "guarded by pre_staff_plan IS NULL)",
+      destructive: false,
+    },
+    // scan_history.public_id (added above): belt-and-suspenders backfill for
+    // any row a prior partial run could have left NULL (the volatile DEFAULT
+    // on ADD COLUMN already fills every row created before/after it), then the
+    // UNIQUE index -- same index NAME instrumentation.ts's boot path uses, so
+    // whichever path runs first, the other's CREATE ... IF NOT EXISTS no-ops
+    // instead of building a redundant second unique index.
+    {
+      sql: "UPDATE scan_history SET public_id = replace(gen_random_uuid()::text, '-', '') WHERE public_id IS NULL",
+      label:
+        "Backfill scan_history.public_id for any row still missing one (idempotent)",
+      destructive: false,
+    },
+    {
+      sql: "CREATE UNIQUE INDEX IF NOT EXISTS idx_scan_history_public_id ON scan_history(public_id)",
+      label: "Create the unique index on scan_history.public_id",
       destructive: false,
     },
     // scan_tags.source's CHECK constraint above only reaches a database
@@ -1205,6 +1238,7 @@ export const downgrade = {
     { table: "webhooks", column: "secret" },
     { table: "scan_tags", column: "source" },
     { table: "scan_history", column: "share_publicly_listed" },
+    { table: "scan_history", column: "public_id" },
     { table: "users", column: "share_publicly_listed_by_default" },
     { table: "users", column: "pre_staff_plan" },
     { table: "users", column: "ai_credit_balance" },
@@ -1217,6 +1251,10 @@ export const downgrade = {
     // scan_history.status/is_public above already CASCADE-drops this
     // partial index, but DROP INDEX IF EXISTS is a safe no-op either way.
     "idx_scan_history_url_public_completed",
+    // Belt-and-suspenders -- dropping scan_history.public_id above already
+    // CASCADE-drops its unique index, but DROP INDEX IF EXISTS is a safe
+    // no-op either way.
+    "idx_scan_history_public_id",
   ],
 
   dataUpdates: [

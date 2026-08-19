@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
-import { sendEmail, teamInviteEmail } from "@/lib/email/email";
+import {
+  sendEmail,
+  teamInviteEmail,
+  teamMemberRemovedEmail,
+  teamRoleChangedEmail,
+} from "@/lib/email/email";
+import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import {
   ERROR_MESSAGES,
   TEAM_ROLES,
@@ -364,9 +370,149 @@ export async function DELETE(request: Request) {
     );
   }
 
+  // Look up the team name and the removed member's address before the delete
+  // so we can tell them they lost access. The users row survives (only the
+  // membership is removed), so this could run after too, but reading it here
+  // keeps the notify block self-contained.
+  const [teamRow, removedUser] = await Promise.all([
+    pool.query<{ name: string }>("SELECT name FROM teams WHERE id = $1", [
+      teamId,
+    ]),
+    pool.query<{ email: string }>("SELECT email FROM users WHERE id = $1", [
+      userId,
+    ]),
+  ]);
+
   await pool.query(
     "DELETE FROM team_members WHERE team_id = $1 AND user_id = $2",
     [teamId, userId],
   );
+
+  // Notify the removed member. Gated on the team_changes preference and
+  // best-effort: a mail failure must never fail the removal itself.
+  const teamName = teamRow.rows[0]?.name;
+  const removedEmail = removedUser.rows[0]?.email;
+  if (teamName && removedEmail) {
+    const removedUserId = Number(userId);
+    setImmediate(() => {
+      sendNotificationEmail({
+        userId: removedUserId,
+        userEmail: removedEmail,
+        type: "team_changes",
+        emailContent: teamMemberRemovedEmail(teamName),
+      }).catch((err) =>
+        console.error("Team member removed email failed:", err),
+      );
+    });
+  }
+
   return NextResponse.json({ success: true });
+}
+
+// Change a member's role
+export async function PATCH(request: Request) {
+  const session = await getSession();
+  if (!session)
+    return NextResponse.json(
+      { error: ERROR_MESSAGES.UNAUTHORIZED },
+      { status: 401 },
+    );
+
+  const { teamId, userId, role } = await request.json();
+  if (!teamId || !userId || !role)
+    return NextResponse.json(
+      { error: "teamId, userId and role required." },
+      { status: 400 },
+    );
+
+  // Owner is never assignable through here (there is exactly one owner, set
+  // at team creation) -- same derivation the invite path uses, so a new role
+  // added to TEAM_ROLES becomes assignable automatically.
+  const ASSIGNABLE_TEAM_ROLES: string[] = Object.values(TEAM_ROLES).filter(
+    (r) => r !== TEAM_ROLES.OWNER,
+  );
+  if (!ASSIGNABLE_TEAM_ROLES.includes(role)) {
+    return NextResponse.json(
+      { error: `Invalid role. Use one of: ${ASSIGNABLE_TEAM_ROLES.join(", ")}.` },
+      { status: 400 },
+    );
+  }
+
+  // Caller must hold manage_members on this team.
+  const memberRes = await pool.query(
+    "SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2",
+    [teamId, session.userId],
+  );
+  if (
+    memberRes.rows.length === 0 ||
+    !hasTeamPermission(memberRes.rows[0].role, "manage_members")
+  ) {
+    return NextResponse.json(
+      { error: "You don't have permission to change roles." },
+      { status: 403 },
+    );
+  }
+
+  // Changing your own role through here would let an admin lock themselves
+  // out of manage_members mid-request; keep it simple and disallow it.
+  if (Number(userId) === session.userId) {
+    return NextResponse.json(
+      { error: "You can't change your own role." },
+      { status: 400 },
+    );
+  }
+
+  const targetRes = await pool.query<{
+    role: string;
+    email: string;
+    name: string | null;
+  }>(
+    `SELECT tm.role, u.email, u.name
+     FROM team_members tm JOIN users u ON u.id = tm.user_id
+     WHERE tm.team_id = $1 AND tm.user_id = $2`,
+    [teamId, userId],
+  );
+  if (targetRes.rows.length === 0) {
+    return NextResponse.json({ error: "Not a team member." }, { status: 404 });
+  }
+  const oldRole = targetRes.rows[0].role;
+  if (oldRole === TEAM_ROLES.OWNER) {
+    return NextResponse.json(
+      { error: "Cannot change the team owner's role." },
+      { status: 400 },
+    );
+  }
+  if (oldRole === role) {
+    // No-op: nothing to write, nothing to notify.
+    return NextResponse.json({ success: true, role });
+  }
+
+  await pool.query(
+    "UPDATE team_members SET role = $1 WHERE team_id = $2 AND user_id = $3",
+    [role, teamId, userId],
+  );
+
+  // Notify the member their role changed. Gated on the team_changes
+  // preference and best-effort so a mail failure never fails the change.
+  const teamRow = await pool.query<{ name: string }>(
+    "SELECT name FROM teams WHERE id = $1",
+    [teamId],
+  );
+  const teamName = teamRow.rows[0]?.name;
+  const targetEmail = targetRes.rows[0].email;
+  if (teamName && targetEmail) {
+    const targetUserId = Number(userId);
+    setImmediate(() => {
+      sendNotificationEmail({
+        userId: targetUserId,
+        userEmail: targetEmail,
+        type: "team_changes",
+        emailContent: teamRoleChangedEmail(teamName, oldRole, role),
+      }).catch((err) =>
+        console.error("Team role changed email failed:", err),
+      );
+    });
+  }
+
+  return NextResponse.json({ success: true, role });
 }

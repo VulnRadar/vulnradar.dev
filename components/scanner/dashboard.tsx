@@ -34,7 +34,9 @@ interface DashboardData {
   totalScans: number;
   uniqueSites: number;
   recentScans: {
-    id: number;
+    // Opaque public_id (the dashboard API aliases public_id AS id), carried
+    // straight into the ?scan= link the History tab resolves.
+    id: string;
     url: string;
     summary: {
       critical?: number;

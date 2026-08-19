@@ -9,39 +9,41 @@ import {
   SMTP_USER,
   SMTP_PASS,
   SMTP_FROM,
-  BRANDING_PRIMARY_COLOR,
 } from "@/lib/config/constants";
 import { STAFF_INVITE_EXPIRY_DAYS } from "@/lib/config/constants";
+import { BRAND } from "@/lib/config/brand";
 
+// Named for the legacy call sites throughout this file. The values come from
+// lib/config/brand.ts (the single brand source of truth for email) rather than
+// being hardcoded here, so an email's colours can't drift from the product.
 const COLORS = {
-  BG_DARK: "#0a0e13",
-  BG_CARD: "#0f172a",
-  BG_SECTION: "#1e293b",
-  BG_INFO: "#1e3a5f",
-  BG_SUCCESS: "#052e16",
-  BG_WARNING: "#422006",
-  BG_DANGER: "#450a0a",
-  BORDER: "#1e293b",
-  BORDER_SECTION: "#334155",
-  TEXT_PRIMARY: "#f8fafc",
-  TEXT_SECONDARY: "#94a3b8",
-  TEXT_MUTED: "#64748b",
-  TEXT_DARK: "#475569",
-  // Brand color: blue to match app primary
-  ACCENT_BLUE: BRANDING_PRIMARY_COLOR,
-  ACCENT_BLUE_LIGHT: "#93c5fd",
-  ACCENT_BLUE_PALE: "#bfdbfe",
-  ACCENT_GREEN: "#22c55e",
-  ACCENT_GREEN_LIGHT: "#86efac",
-  ACCENT_GREEN_PALE: "#bbf7d0",
-  ACCENT_GREEN_TEXT: "#10b981",
-  ACCENT_YELLOW: "#f59e0b",
-  ACCENT_YELLOW_LIGHT: "#fbbf24",
-  ACCENT_YELLOW_PALE: "#fef3c7",
-  ACCENT_RED: "#dc2626",
-  ACCENT_RED_LIGHT: "#fca5a5",
-  ACCENT_RED_PALE: "#fecaca",
-  WHITE: "#ffffff",
+  BG_DARK: BRAND.bg,
+  BG_CARD: BRAND.surface,
+  BG_SECTION: BRAND.surfaceRaised,
+  BG_INFO: BRAND.infoBg,
+  BG_SUCCESS: BRAND.successBg,
+  BG_WARNING: BRAND.warningBg,
+  BG_DANGER: BRAND.dangerBg,
+  BORDER: BRAND.border,
+  BORDER_SECTION: BRAND.borderStrong,
+  TEXT_PRIMARY: BRAND.text,
+  TEXT_SECONDARY: BRAND.textMuted,
+  TEXT_MUTED: BRAND.textFaint,
+  TEXT_DARK: BRAND.textDim,
+  ACCENT_BLUE: BRAND.primary,
+  ACCENT_BLUE_LIGHT: BRAND.primaryLight,
+  ACCENT_BLUE_PALE: BRAND.primaryPale,
+  ACCENT_GREEN: BRAND.success,
+  ACCENT_GREEN_LIGHT: BRAND.successLight,
+  ACCENT_GREEN_PALE: BRAND.successPale,
+  ACCENT_GREEN_TEXT: BRAND.successText,
+  ACCENT_YELLOW: BRAND.warning,
+  ACCENT_YELLOW_LIGHT: BRAND.warningLight,
+  ACCENT_YELLOW_PALE: BRAND.warningPale,
+  ACCENT_RED: BRAND.danger,
+  ACCENT_RED_LIGHT: BRAND.dangerLight,
+  ACCENT_RED_PALE: BRAND.dangerPale,
+  WHITE: BRAND.onPrimary,
 } as const;
 
 // infra: pin SMTP to TLS. The transport used `secure: false` without
@@ -103,74 +105,70 @@ function escapeHtml(value: string): string {
 }
 
 function layout(content: string, unsubscribeToken?: string): string {
+  const hostname = new URL(APP_URL).hostname;
+  // Email clients don't resolve root-relative asset paths, so an absolute URL
+  // is required for the logo to load at all.
+  const logoSrc = /^https?:\/\//i.test(LOGO_URL)
+    ? LOGO_URL
+    : `${APP_URL}${LOGO_URL}`;
   const unsubscribeUrl = unsubscribeToken
     ? `${APP_URL}/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`
     : null;
-  const footerLinks = unsubscribeUrl
-    ? `<p style="margin: 0 0 12px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED}; line-height: 1.6;">
-        <a href="${APP_URL}" style="color: ${COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">${new URL(APP_URL).hostname}</a>
-      </p>
-      <table role="presentation" cellpadding="0" cellspacing="0" style="margin: 0 auto 8px auto;">
+
+  const preferencesButton = unsubscribeUrl
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto 18px auto;">
         <tr>
-          <td align="center">
-            <a href="${unsubscribeUrl}" style="display: inline-block; padding: 8px 20px; background-color: ${COLORS.ACCENT_BLUE}; color: ${COLORS.WHITE}; font-size: 12px; font-weight: 600; text-decoration: none; border-radius: 6px; letter-spacing: 0.2px;">Manage Email Preferences</a>
+          <td bgcolor="${COLORS.BG_SECTION}" style="border-radius: 6px;">
+            <a href="${unsubscribeUrl}" style="display: inline-block; padding: 8px 18px; background-color: ${COLORS.BG_SECTION}; border: 1px solid ${COLORS.BORDER_SECTION}; color: ${COLORS.TEXT_SECONDARY}; font-size: 12px; font-weight: 600; text-decoration: none; border-radius: 6px;">Manage email preferences</a>
           </td>
         </tr>
       </table>`
-    : `<p style="margin: 0 0 8px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED}; line-height: 1.6;">
-        <a href="${APP_URL}" style="color: ${COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">${new URL(APP_URL).hostname}</a>
-      </p>`;
+    : "";
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="supported-color-schemes" content="dark light" />
   <title>${APP_NAME}</title>
+  <style>
+    /* Progressive enhancement only; every element also carries inline styles. */
+    @media only screen and (max-width: 600px) {
+      .vr-shell { padding: 24px 12px !important; }
+      .vr-card { padding: 26px 20px !important; }
+    }
+    a { color: ${COLORS.ACCENT_BLUE_LIGHT}; }
+  </style>
 </head>
-<body style="margin: 0; padding: 0; background-color: ${COLORS.BG_DARK}; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: #e5e7eb;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: ${COLORS.BG_DARK}; padding: 40px 20px;">
+<body style="margin: 0; padding: 0; background-color: ${COLORS.BG_DARK}; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: ${COLORS.TEXT_PRIMARY};">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: ${COLORS.BG_DARK};">
     <tr>
-      <td align="center">
+      <td align="center" class="vr-shell" style="padding: 40px 20px;">
         <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; width: 100%;">
           <tr>
-            <td style="padding: 0 0 20px 0; text-align: center;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td align="center" style="padding-bottom: 12px;">
-                    <img src="${LOGO_URL}" alt="${APP_NAME}" width="48" height="48" style="display: block; margin: 0 auto;" />
-                  </td>
-                </tr>
-                <tr>
-                  <td align="center">
-                    <h1 style="margin: 0; font-size: 24px; font-weight: 700; color: ${COLORS.TEXT_PRIMARY}; letter-spacing: -0.3px;">${APP_NAME}</h1>
-                  </td>
-                </tr>
-              </table>
+            <td align="center" style="padding: 0 0 22px 0;">
+              <a href="${APP_URL}" style="text-decoration: none; color: ${COLORS.TEXT_PRIMARY};">
+                <img src="${logoSrc}" alt="" width="30" height="30" style="display: inline-block; vertical-align: middle; border: 0;" />
+                <span style="display: inline-block; vertical-align: middle; margin-left: 9px; font-size: 19px; font-weight: 700; letter-spacing: -0.2px; color: ${COLORS.TEXT_PRIMARY};">${APP_NAME}</span>
+              </a>
             </td>
           </tr>
           <tr>
-            <td style="padding: 0 0 24px 0;">
-              <div style="height: 2px; background: linear-gradient(90deg, ${COLORS.ACCENT_BLUE}, ${COLORS.ACCENT_BLUE_LIGHT}); border-radius: 999px;"></div>
-            </td>
-          </tr>
-          <tr>
-            <td style="background-color: ${COLORS.BG_CARD}; border: 1px solid ${COLORS.BORDER}; border-radius: 12px; padding: 32px 28px;">
+            <td class="vr-card" style="background-color: ${COLORS.BG_CARD}; border: 1px solid ${COLORS.BORDER}; border-top: 3px solid ${COLORS.ACCENT_BLUE}; border-radius: 12px; padding: 34px 32px;">
               ${content}
             </td>
           </tr>
           <tr>
-            <td style="padding: 28px 20px 0 20px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td style="text-align: center;">
-                    ${footerLinks}
-                    <p style="margin: 0; font-size: 11px; color: ${COLORS.TEXT_DARK}; line-height: 1.5;">
-                      ${APP_NAME} - Web Vulnerability Scanner<br />
-                      This is an automated message. Please do not reply directly.
-                    </p>
-                  </td>
-                </tr>
-              </table>
+            <td style="padding: 26px 16px 0 16px; text-align: center;">
+              ${preferencesButton}
+              <p style="margin: 0 0 10px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED}; line-height: 1.6;">
+                You're getting this because you have a ${APP_NAME} account. Choose what we send you in your account settings, or reach the team at <a href="mailto:${SUPPORT_EMAIL}" style="color: ${COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">${SUPPORT_EMAIL}</a>.
+              </p>
+              <p style="margin: 0; font-size: 11px; color: ${COLORS.TEXT_DARK}; line-height: 1.5;">
+                ${APP_NAME}, web vulnerability scanner &middot; <a href="${APP_URL}" style="color: ${COLORS.TEXT_DARK}; text-decoration: underline;">${hostname}</a>
+              </p>
             </td>
           </tr>
         </table>
@@ -181,33 +179,154 @@ function layout(content: string, unsubscribeToken?: string): string {
 </html>`;
 }
 
-function securityDetailsBlock(details: SecurityAlertDetails): string {
-  return `
-    <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-      <p style="margin: 0 0 12px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED}; font-weight: 600;">Session Details</p>
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 13px; line-height: 1.8;">
-        <tr>
-          <td style="padding: 4px 0; width: 100px; color: ${COLORS.TEXT_SECONDARY};">IP Address</td>
-          <td style="padding: 4px 0; color: #f1f5f9; font-family: monospace;">${escapeHtml(details.ipAddress)}</td>
-        </tr>
-        <tr>
-          <td style="padding: 4px 0; width: 100px; color: ${COLORS.TEXT_SECONDARY};">Device</td>
-          <td style="padding: 4px 0; color: #f1f5f9; font-size: 12px;">${escapeHtml(details.userAgent.length > 80 ? details.userAgent.substring(0, 80) + "..." : details.userAgent)}</td>
-        </tr>
-      </table>
-    </div>
-  `;
+// NEW EMAIL PATTERN -- shared building blocks.
+//
+// The old templates all shared one tell: a rhetorical-question callout box
+// ("Why verify?", "Didn't do this?") plus platitude copy and emoji. These
+// helpers replace that with plain, specific pieces a template composes: a
+// heading, a lead paragraph, a real CTA button, a copy-paste fallback link, a
+// clean label/value detail block, and a prose note with an accent edge but no
+// question label. Converting a template means dropping the question boxes and
+// building it out of these instead. See emailVerificationEmail /
+// passwordResetEmail / scanCompleteEmail below for the reference conversions.
+
+function emailHeading(text: string): string {
+  return `<h1 style="margin: 0 0 12px 0; font-size: 21px; line-height: 1.3; font-weight: 700; color: ${COLORS.TEXT_PRIMARY}; letter-spacing: -0.2px;">${text}</h1>`;
 }
 
-function securityWarningBlock(): string {
+function emailLead(text: string): string {
+  return `<p style="margin: 0 0 24px 0; font-size: 15px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.65;">${text}</p>`;
+}
+
+function emailParagraph(text: string): string {
+  return `<p style="margin: 0 0 20px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.65;">${text}</p>`;
+}
+
+// Primary call to action. Left-aligned with the body copy on purpose: it reads
+// like a next step in a sentence, not a centered marketing banner.
+function emailButton(
+  href: string,
+  label: string,
+  bg: string = COLORS.ACCENT_BLUE,
+): string {
   return `
-    <div style="background-color: ${COLORS.BG_DANGER}; border-left: 3px solid ${COLORS.ACCENT_RED}; border-radius: 6px; padding: 14px 16px;">
-      <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_RED_LIGHT}; font-weight: 600;">Wasn't you?</p>
-      <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_RED_PALE}; line-height: 1.6;">
-        If you did not make this change, your account may be compromised. Please reset your password immediately and contact support at ${SUPPORT_EMAIL}
-      </p>
-    </div>
-  `;
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 4px 0 22px 0;">
+      <tr>
+        <td bgcolor="${bg}" style="border-radius: 8px;">
+          <a href="${href}" style="display: inline-block; padding: 13px 30px; background-color: ${bg}; color: ${COLORS.WHITE}; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;">${label}</a>
+        </td>
+      </tr>
+    </table>`;
+}
+
+// The "if the button doesn't work" fallback, as plain prose plus the raw URL.
+function emailFallbackLink(url: string): string {
+  return `
+    <p style="margin: 0 0 6px 0; font-size: 13px; color: ${COLORS.TEXT_MUTED}; line-height: 1.6;">Or paste this link into your browser:</p>
+    <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_BLUE_LIGHT}; word-break: break-all; line-height: 1.6; font-family: 'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace;">${url}</p>`;
+}
+
+// A quiet callout: an accent edge and prose, no bold question label. Use it for
+// the genuinely useful aside (expiry, "you can ignore this"), not a platitude.
+function emailNote(
+  text: string,
+  accent: string = COLORS.ACCENT_BLUE_LIGHT,
+): string {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 0 0 20px 0;">
+      <tr>
+        <td style="background-color: ${COLORS.BG_SECTION}; border-left: 3px solid ${accent}; border-radius: 6px; padding: 12px 16px; font-size: 13px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.65;">${text}</td>
+      </tr>
+    </table>`;
+}
+
+interface EmailDetailRow {
+  label: string;
+  value: string;
+  mono?: boolean;
+  color?: string;
+}
+
+// A surface panel of label/value rows. Replaces the ad-hoc grey card + inline
+// <table> each old template hand-rolled; callers pass already-escaped values.
+function emailDetailPanel(rows: EmailDetailRow[]): string {
+  const body = rows
+    .map((r, i) => {
+      const top =
+        i === 0 ? "" : `border-top: 1px solid ${COLORS.BORDER}; padding-top: 10px;`;
+      const gap = i === 0 ? "0" : "10px";
+      const mono = r.mono
+        ? "font-family: 'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace;"
+        : "";
+      return `
+        <tr>
+          <td style="padding: ${gap} 0 8px 0; ${top} color: ${COLORS.TEXT_MUTED}; font-size: 13px; width: 130px; vertical-align: top;">${r.label}</td>
+          <td style="padding: ${gap} 0 8px 0; ${top} color: ${r.color ?? COLORS.TEXT_PRIMARY}; font-size: 13px; word-break: break-word; ${mono}">${r.value}</td>
+        </tr>`;
+    })
+    .join("");
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin: 0 0 22px 0;">
+      ${body}
+    </table>`;
+}
+
+// Session details for a security notice, as a clean label/value panel. Callers
+// pass a `SecurityAlertDetails`; values are escaped here.
+function securityDetailsBlock(details: SecurityAlertDetails): string {
+  return emailDetailPanel([
+    { label: "IP address", value: escapeHtml(details.ipAddress), mono: true },
+    { label: "Device", value: escapeHtml(details.userAgent) },
+  ]);
+}
+
+// The "if this wasn't you" aside shared by the account-change notices. Prose in
+// a warning-accent note, no rhetorical question label.
+function securityWarningBlock(): string {
+  return emailNote(
+    `If this wasn't you, change your password and review your active sessions right away, then email <a href="mailto:${SUPPORT_EMAIL}" style="color: ${COLORS.ACCENT_YELLOW_LIGHT}; text-decoration: underline;">${SUPPORT_EMAIL}</a>.`,
+    COLORS.ACCENT_YELLOW_LIGHT,
+  );
+}
+
+// A one-time code, rendered big, centered, and letter-spaced so it's easy to
+// read off the screen and copy. The `text-indent` cancels the trailing gap
+// letter-spacing leaves after the last glyph, keeping the run visually centered.
+function emailCodeBlock(code: string): string {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 0 0 22px 0;">
+      <tr>
+        <td align="center" style="background-color: ${COLORS.BG_SECTION}; border: 1px solid ${COLORS.BORDER_SECTION}; border-radius: 10px; padding: 24px 16px;">
+          <div style="font-size: 34px; font-weight: 700; letter-spacing: 10px; text-indent: 10px; color: ${COLORS.ACCENT_BLUE_LIGHT}; font-family: 'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace;">${escapeHtml(code)}</div>
+        </td>
+      </tr>
+    </table>`;
+}
+
+// One severity pill: an outlined chip coloured from BRAND.severity. Empty when
+// the count is zero, so a chip row only shows the severities actually present.
+// Same treatment as scanCompleteEmail, pulled up here so the scheduled-scan,
+// regression, and digest reports render findings identically.
+function severityChip(label: string, count: number, color: string): string {
+  return count > 0
+    ? `<td style="padding: 0 6px 6px 0;"><span style="display: inline-block; padding: 5px 11px; border: 1px solid ${color}; border-radius: 999px; font-size: 12px; font-weight: 600; color: ${color}; white-space: nowrap;">${count} ${label}</span></td>`
+    : "";
+}
+
+function severityChipRow(counts: {
+  critical?: number;
+  high?: number;
+  medium?: number;
+  low?: number;
+  info?: number;
+}): string {
+  const chips = [
+    severityChip("critical", counts.critical ?? 0, BRAND.severity.critical),
+    severityChip("high", counts.high ?? 0, BRAND.severity.high),
+    severityChip("medium", counts.medium ?? 0, BRAND.severity.medium),
+    severityChip("low", counts.low ?? 0, BRAND.severity.low),
+    severityChip("info", counts.info ?? 0, BRAND.severity.info),
+  ].join("");
+  return chips
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 0 0 22px 0;"><tr>${chips}</tr></table>`
+    : "";
 }
 
 /**
@@ -357,37 +476,21 @@ export function contactEmail(input: {
 
   return {
     subject: `[Contact] ${input.subject}`,
-    text: `Category: ${input.category}\nName: ${input.name}\nEmail: ${input.email}\n\n${input.message}`,
+    text: `New contact request via the ${APP_NAME} contact form.\n\nCategory: ${category}\nName: ${input.name}\nEmail: ${input.email}\nSubject: ${input.subject}\n\nMessage:\n${input.message}`,
     html: `
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 20px;">
-        <tr>
-          <td>
-            <span style="display: inline-block; padding: 6px 12px; border-radius: 6px; background-color: ${COLORS.BG_SECTION}; border: 1px solid ${COLORS.BORDER_SECTION}; color: ${COLORS.TEXT_SECONDARY}; font-size: 11px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 12px;">
-              ${category}
-            </span>
-            <h1 style="margin: 8px 0 0 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">New Contact Request</h1>
-          </td>
-        </tr>
-      </table>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
-        <p style="margin: 0 0 12px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED}; font-weight: 600;">Contact Details</p>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 14px; line-height: 1.8;">
-          <tr><td style="padding: 4px 0; width: 80px; color: ${COLORS.TEXT_SECONDARY};">Name</td><td style="padding: 4px 0; color: #f1f5f9;">${name}</td></tr>
-          <tr><td style="padding: 4px 0; width: 80px; color: ${COLORS.TEXT_SECONDARY};">Email</td><td style="padding: 4px 0;"><a href="mailto:${email}" style="color: ${COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">${email}</a></td></tr>
-          <tr><td style="padding: 4px 0; width: 80px; color: ${COLORS.TEXT_SECONDARY};">Subject</td><td style="padding: 4px 0; color: #f1f5f9;">${subject}</td></tr>
-        </table>
-      </div>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px;">
-        <p style="margin: 0 0 12px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED}; font-weight: 600;">Message</p>
-        <div style="font-size: 14px; color: #e2e8f0; line-height: 1.7;">${message}</div>
-      </div>
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top: 24px;">
-        <tr>
-          <td align="center">
-            <a href="mailto:${email}" style="display: inline-block; padding: 12px 28px; background-color: ${COLORS.ACCENT_BLUE}; color: ${COLORS.WHITE}; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 8px;">Reply to ${name}</a>
-          </td>
-        </tr>
-      </table>
+      ${emailHeading("New contact request")}
+      ${emailLead(`${name} reached out through the ${APP_NAME} contact form.`)}
+      ${emailDetailPanel([
+        { label: "Name", value: name },
+        {
+          label: "Email",
+          value: `<a href="mailto:${email}" style="color: ${COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">${email}</a>`,
+        },
+        { label: "Category", value: category },
+        { label: "Subject", value: subject },
+      ])}
+      ${emailParagraph(message)}
+      ${emailButton(`mailto:${email}`, `Reply to ${name}`)}
     `,
   };
 }
@@ -400,22 +503,22 @@ export function contactConfirmationEmail(input: {
   const category = escapeHtml(input.category);
 
   return {
-    subject: "We received your message",
-    text: `Hi ${input.name},\n\nThanks for contacting ${APP_NAME}. We received your ${input.category.toLowerCase()} and our team will review it shortly.\n\nIf you need to add more details, just reply to this email.\n\n- ${APP_NAME} Support`,
+    subject: "We got your message",
+    text: `Hi ${input.name},\n\nThanks for contacting ${APP_NAME}. Your ${input.category.toLowerCase()} request is in our queue.\n\nWe usually reply within 24 to 48 hours. To add anything, just reply to this email and it lands on the same thread.\n\n- ${APP_NAME} Support`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Message Received</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Hi ${name}, thank you for reaching out.</p>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-          <tr><td style="padding: 4px 0;"><p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Request Type</p><p style="margin: 0; font-size: 15px; color: ${COLORS.TEXT_PRIMARY}; font-weight: 500;">${category}</p></td></tr>
-          <tr><td style="padding: 12px 0 4px 0; border-top: 1px solid ${COLORS.BORDER_SECTION};"><p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Status</p><p style="margin: 0; font-size: 15px; color: ${COLORS.ACCENT_GREEN_TEXT}; font-weight: 500;">In Review</p></td></tr>
-        </table>
-      </div>
-      <div style="background-color: ${COLORS.BG_INFO}; border-left: 3px solid ${COLORS.ACCENT_BLUE_LIGHT}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_BLUE_PALE}; font-weight: 600;">What happens next?</p>
-        <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">Our team will review your message and respond within 24-48 hours. If you need to add more context, reply to this email.</p>
-      </div>
-      <p style="margin: 0; font-size: 13px; color: ${COLORS.TEXT_MUTED}; text-align: center;">Thank you for using ${APP_NAME}.</p>
+      ${emailHeading("We got your message")}
+      ${emailLead(`Hi ${name}, thanks for reaching out. Your ${category.toLowerCase()} request is in our queue.`)}
+      ${emailDetailPanel([
+        { label: "Request type", value: category },
+        {
+          label: "Status",
+          value: "In review",
+          color: COLORS.ACCENT_GREEN_TEXT,
+        },
+      ])}
+      ${emailParagraph(
+        "We usually reply within 24 to 48 hours. To add anything, just reply to this email and it lands on the same thread.",
+      )}
     `,
   };
 }
@@ -423,30 +526,19 @@ export function contactConfirmationEmail(input: {
 export function emailVerificationEmail(name: string, verifyLink: string) {
   const safeName = escapeHtml(name);
   return {
-    subject: `Verify your email - ${APP_NAME}`,
-    text: `Welcome to ${APP_NAME}, ${name}!\n\nPlease verify your email address by clicking the link below:\n${verifyLink}\n\nThis link expires in 24 hours.\n\nIf you did not create an account, you can safely ignore this email.`,
+    subject: `Verify your email for ${APP_NAME}`,
+    text: `Hi ${name},\n\nConfirm this email address to activate your ${APP_NAME} account:\n${verifyLink}\n\nThe link works for the next 24 hours. If it expires, request a new one from the sign-in page.\n\nIf you didn't create this account, you can ignore this email. Nothing was set up.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Welcome to ${APP_NAME}!</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Hi ${safeName}, thanks for signing up. Please verify your email address to get started.</p>
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
-        <tr>
-          <td align="center">
-            <a href="${verifyLink}" style="display: inline-block; padding: 14px 40px; background-color: ${COLORS.ACCENT_GREEN}; color: ${COLORS.WHITE}; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;">Verify Email Address</a>
-          </td>
-        </tr>
-      </table>
-      <div style="background-color: ${COLORS.BG_INFO}; border-left: 3px solid ${COLORS.ACCENT_BLUE_LIGHT}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_BLUE_PALE}; font-weight: 600;">Why verify?</p>
-        <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">Email verification helps us ensure your account is secure and allows you to receive important notifications about your scans.</p>
-      </div>
-      <div style="background-color: ${COLORS.BG_WARNING}; border-left: 3px solid ${COLORS.ACCENT_YELLOW}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_LIGHT}; font-weight: 600;">Link Expires</p>
-        <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_PALE}; line-height: 1.6;">This verification link expires in 24 hours. If you need a new link, you can request one from the login page.</p>
-      </div>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 14px 16px;">
-        <p style="margin: 0 0 8px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">If the button doesn't work, copy this link:</p>
-        <p style="margin: 0; font-size: 12px; color: ${COLORS.ACCENT_BLUE_LIGHT}; word-break: break-all; line-height: 1.5; font-family: monospace;">${verifyLink}</p>
-      </div>
+      ${emailHeading("Confirm your email address")}
+      ${emailLead(`Hi ${safeName}, confirm this is your address and your ${APP_NAME} account is ready to scan.`)}
+      ${emailButton(verifyLink, "Verify email address")}
+      ${emailNote(
+        "The link works for the next 24 hours. If it expires, request a new one from the sign-in page.",
+      )}
+      ${emailParagraph(
+        "If you didn't create this account, you can ignore this email. Nothing was set up.",
+      )}
+      ${emailFallbackLink(verifyLink)}
     `,
   };
 }
@@ -454,25 +546,16 @@ export function emailVerificationEmail(name: string, verifyLink: string) {
 export function passwordResetEmail(resetLink: string) {
   return {
     subject: `Reset your ${APP_NAME} password`,
-    text: `You requested a password reset for your ${APP_NAME} account.\n\nClick here to reset your password:\n${resetLink}\n\nThis link expires in 1 hour.\n\nIf you did not request this, you can safely ignore this email.`,
+    text: `Someone asked to reset the password for your ${APP_NAME} account.\n\nChoose a new password here:\n${resetLink}\n\nThe link works for one hour, then it stops working. If you didn't request this, you can ignore this email and your current password stays the same.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Reset Your Password</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">We received a request to reset your ${APP_NAME} account password.</p>
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
-        <tr>
-          <td align="center">
-            <a href="${resetLink}" style="display: inline-block; padding: 14px 40px; background-color: ${COLORS.ACCENT_BLUE}; color: ${COLORS.WHITE}; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;">Reset Password</a>
-          </td>
-        </tr>
-      </table>
-      <div style="background-color: ${COLORS.BG_WARNING}; border-left: 3px solid ${COLORS.ACCENT_YELLOW}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_LIGHT}; font-weight: 600;">Security Notice</p>
-        <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_PALE}; line-height: 1.6;">This link expires in 1 hour. If you did not request this reset, please ignore this email.</p>
-      </div>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 14px 16px;">
-        <p style="margin: 0 0 8px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">If the button doesn't work, copy this link:</p>
-        <p style="margin: 0; font-size: 12px; color: ${COLORS.ACCENT_BLUE_LIGHT}; word-break: break-all; line-height: 1.5; font-family: monospace;">${resetLink}</p>
-      </div>
+      ${emailHeading("Reset your password")}
+      ${emailLead(`Someone asked to reset the password for your ${APP_NAME} account. If that was you, set a new one below.`)}
+      ${emailButton(resetLink, "Choose a new password")}
+      ${emailNote(
+        "The link works for one hour, then it stops working. If you didn't request this, you can ignore this email and your current password stays the same.",
+        COLORS.ACCENT_YELLOW_LIGHT,
+      )}
+      ${emailFallbackLink(resetLink)}
     `,
   };
 }
@@ -482,19 +565,16 @@ export function passwordChangedEmail(
   details: SecurityAlertDetails,
 ) {
   const securityInfo = hasTwoFactor
-    ? "Your account has two-factor authentication enabled. You will need your 6-digit authenticator code when logging in."
-    : "All active sessions have been logged out. You can now log in with your new password.";
+    ? "Two-factor authentication is on, so you'll enter your authenticator code the next time you sign in."
+    : "Every active session was signed out. Sign in again with your new password.";
 
   return {
-    subject: `Password Changed - ${APP_NAME}`,
-    text: `Your ${APP_NAME} account password has been successfully reset.\n\n${securityInfo}\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not make this change, please contact support immediately at ${SUPPORT_EMAIL}\n\n- ${APP_NAME} Security`,
+    subject: `Your ${APP_NAME} password was changed`,
+    text: `The password for your ${APP_NAME} account was just changed.\n\n${securityInfo}\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf this wasn't you, change your password and review your active sessions right away, then email ${SUPPORT_EMAIL}.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Password Changed Successfully</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Your ${APP_NAME} account password has been reset.</p>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Security Information</p>
-        <p style="margin: 0; font-size: 14px; color: #e2e8f0; line-height: 1.6;">${securityInfo}</p>
-      </div>
+      ${emailHeading("Your password was changed")}
+      ${emailLead(`The password for your ${APP_NAME} account was just changed.`)}
+      ${emailNote(securityInfo)}
       ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
     `,
@@ -512,35 +592,16 @@ export function teamInviteEmail(
     ? inviteLink
     : "#invalid";
   return {
-    subject: `You've been invited to join ${safeTeamName} on ${APP_NAME}`,
-    text: `${invitedBy} has invited you to join the team "${teamName}" on ${APP_NAME}.\n\nClick here to accept the invitation:\n${inviteLink}\n\nThis invitation expires in 7 days.`,
+    subject: `Join ${safeTeamName} on ${APP_NAME}`,
+    text: `${invitedBy} invited you to join the team "${teamName}" on ${APP_NAME}. Accepting shares scans, history, and reports across everyone on the team.\n\nAccept the invitation:\n${inviteLink}\n\nThe invite expires in 7 days. If you weren't expecting it, you can ignore this email.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Team Invitation</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;"><strong style="color: ${COLORS.TEXT_PRIMARY};">${safeInvitedBy}</strong> has invited you to join their team.</p>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 20px; margin-bottom: 24px; text-align: center;">
-        <p style="margin: 0 0 4px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED};">Team Name</p>
-        <h2 style="margin: 0; font-size: 22px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">${safeTeamName}</h2>
-      </div>
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
-        <tr>
-          <td align="center">
-            <a href="${safeInviteLink}" style="display: inline-block; padding: 14px 40px; background-color: ${COLORS.ACCENT_BLUE}; color: ${COLORS.WHITE}; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;">Accept Invitation</a>
-          </td>
-        </tr>
-      </table>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 10px 0; font-size: 13px; color: ${COLORS.TEXT_SECONDARY}; font-weight: 600;">As a team member you can:</p>
-        <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #cbd5e1; line-height: 1.8;">
-          <li>Collaborate on vulnerability scans</li>
-          <li>Share scan history and reports</li>
-          <li>Access team-wide security insights</li>
-        </ul>
-      </div>
-      <p style="margin: 0 0 16px 0; font-size: 13px; color: ${COLORS.TEXT_MUTED}; text-align: center;">This invitation expires in 7 days.</p>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 14px 16px;">
-        <p style="margin: 0 0 8px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">If the button doesn't work, copy this link:</p>
-        <p style="margin: 0; font-size: 11px; color: ${COLORS.ACCENT_BLUE_LIGHT}; word-break: break-all; line-height: 1.5; font-family: monospace;">${inviteLink}</p>
-      </div>
+      ${emailHeading(`Join ${safeTeamName} on ${APP_NAME}`)}
+      ${emailLead(`<strong style="color: ${COLORS.TEXT_PRIMARY};">${safeInvitedBy}</strong> invited you to their team. Accepting shares scans, history, and reports across everyone on it.`)}
+      ${emailButton(safeInviteLink, "Accept invitation")}
+      ${emailNote(
+        "The invite expires in 7 days. If you weren't expecting it, you can ignore this email.",
+      )}
+      ${emailFallbackLink(inviteLink)}
     `,
   };
 }
@@ -556,30 +617,17 @@ export function staffInviteEmail(
     ? inviteLink
     : "#invalid";
   return {
-    subject: `You've been invited to join the ${APP_NAME} team`,
-    text: `${invitedBy} has invited you to join the ${APP_NAME} staff as ${roleLabel}.\n\nClick here to accept the invitation:\n${inviteLink}\n\nThis invitation expires in ${STAFF_INVITE_EXPIRY_DAYS} days.`,
+    subject: `Join the ${APP_NAME} team as ${safeRoleLabel}`,
+    text: `${invitedBy} invited you to join the ${APP_NAME} staff as ${roleLabel}.\n\nAccept the invitation:\n${inviteLink}\n\nThe invite expires in ${STAFF_INVITE_EXPIRY_DAYS} days. If you weren't expecting it, you can ignore this email.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Staff Invitation</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;"><strong style="color: ${COLORS.TEXT_PRIMARY};">${safeInvitedBy}</strong> has invited you to join the ${APP_NAME} staff.</p>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 20px; margin-bottom: 24px; text-align: center;">
-        <p style="margin: 0 0 4px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED};">Role</p>
-        <h2 style="margin: 0; font-size: 22px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">${safeRoleLabel}</h2>
-      </div>
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
-        <tr>
-          <td align="center">
-            <a href="${safeInviteLink}" style="display: inline-block; padding: 14px 40px; background-color: ${COLORS.ACCENT_BLUE}; color: ${COLORS.WHITE}; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;">Accept Invitation</a>
-          </td>
-        </tr>
-      </table>
-      <div style="background-color: ${COLORS.BG_WARNING}; border-left: 3px solid ${COLORS.ACCENT_YELLOW}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_LIGHT}; font-weight: 600;">Link Expires</p>
-        <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_PALE}; line-height: 1.6;">This invitation expires in ${STAFF_INVITE_EXPIRY_DAYS} days. If you did not expect this invite, you can safely ignore this email.</p>
-      </div>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 14px 16px;">
-        <p style="margin: 0 0 8px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">If the button doesn't work, copy this link:</p>
-        <p style="margin: 0; font-size: 11px; color: ${COLORS.ACCENT_BLUE_LIGHT}; word-break: break-all; line-height: 1.5; font-family: monospace;">${inviteLink}</p>
-      </div>
+      ${emailHeading(`Join the ${APP_NAME} team`)}
+      ${emailLead(`<strong style="color: ${COLORS.TEXT_PRIMARY};">${safeInvitedBy}</strong> invited you to join the ${APP_NAME} staff as ${safeRoleLabel}.`)}
+      ${emailButton(safeInviteLink, "Accept invitation")}
+      ${emailNote(
+        `The invite expires in ${STAFF_INVITE_EXPIRY_DAYS} days. If you weren't expecting it, you can ignore this email.`,
+        COLORS.ACCENT_YELLOW_LIGHT,
+      )}
+      ${emailFallbackLink(inviteLink)}
     `,
   };
 }
@@ -590,27 +638,18 @@ export function landingContactEmail(input: { email: string; message: string }) {
 
   return {
     subject: "[Landing Page] New Inquiry",
-    text: `New Landing Page Inquiry\n\nEmail: ${input.email}\n\nMessage:\n${input.message}`,
+    text: `New inquiry from the ${APP_NAME} landing page.\n\nEmail: ${input.email}\n\nMessage:\n${input.message}`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">New Landing Page Inquiry</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Someone reached out via the ${APP_NAME} landing page.</p>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
-        <p style="margin: 0 0 12px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED}; font-weight: 600;">Contact Info</p>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 14px; line-height: 1.8;">
-          <tr><td style="padding: 4px 0; width: 80px; color: ${COLORS.TEXT_SECONDARY};">Email</td><td style="padding: 4px 0;"><a href="mailto:${email}" style="color: ${COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">${email}</a></td></tr>
-        </table>
-      </div>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px;">
-        <p style="margin: 0 0 12px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED}; font-weight: 600;">Message</p>
-        <div style="font-size: 14px; color: #e2e8f0; line-height: 1.7;">${message}</div>
-      </div>
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top: 24px;">
-        <tr>
-          <td align="center">
-            <a href="mailto:${email}" style="display: inline-block; padding: 12px 28px; background-color: ${COLORS.ACCENT_BLUE}; color: ${COLORS.WHITE}; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 8px;">Reply</a>
-          </td>
-        </tr>
-      </table>
+      ${emailHeading("New landing page inquiry")}
+      ${emailLead(`Someone reached out through the ${APP_NAME} landing page.`)}
+      ${emailDetailPanel([
+        {
+          label: "Email",
+          value: `<a href="mailto:${email}" style="color: ${COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">${email}</a>`,
+        },
+      ])}
+      ${emailParagraph(message)}
+      ${emailButton(`mailto:${email}`, "Reply")}
     `,
   };
 }
@@ -619,18 +658,15 @@ export function landingContactConfirmationEmail(message: string) {
   const escapedMessage = escapeHtml(message).replace(/\n/g, "<br />");
 
   return {
-    subject: `We received your message - ${APP_NAME}`,
-    text: `Thanks for reaching out!\n\nWe've received your message and will get back to you within 24 hours.\n\nYour Message:\n${message}\n\nIn the meantime, feel free to explore our documentation or start scanning for free by creating an account.`,
+    subject: "We got your message",
+    text: `Thanks for reaching out. We'll get back to you within 24 hours.\n\nHere's what you sent, for your records:\n${message}\n\nWhile you wait, you can read the docs at ${APP_URL}/docs or start scanning by creating an account at ${APP_URL}/signup.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Message Received</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Thank you for reaching out. We will get back to you within 24 hours.</p>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 12px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED}; font-weight: 600;">Your Message</p>
-        <div style="font-size: 14px; color: #e2e8f0; line-height: 1.7;">${escapedMessage}</div>
-      </div>
-      <div style="background-color: ${COLORS.BG_INFO}; border-left: 3px solid ${COLORS.ACCENT_BLUE_LIGHT}; border-radius: 6px; padding: 14px 16px;">
-        <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">In the meantime, feel free to explore our <a href="${APP_URL}/docs" style="color: ${COLORS.ACCENT_BLUE_PALE}; text-decoration: none;">documentation</a> or start scanning by <a href="${APP_URL}/signup" style="color: ${COLORS.ACCENT_BLUE_PALE}; text-decoration: none;">creating an account</a>.</p>
-      </div>
+      ${emailHeading("We got your message")}
+      ${emailLead("Thanks for reaching out. We'll get back to you within 24 hours. Here's what you sent, for your records:")}
+      ${emailParagraph(escapedMessage)}
+      ${emailNote(
+        `While you wait, you can read the <a href="${APP_URL}/docs" style="color: ${COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">docs</a> or start scanning by <a href="${APP_URL}/signup" style="color: ${COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">creating an account</a>.`,
+      )}
     `,
   };
 }
@@ -641,17 +677,19 @@ export function profileNameChangedEmail(
   details: SecurityAlertDetails,
 ) {
   return {
-    subject: `Profile Name Changed - ${APP_NAME}`,
-    text: `Your ${APP_NAME} profile name has been changed.\n\nPrevious Name: ${oldName}\nNew Name: ${newName}\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not make this change, please reset your password immediately.`,
+    subject: `Your ${APP_NAME} account name was changed`,
+    text: `The name on your ${APP_NAME} account was just updated.\n\nPrevious name: ${oldName}\nNew name: ${newName}\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Profile Name Changed</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Your ${APP_NAME} account name has been updated.</p>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 14px; line-height: 1.8;">
-          <tr><td style="padding: 4px 0; width: 120px; color: ${COLORS.TEXT_SECONDARY};">Previous Name</td><td style="padding: 4px 0; color: #f1f5f9;">${escapeHtml(oldName)}</td></tr>
-          <tr><td style="padding: 4px 0; width: 120px; color: ${COLORS.TEXT_SECONDARY};">New Name</td><td style="padding: 4px 0; color: ${COLORS.ACCENT_GREEN_TEXT}; font-weight: 500;">${escapeHtml(newName)}</td></tr>
-        </table>
-      </div>
+      ${emailHeading("Your account name was changed")}
+      ${emailLead(`The name on your ${APP_NAME} account was just updated.`)}
+      ${emailDetailPanel([
+        { label: "Previous name", value: escapeHtml(oldName) },
+        {
+          label: "New name",
+          value: escapeHtml(newName),
+          color: COLORS.ACCENT_GREEN_TEXT,
+        },
+      ])}
       ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
     `,
@@ -664,17 +702,19 @@ export function profileEmailChangedEmail(
   details: SecurityAlertDetails,
 ) {
   return {
-    subject: `Email Address Changed - ${APP_NAME}`,
-    text: `Your ${APP_NAME} account email has been changed.\n\nPrevious Email: ${oldEmail}\nNew Email: ${newEmail}\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not make this change, please contact support immediately.`,
+    subject: `Your ${APP_NAME} account email was changed`,
+    text: `The email address on your ${APP_NAME} account was just updated.\n\nPrevious email: ${oldEmail}\nNew email: ${newEmail}\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Email Address Changed</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Your ${APP_NAME} account email has been updated.</p>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 14px; line-height: 1.8;">
-          <tr><td style="padding: 4px 0; width: 120px; color: ${COLORS.TEXT_SECONDARY};">Previous Email</td><td style="padding: 4px 0; color: #f1f5f9;">${escapeHtml(oldEmail)}</td></tr>
-          <tr><td style="padding: 4px 0; width: 120px; color: ${COLORS.TEXT_SECONDARY};">New Email</td><td style="padding: 4px 0; color: ${COLORS.ACCENT_GREEN_TEXT}; font-weight: 500;">${escapeHtml(newEmail)}</td></tr>
-        </table>
-      </div>
+      ${emailHeading("Your account email was changed")}
+      ${emailLead(`The email address on your ${APP_NAME} account was just updated.`)}
+      ${emailDetailPanel([
+        { label: "Previous email", value: escapeHtml(oldEmail) },
+        {
+          label: "New email",
+          value: escapeHtml(newEmail),
+          color: COLORS.ACCENT_GREEN_TEXT,
+        },
+      ])}
       ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
     `,
@@ -683,14 +723,14 @@ export function profileEmailChangedEmail(
 
 export function profilePasswordChangedEmail(details: SecurityAlertDetails) {
   return {
-    subject: `Password Changed - ${APP_NAME}`,
-    text: `Your ${APP_NAME} account password has been changed.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not make this change, please reset your password immediately.`,
+    subject: `Your ${APP_NAME} password was changed`,
+    text: `The password for your ${APP_NAME} account was just updated.\n\nSigned in on a shared device recently? Review your active sessions in profile settings and sign out anything you don't recognize.\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Password Changed</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Your ${APP_NAME} account password has been successfully updated.</p>
-      <div style="background-color: ${COLORS.BG_INFO}; border-left: 3px solid ${COLORS.ACCENT_BLUE_LIGHT}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
-        <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">For security, you may want to review your active sessions in your profile settings.</p>
-      </div>
+      ${emailHeading("Your password was changed")}
+      ${emailLead(`The password for your ${APP_NAME} account was just updated.`)}
+      ${emailNote(
+        "Signed in on a shared device recently? Review your active sessions in profile settings and sign out anything you don't recognize.",
+      )}
       ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
     `,
@@ -699,22 +739,14 @@ export function profilePasswordChangedEmail(details: SecurityAlertDetails) {
 
 export function twoFactorEnabledEmail(details: SecurityAlertDetails) {
   return {
-    subject: `Two-Factor Authentication Enabled - ${APP_NAME}`,
-    text: `Two-factor authentication has been enabled on your ${APP_NAME} account.\n\nYour account is now more secure. You will need to enter a code from your authenticator app when logging in.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not enable 2FA, please contact support immediately.`,
+    subject: `Two-factor authentication is on for your ${APP_NAME} account`,
+    text: `Two-factor authentication was just turned on for your ${APP_NAME} account. From now on you'll enter a code from your authenticator app each time you sign in.\n\nKeep your backup codes somewhere safe. They're the way back in if you lose access to your authenticator app.\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Two-Factor Authentication Enabled</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Two-factor authentication has been enabled on your account.</p>
-      <div style="background-color: ${COLORS.BG_SUCCESS}; border-left: 3px solid ${COLORS.ACCENT_GREEN}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_GREEN_LIGHT}; font-weight: 600;">Enhanced Security Active</p>
-        <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_GREEN_PALE}; line-height: 1.6;">Your account is now protected with two-factor authentication. You'll need your authenticator app to log in.</p>
-      </div>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
-        <p style="margin: 0 0 8px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Remember to:</p>
-        <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #cbd5e1; line-height: 1.8;">
-          <li>Store your backup codes in a safe place</li>
-          <li>Keep your authenticator app accessible</li>
-        </ul>
-      </div>
+      ${emailHeading("Two-factor authentication is on")}
+      ${emailLead(`Two-factor authentication was just turned on for your ${APP_NAME} account. From now on you'll enter a code from your authenticator app each time you sign in.`)}
+      ${emailNote(
+        "Keep your backup codes somewhere safe. They're the way back in if you lose access to your authenticator app.",
+      )}
       ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
     `,
@@ -723,15 +755,15 @@ export function twoFactorEnabledEmail(details: SecurityAlertDetails) {
 
 export function twoFactorDisabledEmail(details: SecurityAlertDetails) {
   return {
-    subject: `Two-Factor Authentication Disabled - ${APP_NAME}`,
-    text: `Two-factor authentication has been disabled on your ${APP_NAME} account.\n\nYour account no longer requires a 2FA code to log in.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not disable 2FA, please re-enable it and reset your password immediately.`,
+    subject: `Two-factor authentication is off for your ${APP_NAME} account`,
+    text: `Two-factor authentication was just turned off for your ${APP_NAME} account. Signing in no longer asks for an authenticator code.\n\nTwo-factor authentication is one of the best defenses against a stolen password. You can turn it back on anytime in your security settings.\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Two-Factor Authentication Disabled</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Two-factor authentication has been removed from your account.</p>
-      <div style="background-color: ${COLORS.BG_WARNING}; border-left: 3px solid ${COLORS.ACCENT_YELLOW}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_LIGHT}; font-weight: 600;">Security Reduced</p>
-        <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_PALE}; line-height: 1.6;">Your account is no longer protected with two-factor authentication. Consider re-enabling it for better security.</p>
-      </div>
+      ${emailHeading("Two-factor authentication is off")}
+      ${emailLead(`Two-factor authentication was just turned off for your ${APP_NAME} account. Signing in no longer asks for an authenticator code.`)}
+      ${emailNote(
+        "Two-factor authentication is one of the best defenses against a stolen password. You can turn it back on anytime in your security settings.",
+        COLORS.ACCENT_YELLOW_LIGHT,
+      )}
       ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
     `,
@@ -740,15 +772,15 @@ export function twoFactorDisabledEmail(details: SecurityAlertDetails) {
 
 export function backupCodesRegeneratedEmail(details: SecurityAlertDetails) {
   return {
-    subject: `Backup Codes Regenerated - ${APP_NAME}`,
-    text: `Your ${APP_NAME} two-factor authentication backup codes have been regenerated.\n\nAll previous backup codes are now invalid. Please store your new codes securely.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not regenerate your backup codes, please contact support immediately.`,
+    subject: `Your ${APP_NAME} backup codes were regenerated`,
+    text: `A new set of two-factor backup codes was just generated for your ${APP_NAME} account.\n\nYour old backup codes no longer work. Save the new ones somewhere safe, like a password manager.\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Backup Codes Regenerated</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Your two-factor authentication backup codes have been regenerated.</p>
-      <div style="background-color: ${COLORS.BG_WARNING}; border-left: 3px solid ${COLORS.ACCENT_YELLOW}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_LIGHT}; font-weight: 600;">Previous Codes Invalidated</p>
-        <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_PALE}; line-height: 1.6;">All previous backup codes are now invalid. Make sure to store your new codes in a secure location.</p>
-      </div>
+      ${emailHeading("Your backup codes were regenerated")}
+      ${emailLead(`A new set of two-factor backup codes was just generated for your ${APP_NAME} account.`)}
+      ${emailNote(
+        "Your old backup codes no longer work. Save the new ones somewhere safe, like a password manager.",
+        COLORS.ACCENT_YELLOW_LIGHT,
+      )}
       ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
     `,
@@ -763,19 +795,25 @@ export function apiKeyCreatedEmail(
 ) {
   const safeName = escapeHtml(keyName);
   return {
-    subject: `API Key Created - ${APP_NAME}`,
-    text: `A new API key "${keyName}" has been created on your ${APP_NAME} account.\n\nKey Prefix: ${keyPrefix}...\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not create this API key, please revoke it immediately and contact support.`,
+    subject: `A new API key was created on your ${APP_NAME} account`,
+    text: `A new API key "${keyName}" was just added to your ${APP_NAME} account.\n\nKey prefix: ${keyPrefix}...\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you didn't create this key, revoke it from your API settings and email ${SUPPORT_EMAIL}.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">API Key Created</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">A new API key has been created on your account.</p>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Key Name</p>
-        <p style="margin: 0 0 12px 0; font-size: 15px; color: ${COLORS.TEXT_PRIMARY}; font-weight: 500;">${safeName}</p>
-        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Key Prefix</p>
-        <p style="margin: 0; font-size: 15px; color: ${COLORS.ACCENT_BLUE_LIGHT}; font-family: monospace;">${keyPrefix}...</p>
-      </div>
+      ${emailHeading("A new API key was created")}
+      ${emailLead(`A new API key was just added to your ${APP_NAME} account.`)}
+      ${emailDetailPanel([
+        { label: "Key name", value: safeName },
+        {
+          label: "Key prefix",
+          value: `${escapeHtml(keyPrefix)}...`,
+          mono: true,
+          color: COLORS.ACCENT_BLUE_LIGHT,
+        },
+      ])}
       ${securityDetailsBlock(details)}
-      ${securityWarningBlock()}
+      ${emailNote(
+        `If you didn't create this key, revoke it from your API settings and email <a href="mailto:${SUPPORT_EMAIL}" style="color: ${COLORS.ACCENT_YELLOW_LIGHT}; text-decoration: underline;">${SUPPORT_EMAIL}</a>.`,
+        COLORS.ACCENT_YELLOW_LIGHT,
+      )}
     `,
   };
 }
@@ -786,19 +824,20 @@ export function apiKeyDeletedEmail(
 ) {
   const safeName = escapeHtml(keyName);
   return {
-    subject: `API Key Revoked - ${APP_NAME}`,
-    text: `The API key "${keyName}" has been revoked from your ${APP_NAME} account.\n\nThis key can no longer be used for API access.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not revoke this API key, please contact support immediately.`,
+    subject: `An API key was revoked on your ${APP_NAME} account`,
+    text: `The API key "${keyName}" was just revoked on your ${APP_NAME} account. It can no longer be used to authenticate API requests.\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you didn't revoke this key, someone may have access to your account. Change your password and email ${SUPPORT_EMAIL}.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">API Key Revoked</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">An API key has been revoked from your account.</p>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Key Name</p>
-        <p style="margin: 0 0 12px 0; font-size: 15px; color: ${COLORS.TEXT_PRIMARY}; font-weight: 500;">${safeName}</p>
-        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Status</p>
-        <p style="margin: 0; font-size: 15px; color: ${COLORS.ACCENT_RED}; font-weight: 500;">Revoked</p>
-      </div>
+      ${emailHeading("An API key was revoked")}
+      ${emailLead(`The API key "${safeName}" was just revoked on your ${APP_NAME} account. It can no longer be used to authenticate API requests.`)}
+      ${emailDetailPanel([
+        { label: "Key name", value: safeName },
+        { label: "Status", value: "Revoked", color: COLORS.ACCENT_RED_LIGHT },
+      ])}
       ${securityDetailsBlock(details)}
-      ${securityWarningBlock()}
+      ${emailNote(
+        `If you didn't revoke this key, someone may have access to your account. Change your password and email <a href="mailto:${SUPPORT_EMAIL}" style="color: ${COLORS.ACCENT_RED_LIGHT}; text-decoration: underline;">${SUPPORT_EMAIL}</a>.`,
+        COLORS.ACCENT_RED_LIGHT,
+      )}
     `,
   };
 }
@@ -813,22 +852,20 @@ export function webhookCreatedEmail(
   const safeName = escapeHtml(webhookName);
   const safeType = escapeHtml(webhookType);
   return {
-    subject: `Webhook Created - ${APP_NAME}`,
-    text: `A new ${webhookType} webhook "${webhookName}" has been created on your ${APP_NAME} account.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not create this webhook, please delete it immediately.`,
+    subject: `A webhook was created on your ${APP_NAME} account`,
+    text: `A new ${webhookType} webhook "${webhookName}" was just added to your ${APP_NAME} account.\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you didn't create this webhook, delete it from your webhook settings.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Webhook Created</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">A new webhook has been added to your account.</p>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Webhook Name</p>
-        <p style="margin: 0 0 12px 0; font-size: 15px; color: ${COLORS.TEXT_PRIMARY}; font-weight: 500;">${safeName}</p>
-        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Type</p>
-        <p style="margin: 0; font-size: 15px; color: ${COLORS.ACCENT_BLUE_LIGHT}; font-weight: 500;">${safeType}</p>
-      </div>
+      ${emailHeading("A webhook was created")}
+      ${emailLead(`A new webhook was just added to your ${APP_NAME} account.`)}
+      ${emailDetailPanel([
+        { label: "Webhook name", value: safeName },
+        { label: "Type", value: safeType, color: COLORS.ACCENT_BLUE_LIGHT },
+      ])}
       ${securityDetailsBlock(details)}
-      <div style="background-color: ${COLORS.BG_INFO}; border-left: 3px solid ${COLORS.ACCENT_BLUE_LIGHT}; border-radius: 6px; padding: 14px 16px;">
-        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_BLUE_PALE}; font-weight: 600;">Didn't do this?</p>
-        <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">If you did not create this webhook, please delete it from your profile settings immediately.</p>
-      </div>
+      ${emailNote(
+        "If you didn't create this webhook, delete it from your webhook settings.",
+        COLORS.ACCENT_YELLOW_LIGHT,
+      )}
     `,
   };
 }
@@ -839,18 +876,20 @@ export function webhookDeletedEmail(
 ) {
   const safeName = escapeHtml(webhookName);
   return {
-    subject: `Webhook Deleted - ${APP_NAME}`,
-    text: `The webhook "${webhookName}" has been deleted from your ${APP_NAME} account.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not delete this webhook, please contact support.`,
+    subject: `A webhook was deleted from your ${APP_NAME} account`,
+    text: `The webhook "${webhookName}" was just removed from your ${APP_NAME} account. It will no longer receive scan events.\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you didn't delete this webhook, review your account activity and change your password.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Webhook Deleted</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">A webhook has been removed from your account.</p>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Webhook Name</p>
-        <p style="margin: 0 0 12px 0; font-size: 15px; color: ${COLORS.TEXT_PRIMARY}; font-weight: 500;">${safeName}</p>
-        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Status</p>
-        <p style="margin: 0; font-size: 15px; color: ${COLORS.ACCENT_RED}; font-weight: 500;">Deleted</p>
-      </div>
+      ${emailHeading("A webhook was deleted")}
+      ${emailLead(`The webhook "${safeName}" was just removed from your ${APP_NAME} account. It will no longer receive scan events.`)}
+      ${emailDetailPanel([
+        { label: "Webhook name", value: safeName },
+        { label: "Status", value: "Deleted", color: COLORS.ACCENT_RED_LIGHT },
+      ])}
       ${securityDetailsBlock(details)}
+      ${emailNote(
+        "If you didn't delete this webhook, review your account activity and change your password.",
+        COLORS.ACCENT_YELLOW_LIGHT,
+      )}
     `,
   };
 }
@@ -873,23 +912,29 @@ export function webhookDeliveryFailedEmail(
   const firstLabel = statusLabel(details.firstStatus);
   const retryLabel = statusLabel(details.retryStatus);
   return {
-    subject: `Webhook Delivery Failed - ${APP_NAME}`,
-    text: `A scan finished, but ${APP_NAME} couldn't deliver it to your webhook.\n\nWebhook URL: ${webhookUrl}\nFirst attempt: ${firstLabel}\nRetry: ${retryLabel}\n\nThe webhook wasn't paused automatically. Check your endpoint is up, then manage it at ${details.manageUrl}`,
+    subject: `${APP_NAME} couldn't deliver a scan to your webhook`,
+    text: `A scan finished, but ${APP_NAME} couldn't deliver the result to your webhook. Both the initial attempt and the retry failed.\n\nWebhook URL: ${webhookUrl}\nFirst attempt: ${firstLabel}\nRetry: ${retryLabel}\n\nThe webhook is still active, so future scans will keep trying to deliver to it. Check that your endpoint is reachable and returns a 2xx status, then manage it at ${details.manageUrl}`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Webhook Delivery Failed</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">A scan finished, but both delivery attempts to your webhook failed.</p>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Webhook URL</p>
-        <p style="margin: 0 0 12px 0; font-size: 14px; color: ${COLORS.TEXT_PRIMARY}; word-break: break-all;">${safeUrl}</p>
-        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">First attempt</p>
-        <p style="margin: 0 0 12px 0; font-size: 15px; color: ${COLORS.ACCENT_YELLOW_LIGHT}; font-weight: 500;">${firstLabel}</p>
-        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Retry</p>
-        <p style="margin: 0; font-size: 15px; color: ${COLORS.ACCENT_YELLOW_LIGHT}; font-weight: 500;">${retryLabel}</p>
-      </div>
-      <div style="background-color: ${COLORS.BG_WARNING}; border-left: 3px solid ${COLORS.ACCENT_YELLOW}; border-radius: 6px; padding: 14px 16px;">
-        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_LIGHT}; font-weight: 600;">What to do</p>
-        <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_PALE}; line-height: 1.6;">The webhook wasn't paused automatically and future scans will keep trying to deliver to it. Check your endpoint is reachable and returning a 2xx status, or <a href="${details.manageUrl}" style="color: ${COLORS.ACCENT_YELLOW_PALE};">pause it from your profile</a> until it's fixed.</p>
-      </div>
+      ${emailHeading("Webhook delivery failed")}
+      ${emailLead(`A scan finished, but ${APP_NAME} couldn't deliver the result to your webhook. Both the initial attempt and the retry failed.`)}
+      ${emailDetailPanel([
+        { label: "Webhook URL", value: safeUrl, mono: true },
+        {
+          label: "First attempt",
+          value: firstLabel,
+          color: COLORS.ACCENT_YELLOW_LIGHT,
+        },
+        {
+          label: "Retry",
+          value: retryLabel,
+          color: COLORS.ACCENT_YELLOW_LIGHT,
+        },
+      ])}
+      ${emailNote(
+        "The webhook is still active, so future scans will keep trying to deliver to it. Check that your endpoint is reachable and returns a 2xx status, or pause it until it's fixed.",
+        COLORS.ACCENT_YELLOW_LIGHT,
+      )}
+      ${emailButton(details.manageUrl, "Manage webhooks")}
     `,
   };
 }
@@ -902,19 +947,28 @@ export function scheduleCreatedEmail(
 ) {
   const safeUrl = escapeHtml(url);
   const safeFrequency = escapeHtml(frequency);
+  const frequencyLabel =
+    safeFrequency.charAt(0).toUpperCase() + safeFrequency.slice(1);
   return {
-    subject: `Scheduled Scan Created - ${APP_NAME}`,
-    text: `A new scheduled scan has been created for ${url} (${frequency}).\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not create this schedule, please delete it from your profile.`,
+    subject: `Scheduled scan created - ${APP_NAME}`,
+    text: `A new recurring scan of ${url} was just added to your ${APP_NAME} account, running ${frequency}.\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you didn't set this up, delete it from your profile.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Scheduled Scan Created</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">A new scheduled scan has been added to your account.</p>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">URL</p>
-        <p style="margin: 0 0 12px 0; font-size: 15px; color: ${COLORS.ACCENT_BLUE_LIGHT}; word-break: break-all;">${safeUrl}</p>
-        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Frequency</p>
-        <p style="margin: 0; font-size: 15px; color: ${COLORS.TEXT_PRIMARY}; font-weight: 500; text-transform: capitalize;">${safeFrequency}</p>
-      </div>
+      ${emailHeading("Scheduled scan created")}
+      ${emailLead(`A new recurring scan was just added to your ${APP_NAME} account.`)}
+      ${emailDetailPanel([
+        {
+          label: "Target",
+          value: safeUrl,
+          mono: true,
+          color: COLORS.ACCENT_BLUE_LIGHT,
+        },
+        { label: "Frequency", value: frequencyLabel },
+      ])}
       ${securityDetailsBlock(details)}
+      ${emailNote(
+        "If you didn't set this up, delete it from your profile.",
+        COLORS.ACCENT_YELLOW_LIGHT,
+      )}
     `,
   };
 }
@@ -925,17 +979,20 @@ export function scheduleDeletedEmail(
 ) {
   const safeUrl = escapeHtml(url);
   return {
-    subject: `Scheduled Scan Deleted - ${APP_NAME}`,
-    text: `The scheduled scan for ${url} has been deleted from your ${APP_NAME} account.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}`,
+    subject: `Scheduled scan deleted - ${APP_NAME}`,
+    text: `The recurring scan of ${url} was just removed from your ${APP_NAME} account.\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Scheduled Scan Deleted</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">A scheduled scan has been removed from your account.</p>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">URL</p>
-        <p style="margin: 0 0 12px 0; font-size: 15px; color: ${COLORS.ACCENT_BLUE_LIGHT}; word-break: break-all;">${safeUrl}</p>
-        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Status</p>
-        <p style="margin: 0; font-size: 15px; color: ${COLORS.ACCENT_RED}; font-weight: 500;">Deleted</p>
-      </div>
+      ${emailHeading("Scheduled scan deleted")}
+      ${emailLead(`A recurring scan was just removed from your ${APP_NAME} account.`)}
+      ${emailDetailPanel([
+        {
+          label: "Target",
+          value: safeUrl,
+          mono: true,
+          color: COLORS.ACCENT_BLUE_LIGHT,
+        },
+        { label: "Status", value: "Deleted", color: COLORS.ACCENT_RED_LIGHT },
+      ])}
       ${securityDetailsBlock(details)}
     `,
   };
@@ -955,21 +1012,23 @@ export function scheduleDisabledEmail(url: string, reason: string) {
   const safeUrl = escapeHtml(url);
   const safeReason = escapeHtml(reason);
   return {
-    subject: `Scheduled Scan Disabled - ${APP_NAME}`,
-    text: `Your scheduled scan for ${url} has been disabled because the target no longer passes our safety check: ${reason}\n\nNo further automatic scans will run for this schedule. You can remove it or, if you believe this is an error, re-add it from your profile once the issue is resolved.`,
+    subject: `Scheduled scan disabled - ${APP_NAME}`,
+    text: `Your recurring scan of ${url} was turned off because the target no longer passes our safety check: ${reason}\n\nNo more automatic scans will run for this schedule. Remove it from your profile, or re-add it once the target passes the safety check again.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Scheduled Scan Disabled</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">A recurring scan was turned off because its target stopped passing our safety check.</p>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">URL</p>
-        <p style="margin: 0 0 12px 0; font-size: 15px; color: ${COLORS.ACCENT_BLUE_LIGHT}; word-break: break-all;">${safeUrl}</p>
-        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Reason</p>
-        <p style="margin: 0; font-size: 15px; color: ${COLORS.ACCENT_RED}; font-weight: 500;">${safeReason}</p>
-      </div>
-      <div style="background-color: ${COLORS.BG_INFO}; border-left: 3px solid ${COLORS.ACCENT_BLUE_LIGHT}; border-radius: 6px; padding: 14px 16px;">
-        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_BLUE_PALE}; font-weight: 600;">What happens next?</p>
-        <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">No further automatic scans will run for this schedule. Remove it from your profile, or re-add it once the target passes our safety check again.</p>
-      </div>
+      ${emailHeading("Scheduled scan disabled")}
+      ${emailLead("A recurring scan was turned off because its target stopped passing our safety check.")}
+      ${emailDetailPanel([
+        {
+          label: "Target",
+          value: safeUrl,
+          mono: true,
+          color: COLORS.ACCENT_BLUE_LIGHT,
+        },
+        { label: "Reason", value: safeReason, color: COLORS.ACCENT_RED_LIGHT },
+      ])}
+      ${emailParagraph(
+        "No more automatic scans will run for this schedule. Remove it from your profile, or re-add it once the target passes the safety check again.",
+      )}
     `,
   };
 }
@@ -982,21 +1041,22 @@ export function dataRequestCreatedEmail(
   const typeLabel =
     requestType === "export" ? "Data Export" : "Account Deletion";
   return {
-    subject: `${typeLabel} Request Submitted - ${APP_NAME}`,
-    text: `A ${typeLabel.toLowerCase()} request has been submitted for your ${APP_NAME} account.\n\nOur team will process your request within 30 days as required by privacy regulations.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not make this request, please contact support immediately.`,
+    subject: `${typeLabel} request received - ${APP_NAME}`,
+    text: `Your ${typeLabel.toLowerCase()} request for your ${APP_NAME} account has been received and is queued for review.\n\nWe'll process this within 30 days, as required by GDPR and similar privacy rules. You'll get another email when it's done.\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you didn't make this request, contact support right away.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">${typeLabel} Request Submitted</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Your ${typeLabel.toLowerCase()} request has been received.</p>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Request Type</p>
-        <p style="margin: 0 0 12px 0; font-size: 15px; color: ${COLORS.TEXT_PRIMARY}; font-weight: 500;">${typeLabel}</p>
-        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Status</p>
-        <p style="margin: 0; font-size: 15px; color: ${COLORS.ACCENT_YELLOW}; font-weight: 500;">Pending Review</p>
-      </div>
-      <div style="background-color: ${COLORS.BG_INFO}; border-left: 3px solid ${COLORS.ACCENT_BLUE_LIGHT}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_BLUE_PALE}; font-weight: 600;">What happens next?</p>
-        <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">Our team will process your request within 30 days as required by GDPR and other privacy regulations. You'll receive an email when it's complete.</p>
-      </div>
+      ${emailHeading(`${typeLabel} request received`)}
+      ${emailLead(`Your ${typeLabel.toLowerCase()} request has been received and is queued for review.`)}
+      ${emailDetailPanel([
+        { label: "Request type", value: typeLabel },
+        {
+          label: "Status",
+          value: "Pending review",
+          color: COLORS.ACCENT_YELLOW_LIGHT,
+        },
+      ])}
+      ${emailParagraph(
+        "We'll process this within 30 days, as required by GDPR and similar privacy rules. You'll get another email when it's done.",
+      )}
       ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
     `,
@@ -1010,26 +1070,17 @@ export function newLoginEmail(
   details: SecurityAlertDetails,
 ) {
   return {
-    subject: `New login to your ${APP_NAME} account`,
-    text: `Your account was just accessed from:\n\nLocation: ${location}\nIP Address: ${ipAddress}\nDevice: ${details.userAgent}\n\nIf this wasn't you, please secure your account immediately by changing your password.`,
+    subject: `New sign-in to your ${APP_NAME} account`,
+    text: `Your ${APP_NAME} account was just accessed.\n\nLocation: ${location}\nIP address: ${ipAddress}\nDevice: ${details.userAgent}\n\nIf that was you, there's nothing to do. If it wasn't, change your password and review your active sessions right away.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">New Login Detected</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Your ${APP_NAME} account was just accessed. Here are the details:</p>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 14px;">
-          <tr><td style="padding: 8px 0; color: ${COLORS.TEXT_MUTED}; width: 120px;">Location</td><td style="padding: 8px 0; color: ${COLORS.TEXT_PRIMARY};">${escapeHtml(location)}</td></tr>
-          <tr><td style="padding: 8px 0; color: ${COLORS.TEXT_MUTED}; border-top: 1px solid ${COLORS.BORDER};">IP Address</td><td style="padding: 8px 0; color: ${COLORS.TEXT_PRIMARY}; border-top: 1px solid ${COLORS.BORDER}; font-family: monospace;">${escapeHtml(ipAddress)}</td></tr>
-          <tr><td style="padding: 8px 0; color: ${COLORS.TEXT_MUTED}; border-top: 1px solid ${COLORS.BORDER};">Device</td><td style="padding: 8px 0; color: ${COLORS.TEXT_PRIMARY}; border-top: 1px solid ${COLORS.BORDER};">${escapeHtml(details.userAgent)}</td></tr>
-        </table>
-      </div>
-      <div style="background-color: ${COLORS.BG_INFO}; border-left: 3px solid ${COLORS.ACCENT_BLUE_LIGHT}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_BLUE_PALE}; font-weight: 600;">Recognize this login?</p>
-        <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">If this was you, you can safely ignore this email. ${APP_NAME} sends this notification for your security.</p>
-      </div>
-      <div style="background-color: ${COLORS.BG_DANGER}; border-left: 3px solid ${COLORS.ACCENT_RED}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_RED_LIGHT}; font-weight: 600;">Don't recognize this?</p>
-        <p style="margin: 0; font-size: 13px; color: #fecaca; line-height: 1.6;">Change your password immediately. If you suspect unauthorized access, contact our support team right away.</p>
-      </div>
+      ${emailHeading("New sign-in to your account")}
+      ${emailLead(`Your ${APP_NAME} account was just accessed. If that was you, there's nothing to do.`)}
+      ${emailDetailPanel([
+        { label: "Location", value: escapeHtml(location) },
+        { label: "IP address", value: escapeHtml(ipAddress), mono: true },
+        { label: "Device", value: escapeHtml(details.userAgent) },
+      ])}
+      ${securityWarningBlock()}
     `,
   };
 }
@@ -1040,33 +1091,20 @@ export function failedLoginAttemptsEmail(
   details: SecurityAlertDetails,
 ) {
   return {
-    subject: `Failed login attempts on your ${APP_NAME} account`,
-    text: `We detected ${attempts} failed login attempts on your account.\n\nIP Address: ${ipAddress}\nDevice: ${details.userAgent}\n\nYour account has been temporarily protected. If this wasn't you, change your password immediately.`,
+    subject: `Failed sign-in attempts on your ${APP_NAME} account`,
+    text: `We blocked ${attempts} failed sign-in attempts on your ${APP_NAME} account in a short window. Your account is protected for now.\n\nFailed attempts: ${attempts}\nIP address: ${ipAddress}\nDevice: ${details.userAgent}\n\nIf that was you, no action is needed. If not, change your password and turn on two-factor authentication now.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Failed Login Attempts</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">We detected multiple failed login attempts on your account.</p>
-      <div style="background-color: ${COLORS.BG_DANGER}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <div style="display: flex; align-items: center; justify-content: space-between;">
-          <div>
-            <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.ACCENT_RED_LIGHT}; text-transform: uppercase; font-weight: 600;">Failed Attempts</p>
-            <p style="margin: 0; font-size: 28px; color: ${COLORS.ACCENT_RED_PALE}; font-weight: 700;">${attempts}x</p>
-          </div>
-          <div style="text-align: right;">
-            <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.ACCENT_RED_LIGHT}; text-transform: uppercase; font-weight: 600;">Status</p>
-            <p style="margin: 0; font-size: 14px; color: ${COLORS.ACCENT_RED_PALE}; font-weight: 600;">Protected</p>
-          </div>
-        </div>
-      </div>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 14px;">
-          <tr><td style="padding: 8px 0; color: ${COLORS.TEXT_MUTED}; width: 120px;">IP Address</td><td style="padding: 8px 0; color: ${COLORS.TEXT_PRIMARY}; font-family: monospace;">${escapeHtml(ipAddress)}</td></tr>
-          <tr><td style="padding: 8px 0; color: ${COLORS.TEXT_MUTED}; border-top: 1px solid ${COLORS.BORDER};">Device</td><td style="padding: 8px 0; color: ${COLORS.TEXT_PRIMARY}; border-top: 1px solid ${COLORS.BORDER};">${escapeHtml(details.userAgent)}</td></tr>
-        </table>
-      </div>
-      <div style="background-color: ${COLORS.BG_WARNING}; border-left: 3px solid ${COLORS.ACCENT_YELLOW}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_LIGHT}; font-weight: 600;">What to do</p>
-        <p style="margin: 0 0 8px 0; font-size: 13px; color: #fef3c7; line-height: 1.6;">If this was you, no action is needed. If you don't recognize these attempts, change your password and enable two-factor authentication immediately.</p>
-      </div>
+      ${emailHeading("Repeated failed sign-in attempts")}
+      ${emailLead(`We blocked ${attempts} failed sign-in attempts on your ${APP_NAME} account in a short window. Your account is protected for now.`)}
+      ${emailDetailPanel([
+        { label: "Failed attempts", value: String(attempts) },
+        { label: "IP address", value: escapeHtml(ipAddress), mono: true },
+        { label: "Device", value: escapeHtml(details.userAgent) },
+      ])}
+      ${emailNote(
+        "If that was you, no action is needed. If not, change your password and turn on two-factor authentication now.",
+        COLORS.ACCENT_RED_LIGHT,
+      )}
     `,
   };
 }
@@ -1076,24 +1114,22 @@ export function rateLimitedEmail(
   _details: SecurityAlertDetails,
 ) {
   return {
-    subject: `API Rate Limit - ${APP_NAME}`,
-    text: `Your ${APP_NAME} API key has been temporarily rate limited due to excessive requests.\n\nIP Address: ${ipAddress}\n\nYour account will resume normal operation shortly. If you believe this is an error, contact support.`,
+    subject: `Your ${APP_NAME} API key was rate limited`,
+    text: `Your ${APP_NAME} API key hit its request limit and is temporarily throttled. Requests will start going through again once the window resets.\n\nIP address: ${ipAddress}\nStatus: Rate limited\n\nThe limit is tied to your plan and resets within 24 hours. If you're hitting it often, spread requests out or upgrade for more headroom.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">API Rate Limited</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Your API key has been temporarily rate limited due to exceeding the request limit.</p>
-      <div style="background-color: ${COLORS.BG_WARNING}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.ACCENT_YELLOW_LIGHT}; text-transform: uppercase; font-weight: 600;">Status</p>
-        <p style="margin: 0; font-size: 15px; color: ${COLORS.ACCENT_YELLOW_PALE}; font-weight: 500;">Rate Limited</p>
-      </div>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 8px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED}; text-transform: uppercase; font-weight: 600;">Details</p>
-        <p style="margin: 0 0 4px 0; font-size: 14px; color: ${COLORS.TEXT_PRIMARY};">IP Address: <span style="font-family: monospace;">${escapeHtml(ipAddress)}</span></p>
-        <p style="margin: 0; font-size: 14px; color: ${COLORS.TEXT_PRIMARY};">Limit based on your subscription plan</p>
-      </div>
-      <div style="background-color: ${COLORS.BG_INFO}; border-left: 3px solid ${COLORS.ACCENT_BLUE_LIGHT}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_BLUE_PALE}; font-weight: 600;">What happens next</p>
-        <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">Your rate limit will reset after 24 hours. Review your API usage in your dashboard to optimize your requests.</p>
-      </div>
+      ${emailHeading("Your API key was rate limited")}
+      ${emailLead(`Your ${APP_NAME} API key hit its request limit and is temporarily throttled. Requests will start going through again once the window resets.`)}
+      ${emailDetailPanel([
+        { label: "IP address", value: escapeHtml(ipAddress), mono: true },
+        {
+          label: "Status",
+          value: "Rate limited",
+          color: COLORS.ACCENT_YELLOW_LIGHT,
+        },
+      ])}
+      ${emailNote(
+        "The limit is tied to your plan and resets within 24 hours. If you're hitting it often, spread requests out or upgrade for more headroom.",
+      )}
     `,
   };
 }
@@ -1104,76 +1140,70 @@ export function apiKeyRotationEmail(
   details: SecurityAlertDetails,
 ) {
   return {
-    subject: `API Key Rotated - ${APP_NAME}`,
-    text: `An API key has been rotated on your ${APP_NAME} account.\n\nKey: ${keyName}\nCreated: ${newKeyCreatedAt}\n\nIf you did not perform this action, secure your account immediately.\n\nIP Address: ${details.ipAddress}`,
+    subject: `An API key was rotated on your ${APP_NAME} account`,
+    text: `An API key on your ${APP_NAME} account was just rotated. The old key stops working and a new one takes its place.\n\nKey name: ${keyName}\nNew key created: ${newKeyCreatedAt}\nIP address: ${details.ipAddress}\n\nIf you didn't rotate this key, revoke it from your API settings and email ${SUPPORT_EMAIL}.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">API Key Rotated</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">A new API key has been created for your account.</p>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 14px;">
-          <tr><td style="padding: 8px 0; color: ${COLORS.TEXT_MUTED}; width: 120px;">Key Name</td><td style="padding: 8px 0; color: ${COLORS.TEXT_PRIMARY};">${escapeHtml(keyName)}</td></tr>
-          <tr><td style="padding: 8px 0; color: ${COLORS.TEXT_MUTED}; border-top: 1px solid ${COLORS.BORDER};">Created</td><td style="padding: 8px 0; color: ${COLORS.TEXT_PRIMARY}; border-top: 1px solid ${COLORS.BORDER};">${escapeHtml(newKeyCreatedAt)}</td></tr>
-          <tr><td style="padding: 8px 0; color: ${COLORS.TEXT_MUTED}; border-top: 1px solid ${COLORS.BORDER};">IP Address</td><td style="padding: 8px 0; color: ${COLORS.TEXT_PRIMARY}; border-top: 1px solid ${COLORS.BORDER}; font-family: monospace;">${escapeHtml(details.ipAddress)}</td></tr>
-        </table>
-      </div>
-      <div style="background-color: ${COLORS.BG_INFO}; border-left: 3px solid ${COLORS.ACCENT_BLUE_LIGHT}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_BLUE_PALE}; font-weight: 600;">Is this you?</p>
-        <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">If you authorized this key rotation, no action is needed. If not, contact our support team immediately.</p>
-      </div>
+      ${emailHeading("An API key was rotated")}
+      ${emailLead(`An API key on your ${APP_NAME} account was just rotated. The old key stops working and a new one takes its place.`)}
+      ${emailDetailPanel([
+        { label: "Key name", value: escapeHtml(keyName) },
+        { label: "New key created", value: escapeHtml(newKeyCreatedAt) },
+        {
+          label: "IP address",
+          value: escapeHtml(details.ipAddress),
+          mono: true,
+        },
+      ])}
+      ${emailNote(
+        `If you didn't rotate this key, revoke it from your API settings and email <a href="mailto:${SUPPORT_EMAIL}" style="color: ${COLORS.ACCENT_YELLOW_LIGHT}; text-decoration: underline;">${SUPPORT_EMAIL}</a>.`,
+        COLORS.ACCENT_YELLOW_LIGHT,
+      )}
     `,
   };
 }
 
 export function email2FACodeEmail(code: string) {
   return {
-    subject: `${code} - Your ${APP_NAME} Login Code`,
-    text: `Your ${APP_NAME} verification code is: ${code}\n\nThis code expires in 10 minutes.\n\nIf you did not request this code, someone may be trying to access your account. Please secure your account immediately.`,
+    subject: `${code} is your ${APP_NAME} sign-in code`,
+    text: `Your ${APP_NAME} sign-in code is ${code}. It expires in 10 minutes.\n\nDon't share this code with anyone. ${APP_NAME} will never ask you for it. If you didn't try to sign in, change your password.`,
     html: `
-  <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Your Login Code</h1>
-  <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Enter this code to complete your sign-in.</p>
-  <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 24px; margin-bottom: 20px; text-align: center;">
-  <p style="margin: 0 0 8px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED}; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Verification Code</p>
-  <p style="margin: 0; font-size: 36px; font-weight: 700; letter-spacing: 8px; color: ${COLORS.ACCENT_BLUE_LIGHT}; font-family: monospace;">${escapeHtml(code)}</p>
-  </div>
-  <div style="background-color: ${COLORS.BG_WARNING}; border-left: 3px solid ${COLORS.ACCENT_YELLOW}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
-  <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_LIGHT}; font-weight: 600;">Expires in 10 minutes</p>
-  <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_PALE}; line-height: 1.6;">Do not share this code with anyone. ${APP_NAME} will never ask you for this code outside of the login page.</p>
-  </div>
-  ${securityWarningBlock()}
-  `,
+      ${emailHeading("Your sign-in code")}
+      ${emailLead("Enter this code to finish signing in.")}
+      ${emailCodeBlock(code)}
+      ${emailNote(
+        `The code expires in 10 minutes. Don't share it with anyone; ${APP_NAME} will never ask you for it. If you didn't try to sign in, change your password.`,
+        COLORS.ACCENT_YELLOW_LIGHT,
+      )}
+    `,
   };
 }
 
 export function billingVerificationCodeEmail(code: string) {
   return {
-    subject: `${code} - Billing Information Access Code`,
-    text: `Your ${APP_NAME} billing verification code is: ${code}\n\nThis code expires in 5 minutes.\n\nYou requested this code to view sensitive billing information. If you did not make this request, please secure your account immediately.`,
+    subject: `${code} is your ${APP_NAME} billing access code`,
+    text: `Your ${APP_NAME} billing access code is ${code}. It expires in 5 minutes.\n\nYou'll need a fresh code each time you open billing. Don't share it with anyone. We ask for this so payment details stay locked even if someone reaches your account, since only your email can unlock them.\n\nIf you didn't request this, secure your account.`,
     html: `
-    <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Billing Verification Code</h1>
-    <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Enter this code to view your sensitive billing information.</p>
-    <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 24px; margin-bottom: 20px; text-align: center;">
-      <p style="margin: 0 0 8px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED}; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Verification Code</p>
-      <p style="margin: 0; font-size: 36px; font-weight: 700; letter-spacing: 8px; color: ${COLORS.ACCENT_BLUE_LIGHT}; font-family: monospace;">${escapeHtml(code)}</p>
-    </div>
-    <div style="background-color: ${COLORS.BG_WARNING}; border-left: 3px solid ${COLORS.ACCENT_YELLOW}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
-      <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_LIGHT}; font-weight: 600;">Expires in 5 minutes</p>
-      <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_PALE}; line-height: 1.6;">This code is required each time you want to view sensitive billing details. Never share this code with anyone.</p>
-    </div>
-    <div style="background-color: ${COLORS.BG_INFO}; border-left: 3px solid ${COLORS.ACCENT_BLUE_LIGHT}; border-radius: 6px; padding: 14px 16px;">
-      <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_BLUE_PALE}; font-weight: 600;">Why do we require this?</p>
-      <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">Even if someone gains access to your account, they cannot view your payment details without access to your email.</p>
-    </div>
+      ${emailHeading("Billing access code")}
+      ${emailLead("Enter this code to view your billing details.")}
+      ${emailCodeBlock(code)}
+      ${emailNote(
+        "The code expires in 5 minutes, and you'll need a fresh one each time you open billing. Don't share it with anyone.",
+        COLORS.ACCENT_YELLOW_LIGHT,
+      )}
+      ${emailParagraph(
+        "We ask for this so payment details stay locked even if someone reaches your account, since only your email can unlock them.",
+      )}
     `,
   };
 }
 
 export function email2FAEnabledEmail(details: SecurityAlertDetails) {
   return {
-    subject: `Email 2FA Enabled - ${APP_NAME}`,
-    text: `Email-based two-factor authentication has been enabled on your ${APP_NAME} account.\n\nYou will receive a verification code via email each time you log in.\n\nIP Address: ${details.ipAddress}`,
+    subject: `Email two-factor authentication is on for your ${APP_NAME} account`,
+    text: `Email-based two-factor authentication was just turned on for your ${APP_NAME} account. You'll get a verification code by email each time you sign in.\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Email 2FA Enabled</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Email-based two-factor authentication is now active on your account. You will receive a verification code via email each time you sign in.</p>
+      ${emailHeading("Email two-factor authentication is on")}
+      ${emailLead(`Email-based two-factor authentication was just turned on for your ${APP_NAME} account. You'll get a verification code by email each time you sign in.`)}
       ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
     `,
@@ -1182,11 +1212,15 @@ export function email2FAEnabledEmail(details: SecurityAlertDetails) {
 
 export function email2FADisabledEmail(details: SecurityAlertDetails) {
   return {
-    subject: `Email 2FA Disabled - ${APP_NAME}`,
-    text: `Email-based two-factor authentication has been disabled on your ${APP_NAME} account.\n\nIP Address: ${details.ipAddress}`,
+    subject: `Email two-factor authentication is off for your ${APP_NAME} account`,
+    text: `Email-based two-factor authentication was just turned off for your ${APP_NAME} account. Signing in no longer sends a verification code by email.\n\nTwo-factor authentication makes a stolen password much harder to use. You can turn it back on anytime in your security settings.\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Email 2FA Disabled</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Email-based two-factor authentication has been removed from your account. Your account is now less secure.</p>
+      ${emailHeading("Email two-factor authentication is off")}
+      ${emailLead(`Email-based two-factor authentication was just turned off for your ${APP_NAME} account. Signing in no longer sends a verification code by email.`)}
+      ${emailNote(
+        "Two-factor authentication makes a stolen password much harder to use. You can turn it back on anytime in your security settings.",
+        COLORS.ACCENT_YELLOW_LIGHT,
+      )}
       ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
     `,
@@ -1217,67 +1251,35 @@ export function adminNotificationEmail(input: AdminNotificationInput) {
     minute: "2-digit",
   });
 
-  // Color scheme based on type
-  const typeColors = {
-    info: {
-      bg: COLORS.BG_INFO,
-      border: COLORS.ACCENT_BLUE_LIGHT,
-      text: COLORS.ACCENT_BLUE_PALE,
-      icon: "ℹ️",
-    },
-    warning: {
-      bg: COLORS.BG_WARNING,
-      border: COLORS.ACCENT_YELLOW,
-      text: COLORS.ACCENT_YELLOW_PALE,
-      icon: "⚠️",
-    },
-    success: {
-      bg: COLORS.BG_SUCCESS,
-      border: COLORS.ACCENT_GREEN,
-      text: COLORS.ACCENT_GREEN_PALE,
-      icon: "✓",
-    },
-    alert: {
-      bg: COLORS.BG_DANGER,
-      border: COLORS.ACCENT_RED,
-      text: COLORS.ACCENT_RED_PALE,
-      icon: "!",
-    },
+  // The message type only sets an accent colour now (the old map carried an
+  // emoji icon and a filled banner; both are gone). The accent rides on the
+  // message note, so info/warning/success/alert read differently without a
+  // decorative icon.
+  const typeAccent: Record<
+    NonNullable<AdminNotificationInput["type"]>,
+    string
+  > = {
+    info: COLORS.ACCENT_BLUE_LIGHT,
+    warning: COLORS.ACCENT_YELLOW_LIGHT,
+    success: COLORS.ACCENT_GREEN_LIGHT,
+    alert: COLORS.ACCENT_RED_LIGHT,
   };
-  const colors = typeColors[input.type || "info"];
+  const accent = typeAccent[input.type ?? "info"];
 
   return {
     subject: `${title} - ${APP_NAME}`,
-    text: `Hi ${input.userName},\n\nYou have received a notification from ${APP_NAME} administration.\n\n${input.title}\n\n${input.message}\n\n---\nSent by: ${input.adminName}\nTimestamp: ${timestamp}\n\nIf you have questions, contact support at ${SUPPORT_EMAIL}`,
+    text: `Hi ${input.userName},\n\n${input.title}\n\n${input.message}\n\nFrom: ${input.adminName} (${APP_NAME} team)\nSent: ${timestamp}\n\nIf anything here needs clarifying, reach the team at ${SUPPORT_EMAIL}.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Message from ${APP_NAME}</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Hi ${userName}, you have received a notification from administration.</p>
-      
-      <div style="background-color: ${colors.bg}; border-left: 3px solid ${colors.border}; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
-        <p style="margin: 0 0 12px 0; font-size: 16px; font-weight: 600; color: ${colors.text};">${title}</p>
-        <p style="margin: 0; font-size: 14px; color: ${COLORS.TEXT_PRIMARY}; line-height: 1.7;">${message}</p>
-      </div>
-      
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 13px; line-height: 1.8;">
-          <tr>
-            <td style="padding: 4px 0; width: 100px; color: ${COLORS.TEXT_SECONDARY};">From</td>
-            <td style="padding: 4px 0; color: ${COLORS.TEXT_PRIMARY};">${adminName} (${APP_NAME} Team)</td>
-          </tr>
-          <tr>
-            <td style="padding: 4px 0; width: 100px; color: ${COLORS.TEXT_SECONDARY};">Sent</td>
-            <td style="padding: 4px 0; color: ${COLORS.TEXT_PRIMARY};">${escapeHtml(timestamp)}</td>
-          </tr>
-        </table>
-      </div>
-      
-      <div style="background-color: ${COLORS.BG_INFO}; border-left: 3px solid ${COLORS.ACCENT_BLUE_LIGHT}; border-radius: 6px; padding: 14px 16px;">
-        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_BLUE_PALE}; font-weight: 600;">Need Help?</p>
-        <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">
-          If you have questions, please contact support at 
-          <a href="mailto:${SUPPORT_EMAIL}" style="color: ${COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">${SUPPORT_EMAIL}</a>
-        </p>
-      </div>
+      ${emailHeading(title)}
+      ${emailLead(`Hi ${userName}, a message from the ${APP_NAME} team.`)}
+      ${emailNote(message, accent)}
+      ${emailDetailPanel([
+        { label: "From", value: `${adminName} (${APP_NAME} team)` },
+        { label: "Sent", value: escapeHtml(timestamp) },
+      ])}
+      ${emailParagraph(
+        `If anything here needs clarifying, reach the team at <a href="mailto:${SUPPORT_EMAIL}" style="color: ${COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">${SUPPORT_EMAIL}</a>.`,
+      )}
     `,
   };
 }
@@ -1303,74 +1305,57 @@ export function scanCompleteEmail(
   const viewLink = scanHistoryId
     ? `${APP_URL}/history/${scanHistoryId}`
     : `${APP_URL}/history`;
+  const issueWord = summary.total === 1 ? "issue" : "issues";
 
-  const severityBadge = (
-    label: string,
-    count: number,
-    bgColor: string,
-    textColor: string,
-  ) =>
+  const chip = (label: string, count: number, color: string) =>
     count > 0
-      ? `
-    <td style="padding: 0 4px;">
-      <span style="display: inline-block; padding: 6px 12px; background-color: ${bgColor}; border-radius: 6px; font-size: 13px; font-weight: 600; color: ${textColor};">${count} ${label}</span>
-    </td>
-  `
+      ? `<td style="padding: 0 6px 6px 0;"><span style="display: inline-block; padding: 5px 11px; border: 1px solid ${color}; border-radius: 999px; font-size: 12px; font-weight: 600; color: ${color}; white-space: nowrap;">${count} ${label}</span></td>`
+      : "";
+
+  const chips = [
+    chip("critical", summary.critical, BRAND.severity.critical),
+    chip("high", summary.high, BRAND.severity.high),
+    chip("medium", summary.medium, BRAND.severity.medium),
+    chip("low", summary.low, BRAND.severity.low),
+    chip("info", summary.info, BRAND.severity.info),
+  ].join("");
+  const chipRow = chips
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 0 0 22px 0;"><tr>${chips}</tr></table>`
+    : "";
+
+  const lead =
+    summary.total === 0
+      ? `We finished scanning your target in ${durationSecs}s and found nothing to flag.`
+      : `We finished scanning your target in ${durationSecs}s and found ${summary.total} ${issueWord}.`;
+
+  const priority = summary.critical + summary.high;
+  const priorityNote =
+    priority > 0
+      ? emailNote(
+          `${summary.critical} critical and ${summary.high} high severity ${priority === 1 ? "finding is" : "findings are"} in this report. Start with those.`,
+          COLORS.ACCENT_RED_LIGHT,
+        )
       : "";
 
   return {
-    subject: `Scan Complete: ${summary.total} issue${summary.total !== 1 ? "s" : ""} found - ${APP_NAME}`,
-    text: `Your scan of ${url} has completed.\n\nResults:\n- Critical: ${summary.critical}\n- High: ${summary.high}\n- Medium: ${summary.medium}\n- Low: ${summary.low}\n- Info: ${summary.info}\n- Total: ${summary.total}\n\nDuration: ${durationSecs}s\n\nView full report: ${viewLink}`,
+    subject: `Scan complete: ${summary.total} ${issueWord} found - ${APP_NAME}`,
+    text: `Your scan of ${url} finished in ${durationSecs}s.\n\nFindings:\n- Critical: ${summary.critical}\n- High: ${summary.high}\n- Medium: ${summary.medium}\n- Low: ${summary.low}\n- Info: ${summary.info}\nTotal: ${summary.total}\n\nView the full report: ${viewLink}`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Scan Complete</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Your vulnerability scan has finished.</p>
-      
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 8px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED}; font-weight: 600;">Target URL</p>
-        <p style="margin: 0; font-size: 14px; color: ${COLORS.ACCENT_BLUE_LIGHT}; word-break: break-all; font-family: monospace;">${safeUrl}</p>
-      </div>
-      
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 12px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED}; font-weight: 600;">Findings Summary</p>
-        <table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom: 12px;">
-          <tr>
-            ${severityBadge("Critical", summary.critical, COLORS.BG_DANGER, COLORS.ACCENT_RED_LIGHT)}
-            ${severityBadge("High", summary.high, "#7c2d12", COLORS.ACCENT_YELLOW_LIGHT)}
-            ${severityBadge("Medium", summary.medium, COLORS.BG_WARNING, COLORS.ACCENT_YELLOW_PALE)}
-            ${severityBadge("Low", summary.low, COLORS.BG_INFO, COLORS.ACCENT_BLUE_PALE)}
-            ${severityBadge("Info", summary.info, COLORS.BG_SECTION, COLORS.TEXT_SECONDARY)}
-          </tr>
-        </table>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 13px; line-height: 1.8; border-top: 1px solid ${COLORS.BORDER_SECTION}; padding-top: 12px;">
-          <tr>
-            <td style="padding: 4px 0; color: ${COLORS.TEXT_SECONDARY};">Total Issues</td>
-            <td style="padding: 4px 0; color: ${COLORS.TEXT_PRIMARY}; text-align: right; font-weight: 600;">${summary.total}</td>
-          </tr>
-          <tr>
-            <td style="padding: 4px 0; color: ${COLORS.TEXT_SECONDARY};">Scan Duration</td>
-            <td style="padding: 4px 0; color: ${COLORS.TEXT_PRIMARY}; text-align: right;">${durationSecs}s</td>
-          </tr>
-        </table>
-      </div>
-      
-      ${
-        summary.critical > 0 || summary.high > 0
-          ? `
-      <div style="background-color: ${COLORS.BG_DANGER}; border-left: 3px solid ${COLORS.ACCENT_RED}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_RED_LIGHT}; font-weight: 600;">Action Required</p>
-        <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_RED_PALE}; line-height: 1.6;">Critical or high severity issues were detected. Review the findings and address them promptly.</p>
-      </div>
-      `
-          : ""
-      }
-      
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-        <tr>
-          <td align="center">
-            <a href="${viewLink}" style="display: inline-block; padding: 14px 40px; background-color: ${COLORS.ACCENT_BLUE}; color: ${COLORS.WHITE}; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;">View Full Report</a>
-          </td>
-        </tr>
-      </table>
+      ${emailHeading("Scan complete")}
+      ${emailLead(lead)}
+      ${chipRow}
+      ${emailDetailPanel([
+        {
+          label: "Target",
+          value: safeUrl,
+          mono: true,
+          color: COLORS.ACCENT_BLUE_LIGHT,
+        },
+        { label: "Findings", value: `${summary.total} ${issueWord}` },
+        { label: "Scan time", value: `${durationSecs}s` },
+      ])}
+      ${priorityNote}
+      ${emailButton(viewLink, "View full report")}
     `,
   };
 }
@@ -1421,74 +1406,49 @@ export function criticalFindingsEmail(
     (f) => f.severity === "critical",
   ).length;
   const newHigh = newFindings.filter((f) => f.severity === "high").length;
+  const newWord = newFindings.length === 1 ? "finding" : "findings";
+
+  const listBlock = (label: string, items: CriticalFindingSummary[]) =>
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin: 0 0 16px 0;">
+        <tr><td>
+          <p style="margin: 0 0 10px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">${label}</p>
+          <ul style="margin: 0; padding-left: 18px; font-size: 13px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.7;">${findingListItems(items)}</ul>
+        </td></tr>
+      </table>`;
 
   return {
-    subject: `ALERT: ${newFindings.length} new critical/high severity issue${newFindings.length !== 1 ? "s" : ""} found - ${APP_NAME}`,
-    text: `URGENT: New critical/high vulnerabilities detected!\n\nURL: ${url}\n\nNew since your last scan (${newFindings.length}):\n${findingListText(newFindings)}\n${
+    subject: `${newFindings.length} new critical/high severity issue${newFindings.length !== 1 ? "s" : ""} found - ${APP_NAME}`,
+    text: `New critical/high findings on your latest scan.\n\nURL: ${url}\n\nNew since your last scan (${newFindings.length}):\n${findingListText(newFindings)}\n${
       outstandingFindings.length > 0
         ? `\nStill outstanding from before (${outstandingFindings.length}):\n${findingListText(outstandingFindings)}\n`
         : ""
-    }\nImmediate action recommended. View report: ${viewLink}`,
+    }\nThese pose real risk. Review and fix them as soon as you can. View the report: ${viewLink}`,
     html: `
-      <div style="background-color: ${COLORS.BG_DANGER}; border-radius: 8px; padding: 20px; margin-bottom: 20px; text-align: center;">
-        <p style="margin: 0 0 8px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: ${COLORS.ACCENT_RED_LIGHT}; font-weight: 700;">Security Alert</p>
-        <h1 style="margin: 0; font-size: 24px; font-weight: 700; color: ${COLORS.ACCENT_RED_PALE};">New Vulnerabilities Detected</h1>
-      </div>
-
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 8px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED}; font-weight: 600;">Target URL</p>
-        <p style="margin: 0; font-size: 14px; color: ${COLORS.ACCENT_BLUE_LIGHT}; word-break: break-all; font-family: monospace;">${safeUrl}</p>
-      </div>
-
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 20px;">
-        <tr>
-          <td width="50%" style="padding-right: 8px;">
-            <div style="background-color: ${COLORS.BG_DANGER}; border-radius: 8px; padding: 16px; text-align: center;">
-              <p style="margin: 0 0 4px 0; font-size: 32px; font-weight: 700; color: ${COLORS.ACCENT_RED_PALE};">${newCritical}</p>
-              <p style="margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.ACCENT_RED_LIGHT};">New Critical</p>
-            </div>
-          </td>
-          <td width="50%" style="padding-left: 8px;">
-            <div style="background-color: #7c2d12; border-radius: 8px; padding: 16px; text-align: center;">
-              <p style="margin: 0 0 4px 0; font-size: 32px; font-weight: 700; color: ${COLORS.ACCENT_YELLOW_PALE};">${newHigh}</p>
-              <p style="margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.ACCENT_YELLOW_LIGHT};">New High</p>
-            </div>
-          </td>
-        </tr>
-      </table>
-
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
-        <p style="margin: 0 0 10px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED}; font-weight: 600;">New since your last scan</p>
-        <ul style="margin: 0; padding-left: 18px; font-size: 13px; color: #e2e8f0; line-height: 1.7;">
-          ${findingListItems(newFindings)}
-        </ul>
-      </div>
-
+      ${emailHeading("New critical and high findings")}
+      ${emailLead(`Your latest scan of this target turned up ${newFindings.length} new critical or high severity ${newWord} since last time. These are worth looking at now.`)}
+      ${severityChipRow({ critical: newCritical, high: newHigh })}
+      ${emailDetailPanel([
+        {
+          label: "Target",
+          value: safeUrl,
+          mono: true,
+          color: COLORS.ACCENT_BLUE_LIGHT,
+        },
+      ])}
+      ${listBlock("New since your last scan", newFindings)}
       ${
         outstandingFindings.length > 0
-          ? `
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 10px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED}; font-weight: 600;">Still outstanding (${outstandingFindings.length})</p>
-        <ul style="margin: 0; padding-left: 18px; font-size: 13px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.7;">
-          ${findingListItems(outstandingFindings)}
-        </ul>
-      </div>
-      `
+          ? listBlock(
+              `Still outstanding (${outstandingFindings.length})`,
+              outstandingFindings,
+            )
           : ""
       }
-
-      <div style="background-color: ${COLORS.BG_DANGER}; border-left: 3px solid ${COLORS.ACCENT_RED}; border-radius: 6px; padding: 14px 16px; margin-bottom: 24px;">
-        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_RED_LIGHT}; font-weight: 600;">Immediate Action Required</p>
-        <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_RED_PALE}; line-height: 1.6;">These vulnerabilities pose significant security risks. Review and remediate them as soon as possible.</p>
-      </div>
-
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-        <tr>
-          <td align="center">
-            <a href="${viewLink}" style="display: inline-block; padding: 14px 40px; background-color: ${COLORS.ACCENT_RED}; color: ${COLORS.WHITE}; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;">View Security Report</a>
-          </td>
-        </tr>
-      </table>
+      ${emailNote(
+        "These pose real risk. Review and fix them as soon as you can.",
+        COLORS.ACCENT_RED_LIGHT,
+      )}
+      ${emailButton(viewLink, "View the report", COLORS.ACCENT_RED)}
     `,
   };
 }
@@ -1506,38 +1466,42 @@ export function scheduledScanCompleteEmail(
   const viewLink = scanHistoryId
     ? `${APP_URL}/history/${scanHistoryId}`
     : `${APP_URL}/history`;
+  const issueWord = summary.total === 1 ? "issue" : "issues";
+
+  const lead =
+    summary.total === 0
+      ? `Your scheduled scan "${safeName}" finished in ${durationSecs}s and found nothing to flag.`
+      : `Your scheduled scan "${safeName}" finished in ${durationSecs}s and found ${summary.total} ${issueWord}.`;
+
+  const priority = summary.critical + summary.high;
+  const priorityNote =
+    priority > 0
+      ? emailNote(
+          `${summary.critical} critical and ${summary.high} high severity ${priority === 1 ? "finding is" : "findings are"} in this report. Start with those.`,
+          COLORS.ACCENT_RED_LIGHT,
+        )
+      : "";
 
   return {
-    subject: `Scheduled Scan "${scheduleName}" Complete - ${APP_NAME}`,
-    text: `Your scheduled scan "${scheduleName}" has completed.\n\nURL: ${url}\nResults: ${summary.total} issues (${summary.critical} critical, ${summary.high} high)\nDuration: ${durationSecs}s\n\nView report: ${viewLink}`,
+    subject: `Scheduled scan "${scheduleName}" complete - ${APP_NAME}`,
+    text: `Your scheduled scan "${scheduleName}" finished in ${durationSecs}s.\n\nURL: ${url}\nFindings:\n- Critical: ${summary.critical}\n- High: ${summary.high}\n- Medium: ${summary.medium}\n- Low: ${summary.low}\n- Info: ${summary.info}\nTotal: ${summary.total}\n\nView the full report: ${viewLink}`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Scheduled Scan Complete</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Your scheduled scan <strong style="color: ${COLORS.TEXT_PRIMARY};">"${safeName}"</strong> has finished.</p>
-      
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 8px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED}; font-weight: 600;">Target URL</p>
-        <p style="margin: 0; font-size: 14px; color: ${COLORS.ACCENT_BLUE_LIGHT}; word-break: break-all; font-family: monospace;">${safeUrl}</p>
-      </div>
-      
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 12px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED}; font-weight: 600;">Results</p>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 13px; line-height: 1.8;">
-          <tr><td style="padding: 4px 0; color: ${COLORS.TEXT_SECONDARY};">Critical</td><td style="padding: 4px 0; color: ${summary.critical > 0 ? COLORS.ACCENT_RED_LIGHT : COLORS.TEXT_PRIMARY}; text-align: right; font-weight: 600;">${summary.critical}</td></tr>
-          <tr><td style="padding: 4px 0; color: ${COLORS.TEXT_SECONDARY};">High</td><td style="padding: 4px 0; color: ${summary.high > 0 ? COLORS.ACCENT_YELLOW_LIGHT : COLORS.TEXT_PRIMARY}; text-align: right; font-weight: 600;">${summary.high}</td></tr>
-          <tr><td style="padding: 4px 0; color: ${COLORS.TEXT_SECONDARY};">Medium</td><td style="padding: 4px 0; color: ${COLORS.TEXT_PRIMARY}; text-align: right;">${summary.medium}</td></tr>
-          <tr><td style="padding: 4px 0; color: ${COLORS.TEXT_SECONDARY};">Low</td><td style="padding: 4px 0; color: ${COLORS.TEXT_PRIMARY}; text-align: right;">${summary.low}</td></tr>
-          <tr><td style="padding: 4px 0; color: ${COLORS.TEXT_SECONDARY};">Info</td><td style="padding: 4px 0; color: ${COLORS.TEXT_PRIMARY}; text-align: right;">${summary.info}</td></tr>
-          <tr style="border-top: 1px solid ${COLORS.BORDER_SECTION};"><td style="padding: 8px 0 4px 0; color: ${COLORS.TEXT_PRIMARY}; font-weight: 600;">Total</td><td style="padding: 8px 0 4px 0; color: ${COLORS.TEXT_PRIMARY}; text-align: right; font-weight: 600;">${summary.total}</td></tr>
-        </table>
-      </div>
-      
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-        <tr>
-          <td align="center">
-            <a href="${viewLink}" style="display: inline-block; padding: 14px 40px; background-color: ${COLORS.ACCENT_BLUE}; color: ${COLORS.WHITE}; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;">View Full Report</a>
-          </td>
-        </tr>
-      </table>
+      ${emailHeading("Scheduled scan complete")}
+      ${emailLead(lead)}
+      ${severityChipRow(summary)}
+      ${emailDetailPanel([
+        { label: "Schedule", value: safeName },
+        {
+          label: "Target",
+          value: safeUrl,
+          mono: true,
+          color: COLORS.ACCENT_BLUE_LIGHT,
+        },
+        { label: "Findings", value: `${summary.total} ${issueWord}` },
+        { label: "Scan time", value: `${durationSecs}s` },
+      ])}
+      ${priorityNote}
+      ${emailButton(viewLink, "View full report")}
     `,
   };
 }
@@ -1598,6 +1562,8 @@ export function postureDigestEmail(data: PostureDigestData) {
     siteCount,
     newFindings,
     newFindingsTotal,
+    newCriticalCount,
+    newHighCount,
     currentOpenCount,
     previousOpenCount,
     trend,
@@ -1609,86 +1575,60 @@ export function postureDigestEmail(data: PostureDigestData) {
 
   const subject =
     newFindingsTotal > 0
-      ? `Posture Digest: ${newFindingsTotal} new critical/high finding${newFindingsTotal !== 1 ? "s" : ""} across ${siteLabel} - ${APP_NAME}`
-      : `Posture Digest: ${siteLabel} monitored, nothing new this ${periodLabel} - ${APP_NAME}`;
+      ? `Posture digest: ${newFindingsTotal} new critical/high finding${newFindingsTotal !== 1 ? "s" : ""} across ${siteLabel} - ${APP_NAME}`
+      : `Posture digest: ${siteLabel} monitored, nothing new this ${periodLabel} - ${APP_NAME}`;
 
   const trendCopy = {
     up: {
       color: COLORS.ACCENT_RED_LIGHT,
-      bg: COLORS.BG_DANGER,
       label: "Open critical/high findings increased",
     },
     down: {
       color: COLORS.ACCENT_GREEN_LIGHT,
-      bg: COLORS.BG_SUCCESS,
       label: "Open critical/high findings decreased",
     },
     flat: {
       color: COLORS.TEXT_SECONDARY,
-      bg: COLORS.BG_SECTION,
       label: "Open critical/high findings unchanged",
     },
   }[trend];
+
+  const findingsLabel = `New since your last digest${newFindingsTotal > newFindings.length ? ` (showing ${newFindings.length} of ${newFindingsTotal})` : ""}`;
 
   const text = `Your ${periodLabel}ly posture digest across ${siteLabel}.\n\nNew critical/high findings since your last digest: ${newFindingsTotal}\n${
     newFindings.length > 0 ? `\n${postureFindingListText(newFindings)}\n` : ""
   }\n${trendCopy.label}: ${previousOpenCount} -> ${currentOpenCount} open critical/high findings.\n\nView your scan history: ${APP_URL}/history`;
 
+  const findingsBlock =
+    newFindings.length > 0
+      ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin: 0 0 22px 0;">
+        <tr><td>
+          <p style="margin: 0 0 10px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">${findingsLabel}</p>
+          <ul style="margin: 0; padding-left: 18px; font-size: 13px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.8;">${postureFindingListItems(newFindings)}</ul>
+        </td></tr>
+      </table>`
+      : emailNote(
+          "No new critical or high severity findings since your last digest.",
+          COLORS.ACCENT_GREEN_LIGHT,
+        );
+
   const html = `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Posture Digest</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Across ${siteLabel} you've scanned with ${APP_NAME}.</p>
-
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 20px;">
-        <tr>
-          <td width="33%" style="padding-right: 8px;">
-            <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; text-align: center;">
-              <p style="margin: 0 0 4px 0; font-size: 28px; font-weight: 700; color: ${COLORS.TEXT_PRIMARY};">${siteCount}</p>
-              <p style="margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED};">Sites Monitored</p>
-            </div>
-          </td>
-          <td width="34%" style="padding: 0 4px;">
-            <div style="background-color: ${newFindingsTotal > 0 ? COLORS.BG_DANGER : COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; text-align: center;">
-              <p style="margin: 0 0 4px 0; font-size: 28px; font-weight: 700; color: ${newFindingsTotal > 0 ? COLORS.ACCENT_RED_LIGHT : COLORS.TEXT_PRIMARY};">${newFindingsTotal}</p>
-              <p style="margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED};">New Critical/High</p>
-            </div>
-          </td>
-          <td width="33%" style="padding-left: 8px;">
-            <div style="background-color: ${trendCopy.bg}; border-radius: 8px; padding: 16px; text-align: center;">
-              <p style="margin: 0 0 4px 0; font-size: 28px; font-weight: 700; color: ${trendCopy.color};">${currentOpenCount}</p>
-              <p style="margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED};">Open Now</p>
-            </div>
-          </td>
-        </tr>
-      </table>
-
-      <div style="background-color: ${trendCopy.bg}; border-left: 3px solid ${trendCopy.color}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
-        <p style="margin: 0; font-size: 13px; color: ${trendCopy.color}; line-height: 1.6;">${trendCopy.label}: ${previousOpenCount} to ${currentOpenCount} since your last digest.</p>
-      </div>
-
-      ${
-        newFindings.length > 0
-          ? `
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 10px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED}; font-weight: 600;">New since your last digest${newFindingsTotal > newFindings.length ? ` (showing ${newFindings.length} of ${newFindingsTotal})` : ""}</p>
-        <ul style="margin: 0; padding-left: 18px; font-size: 13px; color: #e2e8f0; line-height: 1.8;">
-          ${postureFindingListItems(newFindings)}
-        </ul>
-      </div>
-      `
-          : `
-      <div style="background-color: ${COLORS.BG_SUCCESS}; border-left: 3px solid ${COLORS.ACCENT_GREEN}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
-        <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_GREEN_LIGHT}; line-height: 1.6;">No new critical or high severity findings since your last digest.</p>
-      </div>
-      `
-      }
-
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-        <tr>
-          <td align="center">
-            <a href="${APP_URL}/history" style="display: inline-block; padding: 14px 40px; background-color: ${COLORS.ACCENT_BLUE}; color: ${COLORS.WHITE}; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;">View Scan History</a>
-          </td>
-        </tr>
-      </table>
+      ${emailHeading("Your posture digest")}
+      ${emailLead(`Across ${siteLabel} you've scanned with ${APP_NAME}, here's what changed since your last digest.`)}
+      ${severityChipRow({ critical: newCriticalCount, high: newHighCount })}
+      ${emailDetailPanel([
+        { label: "Sites monitored", value: `${siteCount}` },
+        {
+          label: "New critical/high",
+          value: `${newFindingsTotal}`,
+          color:
+            newFindingsTotal > 0 ? COLORS.ACCENT_RED_LIGHT : COLORS.TEXT_PRIMARY,
+        },
+        { label: "Open now", value: `${currentOpenCount}`, color: trendCopy.color },
+      ])}
+      ${emailNote(`${trendCopy.label}: ${previousOpenCount} to ${currentOpenCount} since your last digest.`, trendCopy.color)}
+      ${findingsBlock}
+      ${emailButton(`${APP_URL}/history`, "View scan history")}
     `;
 
   return { subject, text, html };
@@ -1736,39 +1676,318 @@ export function adminAccountChangeEmail(input: AdminChangeNotification) {
     .join("\n");
 
   return {
-    subject: `Account Updated by Administrator - ${APP_NAME}`,
-    text: `Hi ${input.userName},\n\nAn administrator (${input.adminName}) has made changes to your ${APP_NAME} account.\n\nChanges:\n${changesText}\n\nTimestamp: ${timestamp}\n\nIf you have questions about these changes, please contact support at ${SUPPORT_EMAIL}`,
+    subject: `An administrator updated your account - ${APP_NAME}`,
+    text: `Hi ${input.userName},\n\nAn administrator (${input.adminName}) changed some details on your ${APP_NAME} account.\n\nChanges:\n${changesText}\n\nWhen: ${timestamp}\n\nIf any of this looks wrong, reach the team at ${SUPPORT_EMAIL}.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Account Updated</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Hi ${userName}, an administrator has made changes to your account.</p>
-      
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 12px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED}; font-weight: 600;">Changes Made</p>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
-          ${changesHtml}
-        </table>
-      </div>
-      
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 13px; line-height: 1.8;">
-          <tr>
-            <td style="padding: 4px 0; width: 100px; color: ${COLORS.TEXT_SECONDARY};">Admin</td>
-            <td style="padding: 4px 0; color: ${COLORS.TEXT_PRIMARY};">${adminName}</td>
-          </tr>
-          <tr>
-            <td style="padding: 4px 0; width: 100px; color: ${COLORS.TEXT_SECONDARY};">Timestamp</td>
-            <td style="padding: 4px 0; color: ${COLORS.TEXT_PRIMARY};">${escapeHtml(timestamp)}</td>
-          </tr>
-        </table>
-      </div>
-      
-      <div style="background-color: ${COLORS.BG_INFO}; border-left: 3px solid ${COLORS.ACCENT_BLUE_LIGHT}; border-radius: 6px; padding: 14px 16px;">
-        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_BLUE_PALE}; font-weight: 600;">Questions?</p>
-        <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">
-          If you have questions about these changes, please contact support at 
-          <a href="mailto:${SUPPORT_EMAIL}" style="color: ${COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">${SUPPORT_EMAIL}</a>
-        </p>
-      </div>
+      ${emailHeading("Your account was updated")}
+      ${emailLead(`Hi ${userName}, an administrator changed some details on your ${APP_NAME} account.`)}
+
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin: 0 0 22px 0;">
+        <tr><td>
+          <p style="margin: 0 0 6px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Changes</p>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
+            ${changesHtml}
+          </table>
+        </td></tr>
+      </table>
+
+      ${emailDetailPanel([
+        { label: "Changed by", value: adminName },
+        { label: "When", value: escapeHtml(timestamp) },
+      ])}
+      ${emailParagraph(
+        `If any of this looks wrong, reach the team at <a href="mailto:${SUPPORT_EMAIL}" style="color: ${COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">${SUPPORT_EMAIL}</a>.`,
+      )}
+    `,
+  };
+}
+
+// Billing / receipt emails. These are transactional: they're the record of a
+// real charge, refund, or plan change on the account, so they send through
+// sendEmail directly (see app/api/v3/webhooks/stripe/route.ts) rather than the
+// preference-gated sendNotificationEmail path -- a paying customer can't opt
+// out of a receipt.
+
+// Renders a Stripe minor-unit amount (cents) in its currency. Stripe hands us
+// the currency lowercase ("usd"); Intl.NumberFormat wants it uppercase.
+function formatMoney(amountCents: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: currency.toUpperCase(),
+    }).format(amountCents / 100);
+  } catch {
+    // An unknown/non-ISO currency code would make NumberFormat throw; fall
+    // back to a plain amount + code rather than lose the receipt entirely.
+    return `${(amountCents / 100).toFixed(2)} ${currency.toUpperCase()}`;
+  }
+}
+
+export function paymentReceiptEmail(input: {
+  planName: string;
+  amountCents: number;
+  currency: string;
+  date: string;
+  invoiceUrl?: string | null;
+}) {
+  const safePlan = escapeHtml(input.planName);
+  const amount = formatMoney(input.amountCents, input.currency);
+  const manageUrl = `${APP_URL}/profile?tab=billing`;
+  const hasInvoice = !!input.invoiceUrl && /^https?:\/\//i.test(input.invoiceUrl);
+
+  return {
+    subject: `Your ${APP_NAME} payment receipt`,
+    text: `Thanks, your payment went through.\n\nPlan: ${input.planName}\nAmount: ${amount}\nDate: ${input.date}\n${
+      hasInvoice ? `\nDownload your invoice: ${input.invoiceUrl}\n` : ""
+    }\nManage your subscription or update your card: ${manageUrl}`,
+    html: `
+      ${emailHeading("Payment received")}
+      ${emailLead(`Thanks, your ${amount} payment for ${safePlan} went through. Here's your receipt.`)}
+      ${emailDetailPanel([
+        { label: "Plan", value: safePlan },
+        { label: "Amount", value: amount, color: COLORS.ACCENT_GREEN_TEXT },
+        { label: "Date", value: escapeHtml(input.date) },
+      ])}
+      ${
+        hasInvoice
+          ? emailButton(input.invoiceUrl!, "Download invoice")
+          : emailButton(manageUrl, "Manage subscription")
+      }
+      ${emailParagraph(
+        `Manage your subscription or update your card anytime from your <a href="${manageUrl}" style="color: ${COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">billing settings</a>.`,
+      )}
+    `,
+  };
+}
+
+export function paymentFailedEmail(input: {
+  planName: string;
+  amountCents: number;
+  currency: string;
+  nextAttempt?: string | null;
+}) {
+  const safePlan = escapeHtml(input.planName);
+  const amount = formatMoney(input.amountCents, input.currency);
+  const updateUrl = `${APP_URL}/profile?tab=billing`;
+  const retryLine = input.nextAttempt
+    ? `We'll try the card again on ${escapeHtml(input.nextAttempt)}. Update it before then to avoid losing access.`
+    : "We'll retry the card automatically over the next few days. Update it to avoid losing access.";
+
+  const rows: EmailDetailRow[] = [
+    { label: "Plan", value: safePlan },
+    { label: "Amount due", value: amount, color: COLORS.ACCENT_RED_LIGHT },
+  ];
+  if (input.nextAttempt) {
+    rows.push({ label: "Next retry", value: escapeHtml(input.nextAttempt) });
+  }
+
+  return {
+    subject: `${APP_NAME} couldn't process your payment`,
+    text: `We couldn't charge your card ${amount} for your ${input.planName} subscription.\n${
+      input.nextAttempt ? `\nNext retry: ${input.nextAttempt}\n` : ""
+    }\nUpdate your payment method: ${updateUrl}\n\nYour plan stays active for now, but repeated failures will drop the account to free.`,
+    html: `
+      ${emailHeading("Your payment didn't go through")}
+      ${emailLead(`We couldn't charge your card ${amount} for your ${safePlan} subscription.`)}
+      ${emailDetailPanel(rows)}
+      ${emailNote(retryLine, COLORS.ACCENT_YELLOW_LIGHT)}
+      ${emailButton(updateUrl, "Update payment method")}
+    `,
+  };
+}
+
+export type SubscriptionChangeKind =
+  | "upgraded"
+  | "downgraded"
+  | "canceled"
+  | "renewed";
+
+// One builder for every subscription lifecycle change, parameterized by kind.
+// The Stripe webhook (customer.subscription.created/updated/deleted) resolves
+// the kind from the old and new plan prices and calls this once.
+export function subscriptionChangedEmail(input: {
+  kind: SubscriptionChangeKind;
+  planName: string;
+  previousPlanName?: string | null;
+  effectiveDate?: string | null;
+}) {
+  const safePlan = escapeHtml(input.planName);
+  const safePrev = input.previousPlanName
+    ? escapeHtml(input.previousPlanName)
+    : null;
+  const manageUrl = `${APP_URL}/profile?tab=billing`;
+  const isPlanMove = input.kind === "upgraded" || input.kind === "downgraded";
+
+  const copy: Record<
+    SubscriptionChangeKind,
+    {
+      subject: string;
+      heading: string;
+      lead: string;
+      statusLabel: string;
+      statusColor: string;
+      cta: string;
+    }
+  > = {
+    upgraded: {
+      subject: `You're now on ${input.planName} - ${APP_NAME}`,
+      heading: "Your plan was upgraded",
+      lead: `You're now on ${safePlan}. The higher limits are live on your account right away.`,
+      statusLabel: "Upgraded",
+      statusColor: COLORS.ACCENT_GREEN_TEXT,
+      cta: "Manage subscription",
+    },
+    downgraded: {
+      subject: `Your plan changed to ${input.planName} - ${APP_NAME}`,
+      heading: "Your plan was changed",
+      lead: `Your subscription is now ${safePlan}. The new limits apply from your next billing cycle.`,
+      statusLabel: "Downgraded",
+      statusColor: COLORS.ACCENT_YELLOW_LIGHT,
+      cta: "Manage subscription",
+    },
+    canceled: {
+      subject: `Your ${APP_NAME} subscription was canceled`,
+      heading: "Your subscription was canceled",
+      lead: `Your ${safePlan} subscription is canceled. You keep its features until the end of the period you already paid for, then the account drops to the free plan.`,
+      statusLabel: "Canceled",
+      statusColor: COLORS.ACCENT_RED_LIGHT,
+      cta: "Reactivate subscription",
+    },
+    renewed: {
+      subject: `Your ${APP_NAME} subscription renewed`,
+      heading: "Your subscription renewed",
+      lead: `Your ${safePlan} subscription is active for another cycle. Nothing to do.`,
+      statusLabel: "Active",
+      statusColor: COLORS.ACCENT_GREEN_TEXT,
+      cta: "Manage subscription",
+    },
+  };
+  const c = copy[input.kind];
+
+  const rows: EmailDetailRow[] = [];
+  if (safePrev && isPlanMove) {
+    rows.push({ label: "Previous plan", value: safePrev });
+  }
+  rows.push({ label: "Plan", value: safePlan });
+  rows.push({ label: "Status", value: c.statusLabel, color: c.statusColor });
+  if (input.effectiveDate) {
+    rows.push({
+      label: input.kind === "canceled" ? "Access until" : "Effective",
+      value: escapeHtml(input.effectiveDate),
+    });
+  }
+
+  const textLines = [c.heading, ""];
+  if (input.previousPlanName && isPlanMove) {
+    textLines.push(`Previous plan: ${input.previousPlanName}`);
+  }
+  textLines.push(`Plan: ${input.planName}`);
+  textLines.push(`Status: ${c.statusLabel}`);
+  if (input.effectiveDate) {
+    textLines.push(
+      `${input.kind === "canceled" ? "Access until" : "Effective"}: ${input.effectiveDate}`,
+    );
+  }
+  textLines.push("", `Manage your subscription: ${manageUrl}`);
+
+  return {
+    subject: c.subject,
+    text: textLines.join("\n"),
+    html: `
+      ${emailHeading(c.heading)}
+      ${emailLead(c.lead)}
+      ${emailDetailPanel(rows)}
+      ${emailButton(manageUrl, c.cta)}
+    `,
+  };
+}
+
+// Sent as the final step of a full account + data purge (self-service
+// deletion). The caller captures the recipient's email BEFORE the purge runs,
+// since the users row is gone by the time this sends. Transactional: it's the
+// confirmation of an irreversible action, not a notification.
+export function accountDeletedEmail(name?: string | null) {
+  const safeName = name ? escapeHtml(name) : null;
+  const greetingHtml = safeName ? `Hi ${safeName}, your` : "Your";
+  const greetingText = name ? `Hi ${name}, your` : "Your";
+
+  return {
+    subject: `Your ${APP_NAME} account was deleted`,
+    text: `${greetingText} ${APP_NAME} account and all of its data have been permanently deleted. Scans, schedules, API keys, and billing records are gone and can't be recovered.\n\nThis is the last email we'll send to this address. If you didn't request this deletion, email ${SUPPORT_EMAIL} right away.\n\nThanks for trying ${APP_NAME}.`,
+    html: `
+      ${emailHeading("Your account was deleted")}
+      ${emailLead(`${greetingHtml} ${APP_NAME} account and all of its data have been permanently deleted.`)}
+      ${emailParagraph(
+        "Scans, schedules, API keys, and billing records are gone and can't be recovered. This is the last email we'll send to this address.",
+      )}
+      ${emailNote(
+        `If you didn't request this deletion, email <a href="mailto:${SUPPORT_EMAIL}" style="color: ${COLORS.ACCENT_RED_LIGHT}; text-decoration: underline;">${SUPPORT_EMAIL}</a> right away.`,
+        COLORS.ACCENT_RED_LIGHT,
+      )}
+      ${emailParagraph(`Thanks for trying ${APP_NAME}.`)}
+    `,
+  };
+}
+
+// Sent when a user revokes every session ("sign out everywhere"). Security
+// notice, gated on the session_alerts preference.
+export function sessionRevokedEmail(details: SecurityAlertDetails) {
+  return {
+    subject: `You were signed out of every ${APP_NAME} session`,
+    text: `Every active session on your ${APP_NAME} account was just signed out. You'll need to sign in again on each device.\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you didn't do this, change your password and turn on two-factor authentication right away, then email ${SUPPORT_EMAIL}.`,
+    html: `
+      ${emailHeading("You were signed out everywhere")}
+      ${emailLead(`Every active session on your ${APP_NAME} account was just signed out. You'll need to sign in again on each device.`)}
+      ${securityDetailsBlock(details)}
+      ${securityWarningBlock()}
+    `,
+  };
+}
+
+// Sent to a member removed from a team by someone with manage_members. Gated
+// on the team_changes preference.
+export function teamMemberRemovedEmail(teamName: string) {
+  const safeTeam = escapeHtml(teamName);
+  return {
+    subject: `You were removed from ${teamName} on ${APP_NAME}`,
+    text: `You were removed from the team "${teamName}" on ${APP_NAME}. You no longer have access to that team's shared scans, history, or reports. Your own account and scans are untouched.\n\nIf you think this was a mistake, reach out to the team's owner.`,
+    html: `
+      ${emailHeading("You were removed from a team")}
+      ${emailLead(`You were removed from the team "${safeTeam}" on ${APP_NAME}.`)}
+      ${emailParagraph(
+        "You no longer have access to that team's shared scans, history, or reports. Your own account and scans are untouched.",
+      )}
+      ${emailNote("If you think this was a mistake, reach out to the team's owner.")}
+    `,
+  };
+}
+
+// Sent to a member whose role in a team was changed. Gated on the team_changes
+// preference.
+export function teamRoleChangedEmail(
+  teamName: string,
+  oldRole: string,
+  newRole: string,
+) {
+  const safeTeam = escapeHtml(teamName);
+  return {
+    subject: `Your role in ${teamName} changed`,
+    text: `Your role in the team "${teamName}" on ${APP_NAME} was changed from ${oldRole} to ${newRole}. What you can do in the team may have changed with it.\n\nView the team: ${APP_URL}/teams`,
+    html: `
+      ${emailHeading("Your team role changed")}
+      ${emailLead(`Your role in the team "${safeTeam}" was just changed.`)}
+      ${emailDetailPanel([
+        { label: "Previous role", value: escapeHtml(oldRole) },
+        {
+          label: "New role",
+          value: escapeHtml(newRole),
+          color: COLORS.ACCENT_BLUE_LIGHT,
+        },
+      ])}
+      ${emailParagraph(
+        "What you can do in the team may have changed with it.",
+      )}
+      ${emailButton(`${APP_URL}/teams`, "View the team")}
     `,
   };
 }

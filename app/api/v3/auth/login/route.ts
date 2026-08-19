@@ -7,7 +7,11 @@ import {
   hashPassword,
 } from "@/lib/auth";
 import pool from "@/lib/database/db";
-import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import {
+  checkRateLimit,
+  getRateLimit,
+  RATE_LIMITS,
+} from "@/lib/rate-limiting/rate-limit";
 import { getSetting } from "@/lib/config/runtime-config";
 import {
   ApiResponse,
@@ -22,7 +26,12 @@ import {
   DEVICE_TRUST_COOKIE_NAME,
   ERROR_MESSAGES,
 } from "@/lib/config/constants";
-import { email2FACodeEmail, sendEmail, newLoginEmail } from "@/lib/email/email";
+import {
+  email2FACodeEmail,
+  sendEmail,
+  newLoginEmail,
+  failedLoginAttemptsEmail,
+} from "@/lib/email/email";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { findTrustedDevice } from "@/lib/auth/device-trust";
 
@@ -76,6 +85,45 @@ export const POST = withErrorHandling(async (request: Request) => {
 
   const valid = await verifyPassword(password, user.password_hash);
   if (!valid) {
+    // Per-account brute-force detection. The gate at the top of this handler
+    // is keyed by IP, so it stops a single address hammering the form but
+    // misses a distributed attempt spread across many IPs at one account.
+    // This second counter is keyed by the account and accumulates across
+    // IPs; once it crosses the login threshold we email the owner, at most
+    // once an hour (a separate one-shot key). Entirely best-effort: a
+    // mail/DB failure here must never change the 401 the caller receives.
+    try {
+      const fail = await checkRateLimit({
+        key: `login-fail:${user.id}`,
+        ...RATE_LIMITS.login,
+      });
+      if (!fail.allowed) {
+        const alertGate = await checkRateLimit({
+          key: `login-fail-alert:${user.id}`,
+          maxAttempts: 1,
+          windowSeconds: 3600,
+        });
+        if (alertGate.allowed) {
+          const { maxAttempts } = await getRateLimit("login");
+          const userAgent = await getUserAgent();
+          setImmediate(() => {
+            sendNotificationEmail({
+              userId: user.id,
+              userEmail: user.email,
+              type: "security",
+              emailContent: failedLoginAttemptsEmail(maxAttempts, ip, {
+                ipAddress: ip,
+                userAgent,
+              }),
+            }).catch((err) =>
+              console.error("Failed to send failed-login alert:", err),
+            );
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Failed-login detection error:", err);
+    }
     return ApiResponse.unauthorized(ERROR_MESSAGES.INVALID_CREDENTIALS);
   }
 

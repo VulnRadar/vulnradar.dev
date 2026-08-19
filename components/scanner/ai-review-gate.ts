@@ -11,8 +11,10 @@ export function hasUnreviewedFindings(findings: Vulnerability[]): boolean {
 }
 
 export interface AiReviewGateInput {
-  /** Undefined/null for a scan that has not been saved to history yet: verify has nothing to attach verdicts to. */
-  scanId?: number | null;
+  /** Undefined/null for a scan that has not been saved to history yet: verify
+   *  has nothing to attach verdicts to. The opaque public_id (a string) or a
+   *  numeric id -- only its truthiness is read here. */
+  scanId?: string | number | null;
   /** True only when the server has a configured AI endpoint and this account has not turned AI off. */
   aiAvailable: boolean;
   findings: Vulnerability[];

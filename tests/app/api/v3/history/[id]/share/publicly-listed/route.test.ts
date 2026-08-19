@@ -103,7 +103,8 @@ describe("PUT /api/v3/history/[id]/share/publicly-listed", () => {
     expect(json.publiclyListed).toBe(false);
     const [sql, sqlParams] = mockQuery.mock.calls[1];
     expect(sql).toContain("UPDATE scan_history SET share_publicly_listed = $1");
-    expect(sqlParams).toEqual([false, "55"]);
+    // Resolved to the numeric primary key (55), not the raw param.
+    expect(sqlParams).toEqual([false, 55]);
   });
 
   it("lets a team admin flip the flag on behalf of the scan owner", async () => {

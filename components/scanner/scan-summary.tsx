@@ -6,6 +6,7 @@ import {
   Clock,
   Copy,
   Gauge,
+  Lock,
   MessageCircle,
   ShieldCheck,
   Timer,
@@ -96,6 +97,49 @@ export function Stat({
         </span>
         <span className="truncate text-[11px] text-muted-foreground">
           {label}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Tier colors for the SSL grade badge: A/A+ green, B blue (brand), C amber,
+ * D/F red. The icon tone and the value text share one color per tier.
+ */
+function sslGradeStyle(grade: string): {
+  tone: StatTone;
+  valueClass: string;
+} {
+  const g = grade.toUpperCase();
+  if (g === "A+" || g === "A")
+    return { tone: "success", valueClass: "text-[hsl(var(--success))]" };
+  if (g === "B") return { tone: "primary", valueClass: "text-primary" };
+  if (g === "C")
+    return {
+      tone: "severity-medium",
+      valueClass: "text-[hsl(var(--severity-medium))]",
+    };
+  return { tone: "destructive", valueClass: "text-destructive" };
+}
+
+/** SSL/TLS letter-grade cell, mirroring Stat's layout but colored by tier. */
+function SslGradeStat({ grade }: { grade: string }) {
+  const style = sslGradeStyle(grade);
+  return (
+    <div className="flex min-w-0 flex-1 basis-24 items-center gap-2.5 px-3 py-2 sm:px-4">
+      <StatIcon icon={Lock} tone={style.tone} size="sm" />
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span
+          className={cn(
+            "truncate text-sm font-semibold tabular-nums",
+            style.valueClass,
+          )}
+        >
+          {grade}
+        </span>
+        <span className="truncate text-[11px] text-muted-foreground">
+          SSL grade
         </span>
       </div>
     </div>
@@ -200,6 +244,7 @@ export function ScanSummary({
               tone="primary"
             />
           )}
+          {result.sslGrade && <SslGradeStat grade={result.sslGrade} />}
           {result.engineConfidence !== undefined && (
             <Stat
               label="Engine confidence"

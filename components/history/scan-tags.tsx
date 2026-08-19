@@ -15,10 +15,12 @@ import type { ScanTag } from "./history-types";
 const MAX_CLIENT_TAG_LENGTH = 50;
 
 interface ScanTagsProps {
-  scanId: number;
+  // Opaque public_id (History list) or a numeric id (the dashboard's
+  // just-completed result). The tags route resolves either shape.
+  scanId: string | number;
   tags: ScanTag[];
-  onAdd: (scanId: number, tag: string) => void;
-  onRemove: (scanId: number, tag: string) => void;
+  onAdd: (scanId: string | number, tag: string) => void;
+  onRemove: (scanId: string | number, tag: string) => void;
   /** Hides the "+ Add tag" affordance until the row is hovered/focused. Default true. */
   revealOnHover?: boolean;
   /**

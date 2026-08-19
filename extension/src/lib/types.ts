@@ -272,8 +272,10 @@ export const DEFAULT_SETTINGS: Settings = {
     "host-validation": true,
     reputation: true,
     // Submits real requests to the target instead of only reading its
-    // responses -- off by default, same rule as the main app's scan form
-    // (see components/scanner/scan-form.tsx's OPT_IN_FAMILIES).
+    // responses -- off by default, same rule as the main app's scan form.
+    // This single toggle sends the legacy "active-probes" umbrella selector,
+    // which the engine runs as all nine active probes (the web app splits it
+    // into nine per-probe toggles; see lib/scanner/active-probe-catalog.ts).
     "active-probes": false,
   },
   probes: {

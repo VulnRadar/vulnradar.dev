@@ -9,7 +9,7 @@ import { copyToClipboard } from "@/lib/ui/clipboard";
 
 interface HistoryDetailHeaderProps {
   scanDetail: ScanResult;
-  scanId: number;
+  scanId: string;
   isOwner: boolean;
   isPublic: boolean;
   onBack: () => void;

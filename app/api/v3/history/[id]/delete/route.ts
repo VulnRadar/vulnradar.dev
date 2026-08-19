@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
+import { resolveScanRow } from "@/lib/history/resolve-scan";
 
 export async function DELETE(
   _request: NextRequest,
@@ -17,17 +18,12 @@ export async function DELETE(
 
   const { id } = await params;
 
-  // Get the scan to verify ownership
-  const scanResult = await pool.query(
-    `SELECT id, user_id FROM scan_history WHERE id = $1`,
-    [id],
-  );
+  // Get the scan to verify ownership (by opaque public_id, or a legacy id).
+  const scan = await resolveScanRow(id);
 
-  if (scanResult.rows.length === 0) {
+  if (!scan) {
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }
-
-  const scan = scanResult.rows[0];
 
   // Only the owner can delete their own scans
   if (scan.user_id !== session.userId) {
@@ -43,7 +39,7 @@ export async function DELETE(
   try {
     await pool.query(
       `DELETE FROM scan_history WHERE id = $1 AND user_id = $2`,
-      [id, session.userId],
+      [scan.id, session.userId],
     );
     return NextResponse.json({ success: true });
   } catch (error) {

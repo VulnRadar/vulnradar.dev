@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/pagination-control";
 import { API, BILLING_HISTORY_RETENTION } from "@/lib/config/constants";
 import {
+  getQueryParam,
   getQueryParamInt,
   QUERY_CHANGE_EVENT,
   removeQueryParam,
@@ -83,12 +84,15 @@ export default function HistoryPage() {
     () => getQueryParamInt("page") ?? 1,
   );
   const [pageSize, setPageSize] = useState(10);
-  const [rescanning, setRescanning] = useState<number | null>(null);
+  const [rescanning, setRescanning] = useState<string | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [clearError, setClearError] = useState<string | null>(null);
 
-  // Detail state
-  const [selectedScanId, setSelectedScanId] = useState<number | null>(null);
+  // Detail state. selectedScanId is the opaque public_id used for routing and
+  // the history/scan routes; scanNumericId is the internal numeric id the
+  // out-of-band feedback route still needs (see IssueDetail below).
+  const [selectedScanId, setSelectedScanId] = useState<string | null>(null);
+  const [scanNumericId, setScanNumericId] = useState<number | null>(null);
   const [scanDetail, setScanDetail] = useState<ScanResult | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(
@@ -112,8 +116,8 @@ export default function HistoryPage() {
 
   // URL query param sync
   const updateUrlWithScan = useCallback(
-    (id: number | null, replace = false) => {
-      setQueryParam("scan", id === null ? null : String(id), { replace });
+    (id: string | null, replace = false) => {
+      setQueryParam("scan", id, { replace });
     },
     [],
   );
@@ -125,7 +129,7 @@ export default function HistoryPage() {
     setQueryParam("page", page > 1 ? String(page) : null, { replace: true });
   }, []);
 
-  const loadScanDetail = useCallback(async (scanId: number) => {
+  const loadScanDetail = useCallback(async (scanId: string) => {
     setDetailLoading(true);
     setCrawlInfo(null);
     try {
@@ -136,6 +140,8 @@ export default function HistoryPage() {
       }
       const data = await res.json();
       setScanDetail(mapHistoryDetailResponse(data));
+      // Internal numeric id for the feedback route (keyed on the numeric PK).
+      setScanNumericId(typeof data.id === "number" ? data.id : null);
       if (data.crawl && data.crawl.pages?.length > 0) {
         setCrawlInfo(data.crawl);
       }
@@ -154,10 +160,10 @@ export default function HistoryPage() {
   // loading a deep link like ?scan=5&finding=xyz) is never mistaken for a
   // "switched scans" transition and doesn't wipe the finding param it was
   // asked to restore.
-  const prevScanIdRef = useRef<number | null | undefined>(undefined);
+  const prevScanIdRef = useRef<string | null | undefined>(undefined);
 
   const handleQueryChange = useCallback(() => {
-    const id = getQueryParamInt("scan");
+    const id = getQueryParam("scan");
     const scanChanged =
       prevScanIdRef.current !== undefined && prevScanIdRef.current !== id;
     prevScanIdRef.current = id;
@@ -289,12 +295,12 @@ export default function HistoryPage() {
   // Shared by both the history list rows and the open scan's detail header:
   // updates whichever of the two is currently showing this scanId, since a
   // tag can be added/removed from either place.
-  const applyUpdatedTags = (scanId: number, tags: ScanTag[]) => {
+  const applyUpdatedTags = (scanId: string | number, tags: ScanTag[]) => {
     setScans((prev) => prev.map((s) => (s.id === scanId ? { ...s, tags } : s)));
     if (scanId === selectedScanId) setScanDetailTags(tags);
   };
 
-  const handleAddTag = async (scanId: number, tag: string) => {
+  const handleAddTag = async (scanId: string | number, tag: string) => {
     if (!tag.trim()) return;
     const res = await fetch(API.SCAN_TAGS, {
       method: "POST",
@@ -310,7 +316,7 @@ export default function HistoryPage() {
     }
   };
 
-  const handleRemoveTag = async (scanId: number, tag: string) => {
+  const handleRemoveTag = async (scanId: string | number, tag: string) => {
     const res = await fetch(API.SCAN_TAGS, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -419,7 +425,7 @@ export default function HistoryPage() {
                     findingUrl={
                       scanOwnerId === currentUserId ? scanDetail.url : undefined
                     }
-                    scanHistoryId={selectedScanId}
+                    scanHistoryId={scanNumericId}
                     onVerdictChanged={handleVerdictChanged}
                   />
                 ) : (

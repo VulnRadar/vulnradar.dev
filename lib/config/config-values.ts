@@ -3,17 +3,13 @@
 // These values are the source of truth for application configuration.
 // Self-hosters: Modify these values to customize your deployment.
 
-// GENERATED_CHECKS_LABEL / GENERATED_OG_IMAGE come from check-stats.generated.ts
-// (written by scripts/compile-checks-knowledge.mjs on every build/dev start,
-// see its roundDownForLabel/regenerateOgImage) so the "N+ checks" marketing
-// number and social-card image can never drift from the real, current check
-// count the way a hand-typed "750+" eventually did. Both remain admin-
-// overridable at runtime (see TOTAL_CHECKS_LABEL / SEO_OG_IMAGE in
+// GENERATED_CHECKS_LABEL comes from check-stats.generated.ts (written by
+// scripts/compile-checks-knowledge.mjs on every build/dev start, see its
+// roundDownForLabel) so the "N+ checks" marketing number can never drift from
+// the real, current check count the way a hand-typed "750+" eventually did. It
+// remains admin-overridable at runtime (see TOTAL_CHECKS_LABEL in
 // lib/config/registry.ts) -- this is only the shipped default.
-import {
-  GENERATED_CHECKS_LABEL,
-  GENERATED_OG_IMAGE,
-} from "./check-stats.generated";
+import { GENERATED_CHECKS_LABEL } from "./check-stats.generated";
 
 // App metadata - UPDATE THESE FOR YOUR DEPLOYMENT
 export const CONFIG_APP_NAME = "VulnRadar";
@@ -204,8 +200,10 @@ export const CONFIG_SEO_KEYWORDS = [
 ];
 
 // Social card image, relative to the app root. 1200x630 is the size Twitter,
-// LinkedIn, Slack, and Discord all render without cropping.
-export const CONFIG_SEO_OG_IMAGE = GENERATED_OG_IMAGE;
+// LinkedIn, Slack, and Discord all render without cropping. Static asset: edit
+// public/og-image.svg then run `node scripts/build-og-image.mjs` to refresh the
+// PNG. Admin-overridable at runtime via SEO_OG_IMAGE in lib/config/registry.ts.
+export const CONFIG_SEO_OG_IMAGE = "/og-image.png";
 export const CONFIG_SEO_OG_IMAGE_WIDTH = 1200;
 export const CONFIG_SEO_OG_IMAGE_HEIGHT = 630;
 

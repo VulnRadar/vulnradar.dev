@@ -2434,6 +2434,50 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         });
 
       // ════════════════════════════════════════════════════════════════
+      // OPAQUE SCAN IDS - scan_history.public_id
+      //
+      // Scan history was addressed by the sequential SERIAL primary key
+      // (?scan=456, /api/v3/history/456), which is trivially enumerable.
+      // public_id is an opaque, non-sequential handle the URLs and API now
+      // resolve by instead (see lib/history/resolve-scan.ts); the numeric
+      // id stays the real primary key -- four foreign keys still reference
+      // it (scan_tags.scan_id, scan_finding_feedback.scan_history_id,
+      // host_reputation.source_scan_id, auto_tag_dismissals.scan_id) -- so
+      // nothing about the PK type or those relationships changes.
+      //
+      // The DEFAULT does double duty, exactly like webhooks.secret above:
+      // it fills every NEW row with its own value (no insert site has to
+      // set it), and because gen_random_uuid() is volatile, ADD COLUMN
+      // rewrites the table and evaluates it once PER existing row, so every
+      // pre-existing scan is back-filled with its own distinct value in the
+      // same statement. A single gen_random_uuid() with its hyphens
+      // stripped is 32 hex chars (128 bits) -- URL-safe and not guessable.
+      // The extra UPDATE is a belt-and-suspenders backfill for any row a
+      // prior partial run could have left with a NULL public_id, and the
+      // UNIQUE index enforces non-collision. All three steps are idempotent
+      // (IF NOT EXISTS / WHERE public_id IS NULL) so re-running boot is safe.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        ALTER TABLE scan_history
+          ADD COLUMN IF NOT EXISTS public_id TEXT
+            DEFAULT (replace(gen_random_uuid()::text, '-', ''));
+        UPDATE scan_history
+          SET public_id = replace(gen_random_uuid()::text, '-', '')
+          WHERE public_id IS NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_scan_history_public_id
+          ON scan_history(public_id);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add scan_history.public_id (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ════════════════════════════════════════════════════════════════
       // STAFF PLAN GRANT/REVOKE - users.pre_staff_plan
       //
       // Staff (admin/moderator/support) used to bypass every quota

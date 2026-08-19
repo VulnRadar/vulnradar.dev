@@ -5,10 +5,10 @@ import { ScanTags } from "./scan-tags";
 import type { ScanTag } from "./history-types";
 
 interface HistoryTagsCardProps {
-  scanId: number;
+  scanId: string | number;
   tags: ScanTag[];
-  onAdd: (scanId: number, tag: string) => void;
-  onRemove: (scanId: number, tag: string) => void;
+  onAdd: (scanId: string | number, tag: string) => void;
+  onRemove: (scanId: string | number, tag: string) => void;
   /** Hides the "+ Add tag" control -- for a viewer who isn't this scan's
    *  owner. When readOnly and there are no tags, the whole card is hidden
    *  rather than shown empty, same as HistoryNotes on a public page. */

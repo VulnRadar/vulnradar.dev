@@ -1,6 +1,6 @@
 # VulnRadar Legal Pages: AI Knowledge
 
-_Auto-compiled from `app/legal/*/page.tsx` on 2026-08-16._
+_Auto-compiled from `app/legal/*/page.tsx` on 2026-08-19._
 
 This file is consumed by the AI system prompt at runtime (via the
 /legal slash command) so the assistant can answer questions about
@@ -16,12 +16,10 @@ or contact support for anything this file doesn't cover.
 ---
 
 ## Terms of Service
-
 Route: /legal/terms
 Last updated: 2026-08-14
 
 ### 1. Description of Service
-
 VulnRadar is a web-based vulnerability scanning tool that analyzes
 websites for security misconfigurations, missing security headers,
 exposed secrets, and other potential vulnerabilities. Beyond passive
@@ -42,7 +40,6 @@ We do not guarantee that the Service will be uninterrupted, secure, or
 error-free.
 
 ### 2. Eligibility
-
 You must be at least 13 years of age to use this Service. If you are
 between 13 and 18 years of age, you may only use the Service with the
 consent and supervision of a parent or legal guardian who agrees to be
@@ -53,14 +50,12 @@ you permit a minor to use the Service, you are responsible for their
 activity and agree to supervise their use.
 
 ### 3. Account Responsibilities
-
 - You are responsible for maintaining the confidentiality of your account credentials, API keys, and 2FA backup recovery codes.
 - You are responsible for all activity that occurs under your account.
 - You agree to notify us immediately of any unauthorized use of your account.
 - We reserve the right to suspend or terminate accounts that violate these Terms.
 
 ### 4. Authorized Use Only
-
 You may only scan websites that you own or have explicit written
 authorization to test.
 
@@ -75,7 +70,6 @@ By using VulnRadar, you represent and warrant that:
 - You will comply with all applicable laws and regulations.
 
 ### 5. Prohibited Activities
-
 You agree NOT to:
 
 - Scan any website without authorization from its owner.
@@ -86,7 +80,6 @@ You agree NOT to:
 - Reverse-engineer, decompile, or disassemble any part of the Service.
 
 ### 6. API Usage
-
 Access to the VulnRadar API is subject to rate limits and a cap on
 how many API keys you may have at once, both based on your
 subscription plan. We reserve the right to modify rate limits at any
@@ -103,7 +96,6 @@ API Reference
 .
 
 ### 7. Data Retention &amp; Deletion
-
 Scan history is kept for as long as your account is active. API usage
 logs are retained for 90 days. Data export requests are retained for
 60 days. You may delete your account and all associated data at any
@@ -125,7 +117,6 @@ or provide backup copies of deleted data. We are not responsible for
 any loss or damages resulting from data deletion.
 
 ### 8. Limitation of Liability
-
 THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE"
 WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED.
 
@@ -140,26 +131,22 @@ EXCEED THE GREATER OF (A) THE AMOUNT YOU PAID US IN THE TWELVE (12)
 MONTHS PRECEDING THE CLAIM, OR (B) $100 USD.
 
 ### 9. Indemnification
-
 You agree to indemnify, defend, and hold harmless VulnRadar and its
 operators from any claims, damages, or expenses arising from your use
 of the Service or violation of these Terms.
 
 ### 10. Termination
-
 We reserve the right to suspend or terminate your access at any time
 for violation of these Terms. Upon termination, your right to use the
 Service ceases immediately. You may delete your account at any time.
 
 ### 11. Governing Law
-
 These Terms shall be governed by and construed in accordance with the
 laws of the State of Missouri, United States. Any legal action shall
 be brought exclusively in the state or federal courts located in
 Missouri.
 
 ### 12. Dispute Resolution
-
 PLEASE READ THIS SECTION CAREFULLY. IT AFFECTS YOUR LEGAL RIGHTS.
 
 You and VulnRadar agree that any dispute will be resolved through
@@ -168,20 +155,17 @@ claims court. Before initiating arbitration, contact us at
 the support email address listed on this page to attempt informal resolution.
 
 ### 13. Class Action Waiver
-
 YOU AND {APP_NAME.toUpperCase()} AGREE THAT EACH MAY BRING CLAIMS ONLY
 IN YOUR INDIVIDUAL CAPACITY AND NOT AS A PLAINTIFF OR CLASS MEMBER IN
 ANY CLASS OR REPRESENTATIVE PROCEEDING.
 
 ### 14. Changes to Terms
-
 We may update these Terms at any time. When we make material changes,
 we will notify you by displaying a prominent notice within the Service
 or by email. Continued use constitutes acceptance of the revised
 Terms.
 
 ### 15. Contact
-
 For questions about these Terms, please contact us at
 
 the support email address listed on this page
@@ -189,59 +173,55 @@ the support email address listed on this page
 .
 
 ## Privacy Policy
-
 Route: /legal/privacy
 Last updated: 2026-08-14
 
 ### 1. Information We Collect
-
 Account Information
 
 - Name: provided at registration.
 - Email address: used for account identification
-  and login.
+and login.
 - Password: stored as a salted, cryptographically
-  hashed value using scrypt.
+hashed value using scrypt.
 - Two-factor authentication data: if enabled, your
-  TOTP secret, encrypted, and your backup recovery codes, hashed the
-  same way as your password (one-way, so we cannot recover a lost
-  backup code any more than we can recover a lost password).
+TOTP secret, encrypted, and your backup recovery codes, hashed the
+same way as your password (one-way, so we cannot recover a lost
+backup code any more than we can recover a lost password).
 
 Usage Data
 
 - Scan history: URLs you scan, scan results, and
-  timestamps. If you assign a scan (or an API key, webhook, or
-  scheduled scan) to a team, co-members of that team whose role
-  grants read access can view it, and co-members whose role grants
-  write access can modify or delete it. Each team&apos;s
+timestamps. If you assign a scan (or an API key, webhook, or
+scheduled scan) to a team, co-members of that team whose role
+grants read access can view it, and co-members whose role grants
+write access can modify or delete it. Each team&apos;s
 
 Members page
 
 shows exactly what each role can do.
-
 - API usage: timestamps of API requests made with
-  your API keys.
+your API keys.
 - Session data: session tokens stored as HTTP-only
-  cookies.
+cookies.
 - AI chat messages: if you use the AI assistant,
-  your messages and its replies are stored so the conversation can
-  continue across page loads.
+your messages and its replies are stored so the conversation can
+continue across page loads.
 
 Data We Do NOT Collect
 
 - We do not use analytics, tracking pixels, or third-party advertising cookies.
 - We do not sell, rent, or share your personal information for marketing purposes.
 - We do not collect data about websites you scan beyond what is
-  necessary for the scan report, with one exception: the optional
-  live browser viewer and browser-based authenticated login (see
-  Section 4) route that one scan through a third-party
-  remote-browser provider, which may briefly record the session.
+necessary for the scan report, with one exception: the optional
+live browser viewer and browser-based authenticated login (see
+Section 4) route that one scan through a third-party
+remote-browser provider, which may briefly record the session.
 - Login credentials you provide for an authenticated scan are used
-  only in memory for that single scan and are never written to our
-  database or logs.
+only in memory for that single scan and are never written to our
+database or logs.
 
 ### 2. Browser Extension
-
 The VulnRadar browser extension (Chrome and Firefox) connects to your
 {" " + APP_NAME} account using an API key you generate and paste into
 the extension&apos;s Settings page. It scans whatever page you tell it
@@ -251,13 +231,13 @@ you browse to offer a scan or show a past result.
 What the extension sends to our servers
 
 - Your API key, on every request, to authenticate
-  you.
+you.
 - The URL of the page you manually scan, whether
-  triggered from the popup, the right-click "Scan this
-  link" menu item, or the on-page card&apos;s "Scan this
-  site" button.
+triggered from the popup, the right-click "Scan this
+link" menu item, or the on-page card&apos;s "Scan this
+site" button.
 - The URL (and page title) of pages you visit, while a feature
-  that needs it is turned on
+that needs it is turned on
 
 : the on-page "Site Alerts" card (shows a past result or
 a one-click scan offer) and auto-scan (background scanning without
@@ -284,60 +264,58 @@ covered under Section 1 above and deleted the same way regardless of
 whether you ever installed the extension.
 
 ### 3. How We Use Your Information
-
 - To provide, maintain, and improve the Service.
 - To authenticate your identity and manage your sessions.
 - To enforce our Terms of Service and prevent abuse.
 - To respond to data export requests when you initiate them.
 - To send transactional emails (password resets, account notifications, team invitations).
 - To improve the AI assistant: when you use
-  VulnRadar&apos;s own AI (not a provider key you connected
-  yourself), staff may review conversation transcripts and use them
-  to fix bad responses, tune the assistant&apos;s prompts, and,
-  where we do so, to train or fine-tune the underlying AI models.
-  This does not apply when you use your own connected AI provider
-  account (Profile > AI settings): those conversations go
-  directly to the provider you chose and are not reviewed or used by
-  us.
+VulnRadar&apos;s own AI (not a provider key you connected
+yourself), staff may review conversation transcripts and use them
+to fix bad responses, tune the assistant&apos;s prompts, and,
+where we do so, to train or fine-tune the underlying AI models.
+This does not apply when you use your own connected AI provider
+account (Profile > AI settings): those conversations go
+directly to the provider you chose and are not reviewed or used by
+us.
 - To provide account support: an admin responding
-  to a support request can temporarily sign in as your account
-  (impersonation) to reproduce or fix the issue you reported. This
-  requires the admin&apos;s own password, is logged to the admin
-  audit trail, ends automatically after one hour, and shows a
-  persistent on-screen banner in your account for as long as it is
-  active.
+to a support request can temporarily sign in as your account
+(impersonation) to reproduce or fix the issue you reported. This
+requires the admin&apos;s own password, is logged to the admin
+audit trail, ends automatically after one hour, and shows a
+persistent on-screen banner in your account for as long as it is
+active.
 
 ### 4. Third-Party Service Providers
-
 We may share your information with service providers who help us
 operate the Service. These providers only have access to your data as
 necessary to perform their functions:
 
 - Payment Processing (Stripe): If you subscribe to
-  a paid plan, Stripe processes your payment. We do not store credit
-  card numbers.
+a paid plan, Stripe processes your payment. We do not store credit
+card numbers.
 - Email Service (SMTP Provider): We use an email
-  service for transactional emails. Only your email and name are
-  shared.
+service for transactional emails. Only your email and name are
+shared.
 - Discord OAuth (Optional): If you sign in with
-  Discord, we receive basic account information.
+Discord, we receive basic account information.
 - GitHub OAuth (Optional): If you connect a GitHub
-  account for repo-based AI code review, we store your GitHub
-  username, user ID, granted OAuth scopes, and an encrypted copy of
-  the access token. GitHub&apos;s OAuth apps have no read-only scope
-  for private repositories, so the token is technically capable of
-  read/write access to whatever repos you authorize, even though the
-  feature itself only reads the files you select.
+account for repo-based AI code review, we store your GitHub
+username, user ID, granted OAuth scopes, and an encrypted copy of
+the access token. GitHub&apos;s OAuth apps have no read-only scope
+for private repositories, so the token is technically capable of
+read/write access to whatever repos you authorize, even though the
+feature itself only reads the files you select.
 - Cloudflare Turnstile (CAPTCHA): Cloudflare may
-  collect limited device data to prevent abuse.
+collect limited device data to prevent abuse.
 - Remote Browser Sessions (Browserbase, Optional):
-  Used when you open the live scan viewer or when authenticated
-  scanning uses browser-based login. Browserbase runs a short-lived
-  (a few minutes) remote browser session to do this and may record
-  video and network logs of that session under its own retention
-  policy. The URL you are scanning, and for browser-based login the
-  login page itself, is sent to Browserbase to open the session.
-  Only used if the operator has Browserbase configured.
+Used when you open the live scan viewer or when authenticated
+scanning uses browser-based login. Browserbase runs a short-lived
+(a few minutes) remote browser session to do this and may record
+video and network logs of that session under its own retention
+policy. The URL you are scanning, and for browser-based login the
+login page itself, is sent to Browserbase to open the session.
+Only used if the operator has Browserbase configured.
 - AI Chat Assistant & Scan Verification (Optional)
 
 : If enabled, messages you send to the AI assistant, scan findings
@@ -354,7 +332,6 @@ Self-Hosted Database: Our
 database is self-hosted and managed directly by us.
 
 ### 5. Data Storage and Security
-
 Your data is stored in a PostgreSQL database hosted on our own
 infrastructure. Passwords are hashed using scrypt with random salts.
 Session tokens are cryptographically random values; the token itself,
@@ -377,72 +354,69 @@ Authentication section
 of the architecture docs.
 
 ### 6. Data Retention
-
 - Scan history: kept for as long as your account is
-  active, on every plan. Deleting your account deletes your scan
-  history immediately.
+active, on every plan. Deleting your account deletes your scan
+history immediately.
 - API usage logs: 90 days, then automatically
-  deleted.
+deleted.
 - AI chat history: 90 days, then automatically
-  deleted.
+deleted.
 - Expired sessions: removed by an automatic cleanup
-  pass that runs every few minutes, and again on every server start;
-  an expired session stops working immediately regardless of when
-  the row is actually deleted.
+pass that runs every few minutes, and again on every server start;
+an expired session stops working immediately regardless of when
+the row is actually deleted.
 - Revoked API keys: 30 days after revocation, then
-  automatically deleted.
+automatically deleted.
 - Data export requests: 60 days, then automatically
-  deleted.
+deleted.
 - Billing and invoice history: kept for as long as
-  your account exists and deleted when you delete your account.
+your account exists and deleted when you delete your account.
 - Security alerts: 180 days, then automatically
-  deleted.
+deleted.
 - Finding feedback: if you mark a finding
-  confirmed, false positive, or not applicable, that verdict and any
-  notes you add are kept for 90 days, then automatically deleted. If
-  you delete your account first, the entry is kept (it also
-  documents that finding&apos;s history for other users) but is
-  de-identified rather than deleted.
+confirmed, false positive, or not applicable, that verdict and any
+notes you add are kept for 90 days, then automatically deleted. If
+you delete your account first, the entry is kept (it also
+documents that finding&apos;s history for other users) but is
+de-identified rather than deleted.
 - In-app notifications: the notification-bell feed
-  (e.g. "your scheduled scan finished") is kept for 90
-  days, then automatically deleted; deleting your account deletes
-  them immediately.
+(e.g. "your scheduled scan finished") is kept for 90
+days, then automatically deleted; deleting your account deletes
+them immediately.
 - Email delivery logs: a record that an email was
-  attempted (recipient address, subject line, delivery status, and a
-  redacted preview of the content, with links, codes, and tokens
-  stripped out) is kept for 30 days for deliverability
-  troubleshooting, then automatically deleted. Since this table is
-  keyed by the recipient address rather than your account, deleting
-  your account does not remove these rows early; they still age out
-  on the normal 30-day schedule.
+attempted (recipient address, subject line, delivery status, and a
+redacted preview of the content, with links, codes, and tokens
+stripped out) is kept for 30 days for deliverability
+troubleshooting, then automatically deleted. Since this table is
+keyed by the recipient address rather than your account, deleting
+your account does not remove these rows early; they still age out
+on the normal 30-day schedule.
 - Admin notes: 365 days, then automatically
-  deleted.
+deleted.
 - Admin audit log: entries move from the active
-  table to a permanent, indefinite compliance archive after 365
-  days, rather than being deleted, so the platform keeps a lasting
-  record of what administrative action was taken and by whom. If you
-  delete your account, any entries still in the active table that
-  reference you as the target of an admin action are de-identified
-  (the link to your account is removed, the record of what happened
-  is kept). Entries already moved to the archive before you delete
-  your account keep their original data, since the archive exists
-  specifically as an immutable historical record.
+table to a permanent, indefinite compliance archive after 365
+days, rather than being deleted, so the platform keeps a lasting
+record of what administrative action was taken and by whom. If you
+delete your account, any entries still in the active table that
+reference you as the target of an admin action are de-identified
+(the link to your account is removed, the record of what happened
+is kept). Entries already moved to the archive before you delete
+your account keep their original data, since the archive exists
+specifically as an immutable historical record.
 
 ### 7. Your Rights
-
 You have the right to:
 
 - Access your data: Request a full export from your
-  profile page.
+profile page.
 - Correct your data: Update your name, email, or
-  password from your profile page.
+password from your profile page.
 - Delete your data: Permanently delete your account
-  from your profile page.
+from your profile page.
 - Export your data: Download a JSON file via the
-  data export feature.
+data export feature.
 
 ### 8. Cookies
-
 Every cookie we set is strictly functional: none are used for
 advertising, tracking, or third-party analytics, so none of them
 require your consent.
@@ -452,17 +426,14 @@ HTTP-only (not readable by page scripts)
 - vulnradar_session
 
 : maintains your login state.
-
 - vulnradar_2fa_pending
 
 : short-lived, set only mid-login while a two-factor code is being
 verified.
-
 - vulnradar_device_trusted
 
 : remembers a device you marked as trusted so you are not asked
 for a two-factor code on it again.
-
 - discord_pending_login
 
 : short-lived (5 minutes), set only mid-login if you sign in with
@@ -474,22 +445,21 @@ Preference cookies (not HTTP-only, no personal data)
 - A per-notification dismissal cookie so a banner or announcement you closed does not reappear.
 
 ### 9. Your Rights Under GDPR (EEA Residents)
-
 If you are in the European Economic Area, you have these rights under
 GDPR:
 
 - Right of Access (Article 15) - Request a copy of
-  your personal data.
+your personal data.
 - Right to Rectification (Article 16) - Request
-  correction of inaccurate data.
+correction of inaccurate data.
 - Right to Erasure (Article 17) - Request deletion
-  of your data.
+of your data.
 - Right to Restriction (Article 18) - Request we
-  restrict processing.
+restrict processing.
 - Right to Data Portability (Article 20) - Request
-  data in machine-readable format.
+data in machine-readable format.
 - Right to Object (Article 21) - Object to
-  processing of your data.
+processing of your data.
 
 How to exercise your rights:
 
@@ -504,19 +474,18 @@ the support email address listed on this page
 .
 
 ### 10. Your Rights Under CCPA/CPRA (California Residents)
-
 California residents have these rights:
 
 - Right to Know - Request information about data we
-  collect.
+collect.
 - Right to Delete - Request deletion of your
-  personal information.
+personal information.
 - Right to Correct - Request correction of
-  inaccurate data.
+inaccurate data.
 - Right to Opt-Out - We do not sell or share your
-  personal information.
+personal information.
 - Right to Non-Discrimination - We will not
-  discriminate for exercising rights.
+discriminate for exercising rights.
 
 Do Not Sell My Personal Information:
 
@@ -524,20 +493,17 @@ We do not sell your personal information or share it for cross-context
 behavioral advertising.
 
 ### 11. Children's Privacy
-
 The Service is intended for users 13 years of age and older. We do not
 knowingly collect personal information from children under 13. If we
 learn we have collected such information, we will delete it as quickly
 as possible.
 
 ### 12. Changes to This Policy
-
 We may update this Privacy Policy at any time. When we make material
 changes, we will notify you by displaying a prominent notice within
 the Service or by sending you an email.
 
 ### 13. Contact
-
 For questions about this Privacy Policy, please contact us at
 
 the support email address listed on this page
@@ -545,12 +511,10 @@ the support email address listed on this page
 .
 
 ## Acceptable Use Policy
-
 Route: /legal/acceptable-use
 Last updated: 2026-08-14
 
 ### 1. Permitted Uses
-
 You may use VulnRadar to:
 
 - Scan websites that you own and operate.
@@ -560,7 +524,6 @@ You may use VulnRadar to:
 - Educate yourself about web security best practices using your own test sites.
 
 ### 2. Prohibited Uses
-
 You may NOT use
 VulnRadar to:
 
@@ -575,7 +538,6 @@ VulnRadar to:
 - Use scan results to blackmail, extort, or coerce website owners.
 
 ### 3. Authorization Documentation
-
 When scanning websites you do not own, you must maintain
 documentation. Acceptable forms include:
 
@@ -591,7 +553,6 @@ request proof at any time. Failure to provide adequate documentation
 may result in account suspension.
 
 ### 4. Bug Bounty Programs
-
 If you use VulnRadar for bug bounty hunting:
 
 - Verify that the program scope explicitly permits automated scanning tools.
@@ -605,7 +566,6 @@ does not guarantee that any particular bug bounty program permits our
 service. You are responsible for verifying program rules.
 
 ### 5. Security Research Safe Harbor
-
 We support good-faith security research. If conducting legitimate
 research in compliance with this policy:
 
@@ -619,7 +579,6 @@ harbor applies only to your use of VulnRadar. We cannot provide legal
 protection for your interactions with third-party targets.
 
 ### 6. Responsible Disclosure
-
 If you discover vulnerabilities while performing authorized testing,
 we encourage responsible disclosure:
 
@@ -629,7 +588,6 @@ we encourage responsible disclosure:
 - Follow the target's vulnerability disclosure policy if one exists.
 
 ### 7. Rate Limits and Fair Use
-
 Your account has a daily scan quota and a cap on how many API keys you
 may have at once, both set by your subscription plan. These limits
 prevent abuse and ensure fair access. Attempting to circumvent rate
@@ -642,7 +600,6 @@ Rate Limits
 in the docs.
 
 ### 8. Enforcement
-
 Violations of this Acceptable Use Policy may result in:
 
 - Temporary or permanent suspension of your account.
@@ -652,7 +609,6 @@ Violations of this Acceptable Use Policy may result in:
 - Cooperation with law enforcement investigations.
 
 ### 9. Reporting Abuse
-
 If you believe VulnRadar is being used in violation of this policy,
 please report it to
 
@@ -665,12 +621,10 @@ the support email address listed on this page
 .
 
 ## Disclaimer
-
 Route: /legal/disclaimer
 Last updated: 2026-08-14
 
 ### 1. No Warranty
-
 THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE"
 WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
 
@@ -683,7 +637,6 @@ We make no warranty that:
 - The Service will meet your specific requirements.
 
 ### 2. Not Professional Security Advice
-
 VulnRadar scan results do
 NOT constitute
 professional security advice, a security audit, or a penetration test.
@@ -692,19 +645,17 @@ investigation. For comprehensive security assessments, consult a
 qualified cybersecurity professional.
 
 ### 3. Accuracy of Results
-
 VulnRadar performs the current check count (see /checks) automated vulnerability
 checks based on publicly observable information. Results may include:
 
 - False positives: issues flagged that are not
-  actual vulnerabilities in your context.
+actual vulnerabilities in your context.
 - False negatives: real vulnerabilities that the
-  scanner does not detect.
+scanner does not detect.
 - Incomplete coverage: the scanner checks specific
-  known issues, not all vulnerability classes.
+known issues, not all vulnerability classes.
 
 ### 4. Your Responsibility
-
 You are solely responsible for:
 
 - Ensuring you have proper authorization before scanning any website.
@@ -714,7 +665,6 @@ You are solely responsible for:
 - Any damages to systems or data resulting from actions based on scan results.
 
 ### 5. Limitation of Liability
-
 IN NO EVENT SHALL {APP_NAME.toUpperCase()}, ITS OPERATORS,
 CONTRIBUTORS, OR AFFILIATES BE LIABLE FOR ANY DIRECT, INDIRECT,
 INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR EXEMPLARY DAMAGES.
@@ -724,7 +674,6 @@ AMOUNTS YOU HAVE PAID IN THE TWELVE (12) MONTHS PRIOR TO THE CLAIM, OR
 (B) $100 USD.
 
 ### 6. Indemnification
-
 You agree to indemnify, defend, and hold harmless VulnRadar and its
 operators from any claims, damages, or expenses arising from:
 
@@ -735,31 +684,28 @@ operators from any claims, damages, or expenses arising from:
 - Unauthorized scanning of websites you do not own or have permission to test.
 
 ### 7. Legal Compliance
-
 Unauthorized computer scanning may violate criminal and civil laws
 including:
 
 - United States: Computer Fraud and Abuse Act
-  (CFAA), 18 U.S.C. § 1030
+(CFAA), 18 U.S.C. § 1030
 - Missouri: Missouri Computer Tampering Laws, Mo.
-  Rev. Stat. § 569.095-569.099
+Rev. Stat. § 569.095-569.099
 - United Kingdom: Computer Misuse Act 1990
 - Germany: Strafgesetzbuch (StGB) Section 202c
 - European Union: Directive 2013/40/EU on attacks
-  against information systems
+against information systems
 
 It is your responsibility to understand and comply with the laws
 applicable in your jurisdiction and the jurisdiction where the target
 systems are located.
 
 ### 8. Governing Law
-
 This Disclaimer shall be governed by the laws of the State of
 Missouri, United States. Any disputes shall be subject to the
 exclusive jurisdiction of the courts located in Missouri.
 
 ### 9. Contact
-
 For questions about this Disclaimer, please contact us at
 
 the support email address listed on this page
@@ -769,12 +715,10 @@ the support email address listed on this page
 VulnRadar is operated from Missouri, United States.
 
 ## DMCA Policy
-
 Route: /legal/dmca
 Last updated: 2026-08-14
 
 ### 1. Reporting Copyright Infringement
-
 If you believe that your copyrighted work has been copied in a way
 that constitutes copyright infringement and is accessible through our
 Service, please notify our designated DMCA agent. For your complaint
@@ -788,7 +732,6 @@ to be valid under the DMCA, you must provide:
 - A statement, made under penalty of perjury, that the information is accurate and that you are authorized to act on the copyright owner's behalf.
 
 ### 2. Designated DMCA Agent
-
 Please send DMCA notices to our designated agent:
 
 Email:
@@ -798,7 +741,6 @@ the support email address listed on this page
 Subject Line: DMCA Takedown Notice
 
 ### 3. Counter-Notification
-
 If you believe that your material was removed or disabled by mistake
 or misidentification, you may submit a counter-notification. Your
 counter-notification must include:
@@ -809,7 +751,6 @@ counter-notification must include:
 - Your name, address, telephone number, and consent to the jurisdiction of the federal district court (Missouri if outside the US).
 
 ### 4. Repeat Infringers
-
 In accordance with the DMCA and other applicable law, we have adopted
 a policy of terminating, in appropriate circumstances, users who are
 deemed to be repeat infringers. We may also limit access to the
@@ -817,7 +758,6 @@ Service and/or terminate accounts of users who infringe intellectual
 property rights of others.
 
 ### 5. Good Faith
-
 Please note that under Section 512(f) of the DMCA, any person who
 knowingly materially misrepresents that material or activity is
 infringing, or that material was removed by mistake or
@@ -825,45 +765,40 @@ misidentification, may be subject to liability for damages, including
 costs and attorneys&apos; fees.
 
 ### 6. Modifications
-
 We reserve the right to modify this DMCA Policy at any time. Changes
 will be posted on this page with an updated revision date.
 
 ## Accessibility Statement
-
 Route: /legal/accessibility
 Last updated: 2026-08-14
 
 ### 1. Conformance Status
-
 We strive to conform to the Web Content Accessibility Guidelines
 (WCAG) 2.1 Level AA standards. These guidelines explain how to make
 web content more accessible for people with disabilities and more
 user-friendly for everyone.
 
 ### 2. Accessibility Features
-
 Our website includes the following accessibility features:
 
 - Keyboard Navigation: All interactive elements can
-  be accessed using keyboard navigation.
+be accessed using keyboard navigation.
 - Screen Reader Compatibility: Our pages are
-  structured with proper headings, landmarks, and ARIA labels.
+structured with proper headings, landmarks, and ARIA labels.
 - Color Contrast: We maintain sufficient color
-  contrast ratios between text and backgrounds.
+contrast ratios between text and backgrounds.
 - Focus Indicators: Visible focus indicators help
-  users navigate with keyboards.
+users navigate with keyboards.
 - Alternative Text: Images include descriptive alt
-  text where appropriate.
+text where appropriate.
 - Responsive Design: Content is accessible across
-  different screen sizes and zoom levels.
+different screen sizes and zoom levels.
 - Form Labels: All form inputs have associated
-  labels for clarity.
+labels for clarity.
 - Skip Links: Skip navigation links allow users to
-  bypass repetitive content.
+bypass repetitive content.
 
 ### 3. Technologies Used
-
 Accessibility of VulnRadar relies on:
 
 - HTML
@@ -875,32 +810,28 @@ These technologies are relied upon for conformance with accessibility
 standards.
 
 ### 4. Known Limitations
-
 Despite our best efforts, there may be some limitations:
 
 - Third-party content: Some integrations (such as
-  CAPTCHA) may have limitations. If unable to complete a CAPTCHA
-  challenge, please contact us at
+CAPTCHA) may have limitations. If unable to complete a CAPTCHA
+challenge, please contact us at
 
 the support email address listed on this page
 
 .
-
 - Complex data visualizations: Some security scan
-  result charts may require additional screen reader descriptions.
+result charts may require additional screen reader descriptions.
 - PDF exports: Exported PDF reports may not be
-  fully accessible. We recommend using the web interface for the
-  most accessible experience.
+fully accessible. We recommend using the web interface for the
+most accessible experience.
 
 ### 5. Feedback
-
 We welcome your feedback on the accessibility of VulnRadar. Please
 let us know if you encounter barriers:
 
 - Email:
 
 the support email address listed on this page
-
 - Contact Form:
 
 vulnradar.dev/contact
@@ -908,7 +839,6 @@ vulnradar.dev/contact
 We try to respond to accessibility feedback within 5 business days.
 
 ### 6. Compatibility
-
 VulnRadar is designed to be compatible with:
 
 - Screen readers (NVDA, JAWS, VoiceOver, TalkBack)
@@ -920,7 +850,6 @@ VulnRadar is not compatible with browsers older than 3 major versions
 or Internet Explorer.
 
 ### 7. Assessment Approach
-
 VulnRadar assessed accessibility by:
 
 - Self-evaluation using automated accessibility testing tools
@@ -928,7 +857,6 @@ VulnRadar assessed accessibility by:
 - Review against WCAG 2.1 success criteria
 
 ### 8. Continuous Improvement
-
 We are committed to maintaining and improving accessibility. As we
 develop new features, we incorporate accessibility testing into our
 development process.

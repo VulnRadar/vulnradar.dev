@@ -11,6 +11,8 @@
 
 import { runSyncChecks } from "./engine";
 import { runAsyncChecksDetailed, type AsyncCheckResult } from "./async-checks";
+import { readSslGrade } from "./ssl-grade";
+import { readDnsRecords } from "./dns-records";
 import {
   createProgressTracker,
   startWatchdog,
@@ -30,16 +32,15 @@ import { runFtpChecks } from "./protocols/ftp";
 import {
   grabBanner,
   grabCapabilityBanner,
-  bannerVersion,
-  assessSshBanner,
-  detectStartTls,
-  isRedisPingUnauthenticated,
-  isMemcachedStatsUnauthenticated,
   probeMongoUnauthenticated,
-  validateBannerTarget,
-  type MongoAuthProbeResult,
-  type BannerResult,
 } from "./protocols/banner";
+import {
+  runServiceProbes,
+  buildMongoAuthFindings,
+  buildVersionDisclosureFinding,
+  buildStartTlsFindings,
+  buildSshFindings,
+} from "./service-probes";
 import { safeFetch } from "./safe-fetch";
 import { redactSensitiveResponseHeaders } from "./response-headers";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
@@ -50,7 +51,6 @@ import {
   getSafetyRating,
   type SafetyRating,
 } from "./safety-rating";
-import { generateId } from "./_helpers";
 import { checkSourceMapSourcesExposed } from "./checks/content";
 import { getCheckDef, buildVulnerabilityFromEvidence } from "./registry";
 import { enrichFindingsWithExploitIntel } from "./cve-enrichment";
@@ -205,309 +205,6 @@ async function safeReadBody(
   }
 
   return chunks.join("");
-}
-
-/**
- * Shared "banner discloses version" finding, used for both the direct
- * ssh://smtp://etc. scan branch and the opt-in service-probe loop below.
- * `idPrefix`/`title` are passed in so each call site keeps the exact
- * finding ID it already produced before this was factored out — IDs are
- * derived deterministically from checkId + URL (see generateId), so
- * changing the prefix would change the ID for an existing finding type
- * and break diffing between a user's older and newer scans of the same
- * target.
- */
-function buildVersionDisclosureFinding(
-  idPrefix: string,
-  title: string,
-  banner: BannerResult,
-  normalizedUrl: string,
-): Vulnerability | null {
-  const version = bannerVersion(banner.banner);
-  if (!version) return null;
-  return {
-    id: generateId(idPrefix, normalizedUrl),
-    title,
-    description: "Banner reveals software version to anyone who connects.",
-    severity: "info",
-    category: "configuration",
-    evidence: banner.banner.slice(0, 256),
-    riskImpact:
-      "Version disclosure helps attackers match known CVEs to your service.",
-    explanation:
-      "Most daemons emit a version string on connect. Suppress with `DebianBanner no`, `Banner /etc/issue.net`, or the equivalent directive for your software.",
-    fixSteps: [
-      "Set the server banner to a generic string.",
-      "Restrict the service to authenticated internal users where possible.",
-    ],
-    codeExamples: [],
-  };
-}
-
-/**
- * SSH-specific findings built from the raw identification banner: protocol-1
- * support (deprecated) and a coarse, best-effort match against known
- * OpenSSH CVE ranges. See assessSshBanner's docstring for why the
- * version-range match is a lead to verify, not a confirmed vulnerability.
- */
-function buildSshFindings(
-  banner: BannerResult,
-  normalizedUrl: string,
-  targetLabel: string,
-): Vulnerability[] {
-  const findings: Vulnerability[] = [];
-  const assessment = assessSshBanner(banner.banner);
-
-  if (assessment.supportsProtocol1) {
-    findings.push({
-      id: generateId(`ssh-protocol1-${targetLabel}`, normalizedUrl),
-      title: "SSH Protocol 1 Supported",
-      description: `The SSH server on ${targetLabel} advertises support for the deprecated SSH protocol 1.`,
-      severity: "high",
-      category: "configuration",
-      evidence: banner.banner.slice(0, 256),
-      riskImpact:
-        "SSH-1 has known cryptographic weaknesses (e.g. CRC32 attacks, weak MACs) and is unmaintained.",
-      explanation:
-        'The banner\'s protocol-version field starts with "1.", meaning the server will negotiate SSH-1 with clients that request it.',
-      fixSteps: [
-        "Disable SSH protocol 1 support (e.g. `Protocol 2` in sshd_config).",
-        "Restart sshd and re-scan to confirm.",
-      ],
-      codeExamples: [],
-    });
-  }
-
-  if (assessment.knownVulnerable && assessment.vulnNote) {
-    findings.push({
-      id: generateId(`ssh-known-vulnerable-${targetLabel}`, normalizedUrl),
-      title: "SSH Banner Matches a Known-Vulnerable Version Range",
-      description: assessment.vulnNote,
-      severity: "medium",
-      category: "configuration",
-      evidence: banner.banner.slice(0, 256),
-      riskImpact:
-        "Older OpenSSH releases carry publicly documented CVEs, some remotely exploitable.",
-      explanation:
-        "Inferred from the version string in the SSH banner alone. Distributions like Debian and Ubuntu backport security fixes without changing the reported version, so treat this as a lead to verify, not a confirmed vulnerability.",
-      fixSteps: [
-        "Confirm the actual patch level with your package manager (e.g. `apt changelog openssh-server`).",
-        "Upgrade OpenSSH if it is genuinely out of date.",
-      ],
-      codeExamples: [],
-    });
-  }
-
-  return findings;
-}
-
-/**
- * STARTTLS findings for plaintext SMTP/IMAP/POP3. Only meaningful for the
- * plaintext port — smtps/imaps/pop3s are already encrypted from connect,
- * so callers should not run this against those.
- */
-function buildStartTlsFindings(
-  service: "smtp" | "imap" | "pop3",
-  banner: BannerResult,
-  normalizedUrl: string,
-  targetLabel: string,
-): Vulnerability[] {
-  const assessment = detectStartTls(service, banner.banner);
-  const label = service.toUpperCase();
-
-  if (!assessment.offered) {
-    return [
-      {
-        id: generateId(`${service}-no-starttls-${targetLabel}`, normalizedUrl),
-        title: `${label} Does Not Offer STARTTLS`,
-        description: `The ${label} server on ${targetLabel} did not advertise STARTTLS in its capability response.`,
-        severity: "high",
-        category: "configuration",
-        evidence: banner.banner.slice(0, 256),
-        riskImpact:
-          "Without STARTTLS there is no path to encrypt the session; any authentication attempted over this connection travels in plaintext.",
-        explanation:
-          "STARTTLS lets a plaintext-port connection upgrade to TLS mid-session. Its absence from the capability list means the server never offers that upgrade.",
-        fixSteps: [
-          `Enable STARTTLS support for ${label}.`,
-          `Alternatively, require the encrypted variant (${service}s) and disable the plaintext port.`,
-        ],
-        codeExamples: [],
-      },
-    ];
-  }
-
-  if (assessment.plaintextAuthAllowed) {
-    return [
-      {
-        id: generateId(
-          `${service}-plaintext-auth-allowed-${targetLabel}`,
-          normalizedUrl,
-        ),
-        title: `${label} May Allow Authentication Before STARTTLS`,
-        description:
-          "STARTTLS is offered, but the capability response suggests the server does not require it before authentication.",
-        severity: "medium",
-        category: "configuration",
-        evidence: banner.banner.slice(0, 256),
-        riskImpact:
-          "A client (or an attacker downgrading the connection) can authenticate before encryption is negotiated, exposing credentials.",
-        explanation:
-          service === "imap"
-            ? "IMAP servers hardened against this advertise LOGINDISABLED until STARTTLS completes; that flag is absent here."
-            : service === "pop3"
-              ? "The CAPA response lists USER, meaning plaintext USER/PASS login is accepted regardless of STLS."
-              : "The EHLO response lists AUTH mechanisms before STARTTLS has been negotiated.",
-        fixSteps: [
-          "Require STARTTLS before allowing authentication (disable plaintext AUTH/LOGIN/USER until TLS is active).",
-        ],
-        codeExamples: [],
-      },
-    ];
-  }
-
-  return [];
-}
-
-/** Shared shape for the "found valid credentials aren't required" family
- *  of findings (MongoDB, Redis, Elasticsearch, Memcached). */
-function buildUnauthenticatedAccessFinding(params: {
-  idPrefix: string;
-  serviceLabel: string;
-  targetLabel: string;
-  normalizedUrl: string;
-  description: string;
-  evidence: string;
-  riskImpact: string;
-  explanation: string;
-  fixSteps: string[];
-}): Vulnerability {
-  return {
-    id: generateId(params.idPrefix, params.normalizedUrl),
-    title: `${params.serviceLabel} Allows Unauthenticated Access`,
-    description: params.description,
-    severity: "critical",
-    category: "configuration",
-    evidence: params.evidence.slice(0, 500),
-    riskImpact: params.riskImpact,
-    explanation: params.explanation,
-    fixSteps: params.fixSteps,
-    codeExamples: [],
-  };
-}
-
-function buildAuthRequiredFinding(params: {
-  idPrefix: string;
-  serviceLabel: string;
-  targetLabel: string;
-  normalizedUrl: string;
-  evidence: string;
-}): Vulnerability {
-  return {
-    id: generateId(params.idPrefix, params.normalizedUrl),
-    title: `${params.serviceLabel} Requires Authentication`,
-    description: `The ${params.serviceLabel} service on ${params.targetLabel} rejected an unauthenticated request.`,
-    severity: "info",
-    category: "configuration",
-    evidence: params.evidence.slice(0, 500),
-    riskImpact: "None — this is the expected, secure configuration.",
-    explanation: `${params.serviceLabel} responded, but declined to run the diagnostic command without credentials.`,
-    fixSteps: [],
-    codeExamples: [],
-  };
-}
-
-function buildMongoAuthFindings(
-  result: MongoAuthProbeResult,
-  normalizedUrl: string,
-  targetLabel: string,
-): Vulnerability[] {
-  if (result.unauthenticatedAccess === true) {
-    return [
-      buildUnauthenticatedAccessFinding({
-        idPrefix: `mongodb-unauthenticated-${targetLabel}`,
-        serviceLabel: "MongoDB",
-        targetLabel,
-        normalizedUrl,
-        description: `The MongoDB service on ${targetLabel} accepted an administrative command (listDatabases) with no credentials.`,
-        evidence: result.detail,
-        riskImpact:
-          "Anyone who can reach this port can read, and in most default configurations write or delete, every database on the server.",
-        explanation:
-          "MongoDB ships with authentication disabled by default. Without `security.authorization: enabled` and a bound user, any client that can open a TCP connection has full administrative access.",
-        fixSteps: [
-          "Enable authentication (`security.authorization: enabled` in mongod.conf).",
-          "Create a dedicated user with least-privilege roles.",
-          "Bind to a private interface or firewall the port from the public internet.",
-        ],
-      }),
-    ];
-  }
-  if (result.unauthenticatedAccess === false) {
-    return [
-      buildAuthRequiredFinding({
-        idPrefix: `mongodb-auth-required-${targetLabel}`,
-        serviceLabel: "MongoDB",
-        targetLabel,
-        normalizedUrl,
-        evidence: result.detail,
-      }),
-    ];
-  }
-  return [];
-}
-
-export interface ElasticsearchProbeResult {
-  reachable: boolean;
-  unauthenticatedAccess: boolean;
-  detail: string;
-}
-
-/**
- * Elasticsearch's root endpoint (`GET /`) returns cluster metadata
- * (cluster_name, version, the "You Know, for Search" tagline) with no
- * authentication whenever security features aren't enabled — the
- * long-standing default. A 401/403 means auth is required; anything else
- * (connection refused, non-JSON body) is treated as inconclusive.
- * Reuses safeFetch/safeReadBody (already imported for the main HTTP scan
- * path) rather than a raw socket, since this is a plain HTTP request; and
- * validateBannerTarget for the same private-host/well-known-port gating
- * every other probe in this file goes through.
- */
-async function probeElasticsearchUnauthenticated(
-  hostname: string,
-  port: number,
-): Promise<ElasticsearchProbeResult | null> {
-  const safetyError = validateBannerTarget("elasticsearch", hostname, port);
-  if (safetyError) return null;
-
-  const url = hostname.includes(":")
-    ? `http://[${hostname}]:${port}/`
-    : `http://${hostname}:${port}/`;
-
-  try {
-    const res = await safeFetch(url, {
-      method: "GET",
-      headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
-      signal: AbortSignal.timeout(5000),
-    });
-    const body = await safeReadBody(res, 8192, 5000);
-    const unauthenticatedAccess =
-      res.status === 200 && /"cluster_name"|"tagline"/.test(body);
-    return {
-      reachable: true,
-      unauthenticatedAccess,
-      detail: unauthenticatedAccess
-        ? `GET / returned HTTP ${res.status} with cluster info exposed, no authentication required.`
-        : `GET / returned HTTP ${res.status}${
-            res.status === 401 || res.status === 403
-              ? " (authentication required)"
-              : ""
-          }.`,
-    };
-  } catch {
-    return null;
-  }
 }
 
 export interface ExecuteScanParams {
@@ -769,221 +466,39 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
       }
     }
 
-    // Service probes (opt-in via ?probes=ssh,smtp,...). Each probe opens a
-    // TCP socket (or, for Elasticsearch, an HTTP GET) to the hostname on
-    // its well-known port and reports reachability, version, and — for
-    // MongoDB/Redis/Elasticsearch/Memcached — whether the service accepts
-    // unauthenticated commands. Independent of the URL scheme, so users
-    // can ask "does github.com also run SSH?" without constructing
-    // ssh://github.com. Probes run in parallel via Promise.allSettled;
-    // each is fully independent so one hanging/failing probe never blocks
-    // or drops the others.
+    // Service probes (opt-in via ?probes=ssh,smtp,...). Each selected probe
+    // opens a TCP socket (or, for Elasticsearch, an HTTP GET) to the target
+    // hostname on its well-known port and reports reachability, version, and
+    // whether the service accepts unauthenticated commands. Independent of
+    // the URL scheme, so users can ask "does github.com also run SSH?"
+    // without constructing ssh://github.com. Runs through the shared
+    // runServiceProbes helper (lib/scanner/service-probes.ts) so the crawl
+    // scan path (lib/scanner/execute-crawl-scan.ts) produces identical
+    // findings from the same code.
     if (requestedProbes.length > 0) {
-      let hostname: string | null = null;
+      let probeHost: string | null = null;
       try {
-        hostname = new URL(normalizedUrl).hostname;
+        probeHost = new URL(normalizedUrl).hostname;
       } catch {
         /* ignore */
       }
-      if (hostname) {
-        const host = hostname;
-        const outcomes = await Promise.allSettled(
-          requestedProbes.map(async (probe) => {
-            if (probe.service === "mongodb") {
-              const result = await probeMongoUnauthenticated(host, probe.port);
-              return result ? { kind: "mongo" as const, probe, result } : null;
-            }
-            if (probe.service === "elasticsearch") {
-              const result = await probeElasticsearchUnauthenticated(
-                host,
-                probe.port,
-              );
-              return result
-                ? { kind: "elasticsearch" as const, probe, result }
-                : null;
-            }
-            const banner =
-              probe.service === "smtp" ||
-              probe.service === "imap" ||
-              probe.service === "pop3"
-                ? await grabCapabilityBanner(probe.service, host, probe.port)
-                : await grabBanner(probe.service, host, probe.port);
-            return banner
-              ? { kind: "banner" as const, probe, result: banner }
-              : null;
-          }),
-        );
-
-        for (const outcome of outcomes) {
-          if (outcome.status !== "fulfilled" || !outcome.value) continue;
-          const value = outcome.value;
-          const probe = value.probe;
-          const serviceLabel = probe.service.toUpperCase();
-
-          if (value.kind === "mongo") {
-            protocolSpecificFindings.push(
-              ...buildMongoAuthFindings(value.result, normalizedUrl, host),
-            );
-            continue;
-          }
-
-          if (value.kind === "elasticsearch") {
-            const result = value.result;
-            protocolSpecificFindings.push({
-              id: generateId(
-                `probe-elasticsearch-reachable-${probe.port}`,
-                normalizedUrl,
-              ),
-              title: `ELASTICSEARCH service reachable on port ${probe.port}`,
-              description: `An Elasticsearch service responded to an HTTP probe on port ${probe.port}.`,
-              severity: "info",
-              category: "configuration",
-              evidence: result.detail,
-              riskImpact:
-                "Publicly reachable services expand your attack surface. Restrict via firewall or bind to a private interface.",
-              explanation: `The scanner was able to reach ${host}:${probe.port} over HTTP.`,
-              fixSteps: [
-                "Restrict access via firewall (allow-list known IPs only).",
-                "Bind the service to a private interface if it is only needed internally.",
-              ],
-              codeExamples: [],
-            });
-            if (result.unauthenticatedAccess) {
-              protocolSpecificFindings.push(
-                buildUnauthenticatedAccessFinding({
-                  idPrefix: `elasticsearch-unauthenticated-${probe.port}`,
-                  serviceLabel: "Elasticsearch",
-                  targetLabel: host,
-                  normalizedUrl,
-                  description: `The Elasticsearch service on ${host} returned cluster info over HTTP with no credentials.`,
-                  evidence: result.detail,
-                  riskImpact:
-                    "Anyone who can reach this port can read, and depending on configuration write or delete, every index on the cluster.",
-                  explanation:
-                    "Elasticsearch has no authentication enabled by default unless X-Pack security (or an equivalent security plugin) is turned on. An open, unauthenticated cluster is one of the most common causes of large-scale data leaks.",
-                  fixSteps: [
-                    "Enable X-Pack security (`xpack.security.enabled: true`) or an equivalent security plugin.",
-                    "Require TLS and authentication on the HTTP layer.",
-                    "Bind to a private interface or firewall the port from the public internet.",
-                  ],
-                }),
-              );
-            } else {
-              protocolSpecificFindings.push(
-                buildAuthRequiredFinding({
-                  idPrefix: `elasticsearch-auth-required-${probe.port}`,
-                  serviceLabel: "Elasticsearch",
-                  targetLabel: host,
-                  normalizedUrl,
-                  evidence: result.detail,
-                }),
-              );
-            }
-            continue;
-          }
-
-          // value.kind === "banner"
-          const banner = value.result;
-          protocolSpecificFindings.push({
-            id: generateId(
-              `probe-${probe.service}-reachable-${probe.port}`,
-              normalizedUrl,
-            ),
-            title: `${serviceLabel} service reachable on port ${banner.port}`,
-            description: `A ${serviceLabel} service responded to a TCP probe on port ${banner.port}.`,
-            severity: "info",
-            category: "configuration",
-            evidence: banner.banner.slice(0, 256) || "(no banner)",
-            riskImpact:
-              "Publicly reachable services expand your attack surface. Restrict via firewall or bind to a private interface.",
-            explanation: `The scanner was able to connect to ${host}:${banner.port} and read a banner. This confirms the service is exposed to the public internet.`,
-            fixSteps: [
-              "Restrict access via firewall (allow-list known IPs only).",
-              "Bind the service to 127.0.0.1 or a private interface if it is only needed internally.",
-            ],
-            codeExamples: [],
-          });
-
-          const versionFinding = buildVersionDisclosureFinding(
-            `probe-${probe.service}-version-${probe.port}`,
-            `${serviceLabel} banner discloses version`,
-            banner,
+      if (probeHost) {
+        // Each probe is one unit of the progress denominator (categoriesTotal
+        // already counts them, see app/api/v3/scan/route.ts). "start" is also
+        // the cancellation checkpoint; "done" advances the bar.
+        for (const probe of requestedProbes) {
+          onProgress(`Service probe: ${probe.service}`, "start");
+        }
+        protocolSpecificFindings.push(
+          ...(await runServiceProbes(
+            probeHost,
             normalizedUrl,
-          );
-          if (versionFinding) protocolSpecificFindings.push(versionFinding);
-
-          if (probe.service === "redis") {
-            if (isRedisPingUnauthenticated(banner.banner)) {
-              protocolSpecificFindings.push(
-                buildUnauthenticatedAccessFinding({
-                  idPrefix: `redis-unauthenticated-${probe.port}`,
-                  serviceLabel: "Redis",
-                  targetLabel: host,
-                  normalizedUrl,
-                  description: `The Redis service on ${host} answered PING with no credentials.`,
-                  evidence: banner.banner,
-                  riskImpact:
-                    "Anyone who can reach this port can read and write every key, and in many configurations run administrative commands (CONFIG SET, FLUSHALL) or chain them into remote code execution via known Redis exploitation techniques.",
-                  explanation:
-                    "Redis has no authentication by default (`requirepass` unset). Answering PING with +PONG before any AUTH confirms the server accepts commands from anyone who can connect.",
-                  fixSteps: [
-                    "Set `requirepass` (or use Redis 6+ ACLs) and require AUTH.",
-                    "Bind to a private interface (`bind 127.0.0.1`) or firewall the port from the public internet.",
-                    "Disable or rename dangerous commands (CONFIG, FLUSHALL, DEBUG) via `rename-command`.",
-                  ],
-                }),
-              );
-            } else {
-              protocolSpecificFindings.push(
-                buildAuthRequiredFinding({
-                  idPrefix: `redis-auth-required-${probe.port}`,
-                  serviceLabel: "Redis",
-                  targetLabel: host,
-                  normalizedUrl,
-                  evidence: banner.banner,
-                }),
-              );
-            }
-          } else if (probe.service === "memcached") {
-            if (isMemcachedStatsUnauthenticated(banner.banner)) {
-              protocolSpecificFindings.push(
-                buildUnauthenticatedAccessFinding({
-                  idPrefix: `memcached-unauthenticated-${probe.port}`,
-                  serviceLabel: "Memcached",
-                  targetLabel: host,
-                  normalizedUrl,
-                  description: `The Memcached service on ${host} answered the stats command with no credentials.`,
-                  evidence: banner.banner,
-                  riskImpact:
-                    "Cached data (often including session tokens or query results) is readable and writable by anyone who can reach this port, and the service can be abused as a UDP reflection/amplification vector for DDoS.",
-                  explanation:
-                    "Classic Memcached's ASCII protocol has no built-in authentication. Any TCP client that can connect can run any command, including reading and overwriting cached values.",
-                  fixSteps: [
-                    "Bind to a private interface (`-l 127.0.0.1`) or firewall the port from the public internet.",
-                    "Disable the UDP listener (`-U 0`) if it is not needed.",
-                    "Use SASL authentication (binary protocol) if the service must be reachable beyond localhost.",
-                  ],
-                }),
-              );
-            }
-          } else if (probe.service === "ssh" || probe.service === "sftp") {
-            protocolSpecificFindings.push(
-              ...buildSshFindings(banner, normalizedUrl, host),
-            );
-          } else if (
-            probe.service === "smtp" ||
-            probe.service === "imap" ||
-            probe.service === "pop3"
-          ) {
-            protocolSpecificFindings.push(
-              ...buildStartTlsFindings(
-                probe.service,
-                banner,
-                normalizedUrl,
-                host,
-              ),
-            );
-          }
+            requestedProbes,
+            cancelSignal,
+          )),
+        );
+        for (const probe of requestedProbes) {
+          onProgress(`Service probe: ${probe.service}`, "done");
         }
       }
     }
@@ -1136,6 +651,28 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
       asyncTimedOut || incomplete.length > 0,
     );
 
+    // SSL/TLS letter grade, computed inside checkTLSCert during the TLS branch
+    // and left in a per-host side channel (lib/scanner/ssl-grade.ts). Absent
+    // for HTTP-only or unreachable targets, so it is only stored when present
+    // -- a missing grade must never render as "F".
+    let sslGrade: string | undefined;
+    try {
+      sslGrade = readSslGrade(new URL(normalizedUrl).hostname);
+    } catch {
+      /* malformed URL: no grade */
+    }
+
+    // Full structured DNS record set, resolved in the DNS branch and left in
+    // the same per-host side channel (lib/scanner/dns-records.ts). Absent for
+    // raw-IP or unreachable targets, so only stored when present -- exactly
+    // like sslGrade above.
+    let dnsRecords: ReturnType<typeof readDnsRecords>;
+    try {
+      dnsRecords = readDnsRecords(new URL(normalizedUrl).hostname);
+    } catch {
+      /* malformed URL: no records */
+    }
+
     const scannedAt = new Date().toISOString();
 
     const applied = await finalizeScanSuccess(scanId, {
@@ -1148,6 +685,8 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
         checksRun: syncResult.checksRun,
         dangerScore,
         engineConfidence,
+        ...(sslGrade ? { sslGrade } : {}),
+        ...(dnsRecords ? { dnsRecords } : {}),
         ...(incomplete.length > 0 ? { incomplete } : {}),
       },
       finalUrl: finalScanUrl,

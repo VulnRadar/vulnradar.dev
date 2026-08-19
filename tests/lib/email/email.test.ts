@@ -482,7 +482,7 @@ describe("high-stakes templates", () => {
       const result = email.passwordResetEmail(
         "https://vulnradar.dev/reset?token=xyz",
       );
-      expect(result.text).toContain("expires in 1 hour");
+      expect(result.text).toContain("works for one hour");
     });
   });
 
@@ -507,14 +507,14 @@ describe("high-stakes templates", () => {
 
     it("names two-factor requirement when the account has 2FA enabled", () => {
       const result = email.passwordChangedEmail(true, details);
-      expect(result.subject).toContain("Password Changed");
-      expect(result.text).toContain("two-factor authentication");
+      expect(result.subject).toContain("password was changed");
+      expect(result.text).toContain("Two-factor authentication");
       expect(result.html).toContain(details.ipAddress);
     });
 
     it("mentions session logout when the account has no 2FA", () => {
       const result = email.passwordChangedEmail(false, details);
-      expect(result.text).toContain("logged out");
+      expect(result.text).toContain("signed out");
     });
 
     it("goes to the account's own address only via the caller -- the body carries no recipient, only IP/device metadata", () => {
@@ -544,7 +544,7 @@ describe("high-stakes templates", () => {
         ipAddress: "203.0.113.9",
         userAgent: "curl/8.0",
       });
-      expect(result.subject).toContain("New login");
+      expect(result.subject).toContain("New sign-in");
       expect(result.text).toContain("Austin, US");
       expect(result.text).toContain("203.0.113.9");
       expect(result.html).toContain("Austin, US");
@@ -718,6 +718,40 @@ describe("remaining templates build without throwing and return a well-formed en
           trend: "up",
           windowDays: 7,
         }),
+      () =>
+        email.paymentReceiptEmail({
+          planName: "Pro Supporter",
+          amountCents: 1000,
+          currency: "usd",
+          date: "August 18, 2026",
+          invoiceUrl: "https://invoice.stripe.com/i/abc123",
+        }),
+      () =>
+        email.paymentFailedEmail({
+          planName: "Pro Supporter",
+          amountCents: 1000,
+          currency: "usd",
+          nextAttempt: "August 21, 2026",
+        }),
+      () =>
+        email.subscriptionChangedEmail({
+          kind: "upgraded",
+          planName: "Elite Supporter",
+          previousPlanName: "Pro Supporter",
+        }),
+      () =>
+        email.subscriptionChangedEmail({
+          kind: "downgraded",
+          planName: "Core Supporter",
+          previousPlanName: "Pro Supporter",
+        }),
+      () => email.subscriptionChangedEmail({ kind: "canceled", planName: "Pro Supporter" }),
+      () => email.subscriptionChangedEmail({ kind: "renewed", planName: "Core Supporter" }),
+      () => email.accountDeletedEmail("Alice"),
+      () => email.accountDeletedEmail(null),
+      () => email.sessionRevokedEmail(details),
+      () => email.teamMemberRemovedEmail("Acme"),
+      () => email.teamRoleChangedEmail("Acme", "viewer", "admin"),
     ];
 
     for (const build of builders) {
@@ -834,5 +868,188 @@ describe("postureDigestEmail", () => {
 
     expect(result.html).not.toContain("<script>alert(1)</script>");
     expect(result.html).toContain("&lt;script&gt;");
+  });
+});
+
+describe("billing + account transactional templates", () => {
+  let email: Awaited<ReturnType<typeof loadEmail>>;
+
+  beforeEach(async () => {
+    email = await loadEmail();
+  });
+
+  describe("paymentReceiptEmail", () => {
+    it("names the plan and amount and links the invoice when present", () => {
+      const result = email.paymentReceiptEmail({
+        planName: "Pro Supporter",
+        amountCents: 1000,
+        currency: "usd",
+        date: "August 18, 2026",
+        invoiceUrl: "https://invoice.stripe.com/i/abc123",
+      });
+      expect(result.subject).toContain("payment receipt");
+      expect(result.text).toContain("Pro Supporter");
+      expect(result.text).toContain("$10.00");
+      expect(result.html).toContain("$10.00");
+      expect(result.html).toContain(
+        'href="https://invoice.stripe.com/i/abc123"',
+      );
+    });
+
+    it("falls back to a manage-subscription CTA when there's no invoice URL", () => {
+      const result = email.paymentReceiptEmail({
+        planName: "Core Supporter",
+        amountCents: 500,
+        currency: "usd",
+        date: "August 18, 2026",
+      });
+      expect(result.html).toContain("Manage subscription");
+      expect(result.html).toContain("/profile?tab=billing");
+    });
+
+    it("escapes an attacker-controlled plan name", () => {
+      const result = email.paymentReceiptEmail({
+        planName: "<script>alert(1)</script>",
+        amountCents: 500,
+        currency: "usd",
+        date: "August 18, 2026",
+      });
+      expect(result.html).not.toContain("<script>alert(1)</script>");
+      expect(result.html).toContain("&lt;script&gt;");
+    });
+  });
+
+  describe("paymentFailedEmail", () => {
+    it("states the amount, the retry date, and links the card-update page", () => {
+      const result = email.paymentFailedEmail({
+        planName: "Pro Supporter",
+        amountCents: 1000,
+        currency: "usd",
+        nextAttempt: "August 21, 2026",
+      });
+      expect(result.subject).toContain("couldn't process your payment");
+      expect(result.text).toContain("$10.00");
+      expect(result.text).toContain("August 21, 2026");
+      expect(result.html).toContain("Update payment method");
+      expect(result.html).toContain("/profile?tab=billing");
+    });
+
+    it("still builds without a next-retry date", () => {
+      const result = email.paymentFailedEmail({
+        planName: "Pro Supporter",
+        amountCents: 1000,
+        currency: "usd",
+      });
+      expect(result.html).toContain("Update payment method");
+    });
+  });
+
+  describe("subscriptionChangedEmail", () => {
+    it("reads as an upgrade and names both plans", () => {
+      const result = email.subscriptionChangedEmail({
+        kind: "upgraded",
+        planName: "Elite Supporter",
+        previousPlanName: "Pro Supporter",
+      });
+      expect(result.subject).toContain("Elite Supporter");
+      expect(result.html).toContain("Your plan was upgraded");
+      expect(result.html).toContain("Pro Supporter");
+      expect(result.html).toContain("Elite Supporter");
+    });
+
+    it("reads as a cancellation and offers reactivation", () => {
+      const result = email.subscriptionChangedEmail({
+        kind: "canceled",
+        planName: "Pro Supporter",
+      });
+      expect(result.subject).toContain("canceled");
+      expect(result.html).toContain("Reactivate subscription");
+    });
+
+    it("reads as a renewal", () => {
+      const result = email.subscriptionChangedEmail({
+        kind: "renewed",
+        planName: "Core Supporter",
+      });
+      expect(result.subject).toContain("renewed");
+    });
+
+    it("escapes an attacker-controlled plan name", () => {
+      const result = email.subscriptionChangedEmail({
+        kind: "upgraded",
+        planName: "<script>alert(1)</script>",
+      });
+      expect(result.html).not.toContain("<script>alert(1)</script>");
+      expect(result.html).toContain("&lt;script&gt;");
+    });
+  });
+
+  describe("accountDeletedEmail", () => {
+    it("confirms an irreversible purge and greets by name", () => {
+      const result = email.accountDeletedEmail("Alice");
+      expect(result.subject).toContain("account was deleted");
+      expect(result.text).toContain("Hi Alice");
+      expect(result.text).toContain("permanently deleted");
+      expect(result.html).toContain("permanently deleted");
+    });
+
+    it("builds a generic greeting when there's no name", () => {
+      const result = email.accountDeletedEmail(null);
+      expect(result.text).not.toContain("Hi ,");
+      expect(result.html).toContain("<h1");
+    });
+
+    it("escapes a malicious display name", () => {
+      const result = email.accountDeletedEmail("<script>alert(1)</script>");
+      expect(result.html).not.toContain("<script>alert(1)</script>");
+      expect(result.html).toContain("&lt;script&gt;");
+    });
+  });
+
+  describe("sessionRevokedEmail", () => {
+    it("names the sign-out and carries IP and device", () => {
+      const result = email.sessionRevokedEmail({
+        ipAddress: "203.0.113.5",
+        userAgent: "Mozilla/5.0",
+      });
+      expect(result.subject).toContain("signed out");
+      expect(result.text).toContain("203.0.113.5");
+      expect(result.html).toContain("203.0.113.5");
+    });
+
+    it("escapes a malicious user-agent", () => {
+      const result = email.sessionRevokedEmail({
+        ipAddress: "203.0.113.5",
+        userAgent: "<script>alert(1)</script>",
+      });
+      expect(result.html).not.toContain("<script>alert(1)</script>");
+      expect(result.html).toContain("&lt;script&gt;");
+    });
+  });
+
+  describe("team change templates", () => {
+    it("teamMemberRemovedEmail names the team and escapes it", () => {
+      const result = email.teamMemberRemovedEmail("<b>Acme</b>");
+      expect(result.subject).toContain("removed");
+      expect(result.html).not.toContain("<b>Acme</b>");
+      expect(result.html).toContain("&lt;b&gt;Acme&lt;/b&gt;");
+    });
+
+    it("teamRoleChangedEmail shows the old and new role", () => {
+      const result = email.teamRoleChangedEmail("Acme", "viewer", "admin");
+      expect(result.subject).toContain("role in Acme changed");
+      expect(result.html).toContain("viewer");
+      expect(result.html).toContain("admin");
+    });
+
+    it("teamRoleChangedEmail escapes role values", () => {
+      const result = email.teamRoleChangedEmail(
+        "Acme",
+        "<i>viewer</i>",
+        "admin",
+      );
+      expect(result.html).not.toContain("<i>viewer</i>");
+      expect(result.html).toContain("&lt;i&gt;viewer&lt;/i&gt;");
+    });
   });
 });

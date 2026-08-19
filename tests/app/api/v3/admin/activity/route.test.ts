@@ -1,8 +1,7 @@
 /**
- * Route-level tests for POST (heartbeat) / GET (staff list) at
- * /api/v3/admin/activity. Auth here is an inline getSession + role lookup
- * (not the shared requireStaff helper), requiring staff hierarchy >=
- * support. Only the database is mocked.
+ * Route-level tests for POST (heartbeat) at /api/v3/admin/activity. Auth
+ * here is an inline getSession + role lookup (not the shared requireStaff
+ * helper), requiring staff hierarchy >= support. Only the database is mocked.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
@@ -21,7 +20,7 @@ vi.mock("@/lib/api/request-utils", () => ({
   getClientIp: vi.fn(async () => "127.0.0.1"),
 }));
 
-const { GET, POST } = await import("@/app/api/v3/admin/activity/route");
+const { POST } = await import("@/app/api/v3/admin/activity/route");
 
 function queueRole(role: string | null) {
   mockQuery.mockResolvedValueOnce({ rows: role ? [{ role }] : [] });
@@ -33,10 +32,6 @@ function postRequest(body?: unknown): NextRequest {
     headers: { "content-type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-}
-
-function getRequest(): NextRequest {
-  return new NextRequest("http://localhost/api/v3/admin/activity");
 }
 
 beforeEach(() => {
@@ -92,37 +87,5 @@ describe("POST /api/v3/admin/activity (heartbeat)", () => {
     expect(res.status).toBe(200);
     const upsertParams = mockQuery.mock.calls[1][1] as unknown[];
     expect(upsertParams[1]).toBe("dashboard");
-  });
-});
-
-describe("GET /api/v3/admin/activity (staff list)", () => {
-  it("requires authentication", async () => {
-    mockGetSession.mockResolvedValue(null);
-    const res = await GET(getRequest());
-    expect(res.status).toBe(401);
-  });
-
-  it("rejects a plain user", async () => {
-    queueRole("user");
-    const res = await GET(getRequest());
-    expect(res.status).toBe(403);
-  });
-
-  it("returns the staff activity list for a support-tier caller", async () => {
-    queueRole("support");
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 2, email: "mod@example.com", role: "moderator" }],
-    });
-    const res = await GET(getRequest());
-    const json = await res.json();
-    expect(res.status).toBe(200);
-    expect(json.staff).toHaveLength(1);
-  });
-
-  it("returns 500 on a database error", async () => {
-    queueRole("admin");
-    mockQuery.mockRejectedValueOnce(new Error("db down"));
-    const res = await GET(getRequest());
-    expect(res.status).toBe(500);
   });
 });

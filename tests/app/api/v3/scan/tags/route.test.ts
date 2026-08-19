@@ -158,8 +158,12 @@ describe("POST /api/v3/scan/tags", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
 
     const [sql, params] = mockQuery.mock.calls[0];
-    expect(sql).toContain("FROM scan_history WHERE id = $1 AND user_id = $2");
-    expect(params).toEqual([999, 42]);
+    expect(sql).toContain("FROM scan_history");
+    expect(sql).toContain("public_id = $1");
+    expect(sql).toContain("user_id = $3");
+    // [publicIdParam, numericFallback, userId] -- a numeric id resolves via
+    // the fallback.
+    expect(params).toEqual(["999", 999, 42]);
   });
 
   it("normalizes the tag (trim, lowercase, 30-char cap), inserts it with source='user', and returns tag+source objects", async () => {
@@ -180,8 +184,9 @@ describe("POST /api/v3/scan/tags", () => {
     ]);
 
     const [ownershipSql, ownershipParams] = mockQuery.mock.calls[0];
-    expect(ownershipSql).toContain("WHERE id = $1 AND user_id = $2");
-    expect(ownershipParams).toEqual([5, 42]);
+    expect(ownershipSql).toContain("public_id = $1");
+    expect(ownershipSql).toContain("user_id = $3");
+    expect(ownershipParams).toEqual(["5", 5, 42]);
 
     const [countSql] = mockQuery.mock.calls[1];
     // Only a scan's own user tags count against the per-scan cap.

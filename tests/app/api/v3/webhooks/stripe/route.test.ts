@@ -461,6 +461,7 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.created", () => {
     mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 42 }] }); // UPDATE by userId
     mockQuery.mockResolvedValueOnce(badgeRow);
     mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // recipient lookup (best-effort "subscription started" email)
 
     const res = await POST(
       signedRequest(
@@ -479,7 +480,7 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.created", () => {
       ),
     );
     expect(res.status).toBe(200);
-    expect(mockQuery).toHaveBeenCalledTimes(4);
+    expect(mockQuery).toHaveBeenCalledTimes(5);
     const [sql, params] = mockQuery.mock.calls[1];
     expect(sql).toContain("WHERE id = $5");
     expect(params).toEqual(["elite_supporter", "sub_1", "active", "cus_1", 42]);
@@ -531,6 +532,7 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.created", () => {
     mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 88 }] }); // email UPDATE
     mockQuery.mockResolvedValueOnce(badgeRow);
     mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // recipient lookup (best-effort "subscription started" email)
 
     const res = await POST(
       signedRequest(
@@ -550,7 +552,7 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.created", () => {
     );
     expect(res.status).toBe(200);
     expect(mockCustomerRetrieve).toHaveBeenCalledWith("cus_3");
-    expect(mockQuery).toHaveBeenCalledTimes(5);
+    expect(mockQuery).toHaveBeenCalledTimes(6);
     const [emailSql, emailParams] = mockQuery.mock.calls[2];
     expect(emailSql).toContain("LOWER(email) = LOWER($5)");
     expect(emailParams[4]).toBe("found@example.com");
@@ -596,7 +598,8 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.created", () => {
 describe("POST /api/v3/webhooks/stripe: customer.subscription.updated", () => {
   it("updates plan and status by stripe_customer_id, resolving the plan from subscription metadata", async () => {
     withIdempotency("evt_sub_updated_1");
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // previous email/plan pre-read (best-effort change email)
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE
 
     const res = await POST(
       signedRequest(
@@ -615,8 +618,8 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.updated", () => {
       ),
     );
     expect(res.status).toBe(200);
-    expect(mockQuery).toHaveBeenCalledTimes(2);
-    const [sql, params] = mockQuery.mock.calls[1];
+    expect(mockQuery).toHaveBeenCalledTimes(3);
+    const [sql, params] = mockQuery.mock.calls[2];
     expect(sql).toContain("WHERE stripe_customer_id = $3");
     expect(params).toEqual(["elite_supporter", "active", "cus_5"]);
   });
@@ -627,6 +630,7 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.updated", () => {
     // once (while still "incomplete", badge withheld), and this update
     // event is the only place the badge can be granted for that checkout.
     withIdempotency("evt_sub_updated_activates");
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // previous email/plan pre-read
     mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 42 }] }); // UPDATE ... RETURNING id
     mockQuery.mockResolvedValueOnce(badgeRow); // badge SELECT
     mockQuery.mockResolvedValueOnce({ rows: [] }); // badge INSERT
@@ -647,8 +651,8 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.updated", () => {
       ),
     );
     expect(res.status).toBe(200);
-    expect(mockQuery).toHaveBeenCalledTimes(4);
-    const [badgeInsertSql, badgeInsertParams] = mockQuery.mock.calls[3];
+    expect(mockQuery).toHaveBeenCalledTimes(5);
+    const [badgeInsertSql, badgeInsertParams] = mockQuery.mock.calls[4];
     expect(badgeInsertSql).toContain("user_badges");
     expect(badgeInsertParams).toEqual([42, 9]);
   });
@@ -659,6 +663,7 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.updated", () => {
     // moves the subscription straight to "incomplete_expired". This is the
     // only event that ever tells us to claw back access in that case.
     withIdempotency("evt_sub_updated_expires");
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // previous email/plan pre-read
     mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 42 }] }); // UPDATE ... RETURNING id
     mockQuery.mockResolvedValueOnce(badgeRow); // badge SELECT
     mockQuery.mockResolvedValueOnce({ rows: [] }); // badge DELETE
@@ -679,10 +684,10 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.updated", () => {
       ),
     );
     expect(res.status).toBe(200);
-    expect(mockQuery).toHaveBeenCalledTimes(4);
-    const [, updateParams] = mockQuery.mock.calls[1];
+    expect(mockQuery).toHaveBeenCalledTimes(5);
+    const [, updateParams] = mockQuery.mock.calls[2];
     expect(updateParams).toEqual(["free", "incomplete_expired", "cus_5"]);
-    const [badgeDeleteSql, badgeDeleteParams] = mockQuery.mock.calls[3];
+    const [badgeDeleteSql, badgeDeleteParams] = mockQuery.mock.calls[4];
     expect(badgeDeleteSql).toContain("DELETE FROM user_badges");
     expect(badgeDeleteParams).toEqual([42, 9]);
   });
@@ -695,6 +700,7 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.updated", () => {
     // "neverPaid" check only covered incomplete_expired/unpaid, missing
     // this status entirely and writing the real plan anyway.
     withIdempotency("evt_sub_updated_still_incomplete");
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // previous email/plan pre-read
     mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 42 }] }); // UPDATE ... RETURNING id
     mockQuery.mockResolvedValueOnce(badgeRow); // badge SELECT
     mockQuery.mockResolvedValueOnce({ rows: [] }); // badge DELETE
@@ -715,7 +721,7 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.updated", () => {
       ),
     );
     expect(res.status).toBe(200);
-    const [, updateParams] = mockQuery.mock.calls[1];
+    const [, updateParams] = mockQuery.mock.calls[2];
     expect(updateParams).toEqual(["free", "incomplete", "cus_5"]);
   });
 
@@ -727,6 +733,7 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.updated", () => {
     // over one failed card charge instead of during Stripe's own grace
     // period would be a worse outcome than this webhook staying quiet.
     withIdempotency("evt_sub_updated_past_due");
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // previous email/plan pre-read
     mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 42 }] }); // UPDATE ... RETURNING id
     mockQuery.mockResolvedValueOnce(badgeRow); // badge SELECT
     mockQuery.mockResolvedValueOnce({ rows: [] }); // badge INSERT
@@ -747,9 +754,9 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.updated", () => {
       ),
     );
     expect(res.status).toBe(200);
-    const [, updateParams] = mockQuery.mock.calls[1];
+    const [, updateParams] = mockQuery.mock.calls[2];
     expect(updateParams).toEqual(["elite_supporter", "past_due", "cus_5"]);
-    const [badgeInsertSql] = mockQuery.mock.calls[3];
+    const [badgeInsertSql] = mockQuery.mock.calls[4];
     expect(badgeInsertSql).toContain("user_badges");
   });
 
@@ -762,6 +769,7 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.updated", () => {
     // from our side. The UPDATE's "IS DISTINCT FROM" guard means a no-op
     // event matches zero rows even though the customer exists.
     withIdempotency("evt_sub_updated_noop");
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // previous email/plan pre-read
     mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // UPDATE matched nothing -- already up to date
 
     const res = await POST(
@@ -780,9 +788,10 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.updated", () => {
       ),
     );
     expect(res.status).toBe(200);
-    // Only the idempotency INSERT and the no-op UPDATE ran -- no badge
-    // SELECT/INSERT/DELETE follow-up query.
-    expect(mockQuery).toHaveBeenCalledTimes(2);
+    // Idempotency INSERT, the best-effort previous-plan pre-read, and the
+    // no-op UPDATE ran -- no badge SELECT/INSERT/DELETE, and no change email
+    // (the UPDATE matched nothing).
+    expect(mockQuery).toHaveBeenCalledTimes(3);
   });
 });
 
@@ -792,6 +801,7 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.deleted", () => {
     mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 77 }] }); // UPDATE ... RETURNING id
     mockQuery.mockResolvedValueOnce(badgeRow); // badge SELECT
     mockQuery.mockResolvedValueOnce({ rows: [] }); // badge DELETE
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // recipient lookup (best-effort cancellation email)
 
     const res = await POST(
       signedRequest(
@@ -803,7 +813,7 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.deleted", () => {
       ),
     );
     expect(res.status).toBe(200);
-    expect(mockQuery).toHaveBeenCalledTimes(4);
+    expect(mockQuery).toHaveBeenCalledTimes(5);
     const [sql, params] = mockQuery.mock.calls[1];
     // billing: plan is now a CASE on role -- a staff account (whose real
     // paid subscription just ended) falls back to their granted
@@ -841,6 +851,7 @@ describe("POST /api/v3/webhooks/stripe: invoice events", () => {
     withIdempotency("evt_invoice_1");
     mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE subscription_status
     mockQuery.mockResolvedValueOnce({ rows: [] }); // INSERT billing_history
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // recipient lookup (best-effort receipt email)
 
     const res = await POST(
       signedRequest(
@@ -863,7 +874,7 @@ describe("POST /api/v3/webhooks/stripe: invoice events", () => {
       ),
     );
     expect(res.status).toBe(200);
-    expect(mockQuery).toHaveBeenCalledTimes(3);
+    expect(mockQuery).toHaveBeenCalledTimes(4);
     const [updateSql, updateParams] = mockQuery.mock.calls[1];
     expect(updateSql).toContain("subscription_status = 'active'");
     expect(updateParams).toEqual(["cus_2"]);
@@ -891,6 +902,7 @@ describe("POST /api/v3/webhooks/stripe: invoice events", () => {
         code: "42P01",
       }),
     );
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // receipt recipient lookup (returns none)
 
     const res = await POST(
       signedRequest(
@@ -931,6 +943,7 @@ describe("POST /api/v3/webhooks/stripe: invoice events", () => {
         },
       ),
     );
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // receipt recipient lookup (returns none)
 
     const res = await POST(
       signedRequest(
@@ -960,7 +973,8 @@ describe("POST /api/v3/webhooks/stripe: invoice events", () => {
 
   it("invoice.payment_failed marks the subscription past_due", async () => {
     withIdempotency("evt_invoice_3");
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE subscription_status = past_due
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // recipient lookup (best-effort dunning email)
 
     const res = await POST(
       signedRequest(
@@ -972,7 +986,7 @@ describe("POST /api/v3/webhooks/stripe: invoice events", () => {
       ),
     );
     expect(res.status).toBe(200);
-    expect(mockQuery).toHaveBeenCalledTimes(2);
+    expect(mockQuery).toHaveBeenCalledTimes(3);
     const [sql, params] = mockQuery.mock.calls[1];
     expect(sql).toContain("subscription_status = 'past_due'");
     expect(params).toEqual(["cus_3"]);

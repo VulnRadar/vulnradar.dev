@@ -5,6 +5,10 @@ import { Check, Globe2, ListChecks, X, Zap } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import type { Category } from "@/lib/scanner/types";
 import { ALL_CATEGORIES } from "@/lib/scanner/types";
+import {
+  ACTIVE_PROBES_CATEGORY,
+  isActiveProbeSelector,
+} from "@/lib/scanner/active-probe-catalog";
 
 type ScanMode = "quick" | "deep" | "bulk";
 
@@ -87,8 +91,9 @@ function getHostname(url: string): string {
 interface ScanningIndicatorProps {
   url?: string;
   mode?: ScanMode;
-  /** The families this scan actually requested. Omitted means every family. */
-  categories?: Category[];
+  /** The families this scan actually requested (category ids, plus any
+   *  `active-probes:<id>` selectors). Omitted means every family. */
+  categories?: string[];
   onCancel?: () => void;
   /**
    * Real, server-reported progress from GET /api/v3/scan/status/[id]
@@ -114,8 +119,24 @@ export function ScanningIndicator({
   const [elapsed, setElapsed] = useState(0);
 
   const { families, steps } = useMemo(() => {
-    const families =
+    const raw =
       categories && categories.length > 0 ? categories : ALL_CATEGORIES;
+    // Every selected active probe (an `active-probes:<id>` selector) collapses
+    // to the single "active-probes" step: the engine runs them all under one
+    // labeled async branch and reports its progress once, so showing one row
+    // per probe would over-count a stage that finishes together.
+    const families: Category[] = [];
+    let addedActive = false;
+    for (const c of raw) {
+      if (isActiveProbeSelector(c)) {
+        if (!addedActive) {
+          families.push(ACTIVE_PROBES_CATEGORY as Category);
+          addedActive = true;
+        }
+        continue;
+      }
+      families.push(c as Category);
+    }
     const steps = [
       OPENING_STEP,
       ...families.map((c) => FAMILY_STEP[c] ?? c),

@@ -106,7 +106,7 @@ function FindingFeedback({
 }: {
   findingId: string;
   findingUrl: string;
-  scanHistoryId?: number | null;
+  scanHistoryId?: string | number | null;
   /** Called after a verdict is saved successfully. The server already
    *  recalculates and persists the scan's summary/dangerScore excluding
    *  false_positive-marked findings (lib/scanner/recompute-scan-score.ts);
@@ -155,7 +155,11 @@ function FindingFeedback({
         body: JSON.stringify({
           findingId,
           findingUrl,
-          scanHistoryId: scanHistoryId ?? undefined,
+          // The feedback route keys its ownership check + score recompute on
+          // the numeric primary key, so only send a numeric id. The opaque
+          // public_id (were it ever passed here) is omitted rather than sent.
+          scanHistoryId:
+            typeof scanHistoryId === "number" ? scanHistoryId : undefined,
           verdict: next,
         }),
       });
@@ -213,7 +217,7 @@ interface IssueDetailProps {
    *  scan_finding_feedback lookup key (see FindingFeedback above) -- pass
    *  this only from an authenticated view of the caller's own scan. */
   findingUrl?: string;
-  scanHistoryId?: number | null;
+  scanHistoryId?: string | number | null;
   /** Forwarded to FindingFeedback -- see its own doc comment. */
   onVerdictChanged?: () => void;
 }

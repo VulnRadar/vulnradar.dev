@@ -7,9 +7,9 @@ interface HistoryScanListProps {
   scans: ScanRecord[];
   onViewScan: (scan: ScanRecord) => void;
   onRescan: (scan: ScanRecord) => void;
-  onAddTag: (scanId: number, tag: string) => void;
-  onRemoveTag: (scanId: number, tag: string) => void;
-  rescanningScanId: number | null;
+  onAddTag: (scanId: string | number, tag: string) => void;
+  onRemoveTag: (scanId: string | number, tag: string) => void;
+  rescanningScanId: string | null;
 }
 
 export function HistoryScanList({

@@ -15,6 +15,8 @@ import {
 } from "@/lib/rate-limiting/daily-limits";
 import { runSyncChecks, getPlannedSyncCategories } from "./engine";
 import { runAsyncChecks, getPlannedAsyncBranches } from "./async-checks";
+import { readSslGrade } from "./ssl-grade";
+import { readDnsRecords } from "./dns-records";
 import {
   createProgressTracker,
   startWatchdog,
@@ -44,6 +46,7 @@ import { enrichFindingsWithExploitIntel } from "./cve-enrichment";
 import { applyAdaptiveConfidence } from "./adaptive-confidence";
 import { attachCvssScores } from "./cvss";
 import { checkForNewCriticalOrHighFindings } from "./regression-alert";
+import { runServiceProbes } from "./service-probes";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { criticalFindingsEmail } from "@/lib/email/email";
 
@@ -351,6 +354,7 @@ export interface ExecuteCrawlScanParams {
   mainOrigin: string;
   selectedUrls: string[] | undefined;
   scanners: string[] | null;
+  requestedProbes: Array<{ service: string; port: number }>;
   authedUserId: number;
   isApiKeyAuth: boolean;
 }
@@ -380,6 +384,7 @@ export async function executeCrawlScan(
     mainOrigin,
     selectedUrls,
     scanners,
+    requestedProbes,
     authedUserId,
     isApiKeyAuth,
   } = params;
@@ -465,7 +470,9 @@ export async function executeCrawlScan(
     const perPageUnits =
       getPlannedSyncCategories(scanners as Category[] | null).length +
       getPlannedAsyncBranches(normalizedMainUrl, scanners).length;
-    setTotal(pagesToScan.length * perPageUnits);
+    // Probes run once for the whole crawl (against the main host), so each
+    // one is a single extra unit on top of the per-page work.
+    setTotal(pagesToScan.length * perPageUnits + requestedProbes.length);
 
     // Scan each page
     const pageResults: Array<{
@@ -502,6 +509,41 @@ export async function executeCrawlScan(
         }
       }
     }
+
+    // Service probes run once for the whole crawl, against the main host --
+    // ssh/smtp/mongodb/etc. are host-level, not per-page, so probing every
+    // discovered page would just repeat the same TCP connect. Merged into the
+    // same array that becomes the persisted findings. Probe finding IDs are
+    // derived from the main URL and never collide with a page's HTTP findings.
+    if (requestedProbes.length > 0) {
+      let probeHost: string | null = null;
+      try {
+        probeHost = new URL(normalizedMainUrl).hostname;
+      } catch {
+        /* ignore */
+      }
+      if (probeHost) {
+        for (const probe of requestedProbes) {
+          onProgress(`Service probe: ${probe.service}`, "start");
+        }
+        const probeFindings = await runServiceProbes(
+          probeHost,
+          normalizedMainUrl,
+          requestedProbes,
+          cancelSignal,
+        );
+        for (const f of probeFindings) {
+          if (!seenIds.has(f.id)) {
+            seenIds.add(f.id);
+            allFindings.push(f);
+          }
+        }
+        for (const probe of requestedProbes) {
+          onProgress(`Service probe: ${probe.service}`, "done");
+        }
+      }
+    }
+
     allFindings.sort(
       (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity],
     );
@@ -575,6 +617,27 @@ export async function executeCrawlScan(
       }
     }
 
+    // SSL/TLS letter grade for the crawl's main host. Every same-host page's
+    // TLS branch records under one hostname key (lib/scanner/ssl-grade.ts), so
+    // reading by the main host resolves the shared grade. Only stored when
+    // present -- a missing grade must never render as "F".
+    let sslGrade: string | undefined;
+    try {
+      sslGrade = readSslGrade(new URL(normalizedMainUrl).hostname);
+    } catch {
+      /* malformed URL: no grade */
+    }
+
+    // Full structured DNS record set for the crawl's main host, resolved in
+    // the DNS branch and read from the same per-host side channel
+    // (lib/scanner/dns-records.ts). Only stored when present.
+    let dnsRecords: ReturnType<typeof readDnsRecords>;
+    try {
+      dnsRecords = readDnsRecords(new URL(normalizedMainUrl).hostname);
+    } catch {
+      /* malformed URL: no records */
+    }
+
     const applied = await finalizeScanSuccess(scanId, {
       summary: mergedSummary,
       findings: allFindings,
@@ -582,6 +645,8 @@ export async function executeCrawlScan(
       scannedAt,
       responseHeaders: mainHeaders,
       resultMeta: {
+        ...(sslGrade ? { sslGrade } : {}),
+        ...(dnsRecords ? { dnsRecords } : {}),
         crawl: {
           pagesDiscovered: pages.length,
           pagesScanned: pageResults.length,

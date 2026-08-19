@@ -432,3 +432,23 @@ describe("executeScan probe dispatch: SMTP STARTTLS", () => {
     ).toBe(false);
   });
 });
+
+describe("executeScan probe dispatch: unreachable port", () => {
+  it("emits exactly one info finding when a selected probe cannot be reached", async () => {
+    // A closed/filtered port is the norm for a normal website (only 80/443
+    // open); grabBanner returns null. The probe must still produce a visible
+    // line rather than nothing, so the feature never looks broken.
+    mockGrabBanner.mockResolvedValue(null);
+
+    await executeScan(
+      baseParams({ requestedProbes: [{ service: "ssh", port: 22 }] }),
+    );
+
+    const findings = getPersistedFindings();
+    const unreachable = findings.filter(
+      (f) => f.title === "No SSH service reachable on port 22",
+    );
+    expect(unreachable).toHaveLength(1);
+    expect(unreachable[0].severity).toBe("info");
+  });
+});

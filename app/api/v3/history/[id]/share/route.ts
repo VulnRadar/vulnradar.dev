@@ -4,6 +4,7 @@ import pool from "@/lib/database/db";
 import crypto from "crypto";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { resolveSharePubliclyListed } from "@/lib/scanner/share-privacy";
+import { resolveScanRow } from "@/lib/history/resolve-scan";
 
 /** Share links may expire in 7, 30, or 90 days, or never (the default,
  *  unchanged from before this field existed). */
@@ -74,17 +75,12 @@ export async function POST(
     );
   }
 
-  // Get the scan
-  const existing = await pool.query(
-    "SELECT id, share_token, share_expires_at, share_publicly_listed, user_id FROM scan_history WHERE id = $1",
-    [id],
-  );
+  // Get the scan (by opaque public_id, or a legacy numeric id).
+  const scan = await resolveScanRow(id);
 
-  if (existing.rows.length === 0) {
+  if (!scan) {
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }
-
-  const scan = existing.rows[0];
 
   // Check if user owns the scan OR is a team admin/owner with the scan owner
   if (scan.user_id !== session.userId) {
@@ -114,7 +110,7 @@ export async function POST(
     if (expiresAt !== undefined) {
       await pool.query(
         "UPDATE scan_history SET share_expires_at = $1 WHERE id = $2",
-        [expiresAt, id],
+        [expiresAt, scan.id],
       );
     }
     return NextResponse.json({
@@ -144,7 +140,7 @@ export async function POST(
 
   await pool.query(
     "UPDATE scan_history SET share_token = $1, share_expires_at = $2, share_publicly_listed = $3 WHERE id = $4",
-    [token, finalExpiresAt, publiclyListed, id],
+    [token, finalExpiresAt, publiclyListed, scan.id],
   );
 
   return NextResponse.json({
@@ -169,18 +165,15 @@ export async function DELETE(
 
   const { id } = await params;
 
-  // Get the scan to check ownership
-  const scan = await pool.query(
-    "SELECT user_id FROM scan_history WHERE id = $1",
-    [id],
-  );
+  // Get the scan to check ownership (by opaque public_id, or a legacy id).
+  const scan = await resolveScanRow(id);
 
-  if (scan.rows.length === 0) {
+  if (!scan) {
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }
 
   // Check if user owns the scan OR is a team admin/owner with the scan owner
-  if (scan.rows[0].user_id !== session.userId) {
+  if (scan.user_id !== session.userId) {
     const teamRoleCheck = await pool.query(
       `SELECT tm1.role
        FROM team_members tm1
@@ -188,7 +181,7 @@ export async function DELETE(
        WHERE tm1.user_id = $1 AND tm2.user_id = $2
          AND tm1.role IN ('owner', 'admin')
        LIMIT 1`,
-      [session.userId, scan.rows[0].user_id],
+      [session.userId, scan.user_id],
     );
 
     if (teamRoleCheck.rows.length === 0) {
@@ -197,7 +190,7 @@ export async function DELETE(
   }
 
   await pool.query("UPDATE scan_history SET share_token = NULL WHERE id = $1", [
-    id,
+    scan.id,
   ]);
 
   return NextResponse.json({ success: true });

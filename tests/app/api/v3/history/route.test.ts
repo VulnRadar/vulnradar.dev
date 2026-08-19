@@ -124,6 +124,27 @@ describe("GET /api/v3/history", () => {
     expect(params).toEqual([7, 30, 100]);
   });
 
+  it("exposes the opaque public_id as the id the client consumes, not the sequential primary key", async () => {
+    mockBusinessQuery.mockResolvedValueOnce({
+      rows: [{ plan: "free", role: "user" }],
+    });
+    mockBusinessQuery.mockResolvedValueOnce({
+      rows: [
+        { id: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4", url: "https://a.test" },
+      ],
+    });
+
+    const res = await GET(getRequest());
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    // The list SELECT aliases scan_history.public_id AS id, so the value the
+    // client carries into ?scan= links and body-params is the opaque one.
+    const [sql] = mockBusinessQuery.mock.calls[1];
+    expect(sql).toContain("sh.public_id AS id");
+    expect(json.scans[0].id).toBe("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4");
+  });
+
   it("gives staff roles unlimited retention regardless of plan", async () => {
     mockBusinessQuery.mockResolvedValueOnce({
       rows: [{ plan: "free", role: "admin" }],

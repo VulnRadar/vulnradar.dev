@@ -9,6 +9,10 @@ import {
 import { AUTH_SESSION_COOKIE_NAME } from "@/lib/config/constants";
 import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
 import { summarizeUserAgent } from "@/lib/auth/user-agent-summary";
+import pool from "@/lib/database/db";
+import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
+import { sendNotificationEmail } from "@/lib/notifications/notifications";
+import { sessionRevokedEmail } from "@/lib/email/email";
 
 /**
  * List the caller's own active sessions. Session-owner-only: always
@@ -68,6 +72,32 @@ export const DELETE = withErrorHandling(async () => {
     maxAge: 0,
     path: "/",
   });
+
+  // Notify the account owner that every session was signed out. Gated on the
+  // session_alerts preference. IP/device and the address are read here, while
+  // the request context is still live; the send itself is deferred and
+  // best-effort so a mail failure never affects the sign-out that already
+  // happened above.
+  const [emailRes, ipAddress, userAgent] = await Promise.all([
+    pool.query<{ email: string }>("SELECT email FROM users WHERE id = $1", [
+      session.userId,
+    ]),
+    getClientIp(),
+    getUserAgent(),
+  ]);
+  const userEmail = emailRes.rows[0]?.email;
+  if (userEmail) {
+    setImmediate(() => {
+      sendNotificationEmail({
+        userId: session.userId,
+        userEmail,
+        type: "session_alerts",
+        emailContent: sessionRevokedEmail({ ipAddress, userAgent }),
+      }).catch((err) =>
+        console.error("Failed to send session revoked email:", err),
+      );
+    });
+  }
 
   return NextResponse.json({
     success: true,

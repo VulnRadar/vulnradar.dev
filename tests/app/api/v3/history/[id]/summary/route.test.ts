@@ -65,6 +65,7 @@ function postRequest(
 }
 
 const scanRow = {
+  id: 10,
   url: "https://example.com",
   scanned_at: "2026-01-01T00:00:00.000Z",
   duration: 1200,
@@ -159,7 +160,9 @@ describe("POST /api/v3/history/[id]/summary: auth and validation", () => {
 
     expect(res.status).toBe(200);
     const [, sqlParams] = mockQuery.mock.calls[1];
-    expect(sqlParams).toEqual([10, 77]);
+    // [publicIdParam, numericFallback, userId] -- a numeric id resolves via
+    // the fallback, still scoped to the API key's own userId.
+    expect(sqlParams).toEqual(["10", 10, 77]);
     expect(mockGenerateScanSummary).toHaveBeenCalledWith(
       expect.objectContaining({ url: "https://example.com" }),
       77,
@@ -167,11 +170,23 @@ describe("POST /api/v3/history/[id]/summary: auth and validation", () => {
     );
   });
 
-  it("rejects a non-numeric scan id", async () => {
-    const res = await POST(postRequest("abc"), params("abc"));
+  it("treats a non-numeric id as an opaque public_id and 404s when it resolves to nothing", async () => {
+    // No longer rejected up front: a non-numeric id is a valid public_id
+    // shape, so the route proceeds and the scan lookup (scoped to the user)
+    // simply finds nothing.
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // ai config: none
+      .mockResolvedValueOnce({ rows: [] }); // scan lookup by public_id: not found
 
-    expect(res.status).toBe(400);
-    expect(mockQuery).not.toHaveBeenCalled();
+    const res = await POST(postRequest("nope-nope"), params("nope-nope"));
+
+    expect(res.status).toBe(404);
+    expect(mockGenerateScanSummary).not.toHaveBeenCalled();
+
+    const [sql, sqlParams] = mockQuery.mock.calls[1];
+    expect(sql).toContain("public_id = $1");
+    // Not an all-digits id, so the numeric fallback param is null.
+    expect(sqlParams).toEqual(["nope-nope", null, 42]);
   });
 });
 
@@ -221,8 +236,9 @@ describe("POST /api/v3/history/[id]/summary: scan ownership", () => {
     expect(mockGenerateScanSummary).not.toHaveBeenCalled();
 
     const [sql, sqlParams] = mockQuery.mock.calls[1];
-    expect(sql).toContain("WHERE id = $1 AND user_id = $2");
-    expect(sqlParams).toEqual([999, 42]);
+    expect(sql).toContain("public_id = $1");
+    expect(sql).toContain("user_id = $3");
+    expect(sqlParams).toEqual(["999", 999, 42]);
   });
 });
 

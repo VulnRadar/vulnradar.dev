@@ -24,6 +24,7 @@ import { ScanActionsMenu } from "@/components/scanner/scan-actions-menu";
 import { AuthenticatedBadge } from "@/components/scanner/authenticated-badge";
 import { CrawlPagesInfo } from "@/components/scanner/crawl-pages-info";
 import { ResponseHeaders } from "@/components/scanner/response-headers";
+import { DnsRecordsPanel } from "@/components/scanner/dns-records-panel";
 import { SharedScanSkeleton } from "@/components/scanner/shared-scan-skeleton";
 import {
   SubdomainDiscovery,
@@ -339,6 +340,7 @@ export default function SharedScanPage() {
                     Object.keys(result.responseHeaders).length > 0 && (
                       <ResponseHeaders headers={result.responseHeaders} />
                     )}
+                  <DnsRecordsPanel records={result.dnsRecords} />
                   <SubdomainDiscovery
                     url={result.url}
                     readOnly

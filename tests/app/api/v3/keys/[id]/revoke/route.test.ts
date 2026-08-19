@@ -124,6 +124,6 @@ describe("POST /api/v3/keys/[id]/revoke", () => {
     const emailCall = mockSendNotificationEmail.mock.calls[0][0];
     expect(emailCall.userId).toBe(7);
     expect(emailCall.type).toBe("api_keys");
-    expect(emailCall.emailContent.subject).toContain("Revoked");
+    expect(emailCall.emailContent.subject).toContain("revoked");
   });
 });

@@ -38,7 +38,6 @@ const OnboardingTour = dynamic(
   { ssr: false },
 );
 import type {
-  Category,
   ScanResult,
   ScanStatus,
   Vulnerability,
@@ -55,6 +54,17 @@ import {
 import { useAuth } from "@/components/providers/auth-provider";
 
 const CONTAINER = "w-full max-w-6xl mx-auto px-4 sm:px-6";
+
+/**
+ * ?scan= is overloaded on this page. A URL/host-looking value is a target to
+ * kick off a scan for; anything else -- an opaque history public_id (hex) or a
+ * legacy numeric id -- is a saved scan to open in History. Hosts and URLs
+ * always carry a dot, slash, or scheme colon, and neither an opaque public_id
+ * nor a numeric id ever does, so that cleanly separates the two meanings.
+ */
+function scanParamIsTarget(value: string): boolean {
+  return /[./:]/.test(value);
+}
 
 interface CrawlPageData {
   url: string;
@@ -181,7 +191,7 @@ function DashboardContent() {
         crawlUrls?: string[],
         probes?: { id: string; port: number }[],
         mode?: ScanMode,
-        categoryFilter?: Category[],
+        categoryFilter?: string[],
         auth?: InlineAuthValue,
         isPublic?: boolean,
       ) => Promise<void>)
@@ -217,7 +227,7 @@ function DashboardContent() {
   const [scanningUrl, setScanningUrl] = useState<string | null>(null);
   const [scanningMode, setScanningMode] = useState<ScanMode>("quick");
   const [scanningCategories, setScanningCategories] = useState<
-    Category[] | undefined
+    string[] | undefined
   >(undefined);
   const [scanProgress, setScanProgress] = useState<ScanProgressState | null>(
     null,
@@ -292,10 +302,13 @@ function DashboardContent() {
         }
         return;
       }
-      const parsed = parseInt(scan, 10);
-      if (!Number.isFinite(parsed)) return;
+      // A URL/host-looking value is a scan target, handled by the effect
+      // below; leave it alone here. Anything else is a saved scan's id
+      // (opaque public_id or legacy numeric), so bounce to the History tab,
+      // which resolves either shape.
+      if (scanParamIsTarget(scan)) return;
       if (status === "idle") {
-        window.location.href = `${ROUTES.HISTORY}?scan=${parsed}`;
+        window.location.href = `${ROUTES.HISTORY}?scan=${encodeURIComponent(scan)}`;
       }
     };
 
@@ -349,7 +362,7 @@ function DashboardContent() {
     }
   }
 
-  const handleAddTag = async (scanId: number, tag: string) => {
+  const handleAddTag = async (scanId: string | number, tag: string) => {
     if (!tag.trim()) return;
     const res = await fetch(API.SCAN_TAGS, {
       method: "POST",
@@ -362,7 +375,7 @@ function DashboardContent() {
     }
   };
 
-  const handleRemoveTag = async (scanId: number, tag: string) => {
+  const handleRemoveTag = async (scanId: string | number, tag: string) => {
     const res = await fetch(API.SCAN_TAGS, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -424,7 +437,7 @@ function DashboardContent() {
       crawlUrls?: string[],
       probes?: { id: string; port: number }[],
       mode: ScanMode = "quick",
-      categoryFilter?: Category[],
+      categoryFilter?: string[],
       auth?: InlineAuthValue,
       isPublic?: boolean,
     ) => {
@@ -727,7 +740,9 @@ function DashboardContent() {
 
   useEffect(() => {
     const scanUrl = searchParams.get("scan");
-    if (scanUrl && status === "idle") {
+    // Only a URL/host-looking ?scan= is a target to scan; an id-looking value
+    // is a saved scan the effect above redirects to History instead.
+    if (scanUrl && scanParamIsTarget(scanUrl) && status === "idle") {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers an async scan; setState only fires after its own awaited network calls resolve, not synchronously here
       handleScan({ url: scanUrl, mode: "quick", probes: [] });
     }

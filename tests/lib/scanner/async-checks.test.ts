@@ -1748,6 +1748,21 @@ describe("getPlannedAsyncBranches", () => {
         getPlannedAsyncBranches("https://example.com", ["active-probes"]),
       ).toEqual(["active-probes"]);
     });
+
+    it("is planned when a single per-probe selector is named", () => {
+      expect(
+        getPlannedAsyncBranches("https://example.com", ["active-probes:xss"]),
+      ).toEqual(["active-probes"]);
+    });
+
+    it("is planned once alongside ordinary categories that also run", () => {
+      const branches = getPlannedAsyncBranches("https://example.com", [
+        "dns",
+        "active-probes:cors",
+      ]);
+      expect(branches).toContain("active-probes");
+      expect(branches.filter((b) => b === "active-probes")).toHaveLength(1);
+    });
   });
 });
 

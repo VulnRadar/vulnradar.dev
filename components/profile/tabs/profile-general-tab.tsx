@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
   UserCog,
@@ -11,13 +12,14 @@ import {
   Camera,
   Loader2,
   Tag,
+  Radar,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { API, MAX_AVATAR_UPLOAD_BYTES } from "@/lib/config/constants";
+import { API, ROUTES, MAX_AVATAR_UPLOAD_BYTES } from "@/lib/config/constants";
 import { refreshAuthCache } from "@/components/providers/auth-provider";
 import type { ProfileTabProps } from "../types";
 
@@ -37,10 +39,12 @@ export function ProfileGeneralTab({
   onAvatarCrop,
   onSetCropDialog,
 }: ProfileGeneralTabProps) {
+  const router = useRouter();
   const [profileEditMode, setProfileEditMode] = useState(false);
   const [nameInput, setNameInput] = useState(user?.name || "");
   const [emailInput, setEmailInput] = useState(user?.email || "");
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [replayingTour, setReplayingTour] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   // Reset inputs when user changes
@@ -107,6 +111,27 @@ export function ProfileGeneralTab({
       setError("Failed to remove profile picture.");
     } finally {
       setUploadingAvatar(false);
+    }
+  }
+
+  async function handleReplayTour() {
+    setReplayingTour(true);
+    setError(null);
+    try {
+      const res = await fetch(API.AUTH.ONBOARDING, { method: "DELETE" });
+      if (!res.ok) {
+        setError("Failed to restart the product tour.");
+        setReplayingTour(false);
+        return;
+      }
+      // onboardingCompleted is part of MeResponse; keep the app-wide
+      // useAuth() cache in sync before the dashboard re-checks it and
+      // auto-opens the tour on mount.
+      refreshAuthCache();
+      router.push(ROUTES.DASHBOARD);
+    } catch {
+      setError("Failed to restart the product tour.");
+      setReplayingTour(false);
     }
   }
 
@@ -389,6 +414,42 @@ export function ProfileGeneralTab({
                 </div>
               </div>
             )}
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* Product tour */}
+      <section>
+        <div className="mb-4">
+          <h2 className="text-base font-semibold tracking-tight text-foreground">
+            Product tour
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            The guided walkthrough new accounts see on their first visit
+          </p>
+        </div>
+        <Card className="border-border/50 bg-card/50">
+          <CardContent className="pt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p className="text-sm text-muted-foreground">
+              Replays the eight-step tour from the start on your dashboard.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="bg-transparent gap-1.5 shrink-0"
+              onClick={handleReplayTour}
+              disabled={replayingTour}
+            >
+              {replayingTour ? (
+                <Loader2
+                  className="h-3.5 w-3.5 animate-spin"
+                  aria-hidden="true"
+                />
+              ) : (
+                <Radar className="h-3.5 w-3.5" aria-hidden="true" />
+              )}
+              {replayingTour ? "Starting..." : "Replay product tour"}
+            </Button>
           </CardContent>
         </Card>
       </section>

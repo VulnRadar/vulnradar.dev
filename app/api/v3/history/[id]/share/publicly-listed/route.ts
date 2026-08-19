@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
+import { resolveScanRow } from "@/lib/history/resolve-scan";
 
 /**
  * PUT /api/v3/history/[id]/share/publicly-listed
@@ -41,16 +42,11 @@ export async function PUT(
     );
   }
 
-  const existing = await pool.query(
-    "SELECT id, share_token, user_id FROM scan_history WHERE id = $1",
-    [id],
-  );
+  const scan = await resolveScanRow(id);
 
-  if (existing.rows.length === 0) {
+  if (!scan) {
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }
-
-  const scan = existing.rows[0];
 
   if (scan.user_id !== session.userId) {
     const teamRoleCheck = await pool.query(
@@ -77,7 +73,7 @@ export async function PUT(
 
   await pool.query(
     "UPDATE scan_history SET share_publicly_listed = $1 WHERE id = $2",
-    [publiclyListed, id],
+    [publiclyListed, scan.id],
   );
 
   return NextResponse.json({ publiclyListed });

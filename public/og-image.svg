@@ -1,0 +1,104 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0a0e18"/>
+      <stop offset="1" stop-color="#0e1526"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="150" cy="150" r="520" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2f6bff" stop-opacity="0.22"/>
+      <stop offset="0.5" stop-color="#2f6bff" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#2f6bff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="wordmark" x1="0" y1="130" x2="0" y2="205" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#b9d1f7"/>
+    </linearGradient>
+    <linearGradient id="cardTop" x1="700" y1="95" x2="700" y2="535" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#141d30"/>
+      <stop offset="1" stop-color="#101827"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+
+  <!-- Brand lockup -->
+  <g transform="translate(88 120) scale(3.5)">
+    <circle cx="12" cy="12" r="11" fill="#0f172a"/>
+    <path d="M12 2a10 10 0 1 1-7.07 17.07l1.41-1.41A8 8 0 1 0 12 4V2z" fill="#3b82f6" opacity="0.2"/>
+    <path d="M12 6a6 6 0 1 1-4.24 10.24l1.41-1.41A4 4 0 1 0 12 8V6z" fill="#3b82f6" opacity="0.4"/>
+    <g fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M19.07 4.93A10 10 0 0 0 6.99 3.34"/>
+      <path d="M2.29 9.62A10 10 0 1 0 21.31 8.35"/>
+      <path d="M16.24 7.76A6 6 0 1 0 8.23 16.67"/>
+      <path d="M17.99 11.66A6 6 0 0 1 15.77 16.67"/>
+      <path d="m13.41 10.59 5.66-5.66" stroke="#ffffff" stroke-width="2.5"/>
+      <circle cx="12" cy="12" r="2" fill="#60a5fa" stroke="none"/>
+      <circle cx="4" cy="6" r="1" fill="#fbbf24" stroke="none"/>
+      <circle cx="12" cy="18" r="1" fill="#fbbf24" stroke="none"/>
+    </g>
+  </g>
+  <text x="196" y="184"
+        font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="70" font-weight="800" letter-spacing="-2" fill="url(#wordmark)">VulnRadar</text>
+
+  <text x="90" y="272"
+        font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="20" font-weight="600" letter-spacing="3.5" fill="#8ea3c2">WEB VULNERABILITY SCANNER</text>
+
+  <text x="90" y="342"
+        font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="30" font-weight="600" letter-spacing="-0.2" fill="#dbe4f2">Scan any website for security</text>
+  <text x="90" y="384"
+        font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="30" font-weight="600" letter-spacing="-0.2" fill="#dbe4f2">issues in seconds. Just a URL.</text>
+
+  <text x="90" y="452"
+        font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="24" font-weight="700" fill="#60a5fa">vulnradar.dev</text>
+
+  <!-- Result card (product glimpse) -->
+  <rect x="700" y="95" width="432" height="440" rx="22" fill="url(#cardTop)" stroke="#26344d" stroke-width="1.5"/>
+
+  <!-- Card header -->
+  <circle cx="736" cy="133" r="5" fill="#22c55e"/>
+  <text x="752" y="140"
+        font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="22" font-weight="700" fill="#e8eef8">vulnradar.dev</text>
+  <rect x="982" y="119" width="120" height="27" rx="13.5" fill="#1b2a44"/>
+  <text x="1042" y="137" text-anchor="middle"
+        font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="13" font-weight="600" letter-spacing="0.3" fill="#93c5fd">Scan complete</text>
+  <line x1="730" y1="163" x2="1102" y2="163" stroke="#22304a" stroke-width="1.5"/>
+
+  <!-- Risk score -->
+  <text x="730" y="196"
+        font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="13" font-weight="700" letter-spacing="2" fill="#7e93b4">RISK SCORE</text>
+  <text x="730" y="240"
+        font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="46" font-weight="800" fill="#22c55e">2<tspan font-size="22" font-weight="600" fill="#6b7f9e"> / 10</tspan></text>
+  <rect x="984" y="200" width="118" height="30" rx="15" fill="#12321f"/>
+  <text x="1043" y="220" text-anchor="middle"
+        font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="14" font-weight="700" fill="#4ade80">Safe to view</text>
+
+  <!-- Findings -->
+  <text x="730" y="286"
+        font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="13" font-weight="700" letter-spacing="2" fill="#7e93b4">TOP FINDINGS</text>
+
+  <g font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+     font-size="17" font-weight="600" fill="#c3cfe0">
+    <circle cx="736" cy="317" r="5" fill="#f97316"/>
+    <text x="752" y="322">Missing Content-Security-Policy</text>
+    <circle cx="736" cy="357" r="5" fill="#e7b008"/>
+    <text x="752" y="362">HSTS not enforced</text>
+    <circle cx="736" cy="397" r="5" fill="#2a8ff4"/>
+    <text x="752" y="402">Server version disclosed</text>
+    <circle cx="736" cy="437" r="5" fill="#7b899e"/>
+    <text x="752" y="442">Cookie missing SameSite flag</text>
+    <circle cx="736" cy="477" r="5" fill="#22c55e"/>
+    <text x="752" y="482" fill="#8aa0b8">TLS 1.3 supported</text>
+  </g>
+</svg>

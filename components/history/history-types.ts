@@ -15,7 +15,10 @@ export interface ScanTag {
 }
 
 export interface ScanRecord {
-  id: number;
+  // Opaque public_id (the list API aliases scan_history.public_id AS id), not
+  // the sequential numeric primary key. Carried as-is into ?scan= links, the
+  // detail fetch, and the tag body-param, all of which resolve it server-side.
+  id: string;
   url: string;
   summary: {
     critical?: number;
@@ -43,7 +46,7 @@ export interface HistoryState {
 }
 
 export interface ScanDetailState {
-  selectedScanId: number | null;
+  selectedScanId: string | null;
   scanDetail: ScanResult | null;
   detailLoading: boolean;
   selectedIssue: Vulnerability | null;

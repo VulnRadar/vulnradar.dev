@@ -9,6 +9,7 @@ import {
   FileJson,
   FileSpreadsheet,
   FileText,
+  FileType,
   Globe,
   Loader2,
   Lock,
@@ -39,6 +40,7 @@ import { AiVerifyResultModal } from "./ai-verify-result-modal";
 import { AiSummaryModal } from "./ai-summary-modal";
 import { generatePdfReport } from "@/lib/reports/pdf-report";
 import { generateSarifReport } from "@/lib/reports/sarif-report";
+import { generateMarkdownReport } from "@/lib/reports/markdown-report";
 import {
   API,
   APP_NAME,
@@ -54,8 +56,10 @@ import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 
 interface ScanActionsMenuProps {
   result: ScanResult;
-  /** Undefined for a scan that has not been saved to history yet: hides Share and AI review. */
-  scanId?: number | null;
+  /** Undefined for a scan that has not been saved to history yet: hides Share
+   *  and AI review. The opaque public_id (History detail) or a numeric id (the
+   *  dashboard's just-completed result); the history/scan routes resolve both. */
+  scanId?: string | number | null;
   /** Only meaningful together with onDeleted: hides Delete when either is missing. */
   isOwner?: boolean;
   onDeleted?: () => void;
@@ -264,6 +268,12 @@ export function ScanActionsMenu({
       type: "application/sarif+json",
     });
     downloadBlob(blob, `${APP_SLUG}-${hostname}-${date}.sarif`);
+  }
+
+  function exportMarkdown() {
+    const md = generateMarkdownReport(result);
+    const blob = new Blob([md], { type: "text/markdown" });
+    downloadBlob(blob, `${APP_SLUG}-${hostname}-${date}.md`);
   }
 
   async function requestShare() {
@@ -518,6 +528,12 @@ export function ScanActionsMenu({
       label: "Export as SARIF (GitHub Code Scanning)",
       icon: FileCode2,
       onSelect: exportSarif,
+    },
+    {
+      key: "markdown",
+      label: "Export as Markdown",
+      icon: FileType,
+      onSelect: exportMarkdown,
     },
     { separator: true },
     ...(scanId

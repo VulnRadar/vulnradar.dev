@@ -6,6 +6,7 @@ import { getClientIp } from "@/lib/api/request-utils";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { deleteAvatarFilesIfLocal } from "@/lib/uploads/avatar-storage";
 import { deleteUserAccountData } from "@/lib/auth/account-deletion";
+import { sendEmail, accountDeletedEmail } from "@/lib/email/email";
 
 export const POST = withErrorHandling(async (request: Request) => {
   const session = await getSession();
@@ -40,10 +41,13 @@ export const POST = withErrorHandling(async (request: Request) => {
   // password check for it rather than permanently locking it out of
   // deleting its own account. The frontend's "type DELETE to confirm"
   // step is still required either way.
-  const pwRow = await pool.query<{ password_hash: string | null }>(
-    "SELECT password_hash FROM users WHERE id = $1",
-    [session.userId],
-  );
+  const pwRow = await pool.query<{
+    password_hash: string | null;
+    email: string;
+    name: string | null;
+  }>("SELECT password_hash, email, name FROM users WHERE id = $1", [
+    session.userId,
+  ]);
   // No row at all (a stale/corrupted session referencing an already-gone
   // user) must fail closed, the same as a wrong password -- distinct from
   // a real row whose password_hash is legitimately null (OAuth-only),
@@ -68,6 +72,12 @@ export const POST = withErrorHandling(async (request: Request) => {
       return ApiResponse.badRequest("Password is incorrect.");
     }
   }
+
+  // Capture the address and name BEFORE the purge: deleteUserAccountData
+  // removes the users row (email included), so the confirmation below has to
+  // be built from values read now, while the row still exists.
+  const deletedEmail = pwRow.rows[0].email;
+  const deletedName = pwRow.rows[0].name;
 
   // Shares the exact same deletion logic app/api/v3/admin/route.ts's
   // delete_account handler uses -- see lib/auth/account-deletion.ts's own
@@ -94,6 +104,14 @@ export const POST = withErrorHandling(async (request: Request) => {
 
   // Clear the session cookie
   await destroySession();
+
+  // Final step: confirm the purge to the address captured before it ran.
+  // Best-effort -- the account is already gone whether or not this sends, so
+  // a mail failure must never turn a successful deletion into an error.
+  sendEmail({
+    to: deletedEmail,
+    ...accountDeletedEmail(deletedName),
+  }).catch((err) => console.error("Account deleted email failed:", err));
 
   return ApiResponse.success({ message: "Account deleted successfully" });
 });

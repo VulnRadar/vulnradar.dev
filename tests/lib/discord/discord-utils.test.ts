@@ -81,7 +81,7 @@ describe("sendDiscordEmail2FACode", () => {
     // Pull the plaintext code back out of the (real) email body and verify
     // it hashes to exactly what was stored, proving the salted hash matches
     // the code that was actually sent.
-    const match = /verification code is: (\d{6})/.exec(emailArgs.text);
+    const match = /sign-in code is (\d{6})/.exec(emailArgs.text);
     expect(match).not.toBeNull();
     const code = match![1];
     const expectedHash = createHash("sha256")

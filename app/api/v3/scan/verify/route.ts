@@ -11,6 +11,7 @@ import pool from "@/lib/database/db";
 import { runAiVerification } from "@/lib/ai/verify-findings";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { checkAiUsageQuota } from "@/lib/billing/ai-usage";
+import { scanNumericId } from "@/lib/history/resolve-scan";
 
 export const runtime = "nodejs";
 // Must stay above CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS (lib/config/config-values.ts,
@@ -80,7 +81,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: { scanHistoryId: number };
+  let body: { scanHistoryId: number | string };
   try {
     body = await req.json();
   } catch {
@@ -90,13 +91,21 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Accepts the opaque public_id (a string) or a legacy numeric id -- the
+  // scan lookup below resolves either shape.
   const { scanHistoryId } = body;
-  if (!scanHistoryId || typeof scanHistoryId !== "number") {
+  if (
+    scanHistoryId === undefined ||
+    scanHistoryId === null ||
+    (typeof scanHistoryId !== "number" && typeof scanHistoryId !== "string") ||
+    String(scanHistoryId).trim() === ""
+  ) {
     return NextResponse.json(
       { error: "scanHistoryId is required." },
       { status: 400 },
     );
   }
+  const scanIdParam = String(scanHistoryId);
 
   // Check user hasn't disabled AI
   try {
@@ -114,17 +123,19 @@ export async function POST(req: NextRequest) {
     /* no row = AI enabled by default */
   }
 
-  // Fetch the scan — must belong to this user
+  // Fetch the scan — must belong to this user. Resolves the opaque public_id
+  // or a legacy numeric id, still scoped to the caller.
   const scanResult = await pool.query(
-    `SELECT url, findings FROM scan_history WHERE id = $1 AND user_id = $2`,
-    [scanHistoryId, userId],
+    `SELECT id, url, findings FROM scan_history
+     WHERE (public_id = $1 OR ($2::bigint IS NOT NULL AND id = $2)) AND user_id = $3`,
+    [scanIdParam, scanNumericId(scanIdParam), userId],
   );
 
   if (scanResult.rows.length === 0) {
     return NextResponse.json({ error: "Scan not found." }, { status: 404 });
   }
 
-  const { url, findings } = scanResult.rows[0];
+  const { id: scanId, url, findings } = scanResult.rows[0];
   const parsedFindings = Array.isArray(findings) ? findings : [];
 
   // Pre-call gate: bounds VulnRadar's own AI cost per plan tier. Bypassed
@@ -138,7 +149,7 @@ export async function POST(req: NextRequest) {
   await runAiVerification(
     url as string,
     parsedFindings,
-    scanHistoryId,
+    scanId,
     userId,
     quota.usingOwnAi,
   );
@@ -146,7 +157,7 @@ export async function POST(req: NextRequest) {
   // Return the updated findings
   const updated = await pool.query(
     `SELECT findings FROM scan_history WHERE id = $1`,
-    [scanHistoryId],
+    [scanId],
   );
 
   return NextResponse.json({

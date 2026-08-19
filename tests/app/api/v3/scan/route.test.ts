@@ -553,6 +553,20 @@ describe("active-probes domain ownership gate", () => {
     ).toBe(false);
   });
 
+  it("rejects with 403 when a single per-probe selector is requested against an unverified domain", async () => {
+    mockIsUrlOwnedByUser.mockResolvedValue(false);
+    const res = await POST(
+      postRequest({
+        url: "https://example.com",
+        scanners: ["headers", "active-probes:xss"],
+      }),
+    );
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.statusCode).toBe("DOMAIN_NOT_VERIFIED");
+    expect(mockExecuteScan).not.toHaveBeenCalled();
+  });
+
   it("checks ownership against the normalized URL for the caller's own user id", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ scans_private_by_default: false }],

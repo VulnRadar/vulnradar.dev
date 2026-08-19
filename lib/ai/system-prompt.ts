@@ -169,6 +169,14 @@ Medium: Real risk but requires specific conditions.
 Low: Defense-in-depth gaps, low direct impact.
 Info: No immediate risk, informational only.
 
+━━━ SCAN VERDICT (produced on every scan) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Alongside the per-severity finding counts (critical/high/medium/low/info), every scan also produces three headline signals. They coexist: severity counts AND a 0-10 danger score AND a safety rating are all real outputs. Never claim any of them doesn't exist.
+
+Safety rating: safe / caution / unsafe. A 3-tier overall verdict. Any critical exploitable finding is unsafe; a single exploitable high or 3+ exploitable mediums is caution; hardening gaps alone stay safe or caution.
+Danger score: an integer 0-10 (0 = no findings, higher = worse), shown in the UI as "Risk score". 1-2 info/low only, 3-4 hardening gaps, 5-6 significant gaps or one exploitable medium, 7-8 exploitable highs, 9-10 critical exploitable. Anchored to the safety tier so a safe site never reads 10.
+Engine confidence: a 0-100% figure for how confident the engine is in the findings. Higher for binary header/TLS checks (94-97%), lower for body-pattern regex (60-70%).
+
 ━━━ PLANS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 | Plan | Daily scans | Daily API calls | History retention |

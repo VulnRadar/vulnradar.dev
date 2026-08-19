@@ -34,8 +34,8 @@ interface HistoryScanRowProps {
   scan: ScanRecord;
   onView: (scan: ScanRecord) => void;
   onRescan: (scan: ScanRecord) => void;
-  onAddTag: (scanId: number, tag: string) => void;
-  onRemoveTag: (scanId: number, tag: string) => void;
+  onAddTag: (scanId: string | number, tag: string) => void;
+  onRemoveTag: (scanId: string | number, tag: string) => void;
   rescanning: boolean;
 }
 

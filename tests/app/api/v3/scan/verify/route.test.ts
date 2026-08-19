@@ -110,7 +110,7 @@ describe("POST /api/v3/scan/verify: rate limiting", () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({
-        rows: [{ url: "https://example.com", findings: [] }],
+        rows: [{ id: 10, url: "https://example.com", findings: [] }],
       })
       .mockResolvedValueOnce({ rows: [{ findings: [] }] });
 
@@ -166,7 +166,7 @@ describe("POST /api/v3/scan/verify: auth and validation", () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [] }) // ai config: none
       .mockResolvedValueOnce({
-        rows: [{ url: "https://example.com", findings: [] }],
+        rows: [{ id: 10, url: "https://example.com", findings: [] }],
       })
       .mockResolvedValueOnce({ rows: [{ findings: [] }] });
 
@@ -186,8 +186,10 @@ describe("POST /api/v3/scan/verify: auth and validation", () => {
     );
     // Scoped to the API key's own userId, same ownership check a session
     // caller gets -- one key can't verify another account's scan.
+    // [publicIdParam, numericFallback, userId]: a numeric id resolves via
+    // the fallback.
     const [, params] = mockQuery.mock.calls[1];
-    expect(params).toEqual([10, 77]);
+    expect(params).toEqual(["10", 10, 77]);
   });
 
   it("rejects invalid JSON", async () => {
@@ -200,10 +202,31 @@ describe("POST /api/v3/scan/verify: auth and validation", () => {
     expect(res.status).toBe(400);
   });
 
-  it("rejects a missing or non-numeric scanHistoryId", async () => {
-    const res = await POST(postRequest({ scanHistoryId: "abc" }));
+  it("rejects a missing scanHistoryId", async () => {
+    const res = await POST(postRequest({}));
     expect(res.status).toBe(400);
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("accepts an opaque public_id (a string) and resolves it, 404ing when not found", async () => {
+    // A non-numeric scanHistoryId is a valid public_id shape now, not a 400.
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // ai config: none
+      .mockResolvedValueOnce({ rows: [] }); // scan lookup by public_id: not found
+
+    const res = await POST(
+      postRequest({ scanHistoryId: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4" }),
+    );
+    expect(res.status).toBe(404);
+
+    const [sql, params] = mockQuery.mock.calls[1];
+    expect(sql).toContain("public_id = $1");
+    // Not all-digits, so no numeric fallback.
+    expect(params).toEqual([
+      "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
+      null,
+      42,
+    ]);
   });
 });
 
@@ -221,7 +244,7 @@ describe("POST /api/v3/scan/verify: AI-disabled setting", () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [] }) // no ai config row
       .mockResolvedValueOnce({
-        rows: [{ url: "https://example.com", findings: [] }],
+        rows: [{ id: 10, url: "https://example.com", findings: [] }],
       })
       .mockResolvedValueOnce({ rows: [{ findings: [] }] });
 
@@ -233,7 +256,7 @@ describe("POST /api/v3/scan/verify: AI-disabled setting", () => {
     mockQuery
       .mockRejectedValueOnce(new Error("config query failed"))
       .mockResolvedValueOnce({
-        rows: [{ url: "https://example.com", findings: [] }],
+        rows: [{ id: 10, url: "https://example.com", findings: [] }],
       })
       .mockResolvedValueOnce({ rows: [{ findings: [] }] });
 
@@ -253,8 +276,9 @@ describe("POST /api/v3/scan/verify: scan ownership and verification", () => {
     expect(mockRunAiVerification).not.toHaveBeenCalled();
 
     const [sql, params] = mockQuery.mock.calls[1];
-    expect(sql).toContain("WHERE id = $1 AND user_id = $2");
-    expect(params).toEqual([999, 42]);
+    expect(sql).toContain("public_id = $1");
+    expect(sql).toContain("user_id = $3");
+    expect(params).toEqual(["999", 999, 42]);
   });
 
   it("runs verification against the fetched findings and returns the updated set", async () => {
@@ -262,7 +286,7 @@ describe("POST /api/v3/scan/verify: scan ownership and verification", () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [] }) // ai config: none
       .mockResolvedValueOnce({
-        rows: [{ url: "https://example.com", findings }],
+        rows: [{ id: 10, url: "https://example.com", findings }],
       })
       .mockResolvedValueOnce({
         rows: [
@@ -293,7 +317,7 @@ describe("POST /api/v3/scan/verify: scan ownership and verification", () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({
-        rows: [{ url: "https://example.com", findings: null }],
+        rows: [{ id: 10, url: "https://example.com", findings: null }],
       })
       .mockResolvedValueOnce({ rows: [{ findings: null }] });
 
@@ -351,7 +375,7 @@ describe("POST /api/v3/scan/verify: unified AI usage quota", () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({
-        rows: [{ url: "https://example.com", findings: [] }],
+        rows: [{ id: 10, url: "https://example.com", findings: [] }],
       })
       .mockResolvedValueOnce({ rows: [{ findings: [] }] });
     mockCheckAiUsageQuota.mockResolvedValue({

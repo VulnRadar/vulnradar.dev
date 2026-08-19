@@ -25,6 +25,9 @@ const ScanActionsMenu = dynamic(() =>
 const ResponseHeaders = dynamic(() =>
   import("./response-headers").then((m) => ({ default: m.ResponseHeaders })),
 );
+const DnsRecordsPanel = dynamic(() =>
+  import("./dns-records-panel").then((m) => ({ default: m.DnsRecordsPanel })),
+);
 const IssueDetail = dynamic(() =>
   import("./issue-detail").then((m) => ({ default: m.IssueDetail })),
 );
@@ -47,11 +50,11 @@ interface DashboardResultsProps {
   result: ScanResult;
   selectedIssue: Vulnerability | null;
   onSelectIssue: (issue: Vulnerability | null) => void;
-  scanHistoryId: number | null;
+  scanHistoryId: string | number | null;
   scanNotes: string;
   scanTags: ScanTag[];
-  onAddTag: (scanId: number, tag: string) => void;
-  onRemoveTag: (scanId: number, tag: string) => void;
+  onAddTag: (scanId: string | number, tag: string) => void;
+  onRemoveTag: (scanId: string | number, tag: string) => void;
   crawlInfo: CrawlInfo | null;
   authReport?: ScanAuthReport | null;
   onReset: () => void;
@@ -204,6 +207,8 @@ export function DashboardResults({
           Object.keys(result.responseHeaders).length > 0 && (
             <ResponseHeaders headers={result.responseHeaders} />
           )}
+
+        <DnsRecordsPanel records={result.dnsRecords} />
 
         <SubdomainDiscovery
           url={result.url}

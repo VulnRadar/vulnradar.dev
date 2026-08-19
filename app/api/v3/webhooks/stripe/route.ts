@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStripe } from "@/lib/billing/stripe";
 import { getPlanFromProductId } from "@/lib/billing/products";
-import { getPaidPlans, type PlanId } from "@/lib/billing/catalog";
+import { getPaidPlans, getPlanById, type PlanId } from "@/lib/billing/catalog";
+import {
+  sendEmail,
+  paymentReceiptEmail,
+  paymentFailedEmail,
+  subscriptionChangedEmail,
+  type SubscriptionChangeKind,
+} from "@/lib/email/email";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "@/lib/billing/subscription-status";
 import { grantPremiumBadge, revokePremiumBadge } from "@/lib/billing/badges";
 import { getAiCreditTier } from "@/lib/billing/ai-credit-catalog";
@@ -37,6 +44,53 @@ async function resolvePlanFromStripeProductId(
 }
 
 const PAID_PLAN_IDS: readonly PlanId[] = getPaidPlans().map((p) => p.id);
+
+// Billing email helpers. Every send built on these runs best-effort AFTER the
+// event's business logic, wrapped in its own try/catch: the event is already
+// processed and the row already written by the time we email, so a mail
+// failure must never change the webhook's 2xx or its idempotency.
+async function lookupBillingRecipient(
+  customerId: string,
+): Promise<{ email: string; plan: string } | null> {
+  if (!customerId) return null;
+  try {
+    const r = await pool.query<{ email: string; plan: string }>(
+      "SELECT email, plan FROM users WHERE stripe_customer_id = $1 LIMIT 1",
+      [customerId],
+    );
+    return r.rows[0] ?? null;
+  } catch (err) {
+    console.error("[Stripe] billing recipient lookup failed:", err);
+    return null;
+  }
+}
+
+function formatBillingDate(unixSeconds: number | null | undefined): string {
+  const ms = unixSeconds ? unixSeconds * 1000 : Date.now();
+  return new Date(ms).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+function planDisplayName(planId: string | null | undefined): string {
+  return getPlanById(planId ?? "")?.name ?? "your plan";
+}
+
+// Upgrade vs downgrade is decided purely on the plans' monthly price, so a
+// move to a pricier tier reads "upgraded" and a cheaper one "downgraded";
+// same plan (a reactivation, e.g. past_due -> active) reads "renewed".
+function resolveSubscriptionChangeKind(
+  oldPlanId: string | null,
+  newPlanId: string,
+): SubscriptionChangeKind {
+  const oldPrice = getPlanById(oldPlanId ?? "")?.priceInCents ?? 0;
+  const newPrice = getPlanById(newPlanId)?.priceInCents ?? 0;
+  if (newPrice > oldPrice) return "upgraded";
+  if (newPrice < oldPrice) return "downgraded";
+  return "renewed";
+}
 
 // Get webhook secret lazily to avoid issues during build time
 function getWebhookSecret() {
@@ -335,6 +389,33 @@ export async function POST(req: NextRequest) {
             }
           }
         }
+
+        // Best-effort "subscription started" notice, only when the create
+        // event already resolved to a real paid plan (a subscription created
+        // straight into an active status). The far more common
+        // default_incomplete flow writes "free" here and its real activation
+        // email fires later on customer.subscription.updated, so this doesn't
+        // double-send for that path.
+        if (planToWrite !== "free") {
+          try {
+            const recipient = await lookupBillingRecipient(customerId);
+            if (recipient?.email) {
+              await sendEmail({
+                to: recipient.email,
+                ...subscriptionChangedEmail({
+                  kind: "upgraded",
+                  planName: planDisplayName(planToWrite),
+                  previousPlanName: "Free",
+                }),
+              });
+            }
+          } catch (emailErr) {
+            console.error(
+              "[Stripe] subscription-created email failed:",
+              emailErr,
+            );
+          }
+        }
         break;
       }
 
@@ -376,6 +457,24 @@ export async function POST(req: NextRequest) {
         );
         const planToWrite = isPaid ? plan || "free" : "free";
 
+        // Capture the account's email and current plan BEFORE the UPDATE
+        // below overwrites the plan, so the best-effort change email can tell
+        // an upgrade from a downgrade and knows where to send. Read-only and
+        // wrapped: it never affects the write or the response.
+        let previousRow: { email: string; plan: string } | null = null;
+        try {
+          const prev = await pool.query<{ email: string; plan: string }>(
+            "SELECT email, plan FROM users WHERE stripe_customer_id = $1 LIMIT 1",
+            [customerId],
+          );
+          previousRow = prev.rows[0] ?? null;
+        } catch (prevErr) {
+          console.error(
+            "[Stripe] previous-plan read failed (continuing):",
+            prevErr,
+          );
+        }
+
         // Stripe fires customer.subscription.updated on ANY field change to
         // the subscription object (e.g. a retried payment attempt on an
         // already-incomplete_expired subscription touches latest_invoice),
@@ -405,6 +504,38 @@ export async function POST(req: NextRequest) {
           console.log(
             `[Stripe] Subscription updated for customer ${customerId}, plan: ${planToWrite}, status: ${subscription.status}`,
           );
+
+          // Best-effort plan-change notice. Only for a real, active paid plan
+          // (a move to free / a non-active status is handled by the cancel
+          // path and isn't a user-facing "your plan changed" moment). This is
+          // where the incomplete -> active first activation lands too, so a
+          // brand-new subscriber gets an "upgraded from Free" email here.
+          // Reuses previousRow (read before the UPDATE) for both the old plan
+          // and the address, so no second lookup is needed.
+          if (planToWrite !== "free" && previousRow?.email) {
+            try {
+              const kind = resolveSubscriptionChangeKind(
+                previousRow.plan,
+                planToWrite,
+              );
+              await sendEmail({
+                to: previousRow.email,
+                ...subscriptionChangedEmail({
+                  kind,
+                  planName: planDisplayName(planToWrite),
+                  previousPlanName:
+                    previousRow.plan && previousRow.plan !== planToWrite
+                      ? planDisplayName(previousRow.plan)
+                      : null,
+                }),
+              });
+            } catch (emailErr) {
+              console.error(
+                "[Stripe] subscription-updated email failed:",
+                emailErr,
+              );
+            }
+          }
         }
         break;
       }
@@ -436,6 +567,35 @@ export async function POST(req: NextRequest) {
         console.log(
           `[Stripe] Subscription canceled for customer ${customerId}`,
         );
+
+        // Best-effort cancellation notice, only when a user actually matched.
+        // The DB row was just reset to free/pro-floor above, so name the plan
+        // that was actually canceled from the subscription object's own
+        // metadata, not the post-reset row.
+        if (result.rowCount && result.rowCount > 0) {
+          try {
+            const recipient = await lookupBillingRecipient(customerId);
+            if (recipient?.email) {
+              const canceledPlanId =
+                subscription.metadata?.planId ||
+                getPlanFromProductId(subscription.metadata?.productId || "") ||
+                "";
+              await sendEmail({
+                to: recipient.email,
+                ...subscriptionChangedEmail({
+                  kind: "canceled",
+                  planName:
+                    getPlanById(canceledPlanId)?.name ?? "your subscription",
+                }),
+              });
+            }
+          } catch (emailErr) {
+            console.error(
+              "[Stripe] subscription-canceled email failed:",
+              emailErr,
+            );
+          }
+        }
         break;
       }
 
@@ -496,6 +656,29 @@ export async function POST(req: NextRequest) {
           }
 
           console.log(`[Stripe] Payment succeeded for customer ${customerId}`);
+
+          // Best-effort receipt (transactional). Skip $0 invoices (trials,
+          // fully-discounted cycles): there's nothing to receipt.
+          try {
+            const recipient = await lookupBillingRecipient(customerId);
+            if (recipient?.email && invoice.amount_paid > 0) {
+              await sendEmail({
+                to: recipient.email,
+                ...paymentReceiptEmail({
+                  planName: planDisplayName(recipient.plan),
+                  amountCents: invoice.amount_paid,
+                  currency: invoice.currency,
+                  date: formatBillingDate(
+                    invoice.status_transitions?.paid_at ?? invoice.created,
+                  ),
+                  invoiceUrl:
+                    invoice.hosted_invoice_url ?? invoice.invoice_pdf ?? null,
+                }),
+              });
+            }
+          } catch (emailErr) {
+            console.error("[Stripe] payment receipt email failed:", emailErr);
+          }
         }
         break;
       }
@@ -509,6 +692,27 @@ export async function POST(req: NextRequest) {
           [customerId],
         );
         console.log(`[Stripe] Payment failed for customer ${customerId}`);
+
+        // Best-effort dunning notice (transactional) so the customer can fix
+        // the card before the retries run out and the plan drops.
+        try {
+          const recipient = await lookupBillingRecipient(customerId);
+          if (recipient?.email) {
+            await sendEmail({
+              to: recipient.email,
+              ...paymentFailedEmail({
+                planName: planDisplayName(recipient.plan),
+                amountCents: invoice.amount_due ?? invoice.amount_paid ?? 0,
+                currency: invoice.currency,
+                nextAttempt: invoice.next_payment_attempt
+                  ? formatBillingDate(invoice.next_payment_attempt)
+                  : null,
+              }),
+            });
+          }
+        } catch (emailErr) {
+          console.error("[Stripe] payment failed email failed:", emailErr);
+        }
         break;
       }
 
