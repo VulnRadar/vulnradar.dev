@@ -549,6 +549,7 @@ export default function HistoryPage() {
             <HistoryEmptyState
               hasScans={scans.length > 0}
               hasFilters={Boolean(filter || tagFilter)}
+              hasResults={filtered.length > 0}
               onClearFilters={() => {
                 setFilter("");
                 setTagFilter(null);

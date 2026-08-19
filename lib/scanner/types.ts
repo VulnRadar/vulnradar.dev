@@ -215,6 +215,17 @@ export interface ScanResult {
    */
   dnsRecords?: DnsRecords;
   /**
+   * Auto-discovered subdomains for the scanned host: the same shape the
+   * manual "Discover subdomains" flow produces, captured automatically during
+   * the scan by lib/scanner/subdomain-auto.ts and stored in
+   * result_meta.subdomains. Reuses the manual flow's per-domain cache, so it
+   * is populated instantly on a repeat scan and best-effort on the first.
+   * Absent when discovery found nothing, timed out, or the target was a raw
+   * IP -- consumers render the manual "Discover" button rather than an empty
+   * panel.
+   */
+  subdomains?: DiscoveryResult;
+  /**
    * 0–100: how confident the engine is in the accuracy of these results.
    * Reflects check type determinism and completeness of the scan.
    * Target is 95–100%.

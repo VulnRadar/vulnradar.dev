@@ -146,6 +146,15 @@ export default async function CheckPage({
         nonce={nonce}
       />
       <FaqStructuredData items={faq} nonce={nonce} />
+      {check.fixSteps.length > 0 && (
+        <HowToStructuredData
+          name={`How to fix: ${check.title}`}
+          description={clamp(check.riskImpact, 300)}
+          steps={check.fixSteps}
+          path={checkPath(check.id)}
+          nonce={nonce}
+        />
+      )}
       <BreadcrumbStructuredData items={breadcrumb} nonce={nonce} />
 
       <article className="max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-16">

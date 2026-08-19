@@ -17,6 +17,7 @@ import { runSyncChecks, getPlannedSyncCategories } from "./engine";
 import { runAsyncChecks, getPlannedAsyncBranches } from "./async-checks";
 import { readSslGrade } from "./ssl-grade";
 import { readDnsRecords } from "./dns-records";
+import { readSubdomains, autoDiscoverSubdomains } from "./subdomain-auto";
 import {
   createProgressTracker,
   startWatchdog,
@@ -413,6 +414,16 @@ export async function executeCrawlScan(
   try {
     await markScanRunning(scanId);
 
+    // Automatic subdomain discovery for the crawl's main host, kicked off
+    // here so it runs concurrently with the page crawl and per-page scans,
+    // then awaited (bounded) before result_meta is assembled. Best-effort and
+    // time-bounded inside autoDiscoverSubdomains, so it can never fail or
+    // stall the crawl. Reuses the manual flow's per-domain cache.
+    const autoSubdomainsPromise = autoDiscoverSubdomains(normalizedMainUrl, {
+      signal: cancelSignal,
+    });
+    autoSubdomainsPromise.catch(() => {});
+
     // Use pre-selected URLs if provided, otherwise discover them.
     let pages: string[];
     if (selectedUrls && selectedUrls.length > 0) {
@@ -638,6 +649,21 @@ export async function executeCrawlScan(
       /* malformed URL: no records */
     }
 
+    // Auto-discovered subdomains for the crawl's main host, captured
+    // concurrently above and read from the same per-host side channel
+    // (lib/scanner/subdomain-auto.ts). Only stored when present.
+    try {
+      await autoSubdomainsPromise;
+    } catch {
+      /* never: autoDiscoverSubdomains swallows its own errors */
+    }
+    let subdomains: ReturnType<typeof readSubdomains>;
+    try {
+      subdomains = readSubdomains(new URL(normalizedMainUrl).hostname);
+    } catch {
+      /* malformed URL: no subdomains */
+    }
+
     const applied = await finalizeScanSuccess(scanId, {
       summary: mergedSummary,
       findings: allFindings,
@@ -647,6 +673,7 @@ export async function executeCrawlScan(
       resultMeta: {
         ...(sslGrade ? { sslGrade } : {}),
         ...(dnsRecords ? { dnsRecords } : {}),
+        ...(subdomains ? { subdomains } : {}),
         crawl: {
           pagesDiscovered: pages.length,
           pagesScanned: pageResults.length,

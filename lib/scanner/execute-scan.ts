@@ -13,6 +13,7 @@ import { runSyncChecks } from "./engine";
 import { runAsyncChecksDetailed, type AsyncCheckResult } from "./async-checks";
 import { readSslGrade } from "./ssl-grade";
 import { readDnsRecords } from "./dns-records";
+import { readSubdomains, autoDiscoverSubdomains } from "./subdomain-auto";
 import {
   createProgressTracker,
   startWatchdog,
@@ -512,6 +513,19 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     });
     const redactedHeaders = redactSensitiveResponseHeaders(capturedHeaders);
 
+    // Automatic subdomain discovery: kicked off here so it runs concurrently
+    // with the rest of the scan, then awaited (bounded) just before
+    // result_meta is assembled. Best-effort and time-bounded inside
+    // autoDiscoverSubdomains, so it can never fail or stall the scan. Only for
+    // real web hosts -- raw IPs and non-HTTP protocols have no registrable
+    // domain to enumerate. Reuses the manual flow's per-domain cache, so a
+    // repeat scan of the same domain is an instant cache hit.
+    const autoSubdomainsPromise =
+      protocolType === "http" && !isRawIpTarget
+        ? autoDiscoverSubdomains(normalizedUrl, { signal: cancelSignal })
+        : Promise.resolve();
+    autoSubdomainsPromise.catch(() => {});
+
     // Start async checks immediately (DNS, TLS, live-fetch) while running sync
     // checks. Each branch inside runAsyncChecksDetailed already races its own
     // 12s ceiling, so this outer 15s race is a safety net rather than the
@@ -673,6 +687,24 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
       /* malformed URL: no records */
     }
 
+    // Auto-discovered subdomains, captured concurrently above and left in the
+    // per-host side channel (lib/scanner/subdomain-auto.ts). autoDiscover
+    // never rejects, so this await is safe; it just ensures we read the
+    // channel after the bounded discovery has settled. Absent when discovery
+    // timed out or found nothing, so the panel simply does not render and the
+    // owner keeps the manual "Discover" button.
+    try {
+      await autoSubdomainsPromise;
+    } catch {
+      /* never: autoDiscoverSubdomains swallows its own errors */
+    }
+    let subdomains: ReturnType<typeof readSubdomains>;
+    try {
+      subdomains = readSubdomains(new URL(normalizedUrl).hostname);
+    } catch {
+      /* malformed URL: no subdomains */
+    }
+
     const scannedAt = new Date().toISOString();
 
     const applied = await finalizeScanSuccess(scanId, {
@@ -687,6 +719,7 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
         engineConfidence,
         ...(sslGrade ? { sslGrade } : {}),
         ...(dnsRecords ? { dnsRecords } : {}),
+        ...(subdomains ? { subdomains } : {}),
         ...(incomplete.length > 0 ? { incomplete } : {}),
       },
       finalUrl: finalScanUrl,

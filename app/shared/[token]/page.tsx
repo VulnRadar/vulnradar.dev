@@ -344,7 +344,7 @@ export default function SharedScanPage() {
                   <SubdomainDiscovery
                     url={result.url}
                     readOnly
-                    cachedResult={subdomainCache}
+                    cachedResult={result.subdomains ?? subdomainCache}
                   />
                   {scanNotes && (
                     <div className="rounded-md border border-border bg-card p-4">

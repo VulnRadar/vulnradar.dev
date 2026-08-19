@@ -213,6 +213,7 @@ export function DashboardResults({
         <SubdomainDiscovery
           url={result.url}
           onScanSubdomain={onScanSubdomain}
+          initialResult={result.subdomains ?? null}
         />
 
         {scanHistoryId && (

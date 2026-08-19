@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Globe,
   Loader2,
   Search,
   ExternalLink,
@@ -25,25 +24,14 @@ import {
   PREMIUM_FEATURES,
   hasFeatureAccess,
 } from "@/components/modals/premium-upgrade-modal";
+import type {
+  DiscoveredSubdomain,
+  DiscoveryResult,
+} from "@/lib/scanner/subdomain-types";
 
-interface DiscoveredSubdomain {
-  subdomain: string;
-  url: string;
-  reachable: boolean;
-  statusCode?: number;
-  sources: string[];
-}
-
-export interface DiscoveryResult {
-  domain: string;
-  total: number;
-  reachable: number;
-  subdomains: DiscoveredSubdomain[];
-  sources?: Record<string, number>;
-  cached?: boolean;
-  cachedAt?: string;
-  expiresAt?: string;
-}
+// Re-exported so existing importers (e.g. app/shared/[token]/page.tsx) keep
+// importing DiscoveryResult from this component unchanged.
+export type { DiscoveryResult } from "@/lib/scanner/subdomain-types";
 
 interface SubdomainDiscoveryProps {
   url: string;
@@ -58,6 +46,14 @@ interface SubdomainDiscoveryProps {
   readOnly?: boolean;
   /** Pre-fetched cache snapshot for readOnly mode. Ignored otherwise. */
   cachedResult?: DiscoveryResult | null;
+  /**
+   * Auto-discovered result captured during the scan (result.subdomains). Used
+   * as the initial data for the OWNER view so the subdomain panel renders
+   * immediately, with no "Discover subdomains" click. A manual discover or
+   * refresh still overrides it. Ignored in readOnly mode, which shows
+   * cachedResult instead.
+   */
+  initialResult?: DiscoveryResult | null;
 }
 
 // Source attribution doesn't carry security meaning, so every source gets
@@ -132,19 +128,30 @@ export function SubdomainDiscovery({
   onScanSubdomain,
   readOnly = false,
   cachedResult = null,
+  initialResult = null,
 }: SubdomainDiscoveryProps) {
   const router = useRouter();
   const { me, isStaff } = useAuth();
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [result, setResult] = useState<DiscoveryResult | null>(null);
-  // readOnly never fetches (handleDiscover is a no-op below), so what's
-  // shown is always this prop directly -- derived, not mirrored into state,
-  // so a `cachedResult` that changes after mount (e.g. navigating between
-  // two /shared/[token] links without a remount) is never stale.
-  const effectiveResult = readOnly ? (cachedResult ?? null) : result;
+  // A manual "Discover"/"Refresh" fills this in and overrides the
+  // auto-discovered initialResult; null until the owner runs one by hand.
+  const [manualResult, setManualResult] = useState<DiscoveryResult | null>(
+    null,
+  );
+  // What actually renders. readOnly (shared view) never fetches and shows the
+  // read-only cache snapshot directly; the owner view shows a manual result if
+  // they ran one, otherwise the auto-discovered result captured during the
+  // scan. Derived, not mirrored into state, so a prop that changes after mount
+  // (e.g. navigating between scans without a remount) is never stale.
+  const effectiveResult = readOnly
+    ? (cachedResult ?? null)
+    : (manualResult ?? initialResult ?? null);
   const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(readOnly);
+  // Auto-discovered (and shared) results start expanded so the subdomains are
+  // visible immediately; an owner view with nothing discovered yet stays
+  // collapsed behind the "Discover subdomains" button.
+  const [expanded, setExpanded] = useState(readOnly || !!initialResult);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState("");
@@ -250,7 +257,7 @@ export function SubdomainDiscovery({
           setError(data.error || "Discovery failed");
         }
       } else {
-        setResult(data);
+        setManualResult(data);
         setExpanded(true);
       }
     } catch {
@@ -282,10 +289,6 @@ export function SubdomainDiscovery({
         <div className="rounded-md border border-border bg-card p-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-start gap-2.5">
-              <Globe
-                aria-hidden
-                className="mt-0.5 h-4 w-4 shrink-0 text-primary"
-              />
               <div>
                 <h3 className="text-sm font-semibold text-foreground">
                   Subdomain discovery
@@ -368,7 +371,6 @@ export function SubdomainDiscovery({
           onClick={() => setExpanded(!expanded)}
           className="flex items-center gap-2 w-full px-4 py-3 text-left hover:bg-muted/50 transition-colors"
         >
-          <Globe className="h-4 w-4 text-primary shrink-0" />
           <span className="text-sm font-semibold text-foreground flex-1">
             Subdomain discovery
           </span>

@@ -18,6 +18,7 @@ import {
   SoftwareStructuredData,
 } from "@/components/seo/structured-data";
 import {
+  APP_NAME,
   BILLING_ENABLED,
   BILLING_HISTORY_RETENTION,
   BILLING_PLAN_LIMITS,
@@ -36,9 +37,18 @@ const FREE_RETENTION = BILLING_HISTORY_RETENTION.free;
 
 // Questions people actually type into search. Rendered on the page and marked
 // up as an FAQPage from the same array, so the structured data can never
-// describe content the visitor cannot see.
-function buildFaq(categoryCount: number): FaqItem[] {
+// describe content the visitor cannot see. The first item leads with a crisp,
+// self-contained definition an answer engine can quote directly.
+function buildFaq(checkCount: number, categoryCount: number): FaqItem[] {
   return [
+    {
+      question: `What is ${APP_NAME}?`,
+      answer: `${APP_NAME} is an open-source web vulnerability scanner. You paste a URL and it runs ${checkCount.toLocaleString()} deterministic checks across ${categoryCount} categories from our servers: security headers, TLS and certificates, cookie flags, DNS and email records, exposed secrets, server misconfiguration, information disclosure, client-side and supply-chain risks, and the gaps common in AI-generated code. Every finding comes back with a severity, the response evidence behind it, and a concrete fix. It is GPL-3.0 licensed and can be self-hosted.`,
+    },
+    {
+      question: `Is ${APP_NAME} open source?`,
+      answer: `Yes. ${APP_NAME} is licensed under GPL-3.0 and the entire detection engine is in the public repository, so you can read exactly what every check looks for and run the whole scanner yourself with no plan limits.`,
+    },
     {
       question: "Is it free to use?",
       answer: BILLING_ENABLED
@@ -77,7 +87,7 @@ export default async function LandingPage() {
   const counts = getCategoryCounts();
   const checkCount = Object.values(counts).reduce((a, b) => a + b, 0);
   const categoryCount = Object.keys(counts).length;
-  const faq = buildFaq(categoryCount);
+  const faq = buildFaq(checkCount, categoryCount);
 
   return (
     <div className="min-h-screen flex flex-col bg-background overflow-x-hidden">

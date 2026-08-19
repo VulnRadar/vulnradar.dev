@@ -7,12 +7,17 @@ import { ROUTES } from "@/lib/config/client-constants";
 interface HistoryEmptyStateProps {
   hasScans: boolean;
   hasFilters: boolean;
+  /** Whether the active filter actually matched any scans. When it did, this
+   * component renders nothing so the "nothing matches" message never shows
+   * above the matching results. */
+  hasResults: boolean;
   onClearFilters: () => void;
 }
 
 export function HistoryEmptyState({
   hasScans,
   hasFilters,
+  hasResults,
   onClearFilters,
 }: HistoryEmptyStateProps) {
   if (!hasScans) {
@@ -38,7 +43,7 @@ export function HistoryEmptyState({
     );
   }
 
-  if (hasFilters) {
+  if (hasFilters && !hasResults) {
     return (
       <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border bg-card/50 px-4 py-12 text-center">
         <Search aria-hidden className="h-5 w-5 text-muted-foreground/50" />
