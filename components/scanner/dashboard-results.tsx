@@ -39,6 +39,11 @@ const ThreatIntelPanel = dynamic(() =>
     default: m.ThreatIntelPanel,
   })),
 );
+const SoftwareInventoryPanel = dynamic(() =>
+  import("./software-inventory-panel").then((m) => ({
+    default: m.SoftwareInventoryPanel,
+  })),
+);
 const IssueDetail = dynamic(() =>
   import("./issue-detail").then((m) => ({ default: m.IssueDetail })),
 );
@@ -293,6 +298,10 @@ export function DashboardResults({
         />
 
         <ThreatIntelPanel threatIntel={displayResult.threatIntel} />
+
+        <SoftwareInventoryPanel
+          softwareInventory={displayResult.softwareInventory}
+        />
 
         <SubdomainDiscovery
           url={result.url}

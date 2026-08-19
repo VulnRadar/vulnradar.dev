@@ -15,6 +15,7 @@ import type { DiscoveryResult } from "./subdomain-types";
 import type { FindingRemediation } from "./remediation";
 import type { PortScanResult } from "./port-scan";
 import type { ThreatIntelSummary } from "./reputation-lookup";
+import type { SoftwareInventorySummary } from "./software-inventory";
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
@@ -304,6 +305,20 @@ export interface ScanResult {
    * target had no domain to check (raw IP) and Web Risk is unconfigured.
    */
   threatIntel?: ThreatIntelSummary;
+  /**
+   * Structured software inventory for the scanned host: the components the
+   * scan fingerprinted from the response it already had (Server / X-Powered-By
+   * / Via / X-AspNet-Version / X-Generator headers, the generator meta tag,
+   * well-known CMS markers, and the client-side libraries osv-check already
+   * detected), each with its category, source, and -- for version-bearing,
+   * catalogued items -- a per-item CVE verdict from version-to-CVE correlation
+   * (lib/scanner/software-inventory.ts). Structured data for the "Software
+   * inventory" panel, not findings; a version with known CVEs also raises one
+   * aggregated finding. Stored in result_meta.softwareInventory and reaches
+   * owner/shared/status pages via the result_meta spread, no route edits.
+   * Absent when nothing was detected (a clean/empty host renders no panel).
+   */
+  softwareInventory?: SoftwareInventorySummary;
 }
 
 export type ScanStatus = "idle" | "scanning" | "done" | "failed";

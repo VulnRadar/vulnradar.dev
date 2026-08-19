@@ -141,7 +141,11 @@ interface DetectedLibrary {
   scriptUrl: string;
 }
 
-function extractDetectedLibraries(
+// Exported so lib/scanner/software-inventory.ts can list the SAME client-side
+// libraries in its inventory panel without re-implementing this detection.
+// Export-only change: this remains the exact function osv-check itself uses,
+// so OSV finding behavior is unchanged.
+export function extractDetectedLibraries(
   html: string,
   baseUrl: string,
 ): DetectedLibrary[] {

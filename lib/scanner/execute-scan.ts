@@ -69,6 +69,10 @@ import {
   buildRiskyPortFindings,
   type PortScanResult,
 } from "./port-scan";
+import {
+  analyzeSoftwareInventory,
+  type SoftwareInventoryResult,
+} from "./software-inventory";
 
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0,
@@ -574,6 +578,26 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
       responseBody.length > 1_000_000
         ? responseBody.slice(0, 1_000_000)
         : responseBody;
+
+    // General software inventory + version-to-CVE correlation, built from the
+    // response the scan already has (headers + body) -- no extra fetch. Kicked
+    // off here so the (bounded, capped) external CVE lookups run concurrently
+    // with the sync/async checks, then awaited before findings are assembled.
+    // Best-effort and non-throwing (see lib/scanner/software-inventory.ts): a
+    // network hiccup or a self-hosted instance with no outbound internet just
+    // means no inventory panel and no software CVE findings. Raw-IP targets
+    // skip the HTTP fetch, so there is nothing to fingerprint for them.
+    const softwareInventoryPromise: Promise<SoftwareInventoryResult | null> =
+      isRawIpTarget
+        ? Promise.resolve(null)
+        : analyzeSoftwareInventory(
+            normalizedUrl,
+            headers,
+            bodyForChecks,
+            cancelSignal,
+          );
+    softwareInventoryPromise.catch(() => {});
+
     const syncResult = isRawIpTarget
       ? {
           findings: [] as Vulnerability[],
@@ -648,12 +672,27 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
           )
         : [];
 
+    // Software inventory result, correlated concurrently above. Never rejects
+    // (analyzeSoftwareInventory swallows its own errors and resolves null), so
+    // this await just settles the bounded correlation. Its aggregated
+    // per-software CVE findings join the finding set BEFORE the exploit-intel
+    // pass below, so they pick up CISA KEV / FIRST.org EPSS from their own
+    // CVE-naming text for free; its full structured inventory goes to
+    // result_meta.
+    let softwareInventory: SoftwareInventoryResult | null = null;
+    try {
+      softwareInventory = await softwareInventoryPromise;
+    } catch {
+      /* never: analyzeSoftwareInventory swallows its own errors */
+    }
+
     let findings = [
       ...protocolSpecificFindings,
       ...syncResult.findings,
       ...asyncResult.findings,
       ...(sourceMapFinding ? [sourceMapFinding] : []),
       ...riskyPortFindings,
+      ...(softwareInventory?.findings ?? []),
     ];
 
     // Sort findings by severity
@@ -783,6 +822,9 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
         ...(screenshot ? { screenshot } : {}),
         ...(portScanResult ? { portScan: portScanResult } : {}),
         ...(threatIntel ? { threatIntel } : {}),
+        ...(softwareInventory?.inventory
+          ? { softwareInventory: softwareInventory.inventory }
+          : {}),
         ...(incomplete.length > 0 ? { incomplete } : {}),
       },
       finalUrl: finalScanUrl,

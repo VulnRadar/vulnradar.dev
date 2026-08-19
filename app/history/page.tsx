@@ -22,6 +22,7 @@ import { DnsRecordsPanel } from "@/components/scanner/dns-records-panel";
 import { ScreenshotPanel } from "@/components/scanner/screenshot-panel";
 import { PortScanPanel } from "@/components/scanner/port-scan-panel";
 import { ThreatIntelPanel } from "@/components/scanner/threat-intel-panel";
+import { SoftwareInventoryPanel } from "@/components/scanner/software-inventory-panel";
 import { SubdomainDiscovery } from "@/components/scanner/subdomain-discovery";
 import { CrawlPagesInfo } from "@/components/scanner/crawl-pages-info";
 import {
@@ -538,6 +539,9 @@ export default function HistoryPage() {
                         }
                       />
                       <ThreatIntelPanel threatIntel={scanDetail.threatIntel} />
+                      <SoftwareInventoryPanel
+                        softwareInventory={scanDetail.softwareInventory}
+                      />
                       <SubdomainDiscovery
                         url={scanDetail.url}
                         initialResult={scanDetail.subdomains ?? null}

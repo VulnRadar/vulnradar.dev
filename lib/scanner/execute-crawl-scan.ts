@@ -58,6 +58,12 @@ import {
   buildRiskyPortFindings,
   type PortScanResult,
 } from "./port-scan";
+import {
+  fingerprintSoftware,
+  recordSoftwareFingerprint,
+  readSoftwareFingerprint,
+  correlateSoftwareCves,
+} from "./software-inventory";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { criticalFindingsEmail } from "@/lib/email/email";
 
@@ -313,6 +319,20 @@ async function scanSingleUrl(
     responseBody.length > 1_000_000
       ? responseBody.slice(0, 1_000_000)
       : responseBody;
+
+  // Software inventory fingerprint (pure, no network): stash this page's
+  // detected components into the per-host side channel. Crawl pages all share
+  // one host, so these merge; execute-crawl-scan reads the merged set once for
+  // the main host and correlates it to CVEs (see lib/scanner/software-inventory.ts).
+  try {
+    recordSoftwareFingerprint(
+      new URL(url).hostname,
+      fingerprintSoftware(headers, bodyForChecks, url),
+    );
+  } catch {
+    /* best-effort: a fingerprint hiccup never affects the page scan */
+  }
+
   const syncResult = runSyncChecks(
     url,
     headers,
@@ -607,6 +627,44 @@ export async function executeCrawlScan(
       }
     }
 
+    // General software inventory + version-to-CVE correlation for the crawl's
+    // main host. Every same-host page's fingerprint was merged into one
+    // per-host side channel above; read it back once and correlate (bounded,
+    // capped, per host+item cached, fail-open -- see software-inventory.ts).
+    // Its aggregated per-software CVE findings merge (deduped by id) into the
+    // same array BEFORE the exploit-intel pass, so they too pick up KEV/EPSS
+    // from their own CVE-naming text; the structured inventory goes to
+    // result_meta below.
+    let softwareInventory: Awaited<
+      ReturnType<typeof correlateSoftwareCves>
+    > = null;
+    try {
+      let mainHost: string | null = null;
+      try {
+        mainHost = new URL(normalizedMainUrl).hostname;
+      } catch {
+        /* malformed URL: no host to correlate */
+      }
+      const fingerprint = mainHost
+        ? readSoftwareFingerprint(mainHost)
+        : undefined;
+      if (fingerprint && fingerprint.length > 0) {
+        softwareInventory = await correlateSoftwareCves(
+          normalizedMainUrl,
+          fingerprint,
+          cancelSignal,
+        );
+        for (const f of softwareInventory?.findings ?? []) {
+          if (!seenIds.has(f.id)) {
+            seenIds.add(f.id);
+            allFindings.push(f);
+          }
+        }
+      }
+    } catch {
+      /* never: correlateSoftwareCves swallows its own errors */
+    }
+
     allFindings.sort(
       (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity],
     );
@@ -751,6 +809,9 @@ export async function executeCrawlScan(
         ...(screenshot ? { screenshot } : {}),
         ...(portScanResult ? { portScan: portScanResult } : {}),
         ...(threatIntel ? { threatIntel } : {}),
+        ...(softwareInventory?.inventory
+          ? { softwareInventory: softwareInventory.inventory }
+          : {}),
         crawl: {
           pagesDiscovered: pages.length,
           pagesScanned: pageResults.length,
