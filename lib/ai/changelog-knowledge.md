@@ -24,6 +24,30 @@ and full description.
 Active-probes scanning (real exploit-attempt payloads, not just passive checks) now requires proving you own the target domain first, via a DNS TXT record, the same model Google Search Console and ACME certificate issuance use. Three of the existing active probes (CORS origin reflection, dangerous HTTP methods, X-Forwarded-Host injection) turned out to run unconditionally on every scan instead of being gated behind that opt-in, so they're fixed alongside two new ones: OS command injection and open redirect. Live-browser sessions are now a real metered plan limit with an account-wide concurrency queue instead of an unbounded feature, and dependency scanning gained a live OSV.dev lookup on top of the old static CVE table. The rest is a run of real quota and account-safety bugs found by auditing every per-plan limit end to end: the daily scan quota was fully bypassable via API key, never enforced on crawl scans at all, and a rejected scan could still permanently burn a quota slot; the bulk-scan URL limit ignored your actual plan; and account deletion was completely broken for every account, full stop.
 
 ### Changes
+- [ShieldCheck] **[ADDED]** **SSL/TLS Letter Grade**
+  Every scan of an HTTPS site now gets an SSL Labs style letter grade, A+ down to F, computed from the negotiated protocol, the certificate's validity and chain, key strength, and the negotiated cipher. It sits next to the risk score on the result and carries through to shared result pages.
+- [Network] **[ADDED]** **Full DNS Records on Every Result**
+  Scans now capture the domain's full DNS record set (A, AAAA, MX, NS, TXT, CAA, SOA) as a structured, copyable panel, instead of only reading those records internally to raise findings. It appears automatically on your results and on shared ones.
+- [ScanSearch] **[CHANGED]** **Subdomains Are Discovered Automatically**
+  Subdomain discovery used to be a button you had to press. Now every scan runs it automatically, so a finished result already lists the related subdomains it found, with the same certificate-transparency, passive-DNS, and brute-force sources as before.
+- [Crosshair] **[CHANGED]** **Active Probes Are Now Nine Separate Toggles**
+  The single active-probing switch became nine independent, individually selectable probes (reflected XSS, SQL injection, template injection, command injection, open redirect, GraphQL introspection, CORS reflection, dangerous HTTP methods, X-Forwarded-Host), each with a plain description of what it sends. Each is off by default and still held to the same verified-domain requirement.
+- [FileDown] **[ADDED]** **Markdown Report Export**
+  Scan results now export as Markdown alongside JSON, CSV, SARIF, and PDF: a clean report grouped by severity with fix steps, ready to paste straight into a pull request, issue, or wiki.
+- [Mail] **[CHANGED]** **Every Email Redesigned**
+  All transactional emails were rebuilt on one consistent, brand-colored layout and rewritten in plain, specific language, replacing the old one-size template and its rhetorical-question boxes. Colors now come from a single brand source, so an email can no longer drift off-palette.
+- [CreditCard] **[ADDED]** **Billing and Account Emails You Were Missing**
+  Payments and subscription changes were completely silent before. You now get a receipt on every successful payment, a heads-up when one fails, and a note when your plan is upgraded, downgraded, canceled, or renewed, plus confirmations for account deletion, sign-out-everywhere, and team membership changes.
+- [Fingerprint] **[SECURITY]** **Scan History Links Are No Longer Sequential**
+  A scan's link used a plain counting number, so anyone could guess neighboring scans by changing it. Every scan, old and new, now carries a random, non-guessable id in its link. Existing bookmarks and the History tab keep working exactly as before.
+- [ServerCog] **[FIXED]** **Service Probes Now Report on Every Scan**
+  Service probes (SSH, SMTP, IMAP, POP3, FTP, MongoDB banner grabs) were silently dropped on deep and crawl scans, and showed nothing on a normal site whose ports are closed. They now run on every scan type, and each probe you select always reports back: the banner it found, or a plain note that no service was reachable on that port so you can see it ran.
+- [List] **[CHANGED]** **Every Scan Option Explains Itself**
+  Each check family and service probe in the scan options now shows a one-line description of what it does, and the selector shows an exact count of what is enabled instead of a vague "All" that hid whether the opt-in active probes were part of it.
+- [Database] **[FIXED]** **Database Backups in the Admin Panel**
+  The finished database-backup tool was fully built but had no way to open it. It now has its own admin tab: run a backup, watch its status, and review past backups and their logs.
+- [FileSearch] **[ADDED]** **A Fix Guide for Every Check**
+  Every one of the scanner's checks now has its own reference page explaining the issue, why it matters, and how to fix it with copyable examples, alongside per-category overviews and honest comparison pages. Useful on its own, and it helps people find VulnRadar when they search for the specific problem they are hitting.
 - [Globe] **[ADDED]** **Domain Ownership Verification**
   Active-probes scanning (form-submission canaries, CORS/method/host-header probes, GraphQL introspection) now requires verifying you control the target domain first: publish a one-time token as a DNS TXT record, then confirm it. Verifying a domain covers its subdomains, matching how DNS-zone-control verification works everywhere else. Manage domains from Profile > Developer.
 - [ShieldAlert] **[SECURITY]** **Three Active Probes Ran on Every Scan, Not Just When You Opted In**
@@ -1527,6 +1551,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 58
-- **Total changes documented:** 524
+- **Total changes documented:** 536
 - **Latest:** v3.5.0 (August 17, 2026) - Domain Verification, Live-Browser Metering, Quota Bypass Fixes
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release

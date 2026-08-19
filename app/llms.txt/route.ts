@@ -34,7 +34,9 @@ function abs(path: string): string {
   return `${APP_URL}${path}`;
 }
 
-export function buildLlmsTxt(): string {
+// Not exported: a Next.js route module may only export route handlers (GET,
+// etc.) and route config, so this stays a local helper the GET below calls.
+function buildLlmsTxt(): string {
   const checks = getAllChecks();
   const total = checks.length;
   const counts = getSeoCategoryCounts();
