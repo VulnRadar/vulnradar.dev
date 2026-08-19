@@ -600,3 +600,61 @@ describe("active-probes domain ownership gate", () => {
     expect(mockExecuteScan).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("port-scan domain ownership gate", () => {
+  it("never checks domain ownership for a scan that doesn't opt into a port scan", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 1 }] });
+    await POST(postRequest({ url: "https://example.com", portScan: false }));
+    expect(mockIsUrlOwnedByUser).not.toHaveBeenCalled();
+  });
+
+  it("rejects with 403 (DOMAIN_NOT_VERIFIED) when a port scan is requested against an unverified domain, before creating a row", async () => {
+    mockIsUrlOwnedByUser.mockResolvedValue(false);
+    const res = await POST(
+      postRequest({ url: "https://example.com", portScan: true }),
+    );
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.statusCode).toBe("DOMAIN_NOT_VERIFIED");
+    expect(json.error).toMatch(/port scan/i);
+    expect(mockExecuteScan).not.toHaveBeenCalled();
+    expect(
+      mockQuery.mock.calls.some(([sql]) =>
+        String(sql).includes("INSERT INTO scan_history"),
+      ),
+    ).toBe(false);
+  });
+
+  it("proceeds and threads portScan:true through to executeScan against a verified domain", async () => {
+    mockIsUrlOwnedByUser.mockResolvedValue(true);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 3 }] });
+    const res = await POST(
+      postRequest({ url: "https://example.com", portScan: true }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockIsUrlOwnedByUser).toHaveBeenCalledWith(
+      "https://example.com",
+      42,
+    );
+    expect(mockExecuteScan).toHaveBeenCalledWith(
+      expect.objectContaining({ portScan: true }),
+    );
+  });
+
+  it("passes portScan:false through to executeScan for an ordinary scan", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 4 }] });
+    await POST(postRequest({ url: "https://example.com" }));
+    expect(mockExecuteScan).toHaveBeenCalledWith(
+      expect.objectContaining({ portScan: false }),
+    );
+  });
+});

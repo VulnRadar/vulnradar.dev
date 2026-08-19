@@ -14,6 +14,7 @@ import {
   ListFilter,
   Lock,
   Camera,
+  Network,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -256,6 +257,11 @@ export interface ScanFormPayload {
    *  only ever sent when the user turned it on. Single-target scans only
    *  (quick/deep) -- bulk runs never request one. */
   captureScreenshot?: boolean;
+  /** From the "Scan common ports" toggle. Opt-in and off by default: a port
+   *  sweep turns the server into a scan source, so the API holds it to the
+   *  same verified-domain-ownership gate as active probing. Single-target
+   *  scans only (quick/deep). */
+  portScan?: boolean;
 }
 
 interface ScanFormProps {
@@ -477,6 +483,14 @@ export function ScanForm({
     () => getQueryParam("screenshot") === "1",
   );
 
+  // "Scan common ports" -- opt-in, off by default. A port sweep makes the
+  // server a scan source against the target, so the API requires a verified
+  // domain (the same gate active probing uses). Seeded from the URL so a
+  // shared ?port_scan=1 link pre-selects it.
+  const [portScan, setPortScan] = useState(
+    () => getQueryParam("port_scan") === "1",
+  );
+
   const isScanning = status === "scanning";
   const isBulkScanning = bulkStatus === "scanning";
 
@@ -511,6 +525,7 @@ export function ScanForm({
       probes: serializeProbesToQuery(probes),
       active_probes: serializeActiveProbeIds(selectedActiveProbes),
       screenshot: captureScreenshot ? "1" : null,
+      port_scan: portScan ? "1" : null,
     });
     for (const family of CHECK_FAMILIES) {
       setQueryParam(
@@ -518,7 +533,14 @@ export function ScanForm({
         enabledFamilies.has(family.id) ? null : "0",
       );
     }
-  }, [mode, probes, enabledFamilies, selectedActiveProbes, captureScreenshot]);
+  }, [
+    mode,
+    probes,
+    enabledFamilies,
+    selectedActiveProbes,
+    captureScreenshot,
+    portScan,
+  ]);
 
   function toggleFamily(id: Category) {
     setEnabledFamilies((prev) => {
@@ -607,6 +629,7 @@ export function ScanForm({
       auth: authValue ?? undefined,
       isPublic: !keepPrivate,
       captureScreenshot,
+      portScan,
     });
     // The one request this login material was for has just been built and
     // handed off above. Wipe it immediately: nothing here survives a
@@ -1192,6 +1215,34 @@ export function ScanForm({
               onCheckedChange={setCaptureScreenshot}
               disabled={isScanning}
               aria-label="Capture page screenshot"
+              className="ml-auto"
+            />
+          </div>
+
+          {/* Opt-in port sweep. Its own row like the screenshot toggle. A port
+              sweep makes the server a scan source, so it needs a verified
+              domain -- the helper text says so and the API enforces it. Off by
+              default. */}
+          <div className="flex items-center gap-2.5 border-t border-border px-3 py-2">
+            <Network
+              aria-hidden
+              className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+            />
+            <label
+              htmlFor="scan-port-scan"
+              className="text-xs font-medium text-foreground"
+            >
+              Scan common ports
+            </label>
+            <span className="hidden text-[11px] text-muted-foreground sm:block">
+              Sweeps ~130 well-known ports. Needs a verified domain.
+            </span>
+            <Switch
+              id="scan-port-scan"
+              checked={portScan}
+              onCheckedChange={setPortScan}
+              disabled={isScanning}
+              aria-label="Scan common ports"
               className="ml-auto"
             />
           </div>

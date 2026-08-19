@@ -187,6 +187,10 @@ export async function POST(request: NextRequest) {
   // Never implied -- a screenshot spins up a real, metered BrowserBase
   // session, so it only runs when explicitly requested.
   const captureScreenshot = body.captureScreenshot === true;
+  // Opt-in curated port/service sweep of the crawl's main host (see
+  // ExecuteCrawlScanParams.portScan). Off unless explicitly requested and held
+  // to the same verified-domain gate active probing uses, enforced below.
+  const portScan = body.portScan === true;
   // Service probes, parsed exactly like POST /api/v3/scan so a deep/crawl
   // scan honors the same ?probes= selection (both string "ssh:22" and
   // { id, port } object forms). Previously dropped here, so a deep scan with
@@ -287,15 +291,20 @@ export async function POST(request: NextRequest) {
   }
 
   // Domain ownership: same gate as POST /api/v3/scan -- see that route's
-  // own comment for why active-probes needs this and the others don't.
+  // own comment for why active-probes needs this and the others don't. A
+  // curated port sweep (portScan) is held to the same gate: it makes this
+  // server a scan source against the target. One check covers both; the `||`
+  // short-circuits so an ordinary crawl never pays for the DB lookup.
+  const wantsActiveProbing = requestsActiveProbing(scanners);
   if (
-    requestsActiveProbing(scanners) &&
+    (wantsActiveProbing || portScan) &&
     !(await isUrlOwnedByUser(normalizedMainUrl, authedUserId))
   ) {
     return NextResponse.json(
       {
-        error:
-          "Active probing requires a verified domain. Verify ownership of this domain (or its parent) in Profile > Domains before requesting active-probes.",
+        error: wantsActiveProbing
+          ? "Active probing requires a verified domain. Verify ownership of this domain (or its parent) in Profile > Domains before requesting active-probes."
+          : "Port scanning requires a verified domain. Verify ownership of this domain (or its parent) in Profile > Domains before requesting a port scan.",
         statusCode: "DOMAIN_NOT_VERIFIED",
       },
       { status: 403 },
@@ -361,6 +370,7 @@ export async function POST(request: NextRequest) {
     authedUserId,
     isApiKeyAuth,
     captureScreenshot,
+    portScan,
   });
 
   // Record API key usage against the request that was accepted.

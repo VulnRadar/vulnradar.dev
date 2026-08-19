@@ -13,6 +13,7 @@
 import type { DnsRecords } from "./dns-records";
 import type { DiscoveryResult } from "./subdomain-types";
 import type { FindingRemediation } from "./remediation";
+import type { PortScanResult } from "./port-scan";
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
@@ -278,6 +279,17 @@ export interface ScanResult {
     height: number;
     capturedAt: string;
   };
+  /**
+   * Opt-in, ownership-gated curated port/service sweep of the scanned host
+   * (lib/scanner/port-scan.ts). Structured data for the "Open ports" panel:
+   * the open ports found among the curated common-ports set, each with the
+   * service usually on that port and any banner it volunteered. Absent unless
+   * the caller opted in AND proved domain ownership (the same verified-domain
+   * gate active probing uses) -- an unverified request is refused at the route
+   * with the same 403. `open` may be empty (checked, nothing open). Reaches
+   * owner/shared/status pages via the result_meta spread, no route edits.
+   */
+  portScan?: PortScanResult;
 }
 
 export type ScanStatus = "idle" | "scanning" | "done" | "failed";

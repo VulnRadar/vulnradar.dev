@@ -53,6 +53,11 @@ import {
   shouldCaptureScreenshot,
   type ScanScreenshotRef,
 } from "./page-screenshot";
+import {
+  scanPorts,
+  buildRiskyPortFindings,
+  type PortScanResult,
+} from "./port-scan";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { criticalFindingsEmail } from "@/lib/email/email";
 
@@ -371,6 +376,14 @@ export interface ExecuteCrawlScanParams {
    * ExecuteScanParams.captureScreenshot.
    */
   captureScreenshot?: boolean;
+  /**
+   * Opt-in: curated port/service sweep of the crawl's MAIN host
+   * (lib/scanner/port-scan.ts). Host-level, so it runs once for the whole
+   * crawl, not per page. Off by default and only ever set true by the route
+   * after verified domain ownership -- the same gate active probing uses. See
+   * ExecuteScanParams.portScan for the bounds and safety posture.
+   */
+  portScan?: boolean;
 }
 
 /**
@@ -402,6 +415,7 @@ export async function executeCrawlScan(
     authedUserId,
     isApiKeyAuth,
     captureScreenshot = false,
+    portScan = false,
   } = params;
 
   const startTime = Date.now();
@@ -457,6 +471,24 @@ export async function executeCrawlScan(
           })
         : Promise.resolve(null);
     screenshotPromise.catch(() => {});
+
+    // Opt-in curated port/service sweep of the crawl's main host, kicked off
+    // concurrently with discovery and the per-page scans, then awaited
+    // (bounded) before findings are merged. Host-level, so it runs once for
+    // the whole crawl. Only reaches here after the route enforced verified
+    // domain ownership; best-effort, never throws, and refuses any target that
+    // resolves to a private/internal address (see lib/scanner/port-scan.ts).
+    let portScanHost: string | null = null;
+    try {
+      portScanHost = new URL(normalizedMainUrl).hostname;
+    } catch {
+      /* malformed URL: no host to sweep */
+    }
+    const portScanPromise: Promise<PortScanResult | null> =
+      portScan && portScanHost
+        ? scanPorts(portScanHost, cancelSignal)
+        : Promise.resolve(null);
+    portScanPromise.catch(() => {});
 
     // Use pre-selected URLs if provided, otherwise discover them.
     let pages: string[];
@@ -585,6 +617,30 @@ export async function executeCrawlScan(
         }
         for (const probe of requestedProbes) {
           onProgress(`Service probe: ${probe.service}`, "done");
+        }
+      }
+    }
+
+    // Curated port sweep result, captured concurrently above (host-level, once
+    // per crawl). scanPorts never rejects; null when not opted in, unsafe, or
+    // cancelled. Its risky open ports merge into the same array that becomes
+    // the persisted findings (deduped by id, like the probe findings), and the
+    // full structured result is stored in result_meta below.
+    let portScanResult: PortScanResult | null = null;
+    try {
+      portScanResult = await portScanPromise;
+    } catch {
+      /* never: scanPorts swallows its own errors */
+    }
+    if (portScanResult && portScanHost) {
+      for (const f of buildRiskyPortFindings(
+        portScanHost,
+        normalizedMainUrl,
+        portScanResult.open,
+      )) {
+        if (!seenIds.has(f.id)) {
+          seenIds.add(f.id);
+          allFindings.push(f);
         }
       }
     }
@@ -719,6 +775,7 @@ export async function executeCrawlScan(
         ...(dnsRecords ? { dnsRecords } : {}),
         ...(subdomains ? { subdomains } : {}),
         ...(screenshot ? { screenshot } : {}),
+        ...(portScanResult ? { portScan: portScanResult } : {}),
         crawl: {
           pagesDiscovered: pages.length,
           pagesScanned: pageResults.length,

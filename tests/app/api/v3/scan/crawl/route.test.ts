@@ -332,3 +332,41 @@ describe("active-probes domain ownership gate", () => {
     expect(mockExecuteCrawlScan).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("port-scan domain ownership gate", () => {
+  it("never checks domain ownership for a crawl that doesn't opt into a port scan", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 1 }] });
+    await POST(postRequest({ url: "https://example.com" }));
+    expect(mockIsUrlOwnedByUser).not.toHaveBeenCalled();
+  });
+
+  it("rejects with 403 (DOMAIN_NOT_VERIFIED) when a port scan is requested against an unverified domain", async () => {
+    mockIsUrlOwnedByUser.mockResolvedValue(false);
+    const res = await POST(
+      postRequest({ url: "https://example.com", portScan: true }),
+    );
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.statusCode).toBe("DOMAIN_NOT_VERIFIED");
+    expect(json.error).toMatch(/port scan/i);
+    expect(mockExecuteCrawlScan).not.toHaveBeenCalled();
+  });
+
+  it("proceeds and threads portScan:true through to executeCrawlScan against a verified domain", async () => {
+    mockIsUrlOwnedByUser.mockResolvedValue(true);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 2 }] });
+    const res = await POST(
+      postRequest({ url: "https://example.com", portScan: true }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockExecuteCrawlScan).toHaveBeenCalledWith(
+      expect.objectContaining({ portScan: true }),
+    );
+  });
+});

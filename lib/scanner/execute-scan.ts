@@ -64,6 +64,11 @@ import {
   shouldCaptureScreenshot,
   type ScanScreenshotRef,
 } from "./page-screenshot";
+import {
+  scanPorts,
+  buildRiskyPortFindings,
+  type PortScanResult,
+} from "./port-scan";
 
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0,
@@ -247,6 +252,17 @@ export interface ExecuteScanParams {
    * result carries no screenshot reference.
    */
   captureScreenshot?: boolean;
+  /**
+   * Opt-in: sweep a curated set of common service ports on the target host
+   * (lib/scanner/port-scan.ts). Off by default. Port-scanning from a shared
+   * server is abuse, so the scan routes only ever set this true after the
+   * caller has proven verified domain ownership -- the SAME gate active
+   * probing uses. Best-effort and bounded (capped concurrency, short per-port
+   * timeout, overall wall-clock deadline) and runs concurrently with the rest
+   * of the scan, so it never fails or unduly slows it; scanPorts also refuses
+   * any private/internal resolved address as defence in depth.
+   */
+  portScan?: boolean;
 }
 
 /**
@@ -271,6 +287,7 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     categoriesTotal,
     silenceRoutineEmail = false,
     captureScreenshot = false,
+    portScan = false,
   } = params;
 
   const startTime = Date.now();
@@ -312,6 +329,25 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
           })
         : Promise.resolve(null);
     screenshotPromise.catch(() => {});
+
+    // Opt-in curated port/service sweep, kicked off here so it runs
+    // concurrently with the rest of the scan, then awaited (bounded) before
+    // findings are assembled. Only reaches here after the route enforced
+    // verified domain ownership; scanPorts is best-effort, never throws, and
+    // refuses any target that resolves to a private/internal address (see
+    // lib/scanner/port-scan.ts). Uses cancelSignal so a cancelled scan
+    // abandons the sweep.
+    let portScanHost: string | null = null;
+    try {
+      portScanHost = new URL(normalizedUrl).hostname;
+    } catch {
+      /* malformed URL: no host to sweep */
+    }
+    const portScanPromise: Promise<PortScanResult | null> =
+      portScan && portScanHost
+        ? scanPorts(portScanHost, cancelSignal)
+        : Promise.resolve(null);
+    portScanPromise.catch(() => {});
 
     let response: Response | null = null;
     let responseBody = "";
@@ -650,11 +686,32 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
       /* non-fatal -- same fail-open posture as every other check here */
     }
 
+    // Curated port sweep result, captured concurrently above. scanPorts never
+    // rejects, so this await just settles the bounded sweep. null when the
+    // caller did not opt in, the target was unsafe/unresolvable, or the sweep
+    // was cancelled. Its open ports become both the structured result_meta
+    // panel (below) and a small number of findings for notably risky ports.
+    let portScanResult: PortScanResult | null = null;
+    try {
+      portScanResult = await portScanPromise;
+    } catch {
+      /* never: scanPorts swallows its own errors */
+    }
+    const riskyPortFindings =
+      portScanResult && portScanHost
+        ? buildRiskyPortFindings(
+            portScanHost,
+            normalizedUrl,
+            portScanResult.open,
+          )
+        : [];
+
     let findings = [
       ...protocolSpecificFindings,
       ...syncResult.findings,
       ...asyncResult.findings,
       ...(sourceMapFinding ? [sourceMapFinding] : []),
+      ...riskyPortFindings,
     ];
 
     // Sort findings by severity
@@ -770,6 +827,7 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
         ...(dnsRecords ? { dnsRecords } : {}),
         ...(subdomains ? { subdomains } : {}),
         ...(screenshot ? { screenshot } : {}),
+        ...(portScanResult ? { portScan: portScanResult } : {}),
         ...(incomplete.length > 0 ? { incomplete } : {}),
       },
       finalUrl: finalScanUrl,

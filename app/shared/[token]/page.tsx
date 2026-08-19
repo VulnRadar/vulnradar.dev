@@ -25,6 +25,7 @@ import { AuthenticatedBadge } from "@/components/scanner/authenticated-badge";
 import { CrawlPagesInfo } from "@/components/scanner/crawl-pages-info";
 import { ResponseHeaders } from "@/components/scanner/response-headers";
 import { DnsRecordsPanel } from "@/components/scanner/dns-records-panel";
+import { PortScanPanel } from "@/components/scanner/port-scan-panel";
 import { ScreenshotPanel } from "@/components/scanner/screenshot-panel";
 import { SharedScanSkeleton } from "@/components/scanner/shared-scan-skeleton";
 import {
@@ -344,6 +345,7 @@ export default function SharedScanPage() {
                       <ResponseHeaders headers={result.responseHeaders} />
                     )}
                   <DnsRecordsPanel records={result.dnsRecords} />
+                  <PortScanPanel portScan={result.portScan} />
                   <SubdomainDiscovery
                     url={result.url}
                     readOnly

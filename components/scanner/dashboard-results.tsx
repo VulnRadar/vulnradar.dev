@@ -31,6 +31,9 @@ const ResponseHeaders = dynamic(() =>
 const DnsRecordsPanel = dynamic(() =>
   import("./dns-records-panel").then((m) => ({ default: m.DnsRecordsPanel })),
 );
+const PortScanPanel = dynamic(() =>
+  import("./port-scan-panel").then((m) => ({ default: m.PortScanPanel })),
+);
 const IssueDetail = dynamic(() =>
   import("./issue-detail").then((m) => ({ default: m.IssueDetail })),
 );
@@ -255,6 +258,8 @@ export function DashboardResults({
           )}
 
         <DnsRecordsPanel records={result.dnsRecords} />
+
+        <PortScanPanel portScan={result.portScan} />
 
         <SubdomainDiscovery
           url={result.url}

@@ -225,6 +225,11 @@ export async function POST(request: NextRequest) {
     // ever true when the caller explicitly asked for it; a screenshot spins
     // up a real, metered BrowserBase session, so it is never implied.
     const captureScreenshot = body.captureScreenshot === true;
+    // Opt-in curated port/service sweep (see ExecuteScanParams.portScan).
+    // Off unless explicitly requested. Port-scanning from a shared server is
+    // abuse, so this is held to the SAME verified-domain-ownership gate active
+    // probing uses, enforced below.
+    const portScan = body.portScan === true;
     const selectedScanners: string[] | null =
       Array.isArray(scanners) && scanners.length > 0 ? scanners : null;
     const requestedProbes: Array<{ service: string; port: number }> =
@@ -325,14 +330,21 @@ export async function POST(request: NextRequest) {
     // lib/domains/scope.ts). This is a authorization gate, separate from
     // (and in addition to) the SSRF/access-rules safety checks above,
     // which apply regardless of which categories are requested.
+    // A curated port sweep (portScan) is held to the exact same gate: it makes
+    // this server a scan source against the target, so the caller must own the
+    // domain. One ownership check covers both intrusive capabilities; the `||`
+    // short-circuits so an ordinary scan (no active probes, no port scan) never
+    // pays for the DB lookup at all.
+    const wantsActiveProbing = requestsActiveProbing(selectedScanners);
     if (
-      requestsActiveProbing(selectedScanners) &&
+      (wantsActiveProbing || portScan) &&
       !(await isUrlOwnedByUser(normalizedUrl, authedUserId))
     ) {
       return NextResponse.json(
         {
-          error:
-            "Active probing requires a verified domain. Verify ownership of this domain (or its parent) in Profile > Domains before requesting active-probes.",
+          error: wantsActiveProbing
+            ? "Active probing requires a verified domain. Verify ownership of this domain (or its parent) in Profile > Domains before requesting active-probes."
+            : "Port scanning requires a verified domain. Verify ownership of this domain (or its parent) in Profile > Domains before requesting a port scan.",
           statusCode: "DOMAIN_NOT_VERIFIED",
         },
         { status: 403 },
@@ -418,6 +430,7 @@ export async function POST(request: NextRequest) {
       authedUserId,
       categoriesTotal,
       captureScreenshot,
+      portScan,
     });
 
     // Record API key usage and add rate limit headers against the request

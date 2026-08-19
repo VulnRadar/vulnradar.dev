@@ -60,6 +60,18 @@ vi.mock("@/lib/email/email", () => ({
   criticalFindingsEmail: () => ({}),
 }));
 
+// Port sweep is mocked at the module boundary: scanPorts opens real TCP
+// sockets, so the executeScan envelope tests must never invoke the real one.
+// It is gated behind the portScan flag (default off in baseParams), so every
+// existing test here runs with it untouched.
+const mockScanPorts = vi.fn();
+const mockBuildRiskyPortFindings = vi.fn();
+vi.mock("@/lib/scanner/port-scan", () => ({
+  scanPorts: (...args: unknown[]) => mockScanPorts(...args),
+  buildRiskyPortFindings: (...args: unknown[]) =>
+    mockBuildRiskyPortFindings(...args),
+}));
+
 const { executeScan } = await import("@/lib/scanner/execute-scan");
 const { requestCancel, clearCancel } = await import("@/lib/scanner/scan-jobs");
 
@@ -105,6 +117,10 @@ beforeEach(() => {
   mockRunSyncChecks.mockReset();
   mockRunAsyncChecksDetailed.mockReset();
   mockSendNotificationEmail.mockReset();
+  mockScanPorts.mockReset();
+  mockScanPorts.mockResolvedValue(null);
+  mockBuildRiskyPortFindings.mockReset();
+  mockBuildRiskyPortFindings.mockReturnValue([]);
 });
 
 describe("executeScan", () => {
@@ -388,6 +404,72 @@ describe("executeScan", () => {
     await executeScan(baseParams({ scanId: 5 }));
 
     expect(mockSendNotificationEmail).not.toHaveBeenCalled();
+  });
+
+  describe("opt-in port sweep threading", () => {
+    it("does not run a port sweep when portScan is not opted in", async () => {
+      mockSafeFetch.mockResolvedValue(
+        new Response("<html></html>", {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        }),
+      );
+      mockRunSyncChecks.mockReturnValue({
+        findings: [],
+        checksRun: 0,
+        checksSkipped: 0,
+        deduped: 0,
+      });
+      mockRunAsyncChecksDetailed.mockResolvedValue({
+        findings: [],
+        incomplete: [],
+      });
+
+      await executeScan(baseParams({ scanId: 20 }));
+
+      expect(mockScanPorts).not.toHaveBeenCalled();
+    });
+
+    it("runs the port sweep against the host and stores the result in result_meta when opted in", async () => {
+      mockSafeFetch.mockResolvedValue(
+        new Response("<html></html>", {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        }),
+      );
+      mockRunSyncChecks.mockReturnValue({
+        findings: [],
+        checksRun: 0,
+        checksSkipped: 0,
+        deduped: 0,
+      });
+      mockRunAsyncChecksDetailed.mockResolvedValue({
+        findings: [],
+        incomplete: [],
+      });
+      const portScanResult = {
+        host: "example.com",
+        scannedAt: new Date().toISOString(),
+        portsScanned: 130,
+        open: [{ port: 22, service: "SSH", state: "open" as const }],
+      };
+      mockScanPorts.mockResolvedValue(portScanResult);
+
+      await executeScan(baseParams({ scanId: 21, portScan: true }));
+
+      expect(mockScanPorts).toHaveBeenCalledWith(
+        "example.com",
+        expect.anything(),
+      );
+      expect(mockBuildRiskyPortFindings).toHaveBeenCalled();
+
+      const completedCall = mockQuery.mock.calls.find(([sql]) =>
+        (sql as string).includes("status = 'completed'"),
+      );
+      const [, completedParams] = completedCall!;
+      const resultMeta = JSON.parse((completedParams as unknown[])[6] as string);
+      expect(resultMeta.portScan).toEqual(portScanResult);
+    });
   });
 
   describe("silenceRoutineEmail (scheduled-scan notification noise control)", () => {

@@ -197,6 +197,7 @@ function DashboardContent() {
         auth?: InlineAuthValue,
         isPublic?: boolean,
         captureScreenshot?: boolean,
+        portScan?: boolean,
       ) => Promise<void>)
     | null
   >(null);
@@ -254,6 +255,7 @@ function DashboardContent() {
   // into a screenshot still requests one once the user confirms which pages
   // to scan (handleCrawlConfirm runs runScan after the selector closes).
   const [pendingScreenshot, setPendingScreenshot] = useState(false);
+  const [pendingPortScan, setPendingPortScan] = useState(false);
   const [bulkStatus, setBulkStatus] = useState<"idle" | "scanning" | "done">(
     "idle",
   );
@@ -395,12 +397,21 @@ function DashboardContent() {
   };
 
   const handleScan = useCallback(async (payload: ScanFormPayload) => {
-    const { url, mode, scanners, probes, auth, isPublic, captureScreenshot } =
-      payload;
+    const {
+      url,
+      mode,
+      scanners,
+      probes,
+      auth,
+      isPublic,
+      captureScreenshot,
+      portScan,
+    } = payload;
     const probeEntries = probes.length > 0 ? probes : undefined;
     setPendingScanners(probeEntries);
     setPendingIsPublic(isPublic);
     setPendingScreenshot(!!captureScreenshot);
+    setPendingPortScan(!!portScan);
     setScanningMode(mode);
     // Ephemeral authenticated scanning (POST /api/v3/scan/authenticated) is
     // single-page only: it never crawls. A login was supplied, so this run
@@ -438,6 +449,7 @@ function DashboardContent() {
       auth,
       isPublic,
       captureScreenshot,
+      portScan,
     );
   }, []);
 
@@ -451,6 +463,7 @@ function DashboardContent() {
       auth?: InlineAuthValue,
       isPublic?: boolean,
       captureScreenshot?: boolean,
+      portScan?: boolean,
     ) => {
       setStatus("scanning");
       setResult(null);
@@ -515,6 +528,9 @@ function DashboardContent() {
             // never even mentions it. Not applicable to the authenticated
             // endpoint (auth branch above), whose schema doesn't take it.
             ...(captureScreenshot ? { captureScreenshot: true } : {}),
+            // Opt-in port sweep: only sent when true. The scan/crawl routes
+            // hold it to the same verified-domain gate as active probing.
+            ...(portScan ? { portScan: true } : {}),
           };
 
       try {
@@ -699,6 +715,7 @@ function DashboardContent() {
       undefined,
       pendingIsPublic,
       pendingScreenshot,
+      pendingPortScan,
     );
   }
 
