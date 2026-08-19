@@ -102,6 +102,7 @@ const {
   createSession,
   checkSessionIpBinding,
   createUser,
+  createOAuthUser,
   hashSessionId,
   listUserSessions,
   findUserSessionByHash,
@@ -345,6 +346,44 @@ describe("createUser", () => {
     await createUser("  Second@Example.com  ", "password123");
     const insertCall = queries.find((q) => q.sql.includes("INSERT INTO users"));
     expect(insertCall!.params[0]).toBe("second@example.com");
+  }, 20000);
+});
+
+describe("createOAuthUser", () => {
+  /**
+   * A social sign-up (Google/GitHub/Discord via
+   * app/api/v3/auth/oauth/[provider]/callback) must mark the account's
+   * email verified at creation -- the provider already proved control of
+   * the address, so the user should never be asked to verify it again.
+   * These tests pin that invariant onto the actual INSERT SQL (not a
+   * value read back through a mock) so a regression that drops the
+   * email_verified_at column can't slip through. Password signup, by
+   * contrast, intentionally leaves it null (createUser tests above never
+   * touch it).
+   */
+  it("sets email_verified_at = NOW() when a provider identity is supplied (identity branch)", async () => {
+    await createOAuthUser("New@Example.com", "New User", "discord", {
+      id: "1234567890",
+      avatarUrl: "https://cdn.discordapp.com/avatars/1234567890/abc.png",
+    });
+    const insertCall = queries.find((q) => q.sql.includes("INSERT INTO users"));
+    expect(insertCall).toBeTruthy();
+    expect(insertCall!.sql).toContain("email_verified_at");
+    expect(insertCall!.sql).toContain("NOW()");
+    // The provider's own identity columns are written alongside it.
+    expect(insertCall!.sql).toContain("discord_id");
+    expect(insertCall!.sql).toContain("discord_email");
+    // Email is normalized (lowercased/trimmed) before storage.
+    expect(insertCall!.params[0]).toBe("new@example.com");
+  }, 20000);
+
+  it("sets email_verified_at = NOW() when no provider identity is supplied (fallback branch)", async () => {
+    await createOAuthUser("Fallback@Example.com", "Fallback User", "google");
+    const insertCall = queries.find((q) => q.sql.includes("INSERT INTO users"));
+    expect(insertCall).toBeTruthy();
+    expect(insertCall!.sql).toContain("email_verified_at");
+    expect(insertCall!.sql).toContain("NOW()");
+    expect(insertCall!.params[0]).toBe("fallback@example.com");
   }, 20000);
 });
 
