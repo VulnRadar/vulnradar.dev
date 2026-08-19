@@ -62,10 +62,19 @@ export function PaginationControl({
     return `${from}–${to} of ${totalItems}`;
   })();
 
-  // Don't render any of it -- size selector included -- when there isn't
-  // enough content to page through. A "Show 10/25/50/100" control next to
-  // 3 results reads as broken, not helpful.
-  if (totalPages <= 1) return null;
+  // Hide the whole thing only when there isn't enough content for even the
+  // SMALLEST page size to paginate. Otherwise keep the size selector visible
+  // even on a single page: a user who bumped the size up (e.g. 25 with 24
+  // results, collapsing to one page) must still be able to drop it back to 10,
+  // which would page again. Hiding the selector there stranded them until a
+  // full refresh. The page-navigation arrows below stay gated on totalPages>1.
+  const minPageSize = PAGE_SIZE_OPTIONS[0];
+  const nothingToPage =
+    totalPages <= 1 &&
+    (!showSizeSelector ||
+      totalItems === undefined ||
+      totalItems <= minPageSize);
+  if (nothingToPage) return null;
 
   return (
     <div
