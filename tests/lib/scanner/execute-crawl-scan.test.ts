@@ -227,8 +227,8 @@ describe("executeCrawlScan", () => {
   it("runs service probes once against the main host and merges their findings", async () => {
     mockRunServiceProbes.mockResolvedValue([
       {
-        id: "probe-ssh-unreachable-22",
-        title: "No SSH service reachable on port 22",
+        id: "probe-ssh-reachable-22",
+        title: "SSH service reachable on port 22",
         severity: "info",
         category: "configuration",
         description: "x",
@@ -263,7 +263,7 @@ describe("executeCrawlScan", () => {
     expect(
       findings.some(
         (f: { title: string }) =>
-          f.title === "No SSH service reachable on port 22",
+          f.title === "SSH service reachable on port 22",
       ),
     ).toBe(true);
   });

@@ -59,6 +59,17 @@ export interface OpenPort {
   banner?: string;
 }
 
+/** One curated port that was probed and came back closed/filtered (a
+ *  definitive "no answer"), rendered in the panel's collapsed "closed" section
+ *  the same way subdomain discovery lists unreachable hosts. Ports that were
+ *  never reached before the sweep's deadline are simply omitted, so
+ *  `open.length + closed.length` can be less than `portsScanned`. */
+export interface ClosedPort {
+  port: number;
+  /** The service usually found on this port (from COMMON_PORTS). */
+  service: string;
+}
+
 /** Structured result of a sweep, stored in result_meta.portScan and rendered
  *  by the "Open ports" panel. `open` may be empty (checked, nothing open),
  *  which is itself a useful, definitive result. */
@@ -71,6 +82,10 @@ export interface PortScanResult {
   portsScanned: number;
   /** Open ports, ascending by port number. */
   open: OpenPort[];
+  /** Ports that answered "closed/filtered" (definitively not open), ascending
+   *  by port number. Optional so a scan persisted before this field existed
+   *  reads back without it and the panel just omits the closed section. */
+  closed?: ClosedPort[];
 }
 
 // ── Curated common-ports table ──────────────────────────────────────────────
@@ -283,17 +298,19 @@ async function resolveSafePublicIp(host: string): Promise<string | null> {
 
 /**
  * TCP-connect to one port on an already-validated public IP. Resolves an
- * OpenPort when the connection is accepted (optionally with a banner), or null
- * when the port is closed/filtered, the connect times out, or the sweep was
- * aborted. Purely passive: it never writes a byte to the target, it only reads
- * whatever the service volunteers on connect. Never throws.
+ * OpenPort when the connection is accepted (optionally with a banner), the
+ * literal "closed" when the port definitively refused or timed out, or null
+ * when the sweep was aborted (deadline or cancellation) so the port's state is
+ * indeterminate and it is counted as neither open nor closed. Purely passive:
+ * it never writes a byte to the target, it only reads whatever the service
+ * volunteers on connect. Never throws.
  */
 function probePort(
   ip: string,
   port: number,
   service: string,
   signal: AbortSignal,
-): Promise<OpenPort | null> {
+): Promise<OpenPort | "closed" | null> {
   return new Promise((resolve) => {
     if (signal.aborted) {
       resolve(null);
@@ -318,7 +335,10 @@ function probePort(
         /* ignore */
       }
       if (!open) {
-        resolve(null);
+        // A definitive refusal/timeout means closed/filtered; an abort
+        // (deadline or cancellation) leaves the state unknown, so report
+        // null rather than mislabelling an unprobed port as closed.
+        resolve(signal.aborted ? null : "closed");
         return;
       }
       const trimmed = banner.slice(0, MAX_BANNER_BYTES).replace(/\0/g, "");
@@ -390,6 +410,7 @@ export async function scanPorts(
 
   const ports = [...COMMON_PORTS.keys()];
   const open: OpenPort[] = [];
+  const closed: ClosedPort[] = [];
   let next = 0;
 
   const worker = async (): Promise<void> => {
@@ -397,13 +418,13 @@ export async function scanPorts(
       const i = next++;
       if (i >= ports.length) return;
       const port = ports[i];
-      const result = await probePort(
-        targetIp,
-        port,
-        COMMON_PORTS.get(port) ?? "unknown",
-        effectiveSignal,
-      );
-      if (result) open.push(result);
+      const service = COMMON_PORTS.get(port) ?? "unknown";
+      const result = await probePort(targetIp, port, service, effectiveSignal);
+      if (result === "closed") {
+        closed.push({ port, service });
+      } else if (result) {
+        open.push(result);
+      }
     }
   };
 
@@ -421,11 +442,13 @@ export async function scanPorts(
   }
 
   open.sort((a, b) => a.port - b.port);
+  closed.sort((a, b) => a.port - b.port);
   return {
     host: cleanHost,
     scannedAt: new Date().toISOString(),
     portsScanned: ports.length,
     open,
+    closed,
   };
 }
 

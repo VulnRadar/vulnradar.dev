@@ -98,6 +98,23 @@ function formatTimeRemaining(expiresAt: string): string {
     : `${diffHours}h`;
 }
 
+/** How long ago `iso` was, as a compact relative label ("just now", "5 min
+ *  ago", "3 hours ago", "2 days ago"). Returns null for a missing/unparseable
+ *  timestamp so the caller can fall back to a neutral label. */
+function formatAge(iso?: string): string | null {
+  if (!iso) return null;
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return null;
+  const diffMs = Date.now() - then;
+  if (diffMs < 60_000) return "just now";
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
+
 // Mirrors the real stage names the server reports from
 // lib/scanner/discovery-progress.ts -- this is a label lookup, not a
 // simulation. The stage/stageIndex driving the bar comes from the server.
@@ -402,57 +419,64 @@ export function SubdomainDiscovery({
                 {effectiveResult.total - effectiveResult.reachable} unreachable
               </span>
 
-              {/* Cache status */}
-              {effectiveResult.cached && effectiveResult.expiresAt && (
-                <div className="flex items-center gap-2 ml-auto">
-                  <div className="flex items-center gap-1.5">
-                    <Clock className="h-3.5 w-3.5 text-[hsl(var(--warning))]" />
-                    <span className="text-xs text-muted-foreground">
-                      Cached • Refreshes in{" "}
-                      <span className="font-medium text-foreground">
-                        {formatTimeRemaining(effectiveResult.expiresAt)}
-                      </span>
-                    </span>
-                  </div>
-                  {!readOnly && (
-                    <button
-                      type="button"
-                      onClick={() => handleDiscover(true)}
-                      disabled={refreshing}
-                      className={cn(
-                        "inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors disabled:opacity-50",
-                        canRefreshDNS
-                          ? "text-foreground hover:bg-muted"
-                          : "text-primary hover:bg-primary/10",
-                      )}
-                      title={
-                        canRefreshDNS
-                          ? "Force refresh cache now"
-                          : "Premium feature, upgrade to Pro"
-                      }
-                      aria-label={
-                        canRefreshDNS
-                          ? "Force refresh cache now"
-                          : "Premium feature, upgrade to Pro"
-                      }
-                    >
-                      {refreshing ? (
-                        <Loader2
-                          aria-hidden
-                          className="h-3.5 w-3.5 animate-spin"
-                        />
-                      ) : canRefreshDNS ? (
-                        <RefreshCw aria-hidden className="h-3.5 w-3.5" />
-                      ) : (
-                        <Crown aria-hidden className="h-3.5 w-3.5" />
-                      )}
-                      <span className="hidden sm:inline">
-                        {canRefreshDNS ? "Refresh now" : "Pro"}
-                      </span>
-                    </button>
-                  )}
+              {/* Freshness + refresh. Always shown (even for a snapshot older
+                  than the cache window) so the panel reads as "here is the
+                  latest known set" rather than reverting to the button. */}
+              <div className="flex items-center gap-2 ml-auto">
+                <div className="flex items-center gap-1.5">
+                  <Clock className="h-3.5 w-3.5 text-[hsl(var(--warning))]" />
+                  <span className="text-xs text-muted-foreground">
+                    {formatAge(effectiveResult.cachedAt)
+                      ? `Fetched ${formatAge(effectiveResult.cachedAt)}`
+                      : "Latest known result"}
+                    {effectiveResult.cached && effectiveResult.expiresAt && (
+                      <>
+                        {" · Refreshes in "}
+                        <span className="font-medium text-foreground">
+                          {formatTimeRemaining(effectiveResult.expiresAt)}
+                        </span>
+                      </>
+                    )}
+                  </span>
                 </div>
-              )}
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={() => handleDiscover(true)}
+                    disabled={refreshing}
+                    className={cn(
+                      "inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors disabled:opacity-50",
+                      canRefreshDNS
+                        ? "text-foreground hover:bg-muted"
+                        : "text-primary hover:bg-primary/10",
+                    )}
+                    title={
+                      canRefreshDNS
+                        ? "Force refresh cache now"
+                        : "Premium feature, upgrade to Pro"
+                    }
+                    aria-label={
+                      canRefreshDNS
+                        ? "Force refresh cache now"
+                        : "Premium feature, upgrade to Pro"
+                    }
+                  >
+                    {refreshing ? (
+                      <Loader2
+                        aria-hidden
+                        className="h-3.5 w-3.5 animate-spin"
+                      />
+                    ) : canRefreshDNS ? (
+                      <RefreshCw aria-hidden className="h-3.5 w-3.5" />
+                    ) : (
+                      <Crown aria-hidden className="h-3.5 w-3.5" />
+                    )}
+                    <span className="hidden sm:inline">
+                      {canRefreshDNS ? "Refresh now" : "Pro"}
+                    </span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Source breakdown */}

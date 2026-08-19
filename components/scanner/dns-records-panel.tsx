@@ -1,13 +1,24 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { Check, ChevronDown, Copy } from "lucide-react";
+import { Check, ChevronDown, Copy, Loader2, RefreshCw } from "lucide-react";
 import type { DnsRecords } from "@/lib/scanner/dns-records";
+import { API } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
 import { copyToClipboard } from "@/lib/ui/clipboard";
 
 interface DnsRecordsPanelProps {
   records?: DnsRecords | null;
+  /**
+   * Owner-only: the scan id whose DNS this panel can re-resolve. When set (and
+   * not the shared/read-only view), a small refresh control re-resolves the
+   * records for this scan and updates the panel in place. Omitted on the
+   * shared page.
+   */
+  scanId?: string | number | null;
+  /** Called with the fresh records after a successful refresh so the parent
+   *  can update its copy of the result in place. */
+  onRefreshed?: (records: DnsRecords) => void;
 }
 
 interface RecordRow {
@@ -60,9 +71,34 @@ function ValueRow({ row }: { row: RecordRow }) {
   );
 }
 
-export function DnsRecordsPanel({ records }: DnsRecordsPanelProps) {
+export function DnsRecordsPanel({
+  records,
+  scanId,
+  onRefreshed,
+}: DnsRecordsPanelProps) {
   const panelId = useId();
   const [expanded, setExpanded] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleRefresh() {
+    if (!scanId || refreshing) return;
+    setRefreshing(true);
+    setError(null);
+    try {
+      const res = await fetch(API.SCAN_REFRESH_DNS(scanId), { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Could not refresh DNS records.");
+      } else if (data.dnsRecords) {
+        onRefreshed?.(data.dnsRecords);
+      }
+    } catch {
+      setError("Could not refresh DNS records.");
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   const groups = useMemo<RecordGroup[]>(() => {
     if (!records) return [];
@@ -149,6 +185,33 @@ export function DnsRecordsPanel({ records }: DnsRecordsPanelProps) {
 
       {expanded && (
         <div id={panelId} className="border-t border-border">
+          {scanId && (
+            <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-4 py-1.5">
+              <span className="truncate font-mono text-[11px] font-semibold uppercase tracking-wide text-primary">
+                {records.hostname}
+              </span>
+              <button
+                type="button"
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="ml-auto inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+                title="Re-resolve DNS records now"
+                aria-label="Re-resolve DNS records now"
+              >
+                {refreshing ? (
+                  <Loader2 aria-hidden className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw aria-hidden className="h-3.5 w-3.5" />
+                )}
+                <span className="hidden sm:inline">Refresh</span>
+              </button>
+            </div>
+          )}
+          {error && (
+            <p className="border-b border-border px-4 py-2 text-xs text-destructive">
+              {error}
+            </p>
+          )}
           <div className="max-h-96 overflow-auto">
             {groups.map((group) => (
               <div

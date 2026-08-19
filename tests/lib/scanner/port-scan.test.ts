@@ -129,6 +129,23 @@ describe("scanPorts best-effort contract", () => {
     expect(result!.open).toEqual([]);
   });
 
+  it("returns the checked-but-closed ports, ascending, alongside the open ones", async () => {
+    h.openPorts = new Set([22]);
+    const result = await scanPorts("example.com", freshSignal());
+    expect(result).not.toBeNull();
+    expect(result!.open.map((p) => p.port)).toEqual([22]);
+    // Every curated port except the one open port refused the connection.
+    expect(result!.closed).toBeDefined();
+    expect(result!.closed!.length).toBe(result!.portsScanned - 1);
+    expect(result!.closed!.some((p) => p.port === 22)).toBe(false);
+    const closedPorts = result!.closed!.map((p) => p.port);
+    expect([...closedPorts].sort((a, b) => a - b)).toEqual(closedPorts);
+    // Each closed entry carries the service usually found on that port.
+    expect(result!.closed!.every((p) => typeof p.service === "string")).toBe(
+      true,
+    );
+  });
+
   it("respects cancellation mid-sweep: aborting resolves promptly instead of hanging", async () => {
     h.silentAll = true; // no port ever answers, so only the abort can end it
     const ac = new AbortController();

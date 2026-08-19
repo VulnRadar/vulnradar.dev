@@ -106,6 +106,16 @@ export function DashboardResults({
   const [remediationOverrides, setRemediationOverrides] = useState<
     Map<string, FindingRemediation | null>
   >(new Map());
+  // Owner refresh overrides: a successful "refresh" on the DNS / port /
+  // screenshot panels updates just that capture in place, without refetching
+  // the whole scan. Undefined until the owner refreshes one, so displayResult
+  // falls back to whatever the scan already carried.
+  const [dnsOverride, setDnsOverride] =
+    useState<ScanResult["dnsRecords"]>(undefined);
+  const [portScanOverride, setPortScanOverride] =
+    useState<ScanResult["portScan"]>(undefined);
+  const [screenshotOverride, setScreenshotOverride] =
+    useState<ScanResult["screenshot"]>(undefined);
 
   const findingsWithRemediation = useMemo(() => {
     if (remediationOverrides.size === 0) return result.findings;
@@ -155,7 +165,13 @@ export function DashboardResults({
   }
 
   const displayUrl = result.url.replace(/^https?:\/\//, "");
-  const displayResult = aiSummary ? { ...result, aiSummary } : result;
+  const displayResult: ScanResult = {
+    ...result,
+    ...(aiSummary ? { aiSummary } : {}),
+    ...(dnsOverride ? { dnsRecords: dnsOverride } : {}),
+    ...(portScanOverride ? { portScan: portScanOverride } : {}),
+    ...(screenshotOverride ? { screenshot: screenshotOverride } : {}),
+  };
 
   return (
     <div className="flex flex-col gap-4 pt-6">
@@ -242,13 +258,15 @@ export function DashboardResults({
           More about this host
         </h2>
 
-        {result.screenshot && scanHistoryId && (
+        {displayResult.screenshot && scanHistoryId && (
           <ScreenshotPanel
             src={API.SCAN_SCREENSHOT(scanHistoryId)}
             url={result.url}
-            width={result.screenshot.width}
-            height={result.screenshot.height}
-            capturedAt={result.screenshot.capturedAt}
+            width={displayResult.screenshot.width}
+            height={displayResult.screenshot.height}
+            capturedAt={displayResult.screenshot.capturedAt}
+            scanId={scanHistoryId}
+            onRefreshed={setScreenshotOverride}
           />
         )}
 
@@ -257,9 +275,17 @@ export function DashboardResults({
             <ResponseHeaders headers={result.responseHeaders} />
           )}
 
-        <DnsRecordsPanel records={result.dnsRecords} />
+        <DnsRecordsPanel
+          records={displayResult.dnsRecords}
+          scanId={scanHistoryId}
+          onRefreshed={setDnsOverride}
+        />
 
-        <PortScanPanel portScan={result.portScan} />
+        <PortScanPanel
+          portScan={displayResult.portScan}
+          scanId={scanHistoryId}
+          onRefreshed={setPortScanOverride}
+        />
 
         <SubdomainDiscovery
           url={result.url}

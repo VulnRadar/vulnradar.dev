@@ -122,6 +122,18 @@ export const API = {
   /** Opt-in page screenshot bytes for one scan (owner/team/public gate). */
   SCAN_SCREENSHOT: (id: string | number) =>
     `/api/${API_VERSION}/scan/screenshot/${id}`,
+  /** Owner-only: re-run just the DNS capture for one scan and update its
+   *  result_meta, returning the fresh records (cheap, best-effort). */
+  SCAN_REFRESH_DNS: (id: string | number) =>
+    `/api/${API_VERSION}/history/${id}/dns`,
+  /** Owner-only: re-run the curated port sweep for one scan (enforces the same
+   *  verified-domain ownership gate the scan-time sweep uses). */
+  SCAN_REFRESH_PORTS: (id: string | number) =>
+    `/api/${API_VERSION}/history/${id}/ports`,
+  /** Owner-only: re-capture the opt-in page screenshot for one scan (consumes
+   *  the browser-minutes meter, same gate as the scan-time capture). */
+  SCAN_REFRESH_SCREENSHOT: (id: string | number) =>
+    `/api/${API_VERSION}/history/${id}/screenshot`,
   SCAN_BULK: `/api/${API_VERSION}/scan/bulk`,
   SCAN_TAGS: `/api/${API_VERSION}/scan/tags`,
   SCAN_DISCOVER: `/api/${API_VERSION}/scan/discover`,

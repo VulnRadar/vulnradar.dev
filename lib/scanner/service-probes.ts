@@ -11,12 +11,11 @@
  * scan with probes selected produced nothing.
  *
  * Probes run in parallel via Promise.allSettled; each is fully independent
- * so one hanging/failing probe never blocks or drops the others. Every
- * probe the caller explicitly selected yields exactly one finding: the real
- * finding when the port is reachable, or a visible info-severity "not
- * reachable" line when it is not (the norm for a normal website that only
- * exposes 80/443), so a closed port reads as "checked, nothing there"
- * instead of silence.
+ * so one hanging/failing probe never blocks or drops the others. A reachable
+ * port yields its real findings; an unreachable one (the norm for a normal
+ * website that only exposes 80/443) yields nothing at all. The "checked,
+ * nothing there" signal lives in the "Open ports" panel's collapsed closed
+ * section instead of an info finding per closed probe, which was just noise.
  */
 
 import { APP_NAME } from "@/lib/config/constants";
@@ -340,37 +339,6 @@ export function buildMongoAuthFindings(
   return [];
 }
 
-/**
- * The visible "you selected this probe, here is the result" line for a probe
- * whose port could not be reached. Emitting one info finding per unreachable
- * probe is the whole point of the secondary fix: a normal website exposes
- * only 80/443, so most selected probes come back closed/filtered, and
- * silence there is indistinguishable from a broken feature.
- */
-function buildProbeUnreachableFinding(
-  probe: { service: string; port: number },
-  host: string,
-  normalizedUrl: string,
-): Vulnerability {
-  const serviceLabel = probe.service.toUpperCase();
-  return {
-    id: generateId(
-      `probe-${probe.service}-unreachable-${probe.port}`,
-      normalizedUrl,
-    ),
-    title: `No ${serviceLabel} service reachable on port ${probe.port}`,
-    description: `The scanner could not open a connection to a ${serviceLabel} service on ${host}:${probe.port}. The port is most likely closed, filtered, or running no service.`,
-    severity: "info",
-    category: "configuration",
-    evidence: `No response from ${host}:${probe.port}.`,
-    riskImpact:
-      "None. A port that does not accept connections is not an exposure on its own.",
-    explanation: `You asked the scanner to probe ${probe.service} on port ${probe.port}. This is the expected result for a host that only exposes its web ports, and confirms the probe ran.`,
-    fixSteps: [],
-    codeExamples: [],
-  };
-}
-
 export interface ElasticsearchProbeResult {
   reachable: boolean;
   unauthenticatedAccess: boolean;
@@ -439,8 +407,8 @@ type ProbeOutcome = { probe: ProbeTarget; value: ProbeValue | null };
  * target keeps the same finding ID across scans.
  *
  * The reachable-port case is byte-for-byte what execute-scan.ts produced
- * before this was extracted; the only added behavior is one info finding per
- * unreachable probe (see buildProbeUnreachableFinding).
+ * before this was extracted; an unreachable probe now contributes no finding
+ * (the "Open ports" panel's closed section covers that signal instead).
  */
 export async function runServiceProbes(
   host: string,
@@ -491,13 +459,12 @@ export async function runServiceProbes(
     if (outcome.status !== "fulfilled") continue;
     const { probe, value } = outcome.value;
 
-    // Visibility: a probe the user explicitly selected that could not be
-    // reached still produces exactly one (info) finding, so a closed or
-    // filtered port reads as "checked, nothing there" rather than silence.
-    if (!value) {
-      findings.push(buildProbeUnreachableFinding(probe, host, normalizedUrl));
-      continue;
-    }
+    // A probe the user selected whose port could not be reached produces no
+    // finding at all. A normal web host exposes only 80/443, so most selected
+    // probes come back closed/filtered; the "Open ports" panel's collapsed
+    // closed section now carries that "checked, nothing there" signal, so an
+    // info finding per closed probe was just noise in the results list.
+    if (!value) continue;
 
     const serviceLabel = probe.service.toUpperCase();
 

@@ -23,6 +23,12 @@ export interface HistoryDetailResponse {
   aiSummary?: string;
   /** From scan_history.result_meta when an opt-in page screenshot was captured. */
   screenshot?: ScanResult["screenshot"];
+  /** From scan_history.result_meta: the full structured DNS record set. */
+  dnsRecords?: ScanResult["dnsRecords"];
+  /** From scan_history.result_meta: auto-discovered subdomains captured during the scan. */
+  subdomains?: ScanResult["subdomains"];
+  /** From scan_history.result_meta: the opt-in curated port sweep result. */
+  portScan?: ScanResult["portScan"];
 }
 
 /**
@@ -57,5 +63,8 @@ export function mapHistoryDetailResponse(
     incomplete: data.incomplete,
     aiSummary: data.aiSummary,
     screenshot: data.screenshot,
+    dnsRecords: data.dnsRecords,
+    subdomains: data.subdomains,
+    portScan: data.portScan,
   };
 }

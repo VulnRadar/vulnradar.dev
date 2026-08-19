@@ -18,6 +18,9 @@ import { ScanSummary } from "@/components/scanner/scan-summary";
 import { ResultsList } from "@/components/scanner/results-list";
 import { IssueDetail } from "@/components/scanner/issue-detail";
 import { ResponseHeaders } from "@/components/scanner/response-headers";
+import { DnsRecordsPanel } from "@/components/scanner/dns-records-panel";
+import { ScreenshotPanel } from "@/components/scanner/screenshot-panel";
+import { PortScanPanel } from "@/components/scanner/port-scan-panel";
 import { SubdomainDiscovery } from "@/components/scanner/subdomain-discovery";
 import { CrawlPagesInfo } from "@/components/scanner/crawl-pages-info";
 import {
@@ -482,13 +485,61 @@ export default function HistoryPage() {
                       <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                         More about this host
                       </h2>
+                      {scanDetail.screenshot && scanNumericId && (
+                        <ScreenshotPanel
+                          src={API.SCAN_SCREENSHOT(scanNumericId)}
+                          url={scanDetail.url}
+                          width={scanDetail.screenshot.width}
+                          height={scanDetail.screenshot.height}
+                          capturedAt={scanDetail.screenshot.capturedAt}
+                          scanId={
+                            scanOwnerId === currentUserId
+                              ? selectedScanId
+                              : undefined
+                          }
+                          onRefreshed={(screenshot) =>
+                            setScanDetail((prev) =>
+                              prev ? { ...prev, screenshot } : prev,
+                            )
+                          }
+                        />
+                      )}
                       {scanDetail.responseHeaders &&
                         Object.keys(scanDetail.responseHeaders).length > 0 && (
                           <ResponseHeaders
                             headers={scanDetail.responseHeaders}
                           />
                         )}
-                      <SubdomainDiscovery url={scanDetail.url} />
+                      <DnsRecordsPanel
+                        records={scanDetail.dnsRecords}
+                        scanId={
+                          scanOwnerId === currentUserId
+                            ? selectedScanId
+                            : undefined
+                        }
+                        onRefreshed={(dnsRecords) =>
+                          setScanDetail((prev) =>
+                            prev ? { ...prev, dnsRecords } : prev,
+                          )
+                        }
+                      />
+                      <PortScanPanel
+                        portScan={scanDetail.portScan}
+                        scanId={
+                          scanOwnerId === currentUserId
+                            ? selectedScanId
+                            : undefined
+                        }
+                        onRefreshed={(portScan) =>
+                          setScanDetail((prev) =>
+                            prev ? { ...prev, portScan } : prev,
+                          )
+                        }
+                      />
+                      <SubdomainDiscovery
+                        url={scanDetail.url}
+                        initialResult={scanDetail.subdomains ?? null}
+                      />
                       <HistoryTagsCard
                         scanId={selectedScanId}
                         tags={scanDetailTags}

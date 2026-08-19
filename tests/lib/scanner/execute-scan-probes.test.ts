@@ -434,10 +434,12 @@ describe("executeScan probe dispatch: SMTP STARTTLS", () => {
 });
 
 describe("executeScan probe dispatch: unreachable port", () => {
-  it("emits exactly one info finding when a selected probe cannot be reached", async () => {
+  it("emits no finding when a selected probe cannot be reached", async () => {
     // A closed/filtered port is the norm for a normal website (only 80/443
-    // open); grabBanner returns null. The probe must still produce a visible
-    // line rather than nothing, so the feature never looks broken.
+    // open); grabBanner returns null. An unreachable probe now contributes
+    // nothing to the findings list -- the "Open ports" panel's closed section
+    // carries the "checked, nothing there" signal instead, so a closed probe
+    // no longer floods the results with an info entry.
     mockGrabBanner.mockResolvedValue(null);
 
     await executeScan(
@@ -445,10 +447,11 @@ describe("executeScan probe dispatch: unreachable port", () => {
     );
 
     const findings = getPersistedFindings();
-    const unreachable = findings.filter(
-      (f) => f.title === "No SSH service reachable on port 22",
-    );
-    expect(unreachable).toHaveLength(1);
-    expect(unreachable[0].severity).toBe("info");
+    expect(
+      findings.some((f) => /reachable on port 22/i.test(f.title)),
+    ).toBe(false);
+    // isRawIpTarget skips the sync engine, so an unreachable probe leaves the
+    // scan with zero findings rather than a lone info line.
+    expect(findings).toHaveLength(0);
   });
 });
