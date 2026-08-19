@@ -15,19 +15,17 @@ import { GENERATED_CHECKS_LABEL } from "./check-stats.generated";
 export const CONFIG_APP_NAME = "VulnRadar";
 export const CONFIG_APP_SLUG = "vulnradar";
 export const CONFIG_APP_VERSION = "3.5.0";
-// The minimum database schema version this app requires. instrumentation.ts
-// blocks boot when the database's stored schema_version is below this.
-// App 3.0.0 required schema v3.0.0 (ai_conversations + email unsubscribe).
-// v3.5.0 adds the user_avatars table (uploaded avatars now live in Postgres,
-// not on disk / as base64 in users.avatar_url), so this app requires schema
-// v3.5.0: run `npm run db:migrate` to apply the 3.0.0 -> 3.5.0 upgrade
-// (scripts/migrate/versions/3.0.0-to-3.5.0.mjs) before starting. Earlier
-// post-3.0.0 additions (ai_usage, system_error_logs, scan_screenshots,
-// scan_tags.source, the Public Scans directory flag, the engine-feedback
-// tables) were folded into the 3.0.0 migration bucket rather than getting
-// their own version numbers, since schema v3.0.0 never shipped to production
-// on its own -- see scripts/migrate/versions/2.0.0-to-3.0.0.mjs.
-export const CONFIG_MIN_SCHEMA_VERSION = "3.5.0";
+// The minimum database schema version this app requires.
+// App 3.0.0 requires schema v3.0.0 (ai_conversations + email unsubscribe).
+// 3.0.1 made no schema changes. 3.0.2 and 3.1.0 both added tables/columns
+// (ai_usage, system_error_logs, scan_tags.source, the Public Scans
+// directory's share_publicly_listed flag, and the engine-feedback tables),
+// all folded into the same "3.0.0" migration bucket rather than a new
+// schema version number, since schema v3.0.0 itself has never shipped to
+// any production database yet -- see
+// scripts/migrate/versions/2.0.0-to-3.0.0.mjs. Run `npm run db:migrate`
+// to upgrade a v2 database before starting.
+export const CONFIG_MIN_SCHEMA_VERSION = "3.0.0";
 // Tracks the scanner's detection logic specifically, independent of the app
 // version above -- bumped only when a check's actual behavior changes.
 // 3.0.2: fixed 3 false-positive bugs (dangerous-inline-js's overly broad

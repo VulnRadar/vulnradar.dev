@@ -9,7 +9,7 @@
  *
  * Usage:
  *   npm run db:restore -- --file=./backups/vulnradar-backup-2026-08-14T00-00-00-000Z.sql.gz --yes
- *   npm run db:restore -- --file=./backups/vulnradar-backup-...sql.gz.enc --yes   (needs BACKUP_ENCRYPTION_KEY)
+ *   npm run db:restore -- --file=./backups/vulnradar-backup-...sql.gz.enc --yes   (needs BACKUP_ENCRYPTION_KEY, or API_KEY_ENCRYPTION_KEY, the fallback)
  *
  * Destructive: this runs `psql` against DATABASE_URL and will apply
  * whatever the dump contains on top of it. Requires --yes -- without it,
@@ -62,10 +62,18 @@ async function runRestore() {
   let source = createReadStream(filePath);
 
   if (filePath.endsWith(".enc")) {
-    const key = process.env.BACKUP_ENCRYPTION_KEY;
+    // Identical resolution to backup-db.mjs: fall back to API_KEY_ENCRYPTION_KEY
+    // when no dedicated BACKUP_ENCRYPTION_KEY is set. If backup-db.mjs encrypted
+    // this file using that base-key fallback, restoring with a different key
+    // resolution would make it permanently undecryptable. A separate
+    // BACKUP_ENCRYPTION_KEY is still recommended for defense in depth.
+    const key =
+      process.env.BACKUP_ENCRYPTION_KEY || process.env.API_KEY_ENCRYPTION_KEY;
     if (!key) {
       error(
-        "This backup is encrypted. Set BACKUP_ENCRYPTION_KEY to restore it.",
+        "This backup is encrypted. Set BACKUP_ENCRYPTION_KEY (or " +
+          "API_KEY_ENCRYPTION_KEY, the fallback it was likely encrypted with) " +
+          "to restore it.",
       );
       process.exit(1);
     }

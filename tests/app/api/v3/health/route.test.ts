@@ -49,7 +49,7 @@ beforeEach(() => {
 describe("GET /api/v3/health", () => {
   it("returns 200/ok when connected, schema is current, and every required table exists", async () => {
     mockClientQuery
-      .mockResolvedValueOnce({ rows: [{ schema_version: "3.5.0" }] })
+      .mockResolvedValueOnce({ rows: [{ schema_version: "3.0.0" }] })
       .mockResolvedValueOnce(tablesRows(ALL_REQUIRED));
 
     const res = await GET();
@@ -91,7 +91,7 @@ describe("GET /api/v3/health", () => {
 
   it("returns 503/degraded when the schema version claims readiness but a required table is missing (AUDIT-010, production-readiness #3)", async () => {
     mockClientQuery
-      .mockResolvedValueOnce({ rows: [{ schema_version: "3.5.0" }] })
+      .mockResolvedValueOnce({ rows: [{ schema_version: "3.0.0" }] })
       .mockResolvedValueOnce(
         tablesRows(ALL_REQUIRED.filter((t) => t !== "host_badges")),
       );
@@ -107,7 +107,7 @@ describe("GET /api/v3/health", () => {
 
   it("lists every missing table, not just the first one found", async () => {
     mockClientQuery
-      .mockResolvedValueOnce({ rows: [{ schema_version: "3.5.0" }] })
+      .mockResolvedValueOnce({ rows: [{ schema_version: "3.0.0" }] })
       .mockResolvedValueOnce(tablesRows(["users", "scan_history"]));
 
     const res = await GET();
@@ -140,7 +140,7 @@ describe("GET /api/v3/health", () => {
 
   it("releases the client even when the table-presence query throws", async () => {
     mockClientQuery
-      .mockResolvedValueOnce({ rows: [{ schema_version: "3.5.0" }] })
+      .mockResolvedValueOnce({ rows: [{ schema_version: "3.0.0" }] })
       .mockRejectedValueOnce(new Error("query timeout"));
 
     const res = await GET();

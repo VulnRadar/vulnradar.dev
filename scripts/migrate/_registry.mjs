@@ -509,31 +509,6 @@ export const VERSIONS = [
   },
 ];
 
-// v3.5.0 — adds user_avatars (uploaded profile pictures stored as BYTEA,
-// so Postgres is the single image-storage mechanism, like scan_screenshots).
-// Fingerprint = v3.0.0's plus the user_avatars table, derived from the
-// v3.0.0 entry so the two never drift. A live v3.0.0 database has no
-// user_avatars, so it still detects as v3.0.0; only a database that has run
-// the 3.0.0 -> 3.5.0 migration (scripts/migrate/versions/3.0.0-to-3.5.0.mjs)
-// has the table and detects as v3.5.0.
-const V300 = VERSIONS.find((v) => v.name === "3.0.0");
-VERSIONS.push({
-  name: "3.5.0",
-  label: "v3.5 / avatars-in-database (48 tables)",
-  fingerprint: {
-    tables: new Set([...V300.fingerprint.tables, "user_avatars"]),
-    columns: {
-      ...V300.fingerprint.columns,
-      user_avatars: new Set([
-        "user_id",
-        "image_data",
-        "content_type",
-        "updated_at",
-      ]),
-    },
-  },
-});
-
 /**
  * Order two versions, returning -1/0/1.
  */

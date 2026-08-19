@@ -177,7 +177,7 @@ lib/types/
             </li>
             <li>
               <InlineCode>CONFIG_MIN_SCHEMA_VERSION</InlineCode>: minimum schema
-              version this app accepts (default: <InlineCode>3.5.0</InlineCode>
+              version this app accepts (default: <InlineCode>3.0.0</InlineCode>
               ). The app refuses to start if{" "}
               <InlineCode>vulnradar_schema_meta.schema_version</InlineCode> is
               lower.
@@ -945,6 +945,48 @@ lib/types/
               <InlineCode>SUPPORT_EMAIL</InlineCode>: override the addresses
               used by contact/support emails (defaults come from{" "}
               <InlineCode>CONFIG_*</InlineCode>).
+            </li>
+          </ul>
+        </DocsSubSection>
+
+        <DocsSubSection title="Database backups">
+          <p className="max-w-[68ch] text-sm text-muted-foreground">
+            All optional. Read by the built-in backup/restore scripts (
+            <InlineCode>npm run db:backup</InlineCode> /{" "}
+            <InlineCode>npm run db:restore</InlineCode>) and the{" "}
+            <InlineCode>/admin</InlineCode> Backup button. These require the{" "}
+            <InlineCode>postgresql-client</InlineCode> package (
+            <InlineCode>pg_dump</InlineCode>) on PATH. See{" "}
+            <a
+              href="/docs/self-hosting#backups"
+              className="text-primary hover:underline"
+            >
+              Self-Hosting to Backups
+            </a>
+            .
+          </p>
+          <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
+            <li>
+              <InlineCode>BACKUP_DIR</InlineCode>: directory backups are written
+              to. Default <InlineCode>./backups</InlineCode>. On a container this
+              must be a persistent/mounted volume or backups are lost on rebuild.
+            </li>
+            <li>
+              <InlineCode>BACKUP_RETENTION_DAYS</InlineCode>: prune local backups
+              older than this after a successful run. Default{" "}
+              <InlineCode>14</InlineCode>; <InlineCode>0</InlineCode> keeps
+              everything.
+            </li>
+            <li>
+              <InlineCode>BACKUP_ENCRYPTION_KEY</InlineCode>: 64-hex-char AES-256
+              key. Falls back to <InlineCode>API_KEY_ENCRYPTION_KEY</InlineCode>{" "}
+              when unset, so backups are encrypted by default; a separate key is
+              recommended for defense in depth. Restore uses the same resolution.
+            </li>
+            <li>
+              <InlineCode>BACKUP_OFFSITE_UPLOAD_URL</InlineCode>: presigned PUT
+              URL (S3/R2/B2 or any receiver). When set, the finished backup is
+              uploaded there after the local write.
             </li>
           </ul>
         </DocsSubSection>

@@ -246,6 +246,35 @@ context. A small local model, e.g. Ollama&rsquo;s default{" "}
 llama3.2, does not have that headroom and
 will degrade or break outright once enough context is 
 
+> **WARNING: pg_dump must be installed (postgresql-client)**
+> The backup and restore scripts shell out to{" "}
+pg_dump and psql,
+which come from the postgresql-client system
+package. Minimal Node images, including the{" "}
+Pterodactyl Node egg, do
+not ship it, so backups fail with{" "}
+pg_dump not found and no{" "}
+backups/ directory is created. Install it
+fir
+
+> **WARNING: Use a persistent volume**
+> BACKUP_DIR defaults to{" "}
+./backups at the app root. On a container
+that is ephemeral: mount a persistent/host volume there (or set{" "}
+BACKUP_DIR to a mounted path), otherwise
+every backup is wiped on the next rebuild or redeploy. Set{" "}
+BACKUP_OFFSITE_UPLOAD_URL as well so a copy
+leaves the h
+
+> **INFO: Encryption and restore**
+> Each dump is encrypted with AES-256-GCM. When{" "}
+BACKUP_ENCRYPTION_KEY is unset the script
+falls back to API_KEY_ENCRYPTION_KEY, so a
+plaintext backup is never written by accident. A separate{" "}
+BACKUP_ENCRYPTION_KEY is still recommended
+for defense in depth. An encrypted .enc file
+is restored u
+
 > **WARNING: After schema changes**
 > If instrumentation.ts changed in the new
 release, run npm run db:migrate inside the
@@ -255,6 +284,7 @@ idempotent; safe to re-run.
 ### Headings
 - Option A: Stripe dashboard
 - Option B: auto-setup endpoint
+- Backup environment variables
 
 ### Notes
 - The fastest path to running yourself. Assumes a single Linux server with Docker. For Kubernetes, multi-region, or bare-metal setups, adapt accordingly.
@@ -1581,8 +1611,8 @@ npm run lint:fix    # auto-fix
 | `/docs` | ✓ | 4 | 0 | 0 | 0 | 0 | 0 | 5 | 1 |
 | `/docs/setup` | - | 12 | 5 | 0 | 22 | 0 | 0 | 28 | 30 |
 | `/docs/extension` | ✓ | 8 | 1 | 0 | 0 | 0 | 0 | 10 | 2 |
-| `/docs/self-hosting` | - | 15 | 3 | 0 | 11 | 0 | 0 | 14 | 2 |
-| `/docs/config` | - | 9 | 3 | 0 | 2 | 0 | 0 | 25 | 0 |
+| `/docs/self-hosting` | - | 15 | 6 | 0 | 12 | 0 | 0 | 19 | 3 |
+| `/docs/config` | - | 9 | 3 | 0 | 2 | 0 | 0 | 26 | 0 |
 | `/docs/api` | - | 8 | 3 | 0 | 4 | 28 | 0 | 9 | 6 |
 | `/docs/webhooks` | ✓ | 6 | 0 | 0 | 3 | 0 | 0 | 5 | 5 |
 | `/docs/rate-limits` | - | 6 | 5 | 0 | 4 | 0 | 0 | 10 | 3 |

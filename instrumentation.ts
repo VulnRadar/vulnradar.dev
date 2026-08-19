@@ -1418,21 +1418,22 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
           );
         });
 
-      // One-time import of any legacy on-disk avatars (data/avatars/<id>.png
-      // on self-hosted Docker) into the user_avatars table now that it
-      // exists. Idempotent (skips a user that already has a row) and a clean
-      // no-op when there is no data/avatars directory, e.g. on serverless --
-      // where legacy avatars were base64 data URLs, converted instead by the
-      // pure-database step in scripts/migrate/versions/3.0.0-to-3.5.0.mjs.
-      // Never throws.
+      // One-time boot backfill of legacy avatars into the user_avatars table
+      // now that it exists, so a plain upgrade heals itself with no separate
+      // command. Both steps are idempotent (skip a user that already has a
+      // row) and best-effort (never throw): the base64 conversion moves the
+      // old serverless-fallback data:image URLs out of users.avatar_url
+      // (pure database, a no-op when there are none), and the file import
+      // moves legacy data/avatars/<id>.png files on self-hosted Docker (a
+      // clean no-op when there is no such directory, e.g. on serverless).
       try {
-        const { migrateAvatarFilesToDatabase } = await import(
-          "./lib/uploads/avatar-migration"
-        );
+        const { migrateBase64AvatarsToDatabase, migrateAvatarFilesToDatabase } =
+          await import("./lib/uploads/avatar-migration");
+        await migrateBase64AvatarsToDatabase();
         await migrateAvatarFilesToDatabase();
       } catch (err) {
         console.error(
-          `[${APP_NAME}] Avatar file-to-database import failed (non-fatal):`,
+          `[${APP_NAME}] Avatar backfill to database failed (non-fatal):`,
           err instanceof Error ? err.message : err,
         );
       }

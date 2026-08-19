@@ -404,18 +404,128 @@ curl -b cookies.txt https://scanner.yourdomain.com/api/v3/stripe/setup-webhook
       </DocsSection>
 
       <DocsSection id="backups" title="Backups">
+        <p className="max-w-[68ch] text-sm text-muted-foreground">
+          {APP_NAME} ships a built-in backup script:{" "}
+          <InlineCode>pg_dump</InlineCode> to gzip to AES-256-GCM encryption to a
+          local file, with optional pruning and offsite upload. Run it from the
+          shell, from cron, or with the Backup button in{" "}
+          <InlineCode>/admin</InlineCode> (which streams the same log to the
+          panel).
+        </p>
         <CodeBlock
           language="bash"
-          code={`# Database dump
-docker compose exec postgres pg_dump -U vulnradar vulnradar > backup-$(date +%F).sql
+          code={`# Create a backup (writes to BACKUP_DIR, default ./backups)
+npm run db:backup
 
-# Restore
+# Restore. Prints what it would do without --yes; --yes actually applies it.
+npm run db:restore -- --file=./backups/vulnradar-backup-<timestamp>.sql.gz.enc --yes`}
+        />
+
+        <DocsCallout
+          variant="warning"
+          title="pg_dump must be installed (postgresql-client)"
+        >
+          <p>
+            The backup and restore scripts shell out to{" "}
+            <InlineCode>pg_dump</InlineCode> and <InlineCode>psql</InlineCode>,
+            which come from the <InlineCode>postgresql-client</InlineCode> system
+            package. Minimal Node images, including the{" "}
+            <strong className="text-foreground">Pterodactyl Node egg</strong>, do
+            not ship it, so backups fail with{" "}
+            <InlineCode>pg_dump not found</InlineCode> and no{" "}
+            <InlineCode>backups/</InlineCode> directory is created. Install it
+            first, e.g. <InlineCode>apt-get install -y postgresql-client</InlineCode>{" "}
+            (Debian/Ubuntu) or <InlineCode>apk add postgresql-client</InlineCode>{" "}
+            (Alpine). The official Docker image already includes it.
+          </p>
+        </DocsCallout>
+
+        <h4 className="text-sm font-semibold mb-3 mt-2">
+          Backup environment variables
+        </h4>
+        <p className="text-sm text-muted-foreground">
+          All optional; set them in <InlineCode>.env</InlineCode>. Full reference
+          on the{" "}
+          <Link
+            href="/docs/config#layer-2"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            Configuration
+          </Link>{" "}
+          page.
+        </p>
+        <DocsTable
+          columns={[
+            { key: "name", header: "Variable" },
+            { key: "default", header: "Default" },
+            { key: "purpose", header: "Purpose" },
+          ]}
+          data={[
+            {
+              name: "BACKUP_DIR",
+              default: "./backups",
+              purpose:
+                "Directory backups are written to (relative to the app root).",
+            },
+            {
+              name: "BACKUP_RETENTION_DAYS",
+              default: "14",
+              purpose:
+                "Prune local backups older than this after a successful run. 0 keeps everything.",
+            },
+            {
+              name: "BACKUP_ENCRYPTION_KEY",
+              default: "API_KEY_ENCRYPTION_KEY",
+              purpose:
+                "64-hex-char AES-256 key. Unset falls back to the app base key, so backups are encrypted by default.",
+            },
+            {
+              name: "BACKUP_OFFSITE_UPLOAD_URL",
+              default: "(none)",
+              purpose:
+                "Presigned PUT URL (S3/R2/B2 or any receiver). Backup is uploaded there after the local write.",
+            },
+          ]}
+        />
+
+        <DocsCallout variant="warning" title="Use a persistent volume">
+          <p>
+            <InlineCode>BACKUP_DIR</InlineCode> defaults to{" "}
+            <InlineCode>./backups</InlineCode> at the app root. On a container
+            that is ephemeral: mount a persistent/host volume there (or set{" "}
+            <InlineCode>BACKUP_DIR</InlineCode> to a mounted path), otherwise
+            every backup is wiped on the next rebuild or redeploy. Set{" "}
+            <InlineCode>BACKUP_OFFSITE_UPLOAD_URL</InlineCode> as well so a copy
+            leaves the host entirely.
+          </p>
+        </DocsCallout>
+
+        <DocsCallout variant="info" title="Encryption and restore">
+          <p>
+            Each dump is encrypted with AES-256-GCM. When{" "}
+            <InlineCode>BACKUP_ENCRYPTION_KEY</InlineCode> is unset the script
+            falls back to <InlineCode>API_KEY_ENCRYPTION_KEY</InlineCode>, so a
+            plaintext backup is never written by accident. A separate{" "}
+            <InlineCode>BACKUP_ENCRYPTION_KEY</InlineCode> is still recommended
+            for defense in depth. An encrypted <InlineCode>.enc</InlineCode> file
+            is restored using the same key resolution, and needs its{" "}
+            <InlineCode>.json</InlineCode> sidecar (the IV and auth tag) present
+            next to it. Rehearse a restore against a throwaway database before
+            you rely on it.
+          </p>
+        </DocsCallout>
+
+        <p className="text-sm text-muted-foreground">
+          Prefer to manage backups outside the app? A managed Postgres (Neon,
+          Supabase, RDS) with built-in automated backups, or a plain cron job,
+          both work:
+        </p>
+        <CodeBlock
+          language="bash"
+          code={`# Manual dump/restore straight through docker compose
+docker compose exec postgres pg_dump -U vulnradar vulnradar > backup-$(date +%F).sql
 cat backup-2026-06-18.sql | docker compose exec -T postgres psql -U vulnradar vulnradar`}
         />
-        <p className="text-sm text-muted-foreground">
-          Automate with cron + <InlineCode>docker compose exec</InlineCode>, or
-          use a managed Postgres with built-in automated backups.
-        </p>
       </DocsSection>
 
       <DocsSection id="updates" title="Updates">

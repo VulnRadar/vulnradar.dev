@@ -8,8 +8,9 @@
  * Stripe billing history, API keys, and scan history lived in one Postgres
  * instance with no scheduled dump, no offsite copy, and no restore path.
  *
- * What this does: `pg_dump` -> gzip -> (optional) AES-256-GCM encryption ->
- * local file under BACKUP_DIR, prunes local backups past BACKUP_RETENTION_DAYS,
+ * What this does: `pg_dump` -> gzip -> AES-256-GCM encryption (on by default,
+ * see BACKUP_ENCRYPTION_KEY below) -> local file under BACKUP_DIR, prunes
+ * local backups past BACKUP_RETENTION_DAYS,
  * and (optional) uploads the result to BACKUP_OFFSITE_UPLOAD_URL via a plain
  * HTTP PUT. That URL is deliberately provider-agnostic: a presigned S3/R2/B2
  * PUT URL, or any receiver that accepts one, works identically -- this app
@@ -29,12 +30,21 @@
  *   BACKUP_ENCRYPTION_KEY      64-char hex string (32 bytes). Same shape as
  *                               API_KEY_ENCRYPTION_KEY -- generate with:
  *                               node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
- *                               When set, the dump is encrypted before being
- *                               written to disk or uploaded. Deliberately an
- *                               env var, never a runtime admin setting --
- *                               storing the key that decrypts the database's
- *                               own backups IN that same database is a
- *                               chicken-and-egg security smell.
+ *                               The dump is encrypted before being written to
+ *                               disk or uploaded. When this is unset the script
+ *                               falls back to API_KEY_ENCRYPTION_KEY (the app's
+ *                               required base key), so backups are encrypted by
+ *                               default rather than silently written in
+ *                               plaintext. A separate BACKUP_ENCRYPTION_KEY is
+ *                               still recommended for defense in depth: it keeps
+ *                               the key that decrypts the backups distinct from
+ *                               the one that decrypts the live DB's stored
+ *                               secrets, so leaking one does not expose the
+ *                               other. (Same fallback shape AUTH_SECRET uses.)
+ *                               Deliberately an env var, never a runtime admin
+ *                               setting -- storing the key that decrypts the
+ *                               database's own backups IN that same database is
+ *                               a chicken-and-egg security smell.
  *   BACKUP_OFFSITE_UPLOAD_URL  A presigned PUT URL (or any HTTP receiver).
  *                               When set, the finished backup file is PUT
  *                               there after the local write succeeds.
@@ -102,6 +112,26 @@ export function createBackupCipher(hexKey) {
   };
 }
 
+/**
+ * Map a pg_dump spawn error to an actionable message. A bare ENOENT means the
+ * `pg_dump` binary isn't installed / on PATH -- common on minimal Node images
+ * (e.g. the Pterodactyl Node egg) that ship without the postgresql-client
+ * package -- which otherwise surfaces as a cryptic failure with no backups
+ * written. Deliberately names the package to install, not a server path.
+ * Exported for tests.
+ */
+export function describePgDumpError(err) {
+  if (err && err.code === "ENOENT") {
+    return new Error(
+      "pg_dump not found. Database backups require the postgresql-client " +
+        "package (which provides pg_dump) to be installed and on PATH in the " +
+        "container/image. Minimal Node images (e.g. the Pterodactyl Node egg) " +
+        "do not include it by default. See the self-hosting docs.",
+    );
+  }
+  return err;
+}
+
 /** Inverse of createBackupCipher, for restore. Exported for tests. */
 export function createBackupDecipher(hexKey, ivHex, authTagHex) {
   const key = Buffer.from(hexKey, "hex");
@@ -153,7 +183,15 @@ async function runBackup() {
     dirArg || process.env.BACKUP_DIR || join(ROOT, "backups"),
   );
   const retentionDays = Number(process.env.BACKUP_RETENTION_DAYS ?? 14);
-  const encryptionKey = process.env.BACKUP_ENCRYPTION_KEY || null;
+  // Fall back to the app's required base key (API_KEY_ENCRYPTION_KEY) when no
+  // dedicated BACKUP_ENCRYPTION_KEY is set, so backups are encrypted by default
+  // instead of silently written in plaintext. Both are the same 64-char-hex /
+  // 32-byte AES-256 shape createBackupCipher validates. A separate
+  // BACKUP_ENCRYPTION_KEY is still recommended for defense in depth (see the
+  // header comment); restore-db.mjs uses the identical resolution so a backup
+  // encrypted with the base-key fallback can always be decrypted again.
+  const encryptionKey =
+    process.env.BACKUP_ENCRYPTION_KEY || process.env.API_KEY_ENCRYPTION_KEY || null;
   const offsiteUrl = process.env.BACKUP_OFFSITE_UPLOAD_URL || null;
 
   await mkdir(backupDir, { recursive: true });
@@ -196,13 +234,31 @@ async function runBackup() {
   }
   stages.push(dest);
 
-  const exitCodePromise = new Promise((resolvePromise, rejectPromise) => {
-    pgDump.on("error", rejectPromise);
+  // spawn() reports a missing binary asynchronously via an 'error' event, not
+  // a throw. Capture it (mapped to a clear message) rather than rejecting, so
+  // whichever unwinds first -- this event or the pipeline teardown it triggers
+  // -- the actionable message still wins. This stdout/stderr also streams
+  // verbatim into the admin-panel job log via lib/backup/run-backup.ts.
+  let spawnError = null;
+  const exitCodePromise = new Promise((resolvePromise) => {
+    pgDump.on("error", (err) => {
+      spawnError = describePgDumpError(err);
+      resolvePromise(-1);
+    });
     pgDump.on("close", (code) => resolvePromise(code));
   });
 
-  await pipeline(stages);
+  try {
+    await pipeline(stages);
+  } catch (err) {
+    // A failed spawn (e.g. pg_dump missing) also tears the pipeline down; wait
+    // for the child's own 'error' event so its clearer message wins over the
+    // generic stream-teardown error.
+    await exitCodePromise;
+    throw spawnError || describePgDumpError(err);
+  }
   const exitCode = await exitCodePromise;
+  if (spawnError) throw spawnError;
   if (exitCode !== 0) {
     throw new Error(
       `pg_dump exited with code ${exitCode}: ${stderrOutput.trim()}`,

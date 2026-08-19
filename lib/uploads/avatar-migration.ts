@@ -1,32 +1,34 @@
 /**
- * One-time import of legacy on-disk avatars into the database.
+ * One-time boot backfill of legacy avatars into the user_avatars table.
  *
- * This is the SELF-HOSTED-DOCKER half of the "avatars now live in
- * Postgres" migration. Older Docker builds stored uploaded avatars as
- * files at data/avatars/<id>.(png|jpg) and pointed users.avatar_url at
- * /api/v3/avatar/<id>. This reads any such files and writes their bytes
- * into user_avatars so the (now database-backed) serving route keeps
- * working, then refreshes the avatar_url cache-buster.
+ * Uploaded avatars now live in Postgres (see lib/uploads/avatar-storage.ts),
+ * served by GET /api/v3/avatar/[userId]. Two older storage shapes are
+ * migrated here, both idempotently and best-effort at boot so a fresh
+ * `docker compose up` (or a serverless cold start) heals itself with no
+ * separate command:
  *
- * The OTHER half -- converting base64 `data:image/...` avatar_url values
- * (the old serverless fallback, which never touched the filesystem) -- is
- * a pure-database step and lives in the versioned migration
- * scripts/migrate/versions/3.0.0-to-3.5.0.mjs, applied with the standard
- * `npm run db:migrate` command. It is kept out of here so production,
- * which has no data/avatars directory at all, never depends on the
- * filesystem.
+ *   - migrateBase64AvatarsToDatabase(): the old serverless fallback stored
+ *     an uploaded avatar as a base64 `data:image/...` URL directly in
+ *     users.avatar_url. This decodes+validates each one and moves the bytes
+ *     into user_avatars. Pure database -- no filesystem -- so it works on
+ *     production, which has no data/avatars directory at all.
+ *   - migrateAvatarFilesToDatabase(): older self-hosted Docker builds stored
+ *     an uploaded avatar as a file at data/avatars/<id>.(png|jpg). This reads
+ *     any such files and writes their bytes into user_avatars.
  *
- * Safe to run on every boot: a user that already has a user_avatars row is
- * skipped, a missing data/avatars directory is a clean no-op, and any
- * single unreadable file is logged and skipped rather than aborting the
- * import. Never throws. External OAuth avatar URLs (cdn.discordapp.com,
- * Google, GitHub) are left exactly as they are -- they are not ours.
+ * Both then normalize users.avatar_url to /api/v3/avatar/<id>?v=<ts>. Safe to
+ * run on every boot: a user that already has a user_avatars row is skipped, a
+ * single bad/oversized/undecodable/unreadable row is logged and skipped, and
+ * neither ever throws (a failed backfill must never block startup). External
+ * OAuth avatar URLs (cdn.discordapp.com, Google, GitHub) are left exactly as
+ * they are -- they are not ours to move.
  */
 
 import { Buffer } from "node:buffer";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import pool from "@/lib/database/db";
+import { validateAvatarDataUrl } from "@/lib/uploads/avatar";
 
 const MIME_BY_EXT: Record<string, "image/png" | "image/jpeg"> = {
   png: "image/png",
@@ -127,4 +129,76 @@ export async function migrateAvatarFilesToDatabase(): Promise<number> {
   }
 
   return imported;
+}
+
+/**
+ * Convert every legacy base64 `data:image/(png|jpeg);base64,...` avatar_url
+ * (the old serverless-fallback storage shape) into a user_avatars row, then
+ * normalize that avatar_url to the serving route. Pure database, no
+ * filesystem. Returns the number converted. Never throws.
+ *
+ * Idempotent: a user that already has a user_avatars row is skipped, and a
+ * converted row's avatar_url no longer matches the data:image filter, so a
+ * re-run finds it zero times. Best-effort: a single row whose data URL fails
+ * validation (wrong magic bytes, over the 5 MiB cap, undecodable) is logged
+ * and skipped -- one bad row never aborts the backfill or blocks boot.
+ */
+export async function migrateBase64AvatarsToDatabase(): Promise<number> {
+  let rows: { id: number; avatar_url: string | null }[];
+  try {
+    const res = await pool.query<{ id: number; avatar_url: string | null }>(
+      `SELECT id, avatar_url FROM users
+       WHERE avatar_url LIKE 'data:image/png;base64,%'
+          OR avatar_url LIKE 'data:image/jpeg;base64,%'`,
+    );
+    rows = res.rows;
+  } catch (err) {
+    console.error(
+      "[avatar-migration] Could not scan for base64 avatars:",
+      err instanceof Error ? err.message : err,
+    );
+    return 0;
+  }
+
+  let converted = 0;
+  for (const row of rows) {
+    if (!row.avatar_url) continue;
+    try {
+      const existing = await pool.query(
+        "SELECT 1 FROM user_avatars WHERE user_id = $1",
+        [row.id],
+      );
+      if (existing.rows.length > 0) continue;
+
+      // Reuse the exact upload-time validation (MIME allowlist, magic
+      // bytes, 5 MiB cap, SVG rejection) so the backfill never stores
+      // anything the app itself would have rejected.
+      const result = validateAvatarDataUrl(row.avatar_url);
+      if (!result.valid) {
+        console.error(
+          `[avatar-migration] Skipped base64 avatar for user ${row.id}: ${result.reason}`,
+        );
+        continue;
+      }
+
+      await pool.query(
+        `INSERT INTO user_avatars (user_id, image_data, content_type, updated_at)
+           VALUES ($1, $2, $3, NOW())
+         ON CONFLICT (user_id) DO NOTHING`,
+        [row.id, result.bytes, result.mime],
+      );
+      await pool.query(
+        "UPDATE users SET avatar_url = $1 WHERE id = $2",
+        [`/api/v3/avatar/${row.id}?v=${Date.now()}`, row.id],
+      );
+      converted++;
+    } catch (err) {
+      console.error(
+        `[avatar-migration] Failed to convert base64 avatar for user ${row.id} (skipped):`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  return converted;
 }

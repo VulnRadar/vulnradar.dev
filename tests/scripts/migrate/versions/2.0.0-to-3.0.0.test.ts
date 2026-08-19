@@ -363,13 +363,8 @@ describe("2.0.0-to-3.0.0 migration: exports", () => {
 });
 
 describe("2.0.0-to-3.0.0 migration: registry + planner wiring", () => {
-  it("registry has 1.0.0, 2.0.0, 3.0.0, 3.5.0 in order", () => {
-    expect(VERSIONS.map((v) => v.name)).toEqual([
-      "1.0.0",
-      "2.0.0",
-      "3.0.0",
-      "3.5.0",
-    ]);
+  it("registry has exactly 1.0.0, 2.0.0, 3.0.0", () => {
+    expect(VERSIONS.map((v) => v.name)).toEqual(["1.0.0", "2.0.0", "3.0.0"]);
   });
 
   it("the 3.0.0 fingerprint includes the key new tables", () => {

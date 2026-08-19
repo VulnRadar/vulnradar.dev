@@ -4,6 +4,7 @@ import {
   selectExpiredBackups,
   createBackupCipher,
   createBackupDecipher,
+  describePgDumpError,
 } from "../../scripts/backup-db.mjs";
 
 describe("backupFileName", () => {
@@ -100,5 +101,33 @@ describe("createBackupCipher / createBackupDecipher", () => {
     expect(() => createBackupCipher("g".repeat(64))).toThrow(
       /64-character hex string/,
     );
+  });
+});
+
+describe("describePgDumpError", () => {
+  it("turns a bare ENOENT into an actionable postgresql-client message", () => {
+    const enoent = Object.assign(new Error("spawn pg_dump ENOENT"), {
+      code: "ENOENT",
+    });
+    const mapped = describePgDumpError(enoent);
+    expect(mapped.message).toMatch(/pg_dump not found/);
+    expect(mapped.message).toMatch(/postgresql-client/);
+  });
+
+  it("never leaks an absolute server path in the message", () => {
+    const enoent = Object.assign(new Error("spawn pg_dump ENOENT"), {
+      code: "ENOENT",
+    });
+    const mapped = describePgDumpError(enoent);
+    // No Windows drive path and no absolute POSIX path segment.
+    expect(mapped.message).not.toMatch(/[A-Za-z]:\\/);
+    expect(mapped.message).not.toMatch(/\/(home|var|usr|app|root)\//);
+  });
+
+  it("passes non-ENOENT errors through unchanged", () => {
+    const other = Object.assign(new Error("connection refused"), {
+      code: "ECONNREFUSED",
+    });
+    expect(describePgDumpError(other)).toBe(other);
   });
 });
