@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import {
-  Camera,
   Loader2,
   Maximize2,
   ChevronDown,
@@ -119,7 +118,6 @@ export function ScreenshotPanel({
         aria-expanded={expanded}
         className="flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors hover:bg-muted/50"
       >
-        <Camera aria-hidden className="h-4 w-4 shrink-0 text-muted-foreground" />
         <span className="flex-1 text-sm font-medium text-foreground">
           Page screenshot
         </span>
