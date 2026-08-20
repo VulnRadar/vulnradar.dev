@@ -111,8 +111,8 @@ const LEVEL_BY_SEVERITY: Record<Severity, SarifLevel> = {
 
 // GitHub Code Scanning reads `properties["security-severity"]` (a
 // CVSS-like 0.0-10.0 string) to color-code and sort alerts independently
-// of `level`. Values chosen to land in GitHub's own critical/high/
-// medium/low bands.
+// of `level`. Fallback per severity band when a finding has no computed
+// CVSS; values chosen to land in GitHub's own critical/high/medium/low bands.
 const SECURITY_SEVERITY_BY_SEVERITY: Record<Severity, string> = {
   critical: "9.5",
   high: "7.5",
@@ -120,6 +120,20 @@ const SECURITY_SEVERITY_BY_SEVERITY: Record<Severity, string> = {
   low: "3.0",
   info: "1.0",
 };
+
+/**
+ * The security-severity to export. Prefers the finding's real computed CVSS 3.1
+ * base score (cvssScore) so CI sees the actual number, not a value invented from
+ * the severity label -- a finding whose real CVSS is 6.1 must not export as
+ * "7.5"/"9.5" just because it's labelled high/critical. Falls back to the
+ * per-band default only when no CVSS was computed.
+ */
+function securitySeverityFor(finding: Vulnerability): string {
+  if (typeof finding.cvssScore === "number" && finding.cvssScore >= 0) {
+    return finding.cvssScore.toFixed(1);
+  }
+  return SECURITY_SEVERITY_BY_SEVERITY[finding.severity];
+}
 
 /** `"CWE-79"` -> `"external/cwe/cwe-79"`, the tag convention CodeQL/GitHub use to drive the CWE filter in the Code Scanning UI. */
 function cweTag(cwe: string): string | null {
@@ -151,7 +165,7 @@ function toRule(finding: Vulnerability): SarifReportingDescriptor {
     defaultConfiguration: { level: LEVEL_BY_SEVERITY[finding.severity] },
     properties: {
       tags: ruleTags(finding),
-      "security-severity": SECURITY_SEVERITY_BY_SEVERITY[finding.severity],
+      "security-severity": securitySeverityFor(finding),
       category: finding.category,
     },
   };
