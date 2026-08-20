@@ -18,6 +18,7 @@ import { IssueDetail } from "@/components/scanner/issue-detail";
 import { ScanActionsMenu } from "@/components/scanner/scan-actions-menu";
 import { AuthenticatedBadge } from "@/components/scanner/authenticated-badge";
 import { ScanResultDetail } from "@/components/scanner/scan-result-detail";
+import { SubdomainDiscovery } from "@/components/scanner/subdomain-discovery";
 import { SharedScanSkeleton } from "@/components/scanner/shared-scan-skeleton";
 import { ScanTags } from "@/components/history/scan-tags";
 import { DangerScoreTrend } from "@/components/host/danger-score-trend";
@@ -111,6 +112,15 @@ export default function HostReportPage() {
           incomplete: data.incomplete,
           authenticated: data.authenticated,
           aiSummary: data.aiSummary,
+          // The rest of the public result_meta, so the shared renderer shows the
+          // same detail here as on /shared instead of this surface silently
+          // dropping it (how the SSL grade went missing on this page).
+          sslGrade: data.sslGrade,
+          threatIntel: data.threatIntel,
+          softwareInventory: data.softwareInventory,
+          dnsRecords: data.dnsRecords,
+          portScan: data.portScan,
+          subdomains: data.subdomains,
         }
       : null;
 
@@ -262,9 +272,17 @@ export default function HostReportPage() {
                   result={result}
                   onSelectIssue={setSelectedIssue}
                   hideDuration
-                  extendedPanels={false}
                   afterSummary={
                     <DangerScoreTrend hostname={data?.host || hostname} />
+                  }
+                  subdomain={
+                    result.subdomains ? (
+                      <SubdomainDiscovery
+                        url={result.url}
+                        readOnly
+                        cachedResult={result.subdomains}
+                      />
+                    ) : undefined
                   }
                 />
 

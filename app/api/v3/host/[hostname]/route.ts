@@ -5,7 +5,7 @@ import {
   type SeverityCounts,
 } from "@/lib/scanner/host-reputation";
 import { APP_NAME } from "@/lib/config/constants";
-import type { Vulnerability } from "@/lib/scanner/types";
+import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 
 /**
  * GET /api/v3/host/[hostname]
@@ -41,6 +41,20 @@ export interface HostReportData {
   incomplete?: string[];
   /** From host_reputation.result_meta once the source scan's owner generated one. */
   aiSummary?: string;
+  /**
+   * The rest of host_reputation.result_meta, same source and shape the owner's
+   * own view reads. Declared so the shared report renderer surfaces them here
+   * too instead of this hand-built shape silently dropping them (which is
+   * exactly how the SSL grade went missing on this page). All come from public
+   * scans only -- host_reputation never reflects a private scan.
+   */
+  sslGrade?: ScanResult["sslGrade"];
+  threatIntel?: ScanResult["threatIntel"];
+  softwareInventory?: ScanResult["softwareInventory"];
+  dnsRecords?: ScanResult["dnsRecords"];
+  portScan?: ScanResult["portScan"];
+  subdomains?: ScanResult["subdomains"];
+  screenshot?: ScanResult["screenshot"];
   /**
    * The same rule-computed tags (lib/tags/auto-tags.ts) a scan owner sees
    * on their own scan, computed from this same findings snapshot at
