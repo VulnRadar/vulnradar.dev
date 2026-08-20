@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, AlertTriangle } from "lucide-react";
 import { Header } from "@/components/scanner/header";
@@ -78,6 +78,9 @@ export default function TeamsPage() {
   const [viewingMember, setViewingMember] = useState<Member | null>(null);
   const [memberScans, setMemberScans] = useState<MemberScan[]>([]);
   const [scansLoading, setScansLoading] = useState(false);
+  // Ticket for the member-scans fetch so a slower earlier request can't
+  // overwrite a newer one (see handleViewMemberScans).
+  const memberScansReqRef = useRef(0);
   const [scanPage, setScanPage] = useState(1);
   const [scansPageSize, setScansPageSize] = useState(10);
 
@@ -350,6 +353,10 @@ export default function TeamsPage() {
   }
 
   async function handleViewMemberScans(member: Member) {
+    // Guard against a last-response-wins race: clicking member A then quickly
+    // member B could land A's response last, showing A's scans under B's name
+    // (a privacy-adjacent mislabel). Only the latest request applies its result.
+    const reqId = ++memberScansReqRef.current;
     setViewingMember(member);
     setScanPage(1);
     setScansLoading(true);
@@ -357,6 +364,7 @@ export default function TeamsPage() {
       const res = await fetch(
         `${API.TEAMS_MEMBER_SCANS}?teamId=${selectedTeam?.id}&userId=${member.user_id}`,
       );
+      if (reqId !== memberScansReqRef.current) return;
       if (res.ok) {
         const data = await res.json();
         setMemberScans(data.scans || []);
@@ -364,7 +372,7 @@ export default function TeamsPage() {
     } catch {
       /* */
     } finally {
-      setScansLoading(false);
+      if (reqId === memberScansReqRef.current) setScansLoading(false);
     }
   }
 

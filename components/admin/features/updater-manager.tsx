@@ -116,15 +116,18 @@ export function UpdaterManager() {
       if (res.ok) {
         const data = (await res.json()) as UpdaterStatus;
         setStatus(data);
-        if (data.activeJobId && !job) {
-          setJob({ id: data.activeJobId } as UpdaterJob);
+        if (data.activeJobId) {
+          // Functional update reads the CURRENT job, not a stale closure over
+          // the initial null. The old `!job` was always true (job wasn't a
+          // dep), so every poll overwrote a fully-populated job with a bare
+          // {id}, which could wedge the UI as "running" with no live poll.
+          setJob((prev) => prev ?? ({ id: data.activeJobId } as UpdaterJob));
         }
       }
     } catch {
       /* ignore */
     }
     setLoading(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
