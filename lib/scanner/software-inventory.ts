@@ -78,13 +78,7 @@ const CVE_CACHE_TTL_MS = 30 * 60 * 1000;
 // ── Public types ────────────────────────────────────────────────────────────
 
 export type SoftwareCategory =
-  | "server"
-  | "language"
-  | "runtime"
-  | "framework"
-  | "cms"
-  | "cdn"
-  | "library";
+  "server" | "language" | "runtime" | "framework" | "cms" | "cdn" | "library";
 
 export interface SoftwareItem {
   /** Canonical display name, e.g. "nginx", "Apache HTTP Server", "jQuery". */
@@ -164,7 +158,7 @@ const CDN_TOKENS: Record<string, string> = {
   cloudfront: "Amazon CloudFront",
   varnish: "Varnish",
   fastly: "Fastly",
-  "akamaighost": "Akamai",
+  akamaighost: "Akamai",
   sucuri: "Sucuri",
 };
 
@@ -372,7 +366,9 @@ export function fingerprintSoftware(
         source: "wp-content markup",
       });
     }
-    if (/Drupal\.settings|data-drupal-|\/sites\/(?:default|all)\//i.test(body)) {
+    if (
+      /Drupal\.settings|data-drupal-|\/sites\/(?:default|all)\//i.test(body)
+    ) {
       pushItem(out, seen, {
         name: "Drupal",
         category: "cms",
@@ -494,7 +490,10 @@ async function correlateViaOsv(
       if (sev.type !== "CVSS_V3") continue;
       const metrics = parseCvssVector(sev.score);
       if (!metrics) continue;
-      severity = maxSeverity(severity, severityFromScore(computeCvssBaseScore(metrics)));
+      severity = maxSeverity(
+        severity,
+        severityFromScore(computeCvssBaseScore(metrics)),
+      );
       scored = true;
     }
   }
@@ -915,7 +914,9 @@ export function recordSoftwareFingerprint(
 }
 
 /** Read back the merged fingerprint for `host`, or undefined if none/stale. */
-export function readSoftwareFingerprint(host: string): SoftwareItem[] | undefined {
+export function readSoftwareFingerprint(
+  host: string,
+): SoftwareItem[] | undefined {
   const entry = fingerprintStore.get(host.toLowerCase());
   if (!entry) return undefined;
   if (Date.now() - entry.at > FINGERPRINT_TTL_MS) {

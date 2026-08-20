@@ -35,11 +35,8 @@ vi.mock("@/lib/scanner/subdomain-discovery-engine", () => ({
   discoverSubdomainsForRoot: (...args: unknown[]) => mockDiscover(...args),
 }));
 
-const {
-  autoDiscoverSubdomains,
-  recordSubdomains,
-  readSubdomains,
-} = await import("@/lib/scanner/subdomain-auto");
+const { autoDiscoverSubdomains, recordSubdomains, readSubdomains } =
+  await import("@/lib/scanner/subdomain-auto");
 
 function makeResult(overrides: Partial<DiscoveryResult> = {}): DiscoveryResult {
   return {
@@ -115,7 +112,12 @@ describe("autoDiscoverSubdomains - fresh discovery (cache miss)", () => {
 
   it("records nothing when the discovery finds no subdomains", async () => {
     mockDiscover.mockResolvedValue(
-      makeResult({ domain: "empty.com", total: 0, reachable: 0, subdomains: [] }),
+      makeResult({
+        domain: "empty.com",
+        total: 0,
+        reachable: 0,
+        subdomains: [],
+      }),
     );
 
     await autoDiscoverSubdomains("https://empty.com");
@@ -186,16 +188,19 @@ describe("autoDiscoverSubdomains - persists unreachable subdomains (BUG 1 regres
 
     const recorded = readSubdomains("mixed.com");
     expect(recorded?.subdomains).toHaveLength(3);
-    expect(recorded?.subdomains.filter((s) => !s.reachable).map((s) => s.subdomain)).toEqual([
-      "dev.mixed.com",
-      "old.mixed.com",
-    ]);
+    expect(
+      recorded?.subdomains.filter((s) => !s.reachable).map((s) => s.subdomain),
+    ).toEqual(["dev.mixed.com", "old.mixed.com"]);
     // The whole result round-trips, not a reachable-only slice.
     expect(recorded).toEqual(mixed);
   });
 
   it("records the unreachable hosts from a cache hit", async () => {
-    mockGetCachedSnapshot.mockResolvedValue({ ...mixed, domain: "cached-mixed.com", cached: true });
+    mockGetCachedSnapshot.mockResolvedValue({
+      ...mixed,
+      domain: "cached-mixed.com",
+      cached: true,
+    });
 
     await autoDiscoverSubdomains("https://cached-mixed.com");
 
@@ -221,9 +226,7 @@ describe("autoDiscoverSubdomains - targets with no registrable domain", () => {
   });
 
   it("does not throw on an unparseable URL", async () => {
-    await expect(
-      autoDiscoverSubdomains("not a url"),
-    ).resolves.toBeUndefined();
+    await expect(autoDiscoverSubdomains("not a url")).resolves.toBeUndefined();
   });
 });
 

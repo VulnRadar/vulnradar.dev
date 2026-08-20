@@ -168,4 +168,3 @@ export function useQueryParam<T extends string = string>(
 
   return [value, update];
 }
-

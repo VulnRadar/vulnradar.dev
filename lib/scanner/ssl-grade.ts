@@ -89,7 +89,8 @@ const LETTERS = ["A+", "A", "B", "C", "D", "F"] as const;
 type Letter = (typeof LETTERS)[number];
 
 const rankOf = (l: Letter): number => LETTERS.indexOf(l);
-const worse = (a: Letter, b: Letter): Letter => (rankOf(a) >= rankOf(b) ? a : b);
+const worse = (a: Letter, b: Letter): Letter =>
+  rankOf(a) >= rankOf(b) ? a : b;
 
 const STRONG_CURVES = ["P-256", "P-384", "P-521"];
 const WEAK_CIPHER_TOKENS = ["RC4", "DES", "NULL", "EXPORT", "ANON", "MD5"];
@@ -113,7 +114,9 @@ export function computeSslGrade(input: SslGradeInput): SslGradeResult | null {
     return { grade: "F", score: 0, reasons };
   }
   if (input.chainHasExpiredCert) {
-    reasons.push("An intermediate or root certificate in the chain has expired");
+    reasons.push(
+      "An intermediate or root certificate in the chain has expired",
+    );
     return { grade: "F", score: 0, reasons };
   }
   if (input.certSelfSigned) {

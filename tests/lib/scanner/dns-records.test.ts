@@ -135,9 +135,7 @@ describe("resolveDnsRecords", () => {
     try {
       primeAllGood();
       // A resolver that never settles must not stall resolveDnsRecords.
-      vi.mocked(dns.resolveTxt).mockImplementation(
-        () => new Promise(() => {}),
-      );
+      vi.mocked(dns.resolveTxt).mockImplementation(() => new Promise(() => {}));
 
       const promise = resolveDnsRecords("example.com");
       await vi.advanceTimersByTimeAsync(4100);

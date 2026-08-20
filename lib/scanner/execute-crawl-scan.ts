@@ -528,9 +528,8 @@ export async function executeCrawlScan(
     // same array BEFORE the exploit-intel pass, so they too pick up KEV/EPSS
     // from their own CVE-naming text; the structured inventory goes to
     // result_meta below.
-    let softwareInventory: Awaited<
-      ReturnType<typeof correlateSoftwareCves>
-    > = null;
+    let softwareInventory: Awaited<ReturnType<typeof correlateSoftwareCves>> =
+      null;
     try {
       let mainHost: string | null = null;
       try {
@@ -701,8 +700,7 @@ export async function executeCrawlScan(
         ? {
             status: session.lost ? "lost" : "authenticated",
             method: session.authType ?? "form",
-            reason:
-              session.lost && session.reason ? session.reason : undefined,
+            reason: session.lost && session.reason ? session.reason : undefined,
           }
         : undefined;
 

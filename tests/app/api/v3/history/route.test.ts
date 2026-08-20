@@ -129,9 +129,7 @@ describe("GET /api/v3/history", () => {
       rows: [{ plan: "free", role: "user" }],
     });
     mockBusinessQuery.mockResolvedValueOnce({
-      rows: [
-        { id: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4", url: "https://a.test" },
-      ],
+      rows: [{ id: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4", url: "https://a.test" }],
     });
 
     const res = await GET(getRequest());

@@ -466,7 +466,9 @@ describe("executeScan", () => {
         (sql as string).includes("status = 'completed'"),
       );
       const [, completedParams] = completedCall!;
-      const resultMeta = JSON.parse((completedParams as unknown[])[6] as string);
+      const resultMeta = JSON.parse(
+        (completedParams as unknown[])[6] as string,
+      );
       expect(resultMeta.portScan).toEqual(portScanResult);
     });
   });

@@ -170,6 +170,9 @@ describe("POST /api/v3/history/[id]/ports - short TTL reuse (BUG 2)", () => {
     const res = await POST(req(), params());
 
     expect(res.status).toBe(200);
-    expect(mockRecordPortScan).toHaveBeenCalledWith("example.com", fakePortScan);
+    expect(mockRecordPortScan).toHaveBeenCalledWith(
+      "example.com",
+      fakePortScan,
+    );
   });
 });

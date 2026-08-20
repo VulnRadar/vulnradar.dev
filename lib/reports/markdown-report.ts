@@ -1,6 +1,9 @@
 import type { ScanResult, Severity, Vulnerability } from "@/lib/scanner/types";
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
-import { getSafetyRating, type SafetyRating } from "@/lib/scanner/safety-rating";
+import {
+  getSafetyRating,
+  type SafetyRating,
+} from "@/lib/scanner/safety-rating";
 
 /**
  * Markdown export.

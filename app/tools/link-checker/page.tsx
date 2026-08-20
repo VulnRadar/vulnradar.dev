@@ -81,10 +81,10 @@ export default async function LinkCheckerPage() {
             Check where a link really goes
           </h1>
           <p className="mt-4 text-base sm:text-lg text-muted-foreground leading-relaxed">
-            Paste a URL and {APP_NAME} follows it end to end: the redirect chain,
-            the security headers, the TLS, and the reputation of wherever it
-            lands, including links sitting behind Cloudflare. It is the check to
-            run before you click something you were sent.
+            Paste a URL and {APP_NAME} follows it end to end: the redirect
+            chain, the security headers, the TLS, and the reputation of wherever
+            it lands, including links sitting behind Cloudflare. It is the check
+            to run before you click something you were sent.
           </p>
         </header>
 

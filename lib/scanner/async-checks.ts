@@ -2589,13 +2589,12 @@ export function checkTLSCert(
                   authCode === "DEPTH_ZERO_SELF_SIGNED_CERT" ||
                   authCode === "SELF_SIGNED_CERT_IN_CHAIN",
                 hostnameMismatch: authCode === "ERR_TLS_CERT_ALTNAME_INVALID",
-                incompleteChain:
-                  authCode === "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+                incompleteChain: authCode === "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
                 chainHasExpiredCert: gradeChainHasExpiredCert,
                 missingSan: Boolean(
                   certForGrade &&
-                    certForGrade.subject &&
-                    !certForGrade.subjectaltname,
+                  certForGrade.subject &&
+                  !certForGrade.subjectaltname,
                 ),
                 keyBits:
                   typeof certForGrade?.bits === "number"

@@ -507,131 +507,206 @@ interface RiskyPort {
 }
 
 const RISKY_PORTS: ReadonlyMap<number, RiskyPort> = new Map<number, RiskyPort>([
-  [23, {
-    label: "Telnet",
-    severity: "high",
-    risk: "Telnet transmits credentials and every keystroke in cleartext; anyone on the path can read the session.",
-  }],
-  [3389, {
-    label: "RDP",
-    severity: "high",
-    risk: "Remote Desktop exposed to the internet is a primary target for brute-force and pre-auth RCE campaigns (e.g. BlueKeep).",
-  }],
-  [445, {
-    label: "SMB",
-    severity: "high",
-    risk: "SMB on the public internet is a top ransomware and worm entry point (EternalBlue and successors).",
-  }],
-  [139, {
-    label: "NetBIOS",
-    severity: "medium",
-    risk: "NetBIOS session service leaks host and share information and is commonly paired with SMB attacks.",
-  }],
-  [135, {
-    label: "MSRPC",
-    severity: "medium",
-    risk: "The Windows RPC endpoint mapper exposes callable services and is a frequent lateral-movement vector.",
-  }],
-  [5900, {
-    label: "VNC",
-    severity: "high",
-    risk: "VNC often ships with weak or no authentication and hands an attacker the full desktop.",
-  }],
-  [5901, {
-    label: "VNC",
-    severity: "high",
-    risk: "VNC often ships with weak or no authentication and hands an attacker the full desktop.",
-  }],
-  [3306, {
-    label: "MySQL",
-    severity: "high",
-    risk: "A database directly reachable from the internet exposes every row to brute-force and known-CVE attacks.",
-  }],
-  [5432, {
-    label: "PostgreSQL",
-    severity: "high",
-    risk: "A database directly reachable from the internet exposes every row to brute-force and known-CVE attacks.",
-  }],
-  [1433, {
-    label: "MSSQL",
-    severity: "high",
-    risk: "A database directly reachable from the internet exposes every row to brute-force and known-CVE attacks.",
-  }],
-  [1521, {
-    label: "Oracle DB",
-    severity: "high",
-    risk: "A database directly reachable from the internet exposes every row to brute-force and known-CVE attacks.",
-  }],
-  [6379, {
-    label: "Redis",
-    severity: "high",
-    risk: "Redis has no authentication by default; an exposed instance is routinely used to read data or gain RCE.",
-  }],
-  [27017, {
-    label: "MongoDB",
-    severity: "high",
-    risk: "Unauthenticated MongoDB exposure is one of the most common causes of mass data leaks.",
-  }],
-  [27018, {
-    label: "MongoDB",
-    severity: "high",
-    risk: "Unauthenticated MongoDB exposure is one of the most common causes of mass data leaks.",
-  }],
-  [9200, {
-    label: "Elasticsearch",
-    severity: "high",
-    risk: "Elasticsearch has no authentication by default; an open cluster exposes every index.",
-  }],
-  [11211, {
-    label: "Memcached",
-    severity: "medium",
-    risk: "Memcached has no authentication and doubles as a UDP amplification vector for DDoS.",
-  }],
-  [5984, {
-    label: "CouchDB",
-    severity: "high",
-    risk: "An exposed CouchDB has been exploited for data theft and remote code execution via admin-party defaults.",
-  }],
-  [2375, {
-    label: "Docker API",
-    severity: "high",
-    risk: "The unauthenticated Docker API grants full control of the host: an attacker can start a privileged container and take over the machine.",
-  }],
-  [10250, {
-    label: "kubelet",
-    severity: "high",
-    risk: "An exposed kubelet API can allow command execution inside cluster workloads.",
-  }],
-  [6443, {
-    label: "Kubernetes API",
-    severity: "medium",
-    risk: "The Kubernetes API server should not be publicly reachable; it is a high-value target for cluster takeover.",
-  }],
-  [2379, {
-    label: "etcd",
-    severity: "high",
-    risk: "etcd stores the entire cluster state (including secrets); an exposed instance leaks and lets an attacker rewrite it.",
-  }],
-  [161, {
-    label: "SNMP",
-    severity: "medium",
-    risk: "SNMP with default community strings leaks detailed device and network information.",
-  }],
-  [623, {
-    label: "IPMI",
-    severity: "high",
-    risk: "IPMI/BMC interfaces have well-known authentication bypasses granting out-of-band control of the server.",
-  }],
-  [512, {
-    label: "rexec",
-    severity: "high",
-    risk: "The r-services transmit credentials in cleartext and trust host-based auth that is trivial to spoof.",
-  }],
-  [513, {
-    label: "rlogin",
-    severity: "high",
-    risk: "The r-services transmit credentials in cleartext and trust host-based auth that is trivial to spoof.",
-  }],
+  [
+    23,
+    {
+      label: "Telnet",
+      severity: "high",
+      risk: "Telnet transmits credentials and every keystroke in cleartext; anyone on the path can read the session.",
+    },
+  ],
+  [
+    3389,
+    {
+      label: "RDP",
+      severity: "high",
+      risk: "Remote Desktop exposed to the internet is a primary target for brute-force and pre-auth RCE campaigns (e.g. BlueKeep).",
+    },
+  ],
+  [
+    445,
+    {
+      label: "SMB",
+      severity: "high",
+      risk: "SMB on the public internet is a top ransomware and worm entry point (EternalBlue and successors).",
+    },
+  ],
+  [
+    139,
+    {
+      label: "NetBIOS",
+      severity: "medium",
+      risk: "NetBIOS session service leaks host and share information and is commonly paired with SMB attacks.",
+    },
+  ],
+  [
+    135,
+    {
+      label: "MSRPC",
+      severity: "medium",
+      risk: "The Windows RPC endpoint mapper exposes callable services and is a frequent lateral-movement vector.",
+    },
+  ],
+  [
+    5900,
+    {
+      label: "VNC",
+      severity: "high",
+      risk: "VNC often ships with weak or no authentication and hands an attacker the full desktop.",
+    },
+  ],
+  [
+    5901,
+    {
+      label: "VNC",
+      severity: "high",
+      risk: "VNC often ships with weak or no authentication and hands an attacker the full desktop.",
+    },
+  ],
+  [
+    3306,
+    {
+      label: "MySQL",
+      severity: "high",
+      risk: "A database directly reachable from the internet exposes every row to brute-force and known-CVE attacks.",
+    },
+  ],
+  [
+    5432,
+    {
+      label: "PostgreSQL",
+      severity: "high",
+      risk: "A database directly reachable from the internet exposes every row to brute-force and known-CVE attacks.",
+    },
+  ],
+  [
+    1433,
+    {
+      label: "MSSQL",
+      severity: "high",
+      risk: "A database directly reachable from the internet exposes every row to brute-force and known-CVE attacks.",
+    },
+  ],
+  [
+    1521,
+    {
+      label: "Oracle DB",
+      severity: "high",
+      risk: "A database directly reachable from the internet exposes every row to brute-force and known-CVE attacks.",
+    },
+  ],
+  [
+    6379,
+    {
+      label: "Redis",
+      severity: "high",
+      risk: "Redis has no authentication by default; an exposed instance is routinely used to read data or gain RCE.",
+    },
+  ],
+  [
+    27017,
+    {
+      label: "MongoDB",
+      severity: "high",
+      risk: "Unauthenticated MongoDB exposure is one of the most common causes of mass data leaks.",
+    },
+  ],
+  [
+    27018,
+    {
+      label: "MongoDB",
+      severity: "high",
+      risk: "Unauthenticated MongoDB exposure is one of the most common causes of mass data leaks.",
+    },
+  ],
+  [
+    9200,
+    {
+      label: "Elasticsearch",
+      severity: "high",
+      risk: "Elasticsearch has no authentication by default; an open cluster exposes every index.",
+    },
+  ],
+  [
+    11211,
+    {
+      label: "Memcached",
+      severity: "medium",
+      risk: "Memcached has no authentication and doubles as a UDP amplification vector for DDoS.",
+    },
+  ],
+  [
+    5984,
+    {
+      label: "CouchDB",
+      severity: "high",
+      risk: "An exposed CouchDB has been exploited for data theft and remote code execution via admin-party defaults.",
+    },
+  ],
+  [
+    2375,
+    {
+      label: "Docker API",
+      severity: "high",
+      risk: "The unauthenticated Docker API grants full control of the host: an attacker can start a privileged container and take over the machine.",
+    },
+  ],
+  [
+    10250,
+    {
+      label: "kubelet",
+      severity: "high",
+      risk: "An exposed kubelet API can allow command execution inside cluster workloads.",
+    },
+  ],
+  [
+    6443,
+    {
+      label: "Kubernetes API",
+      severity: "medium",
+      risk: "The Kubernetes API server should not be publicly reachable; it is a high-value target for cluster takeover.",
+    },
+  ],
+  [
+    2379,
+    {
+      label: "etcd",
+      severity: "high",
+      risk: "etcd stores the entire cluster state (including secrets); an exposed instance leaks and lets an attacker rewrite it.",
+    },
+  ],
+  [
+    161,
+    {
+      label: "SNMP",
+      severity: "medium",
+      risk: "SNMP with default community strings leaks detailed device and network information.",
+    },
+  ],
+  [
+    623,
+    {
+      label: "IPMI",
+      severity: "high",
+      risk: "IPMI/BMC interfaces have well-known authentication bypasses granting out-of-band control of the server.",
+    },
+  ],
+  [
+    512,
+    {
+      label: "rexec",
+      severity: "high",
+      risk: "The r-services transmit credentials in cleartext and trust host-based auth that is trivial to spoof.",
+    },
+  ],
+  [
+    513,
+    {
+      label: "rlogin",
+      severity: "high",
+      risk: "The r-services transmit credentials in cleartext and trust host-based auth that is trivial to spoof.",
+    },
+  ],
 ]);
 
 /**

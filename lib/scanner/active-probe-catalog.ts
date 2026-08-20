@@ -147,7 +147,9 @@ export function resolveSelectedActiveProbes(
 }
 
 /** Parse a comma-separated `active_probes=` URL param into valid ids. */
-export function parseActiveProbeIds(raw: string | null | undefined): ActiveProbeId[] {
+export function parseActiveProbeIds(
+  raw: string | null | undefined,
+): ActiveProbeId[] {
   if (!raw) return [];
   const present = new Set(
     raw

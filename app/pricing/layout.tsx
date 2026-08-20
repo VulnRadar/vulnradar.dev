@@ -12,7 +12,8 @@ import { getPaidPlans } from "@/lib/billing/plans";
 import { PRICING_MODEL_FAQ } from "./pricing-model-faq";
 
 // Cheapest paid plan, derived so the copy never drifts from the catalog.
-const CHEAPEST_PAID = Math.min(...getPaidPlans().map((p) => p.priceInCents)) / 100;
+const CHEAPEST_PAID =
+  Math.min(...getPaidPlans().map((p) => p.priceInCents)) / 100;
 
 export const metadata: Metadata = pageMetadata({
   title: "Pricing",

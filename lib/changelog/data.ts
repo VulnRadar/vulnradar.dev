@@ -211,7 +211,7 @@ const CHANGELOG: Release[] = [
       {
         icon: List,
         label: "Every Scan Option Explains Itself",
-        desc: "Each check family and service probe in the scan options now shows a one-line description of what it does, and the selector shows an exact count of what is enabled instead of a vague \"All\" that hid whether the opt-in active probes were part of it.",
+        desc: 'Each check family and service probe in the scan options now shows a one-line description of what it does, and the selector shows an exact count of what is enabled instead of a vague "All" that hid whether the opt-in active probes were part of it.',
         category: "changed",
       },
       {
@@ -322,7 +322,7 @@ const CHANGELOG: Release[] = [
       {
         icon: ShieldAlert,
         label: "Multi-Source Threat Reputation on Every Scan",
-        desc: "Every scan now checks the target against several threat-intelligence sources at once (URLhaus, Google Web Risk, and Quad9's security DNS), shown as a reputation panel on the result. A source that cannot be reached reads as \"unavailable\" rather than a false all-clear, so an outage never looks like a clean bill of health.",
+        desc: 'Every scan now checks the target against several threat-intelligence sources at once (URLhaus, Google Web Risk, and Quad9\'s security DNS), shown as a reputation panel on the result. A source that cannot be reached reads as "unavailable" rather than a false all-clear, so an outage never looks like a clean bill of health.',
         category: "added",
       },
       {
@@ -400,7 +400,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Database,
         label: "Backups Encrypt by Default and Fail Loudly Without pg_dump",
-        desc: "Database backups fell back to plaintext when only the base encryption key was set. They now encrypt with that base key automatically, and restores understand the same fallback, so a separate backup key is optional rather than the only thing standing between you and an unencrypted dump. A backup on a host that has no pg_dump (like a minimal Node container) now reports a clear \"install postgresql-client\" message instead of failing silently, and the self-hosting docs and .env.example spell out every backup setting.",
+        desc: 'Database backups fell back to plaintext when only the base encryption key was set. They now encrypt with that base key automatically, and restores understand the same fallback, so a separate backup key is optional rather than the only thing standing between you and an unencrypted dump. A backup on a host that has no pg_dump (like a minimal Node container) now reports a clear "install postgresql-client" message instead of failing silently, and the self-hosting docs and .env.example spell out every backup setting.',
         category: "fixed",
       },
       {

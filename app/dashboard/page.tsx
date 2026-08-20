@@ -416,15 +416,8 @@ function DashboardContent() {
   };
 
   const handleScan = useCallback(async (payload: ScanFormPayload) => {
-    const {
-      url,
-      mode,
-      scanners,
-      auth,
-      isPublic,
-      captureScreenshot,
-      portScan,
-    } = payload;
+    const { url, mode, scanners, auth, isPublic, captureScreenshot, portScan } =
+      payload;
     setPendingIsPublic(isPublic);
     setPendingScreenshot(!!captureScreenshot);
     setPendingPortScan(!!portScan);

@@ -89,7 +89,8 @@ export interface ControlRef {
  */
 const CONTROLS: Record<FrameworkKey, Record<string, string>> = {
   pci: {
-    "1.3": "Network access to and from the cardholder data environment is restricted",
+    "1.3":
+      "Network access to and from the cardholder data environment is restricted",
     "2.2": "Secure configurations are applied to all system components",
     "3.5": "Stored account data (PAN) is secured wherever it is kept",
     "4.2.1":
@@ -118,7 +119,8 @@ const CONTROLS: Record<FrameworkKey, Record<string, string>> = {
       "Controls prevent or detect the introduction of unauthorized or malicious software",
     "CC7.1":
       "Configuration and vulnerabilities are monitored to detect susceptibility",
-    "CC7.2": "System components are monitored for anomalies and security events",
+    "CC7.2":
+      "System components are monitored for anomalies and security events",
     "CC8.1":
       "Changes to infrastructure and software are authorized, tested, and approved",
   },

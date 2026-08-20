@@ -433,7 +433,9 @@ export async function PATCH(request: Request) {
   );
   if (!ASSIGNABLE_TEAM_ROLES.includes(role)) {
     return NextResponse.json(
-      { error: `Invalid role. Use one of: ${ASSIGNABLE_TEAM_ROLES.join(", ")}.` },
+      {
+        error: `Invalid role. Use one of: ${ASSIGNABLE_TEAM_ROLES.join(", ")}.`,
+      },
       { status: 400 },
     );
   }
@@ -508,9 +510,7 @@ export async function PATCH(request: Request) {
         userEmail: targetEmail,
         type: "team_changes",
         emailContent: teamRoleChangedEmail(teamName, oldRole, role),
-      }).catch((err) =>
-        console.error("Team role changed email failed:", err),
-      );
+      }).catch((err) => console.error("Team role changed email failed:", err));
     });
   }
 

@@ -1,8 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  computeSslGrade,
-  type SslGradeInput,
-} from "@/lib/scanner/ssl-grade";
+import { computeSslGrade, type SslGradeInput } from "@/lib/scanner/ssl-grade";
 
 /**
  * A modern, trusted, TLS 1.3 endpoint with a strong RSA 2048 key and a
@@ -107,14 +104,14 @@ describe("computeSslGrade", () => {
   });
 
   it("penalizes a weak RC4 cipher suite", () => {
-    const result = computeSslGrade(
-      base({ cipherName: "ECDHE-RSA-RC4-SHA" }),
-    );
+    const result = computeSslGrade(base({ cipherName: "ECDHE-RSA-RC4-SHA" }));
     expect(["C", "D", "F"]).toContain(result!.grade);
   });
 
   it("records OCSP stapling and HSTS as reasons when present", () => {
-    const result = computeSslGrade(base({ ocspStapled: true, hstsEnabled: true }));
+    const result = computeSslGrade(
+      base({ ocspStapled: true, hstsEnabled: true }),
+    );
     expect(result!.grade).toBe("A+");
     expect(result!.reasons).toContain("OCSP stapling enabled");
     expect(result!.reasons).toContain("HSTS enabled");

@@ -380,8 +380,8 @@ function RemediationControl({
       </div>
 
       <p className="text-[11px] leading-relaxed text-muted-foreground">
-        Kept separate from the accuracy feedback above, and remembered the
-        next time you scan this target.
+        Kept separate from the accuracy feedback above, and remembered the next
+        time you scan this target.
       </p>
 
       {status !== "open" && (

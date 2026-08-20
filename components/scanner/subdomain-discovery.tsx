@@ -431,9 +431,7 @@ export function SubdomainDiscovery({
                       <>
                         {" · "}
                         <span className="font-medium text-foreground">
-                          {formatRefreshAvailability(
-                            effectiveResult.expiresAt,
-                          )}
+                          {formatRefreshAvailability(effectiveResult.expiresAt)}
                         </span>
                       </>
                     )}

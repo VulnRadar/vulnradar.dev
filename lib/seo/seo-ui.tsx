@@ -104,13 +104,7 @@ export function Breadcrumbs({
  * Closing call-to-action used across the SEO pages. Links to the live demo
  * scanner so a reader who came in on a long-tail query can act immediately.
  */
-export function ScanCta({
-  heading,
-  body,
-}: {
-  heading: string;
-  body: string;
-}) {
+export function ScanCta({ heading, body }: { heading: string; body: string }) {
   return (
     <section className="border-t border-border/50">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">

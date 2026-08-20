@@ -1,11 +1,4 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeAll,
-  beforeEach,
-  vi,
-} from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import {
   makeCookieStore,

@@ -35,10 +35,11 @@ export async function generateMetadata({
   }
   return pageMetadata({
     title: `${alt.name} Alternative: ${APP_NAME}`,
-    description: `Comparing ${APP_NAME}, an open-source GPL-3.0 scanner, to ${alt.name}. ${alt.positioning}`.slice(
-      0,
-      175,
-    ),
+    description:
+      `Comparing ${APP_NAME}, an open-source GPL-3.0 scanner, to ${alt.name}. ${alt.positioning}`.slice(
+        0,
+        175,
+      ),
     path: `/alternatives/${alt.slug}`,
     keywords: [
       `${alt.name.toLowerCase()} alternative`,
@@ -153,7 +154,10 @@ export default async function AlternativePage({
           </h2>
           <ul className="space-y-2.5">
             {alt.differentiators.map((d, i) => (
-              <li key={i} className="flex gap-2.5 text-sm sm:text-base leading-relaxed">
+              <li
+                key={i}
+                className="flex gap-2.5 text-sm sm:text-base leading-relaxed"
+              >
                 <Check className="h-4 w-4 text-primary shrink-0 mt-1" />
                 <span className="text-foreground/90">{d}</span>
               </li>

@@ -192,7 +192,9 @@ async function runBackup() {
   // header comment); restore-db.mjs uses the identical resolution so a backup
   // encrypted with the base-key fallback can always be decrypted again.
   const encryptionKey =
-    process.env.BACKUP_ENCRYPTION_KEY || process.env.API_KEY_ENCRYPTION_KEY || null;
+    process.env.BACKUP_ENCRYPTION_KEY ||
+    process.env.API_KEY_ENCRYPTION_KEY ||
+    null;
   const offsiteUrl = process.env.BACKUP_OFFSITE_UPLOAD_URL || null;
 
   await mkdir(backupDir, { recursive: true });

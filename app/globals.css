@@ -1,4 +1,4 @@
-@import 'tailwindcss';
+@import "tailwindcss";
 
 @config '../tailwind.config.ts';
 
@@ -133,7 +133,7 @@
 
   /* Badges: preserve custom colors on hover.
    All badges maintain their current color but brighten and saturate slightly on hover. */
-  [class*='bg-'][class*='text-'][class*='rounded-full']:hover {
+  [class*="bg-"][class*="text-"][class*="rounded-full"]:hover {
     filter: brightness(1.2) saturate(1.1);
   }
 

@@ -782,4 +782,3 @@ export function canPerformAction(
   if (!action) return false;
   return hasStaffPermission(role, action.permission);
 }
-

@@ -182,9 +182,9 @@ describe("validateSettingValue", () => {
   });
 
   it("rejects a string longer than the registry maximum", () => {
-    expect(
-      validateSettingValue("APP_DESCRIPTION", "x".repeat(501)).ok,
-    ).toBe(false);
+    expect(validateSettingValue("APP_DESCRIPTION", "x".repeat(501)).ok).toBe(
+      false,
+    );
   });
 
   it("enforces the exact 10-character length for TERMS_UPDATED_AT (registry-level bound only; calendar validity is checked at the admin write path)", () => {

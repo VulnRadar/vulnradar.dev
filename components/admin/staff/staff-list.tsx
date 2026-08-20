@@ -750,7 +750,10 @@ export function StaffList({
 
                 {invitesLoading && pendingInvites.length === 0 ? (
                   <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    <Loader2
+                      className="h-4 w-4 animate-spin"
+                      aria-hidden="true"
+                    />
                     Loading pending invites...
                   </div>
                 ) : pendingInvites.length === 0 ? (
@@ -779,13 +782,14 @@ export function StaffList({
                             />
                             <span>
                               expires{" "}
-                              {new Date(
-                                invite.expires_at,
-                              ).toLocaleDateString("en-US", {
-                                month: "short",
-                                day: "numeric",
-                                year: "numeric",
-                              })}
+                              {new Date(invite.expires_at).toLocaleDateString(
+                                "en-US",
+                                {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                },
+                              )}
                             </span>
                           </p>
                         </div>

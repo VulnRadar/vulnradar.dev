@@ -145,7 +145,11 @@ describe("fingerprintSoftware", () => {
 
   it("reads a CMS + version out of a generator meta tag", () => {
     const body = `<html><head><meta name="generator" content="WordPress 6.1" /></head></html>`;
-    const items = fingerprintSoftware(new Headers(), body, "https://example.com");
+    const items = fingerprintSoftware(
+      new Headers(),
+      body,
+      "https://example.com",
+    );
     expect(items).toContainEqual({
       name: "WordPress",
       version: "6.1",
@@ -156,7 +160,11 @@ describe("fingerprintSoftware", () => {
 
   it("returns [] when nothing recognizable is present", () => {
     const h = new Headers({ Server: "cloud-proxy-internal" });
-    const items = fingerprintSoftware(h, "<html></html>", "https://example.com");
+    const items = fingerprintSoftware(
+      h,
+      "<html></html>",
+      "https://example.com",
+    );
     expect(items).toEqual([]);
   });
 });
@@ -246,7 +254,12 @@ describe("correlateSoftwareCves: NVD", () => {
   it("does not correlate client-side libraries (osv-check owns those)", async () => {
     const fetchMock = stubFetch(() => nvdVulnerable([{ id: "CVE-x" }]));
     const result = await correlateSoftwareCves("https://example.com", [
-      item({ name: "jQuery", version: "1.8.2", category: "library", source: "script src" }),
+      item({
+        name: "jQuery",
+        version: "1.8.2",
+        category: "library",
+        source: "script src",
+      }),
     ]);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(mockQueryOsv).not.toHaveBeenCalled();
@@ -265,7 +278,10 @@ describe("correlateSoftwareCves: OSV", () => {
         aliases: ["CVE-2023-25577"],
         summary: "Werkzeug DoS",
         severity: [
-          { type: "CVSS_V3", score: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H" },
+          {
+            type: "CVSS_V3",
+            score: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+          },
         ],
       },
     ]);
@@ -358,7 +374,9 @@ describe("correlateSoftwareCves: lookup cap", () => {
 
 describe("correlateSoftwareCves: host guard", () => {
   it("skips external lookups for a raw IP target but still lists the inventory", async () => {
-    const fetchMock = stubFetch(() => nvdVulnerable([{ id: "CVE-x", score: 9 }]));
+    const fetchMock = stubFetch(() =>
+      nvdVulnerable([{ id: "CVE-x", score: 9 }]),
+    );
     const result = await correlateSoftwareCves("https://93.184.216.34/", [
       item({ name: "nginx", version: "1.18.0" }),
     ]);
@@ -373,7 +391,9 @@ describe("correlateSoftwareCves: host guard", () => {
   });
 
   it("skips external lookups for a private/internal hostname", async () => {
-    const fetchMock = stubFetch(() => nvdVulnerable([{ id: "CVE-x", score: 9 }]));
+    const fetchMock = stubFetch(() =>
+      nvdVulnerable([{ id: "CVE-x", score: 9 }]),
+    );
     const result = await correlateSoftwareCves("http://localhost/", [
       item({ name: "nginx", version: "1.18.0" }),
     ]);
@@ -416,7 +436,12 @@ describe("software fingerprint side channel", () => {
       item({ name: "nginx", version: "1.18.0" }),
     ]);
     recordSoftwareFingerprint("example.com", [
-      item({ name: "PHP", version: "8.1.2", category: "language", source: "X-Powered-By header" }),
+      item({
+        name: "PHP",
+        version: "8.1.2",
+        category: "language",
+        source: "X-Powered-By header",
+      }),
     ]);
     const merged = readSoftwareFingerprint("example.com");
     expect(merged?.map((i) => i.name).sort()).toEqual(["PHP", "nginx"]);
@@ -427,7 +452,12 @@ describe("software fingerprint side channel", () => {
       item({ name: "WordPress", category: "cms", source: "wp-content markup" }),
     ]);
     recordSoftwareFingerprint("example.com", [
-      item({ name: "WordPress", version: "6.1", category: "cms", source: "meta generator" }),
+      item({
+        name: "WordPress",
+        version: "6.1",
+        category: "cms",
+        source: "meta generator",
+      }),
     ]);
     const merged = readSoftwareFingerprint("example.com");
     expect(merged).toHaveLength(1);

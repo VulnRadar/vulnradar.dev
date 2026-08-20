@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
-import { scanPorts, readPortScan, recordPortScan } from "@/lib/scanner/port-scan";
+import {
+  scanPorts,
+  readPortScan,
+  recordPortScan,
+} from "@/lib/scanner/port-scan";
 import { isUrlOwnedByUser } from "@/lib/domains/scope";
 import {
   resolveOwnedScan,

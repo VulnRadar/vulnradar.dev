@@ -29,8 +29,7 @@ const mockGetSettings = vi.fn(async (keys: SettingKey[]) =>
   Object.fromEntries(keys.map((k) => [k, registryDefault(k)])),
 );
 vi.mock("@/lib/config/runtime-config", () => ({
-  getSetting: (...args: unknown[]) =>
-    mockGetSetting(...(args as [SettingKey])),
+  getSetting: (...args: unknown[]) => mockGetSetting(...(args as [SettingKey])),
   getSettings: (...args: unknown[]) =>
     mockGetSettings(...(args as [SettingKey[]])),
 }));
@@ -425,7 +424,10 @@ describe("authenticated crawl", () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 500 }] });
 
     const res = await POST(
-      postRequest({ url: "https://app.example.com/dashboard", auth: FORM_AUTH }),
+      postRequest({
+        url: "https://app.example.com/dashboard",
+        auth: FORM_AUTH,
+      }),
     );
 
     expect(res.status).toBe(200);
@@ -447,7 +449,10 @@ describe("authenticated crawl", () => {
     });
 
     const res = await POST(
-      postRequest({ url: "https://app.example.com/dashboard", auth: FORM_AUTH }),
+      postRequest({
+        url: "https://app.example.com/dashboard",
+        auth: FORM_AUTH,
+      }),
     );
 
     expect(res.status).toBe(422);
@@ -470,7 +475,10 @@ describe("authenticated crawl", () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 501 }] });
 
     await POST(
-      postRequest({ url: "https://app.example.com/dashboard", auth: FORM_AUTH }),
+      postRequest({
+        url: "https://app.example.com/dashboard",
+        auth: FORM_AUTH,
+      }),
     );
 
     // Only the tracker INSERT ran -- no resolveScanIsPublic account lookup.
@@ -502,7 +510,10 @@ describe("authenticated crawl", () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 503 }] });
 
     await POST(
-      postRequest({ url: "https://app.example.com/dashboard", auth: FORM_AUTH }),
+      postRequest({
+        url: "https://app.example.com/dashboard",
+        auth: FORM_AUTH,
+      }),
     );
 
     // No bound value in any DB call carries the username or password.
@@ -526,7 +537,10 @@ describe("authenticated crawl", () => {
     );
 
     const res = await POST(
-      postRequest({ url: "https://app.example.com/dashboard", auth: FORM_AUTH }),
+      postRequest({
+        url: "https://app.example.com/dashboard",
+        auth: FORM_AUTH,
+      }),
     );
 
     expect(res.status).toBe(403);

@@ -10,7 +10,12 @@ import {
   TechArticleStructuredData,
 } from "@/components/seo/structured-data";
 import { CodeBlock, InlineCode } from "@/components/docs";
-import { SeoPageShell, SeverityPill, Breadcrumbs, ScanCta } from "@/lib/seo/seo-ui";
+import {
+  SeoPageShell,
+  SeverityPill,
+  Breadcrumbs,
+  ScanCta,
+} from "@/lib/seo/seo-ui";
 import {
   getAllChecks,
   getCheckById,
@@ -214,7 +219,10 @@ export default async function CheckPage({
             </h2>
             <ol className="space-y-3">
               {check.fixSteps.map((step, i) => (
-                <li key={i} className="flex gap-3 text-sm sm:text-base leading-relaxed">
+                <li
+                  key={i}
+                  className="flex gap-3 text-sm sm:text-base leading-relaxed"
+                >
                   <span className="shrink-0 mt-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-semibold tabular-nums">
                     {i + 1}
                   </span>
@@ -300,7 +308,10 @@ export default async function CheckPage({
             <ul className="grid sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
               {siblings.map((c) => (
                 <li key={c.id} className="flex items-center gap-2 min-w-0">
-                  <SeverityPill severity={c.severity} className="scale-90 shrink-0" />
+                  <SeverityPill
+                    severity={c.severity}
+                    className="scale-90 shrink-0"
+                  />
                   <Link
                     href={checkPath(c.id)}
                     className="text-muted-foreground hover:text-foreground transition-colors truncate"

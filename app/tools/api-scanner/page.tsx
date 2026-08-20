@@ -7,7 +7,12 @@ import {
   FaqStructuredData,
   SoftwareStructuredData,
 } from "@/components/seo/structured-data";
-import { SeoPageShell, SeverityPill, Breadcrumbs, ScanCta } from "@/lib/seo/seo-ui";
+import {
+  SeoPageShell,
+  SeverityPill,
+  Breadcrumbs,
+  ScanCta,
+} from "@/lib/seo/seo-ui";
 import { getChecksInCategory } from "@/lib/seo/checks-content";
 import { APP_NAME } from "@/lib/config/constants";
 
@@ -75,8 +80,8 @@ export default async function ApiScannerPage() {
               API scanner, online
             </h1>
             <p className="mt-4 text-base sm:text-lg text-muted-foreground leading-relaxed">
-              Paste an API URL and {APP_NAME} checks it the way an attacker would
-              probe it from the outside: CORS, rate limiting, GraphQL
+              Paste an API URL and {APP_NAME} checks it the way an attacker
+              would probe it from the outside: CORS, rate limiting, GraphQL
               introspection, and any OpenAPI document you left reachable. No
               agent to install, just paste a URL.
             </p>

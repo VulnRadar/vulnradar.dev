@@ -163,9 +163,7 @@ function SslGradeStat({ grade }: { grade: string }) {
           </button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-72 text-left">
-          <p className="text-xs font-semibold text-foreground">
-            SSL/TLS grade
-          </p>
+          <p className="text-xs font-semibold text-foreground">SSL/TLS grade</p>
           <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
             A letter grade for this site&apos;s HTTPS setup, in the style of SSL
             Labs. It comes from the TLS protocol version, the certificate&apos;s
@@ -178,7 +176,9 @@ function SslGradeStat({ grade }: { grade: string }) {
             </span>
             <span className="text-muted-foreground">Strong, modern TLS</span>
             <span className="font-semibold text-primary">B</span>
-            <span className="text-muted-foreground">Solid, with minor gaps</span>
+            <span className="text-muted-foreground">
+              Solid, with minor gaps
+            </span>
             <span className="font-semibold text-[hsl(var(--severity-medium))]">
               C
             </span>

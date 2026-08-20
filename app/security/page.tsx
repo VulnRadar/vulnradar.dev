@@ -59,7 +59,10 @@ export default async function SecurityPage() {
 
         {/* Primary action, given the most weight on the page: the address to
             email and the one thing not to do (file a public issue). */}
-        <LegalCallout variant="info" title="Email us, do not open a public issue">
+        <LegalCallout
+          variant="info"
+          title="Email us, do not open a public issue"
+        >
           <p>
             Send your report to{" "}
             <a
@@ -99,7 +102,10 @@ export default async function SecurityPage() {
             </a>{" "}
             with enough detail for us to reproduce the problem. If you would
             rather not email, the{" "}
-            <Link href={ROUTES.CONTACT} className="text-primary hover:underline">
+            <Link
+              href={ROUTES.CONTACT}
+              className="text-primary hover:underline"
+            >
               contact form
             </Link>{" "}
             reaches the same inbox, but email is faster and lets you attach a
@@ -250,7 +256,10 @@ export default async function SecurityPage() {
               GitHub
             </a>
             . For anything that is not a security issue, use the{" "}
-            <Link href={ROUTES.CONTACT} className="text-primary hover:underline">
+            <Link
+              href={ROUTES.CONTACT}
+              className="text-primary hover:underline"
+            >
               contact page
             </Link>
             .

@@ -52,9 +52,8 @@ vi.mock("node:dns/promises", () => ({
   lookup: (host: string, opts: unknown) => h.lookup(host, opts),
 }));
 
-const { scanPorts, buildRiskyPortFindings } = await import(
-  "@/lib/scanner/port-scan"
-);
+const { scanPorts, buildRiskyPortFindings } =
+  await import("@/lib/scanner/port-scan");
 
 function freshSignal(): AbortSignal {
   return new AbortController().signal;
@@ -97,7 +96,9 @@ describe("scanPorts internal-range / SSRF protection", () => {
 
   it("returns null (never throws) when DNS resolution fails", async () => {
     h.lookup.mockRejectedValue(new Error("ENOTFOUND"));
-    await expect(scanPorts("db.example.com", freshSignal())).resolves.toBeNull();
+    await expect(
+      scanPorts("db.example.com", freshSignal()),
+    ).resolves.toBeNull();
   });
 });
 
@@ -159,10 +160,14 @@ describe("scanPorts best-effort contract", () => {
 
 describe("buildRiskyPortFindings", () => {
   it("emits one finding for an exposed database port but none for a bare web port", () => {
-    const findings = buildRiskyPortFindings("example.com", "https://example.com/", [
-      { port: 80, service: "HTTP", state: "open" },
-      { port: 3306, service: "MySQL", state: "open" },
-    ]);
+    const findings = buildRiskyPortFindings(
+      "example.com",
+      "https://example.com/",
+      [
+        { port: 80, service: "HTTP", state: "open" },
+        { port: 3306, service: "MySQL", state: "open" },
+      ],
+    );
     expect(findings).toHaveLength(1);
     expect(findings[0].title).toMatch(/MySQL/);
     expect(findings[0].severity).toBe("high");
@@ -171,17 +176,29 @@ describe("buildRiskyPortFindings", () => {
 
   it("produces a deterministic id from the port and URL, stable across calls", () => {
     const open = [{ port: 3389, service: "RDP", state: "open" as const }];
-    const a = buildRiskyPortFindings("example.com", "https://example.com/", open);
-    const b = buildRiskyPortFindings("example.com", "https://example.com/", open);
+    const a = buildRiskyPortFindings(
+      "example.com",
+      "https://example.com/",
+      open,
+    );
+    const b = buildRiskyPortFindings(
+      "example.com",
+      "https://example.com/",
+      open,
+    );
     expect(a[0].id).toBe(b[0].id);
     expect(a[0].id).toContain("open-port-3389");
   });
 
   it("returns an empty array when no open port is risky", () => {
-    const findings = buildRiskyPortFindings("example.com", "https://example.com/", [
-      { port: 80, service: "HTTP", state: "open" },
-      { port: 443, service: "HTTPS", state: "open" },
-    ]);
+    const findings = buildRiskyPortFindings(
+      "example.com",
+      "https://example.com/",
+      [
+        { port: 80, service: "HTTP", state: "open" },
+        { port: 443, service: "HTTPS", state: "open" },
+      ],
+    );
     expect(findings).toEqual([]);
   });
 });

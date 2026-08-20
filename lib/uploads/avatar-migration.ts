@@ -45,7 +45,8 @@ const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff]);
 /** The legacy on-disk avatar directory (honors the old override env). */
 function legacyAvatarDir(): string {
   return (
-    process.env.AVATAR_STORAGE_DIR || path.join(process.cwd(), "data", "avatars")
+    process.env.AVATAR_STORAGE_DIR ||
+    path.join(process.cwd(), "data", "avatars")
   );
 }
 

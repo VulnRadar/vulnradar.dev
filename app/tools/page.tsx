@@ -58,8 +58,8 @@ export default async function ToolsIndexPage() {
           </h1>
           <p className="mt-4 text-base sm:text-lg text-muted-foreground leading-relaxed">
             Focused, single-purpose views of the {APP_NAME} scanner. Each one
-            runs the same detection engine against a URL you paste, no signup and
-            nothing to install.
+            runs the same detection engine against a URL you paste, no signup
+            and nothing to install.
           </p>
         </header>
 

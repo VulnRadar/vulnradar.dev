@@ -60,14 +60,46 @@ function buildLlmsTxt(): string {
   lines.push("## Documentation");
   lines.push("");
   const docs: [string, string, string][] = [
-    ["/docs", "Documentation", "Setup, usage, and reference for the scanner and the API."],
-    ["/docs/api", "API reference", "REST API with bearer-token auth to trigger scans and read results."],
-    ["/docs/setup", "Setup guide", "Getting an account, first scan, and API keys."],
-    ["/docs/self-hosting", "Self-hosting guide", "Run the whole scanner on your own infrastructure under GPL-3.0."],
-    ["/docs/extension", "Browser extension", "Scan the page you are currently viewing from the browser."],
-    ["/docs/webhooks", "Webhooks", "Deliver scan results to your own endpoints."],
-    ["/docs/rate-limits", "Rate limits", "API request and scan quotas per plan."],
-    ["/docs/config", "Configuration", "Environment and config values for a self-hosted deployment."],
+    [
+      "/docs",
+      "Documentation",
+      "Setup, usage, and reference for the scanner and the API.",
+    ],
+    [
+      "/docs/api",
+      "API reference",
+      "REST API with bearer-token auth to trigger scans and read results.",
+    ],
+    [
+      "/docs/setup",
+      "Setup guide",
+      "Getting an account, first scan, and API keys.",
+    ],
+    [
+      "/docs/self-hosting",
+      "Self-hosting guide",
+      "Run the whole scanner on your own infrastructure under GPL-3.0.",
+    ],
+    [
+      "/docs/extension",
+      "Browser extension",
+      "Scan the page you are currently viewing from the browser.",
+    ],
+    [
+      "/docs/webhooks",
+      "Webhooks",
+      "Deliver scan results to your own endpoints.",
+    ],
+    [
+      "/docs/rate-limits",
+      "Rate limits",
+      "API request and scan quotas per plan.",
+    ],
+    [
+      "/docs/config",
+      "Configuration",
+      "Environment and config values for a self-hosted deployment.",
+    ],
   ];
   for (const [path, label, note] of docs) {
     lines.push(`- [${label}](${abs(path)}): ${note}`);
@@ -96,9 +128,21 @@ function buildLlmsTxt(): string {
   lines.push("## Free tools");
   lines.push("");
   const tools: [string, string, string][] = [
-    ["/tools", "Free security tools", "No-signup, single-purpose views of the scanner."],
-    ["/tools/api-scanner", "API scanner", "Check an API URL for CORS policy, rate-limit headers, GraphQL introspection, and exposed OpenAPI docs."],
-    ["/tools/link-checker", "Link and redirect checker", "Follow a URL's redirect chain and inspect its headers, TLS, and reputation."],
+    [
+      "/tools",
+      "Free security tools",
+      "No-signup, single-purpose views of the scanner.",
+    ],
+    [
+      "/tools/api-scanner",
+      "API scanner",
+      "Check an API URL for CORS policy, rate-limit headers, GraphQL introspection, and exposed OpenAPI docs.",
+    ],
+    [
+      "/tools/link-checker",
+      "Link and redirect checker",
+      "Follow a URL's redirect chain and inspect its headers, TLS, and reputation.",
+    ],
   ];
   for (const [path, label, note] of tools) {
     lines.push(`- [${label}](${abs(path)}): ${note}`);
@@ -130,10 +174,22 @@ function buildLlmsTxt(): string {
   lines.push("## Product");
   lines.push("");
   const product: [string, string, string][] = [
-    ["/landing", `What ${APP_NAME} is`, "Product overview, how a scan works, and the FAQ."],
+    [
+      "/landing",
+      `What ${APP_NAME} is`,
+      "Product overview, how a scan works, and the FAQ.",
+    ],
     ["/demo", "Live demo", "Run a real scan without an account."],
-    ["/public-scans", "Public scans directory", "Recently shared public scan reports."],
-    ["/changelog", "Changelog", "Release history for the app and the detection engine."],
+    [
+      "/public-scans",
+      "Public scans directory",
+      "Recently shared public scan reports.",
+    ],
+    [
+      "/changelog",
+      "Changelog",
+      "Release history for the app and the detection engine.",
+    ],
   ];
   for (const [path, label, note] of product) {
     lines.push(`- [${label}](${abs(path)}): ${note}`);

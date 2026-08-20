@@ -51,9 +51,8 @@ vi.mock("@/lib/email/email", async (importOriginal) => {
   return { ...actual, sendEmail: (params: unknown) => mockSendEmail(params) };
 });
 
-const { POST, GET, DELETE } = await import(
-  "@/app/api/v3/admin/staff-invites/route"
-);
+const { POST, GET, DELETE } =
+  await import("@/app/api/v3/admin/staff-invites/route");
 const { hashStaffInviteToken } = await import("@/lib/admin/staff-invites");
 
 // requireAdmin: SELECT id, role, totp_enabled FROM users WHERE id = $1

@@ -395,17 +395,19 @@ export async function discoverSubdomainsForRoot(
   );
 
   // Build results
-  const results: DiscoveredSubdomain[] = passiveEntries.map(([sub, sources]) => {
-    const hasDns = dnsResolved.has(sub);
-    const httpResult = reachability.get(sub);
-    return {
-      subdomain: sub,
-      url: `https://${sub}`,
-      reachable: hasDns && !!httpResult?.reachable,
-      statusCode: httpResult?.statusCode,
-      sources,
-    };
-  });
+  const results: DiscoveredSubdomain[] = passiveEntries.map(
+    ([sub, sources]) => {
+      const hasDns = dnsResolved.has(sub);
+      const httpResult = reachability.get(sub);
+      return {
+        subdomain: sub,
+        url: `https://${sub}`,
+        reachable: hasDns && !!httpResult?.reachable,
+        statusCode: httpResult?.statusCode,
+        sources,
+      };
+    },
+  );
 
   results.sort((a, b) => {
     if (a.reachable !== b.reachable) return a.reachable ? -1 : 1;

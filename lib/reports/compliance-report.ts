@@ -190,10 +190,7 @@ export function generateComplianceReport(result: ScanResult): string {
   const findings = result.findings ?? [];
   const frameworkNames = FRAMEWORKS.map((f) => f.name).join(", ");
 
-  const lines: string[] = [
-    `# Compliance mapping report for ${result.url}`,
-    "",
-  ];
+  const lines: string[] = [`# Compliance mapping report for ${result.url}`, ""];
 
   // Disclaimer, at the very top, in its own section. This framing is mandatory:
   // the report is guidance, never a certification or a statement of compliance.

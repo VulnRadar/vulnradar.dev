@@ -745,8 +745,16 @@ describe("remaining templates build without throwing and return a well-formed en
           planName: "Core Supporter",
           previousPlanName: "Pro Supporter",
         }),
-      () => email.subscriptionChangedEmail({ kind: "canceled", planName: "Pro Supporter" }),
-      () => email.subscriptionChangedEmail({ kind: "renewed", planName: "Core Supporter" }),
+      () =>
+        email.subscriptionChangedEmail({
+          kind: "canceled",
+          planName: "Pro Supporter",
+        }),
+      () =>
+        email.subscriptionChangedEmail({
+          kind: "renewed",
+          planName: "Core Supporter",
+        }),
       () => email.accountDeletedEmail("Alice"),
       () => email.accountDeletedEmail(null),
       () => email.sessionRevokedEmail(details),

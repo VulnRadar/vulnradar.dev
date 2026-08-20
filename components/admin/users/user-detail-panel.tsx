@@ -741,8 +741,8 @@ export function UserDetailPanel({
                         rel="noopener noreferrer"
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-foreground/10 border border-foreground/25 hover:bg-foreground/20 hover:underline transition-colors"
                       >
-                        <FaGithub className="h-3 w-3" aria-hidden="true" />
-                        @{u.github_login}
+                        <FaGithub className="h-3 w-3" aria-hidden="true" />@
+                        {u.github_login}
                         {u.github_name && (
                           <span className="opacity-70">({u.github_name})</span>
                         )}

@@ -40,9 +40,8 @@ vi.mock("@/lib/database/db", () => ({
   },
 }));
 
-const { attachRemediation, getRemediationMap } = await import(
-  "@/lib/scanner/remediation-store"
-);
+const { attachRemediation, getRemediationMap } =
+  await import("@/lib/scanner/remediation-store");
 
 function finding(id: string): Vulnerability {
   return {

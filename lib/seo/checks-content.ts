@@ -150,7 +150,8 @@ export function getChecksInCategory(category: Category): SeoCheck[] {
 /** `{ category -> number of documented checks }`, matching what pages list. */
 export function getSeoCategoryCounts(): Record<Category, number> {
   const out = {} as Record<Category, number>;
-  for (const cat of SEO_CATEGORIES) out[cat] = BY_CATEGORY.get(cat)?.length ?? 0;
+  for (const cat of SEO_CATEGORIES)
+    out[cat] = BY_CATEGORY.get(cat)?.length ?? 0;
   return out;
 }
 

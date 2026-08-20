@@ -90,9 +90,7 @@ export function shouldCaptureScreenshot(opts: {
   protocolType: string;
   isRawIpTarget: boolean;
 }): boolean {
-  return (
-    opts.optedIn && opts.protocolType === "http" && !opts.isRawIpTarget
-  );
+  return opts.optedIn && opts.protocolType === "http" && !opts.isRawIpTarget;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -101,11 +99,7 @@ function sleep(ms: number): Promise<void> {
 
 /** Resolve `p`, or resolve `fallback` once `ms` elapses -- whichever is
  *  first. Used so a hung CDP command can never exceed the wall-clock bound. */
-function withDeadline<T>(
-  p: Promise<T>,
-  ms: number,
-  fallback: T,
-): Promise<T> {
+function withDeadline<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
   return Promise.race([
     p,
     new Promise<T>((resolve) => {
@@ -169,7 +163,10 @@ async function captureViaCdp(
   if (typeof b64 !== "string" || b64.length === 0) return null;
 
   const data = Buffer.from(b64, "base64");
-  if (data.byteLength === 0 || data.byteLength > CONFIG_SCAN_SCREENSHOT_MAX_BYTES) {
+  if (
+    data.byteLength === 0 ||
+    data.byteLength > CONFIG_SCAN_SCREENSHOT_MAX_BYTES
+  ) {
     return null;
   }
 

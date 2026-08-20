@@ -17,9 +17,8 @@ vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
 }));
 
-const { scanNumericId, resolveScanRow } = await import(
-  "@/lib/history/resolve-scan"
-);
+const { scanNumericId, resolveScanRow } =
+  await import("@/lib/history/resolve-scan");
 
 beforeEach(() => {
   mockQuery.mockReset();

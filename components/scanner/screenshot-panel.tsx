@@ -141,116 +141,119 @@ export function ScreenshotPanel({
         currentPlan={userPlan}
       />
       <div className="overflow-hidden rounded-md border border-border bg-card">
-      <button
-        type="button"
-        onClick={() => setExpanded(!expanded)}
-        aria-expanded={expanded}
-        className="flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors hover:bg-muted/50"
-      >
-        <Camera aria-hidden className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-          Page screenshot
-        </span>
-        {captured && (
-          <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
-            {captured}
+        <button
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          aria-expanded={expanded}
+          className="flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors hover:bg-muted/50"
+        >
+          <Camera
+            aria-hidden
+            className="h-4 w-4 shrink-0 text-muted-foreground"
+          />
+          <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+            Page screenshot
           </span>
-        )}
-        {expanded ? (
-          <ChevronDown
-            aria-hidden
-            className="h-4 w-4 shrink-0 text-muted-foreground"
-          />
-        ) : (
-          <ChevronRight
-            aria-hidden
-            className="h-4 w-4 shrink-0 text-muted-foreground"
-          />
-        )}
-      </button>
-      {expanded && (
-        <div className="border-t border-border">
-          {scanId && (
-            <div className="flex items-center gap-2 border-b border-border bg-muted/30 px-4 py-1.5">
-              <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
-                {captured ? `Captured ${captured}` : "Page screenshot"}
-              </span>
-              <button
-                type="button"
-                onClick={handleRefresh}
-                disabled={refreshing}
-                className={cn(
-                  "inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-50",
-                  canRefresh
-                    ? "text-foreground hover:bg-muted"
-                    : "text-primary hover:bg-primary/10",
-                )}
-                title={
-                  canRefresh
-                    ? "Re-capture the page screenshot now"
-                    : "Premium feature, upgrade to Pro"
-                }
-                aria-label={
-                  canRefresh
-                    ? "Re-capture the page screenshot now"
-                    : "Premium feature, upgrade to Pro"
-                }
-              >
-                {refreshing ? (
-                  <Loader2 aria-hidden className="h-3.5 w-3.5 animate-spin" />
-                ) : canRefresh ? (
-                  <RefreshCw aria-hidden className="h-3.5 w-3.5" />
-                ) : (
-                  <Crown aria-hidden className="h-3.5 w-3.5" />
-                )}
-                <span className="hidden sm:inline">
-                  {canRefresh ? "Refresh" : "Pro"}
+          {captured && (
+            <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
+              {captured}
+            </span>
+          )}
+          {expanded ? (
+            <ChevronDown
+              aria-hidden
+              className="h-4 w-4 shrink-0 text-muted-foreground"
+            />
+          ) : (
+            <ChevronRight
+              aria-hidden
+              className="h-4 w-4 shrink-0 text-muted-foreground"
+            />
+          )}
+        </button>
+        {expanded && (
+          <div className="border-t border-border">
+            {scanId && (
+              <div className="flex items-center gap-2 border-b border-border bg-muted/30 px-4 py-1.5">
+                <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
+                  {captured ? `Captured ${captured}` : "Page screenshot"}
                 </span>
-              </button>
-            </div>
-          )}
-          {error && (
-            <p className="border-b border-border px-4 py-2 text-xs text-destructive">
-              {error}
-            </p>
-          )}
-          <Dialog>
-            <DialogTrigger asChild>
-              <button
-                type="button"
-                className="group relative block w-full bg-muted/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                aria-label="Enlarge page screenshot"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element -- served from
+                <button
+                  type="button"
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                  className={cn(
+                    "inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-50",
+                    canRefresh
+                      ? "text-foreground hover:bg-muted"
+                      : "text-primary hover:bg-primary/10",
+                  )}
+                  title={
+                    canRefresh
+                      ? "Re-capture the page screenshot now"
+                      : "Premium feature, upgrade to Pro"
+                  }
+                  aria-label={
+                    canRefresh
+                      ? "Re-capture the page screenshot now"
+                      : "Premium feature, upgrade to Pro"
+                  }
+                >
+                  {refreshing ? (
+                    <Loader2 aria-hidden className="h-3.5 w-3.5 animate-spin" />
+                  ) : canRefresh ? (
+                    <RefreshCw aria-hidden className="h-3.5 w-3.5" />
+                  ) : (
+                    <Crown aria-hidden className="h-3.5 w-3.5" />
+                  )}
+                  <span className="hidden sm:inline">
+                    {canRefresh ? "Refresh" : "Pro"}
+                  </span>
+                </button>
+              </div>
+            )}
+            {error && (
+              <p className="border-b border-border px-4 py-2 text-xs text-destructive">
+                {error}
+              </p>
+            )}
+            <Dialog>
+              <DialogTrigger asChild>
+                <button
+                  type="button"
+                  className="group relative block w-full bg-muted/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  aria-label="Enlarge page screenshot"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element -- served from
                     a dynamic same-origin API route; next/image would need a loader
                     and remotePatterns config for what is a simple <img>. */}
+                  <img
+                    src={imgSrc}
+                    alt={alt}
+                    width={width}
+                    height={height}
+                    loading="lazy"
+                    onError={() => setBroken(true)}
+                    className="block aspect-4/3 max-h-[280px] w-full object-cover object-top sm:aspect-auto sm:max-h-[420px]"
+                  />
+                  <span className="absolute right-2 top-2 flex items-center gap-1 rounded bg-background/85 px-1.5 py-0.5 text-[11px] font-medium text-foreground opacity-0 backdrop-blur-xs transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                    <Maximize2 aria-hidden className="h-3 w-3" />
+                    Enlarge
+                  </span>
+                </button>
+              </DialogTrigger>
+              <DialogContent className="max-w-4xl p-2 sm:p-3">
+                <DialogTitle className="sr-only">{alt}</DialogTitle>
+                {/* eslint-disable-next-line @next/next/no-img-element -- see above. */}
                 <img
                   src={imgSrc}
                   alt={alt}
-                  width={width}
-                  height={height}
-                  loading="lazy"
-                  onError={() => setBroken(true)}
-                  className="block aspect-4/3 max-h-[280px] w-full object-cover object-top sm:aspect-auto sm:max-h-[420px]"
+                  className="h-auto max-h-[80vh] w-full rounded object-contain"
                 />
-                <span className="absolute right-2 top-2 flex items-center gap-1 rounded bg-background/85 px-1.5 py-0.5 text-[11px] font-medium text-foreground opacity-0 backdrop-blur-xs transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-                  <Maximize2 aria-hidden className="h-3 w-3" />
-                  Enlarge
-                </span>
-              </button>
-            </DialogTrigger>
-            <DialogContent className="max-w-4xl p-2 sm:p-3">
-              <DialogTitle className="sr-only">{alt}</DialogTitle>
-              {/* eslint-disable-next-line @next/next/no-img-element -- see above. */}
-              <img
-                src={imgSrc}
-                alt={alt}
-                className="h-auto max-h-[80vh] w-full rounded object-contain"
-              />
-            </DialogContent>
-          </Dialog>
-        </div>
-      )}
+              </DialogContent>
+            </Dialog>
+          </div>
+        )}
       </div>
     </>
   );

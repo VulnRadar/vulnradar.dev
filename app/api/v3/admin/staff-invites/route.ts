@@ -206,7 +206,9 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
   if (!parsed.success) return ApiResponse.badRequest(parsed.error);
 
   const id =
-    typeof parsed.data.id === "number" ? parsed.data.id : Number(parsed.data.id);
+    typeof parsed.data.id === "number"
+      ? parsed.data.id
+      : Number(parsed.data.id);
   if (!Number.isInteger(id) || id <= 0) {
     return ApiResponse.badRequest("A valid invite id is required.");
   }

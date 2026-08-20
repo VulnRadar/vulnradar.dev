@@ -7,7 +7,12 @@ import {
   BreadcrumbStructuredData,
   FaqStructuredData,
 } from "@/components/seo/structured-data";
-import { SeoPageShell, SeverityPill, Breadcrumbs, ScanCta } from "@/lib/seo/seo-ui";
+import {
+  SeoPageShell,
+  SeverityPill,
+  Breadcrumbs,
+  ScanCta,
+} from "@/lib/seo/seo-ui";
 import {
   SEO_CATEGORIES,
   getChecksInCategory,
@@ -26,7 +31,13 @@ export function generateStaticParams() {
 
 const VALID = new Set<string>(SEO_CATEGORIES);
 
-const SEVERITY_ORDER: Severity[] = ["critical", "high", "medium", "low", "info"];
+const SEVERITY_ORDER: Severity[] = [
+  "critical",
+  "high",
+  "medium",
+  "low",
+  "info",
+];
 
 export async function generateMetadata({
   params,

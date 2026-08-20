@@ -67,10 +67,9 @@ export async function readAvatarFile(
   const res = await pool.query<{
     image_data: Buffer;
     content_type: string | null;
-  }>(
-    `SELECT image_data, content_type FROM user_avatars WHERE user_id = $1`,
-    [userId],
-  );
+  }>(`SELECT image_data, content_type FROM user_avatars WHERE user_id = $1`, [
+    userId,
+  ]);
   const row = res.rows[0];
   if (!row?.image_data) return null;
   return {

@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
-import { resolveScanRow, type ScanHistoryRow } from "@/lib/history/resolve-scan";
+import {
+  resolveScanRow,
+  type ScanHistoryRow,
+} from "@/lib/history/resolve-scan";
 import { userMeetsMinimumPlan } from "@/lib/billing/plan-limits";
 import type { PlanId } from "@/lib/billing/catalog";
 

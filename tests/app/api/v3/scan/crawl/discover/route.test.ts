@@ -281,7 +281,10 @@ describe("POST /api/v3/scan/crawl/discover: crawl behavior", () => {
         return htmlResponse(url, `<a href="/docs">Docs</a>`);
       }
       if (url === "https://example.com/docs") {
-        return htmlResponse(url, `<a href="/docs/self-hosting">Self hosting</a>`);
+        return htmlResponse(
+          url,
+          `<a href="/docs/self-hosting">Self hosting</a>`,
+        );
       }
       if (url === "https://example.com/docs/self-hosting") {
         return htmlResponse(

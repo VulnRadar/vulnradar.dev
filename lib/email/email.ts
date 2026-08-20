@@ -252,7 +252,9 @@ function emailDetailPanel(rows: EmailDetailRow[]): string {
   const body = rows
     .map((r, i) => {
       const top =
-        i === 0 ? "" : `border-top: 1px solid ${COLORS.BORDER}; padding-top: 10px;`;
+        i === 0
+          ? ""
+          : `border-top: 1px solid ${COLORS.BORDER}; padding-top: 10px;`;
       const gap = i === 0 ? "0" : "10px";
       const mono = r.mono
         ? "font-family: 'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace;"
@@ -1622,9 +1624,15 @@ export function postureDigestEmail(data: PostureDigestData) {
           label: "New critical/high",
           value: `${newFindingsTotal}`,
           color:
-            newFindingsTotal > 0 ? COLORS.ACCENT_RED_LIGHT : COLORS.TEXT_PRIMARY,
+            newFindingsTotal > 0
+              ? COLORS.ACCENT_RED_LIGHT
+              : COLORS.TEXT_PRIMARY,
         },
-        { label: "Open now", value: `${currentOpenCount}`, color: trendCopy.color },
+        {
+          label: "Open now",
+          value: `${currentOpenCount}`,
+          color: trendCopy.color,
+        },
       ])}
       ${emailNote(`${trendCopy.label}: ${previousOpenCount} to ${currentOpenCount} since your last digest.`, trendCopy.color)}
       ${findingsBlock}
@@ -1733,7 +1741,8 @@ export function paymentReceiptEmail(input: {
   const safePlan = escapeHtml(input.planName);
   const amount = formatMoney(input.amountCents, input.currency);
   const manageUrl = `${APP_URL}/profile?tab=billing`;
-  const hasInvoice = !!input.invoiceUrl && /^https?:\/\//i.test(input.invoiceUrl);
+  const hasInvoice =
+    !!input.invoiceUrl && /^https?:\/\//i.test(input.invoiceUrl);
 
   return {
     subject: `Your ${APP_NAME} payment receipt`,
@@ -1797,10 +1806,7 @@ export function paymentFailedEmail(input: {
 }
 
 export type SubscriptionChangeKind =
-  | "upgraded"
-  | "downgraded"
-  | "canceled"
-  | "renewed";
+  "upgraded" | "downgraded" | "canceled" | "renewed";
 
 // One builder for every subscription lifecycle change, parameterized by kind.
 // The Stripe webhook (customer.subscription.created/updated/deleted) resolves
@@ -1984,9 +1990,7 @@ export function teamRoleChangedEmail(
           color: COLORS.ACCENT_BLUE_LIGHT,
         },
       ])}
-      ${emailParagraph(
-        "What you can do in the team may have changed with it.",
-      )}
+      ${emailParagraph("What you can do in the team may have changed with it.")}
       ${emailButton(`${APP_URL}/teams`, "View the team")}
     `,
   };

@@ -1,7 +1,12 @@
 "use client";
 
 import { useId, useState } from "react";
-import { ChevronDown, ShieldAlert, ShieldCheck, ShieldQuestion } from "lucide-react";
+import {
+  ChevronDown,
+  ShieldAlert,
+  ShieldCheck,
+  ShieldQuestion,
+} from "lucide-react";
 import type {
   ThreatIntelSource,
   ThreatIntelSummary,

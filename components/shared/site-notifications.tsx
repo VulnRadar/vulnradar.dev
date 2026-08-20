@@ -474,10 +474,7 @@ export function SiteToast({
       <div className="p-3">
         <div className="flex items-start gap-2.5">
           <div
-            className={cn(
-              "shrink-0 p-1.5 rounded-md mt-0.5",
-              config.iconBg,
-            )}
+            className={cn("shrink-0 p-1.5 rounded-md mt-0.5", config.iconBg)}
           >
             <Icon className={cn("h-4 w-4", config.iconColor)} />
           </div>

@@ -164,7 +164,10 @@ describe("POST /api/v3/history/[id]/dns - short TTL reuse (BUG 2)", () => {
     const res = await POST(req(), params());
 
     expect(res.status).toBe(200);
-    expect(mockRecordDnsRecords).toHaveBeenCalledWith("example.com", fakeRecords);
+    expect(mockRecordDnsRecords).toHaveBeenCalledWith(
+      "example.com",
+      fakeRecords,
+    );
   });
 });
 

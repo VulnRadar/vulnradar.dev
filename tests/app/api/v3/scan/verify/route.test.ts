@@ -222,11 +222,7 @@ describe("POST /api/v3/scan/verify: auth and validation", () => {
     const [sql, params] = mockQuery.mock.calls[1];
     expect(sql).toContain("public_id = $1");
     // Not all-digits, so no numeric fallback.
-    expect(params).toEqual([
-      "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
-      null,
-      42,
-    ]);
+    expect(params).toEqual(["a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4", null, 42]);
   });
 });
 

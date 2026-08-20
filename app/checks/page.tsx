@@ -6,7 +6,12 @@ import {
   BreadcrumbStructuredData,
   FaqStructuredData,
 } from "@/components/seo/structured-data";
-import { SeoPageShell, SeverityPill, Breadcrumbs, ScanCta } from "@/lib/seo/seo-ui";
+import {
+  SeoPageShell,
+  SeverityPill,
+  Breadcrumbs,
+  ScanCta,
+} from "@/lib/seo/seo-ui";
 import {
   SEO_CATEGORIES,
   getChecksInCategory,

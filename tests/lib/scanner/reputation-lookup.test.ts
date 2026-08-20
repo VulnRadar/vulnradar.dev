@@ -80,7 +80,10 @@ function json(body: unknown, status = 200): Response {
  * defaults to a network rejection, so a source with no explicit setup reads as
  * "unavailable" rather than accidentally "clean".
  */
-function stubFetch(opts: { webRisk?: () => Response; urlhaus?: () => Response }) {
+function stubFetch(opts: {
+  webRisk?: () => Response;
+  urlhaus?: () => Response;
+}) {
   const fn = vi.fn(async (input: RequestInfo | URL) => {
     const u = String(input);
     if (u.includes("webrisk.googleapis.com")) {
@@ -161,7 +164,12 @@ describe("checkReputation: Google Web Risk", () => {
     process.env.WEB_RISK_API_KEY = "test-key";
     stubFetch({
       webRisk: () =>
-        json({ threat: { threatTypes: ["MALWARE"], expireTime: "2026-08-13T00:00:00Z" } }),
+        json({
+          threat: {
+            threatTypes: ["MALWARE"],
+            expireTime: "2026-08-13T00:00:00Z",
+          },
+        }),
       urlhaus: () => json({ query_status: "no_results" }),
     });
     const findings = await checkReputation("https://evil.example.com");
@@ -174,7 +182,8 @@ describe("checkReputation: Google Web Risk", () => {
   it("reports one finding per threat type when multiple are returned", async () => {
     process.env.WEB_RISK_API_KEY = "test-key";
     stubFetch({
-      webRisk: () => json({ threat: { threatTypes: ["MALWARE", "SOCIAL_ENGINEERING"] } }),
+      webRisk: () =>
+        json({ threat: { threatTypes: ["MALWARE", "SOCIAL_ENGINEERING"] } }),
       urlhaus: () => json({ query_status: "no_results" }),
     });
     const findings = await checkReputation("https://evil.example.com");
@@ -206,14 +215,17 @@ describe("checkReputation: Google Web Risk", () => {
     expect(findings).toEqual([]);
     // ...and Web Risk is reported as unavailable, never clean.
     const summary = readThreatIntel("example.com");
-    const webRisk = summary?.sources.find((s) => s.source === "Google Web Risk");
+    const webRisk = summary?.sources.find(
+      (s) => s.source === "Google Web Risk",
+    );
     expect(webRisk?.verdict).toBe("unavailable");
   });
 
   it("ignores an unknown/future Web Risk threatType instead of crashing", async () => {
     process.env.WEB_RISK_API_KEY = "test-key";
     stubFetch({
-      webRisk: () => json({ threat: { threatTypes: ["SOME_NEW_THREAT_TYPE"] } }),
+      webRisk: () =>
+        json({ threat: { threatTypes: ["SOME_NEW_THREAT_TYPE"] } }),
       urlhaus: () => json({ query_status: "no_results" }),
     });
     const findings = await checkReputation("https://example.com");
@@ -278,7 +290,11 @@ describe("queryUrlhaus", () => {
   });
 
   it("never throws on a network error, resolving to unavailable", async () => {
-    stubFetch({ urlhaus: () => { throw new Error("boom"); } });
+    stubFetch({
+      urlhaus: () => {
+        throw new Error("boom");
+      },
+    });
     await expect(queryUrlhaus("example.com", 5000)).resolves.toMatchObject({
       verdict: "unavailable",
     });
@@ -333,7 +349,8 @@ describe("queryQuad9", () => {
 
   it("reports unavailable on a timeout rather than hanging or throwing", async () => {
     resolverResolve4.mockImplementation(
-      () => new Promise((resolve) => setTimeout(() => resolve(["1.2.3.4"]), 100)),
+      () =>
+        new Promise((resolve) => setTimeout(() => resolve(["1.2.3.4"]), 100)),
     );
     const res = await queryQuad9("slow.example.com", 20);
     expect(res.verdict).toBe("unavailable");
@@ -395,7 +412,9 @@ describe("checkReputation: aggregation", () => {
 
     const summary = readThreatIntel("example.com");
     expect(summary).toBeDefined();
-    const urlhaus = summary!.sources.find((s) => s.source.startsWith("URLhaus"));
+    const urlhaus = summary!.sources.find((s) =>
+      s.source.startsWith("URLhaus"),
+    );
     const quad9 = summary!.sources.find((s) => s.source === "Quad9");
     expect(urlhaus?.verdict).toBe("unavailable");
     expect(quad9?.verdict).toBe("clean");
@@ -406,7 +425,11 @@ describe("checkReputation: aggregation", () => {
 
   it("never throws even when every source errors at the network boundary", async () => {
     delete process.env.WEB_RISK_API_KEY;
-    stubFetch({ urlhaus: () => { throw new Error("net"); } });
+    stubFetch({
+      urlhaus: () => {
+        throw new Error("net");
+      },
+    });
     resolverResolve4.mockRejectedValue(
       Object.assign(new Error("ESERVFAIL"), { code: "ESERVFAIL" }),
     );

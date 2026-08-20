@@ -165,9 +165,7 @@ function settledCaa(r: PromiseSettledResult<CaaRecord[]>): string[] {
   return r.value.filter(Boolean).map(formatCaa);
 }
 
-function settledSoa(
-  r: PromiseSettledResult<SoaRecord>,
-): DnsSoaRecord | null {
+function settledSoa(r: PromiseSettledResult<SoaRecord>): DnsSoaRecord | null {
   if (r.status !== "fulfilled" || !r.value) return null;
   const s = r.value;
   return {

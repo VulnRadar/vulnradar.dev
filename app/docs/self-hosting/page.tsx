@@ -406,9 +406,9 @@ curl -b cookies.txt https://scanner.yourdomain.com/api/v3/stripe/setup-webhook
       <DocsSection id="backups" title="Backups">
         <p className="max-w-[68ch] text-sm text-muted-foreground">
           {APP_NAME} ships a built-in backup script:{" "}
-          <InlineCode>pg_dump</InlineCode> to gzip to AES-256-GCM encryption to a
-          local file, with optional pruning and offsite upload. Run it from the
-          shell, from cron, or with the Backup button in{" "}
+          <InlineCode>pg_dump</InlineCode> to gzip to AES-256-GCM encryption to
+          a local file, with optional pruning and offsite upload. Run it from
+          the shell, from cron, or with the Backup button in{" "}
           <InlineCode>/admin</InlineCode> (which streams the same log to the
           panel).
         </p>
@@ -428,15 +428,17 @@ npm run db:restore -- --file=./backups/vulnradar-backup-<timestamp>.sql.gz.enc -
           <p>
             The backup and restore scripts shell out to{" "}
             <InlineCode>pg_dump</InlineCode> and <InlineCode>psql</InlineCode>,
-            which come from the <InlineCode>postgresql-client</InlineCode> system
-            package. Minimal Node images, including the{" "}
-            <strong className="text-foreground">Pterodactyl Node egg</strong>, do
-            not ship it, so backups fail with{" "}
+            which come from the <InlineCode>postgresql-client</InlineCode>{" "}
+            system package. Minimal Node images, including the{" "}
+            <strong className="text-foreground">Pterodactyl Node egg</strong>,
+            do not ship it, so backups fail with{" "}
             <InlineCode>pg_dump not found</InlineCode> and no{" "}
             <InlineCode>backups/</InlineCode> directory is created. Install it
-            first, e.g. <InlineCode>apt-get install -y postgresql-client</InlineCode>{" "}
-            (Debian/Ubuntu) or <InlineCode>apk add postgresql-client</InlineCode>{" "}
-            (Alpine). The official Docker image already includes it.
+            first, e.g.{" "}
+            <InlineCode>apt-get install -y postgresql-client</InlineCode>{" "}
+            (Debian/Ubuntu) or{" "}
+            <InlineCode>apk add postgresql-client</InlineCode> (Alpine). The
+            official Docker image already includes it.
           </p>
         </DocsCallout>
 
@@ -444,8 +446,8 @@ npm run db:restore -- --file=./backups/vulnradar-backup-<timestamp>.sql.gz.enc -
           Backup environment variables
         </h4>
         <p className="text-sm text-muted-foreground">
-          All optional; set them in <InlineCode>.env</InlineCode>. Full reference
-          on the{" "}
+          All optional; set them in <InlineCode>.env</InlineCode>. Full
+          reference on the{" "}
           <Link
             href="/docs/config#layer-2"
             className="text-primary underline-offset-2 hover:underline"
@@ -507,8 +509,8 @@ npm run db:restore -- --file=./backups/vulnradar-backup-<timestamp>.sql.gz.enc -
             falls back to <InlineCode>API_KEY_ENCRYPTION_KEY</InlineCode>, so a
             plaintext backup is never written by accident. A separate{" "}
             <InlineCode>BACKUP_ENCRYPTION_KEY</InlineCode> is still recommended
-            for defense in depth. An encrypted <InlineCode>.enc</InlineCode> file
-            is restored using the same key resolution, and needs its{" "}
+            for defense in depth. An encrypted <InlineCode>.enc</InlineCode>{" "}
+            file is restored using the same key resolution, and needs its{" "}
             <InlineCode>.json</InlineCode> sidecar (the IV and auth tag) present
             next to it. Rehearse a restore against a throwaway database before
             you rely on it.

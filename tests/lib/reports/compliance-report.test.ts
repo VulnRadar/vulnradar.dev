@@ -142,7 +142,9 @@ describe("generateComplianceReport", () => {
     // The DNS finding appears in the unmapped section, after that heading.
     expect(report.indexOf("No SPF Record")).toBeGreaterThan(unmappedIndex);
     // The overview counts it as not mapped.
-    expect(report).toContain("Mapped to at least one control: 1; not mapped: 1");
+    expect(report).toContain(
+      "Mapped to at least one control: 1; not mapped: 1",
+    );
   });
 
   it("does not throw and stays honest for a result with zero findings", () => {
@@ -169,9 +171,7 @@ describe("generateComplianceReport", () => {
       codeExamples: [],
     } as Vulnerability;
 
-    expect(() =>
-      generateComplianceReport(makeResult([bare])),
-    ).not.toThrow();
+    expect(() => generateComplianceReport(makeResult([bare]))).not.toThrow();
     const report = generateComplianceReport(makeResult([bare]));
     expect(report).toContain("Bare Finding");
   });

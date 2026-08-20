@@ -240,7 +240,10 @@ const SOURCE_CACHE_TTL_MS = 10 * 60 * 1000;
 const urlhausCache = new Map<string, CacheEntry>();
 const quad9Cache = new Map<string, CacheEntry>();
 
-function readCache(cache: Map<string, CacheEntry>, host: string): ThreatIntelSource | undefined {
+function readCache(
+  cache: Map<string, CacheEntry>,
+  host: string,
+): ThreatIntelSource | undefined {
   const entry = cache.get(host);
   if (!entry) return undefined;
   if (Date.now() - entry.at > SOURCE_CACHE_TTL_MS) {
@@ -307,7 +310,11 @@ async function queryUrlhausUncached(
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) {
-      return { source: name, verdict: "unavailable", detail: `API returned HTTP ${res.status}` };
+      return {
+        source: name,
+        verdict: "unavailable",
+        detail: `API returned HTTP ${res.status}`,
+      };
     }
     const data = (await res.json()) as UrlhausResponse;
     const status = data.query_status;
@@ -338,7 +345,10 @@ async function queryUrlhausUncached(
     return {
       source: name,
       verdict: "unavailable",
-      detail: err instanceof Error && err.name === "TimeoutError" ? "timeout" : "network error",
+      detail:
+        err instanceof Error && err.name === "TimeoutError"
+          ? "timeout"
+          : "network error",
     };
   }
 }
@@ -421,7 +431,9 @@ async function queryQuad9Uncached(
       source: name,
       verdict: "unavailable",
       detail:
-        err instanceof Error && err.message === "timeout" ? "timeout" : "DNS error",
+        err instanceof Error && err.message === "timeout"
+          ? "timeout"
+          : "DNS error",
     };
   }
 }
@@ -504,10 +516,16 @@ function buildBlocklistFinding(
 // readers of one host each see the value.
 
 const SUMMARY_TTL_MS = 5 * 60 * 1000;
-const summaryStore = new Map<string, { summary: ThreatIntelSummary; at: number }>();
+const summaryStore = new Map<
+  string,
+  { summary: ThreatIntelSummary; at: number }
+>();
 
 /** Stash a freshly computed summary for `host` (called from checkReputation). */
-export function recordThreatIntel(host: string, summary: ThreatIntelSummary): void {
+export function recordThreatIntel(
+  host: string,
+  summary: ThreatIntelSummary,
+): void {
   const now = Date.now();
   for (const [key, entry] of summaryStore) {
     if (now - entry.at > SUMMARY_TTL_MS) summaryStore.delete(key);
@@ -567,15 +585,16 @@ export async function checkReputation(url: string): Promise<Vulnerability[]> {
   // never reject the batch. Each query already swallows its own errors, so a
   // rejection here would only be a genuine bug, and it still degrades to "no
   // contribution" rather than failing the scan.
-  const [webRiskSettled, urlhausSettled, quad9Settled] = await Promise.allSettled([
-    queryWebRisk(url, timeoutMs),
-    host
-      ? queryUrlhaus(host, timeoutMs)
-      : Promise.resolve<ThreatIntelSource | null>(null),
-    host
-      ? queryQuad9(host, timeoutMs)
-      : Promise.resolve<ThreatIntelSource | null>(null),
-  ]);
+  const [webRiskSettled, urlhausSettled, quad9Settled] =
+    await Promise.allSettled([
+      queryWebRisk(url, timeoutMs),
+      host
+        ? queryUrlhaus(host, timeoutMs)
+        : Promise.resolve<ThreatIntelSource | null>(null),
+      host
+        ? queryQuad9(host, timeoutMs)
+        : Promise.resolve<ThreatIntelSource | null>(null),
+    ]);
 
   const findings: Vulnerability[] = [];
   const sources: ThreatIntelSource[] = [];

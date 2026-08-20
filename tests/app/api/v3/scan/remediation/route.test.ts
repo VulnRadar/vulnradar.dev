@@ -17,9 +17,8 @@ vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
 }));
 
-const { POST, GET, DELETE } = await import(
-  "@/app/api/v3/scan/remediation/route"
-);
+const { POST, GET, DELETE } =
+  await import("@/app/api/v3/scan/remediation/route");
 
 function postRequest(body: unknown): NextRequest {
   return new NextRequest("http://localhost/api/v3/scan/remediation", {
@@ -108,9 +107,7 @@ describe("POST /api/v3/scan/remediation", () => {
 
     const [sql, params] = mockQuery.mock.calls[0];
     expect(sql).toContain("INSERT INTO finding_remediation");
-    expect(sql).toContain(
-      "ON CONFLICT (user_id, finding_id, finding_url)",
-    );
+    expect(sql).toContain("ON CONFLICT (user_id, finding_id, finding_url)");
     expect(params).toEqual([
       42,
       "csp-missing--abc123",

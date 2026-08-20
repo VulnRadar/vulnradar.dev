@@ -44,7 +44,8 @@ export interface Alternative {
 const VR = {
   licensing: "Open source, GPL-3.0. Read the detection engine in the repo.",
   hosting: "Hosted SaaS or self-host it yourself with no plan limits.",
-  pricing: "Free tier, then $5, $10, or $20 a month. Same engine on every tier.",
+  pricing:
+    "Free tier, then $5, $10, or $20 a month. Same engine on every tier.",
   onboarding: "Paste a URL. No agent, no appliance, no sales call.",
   engine: "One detection engine, identical on free and paid down to check IDs.",
 };
@@ -59,11 +60,31 @@ export const ALTERNATIVES: Alternative[] = [
     positioning:
       "If you found VulnRadar while searching for IntelliRadar, the practical difference to check is openness and price. VulnRadar is open-source under GPL-3.0, runs as a hosted scan or a self-hosted instance you control, and publishes its entire check set as browsable pages so you can see exactly what it looks for before you run anything.",
     rows: [
-      { feature: "Licensing", vulnradar: VR.licensing, them: "Check the vendor's site; openness varies by product." },
-      { feature: "Self-hosting", vulnradar: VR.hosting, them: "Varies by product." },
-      { feature: "Pricing model", vulnradar: VR.pricing, them: "See the vendor's current pricing." },
-      { feature: "Getting started", vulnradar: VR.onboarding, them: "Varies by product." },
-      { feature: "Check transparency", vulnradar: "Every check is a public page with fix steps and code.", them: "Varies by product." },
+      {
+        feature: "Licensing",
+        vulnradar: VR.licensing,
+        them: "Check the vendor's site; openness varies by product.",
+      },
+      {
+        feature: "Self-hosting",
+        vulnradar: VR.hosting,
+        them: "Varies by product.",
+      },
+      {
+        feature: "Pricing model",
+        vulnradar: VR.pricing,
+        them: "See the vendor's current pricing.",
+      },
+      {
+        feature: "Getting started",
+        vulnradar: VR.onboarding,
+        them: "Varies by product.",
+      },
+      {
+        feature: "Check transparency",
+        vulnradar: "Every check is a public page with fix steps and code.",
+        them: "Varies by product.",
+      },
     ],
     differentiators: [
       "The whole engine is open source, so nothing about a finding is a black box.",
@@ -92,11 +113,31 @@ export const ALTERNATIVES: Alternative[] = [
     positioning:
       "Detectify is a strong fit for an established security team that wants continuous, managed EASM across a large estate. VulnRadar is lighter and more developer-first: a fast single-URL or bulk scan you can run yourself, read the source of, and self-host, without an enterprise commitment.",
     rows: [
-      { feature: "Licensing", vulnradar: VR.licensing, them: "Commercial, closed source." },
-      { feature: "Hosting", vulnradar: VR.hosting, them: "Vendor-hosted SaaS." },
-      { feature: "Pricing model", vulnradar: VR.pricing, them: "Subscription, quote-based; see their site." },
-      { feature: "Best for", vulnradar: "Developers and small teams who want to scan and self-host.", them: "Teams managing large external attack surfaces." },
-      { feature: "Getting started", vulnradar: VR.onboarding, them: "Account setup and domain verification." },
+      {
+        feature: "Licensing",
+        vulnradar: VR.licensing,
+        them: "Commercial, closed source.",
+      },
+      {
+        feature: "Hosting",
+        vulnradar: VR.hosting,
+        them: "Vendor-hosted SaaS.",
+      },
+      {
+        feature: "Pricing model",
+        vulnradar: VR.pricing,
+        them: "Subscription, quote-based; see their site.",
+      },
+      {
+        feature: "Best for",
+        vulnradar: "Developers and small teams who want to scan and self-host.",
+        them: "Teams managing large external attack surfaces.",
+      },
+      {
+        feature: "Getting started",
+        vulnradar: VR.onboarding,
+        them: "Account setup and domain verification.",
+      },
     ],
     differentiators: [
       "Open source and self-hostable, not a closed SaaS.",
@@ -126,11 +167,31 @@ export const ALTERNATIVES: Alternative[] = [
     positioning:
       "Intruder is a good hands-off managed scanner for infrastructure and network exposure. VulnRadar focuses on the web and application layer of a target, is open source and self-hostable, and shows you exactly which checks run and how to fix each finding.",
     rows: [
-      { feature: "Licensing", vulnradar: VR.licensing, them: "Commercial, closed source." },
-      { feature: "Hosting", vulnradar: VR.hosting, them: "Vendor-hosted SaaS." },
-      { feature: "Pricing model", vulnradar: VR.pricing, them: "Subscription, per-target/asset tiers; see their site." },
-      { feature: "Focus", vulnradar: "Web and application-layer checks on a URL.", them: "Infrastructure, network, and web app scanning." },
-      { feature: "Getting started", vulnradar: VR.onboarding, them: "Account setup and target configuration." },
+      {
+        feature: "Licensing",
+        vulnradar: VR.licensing,
+        them: "Commercial, closed source.",
+      },
+      {
+        feature: "Hosting",
+        vulnradar: VR.hosting,
+        them: "Vendor-hosted SaaS.",
+      },
+      {
+        feature: "Pricing model",
+        vulnradar: VR.pricing,
+        them: "Subscription, per-target/asset tiers; see their site.",
+      },
+      {
+        feature: "Focus",
+        vulnradar: "Web and application-layer checks on a URL.",
+        them: "Infrastructure, network, and web app scanning.",
+      },
+      {
+        feature: "Getting started",
+        vulnradar: VR.onboarding,
+        them: "Account setup and target configuration.",
+      },
     ],
     differentiators: [
       "Open source engine you can audit and self-host, not a managed black box.",
@@ -159,11 +220,31 @@ export const ALTERNATIVES: Alternative[] = [
     positioning:
       "Probely and VulnRadar overlap on developer-first web and API scanning. The difference is openness and cost: VulnRadar is GPL-3.0 and self-hostable with a free tier, and publishes its full check catalog, while keeping a REST API and webhooks for the same CI use case.",
     rows: [
-      { feature: "Licensing", vulnradar: VR.licensing, them: "Commercial, closed source." },
-      { feature: "Hosting", vulnradar: VR.hosting, them: "Vendor-hosted SaaS." },
-      { feature: "Pricing model", vulnradar: VR.pricing, them: "Subscription, per-target tiers; see their site." },
-      { feature: "API & CI", vulnradar: "REST API, webhooks, and CI-friendly scans on every tier.", them: "REST API and CI/CD integrations." },
-      { feature: "Getting started", vulnradar: VR.onboarding, them: "Account setup and target verification." },
+      {
+        feature: "Licensing",
+        vulnradar: VR.licensing,
+        them: "Commercial, closed source.",
+      },
+      {
+        feature: "Hosting",
+        vulnradar: VR.hosting,
+        them: "Vendor-hosted SaaS.",
+      },
+      {
+        feature: "Pricing model",
+        vulnradar: VR.pricing,
+        them: "Subscription, per-target tiers; see their site.",
+      },
+      {
+        feature: "API & CI",
+        vulnradar: "REST API, webhooks, and CI-friendly scans on every tier.",
+        them: "REST API and CI/CD integrations.",
+      },
+      {
+        feature: "Getting started",
+        vulnradar: VR.onboarding,
+        them: "Account setup and target verification.",
+      },
     ],
     differentiators: [
       "Open source and self-hostable, so scanning can stay entirely inside your own infrastructure.",
@@ -192,11 +273,31 @@ export const ALTERNATIVES: Alternative[] = [
     positioning:
       "Qualys is enterprise infrastructure: broad, deep, and heavy to operate. VulnRadar is the opposite end of the spectrum on purpose: a fast, open-source, self-hostable web scanner you can run from a pasted URL, priced for individuals and small teams rather than enterprise contracts.",
     rows: [
-      { feature: "Licensing", vulnradar: VR.licensing, them: "Commercial, closed source." },
-      { feature: "Deployment", vulnradar: VR.onboarding, them: "Agents, appliances, and cloud connectors." },
-      { feature: "Pricing model", vulnradar: VR.pricing, them: "Enterprise subscription, quote-based; see their site." },
-      { feature: "Scope", vulnradar: "Web and application-layer checks on a URL.", them: "Network, host, cloud, and compliance at enterprise scale." },
-      { feature: "Best for", vulnradar: "Developers and small teams.", them: "Large enterprise security operations." },
+      {
+        feature: "Licensing",
+        vulnradar: VR.licensing,
+        them: "Commercial, closed source.",
+      },
+      {
+        feature: "Deployment",
+        vulnradar: VR.onboarding,
+        them: "Agents, appliances, and cloud connectors.",
+      },
+      {
+        feature: "Pricing model",
+        vulnradar: VR.pricing,
+        them: "Enterprise subscription, quote-based; see their site.",
+      },
+      {
+        feature: "Scope",
+        vulnradar: "Web and application-layer checks on a URL.",
+        them: "Network, host, cloud, and compliance at enterprise scale.",
+      },
+      {
+        feature: "Best for",
+        vulnradar: "Developers and small teams.",
+        them: "Large enterprise security operations.",
+      },
     ],
     differentiators: [
       "No agents or appliances: a scan starts from a URL in the browser.",

@@ -60,7 +60,10 @@ describe("active-probe catalog", () => {
 
     it("returns a subset in canonical order regardless of input order", () => {
       expect(
-        resolveSelectedActiveProbes(["active-probes:ssti", "active-probes:xss"]),
+        resolveSelectedActiveProbes([
+          "active-probes:ssti",
+          "active-probes:xss",
+        ]),
       ).toEqual(["xss", "ssti"]);
     });
 

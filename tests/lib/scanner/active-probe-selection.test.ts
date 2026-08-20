@@ -113,7 +113,6 @@ describe("active-probes branch runs only the selected probes", () => {
 
   it("legacy bare active-probes still runs all five directory probes (back-compat)", async () => {
     await runAsyncChecksDetailed("https://example.com", ["active-probes"]);
-    for (const probe of directoryProbes)
-      expect(probe).toHaveBeenCalledTimes(1);
+    for (const probe of directoryProbes) expect(probe).toHaveBeenCalledTimes(1);
   });
 });

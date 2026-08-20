@@ -803,15 +803,15 @@ lib/types/
         <DocsSubSection title="Threat reputation & CVE intelligence">
           <p className="text-sm text-muted-foreground">
             The reputation check and the software-inventory CVE correlation are
-            all optional. Each source is skipped when its key is unset, and never
-            reports a clean result it could not actually verify (a missing key or
-            error reads as unavailable, not clean).
+            all optional. Each source is skipped when its key is unset, and
+            never reports a clean result it could not actually verify (a missing
+            key or error reads as unavailable, not clean).
           </p>
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
-              <InlineCode>WEB_RISK_API_KEY</InlineCode>: Google Web Risk (malware,
-              phishing, unwanted-software listings). Enable the Web Risk API in
-              Google Cloud and create a key.
+              <InlineCode>WEB_RISK_API_KEY</InlineCode>: Google Web Risk
+              (malware, phishing, unwanted-software listings). Enable the Web
+              Risk API in Google Cloud and create a key.
             </li>
             <li>
               <InlineCode>URLHAUS_AUTH_KEY</InlineCode>: URLhaus (abuse.ch) host
@@ -828,8 +828,8 @@ lib/types/
             <li>
               <InlineCode>NVD_API_KEY</InlineCode>: optional. The software
               inventory correlates detected versions to CVEs via OSV.dev and the
-              NVD REST API. NVD works keyless at a low rate limit; a free key from{" "}
-              <InlineCode>nvd.nist.gov/developers</InlineCode> raises it.
+              NVD REST API. NVD works keyless at a low rate limit; a free key
+              from <InlineCode>nvd.nist.gov/developers</InlineCode> raises it.
             </li>
           </ul>
         </DocsSubSection>
@@ -955,20 +955,22 @@ lib/types/
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
               <InlineCode>BACKUP_DIR</InlineCode>: directory backups are written
-              to. Default <InlineCode>./backups</InlineCode>. On a container this
-              must be a persistent/mounted volume or backups are lost on rebuild.
+              to. Default <InlineCode>./backups</InlineCode>. On a container
+              this must be a persistent/mounted volume or backups are lost on
+              rebuild.
             </li>
             <li>
-              <InlineCode>BACKUP_RETENTION_DAYS</InlineCode>: prune local backups
-              older than this after a successful run. Default{" "}
+              <InlineCode>BACKUP_RETENTION_DAYS</InlineCode>: prune local
+              backups older than this after a successful run. Default{" "}
               <InlineCode>14</InlineCode>; <InlineCode>0</InlineCode> keeps
               everything.
             </li>
             <li>
-              <InlineCode>BACKUP_ENCRYPTION_KEY</InlineCode>: 64-hex-char AES-256
-              key. Falls back to <InlineCode>API_KEY_ENCRYPTION_KEY</InlineCode>{" "}
-              when unset, so backups are encrypted by default; a separate key is
-              recommended for defense in depth. Restore uses the same resolution.
+              <InlineCode>BACKUP_ENCRYPTION_KEY</InlineCode>: 64-hex-char
+              AES-256 key. Falls back to{" "}
+              <InlineCode>API_KEY_ENCRYPTION_KEY</InlineCode> when unset, so
+              backups are encrypted by default; a separate key is recommended
+              for defense in depth. Restore uses the same resolution.
             </li>
             <li>
               <InlineCode>BACKUP_OFFSITE_UPLOAD_URL</InlineCode>: presigned PUT

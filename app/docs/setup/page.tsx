@@ -737,7 +737,6 @@ npm run db:create`}
             language="bash"
           />
         </Card>
-
       </DocsSection>
 
       <DocsSection id="version" title="Version Check">
