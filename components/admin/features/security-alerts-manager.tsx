@@ -92,7 +92,10 @@ export function SecurityAlertsManager() {
           action: "list",
           section: "security_alerts",
           limit: 100,
-          severity: selectedSeverity !== "all" ? selectedSeverity : undefined,
+          // Always fetch every severity; the severity filter is applied
+          // client-side below. Filtering on the server made the per-severity
+          // counters (computed from this list) show 0 for every severity except
+          // the selected one -- so filtering to High hid that criticals exist.
         }),
       });
       if (!res.ok) {
@@ -110,7 +113,9 @@ export function SecurityAlertsManager() {
     } finally {
       setLoading(false);
     }
-  }, [selectedSeverity]);
+    // No selectedSeverity dep: the filter is client-side, so changing it must
+    // not refetch (and re-narrow the counters).
+  }, []);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
@@ -151,7 +156,14 @@ export function SecurityAlertsManager() {
     }
   };
 
-  const unresolvedAlerts = alerts.filter((a) => !a.resolved_at);
+  // List is filtered client-side by the selected severity; the counters below
+  // are always computed from the full unfiltered set so they stay accurate no
+  // matter which severity is selected.
+  const unresolvedAlerts = alerts.filter(
+    (a) =>
+      !a.resolved_at &&
+      (selectedSeverity === "all" || a.severity === selectedSeverity),
+  );
   const severityStats = {
     critical: alerts.filter((a) => a.severity === "critical" && !a.resolved_at)
       .length,

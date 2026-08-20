@@ -114,16 +114,25 @@ export default function HistoryPage() {
     setQueryParam("page", page > 1 ? String(page) : null, { replace: true });
   }, []);
 
+  // Guards against a last-response-wins race: rapid ?scan= switches (back/
+  // forward, fast row clicks) fire overlapping loads, and an older response
+  // landing last would render the wrong scan under the selected id. Each call
+  // takes a ticket; only the latest applies its result.
+  const scanDetailReqRef = useRef(0);
   const loadScanDetail = useCallback(async (scanId: string) => {
+    const reqId = ++scanDetailReqRef.current;
+    const isStale = () => reqId !== scanDetailReqRef.current;
     setDetailLoading(true);
     setCrawlInfo(null);
     try {
       const res = await fetch(`${API.HISTORY}/${scanId}`);
+      if (isStale()) return;
       if (!res.ok) {
         setSelectedScanId(null);
         return;
       }
       const data = await res.json();
+      if (isStale()) return;
       setScanDetail(mapHistoryDetailResponse(data));
       // Internal numeric id for the feedback route (keyed on the numeric PK).
       setScanNumericId(typeof data.id === "number" ? data.id : null);
@@ -135,9 +144,9 @@ export default function HistoryPage() {
       setScanIsPublic(data.isPublic !== false);
       setScanDetailTags(Array.isArray(data.tags) ? data.tags : []);
     } catch {
-      setSelectedScanId(null);
+      if (!isStale()) setSelectedScanId(null);
     } finally {
-      setDetailLoading(false);
+      if (!isStale()) setDetailLoading(false);
     }
   }, []);
 
