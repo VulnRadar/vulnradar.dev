@@ -81,8 +81,9 @@ describe("DELETE /api/v3/history/[id]/delete", () => {
   });
 
   it("deletes the scan for its actual owner", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ id: 55, user_id: 7 }] });
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 55, user_id: 7 }] }); // SELECT
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // host_reputation purge
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // scan_history DELETE
 
     const res = await DELETE(deleteRequest(), params());
     const json = await res.json();
@@ -90,7 +91,10 @@ describe("DELETE /api/v3/history/[id]/delete", () => {
     expect(res.status).toBe(200);
     expect(json.success).toBe(true);
 
-    const [sql, sqlParams] = mockQuery.mock.calls[1];
+    // The reputation cache is purged first, then the scan row is deleted.
+    const [repSql] = mockQuery.mock.calls[1];
+    expect(repSql).toContain("DELETE FROM host_reputation");
+    const [sql, sqlParams] = mockQuery.mock.calls[2];
     expect(sql).toContain(
       "DELETE FROM scan_history WHERE id = $1 AND user_id = $2",
     );

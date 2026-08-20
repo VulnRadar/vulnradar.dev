@@ -127,11 +127,11 @@ describe("GET /api/v3/teams/member-scans", () => {
 
     const [sql, params] = mockQuery.mock.calls[2];
     expect(sql).toContain("FROM scan_history");
-    expect(sql).toContain("WHERE user_id = $1");
+    // Scoped to the target userId AND the team, so a member's private personal
+    // scans (team_id null) never surface in the team view.
+    expect(sql).toContain("WHERE user_id = $1 AND team_id = $2");
     expect(sql).toContain("LIMIT 50");
-    // Scoped to the target userId from the query param, not the requester's
-    // own session.userId.
-    expect(params).toEqual(["99"]);
+    expect(params).toEqual(["99", "3"]);
   });
 
   it("does not leak the requester's own scans when they request another member's history", async () => {
@@ -143,6 +143,6 @@ describe("GET /api/v3/teams/member-scans", () => {
 
     const [, params] = mockQuery.mock.calls[2];
     expect(params).not.toEqual([42]);
-    expect(params).toEqual(["99"]);
+    expect(params).toEqual(["99", "3"]);
   });
 });

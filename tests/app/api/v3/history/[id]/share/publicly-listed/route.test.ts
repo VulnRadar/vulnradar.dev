@@ -109,17 +109,21 @@ describe("PUT /api/v3/history/[id]/share/publicly-listed", () => {
 
   it("lets a team admin flip the flag on behalf of the scan owner", async () => {
     mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 55, share_token: "tok", user_id: 99 }],
-    });
-    mockQuery.mockResolvedValueOnce({ rows: [{ role: "admin" }] });
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+      rows: [{ id: 55, share_token: "tok", user_id: 99, team_id: 4 }],
+    }); // scan (team-assigned)
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "admin" }] }); // getTeamResourceAccess: caller role on team 4
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "user" }] }); // getTeamResourceAccess: owner role (not god-mode)
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE
 
     const res = await PUT(putRequest({ publiclyListed: true }), params());
 
     expect(res.status).toBe(200);
+    // Access scoped to the scan's own team_id (4) + owner (99).
     const [teamSql, teamParams] = mockQuery.mock.calls[1];
-    expect(teamSql).toContain("role IN ('owner', 'admin')");
-    expect(teamParams).toEqual([7, 99]);
+    expect(teamSql).toContain(
+      "FROM team_members WHERE team_id = $1 AND user_id = $2",
+    );
+    expect(teamParams).toEqual([4, 7]);
   });
 
   it("blocks a team viewer and an unrelated user alike with 404, not 403", async () => {

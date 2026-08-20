@@ -185,26 +185,34 @@ describe("GET /api/v3/history/[id]", () => {
     expect(json.isPublic).toBe(false);
   });
 
-  it("returns the scan when the caller shares a team with the owner", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [scanRow({ user_id: 99 })] });
+  it("returns the scan when team access grants read (scoped to the scan's team_id)", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [scanRow({ user_id: 99, team_id: 3 })],
+    });
     mockQuery.mockResolvedValueOnce({ rows: [] }); // tags lookup (owner's tags)
-    mockQuery.mockResolvedValueOnce({ rows: [{ team_count: 1 }] });
+    mockGetTeamResourceAccess.mockResolvedValue({
+      canRead: true,
+      canWrite: false,
+    });
 
     const res = await GET(getRequest(), params());
     const json = await res.json();
 
     expect(res.status).toBe(200);
     expect(json.userId).toBe(99);
-
-    const [teamSql, teamParams] = mockQuery.mock.calls[2];
-    expect(teamSql).toContain("team_members tm1");
-    expect(teamParams).toEqual([7, 99]);
+    // Access is decided by the scan's own owner + team_id, not a "share any team" join.
+    expect(mockGetTeamResourceAccess).toHaveBeenCalledWith(7, 99, 3);
   });
 
-  it("returns 404 for a scan that is neither owned nor shared via a team", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [scanRow({ user_id: 99 })] });
+  it("returns 404 for a scan that team access does not grant read (e.g. a private personal scan)", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [scanRow({ user_id: 99, team_id: null })],
+    });
     mockQuery.mockResolvedValueOnce({ rows: [] }); // tags lookup
-    mockQuery.mockResolvedValueOnce({ rows: [{ team_count: 0 }] });
+    mockGetTeamResourceAccess.mockResolvedValue({
+      canRead: false,
+      canWrite: false,
+    });
 
     const res = await GET(getRequest(), params());
     const json = await res.json();
@@ -592,7 +600,8 @@ describe("DELETE /api/v3/history/[id]", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 55, user_id: 7, team_id: null }],
     }); // SELECT
-    mockQuery.mockResolvedValueOnce({ rows: [{ id: 55 }] }); // DELETE
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // host_reputation purge
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 55 }] }); // scan_history DELETE
 
     const res = await DELETE(deleteRequest(), params());
     const json = await res.json();
@@ -601,9 +610,12 @@ describe("DELETE /api/v3/history/[id]", () => {
     expect(json.success).toBe(true);
     expect(mockGetTeamResourceAccess).toHaveBeenCalledWith(7, 7, null);
 
-    const [sql, sqlParams] = mockQuery.mock.calls[1];
+    // The reputation cache is purged first, then the scan row is deleted.
+    const [repSql] = mockQuery.mock.calls[1];
+    expect(repSql).toContain("DELETE FROM host_reputation");
+    const [sql, sqlParams] = mockQuery.mock.calls[2];
+    expect(sql).toContain("DELETE FROM scan_history");
     expect(sql).toContain("WHERE id = $1");
-    expect(sql).not.toContain("user_id");
     expect(sqlParams).toEqual([55]);
   });
 
@@ -660,7 +672,8 @@ describe("DELETE /api/v3/history/[id]", () => {
       canRead: true,
       canWrite: true,
     });
-    mockQuery.mockResolvedValueOnce({ rows: [{ id: 55 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // host_reputation purge
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 55 }] }); // scan_history DELETE
 
     const res = await DELETE(deleteRequest(), params());
 
@@ -693,7 +706,8 @@ describe("DELETE /api/v3/history/[id]", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 55, user_id: 7, team_id: null }],
     });
-    mockQuery.mockResolvedValueOnce({ rows: [{ id: 55 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // host_reputation purge
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 55 }] }); // scan_history DELETE
 
     const res = await DELETE(
       deleteRequest({ authorization: "Bearer vr_live_testkey" }),
@@ -735,7 +749,8 @@ describe("DELETE /api/v3/history/[id]", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 55, user_id: 7, team_id: null }],
     });
-    mockQuery.mockResolvedValueOnce({ rows: [{ id: 55 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // host_reputation purge
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 55 }] }); // scan_history DELETE
 
     const res = await DELETE(
       deleteRequest({ authorization: "Bearer vr_live_testkey" }),

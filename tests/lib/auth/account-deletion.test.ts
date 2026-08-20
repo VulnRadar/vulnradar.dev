@@ -104,10 +104,29 @@ describe("deleteUserAccountData", () => {
     expect(nullUpdatedByIndex).toBeLessThan(deleteUsersIndex);
   });
 
-  it("does not touch broadcast_messages.created_by directly -- that FK is schema-level ON DELETE SET NULL now, not application-nulled", async () => {
+  it("nulls broadcast_messages.sent_by (plain FK) but not created_by (schema-level ON DELETE SET NULL)", async () => {
     await deleteUserAccountData(fakeClient, 11);
     const sqls = mockQuery.mock.calls.map(([sql]) => sql as string);
-    expect(sqls.some((sql) => sql.includes("broadcast_messages"))).toBe(false);
+    // sent_by has no ON DELETE, so it must be app-nulled before DELETE FROM users.
+    expect(
+      sqls.some((sql) =>
+        /UPDATE broadcast_messages SET sent_by = NULL/i.test(sql),
+      ),
+    ).toBe(true);
+    // created_by is handled at the schema level, never app-nulled here.
+    expect(
+      sqls.some((sql) => /broadcast_messages SET created_by/i.test(sql)),
+    ).toBe(false);
+  });
+
+  it("nulls sessions.impersonated_by so deleting an admin mid-impersonation doesn't FK-violate", async () => {
+    await deleteUserAccountData(fakeClient, 11);
+    const sqls = mockQuery.mock.calls.map(([sql]) => sql as string);
+    expect(
+      sqls.some((sql) =>
+        /UPDATE sessions SET impersonated_by = NULL/i.test(sql),
+      ),
+    ).toBe(true);
   });
 
   it("scopes every statement to the given userId", async () => {

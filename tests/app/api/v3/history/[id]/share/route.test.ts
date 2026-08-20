@@ -275,9 +275,10 @@ describe("POST /api/v3/history/[id]/share", () => {
 
   it("lets a team admin create a share on behalf of the scan owner, resolving the listing default against the OWNER's account, not the admin's", async () => {
     mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 55, share_token: null, user_id: 99 }],
-    });
-    mockQuery.mockResolvedValueOnce({ rows: [{ role: "admin" }] }); // teamRoleCheck
+      rows: [{ id: 55, share_token: null, user_id: 99, team_id: 4 }],
+    }); // scan (team-assigned)
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "admin" }] }); // getTeamResourceAccess: caller role on team 4
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "user" }] }); // getTeamResourceAccess: owner role (not god-mode)
     mockQuery.mockResolvedValueOnce({
       rows: [{ share_publicly_listed_by_default: false }],
     }); // resolver, scoped to the scan owner (99), not the session admin (7)
@@ -287,11 +288,15 @@ describe("POST /api/v3/history/[id]/share", () => {
     const json = await res.json();
 
     expect(res.status).toBe(200);
+    // Access is scoped to the scan's own team_id (4) + owner (99), via
+    // getTeamResourceAccess, not a "share any team" self-join.
     const [teamSql, teamParams] = mockQuery.mock.calls[1];
-    expect(teamSql).toContain("role IN ('owner', 'admin')");
-    expect(teamParams).toEqual([7, 99]);
+    expect(teamSql).toContain(
+      "FROM team_members WHERE team_id = $1 AND user_id = $2",
+    );
+    expect(teamParams).toEqual([4, 7]);
 
-    const [resolverSql, resolverParams] = mockQuery.mock.calls[2];
+    const [resolverSql, resolverParams] = mockQuery.mock.calls[3];
     expect(resolverSql).toContain("share_publicly_listed_by_default");
     expect(resolverParams).toEqual([99]);
     expect(json.publiclyListed).toBe(false);
@@ -359,9 +364,12 @@ describe("DELETE /api/v3/history/[id]/share", () => {
   });
 
   it("lets a team owner revoke on behalf of the scan owner", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ id: 55, user_id: 99 }] });
-    mockQuery.mockResolvedValueOnce({ rows: [{ role: "owner" }] });
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 55, user_id: 99, team_id: 4 }],
+    }); // scan (team-assigned)
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "owner" }] }); // caller role on team 4
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "user" }] }); // owner role (not god-mode)
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE share_token = NULL
 
     const res = await DELETE(deleteRequest(), params());
 
