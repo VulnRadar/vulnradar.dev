@@ -1006,7 +1006,7 @@ function AdminContent() {
                         }}
                         className={cn(
                           "flex items-center gap-2.5 px-2.5 py-2 text-sm rounded-lg transition-all",
-                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
                           activeTab === tab.key
                             ? "bg-primary/10 text-primary font-medium"
                             : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
@@ -1243,7 +1243,7 @@ function AdminContent() {
                     ) : (
                       <TableScrollArea maxHeight="65vh">
                         <Table>
-                          <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/90">
+                          <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
                             <TableRow className="border-y border-border/50 hover:bg-transparent">
                               <TableHead className="px-5 h-10">
                                 <SortableHeader
@@ -1452,7 +1452,7 @@ function AdminContent() {
                             fetchUserDetail(u.id);
                           }
                         }}
-                        className="flex items-center gap-3 px-5 py-4 border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                        className="flex items-center gap-3 px-5 py-4 border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
                       >
                         <UserAvatar
                           name={u.name}

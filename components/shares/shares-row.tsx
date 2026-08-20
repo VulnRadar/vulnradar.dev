@@ -60,7 +60,7 @@ export function SharesRow({
   }
 
   return (
-    <div className="group relative flex flex-col gap-2 border-l-2 border-transparent py-3 pl-4 pr-4 transition-colors hover:bg-muted/30 sm:grid sm:grid-cols-[1fr,110px,100px,110px,80px] sm:items-center sm:gap-4 sm:py-3.5">
+    <div className="group relative flex flex-col gap-2 border-l-2 border-transparent py-3 pl-4 pr-4 transition-colors hover:bg-muted/30 sm:grid sm:grid-cols-[1fr_110px_100px_110px_80px] sm:items-center sm:gap-4 sm:py-3.5">
       <span
         aria-hidden
         className={cn(

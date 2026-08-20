@@ -87,7 +87,7 @@ export function BadgeScanList({
                 >
                   <div
                     className={cn(
-                      "flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0",
+                      "flex items-center justify-center w-8 h-8 rounded-lg shrink-0",
                       getSeverityBg(scan),
                     )}
                   >
@@ -123,7 +123,7 @@ export function BadgeScanList({
                       {getRelativeTime(scan.scanned_at)}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="flex items-center gap-2 shrink-0">
                     <span
                       className={cn(
                         "text-xs font-medium px-2 py-0.5 rounded-full",

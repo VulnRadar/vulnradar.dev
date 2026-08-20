@@ -80,7 +80,7 @@ export function AuthSplitLayout({ children }: AuthSplitLayoutProps) {
             sit rather than floating on a flat panel. */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute -bottom-24 -left-24 z-0 h-[420px] w-[420px] rounded-full bg-primary/[0.08] blur-[100px]"
+          className="pointer-events-none absolute -bottom-24 -left-24 z-0 h-[420px] w-[420px] rounded-full bg-primary/8 blur-[100px]"
         />
 
         <div className="relative z-10 flex flex-col h-full p-10 xl:p-14">

@@ -13,7 +13,7 @@ export function DocsToc({ items, activeSection }: DocsTocProps) {
   if (items.length === 0) return null;
 
   return (
-    <aside className="hidden xl:block w-56 flex-shrink-0">
+    <aside className="hidden xl:block w-56 shrink-0">
       <div className="sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto py-8 px-4">
         <h2 className="mb-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
           On this page
@@ -26,7 +26,7 @@ export function DocsToc({ items, activeSection }: DocsTocProps) {
               aria-current={activeSection === item.id ? "true" : undefined}
               className={cn(
                 "-ml-px block border-l-2 py-1.5 pl-4 text-sm transition-colors",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset rounded-r-sm",
+                "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset rounded-r-sm",
                 item.level === 2 && "pl-7 text-[13px]",
                 activeSection === item.id
                   ? "border-primary font-medium text-primary"
@@ -55,7 +55,7 @@ export function DocsInlineToc({ items }: { items: TocItem[] }) {
 
   return (
     <details className="xl:hidden mt-8 rounded-lg border border-border/60 bg-muted/30">
-      <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-foreground marker:content-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset rounded-lg">
+      <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-foreground marker:content-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset rounded-lg">
         On this page
         <span className="ml-2 text-xs font-normal text-muted-foreground tabular-nums">
           {items.length} sections
@@ -73,7 +73,7 @@ export function DocsInlineToc({ items }: { items: TocItem[] }) {
                 className={cn(
                   "block rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors",
                   "hover:bg-muted hover:text-foreground",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
                   item.level === 2 && "pl-6 text-[13px]",
                 )}
               >

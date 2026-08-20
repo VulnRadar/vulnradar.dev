@@ -680,7 +680,7 @@ export function ProfileDeveloperTab({
               {count > 0 && (
                 <span
                   className={cn(
-                    "inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1 text-[11px] font-medium tabular-nums",
+                    "inline-flex items-center justify-center min-w-5 h-5 rounded-full px-1 text-[11px] font-medium tabular-nums",
                     isActive
                       ? "bg-primary/10 text-primary"
                       : "bg-muted text-muted-foreground",

@@ -453,7 +453,7 @@ function MessageBubble({
   return (
     <div
       className={cn(
-        "group relative text-sm leading-relaxed max-w-[88%] break-words",
+        "group relative text-sm leading-relaxed max-w-[88%] wrap-break-word",
         isUser
           ? "rounded-2xl rounded-tr-sm px-3.5 py-2.5 bg-primary text-primary-foreground whitespace-pre-wrap ml-auto"
           : "rounded-2xl rounded-tl-sm px-3.5 py-2.5 bg-muted/60 text-foreground border border-border/30 mr-auto",
@@ -1470,7 +1470,7 @@ export function ChatWidget() {
                   <button
                     type="button"
                     onClick={() => scrollToBottom(true)}
-                    className="absolute bottom-3 right-3 flex items-center gap-1 pl-2.5 pr-3 py-1.5 rounded-full text-xs font-medium bg-card border border-border/60 text-foreground shadow-md hover:bg-muted transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                    className="absolute bottom-3 right-3 flex items-center gap-1 pl-2.5 pr-3 py-1.5 rounded-full text-xs font-medium bg-card border border-border/60 text-foreground shadow-md hover:bg-muted transition-colors focus:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
                   >
                     <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
                     Latest
@@ -1519,7 +1519,7 @@ export function ChatWidget() {
 
                 <form
                   onSubmit={handleSubmit}
-                  className="px-3 pt-2 pb-2 border-t border-border/40 bg-card/80 backdrop-blur-sm"
+                  className="px-3 pt-2 pb-2 border-t border-border/40 bg-card/80 backdrop-blur-xs"
                   style={{
                     paddingBottom:
                       "calc(0.5rem + env(safe-area-inset-bottom, 0px))",
@@ -1545,7 +1545,7 @@ export function ChatWidget() {
                         // text-base (16px) below sm: avoids that; sm:text-sm
                         // keeps the tighter desktop size where zoom never fires.
                         "flex-1 text-base sm:text-sm bg-muted/40 border rounded-xl px-3 py-2 resize-none overflow-y-hidden",
-                        "placeholder:text-muted-foreground/40 leading-snug outline-none",
+                        "placeholder:text-muted-foreground/40 leading-snug outline-hidden",
                         "transition-colors focus:border-primary/50 focus:bg-muted/60",
                         "disabled:opacity-50",
                         atLimit ? "border-destructive/40" : "border-border/40",
@@ -1607,7 +1607,7 @@ export function ChatWidget() {
           "hover:bg-primary/90",
           "shadow-lg",
           "transition-all duration-150 active:scale-95 touch-manipulation",
-          "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+          "focus:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60",
           isOpen && "hidden sm:flex",
         )}
         aria-label={isOpen ? "Close chat" : `Open ${BOT_NAME}`}

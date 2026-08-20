@@ -99,7 +99,7 @@ function ScopePills({ scopes }: { scopes: string[] | null | undefined }) {
         resolved.map((scope) => (
           <span
             key={scope}
-            className="rounded-full border border-primary/20 bg-primary/[0.06] px-1.5 py-0.5 text-[10px] font-medium text-primary"
+            className="rounded-full border border-primary/20 bg-primary/6 px-1.5 py-0.5 text-[10px] font-medium text-primary"
           >
             {API_KEY_SCOPE_LABELS[scope]}
           </span>
@@ -185,7 +185,7 @@ export function ApiKeysSection({
         <div
           ref={newKeyPanelRef}
           tabIndex={-1}
-          className="rounded-xl border border-primary/40 bg-primary/[0.05] p-4 sm:p-5 flex flex-col gap-3 outline-none"
+          className="rounded-xl border border-primary/40 bg-primary/5 p-4 sm:p-5 flex flex-col gap-3 outline-hidden"
         >
           <div className="flex items-start gap-2.5">
             <Key

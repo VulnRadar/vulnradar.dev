@@ -270,7 +270,7 @@ export function IPRulesManager() {
       {/* Detail Modal */}
       {selectedRule && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs"
           onClick={() => setSelectedRule(null)}
         >
           <div
@@ -587,7 +587,7 @@ export function IPRulesManager() {
                     onChange={(e) =>
                       setRuleType(e.target.value as "whitelist" | "blacklist")
                     }
-                    className="w-full rounded-lg border border-border/40 bg-background/50 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    className="w-full rounded-lg border border-border/40 bg-background/50 px-3 py-2 text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                   >
                     <option value="whitelist">Whitelist (Allow)</option>
                     <option value="blacklist">Blacklist (Block)</option>
@@ -704,7 +704,7 @@ export function IPRulesManager() {
                 <div className="hidden md:block">
                   <TableScrollArea maxHeight="65vh">
                     <Table>
-                      <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/90">
+                      <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
                         <TableRow className="border-y border-border/50 hover:bg-transparent">
                           <TableHead className="px-5 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                             Rule

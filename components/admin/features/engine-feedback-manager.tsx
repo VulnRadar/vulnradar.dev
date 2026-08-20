@@ -372,7 +372,7 @@ export function EngineFeedbackManager() {
           ) : (
             <TableScrollArea maxHeight="60vh">
               <Table>
-                <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/90">
+                <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
                   <TableRow className="border-y border-border/50 hover:bg-transparent">
                     <TableHead className="px-5 h-10">
                       <SortableHeader
@@ -556,7 +556,7 @@ export function EngineFeedbackManager() {
           ) : (
             <TableScrollArea maxHeight="40vh">
               <Table>
-                <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/90">
+                <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
                   <TableRow className="border-y border-border/50 hover:bg-transparent">
                     <TableHead className="px-5 h-10">
                       <SortableHeader
@@ -679,7 +679,7 @@ export function EngineFeedbackManager() {
           ) : (
             <TableScrollArea maxHeight="40vh">
               <Table>
-                <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/90">
+                <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
                   <TableRow className="border-y border-border/50 hover:bg-transparent">
                     <TableHead className="px-5 h-10">Tag</TableHead>
                     <TableHead className="px-4 h-10 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -835,7 +835,7 @@ function PromoteTagModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
       onClick={onClose}
     >
       <div

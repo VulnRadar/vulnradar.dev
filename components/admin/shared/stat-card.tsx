@@ -91,9 +91,9 @@ export function StatBar({
           </>
         );
         const cellClass = cn(
-          "flex-1 min-w-[7rem] bg-card px-4 py-3 flex items-center gap-3 text-left transition-colors",
+          "flex-1 min-w-28 bg-card px-4 py-3 flex items-center gap-3 text-left transition-colors",
           item.onClick &&
-            "hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+            "hover:bg-muted/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
           item.active && "bg-primary/5",
         );
         return item.onClick ? (

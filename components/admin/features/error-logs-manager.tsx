@@ -250,7 +250,7 @@ export function ErrorLogsManager() {
                       disabled={!log.detail}
                     >
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-mono text-foreground break-words line-clamp-2">
+                        <p className="text-sm font-mono text-foreground wrap-break-word line-clamp-2">
                           {log.message}
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">

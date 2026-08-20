@@ -73,7 +73,7 @@ export function TosGate({ children }: { children: React.ReactNode }) {
     return (
       <>
         <div
-          className="pointer-events-none select-none opacity-20 blur-sm"
+          className="pointer-events-none select-none opacity-20 blur-xs"
           aria-hidden
         >
           {children}

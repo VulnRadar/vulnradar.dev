@@ -57,7 +57,7 @@ function rowGlyph(state: ResponseReadoutRow["state"]): string {
  * `style={{ animationDelay }}` used to be here).
  *
  * This MUST be a single combined `animation:` shorthand per delay value,
- * not a separate `motion-safe:[animation:slide-up_...]` class plus a
+ * not a separate `motion-safe:animate-[slide-up_...]` class plus a
  * separate `[animation-delay:...]` class: Tailwind's compiled stylesheet
  * doesn't preserve source order between arbitrary-property utilities, so
  * whichever of the two ends up later in the cascade wins on equal
@@ -73,28 +73,28 @@ function rowGlyph(state: ResponseReadoutRow["state"]): string {
  * -- regenerate this list if either constant below ever changes.
  */
 const LG_ROW_DELAY_CLASSES = [
-  "motion-safe:[animation:slide-up_0.4s_ease-out_220ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_330ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_440ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_550ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_660ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_770ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_880ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_990ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_1100ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_1210ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_220ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_330ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_440ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_550ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_660ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_770ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_880ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_990ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_1100ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_1210ms_forwards]",
 ];
 const SM_ROW_DELAY_CLASSES = [
-  "motion-safe:[animation:slide-up_0.4s_ease-out_220ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_310ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_400ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_490ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_580ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_670ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_760ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_850ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_940ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_1030ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_220ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_310ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_400ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_490ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_580ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_670ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_760ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_850ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_940ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_1030ms_forwards]",
 ];
 
 function rowDelayClass(isLg: boolean, i: number): string {
@@ -108,28 +108,28 @@ function rowDelayClass(isLg: boolean, i: number): string {
  * Same combined-shorthand fix, same 10-row cap.
  */
 const LG_FOOTER_DELAY_CLASSES = [
-  "motion-safe:[animation:slide-up_0.4s_ease-out_360ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_470ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_580ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_690ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_800ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_910ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_1020ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_1130ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_1240ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_1350ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_360ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_470ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_580ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_690ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_800ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_910ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_1020ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_1130ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_1240ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_1350ms_forwards]",
 ];
 const SM_FOOTER_DELAY_CLASSES = [
-  "motion-safe:[animation:slide-up_0.4s_ease-out_360ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_450ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_540ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_630ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_720ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_810ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_900ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_990ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_1080ms_forwards]",
-  "motion-safe:[animation:slide-up_0.4s_ease-out_1170ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_360ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_450ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_540ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_630ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_720ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_810ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_900ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_990ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_1080ms_forwards]",
+  "motion-safe:animate-[slide-up_0.4s_ease-out_1170ms_forwards]",
 ];
 
 function footerDelayClass(isLg: boolean, rowCount: number): string {

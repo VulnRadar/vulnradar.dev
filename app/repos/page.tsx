@@ -342,7 +342,7 @@ export default function ReposPage() {
                 setError(null);
                 setSuccess(null);
               }}
-              className="text-xs font-medium hover:underline opacity-70 hover:opacity-100 transition-opacity rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="text-xs font-medium hover:underline opacity-70 hover:opacity-100 transition-opacity rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             >
               Dismiss
             </button>
@@ -549,7 +549,7 @@ export default function ReposPage() {
                           <button
                             type="button"
                             onClick={() => setActiveRepoName(repo.fullName)}
-                            className="flex-1 min-w-0 text-left rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            className="flex-1 min-w-0 text-left rounded focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                           >
                             <p className="text-sm font-medium text-foreground truncate hover:underline">
                               {repo.fullName}

@@ -116,7 +116,7 @@ export default async function ChecksIndexPage() {
                   <h3 className="font-medium text-foreground group-hover:text-primary transition-colors">
                     {getCategoryLabel(cat)}
                   </h3>
-                  <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">
+                  <span className="text-xs text-muted-foreground tabular-nums shrink-0">
                     {counts[cat]} checks
                   </span>
                 </div>
@@ -166,7 +166,7 @@ export default async function ChecksIndexPage() {
                       >
                         <SeverityPill
                           severity={c.severity}
-                          className="scale-90 flex-shrink-0"
+                          className="scale-90 shrink-0"
                         />
                         <Link
                           href={`/checks/${c.id}`}

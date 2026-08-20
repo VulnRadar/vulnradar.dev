@@ -320,7 +320,7 @@ export function MassEmailManager() {
               <select
                 value={segment}
                 onChange={(e) => setSegment(e.target.value)}
-                className="w-full h-10 rounded-lg border border-border/40 bg-background/50 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full h-10 rounded-lg border border-border/40 bg-background/50 px-3 py-2 text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/20"
               >
                 {Object.entries(SEGMENT_LABELS).map(([value, label]) => (
                   <option key={value} value={value}>
@@ -350,7 +350,7 @@ export function MassEmailManager() {
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                className="w-full h-10 rounded-lg border border-border/40 bg-background/50 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full h-10 rounded-lg border border-border/40 bg-background/50 px-3 py-2 text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/20"
               >
                 {CATEGORY_OPTIONS.map(({ value, label }) => (
                   <option key={value} value={value}>

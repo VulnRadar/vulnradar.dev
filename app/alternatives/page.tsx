@@ -68,7 +68,7 @@ export default async function AlternativesIndexPage() {
                   {alt.summary}
                 </p>
               </div>
-              <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors flex-shrink-0 mt-1" />
+              <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0 mt-1" />
             </Link>
           ))}
         </div>

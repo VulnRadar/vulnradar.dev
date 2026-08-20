@@ -180,7 +180,7 @@ export default function HostReportPage() {
                   <button
                     type="button"
                     onClick={() => router.back()}
-                    className="group inline-flex w-fit items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="group inline-flex w-fit items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <ArrowLeft
                       aria-hidden
@@ -204,7 +204,7 @@ export default function HostReportPage() {
                             type="button"
                             onClick={copyHost}
                             aria-label="Copy hostname"
-                            className="group inline-flex min-w-0 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            className="group inline-flex min-w-0 items-center gap-2 rounded text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                           >
                             <h1 className="truncate text-lg font-semibold text-foreground sm:text-xl">
                               {data?.host}

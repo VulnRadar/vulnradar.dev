@@ -40,7 +40,7 @@ import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
 import { useAdminPermissions } from "@/components/admin/hooks";
 
 const focusRing =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
 
 interface Team {
   id: number;
@@ -165,7 +165,7 @@ export function TeamsList({
       {/* Team members modal — rendered outside card flow to prevent layout shift */}
       {modalTeam && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs"
           onClick={closeTeamModal}
         >
           <div
@@ -327,7 +327,7 @@ export function TeamsList({
                 <div className="hidden md:block">
                   <TableScrollArea maxHeight="65vh">
                     <Table>
-                      <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/90">
+                      <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
                         <TableRow className="border-y border-border/50 hover:bg-transparent">
                           <TableHead className="px-5 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                             Team

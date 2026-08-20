@@ -44,7 +44,7 @@ export function DemoError({ error, details, onRetry }: DemoErrorProps) {
             If you think this target should be allowed, mail{" "}
             <a
               href={`mailto:${SUPPORT_EMAIL}`}
-              className="text-primary hover:underline underline-offset-4 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="text-primary hover:underline underline-offset-4 rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             >
               {SUPPORT_EMAIL}
             </a>

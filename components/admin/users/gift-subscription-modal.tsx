@@ -63,7 +63,7 @@ export function GiftSubscriptionModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs animate-in fade-in"
       onClick={onClose}
     >
       <div
@@ -128,7 +128,7 @@ export function GiftSubscriptionModal({
               <select
                 value={giftPlan}
                 onChange={(e) => setGiftPlan(e.target.value)}
-                className="h-9 rounded-md border border-border/40 bg-background/50 px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50"
+                className="h-9 rounded-md border border-border/40 bg-background/50 px-2.5 text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary/50"
               >
                 {GIFTABLE_PLANS.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -145,7 +145,7 @@ export function GiftSubscriptionModal({
                 type="datetime-local"
                 value={giftEndDate}
                 onChange={(e) => setGiftEndDate(e.target.value)}
-                className="h-9 rounded-md border border-border/40 bg-background/50 px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50"
+                className="h-9 rounded-md border border-border/40 bg-background/50 px-2.5 text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary/50"
               />
             </div>
           </div>

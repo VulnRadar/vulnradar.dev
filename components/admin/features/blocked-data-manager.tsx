@@ -585,7 +585,7 @@ export function BlockedDataManager() {
                 <div className="border-t border-border/40">
                   <TableScrollArea maxHeight="16rem">
                     <Table>
-                      <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/90">
+                      <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
                         <TableRow className="border-y border-border/50 hover:bg-transparent">
                           <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                             URL
@@ -857,7 +857,7 @@ export function BlockedDataManager() {
                               <div className="border border-border/40 rounded-lg overflow-hidden">
                                 <TableScrollArea maxHeight="16rem">
                                   <Table>
-                                    <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/90">
+                                    <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
                                       <TableRow className="border-y border-border/50 hover:bg-transparent">
                                         <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                                           URL

@@ -321,7 +321,7 @@ X-RateLimit-Reset: 2026-03-12T00:00:00.000Z`}
               },
             ].map((item) => (
               <div key={item.header} className="flex items-start gap-3">
-                <InlineCode className="flex-shrink-0">{item.header}</InlineCode>
+                <InlineCode className="shrink-0">{item.header}</InlineCode>
                 <span className="text-sm text-muted-foreground">
                   {item.desc}
                 </span>

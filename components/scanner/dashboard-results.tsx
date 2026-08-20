@@ -198,7 +198,7 @@ export function DashboardResults({
             type="button"
             onClick={copyUrl}
             aria-label="Copy scanned URL"
-            className="group flex min-w-0 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="group flex min-w-0 items-center gap-2 rounded text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             <span className="truncate font-mono text-base font-semibold text-foreground transition-colors group-hover:text-primary">
               {displayUrl}

@@ -228,14 +228,14 @@ export function TosModal({
 
       {/* ── Backdrop ── */}
       <div
-        className={`fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-4 ${mounted ? "tos-backdrop" : "opacity-0"}`}
+        className={`fixed inset-0 z-100 flex items-end sm:items-center justify-center sm:p-4 ${mounted ? "tos-backdrop" : "opacity-0"}`}
       >
         <div className="absolute inset-0 bg-background/65 backdrop-blur-xl" />
 
         {/* ── Modal card ── */}
         <div
           {...dialogProps}
-          className={`relative w-full sm:max-w-[432px] rounded-t-3xl sm:rounded-2xl border border-border/50 flex flex-col overflow-hidden outline-none ${mounted ? "tos-modal" : "opacity-0"}`}
+          className={`relative w-full sm:max-w-[432px] rounded-t-3xl sm:rounded-2xl border border-border/50 flex flex-col overflow-hidden outline-hidden ${mounted ? "tos-modal" : "opacity-0"}`}
           style={{
             background: "hsl(var(--card))",
             maxHeight: "calc(100dvh - 48px)",
@@ -324,7 +324,7 @@ export function TosModal({
                   key={key}
                   htmlFor={`tos-${key}`}
                   className={cn(
-                    `tos-item-${i + 1} flex items-start gap-3 cursor-pointer rounded-lg pl-3 pr-3 py-3 -mx-3 border-l-2 transition-colors duration-150 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring`,
+                    `tos-item-${i + 1} flex items-start gap-3 cursor-pointer rounded-lg pl-3 pr-3 py-3 -mx-3 border-l-2 transition-colors duration-150 has-focus-visible:ring-2 has-focus-visible:ring-ring`,
                     critical
                       ? checked[key]
                         ? "border-l-[hsl(var(--warning))] bg-[hsl(var(--warning)/0.07)]"

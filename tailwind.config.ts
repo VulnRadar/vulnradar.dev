@@ -2,27 +2,12 @@ import type { Config } from "tailwindcss";
 import tailwindcssAnimate from "tailwindcss-animate";
 
 const config: Config = {
-  darkMode: ["class"],
+  darkMode: "class",
   content: [
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
     "*.{js,ts,jsx,tsx,mdx}",
-  ],
-  safelist: [
-    // Role badge styles - used dynamically via ROLE_BADGE_STYLES lookup object
-    "bg-blue-500/10",
-    "text-blue-500",
-    "border-blue-500/20",
-    "border-blue-500/50", // support
-    "bg-emerald-500/10",
-    "text-emerald-400",
-    "text-emerald-500",
-    "border-emerald-500/20",
-    "border-emerald-500/30", // beta_tester / 2fa
-    "bg-amber-500/10",
-    "text-amber-500",
-    "border-amber-500/20", // gifted plan
   ],
   theme: {
     extend: {

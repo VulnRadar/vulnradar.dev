@@ -222,7 +222,7 @@ const BULK_URL_FALLBACK_LIMIT = BULK_SCAN_CLIENT_URL_LIMIT;
 const BULK_URL_UNLIMITED_CEILING = 500;
 
 const FOCUS_RING =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
 
 const DOMAIN_REGEX =
   /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*(\.[a-zA-Z]{2,})?(:\d+)?(\/.*)?$/;
@@ -585,7 +585,7 @@ export function ScanForm({
                 className={cn(
                   "inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-sm font-medium transition-colors",
                   active
-                    ? "bg-card text-foreground shadow-sm"
+                    ? "bg-card text-foreground shadow-xs"
                     : "text-muted-foreground hover:text-foreground",
                   isScanning && "cursor-not-allowed opacity-50",
                   FOCUS_RING,
@@ -1052,7 +1052,7 @@ export function ScanForm({
             disabled={isBulkScanning}
             className={cn(
               "w-full resize-y bg-transparent px-3 py-2.5 font-mono text-base sm:text-xs text-foreground placeholder:text-muted-foreground/60 disabled:opacity-50",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+              "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
             )}
             aria-label="URLs to bulk scan, one per line"
             aria-invalid={!!bulkError}

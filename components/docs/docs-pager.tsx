@@ -21,7 +21,7 @@ export function DocsBreadcrumb() {
         <li>
           <Link
             href="/docs"
-            className="rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-sm hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             Docs
           </Link>
@@ -53,7 +53,7 @@ export function DocsPager() {
         <Link
           href={previous.href}
           rel="prev"
-          className="group flex flex-col gap-1 rounded-lg border border-border/50 p-4 transition-colors hover:border-primary/30 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="group flex flex-col gap-1 rounded-lg border border-border/50 p-4 transition-colors hover:border-primary/30 hover:bg-muted/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         >
           <span className="flex items-center gap-1 text-xs text-muted-foreground">
             <ChevronLeft className="h-3 w-3" aria-hidden="true" />
@@ -71,7 +71,7 @@ export function DocsPager() {
         <Link
           href={next.href}
           rel="next"
-          className="group flex flex-col gap-1 rounded-lg border border-border/50 p-4 text-right transition-colors hover:border-primary/30 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:col-start-2"
+          className="group flex flex-col gap-1 rounded-lg border border-border/50 p-4 text-right transition-colors hover:border-primary/30 hover:bg-muted/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring sm:col-start-2"
         >
           <span className="flex items-center justify-end gap-1 text-xs text-muted-foreground">
             Next

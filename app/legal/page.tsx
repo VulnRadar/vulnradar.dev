@@ -72,7 +72,7 @@ export default async function LegalIndexPage() {
             <dt>
               <Link
                 href={page.href}
-                className="rounded-sm text-sm font-medium text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="rounded-sm text-sm font-medium text-foreground hover:text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {page.title}
               </Link>

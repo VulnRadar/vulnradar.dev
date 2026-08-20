@@ -123,7 +123,7 @@ const AUDIENCE_LABELS: Record<AdminNotification["audience"], string> = {
 };
 
 const focusRing =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
 
 function isExpiringSoon(notif: AdminNotification): boolean {
   if (!notif.ends_at) return false;
@@ -764,7 +764,7 @@ export function NotificationsManager() {
                     onChange={(e) =>
                       set({ type: e.target.value as AdminNotification["type"] })
                     }
-                    className="w-40 h-9 rounded-md border border-border/40 bg-background/50 px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary/50"
+                    className="w-40 h-9 rounded-md border border-border/40 bg-background/50 px-2.5 text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-ring focus:border-primary/50"
                   >
                     <option value="bell">Bell Notification</option>
                     <option value="banner">Banner</option>
@@ -786,7 +786,7 @@ export function NotificationsManager() {
                       })
                     }
                     className={cn(
-                      "w-36 h-9 rounded-md border px-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-ring",
+                      "w-36 h-9 rounded-md border px-2.5 text-sm font-medium focus:outline-hidden focus:ring-2 focus:ring-ring",
                       activeVariant.bg,
                       activeVariant.text,
                       activeVariant.border,
@@ -825,7 +825,7 @@ export function NotificationsManager() {
                           .value as AdminNotification["audience"],
                       })
                     }
-                    className="w-40 h-9 rounded-md border border-border/40 bg-background/50 px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary/50"
+                    className="w-40 h-9 rounded-md border border-border/40 bg-background/50 px-2.5 text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-ring focus:border-primary/50"
                   >
                     <option value="all">Everyone</option>
                     <option value="authenticated">Logged In Users</option>

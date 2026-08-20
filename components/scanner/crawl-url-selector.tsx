@@ -17,7 +17,7 @@ interface CrawlUrlSelectorProps {
 }
 
 const FOCUS_RING =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
 
 function getPath(url: string) {
   try {
@@ -99,7 +99,7 @@ export function CrawlUrlSelector({
       <button
         type="button"
         aria-label="Cancel crawl"
-        className="absolute inset-0 cursor-default bg-background/80 backdrop-blur-sm"
+        className="absolute inset-0 cursor-default bg-background/80 backdrop-blur-xs"
         onClick={onCancel}
       />
 
@@ -163,7 +163,7 @@ export function CrawlUrlSelector({
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
                   aria-label="Filter pages by URL"
-                  className="h-7 w-full rounded border border-border bg-background pl-7 pr-2 text-base sm:text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="h-7 w-full rounded border border-border bg-background pl-7 pr-2 text-base sm:text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </div>
               <button

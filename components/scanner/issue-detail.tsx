@@ -74,7 +74,7 @@ const AI_VERDICT_COPY: Record<
 };
 
 const FOCUS_RING =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
 
 const EVIDENCE_PREVIEW_LINES = 8;
 
@@ -818,7 +818,7 @@ export function IssueDetail({
                     className={cn(
                       "shrink-0 whitespace-nowrap rounded px-2.5 py-1 text-xs font-medium transition-colors",
                       activeTab === i
-                        ? "bg-card text-foreground shadow-sm"
+                        ? "bg-card text-foreground shadow-xs"
                         : "text-muted-foreground hover:text-foreground",
                       FOCUS_RING,
                     )}

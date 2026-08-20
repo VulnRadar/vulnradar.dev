@@ -169,7 +169,7 @@ export default function DocsPage() {
                     <dt>
                       <Link
                         href={item.href}
-                        className="rounded-sm text-sm font-medium text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="rounded-sm text-sm font-medium text-foreground hover:text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         {item.label}
                       </Link>
@@ -282,7 +282,7 @@ export default function DocsPage() {
             href={`${APP_URL}/api/version`}
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded-sm font-sans text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-sm font-sans text-primary underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             Check for a newer release
           </a>

@@ -38,7 +38,7 @@ export function LegalSection({
           className={cn(
             "text-muted-foreground opacity-0 transition-opacity",
             "group-hover:opacity-100 focus-visible:opacity-100",
-            "hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm",
+            "hover:text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring rounded-sm",
           )}
         >
           #

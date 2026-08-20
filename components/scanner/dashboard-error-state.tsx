@@ -238,7 +238,7 @@ export function DashboardErrorState({
                   copied
                     ? "text-[hsl(var(--success))]"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
                 )}
               >
                 {copied ? (
@@ -254,7 +254,7 @@ export function DashboardErrorState({
                 )}
               </button>
             </div>
-            <p className="break-words px-3 py-2.5 font-mono text-xs leading-relaxed text-foreground">
+            <p className="wrap-break-word px-3 py-2.5 font-mono text-xs leading-relaxed text-foreground">
               {error}
             </p>
             {details && (
@@ -268,7 +268,7 @@ export function DashboardErrorState({
                   </span>
                   Stack and request details
                 </summary>
-                <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words bg-muted/40 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+                <pre className="max-h-64 overflow-auto whitespace-pre-wrap wrap-break-word bg-muted/40 px-3 py-2 font-mono text-[11px] text-muted-foreground">
                   {details}
                 </pre>
               </details>
@@ -291,7 +291,7 @@ export function DashboardErrorState({
             {(kind === "blocked" || kind === "server") && (
               <a
                 href={`mailto:${SUPPORT_EMAIL}`}
-                className="ml-auto rounded text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="ml-auto rounded text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               >
                 Think this is wrong? Mail {SUPPORT_EMAIL}
               </a>

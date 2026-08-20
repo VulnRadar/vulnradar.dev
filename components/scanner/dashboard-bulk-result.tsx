@@ -48,7 +48,7 @@ export function DashboardBulkResult({
         {result.successful > 0 && (
           <Link
             href={ROUTES.HISTORY}
-            className="rounded px-2 py-1 text-sm font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded px-2 py-1 text-sm font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             Open in history
           </Link>
@@ -56,7 +56,7 @@ export function DashboardBulkResult({
         <button
           type="button"
           onClick={onDismiss}
-          className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           aria-label="Dismiss bulk scan summary"
         >
           <X aria-hidden className="h-4 w-4" />

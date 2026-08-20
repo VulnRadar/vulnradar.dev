@@ -103,7 +103,7 @@ export default async function AlternativePage({
             Side by side
           </h2>
           <div className="overflow-x-auto rounded-lg border border-border/60">
-            <table className="w-full text-sm border-collapse min-w-[34rem]">
+            <table className="w-full text-sm border-collapse min-w-136">
               <thead>
                 <tr className="bg-muted/40 text-left">
                   <th className="px-4 py-3 font-medium text-muted-foreground w-1/4">
@@ -154,7 +154,7 @@ export default async function AlternativePage({
           <ul className="space-y-2.5">
             {alt.differentiators.map((d, i) => (
               <li key={i} className="flex gap-2.5 text-sm sm:text-base leading-relaxed">
-                <Check className="h-4 w-4 text-primary flex-shrink-0 mt-1" />
+                <Check className="h-4 w-4 text-primary shrink-0 mt-1" />
                 <span className="text-foreground/90">{d}</span>
               </li>
             ))}

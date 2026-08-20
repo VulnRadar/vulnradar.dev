@@ -119,12 +119,12 @@ export function OnboardingTour() {
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-100 flex items-center justify-center bg-background/80 backdrop-blur-xs p-4">
       <div className="relative w-full sm:max-w-2xl">
         {/* Card */}
         <div
           {...dialogProps}
-          className="bg-card border border-border rounded-md shadow-2xl overflow-hidden outline-none flex flex-col sm:flex-row"
+          className="bg-card border border-border rounded-md shadow-2xl overflow-hidden outline-hidden flex flex-col sm:flex-row"
         >
           {/* Close */}
           <button

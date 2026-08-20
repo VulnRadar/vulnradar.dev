@@ -1,38 +1,85 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
+@config '../tailwind.config.ts';
+
+/* Role badge styles - generated dynamically via ROLE_BADGE_STYLES lookup
+   object (defined in lib/config, which is outside the content globs), so
+   they must be safelisted. v4 replaces the JS `safelist` config option with
+   this `@source inline(...)` directive. */
+@source inline("bg-blue-500/10 text-blue-500 border-blue-500/20 border-blue-500/50 bg-emerald-500/10 text-emerald-400 text-emerald-500 border-emerald-500/20 border-emerald-500/30 bg-amber-500/10 text-amber-500 border-amber-500/20");
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
   }
-  .text-pretty {
-    text-wrap: pretty;
-  }
+}
+
+@utility text-balance {
+  text-wrap: balance;
+}
+
+@utility text-pretty {
+  text-wrap: pretty;
+}
+
+@utility scrollbar-hide {
   /* Hide scrollbar but allow scrolling */
-  .scrollbar-hide {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-  .scrollbar-hide::-webkit-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
     display: none;
   }
 }
 
-/* Smooth scroll behavior for anchor links */
-html {
-  scroll-behavior: smooth;
-  /* iOS Safari rounds subpixel widths differently than Chrome/Android, so a
+/* Animation utilities */
+
+@utility animate-in {
+  animation: animate-in 0.2s ease-out;
+}
+
+@utility animate-out {
+  animation: animate-out 0.2s ease-in;
+}
+
+@utility fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+@utility slide-up {
+  animation: slide-up 0.3s ease-out;
+}
+
+@utility slide-down {
+  animation: slide-down 0.3s ease-out;
+}
+
+@layer utilities {
+  /* Smooth scroll behavior for anchor links */
+  html {
+    scroll-behavior: smooth;
+    /* iOS Safari rounds subpixel widths differently than Chrome/Android, so a
      handful of grid/flex layouts (dashboard stat strip, recent scans list)
      end up a fraction of a pixel wider than the viewport there and nowhere
      else. Without this, iOS lets that sliver become a real sideways swipe
      (reads as content "going off screen"); Android/desktop never surface
      it. Locking the X axis on the root scrolling element is the fix, not
      hunting down every layout that can round up by <1px. */
-  overflow-x: hidden;
-}
+    overflow-x: hidden;
+  }
 
-/* Reserve scrollbar-track width up front so a Radix modal locking the page
+  /* Reserve scrollbar-track width up front so a Radix modal locking the page
    scroll (removing the scrollbar) doesn't shift content sideways. This
    used to be `overflow-y: scroll`, which reserves that gutter on EVERY
    platform unconditionally -- including iOS Safari and other overlay-
@@ -44,73 +91,74 @@ html {
    space only where a real scrollbar would occupy it, and is a no-op on
    overlay-scrollbar platforms since there's nothing to compensate for
    there in the first place. */
-@supports (scrollbar-gutter: stable) {
-  html {
-    scrollbar-gutter: stable;
+  @supports (scrollbar-gutter: stable) {
+    html {
+      scrollbar-gutter: stable;
+    }
   }
-}
-@supports not (scrollbar-gutter: stable) {
-  html {
-    overflow-y: scroll;
+  @supports not (scrollbar-gutter: stable) {
+    html {
+      overflow-y: scroll;
+    }
   }
-}
 
-/* Prevent Radix UI (react-remove-scroll) from manipulating the body when
+  /* Prevent Radix UI (react-remove-scroll) from manipulating the body when
    any modal, dialog, select, sheet, or popover opens.
    Radix sets `position: fixed; top: -${scrollY}px` on <body> which:
      1. Visually snaps the page to the top
      2. Breaks sticky sidebar positioning
      3. Shifts all fixed/sticky elements
    We use `html body` selector for higher specificity to override inline styles. */
-html body[data-scroll-locked] {
-  --removed-body-scroll-bar-size: 0px !important;
-  position: static !important;
-  overflow: visible !important;
-  top: unset !important;
-  left: unset !important;
-  right: unset !important;
-  bottom: unset !important;
-  padding-right: 0 !important;
-  margin-right: 0 !important;
-  width: auto !important;
-  height: auto !important;
-}
+  html body[data-scroll-locked] {
+    --removed-body-scroll-bar-size: 0px !important;
+    position: static !important;
+    overflow: visible !important;
+    top: unset !important;
+    left: unset !important;
+    right: unset !important;
+    bottom: unset !important;
+    padding-right: 0 !important;
+    margin-right: 0 !important;
+    width: auto !important;
+    height: auto !important;
+  }
 
-/* Also target the scrollbar-gutter style Radix may inject */
-html[data-scroll-locked],
-html[data-scroll-locked] body {
-  overflow: visible !important;
-  margin-right: 0 !important;
-  padding-right: 0 !important;
-}
+  /* Also target the scrollbar-gutter style Radix may inject */
+  html[data-scroll-locked],
+  html[data-scroll-locked] body {
+    overflow: visible !important;
+    margin-right: 0 !important;
+    padding-right: 0 !important;
+  }
 
-/* Badges: preserve custom colors on hover.
+  /* Badges: preserve custom colors on hover.
    All badges maintain their current color but brighten and saturate slightly on hover. */
-[class*="bg-"][class*="text-"][class*="rounded-full"]:hover {
-  filter: brightness(1.2) saturate(1.1);
-}
-
-/* Reduce motion for users who prefer it */
-@media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
+  [class*='bg-'][class*='text-'][class*='rounded-full']:hover {
+    filter: brightness(1.2) saturate(1.1);
   }
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-}
 
-/* Pre-hydration visibility: hide staff/auth elements by default. */
-.vr-staff-only {
-  display: none !important;
-}
-.vr-auth-only {
-  visibility: hidden;
-  pointer-events: none;
+  /* Reduce motion for users who prefer it */
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* Pre-hydration visibility: hide staff/auth elements by default. */
+  .vr-staff-only {
+    display: none !important;
+  }
+  .vr-auth-only {
+    visibility: hidden;
+    pointer-events: none;
+  }
 }
 
 @layer base {
@@ -217,29 +265,31 @@ html[data-scroll-locked] body {
   }
 }
 
-/* Custom scrollbar - minimal and elegant */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: hsl(var(--border)) transparent;
-}
-*::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-*::-webkit-scrollbar-track {
-  background: transparent;
-}
-*::-webkit-scrollbar-thumb {
-  background-color: hsl(var(--muted-foreground) / 0.3);
-  border-radius: 9999px;
-  border: 2px solid transparent;
-  background-clip: content-box;
-}
-*::-webkit-scrollbar-thumb:hover {
-  background-color: hsl(var(--muted-foreground) / 0.5);
-}
-*::-webkit-scrollbar-corner {
-  background: transparent;
+@layer utilities {
+  /* Custom scrollbar - minimal and elegant */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted-foreground) / 0.3);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.5);
+  }
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
 }
 
 @layer base {
@@ -272,7 +322,7 @@ html[data-scroll-locked] body {
     @apply text-2xl md:text-3xl leading-[1.2];
   }
   h4 {
-    @apply text-xl md:text-2xl leading-[1.25];
+    @apply text-xl md:text-2xl leading-tight;
   }
   h5 {
     @apply text-lg md:text-xl;
@@ -318,7 +368,7 @@ html[data-scroll-locked] body {
      dropdown-menu.tsx / select.tsx), so the extra ring was always
      redundant, not load-bearing for accessibility. */
   :focus-visible:not([tabindex="-1"]):not([data-radix-collection-item]) {
-    @apply outline-none ring-2 ring-ring ring-inset;
+    @apply outline-hidden ring-2 ring-ring ring-inset;
   }
 
   /* Selection - neutral gray for consistent highlight */
@@ -337,25 +387,6 @@ html[data-scroll-locked] body {
   .dark ::-moz-selection {
     background-color: hsl(220 8% 60% / 0.25);
     color: hsl(var(--foreground));
-  }
-}
-
-/* Animation utilities */
-@layer utilities {
-  .animate-in {
-    animation: animate-in 0.2s ease-out;
-  }
-  .animate-out {
-    animation: animate-out 0.2s ease-in;
-  }
-  .fade-in {
-    animation: fade-in 0.3s ease-out;
-  }
-  .slide-up {
-    animation: slide-up 0.3s ease-out;
-  }
-  .slide-down {
-    animation: slide-down 0.3s ease-out;
   }
 }
 
@@ -431,7 +462,7 @@ html[data-scroll-locked] body {
 
 /* Gradient text utility */
 .gradient-text {
-  @apply bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70;
+  @apply bg-clip-text text-transparent bg-linear-to-r from-foreground to-foreground/70;
 }
 
 /* Glass effect for cards */

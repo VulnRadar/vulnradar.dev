@@ -42,7 +42,7 @@ export function PricingHero({ billing, onBillingChange }: PricingHeroProps) {
                 "px-4 py-2.5 lg:py-2 rounded-md text-sm font-medium transition-colors",
                 focus.ring,
                 billing === "monthly"
-                  ? "bg-background text-foreground shadow-sm"
+                  ? "bg-background text-foreground shadow-xs"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
@@ -56,7 +56,7 @@ export function PricingHero({ billing, onBillingChange }: PricingHeroProps) {
                 "px-4 py-2.5 lg:py-2 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-2",
                 focus.ring,
                 billing === "yearly"
-                  ? "bg-background text-foreground shadow-sm"
+                  ? "bg-background text-foreground shadow-xs"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >

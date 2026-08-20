@@ -10,7 +10,7 @@ import { CATEGORIES, STAFF_ROLES } from "./contact-types";
 import { TurnstileWidget } from "@/components/shared/turnstile-widget";
 
 const FIELD_CLASS =
-  "w-full rounded-lg border border-border bg-background px-3 py-2 text-base sm:text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "w-full rounded-lg border border-border bg-background px-3 py-2 text-base sm:text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
 
 function getPlaceholder(category: string): string {
   const placeholders: Record<string, string> = {

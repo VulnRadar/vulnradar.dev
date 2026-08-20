@@ -54,7 +54,7 @@ export function CopyButton({
         "inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-background/80 px-2 py-1",
         "text-[11px] font-medium text-muted-foreground",
         "hover:bg-muted hover:text-foreground transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
         copied && "text-primary border-primary/40",
         className,
       )}
@@ -139,7 +139,7 @@ export function CodeBlock({
           <CopyButton
             text={code}
             label={`${label} snippet`}
-            className="flex-shrink-0"
+            className="shrink-0"
           />
         )}
       </figcaption>
@@ -147,7 +147,7 @@ export function CodeBlock({
         tabIndex={0}
         className={cn(
           "overflow-x-auto p-3 sm:p-4 text-xs sm:text-[13px] leading-relaxed font-mono text-foreground/90",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+          "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
         )}
       >
         <code className={`language-${language}`}>{code}</code>
@@ -165,7 +165,7 @@ export function InlineCode({ children, className }: InlineCodeProps) {
   return (
     <code
       className={cn(
-        "bg-muted px-1.5 py-0.5 rounded text-xs font-mono text-primary break-words",
+        "bg-muted px-1.5 py-0.5 rounded text-xs font-mono text-primary wrap-break-word",
         className,
       )}
     >

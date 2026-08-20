@@ -82,7 +82,7 @@ function ValueRow({ row }: { row: RecordRow }) {
         type="button"
         onClick={onCopy}
         aria-label={copied ? "Copied" : "Copy value"}
-        className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover/row:opacity-100"
+        className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring group-hover/row:opacity-100"
       >
         {copied ? (
           <Check aria-hidden className="h-3.5 w-3.5 text-[hsl(var(--success))]" />
@@ -207,7 +207,7 @@ export function DnsRecordsPanel({
         onClick={() => setExpanded(!expanded)}
         aria-expanded={expanded}
         aria-controls={panelId}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         <Network
           aria-hidden
@@ -302,7 +302,7 @@ export function DnsRecordsPanel({
                 key={group.type}
                 className="border-b border-border last:border-b-0"
               >
-                <div className="sticky top-0 flex items-center gap-2 bg-muted/40 px-4 py-1.5 backdrop-blur">
+                <div className="sticky top-0 flex items-center gap-2 bg-muted/40 px-4 py-1.5 backdrop-blur-sm">
                   <span className="font-mono text-[11px] font-semibold uppercase tracking-wide text-primary">
                     {group.type}
                   </span>

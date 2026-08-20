@@ -143,7 +143,7 @@ export default function SetupPage() {
             },
           ].map((item, i) => (
             <div key={i} className="flex items-start gap-3">
-              <CheckCircle className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+              <CheckCircle className="h-5 w-5 text-primary shrink-0 mt-0.5" />
               <div className="flex-1">
                 <h4 className="text-sm font-semibold mb-1">{item.title}</h4>
                 <p className="text-sm text-muted-foreground">

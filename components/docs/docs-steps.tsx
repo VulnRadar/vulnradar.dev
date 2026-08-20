@@ -27,7 +27,7 @@ export function DocsSteps({
         <li key={item.step} className="flex gap-3 py-3">
           <span
             aria-hidden="true"
-            className="w-4 flex-shrink-0 text-sm font-semibold text-primary tabular-nums"
+            className="w-4 shrink-0 text-sm font-semibold text-primary tabular-nums"
           >
             {item.step}.
           </span>

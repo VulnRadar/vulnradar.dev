@@ -114,7 +114,7 @@ export function BackupCodesModal() {
   return (
     <div
       className={cn(
-        "fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm",
+        "fixed inset-0 z-100 flex items-center justify-center bg-background/80 backdrop-blur-xs",
         closing
           ? "animate-out fade-out duration-200"
           : "animate-in fade-in duration-200",
@@ -130,7 +130,7 @@ export function BackupCodesModal() {
       >
         <div
           {...dialogProps}
-          className="bg-card border border-border rounded-2xl shadow-2xl overflow-hidden outline-none"
+          className="bg-card border border-border rounded-2xl shadow-2xl overflow-hidden outline-hidden"
         >
           <div className="h-1 w-full bg-destructive" />
           <div className="flex items-center justify-between px-5 pt-4 pb-0">
@@ -524,7 +524,7 @@ export function NotificationBell() {
                     className="border-b border-border/40 p-4 hover:bg-muted/50 transition-colors"
                   >
                     <div className="flex items-start gap-3">
-                      <div className="flex-shrink-0 p-2 rounded-lg bg-primary/10 border border-primary/30 text-primary">
+                      <div className="shrink-0 p-2 rounded-lg bg-primary/10 border border-primary/30 text-primary">
                         <UserPlus className="h-4 w-4" aria-hidden="true" />
                       </div>
                       <div className="flex-1 min-w-0">
@@ -581,7 +581,7 @@ export function NotificationBell() {
                       <button
                         onClick={() => dismissUserNotification(n)}
                         disabled={busy}
-                        className="flex-shrink-0 p-1 rounded text-muted-foreground/50 hover:text-foreground transition-colors disabled:opacity-50"
+                        className="shrink-0 p-1 rounded text-muted-foreground/50 hover:text-foreground transition-colors disabled:opacity-50"
                         aria-label={`Dismiss ${n.title}`}
                       >
                         <X className="h-4 w-4" aria-hidden="true" />
@@ -595,7 +595,7 @@ export function NotificationBell() {
               {showVersionNotif && (
                 <div className="border-b border-border/40 p-4 hover:bg-muted/50 transition-colors">
                   <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 p-2 rounded-lg bg-primary/10 border border-primary/30 text-primary">
+                    <div className="shrink-0 p-2 rounded-lg bg-primary/10 border border-primary/30 text-primary">
                       <Sparkles className="h-4 w-4" aria-hidden="true" />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -627,7 +627,7 @@ export function NotificationBell() {
                     </div>
                     <button
                       onClick={dismissVersionNotif}
-                      className="flex-shrink-0 p-1 rounded text-muted-foreground/50 hover:text-foreground transition-colors"
+                      className="shrink-0 p-1 rounded text-muted-foreground/50 hover:text-foreground transition-colors"
                       aria-label="Dismiss version notification"
                     >
                       <X className="h-4 w-4" aria-hidden="true" />
@@ -647,7 +647,7 @@ export function NotificationBell() {
                     <div className="flex items-start gap-3">
                       <div
                         className={cn(
-                          "flex-shrink-0 p-2 rounded-lg border",
+                          "shrink-0 p-2 rounded-lg border",
                           config.bg,
                           config.border,
                           config.text,
@@ -755,7 +755,7 @@ export function NotificationBell() {
                               n.dismiss_duration_hours,
                             )
                           }
-                          className="flex-shrink-0 p-1 rounded text-muted-foreground/50 hover:text-foreground transition-colors"
+                          className="shrink-0 p-1 rounded text-muted-foreground/50 hover:text-foreground transition-colors"
                           aria-label={`Dismiss ${n.title}`}
                         >
                           <X className="h-4 w-4" aria-hidden="true" />

@@ -294,7 +294,7 @@ export function SecurityAlertsManager() {
                   <div className="flex items-start gap-3">
                     <div
                       className={cn(
-                        "p-2 rounded-lg flex-shrink-0 mt-0.5",
+                        "p-2 rounded-lg shrink-0 mt-0.5",
                         config.bgColor,
                       )}
                     >

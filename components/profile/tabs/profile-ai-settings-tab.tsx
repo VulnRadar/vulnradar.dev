@@ -340,7 +340,7 @@ export function ProfileAiSettingsTab({
                     setSelectedProvider(e.target.value);
                     setSelectedModel("");
                   }}
-                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-base sm:text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-base sm:text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                 >
                   <option value="">Choose a provider</option>
                   {AI_MODEL_CATALOG.map((p) => (
@@ -361,7 +361,7 @@ export function ProfileAiSettingsTab({
                     id="model-select"
                     value={selectedModel}
                     onChange={(e) => setSelectedModel(e.target.value)}
-                    className="w-full rounded-lg border border-border bg-card px-3 py-2 text-base sm:text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    className="w-full rounded-lg border border-border bg-card px-3 py-2 text-base sm:text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                   >
                     <option value="">Choose a model</option>
                     {providerDef?.models.map((m) => (

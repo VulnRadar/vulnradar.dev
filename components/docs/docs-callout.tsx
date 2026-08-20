@@ -77,10 +77,10 @@ export function DocsCallout({
           styles.accent,
         )}
       >
-        <Icon className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+        <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
         <span>{title ?? styles.label}</span>
       </p>
-      <div className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground [&_a]:text-primary [&_a]:underline-offset-2 hover:[&_a]:underline">
+      <div className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground [&_a]:text-primary [&_a]:underline-offset-2 [&_a]:hover:underline">
         {children}
       </div>
     </aside>

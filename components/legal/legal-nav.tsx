@@ -43,7 +43,7 @@ export function LegalNav() {
             aria-current={isActive ? "page" : undefined}
             className={cn(
               "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
               isActive
                 ? "bg-primary/10 font-medium text-primary"
                 : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",

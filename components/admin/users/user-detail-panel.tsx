@@ -1127,7 +1127,7 @@ export function UserDetailPanel({
                   setEditRole(e.target.value);
                   addPendingChange("role", e.target.value, u.role || "user");
                 }}
-                className="w-full h-10 rounded-lg border border-border/40 bg-card/30 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full h-10 rounded-lg border border-border/40 bg-card/30 px-3 py-2 text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {Object.values(STAFF_ROLES)
                   .filter(
@@ -1447,7 +1447,7 @@ export function UserDetailPanel({
                             className={cn(
                               "w-7 h-7 rounded-full transition-all border-2",
                               newBadgeColor === c.color
-                                ? "border-foreground scale-110 shadow-sm"
+                                ? "border-foreground scale-110 shadow-xs"
                                 : "border-transparent hover:scale-105",
                             )}
                             style={{ backgroundColor: c.color }}
@@ -1813,7 +1813,7 @@ export function UserDetailPanel({
                           </Button>
                         </div>
                       ) : (
-                        <p className="text-sm text-muted-foreground whitespace-pre-wrap break-words">
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap wrap-break-word">
                           {note.note}
                         </p>
                       )}
@@ -2186,7 +2186,7 @@ export function UserDetailPanel({
                             value={notifMessage}
                             onChange={(e) => setNotifMessage(e.target.value)}
                             rows={4}
-                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-hidden focus:ring-2 focus:ring-ring"
                           />
                         </div>
                         <p className="text-xs text-muted-foreground">
@@ -2718,7 +2718,7 @@ export function UserDetailPanel({
       {hasChanges && (
         <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pointer-events-none">
           <div className="max-w-lg mx-auto pointer-events-auto">
-            <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl bg-card/95 border border-border/50 shadow-xl backdrop-blur-sm">
+            <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl bg-card/95 border border-border/50 shadow-xl backdrop-blur-xs">
               <div className="flex items-center gap-3">
                 <div className="p-1.5 rounded-lg bg-primary/10">
                   <Save

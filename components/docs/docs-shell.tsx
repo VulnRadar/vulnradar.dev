@@ -57,7 +57,7 @@ export function DocsShell({ children }: { children: React.ReactNode }) {
       <div className="min-h-screen flex flex-col bg-background">
         <LandingNav />
 
-        <div className="flex-1 max-w-[90rem] w-full mx-auto">
+        <div className="flex-1 max-w-360 w-full mx-auto">
           <div className="flex">
             <DocsSidebar />
 

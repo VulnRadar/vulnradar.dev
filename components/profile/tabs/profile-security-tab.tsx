@@ -433,7 +433,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
       <div
         ref={backupPanelRef}
         tabIndex={-1}
-        className="rounded-xl border border-primary/30 bg-primary/[0.04] p-5 sm:p-6 flex flex-col gap-5 outline-none"
+        className="rounded-xl border border-primary/30 bg-primary/4 p-5 sm:p-6 flex flex-col gap-5 outline-hidden"
       >
         <div className="flex items-start gap-3">
           <KeyRound
@@ -690,7 +690,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
             className={cn(
               "rounded-xl border p-4 sm:p-5 flex flex-col gap-4",
               appActive
-                ? "border-primary/25 bg-primary/[0.04]"
+                ? "border-primary/25 bg-primary/4"
                 : "border-border bg-card",
             )}
           >
@@ -886,12 +886,12 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                       setShowDisable2FA(true);
                       setDisableError(null);
                     }}
-                    className="self-start text-sm text-muted-foreground hover:text-destructive underline underline-offset-4 transition-colors rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="self-start text-sm text-muted-foreground hover:text-destructive underline underline-offset-4 transition-colors rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     Turn off the authenticator app
                   </button>
                 ) : (
-                  <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/[0.06] p-4">
+                  <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/6 p-4">
                     <div>
                       <p className="text-sm font-semibold text-foreground">
                         Turn off two-step verification?
@@ -1223,7 +1223,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                 <button
                   type="button"
                   onClick={resetEnrolment}
-                  className="self-start text-sm text-muted-foreground hover:text-foreground underline underline-offset-4 transition-colors rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="self-start text-sm text-muted-foreground hover:text-foreground underline underline-offset-4 transition-colors rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   Cancel setup
                 </button>
@@ -1236,7 +1236,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
             className={cn(
               "rounded-xl border p-4 sm:p-5 flex flex-col gap-4",
               emailActive
-                ? "border-primary/25 bg-primary/[0.04]"
+                ? "border-primary/25 bg-primary/4"
                 : "border-border bg-card",
             )}
           >
@@ -1284,12 +1284,12 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                       setShowDisable2FA(true);
                       setDisableError(null);
                     }}
-                    className="self-start text-sm text-muted-foreground hover:text-destructive underline underline-offset-4 transition-colors rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="self-start text-sm text-muted-foreground hover:text-destructive underline underline-offset-4 transition-colors rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     Turn off email codes
                   </button>
                 ) : (
-                  <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/[0.06] p-4">
+                  <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/6 p-4">
                     <div>
                       <p className="text-sm font-semibold text-foreground">
                         Turn off two-step verification?
@@ -1642,7 +1642,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
       </Section>
 
       {/* ─────────── Danger zone ─────────── */}
-      <section className="rounded-xl border border-destructive/25 bg-destructive/[0.03] p-4 sm:p-5">
+      <section className="rounded-xl border border-destructive/25 bg-destructive/3 p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0 max-w-xl">
             <h2 className="text-base font-semibold tracking-tight text-foreground flex items-center gap-2">

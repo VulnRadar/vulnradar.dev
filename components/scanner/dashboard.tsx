@@ -356,7 +356,7 @@ export function Dashboard() {
             {data.recentScans.length > 0 && (
               <a
                 href={ROUTES.HISTORY}
-                className="inline-flex items-center gap-1 rounded text-xs font-medium text-primary transition-colors hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="inline-flex items-center gap-1 rounded text-xs font-medium text-primary transition-colors hover:text-primary/80 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               >
                 All history
                 <ArrowUpRight aria-hidden className="h-3 w-3" />
@@ -377,7 +377,7 @@ export function Dashboard() {
                   <li key={scan.id}>
                     <a
                       href={`${ROUTES.HISTORY}?scan=${scan.id}`}
-                      className="group relative flex items-center gap-3 py-2 pl-4 pr-4 transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                      className="group relative flex items-center gap-3 py-2 pl-4 pr-4 transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                     >
                       <span
                         aria-hidden

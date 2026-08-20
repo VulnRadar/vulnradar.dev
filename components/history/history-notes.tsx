@@ -86,7 +86,7 @@ export function HistoryNotes({
           onKeyUp={(e) => e.stopPropagation()}
           placeholder="Add notes about this scan..."
           maxLength={2000}
-          className="w-full min-h-[80px] rounded-lg border border-border bg-background px-3 py-2 text-base sm:text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-y"
+          className="w-full min-h-[80px] rounded-lg border border-border bg-background px-3 py-2 text-base sm:text-sm text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-1 focus:ring-ring resize-y"
         />
       ) : notes ? (
         <p className="text-sm text-muted-foreground whitespace-pre-wrap">

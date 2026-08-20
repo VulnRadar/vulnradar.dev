@@ -45,7 +45,7 @@ export function LandingNav({ badge }: LandingNavProps) {
           // no banner is showing) via --vr-banner-h, set in
           // site-notifications.tsx -- otherwise a banner overlaps this nav
           // instead of sitting above it.
-          "sticky top-[var(--vr-banner-h,0px)] z-50 border-b border-border/50 transition-[top] duration-300",
+          "sticky top-(--vr-banner-h,0px) z-50 border-b border-border/50 transition-[top] duration-300",
           backdrops.header,
         )}
       >
@@ -183,11 +183,11 @@ export function LandingNav({ badge }: LandingNavProps) {
         )}
       </nav>
       {/* position: sticky reserves flow space at the nav's UNSHIFTED height
-          only -- the extra top-[var(--vr-banner-h)] offset that pushes the
+          only -- the extra top-(--vr-banner-h) offset that pushes the
           nav down below a banner is a paint-only shift, so without this the
           nav visually overlaps whatever comes right after it in the page. */}
       <div
-        className="h-[var(--vr-banner-h,0px)] transition-[height] duration-300"
+        className="h-(--vr-banner-h,0px) transition-[height] duration-300"
         aria-hidden="true"
       />
     </>

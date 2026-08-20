@@ -27,7 +27,7 @@ export function AuthLayout({ children, width = "narrow" }: AuthLayoutProps) {
           className={cn(
             "w-full",
             width === "wide" ? "max-w-xl" : "max-w-sm",
-            "motion-safe:[animation:fade-in_0.2s_ease-out_both]",
+            "motion-safe:animate-[fade-in_0.2s_ease-out_both]",
           )}
         >
           {children}

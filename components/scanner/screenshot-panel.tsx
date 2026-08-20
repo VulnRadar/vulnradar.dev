@@ -218,7 +218,7 @@ export function ScreenshotPanel({
             <DialogTrigger asChild>
               <button
                 type="button"
-                className="group relative block w-full bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                className="group relative block w-full bg-muted/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 aria-label="Enlarge page screenshot"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element -- served from
@@ -231,9 +231,9 @@ export function ScreenshotPanel({
                   height={height}
                   loading="lazy"
                   onError={() => setBroken(true)}
-                  className="block aspect-[4/3] max-h-[280px] w-full object-cover object-top sm:aspect-auto sm:max-h-[420px]"
+                  className="block aspect-4/3 max-h-[280px] w-full object-cover object-top sm:aspect-auto sm:max-h-[420px]"
                 />
-                <span className="absolute right-2 top-2 flex items-center gap-1 rounded bg-background/85 px-1.5 py-0.5 text-[11px] font-medium text-foreground opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                <span className="absolute right-2 top-2 flex items-center gap-1 rounded bg-background/85 px-1.5 py-0.5 text-[11px] font-medium text-foreground opacity-0 backdrop-blur-xs transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
                   <Maximize2 aria-hidden className="h-3 w-3" />
                   Enlarge
                 </span>

@@ -291,7 +291,7 @@ export function SaveConfirmationModal({
                             {formatValue(change.oldValue)}
                           </Badge>
                           <ArrowRight
-                            className="h-3 w-3 text-muted-foreground flex-shrink-0"
+                            className="h-3 w-3 text-muted-foreground shrink-0"
                             aria-hidden="true"
                           />
                           <Badge

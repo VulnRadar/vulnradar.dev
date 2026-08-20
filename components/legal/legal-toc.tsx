@@ -25,7 +25,7 @@ export function LegalToc({ items }: { items: LegalTocItem[] }) {
           <li key={item.id} className="min-w-0">
             <a
               href={`#${item.id}`}
-              className="block truncate rounded-sm text-sm text-muted-foreground underline-offset-2 hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="block truncate rounded-sm text-sm text-muted-foreground underline-offset-2 hover:text-primary hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             >
               {item.label}
             </a>

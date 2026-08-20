@@ -156,7 +156,7 @@ function SslGradeStat({ grade }: { grade: string }) {
             aria-label="What does the SSL grade mean?"
             className={cn(
               "ml-0.5 shrink-0 rounded-full p-0.5 text-muted-foreground/60 transition-colors hover:text-foreground",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
             )}
           >
             <HelpCircle aria-hidden className="h-3.5 w-3.5" />
@@ -230,7 +230,7 @@ export function ScanSummary({
           <button
             type="button"
             onClick={copyUrl}
-            className="group flex min-w-0 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="group flex min-w-0 items-center gap-2 rounded text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Copy scanned URL"
           >
             <span className="truncate font-mono text-sm text-foreground group-hover:text-primary transition-colors">

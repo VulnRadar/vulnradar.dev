@@ -9,14 +9,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 export function CheckoutSkeleton() {
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card/50 sticky top-[var(--vr-banner-h,0px)] z-10 transition-[top] duration-300">
+      <header className="border-b border-border bg-card/50 sticky top-(--vr-banner-h,0px) z-10 transition-[top] duration-300">
         <div className="container max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <Skeleton className="h-8 w-28 rounded-md" />
           <div className="w-4" />
         </div>
       </header>
       <div
-        className="h-[var(--vr-banner-h,0px)] transition-[height] duration-300"
+        className="h-(--vr-banner-h,0px) transition-[height] duration-300"
         aria-hidden="true"
       />
 

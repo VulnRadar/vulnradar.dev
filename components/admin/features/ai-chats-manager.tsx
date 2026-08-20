@@ -281,7 +281,7 @@ export function AIChatsManager() {
               <div className="hidden md:block">
                 <TableScrollArea maxHeight="65vh">
                   <Table>
-                    <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/90">
+                    <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
                       <TableRow className="border-y border-border/50 hover:bg-transparent">
                         <TableHead className="px-5 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                           User
@@ -363,7 +363,7 @@ export function AIChatsManager() {
                             </div>
                           </TableCell>
                           <TableCell className="px-4 py-3">
-                            <span className="text-xs font-mono text-muted-foreground truncate block max-w-[10rem]">
+                            <span className="text-xs font-mono text-muted-foreground truncate block max-w-40">
                               {conv.sessionId}
                             </span>
                           </TableCell>

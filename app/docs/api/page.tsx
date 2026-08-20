@@ -1244,7 +1244,7 @@ export default function APIDocsPage() {
                 onClick={() => setActiveCodeTab(lang)}
                 className={cn(
                   "relative -mb-px border-b-2 px-4 py-2.5 text-sm font-medium capitalize transition-colors",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset rounded-t-sm",
+                  "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset rounded-t-sm",
                   activeCodeTab === lang
                     ? "border-primary text-primary"
                     : "border-transparent text-muted-foreground hover:text-foreground",

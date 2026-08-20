@@ -98,7 +98,7 @@ export default async function LinkCheckerPage() {
           <ol className="space-y-5">
             {STEPS.map((step, i) => (
               <li key={i} className="flex gap-4">
-                <span className="flex-shrink-0 flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-semibold tabular-nums">
+                <span className="shrink-0 flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-semibold tabular-nums">
                   {i + 1}
                 </span>
                 <div>

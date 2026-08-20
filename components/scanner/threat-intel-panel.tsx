@@ -45,7 +45,7 @@ export function ThreatIntelPanel({ threatIntel }: ThreatIntelPanelProps) {
         onClick={() => setExpanded(!expanded)}
         aria-expanded={expanded}
         aria-controls={panelId}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         <ShieldAlert
           aria-hidden
@@ -80,7 +80,7 @@ export function ThreatIntelPanel({ threatIntel }: ThreatIntelPanelProps) {
 
       {expanded && (
         <div id={panelId} className="border-t border-border">
-          <div className="sticky top-0 flex items-center gap-2 bg-muted/40 px-4 py-1.5 backdrop-blur">
+          <div className="sticky top-0 flex items-center gap-2 bg-muted/40 px-4 py-1.5 backdrop-blur-sm">
             <span className="font-mono text-[11px] font-semibold uppercase tracking-wide text-primary">
               {threatIntel.host}
             </span>

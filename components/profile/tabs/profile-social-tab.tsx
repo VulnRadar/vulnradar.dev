@@ -601,10 +601,10 @@ export function ProfileSocialTab({
       <section>
         <Card className="overflow-hidden border-border/50 bg-card/50">
           {/* Discord-themed gradient header */}
-          <div className="relative bg-gradient-to-br from-[#5865F2] via-[#4752C4] to-[#3C45A5] px-6 py-5">
+          <div className="relative bg-linear-to-br from-[#5865F2] via-[#4752C4] to-[#3C45A5] px-6 py-5">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0">
-                <div className="h-10 w-10 rounded-xl bg-white/15 backdrop-blur-sm flex items-center justify-center ring-1 ring-white/20 shrink-0">
+                <div className="h-10 w-10 rounded-xl bg-white/15 backdrop-blur-xs flex items-center justify-center ring-1 ring-white/20 shrink-0">
                   <DiscordIcon />
                 </div>
                 <div className="min-w-0">
@@ -619,7 +619,7 @@ export function ProfileSocialTab({
                 </div>
               </div>
               {user?.discordId && (
-                <Badge className="bg-white/20 text-white border-white/30 backdrop-blur-sm shrink-0">
+                <Badge className="bg-white/20 text-white border-white/30 backdrop-blur-xs shrink-0">
                   <Check className="h-3 w-3 mr-1" /> Connected
                 </Badge>
               )}
@@ -718,7 +718,7 @@ export function ProfileSocialTab({
                     </p>
                   </div>
                   <Button
-                    className="bg-[#5865F2] hover:bg-[#4752C4] text-white shadow-sm"
+                    className="bg-[#5865F2] hover:bg-[#4752C4] text-white shadow-xs"
                     onClick={() => {
                       window.location.href =
                         "/api/v3/auth/discord?action=connect";
@@ -747,10 +747,10 @@ export function ProfileSocialTab({
           provider="google"
           label="Google"
           icon={<FcGoogle className="h-5 w-5" aria-hidden="true" />}
-          headerClassName="relative bg-gradient-to-br from-muted to-muted/60 px-6 py-5 border-b border-border/50"
+          headerClassName="relative bg-linear-to-br from-muted to-muted/60 px-6 py-5 border-b border-border/50"
           titleClassName="text-foreground"
           subtitleClassName="text-muted-foreground"
-          connectButtonClassName="border border-border/60 bg-background hover:bg-muted text-foreground shadow-sm"
+          connectButtonClassName="border border-border/60 bg-background hover:bg-muted text-foreground shadow-xs"
           description="Sign in with Google instead of typing a password. Your Google name and photo are only used if you connect."
           identity={googleIdentity}
           setError={setError}
@@ -774,10 +774,10 @@ export function ProfileSocialTab({
           buttonIcon={
             <FaGithub className="h-5 w-5 text-white" aria-hidden="true" />
           }
-          headerClassName="relative bg-gradient-to-br from-[#24292e] via-[#1b1f23] to-[#0d1117] px-6 py-5"
+          headerClassName="relative bg-linear-to-br from-[#24292e] via-[#1b1f23] to-[#0d1117] px-6 py-5"
           titleClassName="text-white"
           subtitleClassName="text-white/70"
-          connectButtonClassName="bg-[#181717] hover:bg-[#2b3137] text-white shadow-sm"
+          connectButtonClassName="bg-[#181717] hover:bg-[#2b3137] text-white shadow-xs"
           description="Sign in with GitHub instead of typing a password. Repo access for code scanning is granted separately, below."
           identity={githubIdentity}
           setError={setError}

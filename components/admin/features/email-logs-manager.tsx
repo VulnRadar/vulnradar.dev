@@ -405,7 +405,7 @@ export function EmailLogsManager() {
             <DialogTitle>{viewLog?.subject}</DialogTitle>
           </DialogHeader>
           {viewLog?.status === "failed" && viewLog.error_message && (
-            <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2 break-words">
+            <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2 wrap-break-word">
               {viewLog.error_message}
             </p>
           )}

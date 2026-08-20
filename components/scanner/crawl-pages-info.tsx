@@ -55,7 +55,7 @@ export function CrawlPagesInfo({
         onClick={() => setOpen(!open)}
         aria-expanded={open}
         aria-controls={panelId}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-hidden focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         <span className="flex-1 text-sm font-medium text-foreground">
           Other pages in this crawl
@@ -84,7 +84,7 @@ export function CrawlPagesInfo({
                     type="button"
                     onClick={() => setExpandedPage(isOpen ? null : page.url)}
                     aria-expanded={isOpen}
-                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-hidden focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                   >
                     <ChevronRight
                       aria-hidden
@@ -119,7 +119,7 @@ export function CrawlPagesInfo({
                             <button
                               type="button"
                               onClick={() => onSelectIssue(finding)}
-                              className="group relative flex w-full items-center gap-2 py-1.5 pl-8 pr-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                              className="group relative flex w-full items-center gap-2 py-1.5 pl-8 pr-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-hidden focus-visible:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                             >
                               <span
                                 aria-hidden

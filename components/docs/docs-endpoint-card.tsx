@@ -143,7 +143,7 @@ export function EndpointCard({
                 key={i}
                 className="flex items-start gap-2 text-xs text-muted-foreground"
               >
-                <CheckCircle className="h-3.5 w-3.5 text-primary mt-0.5 flex-shrink-0" />
+                <CheckCircle className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
                 <span>{note}</span>
               </div>
             ))}

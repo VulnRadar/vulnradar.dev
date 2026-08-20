@@ -561,7 +561,7 @@ function SubdomainRow({
         {sub.subdomain}
       </span>
       {/* Source tags */}
-      <div className="flex items-center gap-1 flex-shrink-0">
+      <div className="flex items-center gap-1 shrink-0">
         {sub.sources?.map((source) => (
           <span
             key={source}
@@ -639,7 +639,7 @@ function UnreachableSection({
               <span className="text-[10px] sm:text-[11px] font-mono text-muted-foreground truncate max-w-[160px] sm:max-w-none">
                 {sub.subdomain}
               </span>
-              <div className="flex items-center gap-1 flex-shrink-0">
+              <div className="flex items-center gap-1 shrink-0">
                 {sub.sources?.map((source) => (
                   <span
                     key={source}

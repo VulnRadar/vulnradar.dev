@@ -65,7 +65,7 @@ export function TeamInviteForm({
             type="button"
             onClick={onClose}
             aria-label="Close the invite form"
-            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md shrink-0 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
@@ -91,7 +91,7 @@ export function TeamInviteForm({
               value={inviteRole}
               onChange={(e) => onRoleChange(e.target.value as InvitableRole)}
               aria-describedby="invite-role-hint"
-              className="h-10 rounded-md border border-input bg-background px-3 text-base sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="h-10 rounded-md border border-input bg-background px-3 text-base sm:text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             >
               {INVITABLE_ROLES.map((role) => (
                 <option key={role} value={role}>

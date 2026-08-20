@@ -249,7 +249,7 @@ export function RepoDetail({
               key={scan.id}
               type="button"
               onClick={() => loadScanDetail(scan.id)}
-              className="flex items-center gap-3 w-full px-4 py-3 text-left hover:bg-muted/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+              className="flex items-center gap-3 w-full px-4 py-3 text-left hover:bg-muted/30 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
             >
               <ShieldAlert
                 className="h-4 w-4 text-muted-foreground shrink-0"

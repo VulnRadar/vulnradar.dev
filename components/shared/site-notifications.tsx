@@ -162,7 +162,7 @@ export function SiteBanner({ notification }: { notification: Notification }) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-start sm:items-center gap-3 sm:gap-4">
         <div
           className={cn(
-            "flex-shrink-0 flex items-center justify-center h-8 w-8 rounded-lg",
+            "shrink-0 flex items-center justify-center h-8 w-8 rounded-lg",
             config.iconBg,
           )}
         >
@@ -179,13 +179,13 @@ export function SiteBanner({ notification }: { notification: Notification }) {
                 {notification.title}
               </span>
             )}
-            <span className="text-sm text-foreground/80 break-words sm:truncate">
+            <span className="text-sm text-foreground/80 wrap-break-word sm:truncate">
               {notification.message}
             </span>
           </div>
 
           {(notification.action_url || notification.action_url_2) && (
-            <div className="flex flex-wrap items-center gap-2 sm:flex-shrink-0">
+            <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
               {notification.action_url && (
                 <Button
                   size="sm"
@@ -247,7 +247,7 @@ export function SiteBanner({ notification }: { notification: Notification }) {
         {notification.is_dismissible && (
           <button
             onClick={handleDismiss}
-            className="flex-shrink-0 flex items-center justify-center h-7 w-7 rounded-md text-foreground/60 hover:text-foreground hover:bg-foreground/10 transition-colors"
+            className="shrink-0 flex items-center justify-center h-7 w-7 rounded-md text-foreground/60 hover:text-foreground hover:bg-foreground/10 transition-colors"
             aria-label="Dismiss notification"
           >
             <X className="h-4 w-4" />
@@ -293,7 +293,7 @@ export function SiteModal({
       {/* Backdrop - matches site overlay style */}
       <div
         className={cn(
-          "absolute inset-0 bg-background/80 backdrop-blur-sm transition-opacity duration-200",
+          "absolute inset-0 bg-background/80 backdrop-blur-xs transition-opacity duration-200",
           mounted ? "opacity-100" : "opacity-0",
         )}
         onClick={notification.is_dismissible ? handleClose : undefined}
@@ -313,7 +313,7 @@ export function SiteModal({
             config.bg,
           )}
         >
-          <div className={cn("flex-shrink-0 p-2 rounded-md", config.iconBg)}>
+          <div className={cn("shrink-0 p-2 rounded-md", config.iconBg)}>
             <Icon className={cn("h-5 w-5", config.iconColor)} />
           </div>
           <div className="flex-1 min-w-0 pt-0.5">
@@ -326,7 +326,7 @@ export function SiteModal({
           {notification.is_dismissible && (
             <button
               onClick={handleClose}
-              className="flex-shrink-0 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              className="shrink-0 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
               aria-label="Close modal"
             >
               <X className="h-4 w-4" />
@@ -475,7 +475,7 @@ export function SiteToast({
         <div className="flex items-start gap-2.5">
           <div
             className={cn(
-              "flex-shrink-0 p-1.5 rounded-md mt-0.5",
+              "shrink-0 p-1.5 rounded-md mt-0.5",
               config.iconBg,
             )}
           >
@@ -489,7 +489,7 @@ export function SiteToast({
             )}
             <p
               className={cn(
-                "text-sm text-muted-foreground leading-snug whitespace-pre-wrap break-words",
+                "text-sm text-muted-foreground leading-snug whitespace-pre-wrap wrap-break-word",
                 notification.title && "mt-0.5",
               )}
             >
@@ -537,7 +537,7 @@ export function SiteToast({
           {notification.is_dismissible && (
             <button
               onClick={handleDismiss}
-              className="flex-shrink-0 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              className="shrink-0 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
               aria-label="Dismiss toast"
             >
               <X className="h-3.5 w-3.5" />
@@ -626,7 +626,7 @@ export function SiteNotifications({
       {banners.length > 0 && (
         <div
           ref={bannerStackRef}
-          className="fixed left-0 right-0 z-[60]"
+          className="fixed left-0 right-0 z-60"
           style={{ top: "var(--vr-imp-banner-h, 0px)" }}
         >
           {banners.map((notification) => (

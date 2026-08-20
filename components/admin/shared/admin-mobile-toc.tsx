@@ -47,7 +47,7 @@ export function AdminMobileTocTrigger({
         aria-controls="admin-mobile-toc"
         className={cn(
           "flex items-center gap-2 rounded-full bg-primary px-3.5 py-2.5 text-sm font-medium text-primary-foreground shadow-lg",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
         )}
       >
         <List className="h-4 w-4" aria-hidden="true" />
@@ -86,7 +86,7 @@ export function AdminMobileSectionTrigger({
       aria-controls="admin-section-nav"
       className={cn(
         "flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-card px-3.5 py-2.5 text-left transition-colors",
-        "hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "hover:bg-muted/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
       )}
     >
       <span className="flex items-center gap-2 min-w-0">
@@ -178,7 +178,7 @@ export function AdminMobileToc({
       role="dialog"
       aria-modal="true"
       aria-label={`${title} navigation`}
-      className="lg:hidden fixed inset-0 z-40 overflow-y-auto bg-background/95 backdrop-blur-sm"
+      className="lg:hidden fixed inset-0 z-40 overflow-y-auto bg-background/95 backdrop-blur-xs"
     >
       <div className="px-4 pb-24 pt-16 sm:px-6">
         <button
@@ -186,7 +186,7 @@ export function AdminMobileToc({
           type="button"
           onClick={onClose}
           aria-label="Close navigation"
-          className="absolute right-3 top-3 rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="absolute right-3 top-3 rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         >
           <X className="h-5 w-5" aria-hidden="true" />
         </button>
@@ -212,7 +212,7 @@ export function AdminMobileToc({
                     aria-current={item.active ? "page" : undefined}
                     className={cn(
                       "block w-full rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
                       item.active
                         ? "bg-primary/10 text-primary font-medium"
                         : "text-foreground hover:bg-muted",

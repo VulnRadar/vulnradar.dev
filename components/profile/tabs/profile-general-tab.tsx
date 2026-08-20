@@ -215,7 +215,7 @@ export function ProfileGeneralTab({
                     onClick={() => avatarInputRef.current?.click()}
                     disabled={uploadingAvatar}
                     aria-label="Change profile picture"
-                    className="absolute inset-0 flex items-center justify-center rounded-full bg-background/70 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="absolute inset-0 flex items-center justify-center rounded-full bg-background/70 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {uploadingAvatar ? (
                       <Loader2
@@ -462,7 +462,7 @@ export function ProfileGeneralTab({
         <button
           type="button"
           onClick={() => onTabChange("security")}
-          className="text-primary hover:underline underline-offset-4 font-medium rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="text-primary hover:underline underline-offset-4 font-medium rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         >
           Security
         </button>
@@ -470,7 +470,7 @@ export function ProfileGeneralTab({
         <button
           type="button"
           onClick={() => onTabChange("social")}
-          className="text-primary hover:underline underline-offset-4 font-medium rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="text-primary hover:underline underline-offset-4 font-medium rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         >
           Social
         </button>

@@ -127,7 +127,7 @@ export function LandingHero({ checkCount, categoryCount }: LandingHeroProps) {
               host="example.com"
               rows={HERO_READOUT_ROWS}
               leadCheckId="csp-missing"
-              className="shadow-sm shadow-black/5 dark:shadow-black/20"
+              className="shadow-xs shadow-black/5 dark:shadow-black/20"
             />
             <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
               One check out of {checkCount.toLocaleString()}. Every header,

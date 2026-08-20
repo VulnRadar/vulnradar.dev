@@ -287,7 +287,7 @@ export function StaffList({
       {/* Staff detail modal */}
       {selectedAdmin && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs"
           onClick={() => setSelectedAdmin(null)}
         >
           <div
@@ -631,7 +631,7 @@ export function StaffList({
       {/* Invite staff modal */}
       {inviteOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs"
           onClick={closeInviteModal}
         >
           <div
@@ -701,7 +701,7 @@ export function StaffList({
                   id="staff-invite-role"
                   value={inviteRole}
                   onChange={(e) => setInviteRole(e.target.value as StaffRole)}
-                  className="h-10 rounded-md border border-input bg-background px-3 text-base sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="h-10 rounded-md border border-input bg-background px-3 text-base sm:text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {INVITABLE_STAFF_ROLES.map((role) => (
                     <option key={role} value={role}>
@@ -949,7 +949,7 @@ export function StaffList({
                 <div className="hidden md:block">
                   <TableScrollArea maxHeight="65vh">
                     <Table>
-                      <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/90">
+                      <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
                         <TableRow className="border-y border-border/50 hover:bg-transparent">
                           <TableHead className="px-5 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                             Staff Member
@@ -1135,7 +1135,7 @@ export function StaffList({
                         type="button"
                         onClick={() => setSelectedAdmin(admin)}
                         aria-label={`View details for ${displayName}, ${statusDisplay}`}
-                        className="flex items-center gap-3 px-5 py-4 border-b border-border/40 last:border-0 hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset transition-colors text-left w-full"
+                        className="flex items-center gap-3 px-5 py-4 border-b border-border/40 last:border-0 hover:bg-muted/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset transition-colors text-left w-full"
                       >
                         <div className="relative shrink-0">
                           <UserAvatar

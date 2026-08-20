@@ -207,7 +207,7 @@ export function GithubRepoPickerModal({
                 type="button"
                 onClick={selectAllVisible}
                 disabled={loading || filteredRepos.length === 0}
-                className="font-medium text-primary hover:underline disabled:opacity-40 disabled:no-underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="font-medium text-primary hover:underline disabled:opacity-40 disabled:no-underline rounded focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               >
                 Select all{filter.trim() ? " matching" : " visible"}
               </button>
@@ -215,14 +215,14 @@ export function GithubRepoPickerModal({
                 type="button"
                 onClick={clearAll}
                 disabled={selectedCount === 0}
-                className="font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 rounded focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               >
                 Clear
               </button>
             </div>
           </div>
 
-          <div className="rounded-lg border border-border min-h-[16rem] flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="rounded-lg border border-border min-h-64 flex-1 overflow-y-auto overflow-x-hidden">
             {loading ? (
               <div className="flex items-center justify-center h-64 text-muted-foreground">
                 <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />

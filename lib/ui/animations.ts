@@ -89,9 +89,9 @@ export const hovers = {
 // FOCUS STATES
 
 export const focus = {
-  ring: "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+  ring: "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
   within: "focus-within:ring-2 focus-within:ring-ring",
-  none: "focus:outline-none focus-visible:outline-none",
+  none: "focus:outline-hidden focus-visible:outline-hidden",
 } as const;
 
 // ANIMATION CLASSES (for keyframe animations)
@@ -147,11 +147,11 @@ export const interactive = {
 
 export const backdrops = {
   modal: "bg-black/80 backdrop-blur-md",
-  modalSubtle: "bg-black/60 backdrop-blur-sm",
-  sheet: "bg-black/50 backdrop-blur-sm",
+  modalSubtle: "bg-black/60 backdrop-blur-xs",
+  sheet: "bg-black/50 backdrop-blur-xs",
   header:
     "bg-background/95 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60",
-  card: "bg-card/95 backdrop-blur-sm",
+  card: "bg-card/95 backdrop-blur-xs",
 } as const;
 
 // GLOW / GRADIENT EFFECTS
@@ -168,7 +168,7 @@ export const effects = {
 
   // Gradient text
   gradientText:
-    "bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70",
+    "bg-clip-text text-transparent bg-linear-to-r from-foreground to-foreground/70",
 
   // Orb (for hero sections)
   orb: "absolute rounded-full blur-3xl opacity-20 pointer-events-none",

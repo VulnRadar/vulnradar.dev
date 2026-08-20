@@ -40,7 +40,7 @@ export function ThemeToggle() {
       {/* Sliding dot */}
       <div
         className={cn(
-          "h-6 w-6 rounded-full flex items-center justify-center shadow-sm transition-all duration-300 ease-out",
+          "h-6 w-6 rounded-full flex items-center justify-center shadow-xs transition-all duration-300 ease-out",
           isDark ? "translate-x-8 bg-card" : "translate-x-0 bg-card",
         )}
       >

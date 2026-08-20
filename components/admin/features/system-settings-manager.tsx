@@ -666,7 +666,7 @@ export function SystemSettingsManager() {
       {hasTabChanges && (
         <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pointer-events-none">
           <div className="max-w-lg mx-auto pointer-events-auto">
-            <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl bg-card border border-border/50 shadow-lg backdrop-blur-sm">
+            <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl bg-card border border-border/50 shadow-lg backdrop-blur-xs">
               <div className="flex items-center gap-3">
                 <div className="p-1.5 rounded-lg bg-primary/10">
                   <Save

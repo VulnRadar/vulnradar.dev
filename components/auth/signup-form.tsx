@@ -216,7 +216,7 @@ export function SignupForm({ onSuccess, initialError }: SignupFormProps) {
           id="confirm-status"
           aria-live="polite"
           className={cn(
-            "text-xs flex items-center gap-1.5 min-h-[1rem]",
+            "text-xs flex items-center gap-1.5 min-h-4",
             confirmMatches ? "text-primary" : "text-muted-foreground",
           )}
         >

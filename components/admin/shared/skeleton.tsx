@@ -146,7 +146,7 @@ export function StatBarSkeleton({ segments = 5 }: { segments?: number }) {
       {Array.from({ length: segments }).map((_, i) => (
         <div
           key={i}
-          className="flex-1 min-w-[7rem] bg-card px-4 py-3 space-y-1.5"
+          className="flex-1 min-w-28 bg-card px-4 py-3 space-y-1.5"
         >
           <Skeleton className="h-5 w-10" />
           <Skeleton className="h-3 w-16" />

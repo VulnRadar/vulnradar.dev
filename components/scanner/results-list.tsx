@@ -85,7 +85,7 @@ const AI_VERDICT: Record<
 };
 
 const FOCUS_RING =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
 
 interface ResultsListProps {
   findings: Vulnerability[];
@@ -251,7 +251,7 @@ export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
             aria-label="Filter findings by keyword"
             className={cn(
               "w-full h-9 pl-9 pr-9 rounded-md border border-border bg-card text-base sm:text-sm text-foreground placeholder:text-muted-foreground",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
             )}
           />
           {searchQuery && (
@@ -553,7 +553,7 @@ function FindingRow({
       onClick={() => onSelect(issue)}
       className={cn(
         "group relative flex w-full items-start gap-3 py-3 pl-4 pr-3 text-left transition-colors hover:bg-muted/40",
-        "focus-visible:outline-none focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+        "focus-visible:outline-hidden focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
         demoted && "opacity-70 hover:opacity-100 focus-visible:opacity-100",
       )}
     >

@@ -390,7 +390,7 @@ export default function TeamsPage() {
             <button
               type="button"
               onClick={() => setActionError(null)}
-              className="text-xs font-medium underline underline-offset-4 opacity-80 hover:opacity-100 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="text-xs font-medium underline underline-offset-4 opacity-80 hover:opacity-100 rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             >
               Dismiss
             </button>

@@ -157,7 +157,7 @@ export function SchedulesSection({
                   id="schedule-freq"
                   value={scheduleFreq}
                   onChange={(e) => onScheduleFreqChange(e.target.value)}
-                  className="h-10 w-full sm:w-auto px-3 rounded-md border border-border bg-card text-foreground text-base sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="h-10 w-full sm:w-auto px-3 rounded-md border border-border bg-card text-foreground text-base sm:text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {SCHEDULE_FREQUENCIES.map((freq) => {
                     const def = FREQUENCIES[freq];
@@ -203,7 +203,7 @@ export function SchedulesSection({
                     onChange={(e) =>
                       onScheduleDayOfWeekLocalChange(Number(e.target.value))
                     }
-                    className="h-9 px-2.5 rounded-md border border-border bg-card text-foreground text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="h-9 px-2.5 rounded-md border border-border bg-card text-foreground text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {DAY_LABELS.map((label, dow) => (
                       <option key={dow} value={dow}>
@@ -219,7 +219,7 @@ export function SchedulesSection({
                     onChange={(e) =>
                       onScheduleDayOfMonthLocalChange(Number(e.target.value))
                     }
-                    className="h-9 px-2.5 rounded-md border border-border bg-card text-foreground text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="h-9 px-2.5 rounded-md border border-border bg-card text-foreground text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {Array.from({ length: 28 }, (_, i) => i + 1).map((dom) => (
                       <option key={dom} value={dom}>
@@ -235,7 +235,7 @@ export function SchedulesSection({
                     onChange={(e) =>
                       onScheduleHourLocalChange(Number(e.target.value))
                     }
-                    className="h-9 px-2.5 rounded-md border border-border bg-card text-foreground text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="h-9 px-2.5 rounded-md border border-border bg-card text-foreground text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {Array.from({ length: 24 }, (_, h) => h).map((h) => (
                       <option key={h} value={h}>

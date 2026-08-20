@@ -164,11 +164,11 @@ export default function CheckoutPage({
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-border bg-card/50 sticky top-[var(--vr-banner-h,0px)] z-10 transition-[top] duration-300">
+      <header className="border-b border-border bg-card/50 sticky top-(--vr-banner-h,0px) z-10 transition-[top] duration-300">
         <div className="container max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <Link
             href={ROUTES.PRICING}
-            className="inline-flex items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             <span className="text-sm">Back to plans</span>
@@ -177,11 +177,11 @@ export default function CheckoutPage({
         </div>
       </header>
       {/* position: sticky reserves flow space at the header's unshifted
-          height only -- the extra top-[var(--vr-banner-h)] offset that
+          height only -- the extra top-(--vr-banner-h) offset that
           pushes it down below a banner is a paint-only shift, so without
           this the header visually overlaps the content below it. */}
       <div
-        className="h-[var(--vr-banner-h,0px)] transition-[height] duration-300"
+        className="h-(--vr-banner-h,0px) transition-[height] duration-300"
         aria-hidden="true"
       />
 

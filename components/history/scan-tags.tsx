@@ -163,7 +163,7 @@ export function ScanTags({
               onBlur={submitTag}
               placeholder="tag"
               maxLength={MAX_CLIENT_TAG_LENGTH}
-              className="w-20 text-base sm:text-[10px] px-1.5 py-0.5 rounded-md border border-primary/30 bg-background text-foreground focus:outline-none"
+              className="w-20 text-base sm:text-[10px] px-1.5 py-0.5 rounded-md border border-primary/30 bg-background text-foreground focus:outline-hidden"
               autoFocus
             />
           </span>

@@ -21,7 +21,7 @@ export function DocsSidebar() {
   const position = DOCS_PAGES.findIndex((item) => item.href === pathname);
 
   return (
-    <aside className="hidden lg:block w-64 flex-shrink-0 border-r border-border/50">
+    <aside className="hidden lg:block w-64 shrink-0 border-r border-border/50">
       <nav
         aria-label="Documentation"
         className="sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto py-8 px-6"
@@ -53,7 +53,7 @@ export function DocsSidebar() {
                         aria-current={isActive ? "page" : undefined}
                         className={cn(
                           "-ml-px block border-l-2 py-1.5 pl-3 pr-2 text-sm transition-colors",
-                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset rounded-r-sm",
+                          "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset rounded-r-sm",
                           isActive
                             ? "border-primary font-medium text-primary"
                             : "border-transparent text-muted-foreground hover:border-border hover:text-foreground",

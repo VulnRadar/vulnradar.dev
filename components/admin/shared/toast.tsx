@@ -42,7 +42,7 @@ export function Toast({ toast, onClose, duration = 5000 }: ToastProps) {
         aria-label="Dismiss notification"
         className={cn(
           "ml-2 opacity-60 hover:opacity-100 transition-opacity rounded-sm",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
         )}
       >
         <X className="h-3.5 w-3.5" aria-hidden="true" />

@@ -168,7 +168,7 @@ export function ShareModal({
                 readOnly
                 value={shareUrl}
                 aria-label="Share link"
-                className="w-full truncate rounded-md border border-border bg-muted/30 py-2.5 pl-9 pr-3 font-mono text-base sm:text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="w-full truncate rounded-md border border-border bg-muted/30 py-2.5 pl-9 pr-3 font-mono text-base sm:text-sm text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={(e) => (e.target as HTMLInputElement).select()}
               />
             </div>
@@ -208,7 +208,7 @@ export function ShareModal({
                     type="button"
                     onClick={() => handleShare(option)}
                     aria-label={`Share via ${option.label}`}
-                    className="group flex flex-1 basis-16 flex-col items-center gap-1.5 rounded-md border border-border py-2.5 transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="group flex flex-1 basis-16 flex-col items-center gap-1.5 rounded-md border border-border py-2.5 transition-colors hover:bg-muted/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <span
                       className={cn(

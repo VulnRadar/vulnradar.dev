@@ -4,7 +4,7 @@ import { PublicScanRow } from "./public-scan-row";
 export function PublicScansTable({ scans }: { scans: PublicScan[] }) {
   return (
     <div className="overflow-hidden rounded-md border border-border bg-card">
-      <div className="hidden sm:grid grid-cols-[1fr,150px,150px,90px] gap-4 border-b border-border bg-muted/30 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+      <div className="hidden sm:grid grid-cols-[1fr_150px_150px_90px] gap-4 border-b border-border bg-muted/30 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         <div>Site</div>
         <div>Verdict</div>
         <div>Findings</div>

@@ -94,7 +94,7 @@ export function GithubProfileModal() {
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && handleClose()}>
       <DialogContent className="sm:max-w-[440px] p-0 overflow-hidden border-0 gap-0">
         {/* Header with GitHub branding */}
-        <div className="relative bg-gradient-to-br from-[#24292e] via-[#1b1f23] to-[#0d1117] px-6 pt-8 pb-14">
+        <div className="relative bg-linear-to-br from-[#24292e] via-[#1b1f23] to-[#0d1117] px-6 pt-8 pb-14">
           <div className="absolute inset-0 opacity-10">
             <div className="absolute top-4 left-8 w-16 h-16 rounded-full bg-white/20" />
             <div className="absolute top-12 right-12 w-8 h-8 rounded-full bg-white/20" />

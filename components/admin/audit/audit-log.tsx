@@ -60,7 +60,7 @@ interface AuditLogProps {
 }
 
 const focusRing =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
 
 export function AuditLog({
   auditLogs,
@@ -356,7 +356,7 @@ export function AuditLog({
               >
                 <TableScrollArea maxHeight="65vh">
                   <Table>
-                    <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/90">
+                    <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
                       <TableRow className="border-y border-border/50 hover:bg-transparent">
                         <TableHead className="px-5 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                           Action

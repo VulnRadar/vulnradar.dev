@@ -97,9 +97,9 @@ export function PaginationControl({
                   if (size !== pageSize) onPageSizeChange(size);
                 }}
                 className={cn(
-                  "h-7 min-w-[2.25rem] px-2 rounded-md text-xs font-medium transition-all",
+                  "h-7 min-w-9 px-2 rounded-md text-xs font-medium transition-all",
                   size === pageSize
-                    ? "bg-primary text-primary-foreground shadow-sm"
+                    ? "bg-primary text-primary-foreground shadow-xs"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
                 )}
                 aria-pressed={size === pageSize}
@@ -161,9 +161,9 @@ export function PaginationControl({
                 <button
                   key={p}
                   className={cn(
-                    "h-8 min-w-[2rem] px-2 rounded-lg text-xs font-medium transition-all",
+                    "h-8 min-w-8 px-2 rounded-lg text-xs font-medium transition-all",
                     p === currentPage
-                      ? "bg-primary text-primary-foreground shadow-sm"
+                      ? "bg-primary text-primary-foreground shadow-xs"
                       : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
                   )}
                   onClick={() => onPageChange(p)}

@@ -107,7 +107,7 @@ export function WebhooksSection({
 
       {/* The one and only sighting of a new webhook's signing secret. */}
       {newlyCreatedWebhookSecret && (
-        <div className="rounded-xl border border-primary/40 bg-primary/[0.05] p-4 sm:p-5 flex flex-col gap-3">
+        <div className="rounded-xl border border-primary/40 bg-primary/5 p-4 sm:p-5 flex flex-col gap-3">
           <div className="flex items-start gap-2.5">
             <KeyRound
               className="h-4 w-4 text-primary shrink-0 mt-0.5"

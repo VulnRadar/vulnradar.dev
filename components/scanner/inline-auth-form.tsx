@@ -44,7 +44,7 @@ interface InlineAuthFormProps {
 }
 
 const FOCUS_RING =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
 
 const FIELD_CLASS = cn(
   "h-9 border-border bg-background text-base sm:text-sm",

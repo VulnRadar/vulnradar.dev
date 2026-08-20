@@ -80,7 +80,7 @@ export function AuthHeading({
         ref={ref}
         tabIndex={-1}
         className={cn(
-          "text-2xl font-semibold tracking-tight outline-none",
+          "text-2xl font-semibold tracking-tight outline-hidden",
           authFocusRing,
         )}
       >
@@ -127,7 +127,7 @@ export function AuthOutcome({
           ref={ref}
           tabIndex={-1}
           className={cn(
-            "text-2xl font-semibold tracking-tight outline-none",
+            "text-2xl font-semibold tracking-tight outline-hidden",
             authFocusRing,
           )}
         >
