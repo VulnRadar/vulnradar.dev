@@ -72,6 +72,24 @@ vi.mock("@/lib/scanner/port-scan", () => ({
     mockBuildRiskyPortFindings(...args),
 }));
 
+// Auto subdomain discovery runs on every http scan and reaches out to crt.sh /
+// the other passive sources over the network (bounded to 15s inside
+// autoDiscoverSubdomains). Left unmocked it hangs past vitest's 5s test timeout
+// -- the root cause of this suite's flakiness. Mock it to a no-op; these
+// envelope tests never assert on discovered subdomains.
+vi.mock("@/lib/scanner/subdomain-auto", () => ({
+  autoDiscoverSubdomains: vi.fn(async () => {}),
+  readSubdomains: vi.fn(() => undefined),
+}));
+
+// CVE exploit-intel enrichment (execute-scan.ts:708) makes raw fetch() calls to
+// CISA KEV / FIRST.org EPSS / OSV -- not routed through the mocked safeFetch, so
+// it too hits the real network and times out. Mock it to return the findings
+// unchanged (the enrichment content is covered by cve-enrichment's own suite).
+vi.mock("@/lib/scanner/cve-enrichment", () => ({
+  enrichFindingsWithExploitIntel: vi.fn(async (findings: unknown) => findings),
+}));
+
 const { executeScan } = await import("@/lib/scanner/execute-scan");
 const { requestCancel, clearCancel } = await import("@/lib/scanner/scan-jobs");
 
