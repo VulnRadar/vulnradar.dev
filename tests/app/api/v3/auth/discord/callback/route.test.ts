@@ -158,6 +158,7 @@ const { AUTH_SESSION_COOKIE_NAME, DEVICE_TRUST_COOKIE_NAME } =
   await import("@/lib/config/constants");
 const { signDiscordState } = await import("@/lib/auth/discord-state");
 const { decryptApiKey } = await import("@/lib/auth/crypto");
+const { verifyPendingToken } = await import("@/lib/auth/pending-2fa");
 const { GET } = await import("@/app/api/v3/auth/discord/callback/route");
 
 function callbackRequest(params: Record<string, string>) {
@@ -409,8 +410,11 @@ describe("GET /api/v3/auth/discord/callback", () => {
       expect(location.searchParams.get("discord_2fa")).toBe("pending");
       expect(location.searchParams.get("method")).toBe("app");
       expect(cookieState.get("discord_pending_login")).toBeTruthy();
-      const pending = JSON.parse(cookieState.get("discord_pending_login")!);
-      expect(pending.userId).toBe(42);
+      // The pending cookie is a signed token now, not raw JSON.
+      const pending = verifyPendingToken<{ userId: number }>(
+        cookieState.get("discord_pending_login")!,
+      );
+      expect(pending?.userId).toBe(42);
     });
 
     it("sends the email 2FA code in the background for email-method 2FA", async () => {

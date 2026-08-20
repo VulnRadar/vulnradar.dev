@@ -257,6 +257,7 @@ const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 const { DEVICE_TRUST_COOKIE_NAME, AUTH_SESSION_COOKIE_NAME } =
   await import("@/lib/config/constants");
 const { signOAuthState } = await import("@/lib/auth/oauth-state");
+const { verifyPendingToken } = await import("@/lib/auth/pending-2fa");
 const { GET } =
   await import("@/app/api/v3/auth/oauth/[provider]/callback/route");
 
@@ -756,8 +757,11 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
       expect(location.searchParams.get("oauth_2fa")).toBe("pending");
       expect(location.searchParams.get("method")).toBe("app");
       expect(cookieState.get("oauth_pending_login")).toBeTruthy();
-      const pending = JSON.parse(cookieState.get("oauth_pending_login")!);
-      expect(pending.userId).toBe(42);
+      // The pending cookie is a signed token now, not raw JSON.
+      const pending = verifyPendingToken<{ userId: number }>(
+        cookieState.get("oauth_pending_login")!,
+      );
+      expect(pending?.userId).toBe(42);
     });
 
     it("sends the email 2FA code in the background for email-method 2FA", async () => {

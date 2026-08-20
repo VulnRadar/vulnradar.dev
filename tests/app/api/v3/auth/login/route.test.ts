@@ -21,6 +21,10 @@ import {
 } from "../_test-harness";
 void defaultSessionRow; // not needed here, kept for parity with sibling suites
 
+// The 2FA-challenge branch signs a pending token (lib/auth/pending-2fa), which
+// requires a 32-byte hex key. Set before the route runs, matching sibling suites.
+process.env.API_KEY_ENCRYPTION_KEY = "c".repeat(64);
+
 const queries: { sql: string; params: unknown[] }[] = [];
 
 let userRow: Record<string, unknown> | null = null;

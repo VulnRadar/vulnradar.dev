@@ -60,7 +60,14 @@ vi.mock("@/lib/email/email", async (importOriginal) => {
 });
 
 const { AUTH_2FA_PENDING_COOKIE } = await import("@/lib/config/constants");
+const { signPendingToken } = await import("@/lib/auth/pending-2fa");
 const { POST } = await import("@/app/api/v3/auth/2fa/email-send/route");
+
+// email-send now derives the userId only from a signed pending cookie.
+process.env.API_KEY_ENCRYPTION_KEY = "c".repeat(64);
+function signedPending(userId: number, ts: number = Date.now()): string {
+  return signPendingToken({ userId, ts });
+}
 
 function req(cookies: Record<string, string> = {}) {
   return new NextRequest("http://localhost/api/v3/auth/2fa/email-send", {
@@ -90,19 +97,16 @@ describe("POST /api/v3/auth/2fa/email-send", () => {
   });
 
   it("rejects an expired Discord pending login", async () => {
-    const pending = JSON.stringify({
-      userId: 1,
-      ts: Date.now() - 6 * 60 * 1000,
-    });
-    const res = await POST(
-      req({ discord_pending_login: encodeURIComponent(pending) }),
-    );
+    const pending = signedPending(1, Date.now() - 6 * 60 * 1000);
+    const res = await POST(req({ discord_pending_login: pending }));
     expect(res.status).toBe(401);
   });
 
   it("rejects when the pending user can't be found", async () => {
     userEmailRow = null;
-    const res = await POST(req({ [AUTH_2FA_PENDING_COOKIE]: "1" }));
+    const res = await POST(
+      req({ [AUTH_2FA_PENDING_COOKIE]: signedPending(1) }),
+    );
     expect(res.status).toBe(400);
   });
 
@@ -110,7 +114,9 @@ describe("POST /api/v3/auth/2fa/email-send", () => {
     userEmailRow = { email: "user@example.com" };
     recentCodeRow = { created_at: new Date().toISOString() };
 
-    const res = await POST(req({ [AUTH_2FA_PENDING_COOKIE]: "1" }));
+    const res = await POST(
+      req({ [AUTH_2FA_PENDING_COOKIE]: signedPending(1) }),
+    );
 
     expect(res.status).toBe(429);
     expect(insertCodeCalls).toHaveLength(0);
@@ -120,7 +126,9 @@ describe("POST /api/v3/auth/2fa/email-send", () => {
     userEmailRow = { email: "user@example.com" };
     recentCodeRow = null;
 
-    const res = await POST(req({ [AUTH_2FA_PENDING_COOKIE]: "1" }));
+    const res = await POST(
+      req({ [AUTH_2FA_PENDING_COOKIE]: signedPending(1) }),
+    );
     const json = await res.json();
 
     expect(res.status).toBe(200);
@@ -139,11 +147,9 @@ describe("POST /api/v3/auth/2fa/email-send", () => {
 
   it("resolves the pending user from a fresh Discord pending login cookie", async () => {
     userEmailRow = { email: "discorduser@example.com" };
-    const pending = JSON.stringify({ userId: 7, ts: Date.now() });
+    const pending = signedPending(7);
 
-    const res = await POST(
-      req({ discord_pending_login: encodeURIComponent(pending) }),
-    );
+    const res = await POST(req({ discord_pending_login: pending }));
     const json = await res.json();
 
     expect(res.status).toBe(200);

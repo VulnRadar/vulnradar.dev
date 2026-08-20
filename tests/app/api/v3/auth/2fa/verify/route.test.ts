@@ -142,7 +142,15 @@ const { encryptApiKey } = await import("@/lib/auth/crypto");
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 const { AUTH_2FA_PENDING_COOKIE, DEVICE_TRUST_COOKIE_NAME } =
   await import("@/lib/config/constants");
+const { signPendingToken } = await import("@/lib/auth/pending-2fa");
 const { POST } = await import("@/app/api/v3/auth/2fa/verify/route");
+
+// The verify route now derives the userId ONLY from a cryptographically-signed
+// pending cookie (never the request body), so tests must present a real signed
+// token, not the bare String(userId) the old forgeable contract accepted.
+function signedPending(userId: number, ts: number = Date.now()): string {
+  return signPendingToken({ userId, ts });
+}
 
 const TOTP_SECRET = generateSecret();
 let backupCodeHashes: string[];
@@ -202,20 +210,26 @@ beforeEach(async () => {
 describe("POST /api/v3/auth/2fa/verify", () => {
   it("rejects a request with neither a code nor a backup code", async () => {
     const res = await POST(
-      verifyRequest({ userId: 1 }, { [AUTH_2FA_PENDING_COOKIE]: "1" }),
+      verifyRequest(
+        { userId: 1 },
+        { [AUTH_2FA_PENDING_COOKIE]: signedPending(1) },
+      ),
     );
     expect(res.status).toBe(400);
   });
 
-  it("rejects a missing userId with no pending cookie context", async () => {
+  it("rejects a request with no pending cookie at all (401, not a body-userId path)", async () => {
     const res = await POST(verifyRequest({ code: "123456" }));
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(401);
   });
 
-  it("rejects when the pending 2FA cookie doesn't match the submitted userId", async () => {
+  it("rejects a forged (unsigned) pending cookie -- the old bare String(userId)", async () => {
+    // This is the core of the fix: a cookie the client made up (here the bare
+    // victim id the old contract accepted) has no valid signature, so the
+    // userId can't be trusted and the request is rejected.
     const res = await POST(
       verifyRequest(
-        { userId: 1, code: "123456" },
+        { userId: 2, code: "123456" },
         { [AUTH_2FA_PENDING_COOKIE]: "2" },
       ),
     );
@@ -241,7 +255,10 @@ describe("POST /api/v3/auth/2fa/verify", () => {
     it("accepts a correct TOTP code and creates a real session", async () => {
       const code = computeTotpCode(TOTP_SECRET);
       const res = await POST(
-        verifyRequest({ userId: 1, code }, { [AUTH_2FA_PENDING_COOKIE]: "1" }),
+        verifyRequest(
+          { userId: 1, code },
+          { [AUTH_2FA_PENDING_COOKIE]: signedPending(1) },
+        ),
       );
       const json = await res.json();
 
@@ -261,7 +278,7 @@ describe("POST /api/v3/auth/2fa/verify", () => {
       const res = await POST(
         verifyRequest(
           { userId: 1, code: wrongCode },
-          { [AUTH_2FA_PENDING_COOKIE]: "1" },
+          { [AUTH_2FA_PENDING_COOKIE]: signedPending(1) },
         ),
       );
       expect(res.status).toBe(400);
@@ -274,7 +291,10 @@ describe("POST /api/v3/auth/2fa/verify", () => {
       const code = computeTotpCode(TOTP_SECRET);
 
       const res = await POST(
-        verifyRequest({ userId: 1, code }, { [AUTH_2FA_PENDING_COOKIE]: "1" }),
+        verifyRequest(
+          { userId: 1, code },
+          { [AUTH_2FA_PENDING_COOKIE]: signedPending(1) },
+        ),
       );
       const json = await res.json();
 
@@ -298,7 +318,7 @@ describe("POST /api/v3/auth/2fa/verify", () => {
       const res = await POST(
         verifyRequest(
           { userId: 1, backupCode: BACKUP_CODES_PLAIN[0] },
-          { [AUTH_2FA_PENDING_COOKIE]: "1" },
+          { [AUTH_2FA_PENDING_COOKIE]: signedPending(1) },
         ),
       );
       const json = await res.json();
@@ -322,7 +342,7 @@ describe("POST /api/v3/auth/2fa/verify", () => {
       const res = await POST(
         verifyRequest(
           { userId: 1, backupCode: BACKUP_CODES_PLAIN[2] },
-          { [AUTH_2FA_PENDING_COOKIE]: "1" },
+          { [AUTH_2FA_PENDING_COOKIE]: signedPending(1) },
         ),
       );
       const json = await res.json();
@@ -341,7 +361,7 @@ describe("POST /api/v3/auth/2fa/verify", () => {
       const res = await POST(
         verifyRequest(
           { userId: 1, backupCode: "ZZZZZ-ZZZZZ-ZZZZZ-ZZZZZ" },
-          { [AUTH_2FA_PENDING_COOKIE]: "1" },
+          { [AUTH_2FA_PENDING_COOKIE]: signedPending(1) },
         ),
       );
       expect(res.status).toBe(400);
@@ -354,7 +374,7 @@ describe("POST /api/v3/auth/2fa/verify", () => {
       const res = await POST(
         verifyRequest(
           { userId: 1, backupCode: loose },
-          { [AUTH_2FA_PENDING_COOKIE]: "1" },
+          { [AUTH_2FA_PENDING_COOKIE]: signedPending(1) },
         ),
       );
       expect(res.status).toBe(200);
@@ -380,7 +400,10 @@ describe("POST /api/v3/auth/2fa/verify", () => {
       emailCodeHashes = { 9: hash };
 
       const res = await POST(
-        verifyRequest({ userId: 1, code }, { [AUTH_2FA_PENDING_COOKIE]: "1" }),
+        verifyRequest(
+          { userId: 1, code },
+          { [AUTH_2FA_PENDING_COOKIE]: signedPending(1) },
+        ),
       );
       const json = await res.json();
 
@@ -400,7 +423,7 @@ describe("POST /api/v3/auth/2fa/verify", () => {
       const res = await POST(
         verifyRequest(
           { userId: 1, code: "000000" },
-          { [AUTH_2FA_PENDING_COOKIE]: "1" },
+          { [AUTH_2FA_PENDING_COOKIE]: signedPending(1) },
         ),
       );
       expect(res.status).toBe(400);
@@ -420,7 +443,7 @@ describe("POST /api/v3/auth/2fa/verify", () => {
     const res = await POST(
       verifyRequest(
         { userId: 1, code: computeTotpCode(TOTP_SECRET) },
-        { [AUTH_2FA_PENDING_COOKIE]: "1" },
+        { [AUTH_2FA_PENDING_COOKIE]: signedPending(1) },
       ),
     );
 
@@ -440,7 +463,7 @@ describe("POST /api/v3/auth/2fa/verify", () => {
     const res = await POST(
       verifyRequest(
         { userId: 1, code, rememberDevice: true },
-        { [AUTH_2FA_PENDING_COOKIE]: "1" },
+        { [AUTH_2FA_PENDING_COOKIE]: signedPending(1) },
       ),
     );
 
@@ -452,15 +475,10 @@ describe("POST /api/v3/auth/2fa/verify", () => {
 
   describe("Discord pending login", () => {
     it("rejects an expired Discord pending login", async () => {
-      const pending = JSON.stringify({
-        userId: 1,
-        ts: Date.now() - 6 * 60 * 1000,
-      });
+      // Validly signed but stale ts -> rejected on freshness, not signature.
+      const pending = signedPending(1, Date.now() - 6 * 60 * 1000);
       const res = await POST(
-        verifyRequest(
-          { code: "123456" },
-          { discord_pending_login: encodeURIComponent(pending) },
-        ),
+        verifyRequest({ code: "123456" }, { discord_pending_login: pending }),
       );
       expect(res.status).toBe(401);
       expect(sessionInsertCalls).toHaveLength(0);
@@ -473,14 +491,11 @@ describe("POST /api/v3/auth/2fa/verify", () => {
         backup_codes: JSON.stringify(backupCodeHashes),
         two_factor_method: "app",
       };
-      const pending = JSON.stringify({ userId: 1, ts: Date.now() });
+      const pending = signedPending(1);
       const code = computeTotpCode(TOTP_SECRET);
 
       const res = await POST(
-        verifyRequest(
-          { code },
-          { discord_pending_login: encodeURIComponent(pending) },
-        ),
+        verifyRequest({ code }, { discord_pending_login: pending }),
       );
       const json = await res.json();
 
