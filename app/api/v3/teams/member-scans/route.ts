@@ -46,14 +46,17 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Fetch the team member's scan history
+  // Fetch the member's scans ASSIGNED TO THIS TEAM only. Filtering on team_id
+  // (not just user_id) keeps a member's private personal scans (team_id null)
+  // out of the team view -- org isolation, the same rule the history read/share
+  // paths enforce via getTeamResourceAccess.
   const scans = await pool.query(
     `SELECT id, url, findings_count, duration, scanned_at
      FROM scan_history
-     WHERE user_id = $1
+     WHERE user_id = $1 AND team_id = $2
      ORDER BY scanned_at DESC
      LIMIT 50`,
-    [userId],
+    [userId, teamId],
   );
 
   return NextResponse.json({ scans: scans.rows });

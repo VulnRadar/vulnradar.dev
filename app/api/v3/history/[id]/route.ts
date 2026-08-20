@@ -152,22 +152,24 @@ export async function GET(
     });
   }
 
-  // Check if both users are members of the same team
-  const teamCheck = await pool.query(
-    `SELECT COUNT(*) as team_count
-     FROM team_members tm1
-     JOIN team_members tm2 ON tm1.team_id = tm2.team_id
-     WHERE tm1.user_id = $1 AND tm2.user_id = $2`,
-    [authedUserId, scan.user_id],
+  // Team access is scoped to the scan's OWN team_id, not "any shared team".
+  // A private personal scan (team_id null) is owner-only even between
+  // teammates -- getTeamResourceAccess returns canRead:false for it. The prior
+  // "do these two users share any team" self-join leaked a teammate's private
+  // personal scans (org-isolation bug, same rule PATCH/DELETE already enforce).
+  const access = await getTeamResourceAccess(
+    authedUserId,
+    scan.user_id,
+    scan.team_id,
   );
 
-  if (teamCheck.rows[0].team_count > 0) {
+  if (access.canRead) {
     // Record API key usage
     if (apiKeyId) {
       await recordUsage(apiKeyId);
     }
 
-    // They're on the same team, allow access but don't show delete option
+    // Team-scoped read: allow access but don't show delete option
     return NextResponse.json({
       id: scan.id,
       url: scan.url,

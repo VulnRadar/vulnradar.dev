@@ -5,6 +5,7 @@ import crypto from "crypto";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { resolveSharePubliclyListed } from "@/lib/scanner/share-privacy";
 import { resolveScanRow } from "@/lib/history/resolve-scan";
+import { getTeamResourceAccess } from "@/lib/auth/team-resource-access";
 
 /** Share links may expire in 7, 30, or 90 days, or never (the default,
  *  unchanged from before this field existed). */
@@ -82,19 +83,18 @@ export async function POST(
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }
 
-  // Check if user owns the scan OR is a team admin/owner with the scan owner
+  // Publishing a share link is a write/management action, scoped to the scan's
+  // OWN team_id. For a private personal scan (team_id null) only the owner may
+  // share it -- getTeamResourceAccess returns canWrite:false for a non-owner.
+  // The prior "any shared team where caller is owner/admin" check let a team
+  // admin publish a teammate's private personal scan to the internet.
   if (scan.user_id !== session.userId) {
-    const teamRoleCheck = await pool.query(
-      `SELECT tm1.role
-       FROM team_members tm1
-       JOIN team_members tm2 ON tm1.team_id = tm2.team_id
-       WHERE tm1.user_id = $1 AND tm2.user_id = $2
-         AND tm1.role IN ('owner', 'admin')
-       LIMIT 1`,
-      [session.userId, scan.user_id],
+    const access = await getTeamResourceAccess(
+      session.userId,
+      scan.user_id,
+      scan.team_id,
     );
-
-    if (teamRoleCheck.rows.length === 0) {
+    if (!access.canWrite) {
       return NextResponse.json({ error: "Scan not found" }, { status: 404 });
     }
   }
@@ -172,19 +172,15 @@ export async function DELETE(
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }
 
-  // Check if user owns the scan OR is a team admin/owner with the scan owner
+  // Revoking a share link is a write action, scoped to the scan's own team_id
+  // (owner-only for a personal scan). See the POST handler above.
   if (scan.user_id !== session.userId) {
-    const teamRoleCheck = await pool.query(
-      `SELECT tm1.role
-       FROM team_members tm1
-       JOIN team_members tm2 ON tm1.team_id = tm2.team_id
-       WHERE tm1.user_id = $1 AND tm2.user_id = $2
-         AND tm1.role IN ('owner', 'admin')
-       LIMIT 1`,
-      [session.userId, scan.user_id],
+    const access = await getTeamResourceAccess(
+      session.userId,
+      scan.user_id,
+      scan.team_id,
     );
-
-    if (teamRoleCheck.rows.length === 0) {
+    if (!access.canWrite) {
       return NextResponse.json({ error: "Scan not found" }, { status: 404 });
     }
   }

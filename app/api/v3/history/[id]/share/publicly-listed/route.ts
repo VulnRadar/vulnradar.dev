@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { resolveScanRow } from "@/lib/history/resolve-scan";
+import { getTeamResourceAccess } from "@/lib/auth/team-resource-access";
 
 /**
  * PUT /api/v3/history/[id]/share/publicly-listed
@@ -48,18 +49,15 @@ export async function PUT(
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }
 
+  // Listing a share publicly is a write action, scoped to the scan's own
+  // team_id (owner-only for a personal scan). See the share route's POST.
   if (scan.user_id !== session.userId) {
-    const teamRoleCheck = await pool.query(
-      `SELECT tm1.role
-       FROM team_members tm1
-       JOIN team_members tm2 ON tm1.team_id = tm2.team_id
-       WHERE tm1.user_id = $1 AND tm2.user_id = $2
-         AND tm1.role IN ('owner', 'admin')
-       LIMIT 1`,
-      [session.userId, scan.user_id],
+    const access = await getTeamResourceAccess(
+      session.userId,
+      scan.user_id,
+      scan.team_id,
     );
-
-    if (teamRoleCheck.rows.length === 0) {
+    if (!access.canWrite) {
       return NextResponse.json({ error: "Scan not found" }, { status: 404 });
     }
   }
