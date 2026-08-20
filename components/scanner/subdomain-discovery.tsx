@@ -172,7 +172,10 @@ export function SubdomainDiscovery({
   // Staff members have access to all premium features
   const canRefreshDNS =
     isStaff ||
-    hasFeatureAccess(userPlan, PREMIUM_FEATURES.dns_refetch.requiredPlan);
+    hasFeatureAccess(
+      userPlan,
+      PREMIUM_FEATURES.subdomain_discovery.requiredPlan,
+    );
 
   // Cleanup timers on unmount
   useEffect(() => {
@@ -290,7 +293,7 @@ export function SubdomainDiscovery({
         <PremiumUpgradeModal
           open={showUpgradeModal}
           onOpenChange={setShowUpgradeModal}
-          feature={PREMIUM_FEATURES.dns_refetch}
+          feature={PREMIUM_FEATURES.subdomain_discovery}
           currentPlan={userPlan}
         />
         <div className="rounded-md border border-border bg-card p-4">
@@ -366,7 +369,7 @@ export function SubdomainDiscovery({
       <PremiumUpgradeModal
         open={showUpgradeModal}
         onOpenChange={setShowUpgradeModal}
-        feature={PREMIUM_FEATURES.dns_refetch}
+        feature={PREMIUM_FEATURES.subdomain_discovery}
         currentPlan={userPlan}
       />
       <div

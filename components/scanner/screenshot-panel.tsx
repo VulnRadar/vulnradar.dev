@@ -95,7 +95,10 @@ export function ScreenshotPanel({
   // instead of a silent 402 from the route.
   const canRefresh =
     isStaff ||
-    hasFeatureAccess(userPlan, PREMIUM_FEATURES.dns_refetch.requiredPlan);
+    hasFeatureAccess(
+      userPlan,
+      PREMIUM_FEATURES.screenshot_recapture.requiredPlan,
+    );
 
   async function handleRefresh() {
     if (!scanId || refreshing) return;
@@ -137,7 +140,7 @@ export function ScreenshotPanel({
       <PremiumUpgradeModal
         open={showUpgradeModal}
         onOpenChange={setShowUpgradeModal}
-        feature={PREMIUM_FEATURES.dns_refetch}
+        feature={PREMIUM_FEATURES.screenshot_recapture}
         currentPlan={userPlan}
       />
       <div className="overflow-hidden rounded-md border border-border bg-card">

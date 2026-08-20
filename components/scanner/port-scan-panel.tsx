@@ -67,12 +67,11 @@ export function PortScanPanel({
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const { me, isStaff } = useAuth();
   const userPlan = me?.plan || "free";
-  // Same premium gate as the subdomain refresh: staff always pass, everyone
-  // else needs the dns_refetch plan (Pro). A free user gets the upgrade modal
+  // Premium gate (Pro): staff always pass. A free user gets the upgrade modal
   // instead of a silent 402 from the route.
   const canRefresh =
     isStaff ||
-    hasFeatureAccess(userPlan, PREMIUM_FEATURES.dns_refetch.requiredPlan);
+    hasFeatureAccess(userPlan, PREMIUM_FEATURES.port_refetch.requiredPlan);
 
   async function handleRefresh() {
     if (!scanId || refreshing) return;
@@ -121,7 +120,7 @@ export function PortScanPanel({
       <PremiumUpgradeModal
         open={showUpgradeModal}
         onOpenChange={setShowUpgradeModal}
-        feature={PREMIUM_FEATURES.dns_refetch}
+        feature={PREMIUM_FEATURES.port_refetch}
         currentPlan={userPlan}
       />
       <div className="overflow-hidden rounded-md border border-border bg-card">

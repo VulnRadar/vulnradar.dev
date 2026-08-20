@@ -1,32 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
+import {
+  ALL_COLUMNS,
+  type NotificationColumn,
+} from "@/lib/notifications/notifications";
 
 // email_security is always forced true — cannot be disabled
 const ALWAYS_ON = new Set(["email_security"]);
 
-const ALL_COLUMNS = [
-  "email_security",
-  "email_new_login",
-  "email_password_change",
-  "email_2fa_change",
-  "email_session_revoked",
-  "email_scan_complete",
-  "email_critical_findings",
-  "email_regression_alert",
-  "email_schedules",
-  "email_api_keys",
-  "email_api_limit_warning",
-  "email_webhooks",
-  "email_webhook_failure",
-  "email_data_requests",
-  "email_account_deletion",
-  "email_team_invite",
-  "email_team_changes",
-  "email_product_updates",
-  "email_tips_guides",
-] as const;
-
-type PrefKey = (typeof ALL_COLUMNS)[number];
+// ALL_COLUMNS is the single shared list from lib/notifications. A hand-copied
+// list here had drifted (missing email_posture_digest), so "unsubscribe from
+// all" left the posture digest on -- a user could not turn it off.
+type PrefKey = NotificationColumn;
 type EmailPrefs = Record<PrefKey, boolean>;
 
 const DEFAULT_PREFS: EmailPrefs = Object.fromEntries(

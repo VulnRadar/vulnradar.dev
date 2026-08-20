@@ -43,6 +43,27 @@ export const PREMIUM_FEATURES: Record<string, PremiumFeature> = {
       "Re-fetch DNS records during scans to get the most up-to-date information about your domain's DNS configuration.",
     requiredPlan: "pro_supporter",
   },
+  port_refetch: {
+    id: "port_refetch",
+    name: "Port Re-scan",
+    description:
+      "Re-run the curated port and service sweep on demand to see the latest open ports for this host.",
+    requiredPlan: "pro_supporter",
+  },
+  screenshot_recapture: {
+    id: "screenshot_recapture",
+    name: "Screenshot Re-capture",
+    description:
+      "Capture a fresh page screenshot on demand so the report reflects how the site looks right now.",
+    requiredPlan: "pro_supporter",
+  },
+  subdomain_discovery: {
+    id: "subdomain_discovery",
+    name: "Subdomain Discovery",
+    description:
+      "Discover subdomains for this host and scan the ones you choose, expanding coverage beyond the entry URL.",
+    requiredPlan: "pro_supporter",
+  },
 };
 
 // Derive plan labels, prices, and limits from centralized plans config
