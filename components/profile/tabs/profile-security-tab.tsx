@@ -136,6 +136,16 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
   const [twoFactorMethod, setTwoFactorMethod] = useState<string | null>(
     user?.twoFactorMethod || null,
   );
+  // Keep the parent's `user` in sync with the live 2FA state. This tab remounts
+  // on every profile-tab switch and re-seeds the two states above from the
+  // `user` prop, so without pushing changes up the parent's stale `user` would
+  // make a just-toggled 2FA status silently revert on the next tab switch (a
+  // false security all-clear). onUserPatch is a stable ref, so this only fires
+  // when the 2FA state actually changes.
+  const { onUserPatch } = props;
+  useEffect(() => {
+    onUserPatch?.({ totpEnabled, twoFactorMethod });
+  }, [totpEnabled, twoFactorMethod, onUserPatch]);
   const [setting2FA, setSetting2FA] = useState(false);
   const [enrolStep, setEnrolStep] = useState<EnrolStep>("scan");
   const [startingSetup, setStartingSetup] = useState(false);

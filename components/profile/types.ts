@@ -274,4 +274,11 @@ export interface ProfileTabProps {
   >;
   setBillingInfo?: React.Dispatch<React.SetStateAction<BillingInfo | null>>;
   setDataReqInfo?: React.Dispatch<React.SetStateAction<DataRequestInfo | null>>;
+  /**
+   * Patch the parent's `user` so a change a tab makes locally (e.g. toggling
+   * 2FA) survives a tab switch. Without this the parent's `user` stays stale
+   * and the tab, which remounts on switch, re-seeds from it -- showing the old
+   * value (a false 2FA all-clear). Must be a stable reference.
+   */
+  onUserPatch?: (patch: Partial<ProfileUser>) => void;
 }

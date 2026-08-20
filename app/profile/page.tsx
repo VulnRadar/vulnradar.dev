@@ -123,6 +123,13 @@ function ProfileContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  // Stable patcher so a tab (e.g. Security's 2FA toggle) can keep this local
+  // `user` current; without it a tab's change reverts on the next tab switch.
+  const patchUser = useCallback(
+    (patch: Partial<ProfileUser>) =>
+      setUser((u) => (u ? { ...u, ...patch } : u)),
+    [],
+  );
 
   // API key state is now managed in ProfileDeveloperTab component
 
@@ -823,6 +830,7 @@ function ProfileContent() {
                 onTabChange={handleProfileTabChange}
                 pendingChanges={pendingChanges}
                 setPendingChanges={setPendingChanges}
+                onUserPatch={patchUser}
               />
             )}
 

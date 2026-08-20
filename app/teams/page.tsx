@@ -164,12 +164,13 @@ export default function TeamsPage() {
     }
   }
 
-  async function openTeam(team: Team) {
-    setSelectedTeam(team);
+  // Reloads the member + invite lists WITHOUT touching the invite panel's
+  // one-time-token state. handleInvite must use this, not openTeam: openTeam
+  // resets inviteToken/showInvite, and React batches that reset into the same
+  // render as handleInvite's setInviteToken, so the just-minted copy-once link
+  // never renders (the only delivery path on a no-SMTP self-host).
+  async function refreshMembers(team: Team) {
     setMembersLoading(true);
-    setShowInvite(false);
-    setInviteToken(null);
-    setViewingMember(null);
     try {
       const res = await fetch(`${API.TEAMS_MEMBERS}?teamId=${team.id}`);
       if (res.ok) {
@@ -183,6 +184,14 @@ export default function TeamsPage() {
     } finally {
       setMembersLoading(false);
     }
+  }
+
+  async function openTeam(team: Team) {
+    setSelectedTeam(team);
+    setShowInvite(false);
+    setInviteToken(null);
+    setViewingMember(null);
+    await refreshMembers(team);
   }
 
   async function handleInvite() {
@@ -204,7 +213,8 @@ export default function TeamsPage() {
       if (res.ok) {
         setInviteToken(data.token);
         setInviteEmail("");
-        await openTeam(selectedTeam);
+        // Refresh the lists but KEEP the invite panel + one-time token visible.
+        await refreshMembers(selectedTeam);
       } else {
         setActionError(
           data.error ||
