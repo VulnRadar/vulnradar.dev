@@ -460,6 +460,10 @@ export async function POST(request: NextRequest) {
     captureScreenshot,
     portScan,
     crawlPageLimit,
+    // Each discovered page's row inherits the crawl's privacy. Without this,
+    // scan_history.is_public defaults to true and a private/authenticated
+    // crawl would publish every page it touched.
+    isPublic: requestedIsPublic,
     // In-memory session only when the crawl authenticated -- never persisted.
     ...(session ? { session, authenticated: true } : {}),
   });

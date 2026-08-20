@@ -276,6 +276,15 @@ export interface ExecuteCrawlScanParams {
    */
   authenticated?: boolean;
   /**
+   * Whether each discovered page's scan_history row is public. The route
+   * resolves this (private for an authenticated crawl, or when the request
+   * opted out) and MUST thread it here: scan_history.is_public defaults to
+   * TRUE, so a per-page INSERT that omits it publishes every page of a private
+   * or authenticated crawl on the unauthenticated /host/[hostname] surfaces.
+   * Defaulting true here only matches that DB default for a caller that forgets.
+   */
+  isPublic?: boolean;
+  /**
    * The caller's per-plan cap on how many pages one crawl may cover, resolved
    * by the route (lib/billing/crawl-page-limits.ts). Bounds BOTH the
    * pre-selected page list and the engine's own discovery below the shipped
@@ -316,6 +325,7 @@ export async function executeCrawlScan(
     portScan = false,
     session,
     authenticated = false,
+    isPublic = true,
     crawlPageLimit,
   } = params;
 
@@ -606,8 +616,8 @@ export async function executeCrawlScan(
     for (const pr of pageResults) {
       try {
         const insertResult = await pool.query(
-          `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, notes)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+          `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, notes, is_public, authenticated)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
           [
             authedUserId,
             pr.url,
@@ -619,6 +629,8 @@ export async function executeCrawlScan(
             isApiKeyAuth ? "api" : "web",
             JSON.stringify(pr.responseHeaders),
             DEFAULT_SCAN_NOTE,
+            isPublic,
+            authenticated,
           ],
         );
         pageHistoryIds[pr.url] = insertResult.rows[0]?.id;
