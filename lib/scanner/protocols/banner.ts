@@ -25,6 +25,7 @@
 import * as net from "node:net";
 import * as tls from "node:tls";
 import { isPrivateHostname } from "@/lib/scanner/safe-fetch";
+import { resolveSafePublicIp } from "@/lib/scanner/port-scan";
 
 export interface BannerResult {
   protocol: string;
@@ -191,6 +192,15 @@ export async function grabBanner(
   const safetyError = validateBannerTarget(protocol, host, port);
   if (safetyError) return null;
 
+  // SSRF hardening: resolve the host to a validated PUBLIC ip and connect to
+  // that ip, not the hostname. validateBannerTarget's isPrivateHostname check
+  // is syntactic and does not resolve DNS, so connecting by hostname re-resolves
+  // it at the OS layer and is vulnerable to DNS rebinding (public at validation,
+  // internal by connect). Pinning the resolved ip closes that window; the
+  // hostname is still used for TLS SNI and for the reported result.
+  const safeIp = await resolveSafePublicIp(host);
+  if (!safeIp) return null;
+
   // Allow only the hard-coded client-hello strings. Anything else is
   // treated as "no client hello" so a malicious caller cannot inject
   // arbitrary protocol commands.
@@ -206,10 +216,15 @@ export async function grabBanner(
 
   return new Promise((resolve) => {
     const socket: net.Socket = useTls
-      ? // Safe: validateBannerTarget was called above on this exact
-        // (protocol, host, port) triple and rejected private IPs.
+      ? // Safe: connecting to safeIp, a validated public address from
+        // resolveSafePublicIp; servername keeps the hostname for SNI.
         // codeql[js/request-forgery]
-        tls.connect({ host, port, servername: host, rejectUnauthorized: false })
+        tls.connect({
+          host: safeIp,
+          port,
+          servername: host,
+          rejectUnauthorized: false,
+        })
       : new net.Socket();
     let banner = "";
     let settled = false;
@@ -253,15 +268,14 @@ export async function grabBanner(
     };
 
     if (useTls) {
-      // Safe: validateBannerTarget was called above on this exact
-      // (protocol, host, port) triple and rejected private IPs.
+      // Safe: connected to safeIp (validated public ip from resolveSafePublicIp).
       // codeql[js/request-forgery]
       (socket as tls.TLSSocket).once("secureConnect", onConnected);
     } else {
-      // Safe: validateBannerTarget was called above on this exact
-      // (protocol, host, port) triple and rejected private IPs.
+      // Safe: connecting to safeIp, a validated public ip from
+      // resolveSafePublicIp -- not the re-resolvable hostname.
       // codeql[js/request-forgery]
-      socket.connect(port, host, onConnected);
+      socket.connect(port, safeIp, onConnected);
     }
   });
 }
@@ -297,6 +311,11 @@ export async function grabCapabilityBanner(
   const safetyError = validateBannerTarget(protocol, host, port);
   if (safetyError) return null;
 
+  // SSRF hardening: connect to a validated public ip, never the re-resolvable
+  // hostname (DNS-rebinding safe). See grabBanner for the full rationale.
+  const safeIp = await resolveSafePublicIp(host);
+  if (!safeIp) return null;
+
   return new Promise((resolve) => {
     const socket = new net.Socket();
     let banner = "";
@@ -331,10 +350,10 @@ export async function grabCapabilityBanner(
     );
     socket.once("error", () => finish(null));
 
-    // Safe: validateBannerTarget was called above on this exact
-    // (protocol, host, port) triple and rejected private IPs.
+    // Safe: connecting to safeIp, a validated public ip from
+    // resolveSafePublicIp -- not the re-resolvable hostname.
     // codeql[js/request-forgery]
-    socket.connect(port, host, () => {
+    socket.connect(port, safeIp, () => {
       socket.write(hello);
       socket.on("data", (chunk: Buffer) => {
         banner += chunk.toString("utf8");
@@ -684,7 +703,7 @@ function parseMongoOpReplyDocument(
  * and bounded wall time (timeoutMs), same private-host/port gating as
  * grabBanner via validateBannerTarget.
  */
-function sendMongoCommand(
+async function sendMongoCommand(
   host: string,
   port: number,
   command: string,
@@ -692,7 +711,13 @@ function sendMongoCommand(
   timeoutMs: number,
 ): Promise<Record<string, unknown> | null> {
   const safetyError = validateBannerTarget("mongodb", host, port);
-  if (safetyError) return Promise.resolve(null);
+  if (safetyError) return null;
+
+  // SSRF hardening: connect to a validated public ip, never the re-resolvable
+  // hostname (DNS-rebinding safe). This probe actively confirms unauthenticated
+  // admin access, so an internal-service hit here is especially damaging.
+  const safeIp = await resolveSafePublicIp(host);
+  if (!safeIp) return null;
 
   return new Promise((resolve) => {
     const socket = new net.Socket();
@@ -714,10 +739,10 @@ function sendMongoCommand(
     socket.once("timeout", () => finish(null));
     socket.once("error", () => finish(null));
 
-    // Safe: validateBannerTarget was called above on this exact
-    // (protocol, host, port) triple and rejected private IPs.
+    // Safe: connecting to safeIp, a validated public ip from
+    // resolveSafePublicIp -- not the re-resolvable hostname.
     // codeql[js/request-forgery]
-    socket.connect(port, host, () => {
+    socket.connect(port, safeIp, () => {
       socket.on("data", (chunk: Buffer) => {
         buf = Buffer.concat([buf, chunk]);
         if (buf.length >= 4) {

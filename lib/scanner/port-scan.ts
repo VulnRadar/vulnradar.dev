@@ -274,7 +274,9 @@ function isSyntacticallyValidHost(host: string): boolean {
  * can never be swept. Connecting to the returned IP directly closes the DNS
  * rebinding window between this check and the connect.
  */
-async function resolveSafePublicIp(host: string): Promise<string | null> {
+export async function resolveSafePublicIp(
+  host: string,
+): Promise<string | null> {
   if (!isSyntacticallyValidHost(host)) return null;
   if (isPrivateHostname(host)) return null;
 
