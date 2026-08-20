@@ -1055,9 +1055,8 @@ export const CONFIG_PAGINATION_DEFAULT_PAGE = 1;
 
 // MISC LIMITS - UPDATE IF NEEDED
 
-// How long a CDN or browser caches the embeddable SVG scan-status badge and
-// its JSON stats before re-fetching (app/api/v3/badge/[token]/route.ts and
-// .../stats/route.ts).
+// How long a CDN or browser caches the embeddable SVG scan-status badge
+// before re-fetching (app/api/v3/badge/[token]/route.ts).
 export const CONFIG_BADGE_CACHE_MAX_AGE_SECONDS = 3600;
 
 // Hard cap on contact-form and landing-page-contact message length.
@@ -1096,11 +1095,6 @@ export const CONFIG_NOTIFICATION_DEFAULT_DISMISS_DAYS = 365;
 // days, the bell 365) and unifying them would be a behavior change, not a
 // refactor.
 export const CONFIG_SITE_NOTIFICATION_DEFAULT_DISMISS_DAYS = 30;
-
-// BETA MODE CONFIGURATION - UPDATE IF NEEDED
-
-export const CONFIG_BETA_ENABLED = false;
-export const CONFIG_BETA_BANNER_MESSAGE = `You are using ${CONFIG_APP_NAME} v2.0 BETA - Some features may be unstable. Please report issues.`;
 
 // FEATURE FLAGS - UPDATE IF NEEDED FOR YOUR DEPLOYMENT
 

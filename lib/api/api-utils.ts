@@ -4,20 +4,6 @@ import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 
 /**
- * Standard API response helpers to reduce boilerplate across routes
- */
-
-export interface ApiErrorResponse {
-  error: string;
-}
-
-export interface ApiSuccessResponse<T> {
-  data?: T;
-  message?: string;
-  [key: string]: unknown;
-}
-
-/**
  * JSON response helpers
  */
 /**

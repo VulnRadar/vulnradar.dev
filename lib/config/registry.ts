@@ -107,18 +107,9 @@ import {
   CONFIG_BULK_SCAN_TIMEOUT_SECONDS,
   CONFIG_CRAWL_SCAN_TIMEOUT_SECONDS,
   CONFIG_SCAN_STATUS_POLL_INTERVAL_MS,
-  CONFIG_DEFAULT_SEVERITY_THRESHOLD,
   CONFIG_SCAN_FETCH_TIMEOUT_MS,
   CONFIG_SCAN_ASYNC_CHECKS_TIMEOUT_MS,
   CONFIG_SCAN_RESPONSE_BODY_MAX_BYTES,
-  CONFIG_SCAN_SCREENSHOT_VIEWPORT_WIDTH,
-  CONFIG_SCAN_SCREENSHOT_VIEWPORT_HEIGHT,
-  CONFIG_SCAN_SCREENSHOT_NAV_TIMEOUT_MS,
-  CONFIG_SCAN_SCREENSHOT_SETTLE_MS,
-  CONFIG_SCAN_SCREENSHOT_MAX_WAIT_MS,
-  CONFIG_SCAN_SCREENSHOT_SESSION_TIMEOUT_SECONDS,
-  CONFIG_SCAN_SCREENSHOT_JPEG_QUALITY,
-  CONFIG_SCAN_SCREENSHOT_MAX_BYTES,
   CONFIG_SUBDOMAIN_CACHE_TTL_HOURS,
   CONFIG_SUBDOMAIN_DISCOVERY_HTTP_CONCURRENCY,
   CONFIG_CRAWL_DISCOVER_MAX_PAGES,
@@ -216,8 +207,6 @@ import {
   CONFIG_CLEANUP_KEV_CACHE_RETENTION_DAYS,
   CONFIG_UPDATER_NPM_CI_TIMEOUT_MS,
   CONFIG_UPDATER_ASSET_DOWNLOAD_TIMEOUT_MS,
-  CONFIG_BETA_ENABLED,
-  CONFIG_BETA_BANNER_MESSAGE,
   CONFIG_FEATURE_DEMO_MODE,
   CONFIG_FEATURE_TEAMS,
   CONFIG_FEATURE_API_KEYS,
@@ -232,7 +221,6 @@ import {
   CONFIG_DOMAIN_REVERIFY_INTERVAL_DAYS,
   CONFIG_DOMAIN_REVERIFY_BATCH_SIZE,
   CONFIG_POSTURE_DIGEST_ENABLED,
-  CONFIG_POSTURE_DIGEST_WINDOW_DAYS,
   CONFIG_POSTURE_DIGEST_MAX_FINDINGS_LISTED,
   CONFIG_SCHEDULED_BACKUP_ENABLED,
   CONFIG_BILLING_ENABLED,
@@ -783,16 +771,6 @@ export const SETTINGS_REGISTRY = {
     group: "Features",
     label: "Posture digest emails",
     help: "Weekly cross-site summary email for users who opt in. Turning this off pauses the worker for everyone without changing anyone's individual opt-in.",
-  },
-  POSTURE_DIGEST_WINDOW_DAYS: {
-    tier: "runtime",
-    type: "int",
-    default: CONFIG_POSTURE_DIGEST_WINDOW_DAYS,
-    group: "Features",
-    label: "Posture digest frequency (days)",
-    help: "A user becomes due for another digest this many days after their last one (or after opting in, for a first-time send).",
-    min: 1,
-    max: 90,
   },
   POSTURE_DIGEST_MAX_FINDINGS_LISTED: {
     tier: "runtime",
@@ -1828,15 +1806,6 @@ export const SETTINGS_REGISTRY = {
     min: 500,
     max: 60000,
   },
-  DEFAULT_SEVERITY_THRESHOLD: {
-    tier: "runtime",
-    type: "enum",
-    default: CONFIG_DEFAULT_SEVERITY_THRESHOLD,
-    group: "Scanning",
-    label: "Default severity threshold",
-    help: "Lowest severity reported when a scan does not specify one.",
-    options: ["critical", "high", "medium", "low", "info"],
-  },
   SCAN_FETCH_TIMEOUT_MS: {
     tier: "runtime",
     type: "int",
@@ -1864,86 +1833,6 @@ export const SETTINGS_REGISTRY = {
     group: "Scanning",
     label: "Scan response body cap (bytes)",
     help: "Bytes read from a scanned page's response body before body-based checks run, in the demo, bulk, and authenticated scan routes. Raise this for large single-page apps or content-heavy sites.",
-    min: 65536,
-    max: 52428800,
-  },
-  SCAN_SCREENSHOT_VIEWPORT_WIDTH: {
-    tier: "runtime",
-    type: "int",
-    default: CONFIG_SCAN_SCREENSHOT_VIEWPORT_WIDTH,
-    group: "Scanning",
-    label: "Screenshot viewport width (px)",
-    help: "Browser viewport width used when capturing an opt-in page screenshot.",
-    min: 320,
-    max: 3840,
-  },
-  SCAN_SCREENSHOT_VIEWPORT_HEIGHT: {
-    tier: "runtime",
-    type: "int",
-    default: CONFIG_SCAN_SCREENSHOT_VIEWPORT_HEIGHT,
-    group: "Scanning",
-    label: "Screenshot viewport height (px)",
-    help: "Browser viewport height used when capturing an opt-in page screenshot.",
-    min: 240,
-    max: 2160,
-  },
-  SCAN_SCREENSHOT_NAV_TIMEOUT_MS: {
-    tier: "runtime",
-    type: "int",
-    default: CONFIG_SCAN_SCREENSHOT_NAV_TIMEOUT_MS,
-    group: "Scanning",
-    label: "Screenshot navigation timeout (ms)",
-    help: "How long the screenshot capture waits for the page to finish navigating before giving up.",
-    min: 1000,
-    max: 60000,
-  },
-  SCAN_SCREENSHOT_SETTLE_MS: {
-    tier: "runtime",
-    type: "int",
-    default: CONFIG_SCAN_SCREENSHOT_SETTLE_MS,
-    group: "Scanning",
-    label: "Screenshot settle delay (ms)",
-    help: "Pause after navigation, before the frame is captured, so late layout and fonts settle.",
-    min: 0,
-    max: 10000,
-  },
-  SCAN_SCREENSHOT_MAX_WAIT_MS: {
-    tier: "runtime",
-    type: "int",
-    default: CONFIG_SCAN_SCREENSHOT_MAX_WAIT_MS,
-    group: "Scanning",
-    label: "Screenshot total wait cap (ms)",
-    help: "Hard ceiling on the whole screenshot capture, after which it is abandoned and the scan finishes without one.",
-    min: 1000,
-    max: 120000,
-  },
-  SCAN_SCREENSHOT_SESSION_TIMEOUT_SECONDS: {
-    tier: "runtime",
-    type: "int",
-    default: CONFIG_SCAN_SCREENSHOT_SESSION_TIMEOUT_SECONDS,
-    group: "Scanning",
-    label: "Screenshot browser session timeout (s)",
-    help: "How long the live-browser session backing a screenshot may stay open before it is torn down.",
-    min: 5,
-    max: 300,
-  },
-  SCAN_SCREENSHOT_JPEG_QUALITY: {
-    tier: "runtime",
-    type: "int",
-    default: CONFIG_SCAN_SCREENSHOT_JPEG_QUALITY,
-    group: "Scanning",
-    label: "Screenshot JPEG quality",
-    help: "JPEG quality (1 to 100) for the stored page screenshot. Lower trims stored bytes at the cost of sharpness.",
-    min: 1,
-    max: 100,
-  },
-  SCAN_SCREENSHOT_MAX_BYTES: {
-    tier: "runtime",
-    type: "int",
-    default: CONFIG_SCAN_SCREENSHOT_MAX_BYTES,
-    group: "Scanning",
-    label: "Screenshot max size (bytes)",
-    help: "Largest screenshot image that will be stored. A capture over this cap is discarded rather than saved.",
     min: 65536,
     max: 52428800,
   },
@@ -3114,24 +3003,6 @@ export const SETTINGS_REGISTRY = {
     min: 10000,
     max: 1800000,
   },
-  BETA_ENABLED: {
-    tier: "runtime",
-    type: "bool",
-    default: CONFIG_BETA_ENABLED,
-    group: "Advanced",
-    label: "Beta banner",
-    help: "Shows the beta notice at the top of every page.",
-  },
-  BETA_BANNER_MESSAGE: {
-    tier: "runtime",
-    type: "string",
-    default: CONFIG_BETA_BANNER_MESSAGE,
-    group: "Advanced",
-    label: "Beta banner message",
-    help: "Text of the beta notice. Only shown while the beta banner is on.",
-    min: 1,
-    max: 500,
-  },
 } as const satisfies Record<string, SettingDefinition>;
 
 /**
@@ -3200,6 +3071,26 @@ export const NEVER_CONFIGURABLE = {
     "Maximum forward clock skew accepted on an OAuth state token before it's treated as forged; widening it at runtime weakens the same anti-forgery check.",
   TOTP_VERIFY_WINDOW:
     "Clock-drift tolerance on 2FA/TOTP login codes; widening it at runtime directly weakens brute-force resistance on the second factor.",
+  DEFAULT_SEVERITY_THRESHOLD:
+    "The scanner reads the per-scan severity threshold, never this shipped default, so a runtime admin edit changes nothing at scan time.",
+  POSTURE_DIGEST_WINDOW_DAYS:
+    "Read directly from the shipped constant in lib/notifications/posture-digest.ts, so a runtime admin edit would not move the digest window.",
+  SCAN_SCREENSHOT_VIEWPORT_WIDTH:
+    "Read directly from the shipped constant in lib/scanner/page-screenshot.ts, so a runtime admin edit would not reach the screenshot capture path.",
+  SCAN_SCREENSHOT_VIEWPORT_HEIGHT:
+    "Read directly from the shipped constant in lib/scanner/page-screenshot.ts, so a runtime admin edit would not reach the screenshot capture path.",
+  SCAN_SCREENSHOT_NAV_TIMEOUT_MS:
+    "Read directly from the shipped constant in lib/scanner/page-screenshot.ts, so a runtime admin edit would not reach the screenshot capture path.",
+  SCAN_SCREENSHOT_SETTLE_MS:
+    "Read directly from the shipped constant in lib/scanner/page-screenshot.ts, so a runtime admin edit would not reach the screenshot capture path.",
+  SCAN_SCREENSHOT_MAX_WAIT_MS:
+    "Read directly from the shipped constant in lib/scanner/page-screenshot.ts, so a runtime admin edit would not reach the screenshot capture path.",
+  SCAN_SCREENSHOT_SESSION_TIMEOUT_SECONDS:
+    "Read directly from the shipped constant in lib/scanner/page-screenshot.ts, so a runtime admin edit would not reach the screenshot capture path.",
+  SCAN_SCREENSHOT_JPEG_QUALITY:
+    "Read directly from the shipped constant in lib/scanner/page-screenshot.ts, so a runtime admin edit would not reach the screenshot capture path.",
+  SCAN_SCREENSHOT_MAX_BYTES:
+    "Read directly from the shipped constant in lib/scanner/page-screenshot.ts, so a runtime admin edit would not reach the screenshot capture path.",
 } as const satisfies Record<string, string>;
 
 export type SettingKey = keyof typeof SETTINGS_REGISTRY;
@@ -3217,10 +3108,6 @@ export type SettingValue<K extends SettingKey> = ValueForType<
 
 export function isSettingKey(key: string): key is SettingKey {
   return Object.prototype.hasOwnProperty.call(SETTINGS_REGISTRY, key);
-}
-
-export function getSettingDefinition(key: SettingKey): SettingDefinition {
-  return SETTINGS_REGISTRY[key];
 }
 
 const schemaCache = new Map<SettingKey, z.ZodType>();

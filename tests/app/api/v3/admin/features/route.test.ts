@@ -358,20 +358,6 @@ describe("POST /api/v3/admin/features — system_settings", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects a value outside an enum setting's allowed options", async () => {
-    queueRole("admin");
-    const res = await POST(
-      postRequest({
-        section: "system_settings",
-        action: "set",
-        key: "DEFAULT_SEVERITY_THRESHOLD",
-        value: "catastrophic",
-      }),
-    );
-    expect(res.status).toBe(400);
-    expect(mockQuery).toHaveBeenCalledTimes(1);
-  });
-
   it("rejects a malformed value for an email-typed setting", async () => {
     queueRole("admin");
     const res = await POST(

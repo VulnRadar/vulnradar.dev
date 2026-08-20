@@ -1,4 +1,4 @@
-import { ROUTES, API_V2 } from "./constants";
+import { ROUTES, API_V3 } from "./constants";
 
 /**
  * Public paths that don't require authentication
@@ -17,15 +17,15 @@ export const PUBLIC_PATHS = [
   ROUTES.RESET_PASSWORD,
   ROUTES.VERIFY_EMAIL,
 
-  // ─── Authentication API Routes (v2) ────────────────────────────
-  API_V2.AUTH?.LOGIN || "/api/v3/auth/login",
-  API_V2.AUTH?.SIGNUP || "/api/v3/auth/signup",
-  API_V2.AUTH?.FORGOT_PASSWORD || "/api/v3/auth/forgot-password",
-  API_V2.AUTH?.RESET_PASSWORD || "/api/v3/auth/reset-password",
-  API_V2.AUTH?.ACCEPT_TOS || "/api/v3/auth/accept-tos",
-  API_V2.AUTH?.TWO_FA?.VERIFY || "/api/v3/auth/2fa/verify",
-  API_V2.AUTH?.VERIFY_EMAIL || "/api/v3/auth/verify-email",
-  API_V2.AUTH?.RESEND_VERIFICATION || "/api/v3/auth/resend-verification",
+  // ─── Authentication API Routes ─────────────────────────────────
+  API_V3.AUTH.LOGIN,
+  API_V3.AUTH.SIGNUP,
+  API_V3.AUTH.FORGOT_PASSWORD,
+  API_V3.AUTH.RESET_PASSWORD,
+  API_V3.AUTH.ACCEPT_TOS,
+  API_V3.AUTH.TWO_FA.VERIFY,
+  API_V3.AUTH.VERIFY_EMAIL,
+  API_V3.AUTH.RESEND_VERIFICATION,
 
   // ─── Discord OAuth (must be public for OAuth flow) ─────────────
   "/api/v3/auth/discord",
@@ -130,12 +130,12 @@ export const PUBLIC_PATHS = [
   ROUTES.PUBLIC_SCANS,
   "/api/v3/public-scans",
 
-  // ─── Public Demo (v2) ──────────────────────────────────────────
+  // ─── Public Demo ───────────────────────────────────────────────
   ROUTES.DEMO,
-  API_V2.DEMO_SCAN || "/api/v3/demo-scan",
+  API_V3.DEMO_SCAN,
 
-  // ─── Public API Endpoints (v2) ─────────────────────────────────
-  API_V2.LANDING_CONTACT || "/api/v3/landing-contact",
+  // ─── Public API Endpoints ──────────────────────────────────────
+  API_V3.LANDING_CONTACT,
 
   // ─── Public Badge Endpoints (v2) ────────────────────────────────
   "/api/v3/badge",
@@ -151,8 +151,8 @@ export const PUBLIC_PATHS = [
   // stored file served from here — see app/api/v3/avatar/[userId]/route.ts.
   "/api/v3/avatar",
 
-  // ─── Public Finding Types Endpoint (v2) ────────────────────────
-  API_V2.FINDING_TYPES || "/api/v3/finding-types",
+  // ─── Public Finding Types Endpoint ─────────────────────────────
+  API_V3.FINDING_TYPES,
 
   // ─── AI Support Chat ──────────────────────────────────────────
   // /info is public so the widget can show provider name before sign-in.

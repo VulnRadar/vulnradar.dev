@@ -35,7 +35,6 @@ const tocItems: TocItem[] = [
   { id: "demo-mode", label: "Demo mode", level: 2 },
   { id: "db-constraints", label: "DB constraints", level: 2 },
   { id: "pagination", label: "Pagination", level: 2 },
-  { id: "beta", label: "Beta mode", level: 2 },
   { id: "feature-flags", label: "Feature flags", level: 2 },
   { id: "billing", label: "Billing", level: 2 },
   { id: "admin-settings", label: "Admin Settings Page" },
@@ -456,18 +455,6 @@ lib/types/
             <li>
               <InlineCode>CONFIG_PAGINATION_DEFAULT_PAGE</InlineCode> (default:{" "}
               <InlineCode>1</InlineCode>)
-            </li>
-          </ul>
-        </DocsSubSection>
-
-        <DocsSubSection id="beta" title="Beta mode">
-          <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
-            <li>
-              <InlineCode>CONFIG_BETA_ENABLED</InlineCode> (default:{" "}
-              <InlineCode>false</InlineCode>)
-            </li>
-            <li>
-              <InlineCode>CONFIG_BETA_BANNER_MESSAGE</InlineCode>
             </li>
           </ul>
         </DocsSubSection>

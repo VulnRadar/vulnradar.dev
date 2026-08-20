@@ -1,6 +1,6 @@
 # VulnRadar Changelog - AI Knowledge
 
-_Auto-compiled from `lib/changelog/data.ts` on 2026-08-19._
+_Auto-compiled from `lib/changelog/data.ts` on 2026-08-20._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about specific versions, release

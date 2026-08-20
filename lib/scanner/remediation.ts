@@ -40,13 +40,6 @@ export interface FindingRemediation {
   assignee?: string | null;
 }
 
-export function isRemediationStatus(v: unknown): v is RemediationStatus {
-  return (
-    typeof v === "string" &&
-    (REMEDIATION_STATUSES as readonly string[]).includes(v)
-  );
-}
-
 /** Full-word label for every status, used by the detail-view control. */
 export const REMEDIATION_LABELS: Record<RemediationStatus, string> = {
   open: "Open",

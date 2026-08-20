@@ -242,26 +242,6 @@ export function hasStaffPermission(
 }
 
 /**
- * Check if role has any of the specified permissions
- */
-export function hasAnyStaffPermission(
-  role: string | null | undefined,
-  permissions: StaffPermission[],
-): boolean {
-  return permissions.some((p) => hasStaffPermission(role, p));
-}
-
-/**
- * Check if role has all specified permissions
- */
-export function hasAllStaffPermissions(
-  role: string | null | undefined,
-  permissions: StaffPermission[],
-): boolean {
-  return permissions.every((p) => hasStaffPermission(role, p));
-}
-
-/**
  * Get all permissions for a role
  */
 export function getStaffPermissions(
@@ -803,17 +783,3 @@ export function canPerformAction(
   return hasStaffPermission(role, action.permission);
 }
 
-/**
- * Get actions grouped by category
- */
-export function getActionsByCategory(
-  role: string | null | undefined,
-): Record<string, AdminAction[]> {
-  const available = getAvailableActions(role);
-  const grouped: Record<string, AdminAction[]> = {};
-  for (const action of available) {
-    if (!grouped[action.category]) grouped[action.category] = [];
-    grouped[action.category].push(action);
-  }
-  return grouped;
-}

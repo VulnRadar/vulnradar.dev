@@ -13,4 +13,3 @@ export * from "./docs-sidebar";
 export * from "./docs-toc";
 export * from "./docs-mobile-nav";
 export * from "./docs-pager";
-export * from "./docs-header";

@@ -3,5 +3,4 @@
 //   import { validateApiKey, generateApiKey } from "@/lib/api/api-keys";
 // The barrel still re-exports the genuine HTTP helpers below.
 export * from "./api-utils";
-export * from "./api-deprecation";
 export * from "./request-utils";

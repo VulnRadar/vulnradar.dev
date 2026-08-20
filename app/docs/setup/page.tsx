@@ -738,15 +738,6 @@ npm run db:create`}
           />
         </Card>
 
-        <DocsCallout variant="warning" title="Schema drift detector">
-          <p>
-            <InlineCode>npm run audit:v2-tables</InlineCode> compares{" "}
-            <InlineCode>instrumentation.ts</InlineCode> against{" "}
-            <InlineCode>scripts/migrate/versions/_snippets.mjs</InlineCode>. If
-            they drift, the migrator will fail until both are in sync. Wire this
-            into CI.
-          </p>
-        </DocsCallout>
       </DocsSection>
 
       <DocsSection id="version" title="Version Check">

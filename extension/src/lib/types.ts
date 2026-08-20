@@ -190,7 +190,6 @@ export interface AuthMe {
   readonly role: Role;
   readonly totpEnabled: boolean;
   readonly twoFactorMethod: "app" | "email" | null;
-  readonly isAdmin: boolean;
   readonly avatarUrl: string | null;
 }
 

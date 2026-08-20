@@ -63,7 +63,6 @@ export async function fetchSelectedFiles(
 }
 
 const secretsDefs = secretsExtendedDefs as CheckDef[];
-const defById = new Map(secretsDefs.map((d) => [d.id, d]));
 
 /** Matches .env, .env.local, .env.production, .env.example, etc. -- any
  *  file in the well-known dotenv naming family, regardless of directory. */
@@ -203,8 +202,4 @@ export function runPatternSecretsScan(files: RepoFile[]): Vulnerability[] {
   }
 
   return findings;
-}
-
-export function getSecretsCheckDef(id: string): CheckDef | undefined {
-  return defById.get(id);
 }

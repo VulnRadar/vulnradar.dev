@@ -68,7 +68,7 @@ export function formatFieldValue(value: FieldValue): string {
  * (the field's own `help` text already says it) instead of the generic
  * "Save Changes" summary. Deliberately narrow: only BILLING_ENABLED and the
  * FEATURE_* flags carry that consequence, not every boolean in the
- * registry (SCAN_AUTH_ENABLED, BETA_ENABLED, and the IP-binding toggles are
+ * registry (SCAN_AUTH_ENABLED and the IP-binding toggles are
  * real settings but do not gate access for existing users the same way).
  */
 export function isDestructiveToggle(
@@ -146,7 +146,6 @@ const MULTILINE_SETTING_KEYS: ReadonlySet<string> = new Set([
   "APP_DESCRIPTION",
   "SEO_TAGLINE",
   "TERMS_CHANGE_SUMMARY",
-  "BETA_BANNER_MESSAGE",
   "FOOTER_TEXT",
 ]);
 

@@ -245,42 +245,6 @@ export function isFrameworkPage(body: string): boolean {
 }
 
 /**
- * Apply a predicate to every Set-Cookie header on a response.
- *
- * Replaces the manual `for (const c of cookies) { ... }` fallback
- * pattern that was producing false positives across multiple cookie
- * detectors. Returns the first non-null predicate result, or null.
- */
-export function matchCookie(
-  headers: Headers,
-  predicate: (raw: string, name: string) => string | null,
-): string | null {
-  for (const raw of getSetCookies(headers)) {
-    const name = parseCookieName(raw);
-    const evidence = predicate(raw, name);
-    if (evidence) return evidence;
-  }
-  return null;
-}
-
-/**
- * Format a list of observed response header names for use in evidence
- * strings. Used by every "header-missing" detector so the evidence
- * includes the headers that *were* present, not just the absent one.
- *
- * Caps the list at `max` entries to keep evidence strings short.
- */
-export function formatObservedHeaders(headers: Headers, max = 12): string {
-  const names: string[] = [];
-  headers.forEach((_, key) => names.push(key));
-  if (names.length === 0) return "(no response headers observed)";
-  if (names.length <= max) return names.join(", ");
-  return (
-    names.slice(0, max).join(", ") + `, ... and ${names.length - max} more`
-  );
-}
-
-/**
  * Redact a secret value to `prefix****suffix` shape, preserving only
  * the first `prefixLen` and last `suffixLen` characters. Used by
  * secret-detection checks so scan logs and the `evidence` field never

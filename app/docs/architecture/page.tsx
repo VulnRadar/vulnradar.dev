@@ -242,12 +242,6 @@ export default function ArchitecturePage() {
                 scripts/create-fresh-db/create-fresh-db.mjs
               </InlineCode>
             </li>
-            <li>
-              <strong className="text-foreground">Drift detector:</strong>{" "}
-              <InlineCode>npm run audit:v2-tables</InlineCode> (in CI) compares{" "}
-              <InlineCode>instrumentation.ts</InlineCode> against{" "}
-              <InlineCode>scripts/migrate/versions/_snippets.mjs</InlineCode>
-            </li>
           </ul>
         </DocsSubSection>
 
@@ -460,10 +454,7 @@ export default function ArchitecturePage() {
           <p className="text-sm text-muted-foreground">
             REST v3 is the only API this build serves. There is no{" "}
             <InlineCode>/api/v1</InlineCode> or <InlineCode>/api/v2</InlineCode>{" "}
-            route tree; the deprecation headers in{" "}
-            <InlineCode>lib/api/api-deprecation.ts</InlineCode> are legacy from
-            an earlier release and only matter to an instance still running that
-            version. Each v3 route handler:
+            route tree. Each v3 route handler:
           </p>
           <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
             <li>

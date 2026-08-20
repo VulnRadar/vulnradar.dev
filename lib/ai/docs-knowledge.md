@@ -1,6 +1,6 @@
 # VulnRadar Public Docs: AI Knowledge
 
-_Auto-compiled from `app/docs/*/page.tsx` on 2026-08-19._
+_Auto-compiled from `app/docs/*/page.tsx` on 2026-08-20._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about every public docs page. Edit
@@ -73,13 +73,6 @@ are environment variables.
 > Put the app behind a reverse proxy (Caddy, Traefik, nginx) for TLS
 termination. Cookie flags (secure) and CSP
 headers assume HTTPS in production.
-
-> **WARNING: Schema drift detector**
-> npm run audit:v2-tables compares{" "}
-instrumentation.ts against{" "}
-scripts/migrate/versions/_snippets.mjs. If
-they drift, the migrator will fail until both are in sync. Wire this
-into CI.
 
 ### Headings
 - Step 1: Clone the Repository
@@ -1338,7 +1331,7 @@ files.
 - The detection engine is split across per-category files:
 - Categories (lib/scanner/types.ts, 16 total): headers, ssl, tls, content, cookies, configuration, information-disclosure, dns, email, api, code, secrets-extended, vibe-code, client-side, supply-chain, host-validation. Severities: info, low, medium, high, critical.
 - Service probes ( lib/scanner/protocols/banner.ts) open a bounded TCP socket to the target hostname on a well-known or user-supplied port, read the greeting, and report version disclosure and reachability. The 6 supported probes are ssh, smtp, imap, pop3, ftp, and mongodb. Probes are independent of the URL scheme: opt into "probes": ["ssh:2222"] from the dashboard without constructing ssh://host.
-- REST v3 is the only API this build serves. There is no /api/v1 or /api/v2 route tree; the deprecation headers in lib/api/api-deprecation.ts are legacy from an earlier release and only matter to an instance still running that version. Each v3 route handler:
+- REST v3 is the only API this build serves. There is no /api/v1 or /api/v2 route tree. Each v3 route handler:
 - Role hierarchy (defined in lib/config/client-constants.ts):
 - All four checks (lint, typecheck, test, build) run on Node 22 LTS in CI. See .github/workflows/.
 
@@ -1609,7 +1602,7 @@ npm run lint:fix    # auto-fix
 | Page | Hero | Sections | Callouts | Code tabs | Code blocks | Endpoints | Features | Paragraphs | Headings |
 |---|---|---|---|---|---|---|---|---|---|
 | `/docs` | ✓ | 4 | 0 | 0 | 0 | 0 | 0 | 5 | 1 |
-| `/docs/setup` | - | 12 | 5 | 0 | 22 | 0 | 0 | 28 | 30 |
+| `/docs/setup` | - | 12 | 4 | 0 | 22 | 0 | 0 | 27 | 30 |
 | `/docs/extension` | ✓ | 8 | 1 | 0 | 0 | 0 | 0 | 10 | 2 |
 | `/docs/self-hosting` | - | 15 | 6 | 0 | 12 | 0 | 0 | 19 | 3 |
 | `/docs/config` | - | 9 | 3 | 0 | 2 | 0 | 0 | 26 | 0 |

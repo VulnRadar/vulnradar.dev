@@ -124,14 +124,12 @@ describe("type coercion", () => {
         { key: "RATE_LIMIT_LOGIN_ATTEMPTS", value: "17" },
         { key: "BILLING_ENABLED", value: "false" },
         { key: "SUPPORT_EMAIL", value: "help@example.com" },
-        { key: "DEFAULT_SEVERITY_THRESHOLD", value: "high" },
       ),
     );
 
     expect(await getSetting("RATE_LIMIT_LOGIN_ATTEMPTS")).toBe(17);
     expect(await getSetting("BILLING_ENABLED")).toBe(false);
     expect(await getSetting("SUPPORT_EMAIL")).toBe("help@example.com");
-    expect(await getSetting("DEFAULT_SEVERITY_THRESHOLD")).toBe("high");
   });
 
   it("falls back to the default when a stored row is malformed", async () => {

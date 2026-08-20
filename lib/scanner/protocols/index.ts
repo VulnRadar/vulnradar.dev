@@ -594,6 +594,5 @@ export function getProtocolFindings(url: string): Vulnerability[] {
 }
 
 // Re-export protocol-specific check modules
-export * from "./https";
 export * from "./websocket";
 export * from "./ftp";

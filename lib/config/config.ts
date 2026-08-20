@@ -8,13 +8,6 @@ import { VulnRadarConfig, DEFAULT_CONFIG } from "../types/config";
 
 // Config loading state
 let _config: VulnRadarConfig | null = null;
-let _configLoadError: string | null = null;
-
-// Clear config cache (useful for development hot reloads)
-export function clearConfigCache() {
-  _config = null;
-  _configLoadError = null;
-}
 
 /**
  * Load configuration from hardcoded defaults
@@ -28,9 +21,9 @@ export function loadConfig(): VulnRadarConfig {
     _config = DEFAULT_CONFIG;
     return _config;
   } catch (error) {
-    _configLoadError = error instanceof Error ? error.message : "Unknown error";
     if (process.env.NODE_ENV === "development") {
-      console.error(`[Config] Error loading config: ${_configLoadError}`);
+      const message = error instanceof Error ? error.message : "Unknown error";
+      console.error(`[Config] Error loading config: ${message}`);
       console.warn("[Config] Using defaults");
     }
     _config = DEFAULT_CONFIG;
@@ -56,22 +49,6 @@ export function getConfigValue<K extends keyof VulnRadarConfig>(
   key: K,
 ): VulnRadarConfig[K] {
   return getConfig()[key];
-}
-
-/**
- * Check if config loaded successfully
- */
-export function getConfigError(): string | null {
-  return _configLoadError;
-}
-
-/**
- * Force reload config (useful for testing)
- */
-export function reloadConfig(): VulnRadarConfig {
-  _config = null;
-  _configLoadError = null;
-  return loadConfig();
 }
 
 // Convenience Exports

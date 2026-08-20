@@ -182,17 +182,3 @@ export function validateEnv(): Env {
   return cached;
 }
 
-/**
- * Get a specific required env var. Throws if not set. Use this for values
- * that aren't in the central schema (e.g. one-off secrets for new modules).
- */
-export function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value || value.length === 0) {
-    throw new Error(
-      `[env] Required environment variable ${name} is not set. ` +
-        `Add it to .env or your deployment environment.`,
-    );
-  }
-  return value;
-}

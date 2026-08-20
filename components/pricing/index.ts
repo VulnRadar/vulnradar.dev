@@ -1,5 +1,0 @@
-export * from "./pricing-hero";
-export * from "./pricing-cards";
-export * from "./pricing-features";
-export * from "./pricing-faq";
-export * from "./pricing-cta";

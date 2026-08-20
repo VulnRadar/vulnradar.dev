@@ -67,7 +67,11 @@ describe("registry coverage", () => {
 
   it("declares options for every enum and none for other types", () => {
     for (const [key, def] of Object.entries(SETTINGS_REGISTRY)) {
-      if (def.type === "enum") {
+      // Cast: there may currently be zero enum-typed settings (the registry
+      // type still supports "enum" for future ones), so a direct `=== "enum"`
+      // would type-narrow to never and fail tsc. This invariant still guards
+      // any enum setting that gets added later.
+      if ((def.type as string) === "enum") {
         expect(
           (def as { options?: readonly string[] }).options?.length,
           key,
@@ -177,18 +181,9 @@ describe("validateSettingValue", () => {
     );
   });
 
-  it("rejects a value outside an enum's options", () => {
-    expect(
-      validateSettingValue("DEFAULT_SEVERITY_THRESHOLD", "urgent").ok,
-    ).toBe(false);
-    expect(validateSettingValue("DEFAULT_SEVERITY_THRESHOLD", "high").ok).toBe(
-      true,
-    );
-  });
-
   it("rejects a string longer than the registry maximum", () => {
     expect(
-      validateSettingValue("BETA_BANNER_MESSAGE", "x".repeat(501)).ok,
+      validateSettingValue("APP_DESCRIPTION", "x".repeat(501)).ok,
     ).toBe(false);
   });
 

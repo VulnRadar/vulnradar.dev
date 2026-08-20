@@ -372,12 +372,6 @@ export function getChecksByCategory(categories: Category[]): CheckFn[] {
   return result;
 }
 
-export function getDefsByCategory(categories?: Category[] | null): CheckDef[] {
-  if (!categories || categories.length === 0) return allCheckDefs;
-  const allowed = new Set<Category>(categories);
-  return allCheckDefs.filter((d) => allowed.has(d.category));
-}
-
 export function getCategoryCounts(): Record<Category, number> {
   const out = {} as Record<Category, number>;
   for (const cat of BUNDLES.map((b) => b.category)) out[cat] = 0;

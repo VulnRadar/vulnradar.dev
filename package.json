@@ -38,7 +38,6 @@
     "db:migrate-avatars": "node scripts/migrate-avatars-to-files.mjs",
     "db:backup": "node scripts/backup-db.mjs",
     "db:restore": "node scripts/restore-db.mjs",
-    "audit:v2-tables": "node scripts/_lib/audit-v2-tables.mjs",
     "audit:new": "node scripts/audit/new.mjs",
     "audit:add-finding": "node scripts/audit/add-finding.mjs",
     "audit:list": "node scripts/audit/list.mjs",

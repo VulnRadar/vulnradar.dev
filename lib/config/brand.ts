@@ -66,5 +66,3 @@ export const BRAND = {
     info: "#7b899e",
   },
 } as const;
-
-export type BrandPalette = typeof BRAND;

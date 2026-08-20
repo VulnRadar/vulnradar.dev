@@ -108,7 +108,6 @@ export const API = {
       VERIFY: `/api/${API_VERSION}/auth/2fa/verify`,
       DISABLE: `/api/${API_VERSION}/auth/2fa/disable`,
       EMAIL_SETUP: `/api/${API_VERSION}/auth/2fa/email-setup`,
-      EMAIL_SEND: `/api/${API_VERSION}/auth/2fa/email-send`,
       BACKUP_CODES: `/api/${API_VERSION}/auth/2fa/backup-codes`,
     },
     SESSIONS: `/api/${API_VERSION}/auth/sessions`,
@@ -134,7 +133,6 @@ export const API = {
    *  the browser-minutes meter, same gate as the scan-time capture). */
   SCAN_REFRESH_SCREENSHOT: (id: string | number) =>
     `/api/${API_VERSION}/history/${id}/screenshot`,
-  SCAN_BULK: `/api/${API_VERSION}/scan/bulk`,
   SCAN_TAGS: `/api/${API_VERSION}/scan/tags`,
   SCAN_DISCOVER: `/api/${API_VERSION}/scan/discover`,
   SCAN_DISCOVER_PROGRESS: (requestId: string) =>
@@ -173,8 +171,6 @@ export const API = {
    *  badge token for one of the caller's own scans' URL. */
   BADGE_SITE: `/api/${API_VERSION}/badge/site`,
   DATA_REQUEST: `/api/${API_VERSION}/data-request`,
-  DATA_REQUEST_DOWNLOAD: `/api/${API_VERSION}/data-request/download`,
-  ACCOUNT_DELETE: `/api/${API_VERSION}/account/delete`,
   ACCOUNT_NOTIFICATIONS: `/api/${API_VERSION}/account/notifications`,
   ACCOUNT_PRIVACY: `/api/${API_VERSION}/account/privacy`,
   /** Account-level "list new shares in Public Scans by default" setting. */
@@ -201,7 +197,6 @@ export const API = {
   SCAN_REMEDIATION: `/api/${API_VERSION}/scan/remediation`,
   AI_INFO: `/api/${API_VERSION}/ai/info`,
   ACCOUNT: `/api/${API_VERSION}/account/delete`,
-  FINDING_TYPES: `/api/${API_VERSION}/finding-types`,
   COMPARE: `/api/${API_VERSION}/compare`,
   BILLING: `/api/${API_VERSION}/billing`,
   SUBSCRIPTION_CANCEL: `/api/${API_VERSION}/billing/subscription/cancel`,
@@ -270,23 +265,12 @@ export const SEVERITY_LEVELS = {
   INFO: "info",
 } as const;
 
-export type SeverityLevel =
-  (typeof SEVERITY_LEVELS)[keyof typeof SEVERITY_LEVELS];
-
 export const SEVERITY_COLORS = {
   critical: "hsl(var(--severity-critical))",
   high: "hsl(var(--severity-high))",
   medium: "hsl(var(--severity-medium))",
   low: "hsl(var(--severity-low))",
   info: "hsl(var(--severity-info))",
-};
-
-export const SEVERITY_LABELS = {
-  critical: "Critical",
-  high: "High",
-  medium: "Medium",
-  low: "Low",
-  info: "Informational",
 };
 
 // API KEY SCOPES
@@ -342,17 +326,3 @@ export const API_KEY_SCOPE_DESCRIPTIONS: Record<ApiKeyScope, string> = {
 export function resolveApiKeyScopes(scopes: unknown): ApiKeyScope[] {
   return Array.isArray(scopes) ? (scopes as ApiKeyScope[]) : ALL_API_KEY_SCOPES;
 }
-
-// UI / DESIGN CONSTANTS
-
-export const ANIMATION_DURATION = {
-  FAST: 150,
-  NORMAL: 300,
-  SLOW: 500,
-};
-
-export const TOAST_DURATION = {
-  SHORT: 3000,
-  NORMAL: 4000,
-  LONG: 6000,
-};

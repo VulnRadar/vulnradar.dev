@@ -577,10 +577,6 @@ npm run dev
               cmd: "npm run db:create:dry-run",
               what: "Same, but only prints the plan",
             },
-            {
-              cmd: "npm run audit:v2-tables",
-              what: "Diff instrumentation.ts vs _snippets.mjs; exit 1 on drift",
-            },
           ]}
         />
       </DocsSection>
@@ -783,8 +779,6 @@ npm run lint:fix    # auto-fix`}
             <InlineCode>instrumentation.ts</InlineCode> (the canonical source)
             AND mirror it to{" "}
             <InlineCode>scripts/migrate/versions/_snippets.mjs</InlineCode>.
-            <InlineCode>npm run audit:v2-tables</InlineCode> detects drift
-            between the two.
           </li>
           <li>
             <strong className="text-foreground">Adding a new API route:</strong>{" "}

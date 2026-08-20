@@ -115,7 +115,6 @@ describe("isDestructiveToggle", () => {
 
   it("does not flag a boolean outside billing/feature scope, even turned off", () => {
     expect(isDestructiveToggle("SCAN_AUTH_ENABLED", false)).toBe(false);
-    expect(isDestructiveToggle("BETA_ENABLED", false)).toBe(false);
   });
 
   it("does not flag a non-boolean value", () => {
@@ -184,7 +183,6 @@ describe("isMultilineSetting", () => {
     expect(isMultilineSetting("APP_DESCRIPTION")).toBe(true);
     expect(isMultilineSetting("SEO_TAGLINE")).toBe(true);
     expect(isMultilineSetting("TERMS_CHANGE_SUMMARY")).toBe(true);
-    expect(isMultilineSetting("BETA_BANNER_MESSAGE")).toBe(true);
     expect(isMultilineSetting("FOOTER_TEXT")).toBe(true);
   });
 

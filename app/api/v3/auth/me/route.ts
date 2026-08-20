@@ -52,7 +52,6 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       role: user?.role || STAFF_ROLES.USER,
       totpEnabled: user?.totp_enabled || false,
       twoFactorMethod: user?.two_factor_method || null,
-      isAdmin: user?.role === STAFF_ROLES.ADMIN,
       avatarUrl: user?.avatar_url || null,
       scansPrivateByDefault: user?.scans_private_by_default || false,
       bulkScanUrls: keyPlanLimits?.bulkScanUrls ?? -1,
@@ -143,7 +142,6 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     termsChangeSummary: termsSettings.TERMS_CHANGE_SUMMARY,
     totpEnabled: user?.totp_enabled || false,
     twoFactorMethod: user?.two_factor_method || null,
-    isAdmin: user?.role === STAFF_ROLES.ADMIN,
     role: user?.role || STAFF_ROLES.USER,
     avatarUrl: user?.avatar_url || null,
     // False only for an OAuth-only account (Google/GitHub/Discord sign-up)

@@ -155,7 +155,7 @@ export default defineConfig({
         },
         "lib/scanner/scheduled-scans-worker.ts": {
           // 81.31% / 81.25% / 68.42% / 55.31% actual. The uncovered lines
-          // are schedulePeriodicScheduledScans/stopPeriodicScheduledScans --
+          // are schedulePeriodicScheduledScans --
           // the setInterval registration wrapper, exercised at real startup
           // via instrumentation.ts rather than under a fake timer here, same
           // as lib/database/cleanup.ts's own schedulePeriodicCleanup.

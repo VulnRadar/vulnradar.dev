@@ -15,8 +15,7 @@ scripts/
 │   ├── _lib.schema.mjs           # getActualSchema, parseExpectedSchema, getDatabaseSummary
 │   ├── _lib.target.mjs           # listDatabases, chooseDatabase, formatDbTarget, formatDbHost
 │   ├── _lib.meta.mjs             # getProjectMeta, formatBytes, formatDuration
-│   ├── _lib.intro.mjs            # confirmIntro
-│   └── audit-v2-tables.mjs       # Cross-check instrumentation.ts vs migration snippets
+│   └── _lib.intro.mjs            # confirmIntro
 │
 ├── find-duplicate-ids.mjs         # Diagnostic: list duplicate check IDs (CI gate)
 │
@@ -54,7 +53,6 @@ scripts/
 | `npm run db:migrate:dry-run` | Same as above, but the SQL runs inside a rolled-back transaction (no persistent changes). |
 | `npm run db:create`          | Create a NEW database. Picks the schema version interactively.                            |
 | `npm run db:create:dry-run`  | Preview the create flow (no DB is created, no schema applied, no data copied).            |
-| `npm run audit:v2-tables`    | Cross-check v2 table column parity between instrumentation.ts and migrate/\_snippets.mjs. |
 | `npm run audit:new`          | Allocate the next AUDIT-NNN id and scaffold the audit directory.                          |
 | `npm run audit:list`         | Tabular listing of all audits.                                                            |
 | `npm run audit:show`         | Full manifest + findings table for one audit.                                             |

@@ -483,10 +483,3 @@ export function schedulePeriodicScheduledScans(
   activeScheduleTimer.unref?.();
   return activeScheduleTimer;
 }
-
-export function stopPeriodicScheduledScans(): void {
-  if (activeScheduleTimer) {
-    clearInterval(activeScheduleTimer);
-    activeScheduleTimer = null;
-  }
-}

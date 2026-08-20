@@ -107,11 +107,6 @@ export interface PaginationConfig {
   default_page: number;
 }
 
-export interface BetaConfig {
-  enabled: boolean;
-  banner_message: string;
-}
-
 export interface FeaturesConfig {
   demo_mode: boolean;
   teams: boolean;
@@ -159,7 +154,6 @@ export interface VulnRadarConfig {
   demo: DemoConfig;
   database: DatabaseConfig;
   pagination: PaginationConfig;
-  beta: BetaConfig;
   features: FeaturesConfig;
   billing: BillingConfig;
 }
@@ -233,8 +227,6 @@ import {
   CONFIG_PAGINATION_DEFAULT_PAGE_SIZE,
   CONFIG_PAGINATION_MAX_PAGE_SIZE,
   CONFIG_PAGINATION_DEFAULT_PAGE,
-  CONFIG_BETA_ENABLED,
-  CONFIG_BETA_BANNER_MESSAGE,
   CONFIG_FEATURE_DEMO_MODE,
   CONFIG_FEATURE_TEAMS,
   CONFIG_FEATURE_API_KEYS,
@@ -360,10 +352,6 @@ export const DEFAULT_CONFIG: VulnRadarConfig = {
     default_page_size: CONFIG_PAGINATION_DEFAULT_PAGE_SIZE,
     max_page_size: CONFIG_PAGINATION_MAX_PAGE_SIZE,
     default_page: CONFIG_PAGINATION_DEFAULT_PAGE,
-  },
-  beta: {
-    enabled: CONFIG_BETA_ENABLED,
-    banner_message: CONFIG_BETA_BANNER_MESSAGE,
   },
   features: {
     demo_mode: CONFIG_FEATURE_DEMO_MODE,

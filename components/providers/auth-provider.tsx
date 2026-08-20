@@ -27,7 +27,6 @@ export interface MeResponse {
   isImpersonating: boolean;
   totpEnabled: boolean;
   twoFactorMethod: string | null;
-  isAdmin: boolean;
   role: string;
   avatarUrl: string | null;
   onboardingCompleted: boolean;

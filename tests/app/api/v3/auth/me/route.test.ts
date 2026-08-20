@@ -152,7 +152,6 @@ describe("GET /api/v3/auth/me", () => {
       expect(json.email).toBe("api@example.com");
       expect(json.name).toBe("API User");
       expect(json.plan).toBe("core_supporter");
-      expect(json.isAdmin).toBe(false);
       // getSession must never run on the bearer path.
       expect(queries.some((q) => q.sql.includes("SELECT s.user_id"))).toBe(
         false,
@@ -379,7 +378,7 @@ describe("GET /api/v3/auth/me", () => {
       expect(json.badges).toEqual(badgesRows);
     });
 
-    it("reports isAdmin true only for the admin role", async () => {
+    it("returns the admin role for an admin user", async () => {
       cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
       sessionRow = defaultSessionRow({ user_id: 7 });
       userInfoRow = {
@@ -396,7 +395,6 @@ describe("GET /api/v3/auth/me", () => {
 
       const res = await GET(meRequest());
       const json = await res.json();
-      expect(json.isAdmin).toBe(true);
       expect(json.role).toBe("admin");
     });
 
