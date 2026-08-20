@@ -6,7 +6,9 @@ import { cn } from "@/lib/ui/utils";
 import { severityTone } from "@/components/scanner/severity-badge";
 import type { Vulnerability } from "@/lib/scanner/types";
 
-interface CrawlPageData {
+/** Canonical crawl result_meta shapes, imported everywhere a crawl result is
+ *  rendered so a new per-page field only has to be added here once. */
+export interface CrawlPageData {
   url: string;
   findings: Vulnerability[];
   findings_count: number;
@@ -14,7 +16,7 @@ interface CrawlPageData {
   duration: number;
 }
 
-interface CrawlInfo {
+export interface CrawlInfo {
   pagesDiscovered: number;
   pagesScanned: number;
   pages: CrawlPageData[];

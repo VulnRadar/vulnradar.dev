@@ -14,7 +14,7 @@ import {
 } from "@/components/history";
 import { AuthenticatedBadge } from "./authenticated-badge";
 import { SubdomainDiscovery } from "./subdomain-discovery";
-import { ScanResultDetail } from "./scan-result-detail";
+import { ScanResultDetail, type CrawlInfo } from "./scan-result-detail";
 import { copyToClipboard } from "@/lib/ui/clipboard";
 import { API } from "@/lib/config/client-constants";
 
@@ -24,20 +24,6 @@ const ScanActionsMenu = dynamic(() =>
 const IssueDetail = dynamic(() =>
   import("./issue-detail").then((m) => ({ default: m.IssueDetail })),
 );
-
-interface CrawlPageData {
-  url: string;
-  findings: Vulnerability[];
-  findings_count: number;
-  summary: Record<string, number>;
-  duration: number;
-}
-
-interface CrawlInfo {
-  pagesDiscovered: number;
-  pagesScanned: number;
-  pages: CrawlPageData[];
-}
 
 interface DashboardResultsProps {
   result: ScanResult;

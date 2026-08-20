@@ -70,19 +70,7 @@ function scanParamIsTarget(value: string): boolean {
   return /[./:]/.test(value);
 }
 
-interface CrawlPageData {
-  url: string;
-  findings: Vulnerability[];
-  findings_count: number;
-  summary: Record<string, number>;
-  duration: number;
-}
-
-interface CrawlInfo {
-  pagesDiscovered: number;
-  pagesScanned: number;
-  pages: CrawlPageData[];
-}
+import type { CrawlInfo } from "@/components/scanner/crawl-pages-info";
 
 /**
  * Scans now run as background jobs (see app/api/v3/scan/route.ts and

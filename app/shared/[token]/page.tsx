@@ -38,22 +38,8 @@ import {
   TOTAL_CHECKS_LABEL,
 } from "@/lib/config/constants";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
+import type { CrawlInfo } from "@/components/scanner/crawl-pages-info";
 import { copyToClipboard } from "@/lib/ui/clipboard";
-
-/** Mirrors app/history/page.tsx's shape for the same crawl result_meta. */
-interface CrawlPageData {
-  url: string;
-  findings: Vulnerability[];
-  findings_count: number;
-  summary: Record<string, number>;
-  duration: number;
-}
-
-interface CrawlInfo {
-  pagesDiscovered: number;
-  pagesScanned: number;
-  pages: CrawlPageData[];
-}
 
 export default function SharedScanPage() {
   const params = useParams();

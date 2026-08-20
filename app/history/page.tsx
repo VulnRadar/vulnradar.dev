@@ -52,20 +52,7 @@ import { HistoryDetailSkeleton } from "@/components/history/history-detail-skele
 /** Same key results-list.tsx / issue-detail.tsx read and write. */
 const FINDING_QUERY_PARAM = "finding";
 
-/** Mirrors app/dashboard/page.tsx's shape for the same crawl result_meta. */
-interface CrawlPageData {
-  url: string;
-  findings: Vulnerability[];
-  findings_count: number;
-  summary: Record<string, number>;
-  duration: number;
-}
-
-interface CrawlInfo {
-  pagesDiscovered: number;
-  pagesScanned: number;
-  pages: CrawlPageData[];
-}
+import type { CrawlInfo } from "@/components/scanner/crawl-pages-info";
 
 export default function HistoryPage() {
   const router = useRouter();

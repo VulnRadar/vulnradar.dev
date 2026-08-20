@@ -5,7 +5,11 @@ import dynamic from "next/dynamic";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 import { ScanSummary } from "./scan-summary";
 import { ResultsList } from "./results-list";
-import { CrawlPagesInfo } from "./crawl-pages-info";
+import {
+  CrawlPagesInfo,
+  type CrawlInfo,
+  type CrawlPageData,
+} from "./crawl-pages-info";
 
 const ScreenshotPanel = dynamic(() =>
   import("./screenshot-panel").then((m) => ({ default: m.ScreenshotPanel })),
@@ -28,20 +32,9 @@ const SoftwareInventoryPanel = dynamic(() =>
   })),
 );
 
-/** Shape of the crawl result_meta every full renderer passes through. */
-export interface CrawlPageData {
-  url: string;
-  findings: Vulnerability[];
-  findings_count: number;
-  summary: Record<string, number>;
-  duration: number;
-}
-
-export interface CrawlInfo {
-  pagesDiscovered: number;
-  pagesScanned: number;
-  pages: CrawlPageData[];
-}
+// Re-exported so existing importers keep resolving these from here; the
+// canonical definitions live in ./crawl-pages-info.
+export type { CrawlInfo, CrawlPageData };
 
 export interface ScanResultDetailProps {
   result: ScanResult;
