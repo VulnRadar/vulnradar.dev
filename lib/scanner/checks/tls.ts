@@ -235,11 +235,18 @@ interface ChainablePeerCert {
  * OS TLS stacks, embedded devices, some non-browser HTTP clients — will
  * fail to build a trust path and reject the connection outright.
  */
-export function checkTlsCertChainCompleteness(
+export async function checkTlsCertChainCompleteness(
   hostname: string,
   url: string,
   port: number = 443,
 ): Promise<Vulnerability[]> {
+  // SSRF hardening: pin the connection to a validated public IP, keeping the
+  // hostname for SNI. Connecting by hostname re-resolves DNS and is rebinding-
+  // vulnerable (see checkTLSCert in async-checks.ts for the full rationale).
+  const safety = await validateScanTarget(url);
+  if (!safety.safe || !safety.resolvedIp) return [];
+  const safeIp = safety.resolvedIp;
+
   return new Promise((resolve) => {
     const findings: Vulnerability[] = [];
     let socket: tls.TLSSocket | null = null;
@@ -252,7 +259,7 @@ export function checkTlsCertChainCompleteness(
     try {
       socket = tls.connect(
         {
-          host: hostname,
+          host: safeIp,
           port,
           servername: hostname,
           // codeql[js/disabling-certificate-validation]
@@ -326,11 +333,17 @@ export function checkTlsCertChainCompleteness(
  * stapling status on top of a cert that doesn't validate at all isn't a
  * separate actionable finding.
  */
-export function checkOcspStapling(
+export async function checkOcspStapling(
   hostname: string,
   url: string,
   port: number = 443,
 ): Promise<Vulnerability[]> {
+  // SSRF hardening: pin to a validated public IP, keep the hostname for SNI.
+  // See checkTLSCert in async-checks.ts for the full rationale.
+  const safety = await validateScanTarget(url);
+  if (!safety.safe || !safety.resolvedIp) return [];
+  const safeIp = safety.resolvedIp;
+
   return new Promise((resolve) => {
     const findings: Vulnerability[] = [];
     let socket: tls.TLSSocket | null = null;
@@ -344,7 +357,7 @@ export function checkOcspStapling(
     try {
       socket = tls.connect(
         {
-          host: hostname,
+          host: safeIp,
           port,
           servername: hostname,
           // codeql[js/disabling-certificate-validation]

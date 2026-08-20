@@ -2208,12 +2208,22 @@ export async function checkDNSSecurity(
 
 // ── TLS Certificate Checks ───────────────────────────────────────────────────
 
-export function checkTLSCert(
+export async function checkTLSCert(
   hostname: string,
   url: string,
   port: number = 443,
   emitCategory: Category = "ssl",
 ): Promise<Vulnerability[]> {
+  // SSRF hardening: resolve the target to a validated public IP and pin the
+  // TCP connection to it, keeping the hostname only for SNI/cert. Connecting by
+  // hostname re-resolves DNS at the OS layer -- vulnerable to rebinding (public
+  // at the scan route's validation, internal by the time this detached check
+  // runs). validateScanTarget resolves + rejects private addresses; servername
+  // keeps cert validation against the real hostname.
+  const safety = await validateScanTarget(url);
+  if (!safety.safe || !safety.resolvedIp) return [];
+  const safeIp = safety.resolvedIp;
+
   return new Promise((resolve) => {
     const findings: Vulnerability[] = [];
     let socket: tls.TLSSocket | null = null;
@@ -2228,7 +2238,7 @@ export function checkTLSCert(
     try {
       socket = tls.connect(
         {
-          host: hostname,
+          host: safeIp,
           port,
           servername: hostname,
           // rejectUnauthorized: false lets the secureConnect callback always
