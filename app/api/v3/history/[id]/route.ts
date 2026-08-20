@@ -485,6 +485,14 @@ export async function DELETE(
     );
   }
 
+  // Purge the public reputation cache this scan populated BEFORE deleting the
+  // scan row -- otherwise the cascade nulls host_reputation.source_scan_id and
+  // orphans the findings copy, which keeps serving on the unauthenticated /host
+  // and reputation endpoints. Mirrors the private-toggle purge above.
+  await pool.query(`DELETE FROM host_reputation WHERE source_scan_id = $1`, [
+    scan.id,
+  ]);
+
   const result = await pool.query(
     `DELETE FROM scan_history WHERE id = $1 RETURNING id`,
     [scan.id],

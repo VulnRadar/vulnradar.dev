@@ -140,6 +140,21 @@ export async function deleteUserAccountData(
     "UPDATE system_settings SET updated_by = NULL WHERE updated_by = $1",
     [userId],
   );
+  // broadcast_messages.sent_by tracks who last (re)sent a broadcast; unlike
+  // its sibling created_by (migrated to ON DELETE SET NULL) it has a plain FK
+  // with no ON DELETE, so a staff account that ever resent a broadcast would
+  // otherwise FK-violate the DELETE below and could never be deleted.
+  await client.query(
+    "UPDATE broadcast_messages SET sent_by = NULL WHERE sent_by = $1",
+    [userId],
+  );
+  // sessions.impersonated_by points at the admin on a *target's* session row
+  // (not this user's own sessions, already deleted above), same plain-FK issue:
+  // deleting an admin mid-impersonation would FK-violate without this.
+  await client.query(
+    "UPDATE sessions SET impersonated_by = NULL WHERE impersonated_by = $1",
+    [userId],
+  );
 
   // Finally, the user row itself. Every FK above either points at a row
   // already deleted, or has already been nulled/SET-NULL-on-delete.

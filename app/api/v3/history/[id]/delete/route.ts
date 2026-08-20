@@ -37,6 +37,14 @@ export async function DELETE(
   // itself (not just the earlier if-check above) so a future refactor of the
   // guard above can't turn this into a delete-any-scan-by-id endpoint.
   try {
+    // Purge the public reputation cache this scan populated BEFORE deleting the
+    // scan row -- deleting scan_history first nulls host_reputation.source_scan_id
+    // via cascade, orphaning the findings copy so it keeps serving on the
+    // unauthenticated /host and reputation endpoints. Mirrors the private-toggle
+    // purge in ../route.ts. No-op when this scan didn't source a reputation row.
+    await pool.query(`DELETE FROM host_reputation WHERE source_scan_id = $1`, [
+      scan.id,
+    ]);
     await pool.query(
       `DELETE FROM scan_history WHERE id = $1 AND user_id = $2`,
       [scan.id, session.userId],
