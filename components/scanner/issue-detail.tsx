@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import {
   ArrowLeft,
+  ArrowRight,
   BotMessageSquare,
   Check,
   ChevronDown,
@@ -13,12 +14,13 @@ import {
   Flag,
   Terminal,
 } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { SEVERITY_TONE } from "@/components/scanner/severity-badge";
 import type { Vulnerability } from "@/lib/scanner/types";
 import { cn } from "@/lib/ui/utils";
 import { copyToClipboard } from "@/lib/ui/clipboard";
-import { API } from "@/lib/config/constants";
+import { API, APP_NAME } from "@/lib/config/constants";
 import {
   REMEDIATION_STATUSES,
   REMEDIATION_LABELS,
@@ -794,6 +796,16 @@ export function IssueDetail({
             </li>
           ))}
         </ol>
+        <Link
+          href="/checks"
+          className={cn(
+            "mt-4 inline-flex items-center gap-1 text-xs text-primary hover:underline",
+            FOCUS_RING,
+          )}
+        >
+          Browse all {APP_NAME} fix guides
+          <ArrowRight aria-hidden className="h-3 w-3" />
+        </Link>
       </section>
 
       {issue.codeExamples.length > 0 && (
