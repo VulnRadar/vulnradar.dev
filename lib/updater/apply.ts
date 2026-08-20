@@ -26,7 +26,10 @@ import {
 import { verifyChecksum } from "@/lib/updater/checksum";
 import { verifyCosignSignature } from "@/lib/updater/cosign";
 import { commandAvailable, runCommand } from "@/lib/updater/exec";
-import { copyTreeOverlay } from "@/lib/updater/copy-with-excludes";
+import {
+  copyTreeOverlay,
+  pruneExtraneous,
+} from "@/lib/updater/copy-with-excludes";
 import { reapplyStartPort } from "@/lib/updater/preserve-start-port";
 import {
   appendLog,
@@ -220,28 +223,71 @@ export async function runUpdateJob(
       /* first run, or an unreadable/malformed package.json -- nothing to preserve */
     }
 
-    // Dev-only trees that `npm ci` / `npm run build` / `npm run db:migrate`
-    // never read: excluding them keeps the copy fast and keeps a
-    // production install free of things that have no reason to be there
-    // (test suites, the separate browser-extension product, CI config).
-    // Root-level prefixes only -- unlike node_modules/.git below, none of
-    // these are excluded by bare name, so a legitimately-needed directory
-    // elsewhere in the tree that happens to share a name is never at risk.
-    const DEV_ONLY_PREFIXES = [
+    // PROTECTED: never copied over and never pruned. User data and expensive
+    // build/dependency output that MUST survive an update untouched. .env and
+    // .env.* are always protected by copy-with-excludes' own DOTENV rule, so
+    // they don't need listing here.
+    //   - names (any depth): the dependency tree and git metadata.
+    //   - root prefixes: build output (.next), the DB backup directory, the
+    //     legacy on-disk avatar dir + any other runtime data, and caches.
+    const PROTECTED_NAMES = ["node_modules", ".git"];
+    const PROTECTED_PREFIXES = [
+      ".next",
+      "data",
+      "backups",
+      ".npm",
+      ".cache",
+      "logs",
+      "uploads",
+    ];
+    // STRIP: dev-only files that ship in the release tarball but a running
+    // install has no reason to keep. Excluded from the copy AND pruned from the
+    // destination if an older install still has them (test suites, the separate
+    // browser-extension product, CI config, internal audit tracking, and the
+    // repo's license/contributing docs the app itself never reads). Root-level
+    // prefixes only, so a legitimately-needed path deeper in the tree that
+    // happens to share a name is never at risk.
+    const STRIP_PREFIXES = [
       "tests",
       ".github",
       "extension",
       ".claude",
+      "audits",
       "vitest.config.ts",
+      "LICENSE",
+      "CONTRIBUTING.md",
     ];
-    const excludePrefixes = [".git", "node_modules", ...DEV_ONLY_PREFIXES];
     const copyResult = await copyTreeOverlay(sourceRoot, appRoot, {
-      excludeNames: [".git", "node_modules"],
-      excludePrefixes,
+      excludeNames: PROTECTED_NAMES,
+      excludePrefixes: [...PROTECTED_PREFIXES, ...STRIP_PREFIXES],
     });
     setStep(jobId, "copy", "done", `${copyResult.filesCopied} files`);
     log(
       `Copied ${copyResult.filesCopied} files, created ${copyResult.dirsCreated} directories, skipped ${copyResult.skipped.length} excluded paths.`,
+    );
+
+    // Mirror pass: the overlay copy above only ever adds/overwrites, so a file
+    // the new release DELETED (a renamed-away module, a dropped script) would
+    // linger and break the next build -- exactly the stale-file failure this
+    // fixes. pruneExtraneous removes destination files the release no longer
+    // ships, plus the STRIP paths above, while never touching PROTECTED paths.
+    // Refuses to run against an empty source, so a failed extract can't wipe
+    // the install.
+    startStep("prune");
+    const pruneResult = await pruneExtraneous(sourceRoot, appRoot, {
+      protectedNames: PROTECTED_NAMES,
+      protectedPrefixes: PROTECTED_PREFIXES,
+      stripPrefixes: STRIP_PREFIXES,
+      onDelete: (rel) => log(`Removed stale/unneeded path: ${rel}`),
+    });
+    setStep(
+      jobId,
+      "prune",
+      "done",
+      `${pruneResult.filesDeleted + pruneResult.dirsDeleted} removed`,
+    );
+    log(
+      `Removed ${pruneResult.filesDeleted} stale files and ${pruneResult.dirsDeleted} directories no longer in the release.`,
     );
 
     // Reapply a customized start-script port the copy above just

@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-@config '../tailwind.config.ts';
+@config '../tailwind.config.mjs';
 
 /* Role badge styles - generated dynamically via ROLE_BADGE_STYLES lookup
    object (defined in lib/config, which is outside the content globs), so

@@ -18,6 +18,19 @@ and full description.
 
 ---
 
+## v3.5.1 - August 20, 2026
+**Updater Stale-File Cleanup, Build Warning Fix**
+
+A patch release focused on the self-updater. It used to overlay a new release's files without ever removing ones an update had deleted, so a renamed-away module could linger and break the next build after updating. The updater now mirrors the release: files it no longer ships are removed, and dev-only files a running install has no reason to keep are stripped, while your environment file, database backups, uploaded data, dependencies, and build cache are always preserved. Separately, the Tailwind config was renamed so the build no longer prints a Node module-type warning.
+
+### Changes
+- [RefreshCw] **[FIXED]** **Updater Now Removes Stale and Unneeded Files**
+  The in-app updater overlaid new files but never deleted ones a release had dropped, so a module renamed or removed upstream could linger and break the next build after an update. It now mirrors the release: files no longer shipped are removed, and dev-only files a running install does not need (test suites, CI config, the browser-extension source, and the license/contributing docs) are stripped. Your .env files, database backups, uploaded data, node_modules, and build cache are always preserved and never touched.
+- [Wrench] **[FIXED]** **No More Tailwind Config Build Warning**
+  The Tailwind theme config was renamed to a form Node reads unambiguously, so the build no longer prints a MODULE_TYPELESS_PACKAGE_JSON warning. Cosmetic only; the generated CSS and build output are unchanged.
+
+---
+
 ## v3.5.0 - August 17, 2026 **(highlights)**
 **Domain Verification, Live-Browser Metering, Quota Bypass Fixes**
 
@@ -1582,7 +1595,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ## Quick reference
 
-- **Total releases:** 58
-- **Total changes documented:** 552
-- **Latest:** v3.5.0 (August 17, 2026) - Domain Verification, Live-Browser Metering, Quota Bypass Fixes
+- **Total releases:** 59
+- **Total changes documented:** 554
+- **Latest:** v3.5.1 (August 20, 2026) - Updater Stale-File Cleanup, Build Warning Fix
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release

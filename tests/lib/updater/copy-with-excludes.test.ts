@@ -2,7 +2,10 @@ import { describe, it, expect, afterEach } from "vitest";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { copyTreeOverlay } from "@/lib/updater/copy-with-excludes";
+import {
+  copyTreeOverlay,
+  pruneExtraneous,
+} from "@/lib/updater/copy-with-excludes";
 
 /**
  * Exercises the real filesystem inside isolated temp directories rather
@@ -166,5 +169,121 @@ describe("copyTreeOverlay", () => {
     expect(
       await exists(path.join(dest, "lib/updater/deep/nested/file.ts")),
     ).toBe(true);
+  });
+});
+
+// Standard protected/strip lists mirroring lib/updater/apply.ts.
+const PROTECTED_NAMES = ["node_modules", ".git"];
+const PROTECTED_PREFIXES = [".next", "data", "backups", ".npm", ".cache"];
+const STRIP_PREFIXES = [
+  "tests",
+  ".github",
+  "extension",
+  "audits",
+  "LICENSE",
+  "CONTRIBUTING.md",
+];
+const pruneOpts = {
+  protectedNames: PROTECTED_NAMES,
+  protectedPrefixes: PROTECTED_PREFIXES,
+  stripPrefixes: STRIP_PREFIXES,
+};
+
+describe("pruneExtraneous", () => {
+  it("deletes a dest file the new release no longer ships (the stale-file bug)", async () => {
+    const src = await makeTempDir("vulnradar-src-");
+    const dest = await makeTempDir("vulnradar-dest-");
+    // The release still ships permissions-client.ts but dropped permissions.ts.
+    await writeFile(src, "lib/auth/permissions-client.ts", "export {};");
+    await writeFile(dest, "lib/auth/permissions-client.ts", "export {};");
+    await writeFile(
+      dest,
+      "lib/auth/permissions.ts",
+      "// stale, removed upstream",
+    );
+
+    const result = await pruneExtraneous(src, dest, pruneOpts);
+
+    expect(await exists(path.join(dest, "lib/auth/permissions.ts"))).toBe(
+      false,
+    );
+    expect(
+      await exists(path.join(dest, "lib/auth/permissions-client.ts")),
+    ).toBe(true);
+    expect(result.deleted).toContain("lib/auth/permissions.ts");
+  });
+
+  it("never deletes protected user data or dependency/build output", async () => {
+    const src = await makeTempDir("vulnradar-src-");
+    const dest = await makeTempDir("vulnradar-dest-");
+    await writeFile(src, "package.json", "{}");
+    // None of these exist in the release tree, but all must survive.
+    await writeFile(dest, ".env", "DATABASE_URL=secret");
+    await writeFile(dest, ".env.local", "SECRET=1");
+    await writeFile(dest, "node_modules/pkg/index.js", "x");
+    await writeFile(dest, ".git/HEAD", "ref");
+    await writeFile(dest, "data/avatars/7.png", "avatar-bytes");
+    await writeFile(dest, "backups/dump.sql.gz.enc", "backup-bytes");
+    await writeFile(dest, ".next/build-id", "abc");
+
+    await pruneExtraneous(src, dest, pruneOpts);
+
+    expect(await exists(path.join(dest, ".env"))).toBe(true);
+    expect(await exists(path.join(dest, ".env.local"))).toBe(true);
+    expect(await exists(path.join(dest, "node_modules/pkg/index.js"))).toBe(
+      true,
+    );
+    expect(await exists(path.join(dest, ".git/HEAD"))).toBe(true);
+    expect(await exists(path.join(dest, "data/avatars/7.png"))).toBe(true);
+    expect(await exists(path.join(dest, "backups/dump.sql.gz.enc"))).toBe(true);
+    expect(await exists(path.join(dest, ".next/build-id"))).toBe(true);
+  });
+
+  it("strips dev-only paths even when the release still ships them", async () => {
+    const src = await makeTempDir("vulnradar-src-");
+    const dest = await makeTempDir("vulnradar-dest-");
+    // The release tarball DOES contain these (tracked files), but a running
+    // install should not keep them.
+    await writeFile(src, "LICENSE", "GPL");
+    await writeFile(src, "CONTRIBUTING.md", "how to contribute");
+    await writeFile(src, "tests/foo.test.ts", "test");
+    await writeFile(src, "package.json", "{}");
+    await writeFile(dest, "LICENSE", "GPL");
+    await writeFile(dest, "CONTRIBUTING.md", "how to contribute");
+    await writeFile(dest, "tests/foo.test.ts", "test");
+    await writeFile(dest, "package.json", "{}");
+
+    await pruneExtraneous(src, dest, pruneOpts);
+
+    expect(await exists(path.join(dest, "LICENSE"))).toBe(false);
+    expect(await exists(path.join(dest, "CONTRIBUTING.md"))).toBe(false);
+    expect(await exists(path.join(dest, "tests/foo.test.ts"))).toBe(false);
+    // A real app file the release ships is kept.
+    expect(await exists(path.join(dest, "package.json"))).toBe(true);
+  });
+
+  it("prunes a stale file inside a directory the release still ships (recursion)", async () => {
+    const src = await makeTempDir("vulnradar-src-");
+    const dest = await makeTempDir("vulnradar-dest-");
+    await writeFile(src, "lib/scanner/keep.ts", "export {};");
+    await writeFile(dest, "lib/scanner/keep.ts", "export {};");
+    await writeFile(dest, "lib/scanner/removed.ts", "// gone upstream");
+
+    await pruneExtraneous(src, dest, pruneOpts);
+
+    expect(await exists(path.join(dest, "lib/scanner/keep.ts"))).toBe(true);
+    expect(await exists(path.join(dest, "lib/scanner/removed.ts"))).toBe(false);
+  });
+
+  it("refuses to run against an empty source tree (never wipes the install)", async () => {
+    const src = await makeTempDir("vulnradar-src-");
+    const dest = await makeTempDir("vulnradar-dest-");
+    await writeFile(dest, "app/page.tsx", "export default () => null;");
+
+    await expect(pruneExtraneous(src, dest, pruneOpts)).rejects.toThrow(
+      /empty/i,
+    );
+    // Nothing was deleted.
+    expect(await exists(path.join(dest, "app/page.tsx"))).toBe(true);
   });
 });

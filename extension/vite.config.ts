@@ -29,7 +29,7 @@ export default defineConfig({
     },
   },
   // Explicit empty PostCSS config so Vite stops here instead of walking up
-  // to the repo root's postcss.config.mjs/tailwind.config.ts (the main
+  // to the repo root's postcss.config.mjs/tailwind.config.mjs (the main
   // Next.js app's). This extension has no Tailwind classes anywhere -
   // popup.css/options.css and reputation-card.ts's CARD_CSS are all
   // hand-written CSS - so that root config was never doing real work here,

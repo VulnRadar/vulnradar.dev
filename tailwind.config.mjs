@@ -1,7 +1,16 @@
-import type { Config } from "tailwindcss";
 import tailwindcssAnimate from "tailwindcss-animate";
 
-const config: Config = {
+/**
+ * Tailwind theme config, bridged into the v4 CSS-first pipeline via
+ * `@config '../tailwind.config.mjs'` in app/globals.css. Authored as .mjs
+ * (unambiguously ESM) rather than .ts so Node does not emit a
+ * MODULE_TYPELESS_PACKAGE_JSON warning when @tailwindcss/postcss loads it at
+ * build time; the JSDoc @type below keeps editor autocomplete without the TS
+ * syntax that triggered the warning.
+ *
+ * @type {import('tailwindcss').Config}
+ */
+const config = {
   darkMode: "class",
   content: [
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
@@ -46,11 +55,11 @@ const config: Config = {
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
         chart: {
-          "1": "hsl(var(--chart-1))",
-          "2": "hsl(var(--chart-2))",
-          "3": "hsl(var(--chart-3))",
-          "4": "hsl(var(--chart-4))",
-          "5": "hsl(var(--chart-5))",
+          1: "hsl(var(--chart-1))",
+          2: "hsl(var(--chart-2))",
+          3: "hsl(var(--chart-3))",
+          4: "hsl(var(--chart-4))",
+          5: "hsl(var(--chart-5))",
         },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",

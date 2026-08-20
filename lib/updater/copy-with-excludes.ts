@@ -103,3 +103,131 @@ export async function copyTreeOverlay(
   await walk("");
   return { filesCopied, dirsCreated, skipped };
 }
+
+export interface PruneOptions {
+  /**
+   * Basenames that are NEVER deleted, at any depth, and never recursed into
+   * (e.g. "node_modules", ".git"). Combined with the .env family, which is
+   * always protected.
+   */
+  protectedNames?: string[];
+  /**
+   * Root-relative posix prefixes that are NEVER deleted (e.g. "data",
+   * "backups", ".next"). These hold user data or expensive-to-rebuild output
+   * and must survive an update untouched.
+   */
+  protectedPrefixes?: string[];
+  /**
+   * Root-relative posix prefixes to DELETE from the destination even when the
+   * release still ships them (e.g. "tests", "LICENSE"). Dev-only files a
+   * running install has no reason to keep.
+   */
+  stripPrefixes?: string[];
+  /** Called with the posix relative path of each deleted top-level entry. */
+  onDelete?: (relPath: string) => void;
+}
+
+export interface PruneResult {
+  filesDeleted: number;
+  dirsDeleted: number;
+  deleted: string[];
+}
+
+function matchesPrefix(
+  posixRel: string,
+  prefixes: string[] | undefined,
+): boolean {
+  return !!prefixes?.some(
+    (prefix) => posixRel === prefix || posixRel.startsWith(`${prefix}/`),
+  );
+}
+
+async function pathExists(p: string): Promise<boolean> {
+  try {
+    await fs.lstat(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Removes files under `destRoot` that the new release (`srcRoot`) no longer
+ * ships, turning the additive overlay copy into a real mirror. This is what
+ * clears a file that was deleted between releases (e.g. a module renamed away),
+ * which an overlay copy would otherwise leave behind to break the next build.
+ *
+ * A destination entry is deleted when it is NOT protected and either:
+ *   - it is in `stripPrefixes` (a dev-only path we always strip), or
+ *   - it does not exist in `srcRoot` (stale: removed in the new release).
+ *
+ * Protected entries (`.env*`, `protectedNames`, `protectedPrefixes`) are never
+ * touched and never recursed into. Symlinks are left alone (never deleted,
+ * never followed).
+ *
+ * SAFETY: refuses to run when `srcRoot` has zero entries -- pruning against an
+ * empty source would delete every non-protected file in the install. The
+ * caller must only invoke this against a freshly-extracted release tree.
+ */
+export async function pruneExtraneous(
+  srcRoot: string,
+  destRoot: string,
+  options: PruneOptions = {},
+): Promise<PruneResult> {
+  const srcEntries = await fs.readdir(srcRoot).catch(() => [] as string[]);
+  if (srcEntries.length === 0) {
+    throw new Error(
+      "pruneExtraneous refused: source tree is empty, which would delete the whole install.",
+    );
+  }
+
+  let filesDeleted = 0;
+  let dirsDeleted = 0;
+  const deleted: string[] = [];
+
+  function isProtected(posixRel: string, name: string): boolean {
+    if (DOTENV_PATTERN.test(name)) return true;
+    if (options.protectedNames?.includes(name)) return true;
+    return matchesPrefix(posixRel, options.protectedPrefixes);
+  }
+
+  async function walk(relDir: string): Promise<void> {
+    const entries = await fs.readdir(path.join(destRoot, relDir), {
+      withFileTypes: true,
+    });
+    for (const entry of entries) {
+      const relPath = relDir ? path.join(relDir, entry.name) : entry.name;
+      const posixRel = toPosix(relPath);
+
+      // Never touch protected paths, and never descend into them.
+      if (isProtected(posixRel, entry.name)) continue;
+
+      // Leave symlinks entirely alone (don't delete, don't follow).
+      if (entry.isSymbolicLink()) continue;
+
+      const stripped = matchesPrefix(posixRel, options.stripPrefixes);
+      const inSource =
+        !stripped && (await pathExists(path.join(srcRoot, relPath)));
+
+      if (stripped || !inSource) {
+        // Stale (gone from the release) or a dev-only path we strip: remove it.
+        await fs.rm(path.join(destRoot, relPath), {
+          recursive: true,
+          force: true,
+        });
+        if (entry.isDirectory()) dirsDeleted++;
+        else filesDeleted++;
+        deleted.push(posixRel);
+        options.onDelete?.(posixRel);
+        continue;
+      }
+
+      // Present in the release: recurse into directories to prune their
+      // stale contents; keep files (the overlay copy already refreshed them).
+      if (entry.isDirectory()) await walk(relPath);
+    }
+  }
+
+  await walk("");
+  return { filesDeleted, dirsDeleted, deleted };
+}

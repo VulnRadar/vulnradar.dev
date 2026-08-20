@@ -242,13 +242,12 @@ will degrade or break outright once enough context is
 > **WARNING: pg_dump must be installed (postgresql-client)**
 > The backup and restore scripts shell out to{" "}
 pg_dump and psql,
-which come from the postgresql-client system
-package. Minimal Node images, including the{" "}
-Pterodactyl Node egg, do
-not ship it, so backups fail with{" "}
+which come from the postgresql-client{" "}
+system package. Minimal Node images, including the{" "}
+Pterodactyl Node egg,
+do not ship it, so backups fail with{" "}
 pg_dump not found and no{" "}
-backups/ directory is created. Install it
-fir
+backups/ directory is created. Install i
 
 > **WARNING: Use a persistent volume**
 > BACKUP_DIR defaults to{" "}
@@ -265,8 +264,8 @@ BACKUP_ENCRYPTION_KEY is unset the script
 falls back to API_KEY_ENCRYPTION_KEY, so a
 plaintext backup is never written by accident. A separate{" "}
 BACKUP_ENCRYPTION_KEY is still recommended
-for defense in depth. An encrypted .enc file
-is restored u
+for defense in depth. An encrypted .enc{" "}
+file is resto
 
 > **WARNING: After schema changes**
 > If instrumentation.ts changed in the new
@@ -1397,7 +1396,7 @@ vulnradar.dev/
 ├── docker-compose.dev.yml
 ├── next.config.mjs
 ├── tsconfig.json
-├── tailwind.config.ts
+├── tailwind.config.mjs
 ├── eslint.config.mjs
 ├── vitest.config.ts
 └── package.json

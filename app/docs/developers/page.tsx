@@ -744,7 +744,7 @@ npm run lint:fix    # auto-fix`}
           </li>
           <li>
             <InlineCode>next.config.mjs</InlineCode>,{" "}
-            <InlineCode>tailwind.config.ts</InlineCode>,{" "}
+            <InlineCode>tailwind.config.mjs</InlineCode>,{" "}
             <InlineCode>eslint.config.mjs</InlineCode>,{" "}
             <InlineCode>vitest.config.ts</InlineCode>,{" "}
             <InlineCode>tsconfig.json</InlineCode>

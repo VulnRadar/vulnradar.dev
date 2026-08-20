@@ -141,7 +141,7 @@ export default function ArchitecturePage() {
 ├── docker-compose.dev.yml
 ├── next.config.mjs
 ├── tsconfig.json
-├── tailwind.config.ts
+├── tailwind.config.mjs
 ├── eslint.config.mjs
 ├── vitest.config.ts
 └── package.json`}
