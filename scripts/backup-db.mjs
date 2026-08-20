@@ -57,6 +57,7 @@ import { mkdir, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { loadEnv, requireDatabaseUrl, ROOT } from "./_lib/_lib.env.mjs";
+import { splitDbUrlForEnv } from "./_lib/_lib.db-url.mjs";
 import {
   banner,
   info,
@@ -208,15 +209,13 @@ async function runBackup() {
   // reach the client -- see the same rule for BACKUP_DIR in that route.
   info(`Target: ${finalName}`);
 
+  // Keep the DB password out of pg_dump's argv (visible via `ps` on a shared
+  // host); libpq reads it from PGPASSWORD in the child env instead.
+  const { connArg, env } = splitDbUrlForEnv(process.env.DATABASE_URL);
   const pgDump = spawn(
     "pg_dump",
-    [
-      "--no-owner",
-      "--no-privileges",
-      "--format=plain",
-      process.env.DATABASE_URL,
-    ],
-    { stdio: ["ignore", "pipe", "pipe"] },
+    ["--no-owner", "--no-privileges", "--format=plain", connArg],
+    { stdio: ["ignore", "pipe", "pipe"], env },
   );
   let stderrOutput = "";
   pgDump.stderr.on("data", (chunk) => {

@@ -58,6 +58,44 @@ function magicOk(mime: "image/png" | "image/jpeg", bytes: Buffer): boolean {
 }
 
 /**
+ * Insert a user's avatar bytes and normalize their avatar_url to the serving
+ * route, atomically. Both backfills call this: doing the INSERT and the
+ * avatar_url UPDATE as two separate statements risked a state where the INSERT
+ * committed but the UPDATE failed on a transient error -- every later boot then
+ * short-circuits on the now-existing user_avatars row, leaving avatar_url stuck
+ * as the old base64/file URL forever. Wrapping both in one transaction makes it
+ * all-or-nothing, so a failed row simply retries cleanly on the next boot.
+ * Follows the pool.connect() + BEGIN/COMMIT/ROLLBACK pattern used in
+ * lib/database/cleanup.ts (no shared transaction helper exists).
+ */
+async function insertAvatarAndNormalizeUrl(
+  userId: number,
+  bytes: Buffer,
+  mime: "image/png" | "image/jpeg",
+): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `INSERT INTO user_avatars (user_id, image_data, content_type, updated_at)
+         VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (user_id) DO NOTHING`,
+      [userId, bytes, mime],
+    );
+    await client.query("UPDATE users SET avatar_url = $1 WHERE id = $2", [
+      `/api/v3/avatar/${userId}?v=${Date.now()}`,
+      userId,
+    ]);
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
  * Import every legacy data/avatars/<id>.(png|jpg) file into user_avatars,
  * skipping users that already have a row. Returns the number imported.
  * Never throws.
@@ -109,16 +147,7 @@ export async function migrateAvatarFilesToDatabase(): Promise<number> {
       if (bytes.length === 0 || bytes.length > MAX_AVATAR_BYTES) continue;
       if (!magicOk(mime, bytes)) continue;
 
-      await pool.query(
-        `INSERT INTO user_avatars (user_id, image_data, content_type, updated_at)
-           VALUES ($1, $2, $3, NOW())
-         ON CONFLICT (user_id) DO NOTHING`,
-        [userId, bytes, mime],
-      );
-      await pool.query(
-        "UPDATE users SET avatar_url = $1 WHERE id = $2",
-        [`/api/v3/avatar/${userId}?v=${Date.now()}`, userId],
-      );
+      await insertAvatarAndNormalizeUrl(userId, bytes, mime);
       imported++;
     } catch (err) {
       console.error(
@@ -181,16 +210,7 @@ export async function migrateBase64AvatarsToDatabase(): Promise<number> {
         continue;
       }
 
-      await pool.query(
-        `INSERT INTO user_avatars (user_id, image_data, content_type, updated_at)
-           VALUES ($1, $2, $3, NOW())
-         ON CONFLICT (user_id) DO NOTHING`,
-        [row.id, result.bytes, result.mime],
-      );
-      await pool.query(
-        "UPDATE users SET avatar_url = $1 WHERE id = $2",
-        [`/api/v3/avatar/${row.id}?v=${Date.now()}`, row.id],
-      );
+      await insertAvatarAndNormalizeUrl(row.id, result.bytes, result.mime);
       converted++;
     } catch (err) {
       console.error(

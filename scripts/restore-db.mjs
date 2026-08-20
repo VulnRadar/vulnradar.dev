@@ -22,6 +22,7 @@ import { readFile } from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
 import { PassThrough } from "node:stream";
 import { loadEnv, requireDatabaseUrl } from "./_lib/_lib.env.mjs";
+import { splitDbUrlForEnv } from "./_lib/_lib.db-url.mjs";
 import {
   banner,
   info,
@@ -89,8 +90,12 @@ async function runRestore() {
   }
 
   section("Restoring");
-  const psql = spawn("psql", [process.env.DATABASE_URL], {
+  // Keep the DB password out of psql's argv (visible via `ps` on a shared
+  // host); libpq reads it from PGPASSWORD in the child env instead.
+  const { connArg, env } = splitDbUrlForEnv(process.env.DATABASE_URL);
+  const psql = spawn("psql", [connArg], {
     stdio: ["pipe", "inherit", "inherit"],
+    env,
   });
 
   const exitCodePromise = new Promise((resolvePromise, rejectPromise) => {

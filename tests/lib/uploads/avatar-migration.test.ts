@@ -7,7 +7,10 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
  * (tests/README.md), the pg pool is mocked with two in-memory stores (a
  * users avatar_url map and a user_avatars row map) that emulate the SELECT
  * scan, the EXISTS guard, the ON CONFLICT DO NOTHING upsert, and the
- * avatar_url normalize the backfill issues. The real validateAvatarDataUrl
+ * avatar_url normalize the backfill issues. The insert+normalize now run in a
+ * pool.connect() transaction (BEGIN/COMMIT), so the mock also exposes connect()
+ * returning a client whose query routes to the same store (BEGIN/COMMIT/ROLLBACK
+ * fall through to the default empty result). The real validateAvatarDataUrl
  * (magic bytes + 5 MiB cap + SVG rejection) runs unmocked.
  */
 
@@ -52,6 +55,10 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
 vi.mock("@/lib/database/db", () => ({
   default: {
     query: (sql: string, params?: unknown[]) => mockQuery(sql, params),
+    connect: async () => ({
+      query: (sql: string, params?: unknown[]) => mockQuery(sql, params),
+      release: () => {},
+    }),
   },
 }));
 
