@@ -456,6 +456,15 @@ export async function POST(req: NextRequest) {
           subscription.status,
         );
         const planToWrite = isPaid ? plan || "free" : "free";
+        // A subscription set to cancel at period end is still status "active"
+        // in Stripe, so persisting the raw status would silently overwrite the
+        // "canceling" the cancel route wrote and make the DB (and any UI keyed
+        // on subscription_status) claim the subscription is fully active. Keep
+        // access (planToWrite is unaffected) but record the pending cancel.
+        const statusToWrite =
+          isPaid && subscription.cancel_at_period_end
+            ? "canceling"
+            : subscription.status;
 
         // Capture the account's email and current plan BEFORE the UPDATE
         // below overwrites the plan, so the best-effort change email can tell
@@ -492,7 +501,7 @@ export async function POST(req: NextRequest) {
           WHERE stripe_customer_id = $3
             AND (plan IS DISTINCT FROM $1 OR subscription_status IS DISTINCT FROM $2)
           RETURNING id`,
-          [planToWrite, subscription.status, customerId],
+          [planToWrite, statusToWrite, customerId],
         );
         if (result.rowCount && result.rowCount > 0) {
           const userId = result.rows[0].id;

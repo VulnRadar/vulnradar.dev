@@ -83,9 +83,13 @@ export async function POST(request: NextRequest) {
         cancel_at_period_end: true,
       });
 
-      // Update database - set subscription status to canceled
+      // Pending cancellation: the subscription still grants access until the
+      // period end, so the status is 'canceling', NOT 'canceled' (which is the
+      // fully-terminated state the immediate branch above writes). Using
+      // 'canceled' here made a still-active subscription indistinguishable from
+      // a terminated one; 'canceling' matches app/api/v3/billing/route.ts.
       await pool.query(
-        `UPDATE users SET subscription_status = 'canceled' WHERE id = $1`,
+        `UPDATE users SET subscription_status = 'canceling' WHERE id = $1`,
         [session.userId],
       );
     }
