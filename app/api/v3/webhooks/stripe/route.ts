@@ -830,6 +830,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ received: true });
   } catch (err) {
     console.error("Webhook handler error:", err);
+    // The idempotency row was committed BEFORE this handler ran, so without
+    // this the failed event is marked processed forever: we return 500, Stripe
+    // retries the same event.id, and the retry is dropped as a replay -- the
+    // event is applied zero times (a dropped subscription.deleted leaves a
+    // cancelled user on their paid plan; a dropped renewal never refreshes).
+    // Delete our marker so the retry re-processes. Safe because every handler
+    // write here is idempotent (plan UPDATE, credit ON CONFLICT tables).
+    try {
+      await pool.query(
+        `DELETE FROM processed_stripe_events WHERE event_id = $1`,
+        [event.id],
+      );
+    } catch (delErr) {
+      console.error(
+        "[Stripe] failed to roll back idempotency marker after handler error:",
+        delErr,
+      );
+    }
     return NextResponse.json(
       { error: "Webhook handler failed" },
       { status: 500 },
