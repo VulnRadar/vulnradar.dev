@@ -50,6 +50,7 @@ import { enrichFindingsWithExploitIntel } from "./cve-enrichment";
 import { applyAdaptiveConfidence } from "./adaptive-confidence";
 import { attachCvssScores } from "./cvss";
 import { checkForNewCriticalOrHighFindings } from "./regression-alert";
+import { getDangerScore, getEngineConfidence } from "./safety-rating";
 import {
   captureAndStoreScreenshot,
   shouldCaptureScreenshot,
@@ -725,6 +726,12 @@ export async function executeCrawlScan(
       // Non-secret boolean fact only; the session and credentials never persist.
       ...(authenticated ? { authenticated: true } : {}),
       resultMeta: {
+        // Same summary stats the single-URL path stores (execute-scan.ts), so a
+        // crawl result shows Risk score + Engine confidence like any other scan
+        // instead of leaving those stats silently blank. Computed from the
+        // merged, deduped findings across every crawled page.
+        dangerScore: getDangerScore(allFindings),
+        engineConfidence: getEngineConfidence(allFindings, false),
         ...(authReport ? { authReport } : {}),
         ...(sslGrade ? { sslGrade } : {}),
         ...(dnsRecords ? { dnsRecords } : {}),

@@ -17,8 +17,6 @@ import {
   RefreshCw,
   Globe,
   Loader2,
-  AlertTriangle,
-  CheckCircle2,
   Share2,
   EyeOff,
   ChevronLeft,
@@ -32,6 +30,7 @@ import {
   EmptyState,
   TableScrollArea,
   DataTableSkeleton,
+  Toast,
 } from "@/components/admin/shared";
 import { cn } from "@/lib/ui/utils";
 import { ROUTES } from "@/lib/config/constants";
@@ -235,32 +234,7 @@ export function ContentManager() {
         variant="destructive"
       />
 
-      {toast && (
-        <div className="fixed bottom-4 right-4 z-50 animate-in slide-in-from-bottom-2">
-          <div
-            className={cn(
-              "flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg",
-              toast.type === "success"
-                ? "bg-[hsl(var(--success))]/10 border-[hsl(var(--success))]/20 text-[hsl(var(--success))]"
-                : "bg-destructive/10 border-destructive/20 text-destructive",
-            )}
-          >
-            {toast.type === "success" ? (
-              <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
-            ) : (
-              <AlertTriangle aria-hidden="true" className="h-4 w-4" />
-            )}
-            <span className="text-sm font-medium">{toast.message}</span>
-            <button
-              onClick={() => setToast(null)}
-              className="ml-2 text-current/60 hover:text-current"
-              aria-label="Dismiss notification"
-            >
-              <span aria-hidden="true">×</span>
-            </button>
-          </div>
-        </div>
-      )}
+      {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
 
       <div className="space-y-6">
         <Card className="border-border/50 bg-card/50 overflow-hidden">
