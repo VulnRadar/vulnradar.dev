@@ -14,6 +14,7 @@ import {
 } from "@/lib/api/api-utils";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import { verifyPendingToken } from "@/lib/auth/pending-2fa";
 import {
   AUTH_2FA_PENDING_COOKIE,
   DEVICE_TRUST_COOKIE_NAME,
@@ -33,7 +34,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     rememberDevice?: boolean;
   }>(request);
   if (!parsed.success) return ApiResponse.badRequest(parsed.error);
-  const { userId, code, backupCode, rememberDevice } = parsed.data;
+  // `userId` from the body is intentionally NOT destructured: it must never be
+  // trusted for authorization. The effective user id comes only from a signed
+  // pending cookie below (lib/auth/pending-2fa.ts).
+  const { code, backupCode, rememberDevice } = parsed.data;
 
   const validationError = Validate.multiple([
     Validate.required(code || backupCode, "Code or backup code"),
@@ -54,78 +58,70 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   let usingThirdPartyPendingCookie = false;
   let thirdPartyPendingCookieName:
     "discord_pending_login" | "oauth_pending_login" | null = null;
-  let effectiveUserId = userId;
-  let parsedThirdPartyPending: {
-    userId: number;
-    ts: number;
-  } | null = null;
+  // The user id is ONLY ever taken from a cryptographically-signed pending
+  // cookie (lib/auth/pending-2fa.ts), never from the request body. The body's
+  // userId used to be trusted after a compare against a forgeable cookie, which
+  // let anyone reach a victim's 2FA step without their password.
+  let effectiveUserId = 0;
+  const pendingMaxAgeMs =
+    (await getSetting("2FA_PENDING_MAX_AGE_SECONDS")) * 1000;
 
-  // Check for a third-party pending login first (userId might be 0 from
-  // client). Discord takes priority only because both could never
-  // realistically be set at once (each callback sets exactly one).
+  // Check for a third-party pending login first. Discord takes priority only
+  // because both could never realistically be set at once (each callback sets
+  // exactly one).
   const thirdPartyPendingRaw = discordPending ?? oauthPending;
   if (thirdPartyPendingRaw) {
     thirdPartyPendingCookieName = discordPending
       ? "discord_pending_login"
       : "oauth_pending_login";
-    try {
-      parsedThirdPartyPending = JSON.parse(thirdPartyPendingRaw);
-      if (parsedThirdPartyPending) {
-        usingThirdPartyPendingCookie = true;
-        effectiveUserId = parsedThirdPartyPending.userId;
-        // Check if the pending token is expired. Same admin-configurable
-        // window the password-login pending cookie uses
-        // (2FA_PENDING_MAX_AGE_SECONDS), so raising one raises both.
-        const pendingMaxAgeMs =
-          (await getSetting("2FA_PENDING_MAX_AGE_SECONDS")) * 1000;
-        if (Date.now() - parsedThirdPartyPending.ts > pendingMaxAgeMs) {
-          return ApiResponse.unauthorized(
-            thirdPartyPendingCookieName === "discord_pending_login"
-              ? "Discord login session expired. Please try again."
-              : "That sign-in session expired. Please try again.",
-          );
-        }
+    const parsed = verifyPendingToken<{ userId: number; ts: number }>(
+      thirdPartyPendingRaw,
+    );
+    if (parsed && typeof parsed.userId === "number") {
+      usingThirdPartyPendingCookie = true;
+      effectiveUserId = parsed.userId;
+      // Freshness: same admin-configurable window the password-login pending
+      // cookie uses (2FA_PENDING_MAX_AGE_SECONDS), so raising one raises both.
+      if (Date.now() - parsed.ts > pendingMaxAgeMs) {
+        return ApiResponse.unauthorized(
+          thirdPartyPendingCookieName === "discord_pending_login"
+            ? "Discord login session expired. Please try again."
+            : "That sign-in session expired. Please try again.",
+        );
       }
-    } catch {
-      // Invalid JSON, ignore
-    }
-  }
-
-  // auth: rate-limit 2FA attempts per userId (admin-configurable, default
-  // 5 / 5 min -- RATE_LIMIT_2FA_VERIFY_ATTEMPTS/WINDOW_MINUTES). The verify
-  // endpoint had no per-user cap — only the email-2FA *send*
-  // endpoint was throttled, which left brute force of 6-digit TOTP
-  // codes (10^6 ≈ 20 bits) open to anyone who knew a userId.
-  if (effectiveUserId) {
-    const rl = await checkRateLimit({
-      key: `2fa-verify:${effectiveUserId}:${ip}`,
-      ...RATE_LIMITS.twoFactorVerify,
-    });
-    if (!rl.allowed) {
-      return ApiResponse.tooManyRequests(
-        `Too many 2FA attempts. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).`,
-      );
     }
   }
 
   if (!usingThirdPartyPendingCookie) {
-    if (!userId) {
-      return ApiResponse.badRequest("User ID is required");
-    }
-    // auth: timing-safe compare of the pending cookie. Plain
-    // `pending !== String(userId)` is fine for distinct equality but
-    // exposes a side-channel if the format ever changes (e.g.
-    // hashed pending). Constant-length compare is the safe default.
-    if (!pending) {
+    const parsed = verifyPendingToken<{ userId: number; ts: number }>(pending);
+    if (!parsed || typeof parsed.userId !== "number") {
       return ApiResponse.unauthorized(ERROR_MESSAGES.INVALID_2FA_SESSION);
     }
-    const expected = Buffer.from(String(userId), "utf8");
-    const actual = Buffer.from(pending, "utf8");
-    if (
-      expected.length !== actual.length ||
-      !timingSafeEqual(expected, actual)
-    ) {
+    if (Date.now() - parsed.ts > pendingMaxAgeMs) {
       return ApiResponse.unauthorized(ERROR_MESSAGES.INVALID_2FA_SESSION);
+    }
+    effectiveUserId = parsed.userId;
+  }
+
+  // auth: rate-limit 2FA attempts (admin-configurable, default 5 / 5 min --
+  // RATE_LIMIT_2FA_VERIFY_ATTEMPTS/WINDOW_MINUTES). Two buckets: one keyed by
+  // (user, ip) and one keyed by user alone, so an attacker who already holds
+  // the password (and thus a valid signed pending cookie) can't brute-force the
+  // 6-digit code by rotating source IPs to reset the per-ip bucket.
+  if (effectiveUserId) {
+    for (const key of [
+      `2fa-verify:${effectiveUserId}:${ip}`,
+      `2fa-verify-user:${effectiveUserId}`,
+    ]) {
+      const rl = await checkRateLimit({
+        key,
+        ...RATE_LIMITS.twoFactorVerify,
+      });
+      if (!rl.allowed) {
+        return ApiResponse.tooManyRequests(
+          `Too many 2FA attempts. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).`,
+        );
+      }
     }
   }
 

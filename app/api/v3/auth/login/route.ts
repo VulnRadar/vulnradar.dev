@@ -20,6 +20,7 @@ import {
   withErrorHandling,
 } from "@/lib/api/api-utils";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
+import { signPendingToken } from "@/lib/auth/pending-2fa";
 import {
   AUTH_2FA_PENDING_COOKIE,
   AUTH_2FA_PENDING_MAX_AGE,
@@ -231,14 +232,20 @@ export const POST = withErrorHandling(async (request: Request) => {
       twoFactorMethod: twoFactorMethod,
       maskedEmail,
     });
-    // Set a short-lived cookie to validate the 2FA verification request
-    response.cookies.set(AUTH_2FA_PENDING_COOKIE, String(user.id), {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: AUTH_2FA_PENDING_MAX_AGE, // seconds
-    });
+    // Set a short-lived SIGNED cookie proving the password factor passed. The
+    // verify route trusts the userId inside it, so it must not be forgeable
+    // (a bare String(user.id) was -- see lib/auth/pending-2fa.ts).
+    response.cookies.set(
+      AUTH_2FA_PENDING_COOKIE,
+      signPendingToken({ userId: user.id, ts: Date.now() }),
+      {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: AUTH_2FA_PENDING_MAX_AGE, // seconds
+      },
+    );
     return response;
   }
 

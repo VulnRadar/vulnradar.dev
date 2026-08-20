@@ -42,6 +42,7 @@ import {
   fetchOAuthUserInfo,
 } from "@/lib/auth/oauth-userinfo";
 import { findTrustedDevice } from "@/lib/auth/device-trust";
+import { signPendingToken } from "@/lib/auth/pending-2fa";
 import { getClientIp } from "@/lib/api/request-utils";
 import { sendEmail, email2FACodeEmail } from "@/lib/email/email";
 import { DEVICE_TRUST_COOKIE_NAME } from "@/lib/config/constants";
@@ -356,7 +357,9 @@ async function signInOAuthUser(
     );
     cookieStore.set(
       OAUTH_PENDING_LOGIN_COOKIE,
-      JSON.stringify({ userId, method, email: twoFA.email, ts: Date.now() }),
+      // Signed so the 2FA verify route can trust the userId inside it -- an
+      // unsigned JSON blob was forgeable (see lib/auth/pending-2fa.ts).
+      signPendingToken({ userId, method, email: twoFA.email, ts: Date.now() }),
       {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",

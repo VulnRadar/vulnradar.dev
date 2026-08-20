@@ -15,6 +15,7 @@ import {
 import { DEVICE_TRUST_COOKIE_NAME } from "@/lib/config/constants";
 import { verifyDiscordState } from "@/lib/auth/discord-state";
 import { findTrustedDevice } from "@/lib/auth/device-trust";
+import { signPendingToken } from "@/lib/auth/pending-2fa";
 import { encryptApiKey } from "@/lib/auth/crypto";
 import { getClientIp } from "@/lib/api/request-utils";
 
@@ -290,7 +291,9 @@ export async function GET(request: Request) {
         );
         cookieStore.set(
           "discord_pending_login",
-          JSON.stringify({
+          // Signed so the 2FA verify route can trust the userId inside it -- an
+          // unsigned JSON blob was forgeable (see lib/auth/pending-2fa.ts).
+          signPendingToken({
             userId,
             method: user2FA.two_factor_method,
             email: user2FA.email,

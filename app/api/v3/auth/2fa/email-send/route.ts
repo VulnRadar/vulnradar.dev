@@ -5,37 +5,31 @@ import { email2FACodeEmail, sendEmail } from "@/lib/email/email";
 import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
 import { AUTH_2FA_PENDING_COOKIE } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
+import { verifyPendingToken } from "@/lib/auth/pending-2fa";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
-  // Validate the pending 2FA cookie (check both normal login and Discord login)
+  // The user id comes ONLY from a cryptographically-signed pending cookie
+  // (lib/auth/pending-2fa.ts) -- both the password-login and the OAuth/Discord
+  // cookies. A forgeable pending cookie here would let anyone trigger a 2FA
+  // email to any account (and pin the userId for the verify step).
   const pending = request.cookies.get(AUTH_2FA_PENDING_COOKIE)?.value;
   const discordPending = request.cookies.get("discord_pending_login")?.value;
+  const oauthPending = request.cookies.get("oauth_pending_login")?.value;
 
   let userId: number | null = null;
 
-  if (discordPending) {
-    try {
-      const parsed = JSON.parse(discordPending);
-      if (parsed && parsed.userId) {
-        userId = parsed.userId;
-        // Check if Discord pending token is expired. Same admin-configurable
-        // window the password-login pending cookie uses.
-        const pendingMaxAgeMs =
-          (await getSetting("2FA_PENDING_MAX_AGE_SECONDS")) * 1000;
-        if (Date.now() - parsed.ts > pendingMaxAgeMs) {
-          return ApiResponse.unauthorized(
-            "Discord login session expired. Please try again.",
-          );
-        }
-      }
-    } catch {
-      // Invalid JSON, check regular pending
+  const parsed = verifyPendingToken<{ userId: number; ts: number }>(
+    pending ?? discordPending ?? oauthPending,
+  );
+  if (parsed && typeof parsed.userId === "number") {
+    const pendingMaxAgeMs =
+      (await getSetting("2FA_PENDING_MAX_AGE_SECONDS")) * 1000;
+    if (Date.now() - parsed.ts > pendingMaxAgeMs) {
+      return ApiResponse.unauthorized(
+        "Login session expired. Please sign in again.",
+      );
     }
-  }
-
-  if (!userId && pending) {
-    userId = parseInt(pending, 10);
-    if (isNaN(userId)) userId = null;
+    userId = parsed.userId;
   }
 
   if (!userId) {
