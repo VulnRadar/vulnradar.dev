@@ -24,6 +24,13 @@ import { APP_NAME } from "@/lib/config/constants";
 import type { ScanSessionBinding } from "./auth/types";
 
 /**
+ * The User-Agent this crawler sends. It is also the token a site's robots.txt
+ * names to fence VulnRadar out of specific paths (see parseRobots): a group
+ * whose `User-agent:` is a substring of this string, e.g. `User-agent: VulnRadar`.
+ */
+const CRAWLER_UA = `${APP_NAME}/1.0 (Crawler)`;
+
+/**
  * How deep the link crawl follows links from the entry page. Depth 0 is the
  * entry URL, depth 1 its direct links, and so on. A local constant, not a
  * runtime setting: it is a structural crawl invariant (a discovered page must
@@ -157,7 +164,7 @@ async function pinnedFetch(
 ): Promise<Response> {
   const init: RequestInit = {
     method: "GET",
-    headers: { "User-Agent": `${APP_NAME}/1.0 (Crawler)` },
+    headers: { "User-Agent": CRAWLER_UA },
     redirect: "follow",
     signal: AbortSignal.timeout(fetchTimeoutMs),
   };
@@ -190,16 +197,104 @@ function isSitemapIndex(xml: string): boolean {
   return /<sitemapindex[\s>]/i.test(xml);
 }
 
+export interface RobotsRules {
+  /** Same-origin Sitemap: document URLs named in robots.txt. */
+  sitemaps: string[];
+  /** Disallow path rules from group(s) that name THIS crawler (never `*`). */
+  disallows: string[];
+}
+
 /**
- * Read /robots.txt for `Sitemap:` directives and return the same-origin
- * sitemap document URLs they name. Best-effort; returns [] on any failure.
+ * Parse robots.txt into its Sitemap: URLs and the Disallow rules that apply to
+ * THIS crawler. A Disallow applies only when its group's `User-agent:` names us
+ * specifically -- the value is a case-insensitive substring of our UA, e.g.
+ * `User-agent: VulnRadar` -- never the blanket `*`. A security scanner should
+ * not be fenced out of an authorized target by a site's generic bot policy; it
+ * steps aside only when the owner names VulnRadar, which is the documented way
+ * to keep pages (e.g. large SEO surfaces) out of a scan. Grouping follows the
+ * standard: consecutive User-agent lines share a group until the first rule
+ * line, after which the next User-agent line starts a new group.
  */
-async function readRobotsSitemapUrls(
+export function parseRobots(text: string, ua: string): RobotsRules {
+  const uaLower = ua.toLowerCase();
+  const sitemaps: string[] = [];
+  const disallows: string[] = [];
+  let groupApplies = false;
+  let sawRule = false;
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.replace(/#.*$/, "").trim();
+    if (!line) continue;
+    const colon = line.indexOf(":");
+    if (colon === -1) continue;
+    const field = line.slice(0, colon).trim().toLowerCase();
+    const value = line.slice(colon + 1).trim();
+
+    if (field === "sitemap") {
+      if (value) sitemaps.push(value);
+      continue;
+    }
+    if (field === "user-agent") {
+      // A User-agent line after a rule line starts a fresh group.
+      if (sawRule) {
+        groupApplies = false;
+        sawRule = false;
+      }
+      if (value && value !== "*" && uaLower.includes(value.toLowerCase())) {
+        groupApplies = true;
+      }
+      continue;
+    }
+    if (field === "disallow") {
+      sawRule = true;
+      if (groupApplies && value) disallows.push(value);
+      continue;
+    }
+    if (field === "allow" || field === "crawl-delay") {
+      sawRule = true;
+    }
+  }
+  return { sitemaps, disallows };
+}
+
+/** robots.txt path match: prefix by default, `*` = any run, trailing `$` = end anchor. */
+function matchesRobotsRule(pathname: string, rule: string): boolean {
+  if (!rule.startsWith("/")) return false;
+  const anchored = rule.endsWith("$");
+  const core = anchored ? rule.slice(0, -1) : rule;
+  if (!core.includes("*")) {
+    return anchored ? pathname === core : pathname.startsWith(core);
+  }
+  const pattern = core
+    .split("*")
+    .map((s) => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+    .join(".*");
+  try {
+    return new RegExp("^" + pattern + (anchored ? "$" : "")).test(pathname);
+  } catch {
+    return false;
+  }
+}
+
+export function isPathDisallowed(
+  pathname: string,
+  disallows: string[],
+): boolean {
+  return disallows.some((rule) => matchesRobotsRule(pathname, rule));
+}
+
+/**
+ * Fetch and parse /robots.txt for both its Sitemap: URLs and the Disallow rules
+ * naming this crawler. Best-effort: any failure yields empty rules, so a
+ * missing or unreadable robots.txt never blocks discovery.
+ */
+async function readRobots(
   origin: string,
   entryHostname: string,
   fetchTimeoutMs: number,
   session?: ScanSessionBinding,
-): Promise<string[]> {
+): Promise<RobotsRules> {
+  const empty: RobotsRules = { sitemaps: [], disallows: [] };
   try {
     const res = await pinnedFetch(
       origin + "/robots.txt",
@@ -207,17 +302,12 @@ async function readRobotsSitemapUrls(
       fetchTimeoutMs,
       session,
     );
-    if (new URL(res.url).hostname !== entryHostname) return [];
-    if (!res.ok) return [];
+    if (new URL(res.url).hostname !== entryHostname) return empty;
+    if (!res.ok) return empty;
     const text = await readBoundedText(res, SITEMAP_BODY_MAX_BYTES);
-    const out: string[] = [];
-    for (const line of text.split(/\r?\n/)) {
-      const m = /^\s*sitemap\s*:\s*(\S+)/i.exec(line);
-      if (m) out.push(m[1].trim());
-    }
-    return out;
+    return parseRobots(text, CRAWLER_UA);
   } catch {
-    return [];
+    return empty;
   }
 }
 
@@ -231,6 +321,7 @@ export async function collectSitemapUrls(
   startUrl: string,
   settings: CrawlDiscoverySettings,
   session?: ScanSessionBinding,
+  robots?: RobotsRules,
 ): Promise<string[]> {
   let origin: string;
   let entryHostname: string;
@@ -243,29 +334,23 @@ export async function collectSitemapUrls(
   }
   const { fetchTimeoutMs, maxPages } = settings;
 
+  const rules =
+    robots ??
+    (await readRobots(origin, entryHostname, fetchTimeoutMs, session));
+
   const docQueue: string[] = [origin + "/sitemap.xml"];
-  try {
-    const robotsSitemaps = await readRobotsSitemapUrls(
-      origin,
-      entryHostname,
-      fetchTimeoutMs,
-      session,
-    );
-    for (const s of robotsSitemaps) {
-      try {
-        const su = new URL(s, origin);
-        if (
-          (su.protocol === "http:" || su.protocol === "https:") &&
-          su.hostname === entryHostname
-        ) {
-          docQueue.push(su.href);
-        }
-      } catch {
-        /* skip a malformed Sitemap: line */
+  for (const s of rules.sitemaps) {
+    try {
+      const su = new URL(s, origin);
+      if (
+        (su.protocol === "http:" || su.protocol === "https:") &&
+        su.hostname === entryHostname
+      ) {
+        docQueue.push(su.href);
       }
+    } catch {
+      /* skip a malformed Sitemap: line */
     }
-  } catch {
-    /* best-effort: robots.txt is optional */
   }
 
   const pages: string[] = [];
@@ -324,6 +409,7 @@ export async function collectSitemapUrls(
       }
 
       if (!isSameOriginPageUrl(resolved, entryHostname)) continue;
+      if (isPathDisallowed(resolved.pathname, rules.disallows)) continue;
       const normalized = normalizePageUrl(resolved);
       if (!seenPages.has(normalized) && pages.length < maxPages) {
         seenPages.add(normalized);
@@ -362,12 +448,28 @@ export async function discoverPages(
     { url: startUrl, depth: 0 },
   ];
 
+  // Read robots.txt once: its Sitemap: URLs feed discovery, and any Disallow
+  // rule that names VulnRadar specifically fences our crawler out of that path
+  // (a site's supported way to keep pages -- e.g. large SEO surfaces -- out of
+  // a scan; see parseRobots). Best-effort; empty rules on any failure.
+  let robots: RobotsRules = { sitemaps: [], disallows: [] };
+  try {
+    robots = await readRobots(
+      new URL(startUrl).origin,
+      entryHostname,
+      fetchTimeoutMs,
+      session,
+    );
+  } catch {
+    /* best-effort */
+  }
+
   // Seed from the sitemap: list every same-origin page it names (cheap, no
   // per-URL fetch), and queue a bounded number of them so their own links are
   // followed too.
   let sitemapUrls: string[] = [];
   try {
-    sitemapUrls = await collectSitemapUrls(startUrl, settings, session);
+    sitemapUrls = await collectSitemapUrls(startUrl, settings, session, robots);
   } catch {
     /* best-effort */
   }
@@ -448,6 +550,7 @@ export async function discoverPages(
           continue;
         }
         if (!isSameOriginPageUrl(resolved, entryHostname)) continue;
+        if (isPathDisallowed(resolved.pathname, robots.disallows)) continue;
 
         const normalized = normalizePageUrl(resolved);
         if (visited.has(normalized)) continue;

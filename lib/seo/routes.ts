@@ -123,3 +123,15 @@ export const DISALLOWED_PATHS: readonly string[] = [
   "/forgot-password",
   "/unsubscribe",
 ] as const;
+
+/**
+ * Paths VulnRadar's own scan crawler skips during discovery, published to
+ * robots.txt under a `User-agent: VulnRadar` group (app/robots.ts) and honored
+ * by lib/scanner/crawl-discovery.ts. These are large SEO surfaces (the ~750
+ * per-check "how to fix" guides): real public pages that STAY in the sitemap
+ * and fully indexable by search engines via the `*` group, but enumerating all
+ * of them fills a multi-page scan with our own marketing pages. This is also
+ * the documented pattern for anyone else: a `User-agent: VulnRadar` Disallow
+ * group keeps pages out of a VulnRadar scan without hiding them from search.
+ */
+export const SCANNER_DISALLOWED_PATHS: readonly string[] = ["/checks"] as const;

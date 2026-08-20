@@ -24,6 +24,7 @@ Paste a URL, get a ranked list of what is wrong with it and how to fix each one.
 - **First scan** (`#quick-start`)
 - **The documentation set** (`#documentation`)
 - **What gets checked** (`#coverage`)
+- **Keeping pages out of a scan** (`#exclude-from-scan`)
 - **Support and versions** (`#support`)
 
 ### Headings
@@ -34,7 +35,17 @@ Paste a URL, get a ranked list of what is wrong with it and how to fix each one.
 - detections live in lib/scanner/checks-data/, one JSON file per category, each paired with a detector module in lib/scanner/checks/. Every check has a stable id, so a finding you triage today keeps the same id on the next scan and in the API response.
 - Service probes are separate and opt-in. They open a bounded TCP socket, read the greeting, and report version disclosure and reachability for https:// target.
 - The full catalogue is served, unauthenticated, from GET /api/v3/finding-types. Use it if you are building an SDK and want every id ahead of time. See Developer documentation for the payload shape.
+- When crawls a site for a multi-page scan, its crawler identifies itself as and reads /robots.txt before discovering pages. To keep specific paths out of a scan, add a group that names with Disallow rules:
+- Only a group that names specifically is honored. A blanket User-agent: * rule does not fence the scanner out, so a site&rsquo;s general bot policy never quietly narrows a security scan you asked for. Rules are matched as standard robots.txt path prefixes.
+- This affects page discovery only. Search engines follow their own * rules, so anything you disallow for stays fully indexable for them. And a URL you enter directly is always scanned, robots.txt or not: the rule shapes what the crawler wanders into, not what you deliberately point it at.
 - If something here is wrong or missing, say so. Bug reports and doc corrections go to the issue tracker; anything account-specific goes through the contact form. Legal terms, the privacy policy, and the acceptable-use rules for scanning targets you do not own are on the legal pages .
+
+### Code examples
+```text
+User-agent: <value>
+Disallow: /checks
+Disallow: /generated/
+```
 
 ## Setup
 Route: /docs/setup
@@ -1600,7 +1611,7 @@ npm run lint:fix    # auto-fix
 
 | Page | Hero | Sections | Callouts | Code tabs | Code blocks | Endpoints | Features | Paragraphs | Headings |
 |---|---|---|---|---|---|---|---|---|---|
-| `/docs` | ✓ | 4 | 0 | 0 | 0 | 0 | 0 | 5 | 1 |
+| `/docs` | ✓ | 5 | 0 | 0 | 1 | 0 | 0 | 8 | 1 |
 | `/docs/setup` | - | 12 | 4 | 0 | 22 | 0 | 0 | 27 | 30 |
 | `/docs/extension` | ✓ | 8 | 1 | 0 | 0 | 0 | 0 | 10 | 2 |
 | `/docs/self-hosting` | - | 15 | 6 | 0 | 12 | 0 | 0 | 19 | 3 |

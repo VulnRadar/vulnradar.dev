@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
-import { APP_URL } from "@/lib/config/constants";
-import { DISALLOWED_PATHS } from "@/lib/seo/routes";
+import { APP_NAME, APP_URL } from "@/lib/config/constants";
+import { DISALLOWED_PATHS, SCANNER_DISALLOWED_PATHS } from "@/lib/seo/routes";
 
 // Served at /robots.txt.
 export const dynamic = "force-static";
@@ -58,6 +58,18 @@ export default function robots(): MetadataRoute.Robots {
         userAgent: AI_CRAWLERS,
         allow: "/",
         disallow: [...DISALLOWED_PATHS],
+      },
+      {
+        // VulnRadar's own scan crawler honors Disallow rules that name it
+        // specifically (lib/scanner/crawl-discovery.ts). Fence it out of the
+        // ~750-page per-check SEO surface so a multi-page scan of this site
+        // isn't filled with our own marketing pages. Those pages stay in the
+        // sitemap and fully indexable for every other crawler via the groups
+        // above; only our scanner steps aside. This is the same mechanism we
+        // document for others who want pages kept out of a VulnRadar scan.
+        userAgent: APP_NAME,
+        allow: "/",
+        disallow: [...DISALLOWED_PATHS, ...SCANNER_DISALLOWED_PATHS],
       },
     ],
     sitemap: `${APP_URL}/sitemap.xml`,

@@ -28,6 +28,7 @@ const tocItems: TocItem[] = [
   { id: "quick-start", label: "First scan" },
   { id: "documentation", label: "The documentation set" },
   { id: "coverage", label: "What gets checked" },
+  { id: "exclude-from-scan", label: "Keeping pages out of a scan" },
   { id: "support", label: "Support and versions" },
 ];
 
@@ -230,6 +231,39 @@ export default function DocsPage() {
               Developer documentation
             </Link>{" "}
             for the payload shape.
+          </p>
+        </div>
+      </DocsSection>
+
+      <DocsSection id="exclude-from-scan" title="Keeping pages out of a scan">
+        <div className="max-w-[68ch] space-y-4 text-sm leading-relaxed text-muted-foreground">
+          <p>
+            When {APP_NAME} crawls a site for a multi-page scan, its crawler
+            identifies itself as <InlineCode>{APP_NAME}</InlineCode> and reads{" "}
+            <InlineCode>/robots.txt</InlineCode> before discovering pages. To
+            keep specific paths out of a {APP_NAME} scan, add a group that names{" "}
+            <InlineCode>{APP_NAME}</InlineCode> with{" "}
+            <InlineCode>Disallow</InlineCode> rules:
+          </p>
+          <CodeBlock
+            language="text"
+            filename="robots.txt"
+            code={`User-agent: ${APP_NAME}\nDisallow: /checks\nDisallow: /generated/`}
+          />
+          <p>
+            Only a group that names <InlineCode>{APP_NAME}</InlineCode>{" "}
+            specifically is honored. A blanket{" "}
+            <InlineCode>User-agent: *</InlineCode> rule does not fence the
+            scanner out, so a site&rsquo;s general bot policy never quietly
+            narrows a security scan you asked for. Rules are matched as standard
+            robots.txt path prefixes.
+          </p>
+          <p>
+            This affects page discovery only. Search engines follow their own{" "}
+            <InlineCode>*</InlineCode> rules, so anything you disallow for{" "}
+            {APP_NAME} stays fully indexable for them. And a URL you enter
+            directly is always scanned, robots.txt or not: the rule shapes what
+            the crawler wanders into, not what you deliberately point it at.
           </p>
         </div>
       </DocsSection>
