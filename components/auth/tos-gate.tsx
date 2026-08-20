@@ -64,7 +64,12 @@ export function TosGate({ children }: { children: React.ReactNode }) {
     return (
       <>
         {children}
-        <div className="fixed inset-0 z-50" aria-hidden />
+        {/* Decorative-only during the brief /auth/me check. pointer-events-none
+            so it never swallows clicks/scroll on the app rendered behind it --
+            without it the page looks ready but eats all input until the check
+            resolves (and forever if it hangs). The real ToS gate is the modal
+            below once the status is known. */}
+        <div className="pointer-events-none fixed inset-0 z-50" aria-hidden />
       </>
     );
   }

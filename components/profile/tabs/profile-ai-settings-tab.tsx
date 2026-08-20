@@ -186,7 +186,13 @@ export function ProfileAiSettingsTab({
     return <AiSettingsTabSkeleton />;
   }
 
-  const hasExistingKey = !!config?.apiKeyLast4;
+  // A stored key only counts as "existing" for the provider it was saved under.
+  // Without the provider match, switching to a different provider kept the save
+  // gate satisfied and showed the old provider's key last-4 under the new one,
+  // so a keyless save persisted the new provider carrying the OLD provider's
+  // key (a guaranteed auth failure when it runs).
+  const hasExistingKey =
+    !!config?.apiKeyLast4 && selectedProvider === config?.provider;
 
   return (
     <div className="flex flex-col gap-8">
