@@ -114,8 +114,8 @@ const OptionalSchema = z.object({
   // (those without a valid Origin / Cookie pair) bypass the CSRF check
   // and the middleware public-path gate. Intended for local development
   // with API clients (curl, Postman, etc.) that cannot send cookies.
-  // MUST NOT be set in production — lib/api/csrf.ts and middleware.ts
-  // both check NODE_ENV === "production" as a secondary guard, but
+  // MUST NOT be set in production — middleware.ts's enforceCsrf()
+  // checks NODE_ENV === "production" as a secondary guard, but
   // the env-schema declaration here makes the flag visible at startup
   // validation so typos in the var name are caught immediately
   // (AUDIT-004#misc-01).
