@@ -1708,6 +1708,12 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         );
         CREATE INDEX IF NOT EXISTS idx_host_reputation_last_scanned
           ON host_reputation(last_scanned_at);
+        -- source_scan_id is filtered on by the false-positive recompute and the
+        -- private-toggle/scan-delete purge; without this each was a full scan of
+        -- the reputation table (one row per host ever scanned).
+        CREATE INDEX IF NOT EXISTS idx_host_reputation_source_scan_id
+          ON host_reputation(source_scan_id)
+          WHERE source_scan_id IS NOT NULL;
       `,
         )
         .catch((err) => {

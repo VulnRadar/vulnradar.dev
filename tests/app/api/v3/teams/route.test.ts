@@ -361,22 +361,19 @@ describe("DELETE /api/v3/teams", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
-  it("allows the owner to delete, cascading invites and members first", async () => {
+  it("allows the owner to delete, cascading invites and members via one atomic DELETE", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ role: "owner" }] });
-    mockQuery.mockResolvedValueOnce({}); // DELETE team_invites
-    mockQuery.mockResolvedValueOnce({}); // DELETE team_members
-    mockQuery.mockResolvedValueOnce({}); // DELETE teams
+    mockQuery.mockResolvedValueOnce({}); // DELETE teams (cascades invites + members)
 
     const res = await DELETE(deleteRequest({ teamId: 1 }));
     const json = await res.json();
 
     expect(res.status).toBe(200);
     expect(json).toEqual({ success: true });
-    expect(mockQuery.mock.calls[1][0]).toContain("DELETE FROM team_invites");
-    expect(mockQuery.mock.calls[2][0]).toContain("DELETE FROM team_members");
-    expect(mockQuery.mock.calls[3][0]).toContain("DELETE FROM teams");
+    // A single DELETE FROM teams; team_members/team_invites cascade via their
+    // ON DELETE CASCADE FK, so no separate (non-atomic) deletes are issued.
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+    expect(mockQuery.mock.calls[1][0]).toContain("DELETE FROM teams");
     expect(mockQuery.mock.calls[1][1]).toEqual([1]);
-    expect(mockQuery.mock.calls[2][1]).toEqual([1]);
-    expect(mockQuery.mock.calls[3][1]).toEqual([1]);
   });
 });

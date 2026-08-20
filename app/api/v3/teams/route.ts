@@ -191,8 +191,10 @@ export async function DELETE(request: Request) {
     );
   }
 
-  await pool.query("DELETE FROM team_invites WHERE team_id = $1", [teamId]);
-  await pool.query("DELETE FROM team_members WHERE team_id = $1", [teamId]);
+  // team_members and team_invites both FK teams(id) ON DELETE CASCADE, so a
+  // single delete removes them atomically. The prior three separate autocommit
+  // deletes could leave a partial state if the process died between them (and
+  // the first two were redundant with the cascade anyway).
   await pool.query("DELETE FROM teams WHERE id = $1", [teamId]);
 
   return NextResponse.json({ success: true });

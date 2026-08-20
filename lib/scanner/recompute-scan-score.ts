@@ -84,13 +84,23 @@ export async function recomputeScanScore(scanHistoryId: number): Promise<void> {
     await pool.query(
       `UPDATE scan_history
          SET summary = $1,
+             findings_count = $4,
              result_meta = jsonb_set(
                COALESCE(result_meta, '{}'::jsonb),
                '{dangerScore}',
                $2::jsonb
              )
        WHERE id = $3`,
-      [JSON.stringify(summary), JSON.stringify(dangerScore), scanHistoryId],
+      // findings_count is set to the ACTIVE count too, so the list views (which
+      // read findings_count) agree with the detail view (which reads
+      // summary.total) after a false-positive verdict -- otherwise the same scan
+      // shows "5 findings" over a breakdown summing to 4.
+      [
+        JSON.stringify(summary),
+        JSON.stringify(dangerScore),
+        scanHistoryId,
+        activeFindings.length,
+      ],
     );
 
     // Only affects a row if this scan is that host's CURRENT source scan
