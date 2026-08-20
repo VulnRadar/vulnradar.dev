@@ -32,9 +32,10 @@ const chartConfig = {
 /**
  * Risk-score history for a host, across up to the last 30 public/completed
  * scans of it (GET /api/v3/host/[hostname]/trend). Renders nothing while
- * loading, on error, or when there are fewer than 2 points -- a single
- * data point has no trend to draw, and this chart is a supplement to the
- * report above it, never something worth its own error or empty state.
+ * loading or on error (a supplement to the report above it, not worth its own
+ * error state), but when the host is known yet has fewer than 2 public scans it
+ * shows a short "needs 2+ public scans" note rather than vanishing -- silence
+ * there read as the chart being broken.
  */
 export function DangerScoreTrend({ hostname }: DangerScoreTrendProps) {
   const [points, setPoints] = useState<HostScoreTrendPoint[] | null>(null);
@@ -57,7 +58,28 @@ export function DangerScoreTrend({ hostname }: DangerScoreTrendProps) {
     };
   }, [hostname]);
 
-  if (!points || points.length < 2) return null;
+  // Still loading, or the fetch failed: stay hidden. This chart supplements the
+  // report above it and isn't worth its own error state.
+  if (!points) return null;
+
+  // Known host, but not enough public scans to draw a line yet. Say so plainly
+  // instead of rendering nothing, which reads as the chart being broken.
+  if (points.length < 2) {
+    return (
+      <div className="flex flex-col gap-2 border-t border-border/50 pt-5">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Risk score over time
+        </h2>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          {points.length === 1
+            ? "Only one public scan of this host on record so far."
+            : "No public scans of this host on record yet."}{" "}
+          Scan it again and keep the result public to start charting how its
+          risk score changes over time.
+        </p>
+      </div>
+    );
+  }
 
   const latest = points[points.length - 1];
   const delta = computeTrendDelta(points);

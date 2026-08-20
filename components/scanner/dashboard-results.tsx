@@ -13,36 +13,13 @@ import {
   type ScanTag,
 } from "@/components/history";
 import { AuthenticatedBadge } from "./authenticated-badge";
-import { ScanSummary } from "./scan-summary";
-import { ResultsList } from "./results-list";
-import { CrawlPagesInfo } from "./crawl-pages-info";
 import { SubdomainDiscovery } from "./subdomain-discovery";
-import { ScreenshotPanel } from "./screenshot-panel";
-import { cn } from "@/lib/ui/utils";
+import { ScanResultDetail } from "./scan-result-detail";
 import { copyToClipboard } from "@/lib/ui/clipboard";
 import { API } from "@/lib/config/client-constants";
 
 const ScanActionsMenu = dynamic(() =>
   import("./scan-actions-menu").then((m) => ({ default: m.ScanActionsMenu })),
-);
-const ResponseHeaders = dynamic(() =>
-  import("./response-headers").then((m) => ({ default: m.ResponseHeaders })),
-);
-const DnsRecordsPanel = dynamic(() =>
-  import("./dns-records-panel").then((m) => ({ default: m.DnsRecordsPanel })),
-);
-const PortScanPanel = dynamic(() =>
-  import("./port-scan-panel").then((m) => ({ default: m.PortScanPanel })),
-);
-const ThreatIntelPanel = dynamic(() =>
-  import("./threat-intel-panel").then((m) => ({
-    default: m.ThreatIntelPanel,
-  })),
-);
-const SoftwareInventoryPanel = dynamic(() =>
-  import("./software-inventory-panel").then((m) => ({
-    default: m.SoftwareInventoryPanel,
-  })),
 );
 const IssueDetail = dynamic(() =>
   import("./issue-detail").then((m) => ({ default: m.IssueDetail })),
@@ -263,104 +240,65 @@ export function DashboardResults({
         </div>
       )}
 
-      <ScanSummary result={displayResult} hideHeader />
-
-      {crawlInfo && crawlInfo.pages.length > 1 && (
-        <CrawlPagesInfo crawlInfo={crawlInfo} onSelectIssue={onSelectIssue} />
-      )}
-
-      <div className="flex flex-col gap-3 border-t border-border/50 pt-5">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          More about this host
-        </h2>
-
-        {displayResult.screenshot && scanHistoryId && (
-          <ScreenshotPanel
-            src={API.SCAN_SCREENSHOT(scanPublicId ?? scanHistoryId)}
+      <ScanResultDetail
+        result={{ ...displayResult, findings: findingsWithRemediation }}
+        onSelectIssue={onSelectIssue}
+        crawlInfo={crawlInfo}
+        screenshotSrc={
+          displayResult.screenshot && scanHistoryId
+            ? API.SCAN_SCREENSHOT(scanPublicId ?? scanHistoryId)
+            : undefined
+        }
+        screenshotRefreshScanId={scanPublicId ?? scanHistoryId ?? undefined}
+        onScreenshotRefreshed={setScreenshotOverride}
+        refreshScanId={scanHistoryId ?? undefined}
+        onDnsRefreshed={setDnsOverride}
+        onPortRefreshed={setPortScanOverride}
+        subdomain={
+          <SubdomainDiscovery
             url={result.url}
-            width={displayResult.screenshot.width}
-            height={displayResult.screenshot.height}
-            capturedAt={displayResult.screenshot.capturedAt}
-            scanId={scanPublicId ?? scanHistoryId}
-            onRefreshed={setScreenshotOverride}
+            onScanSubdomain={onScanSubdomain}
+            initialResult={result.subdomains ?? null}
           />
-        )}
-
-        {result.responseHeaders &&
-          Object.keys(result.responseHeaders).length > 0 && (
-            <ResponseHeaders headers={result.responseHeaders} />
-          )}
-
-        <DnsRecordsPanel
-          records={displayResult.dnsRecords}
-          scanId={scanHistoryId}
-          onRefreshed={setDnsOverride}
-        />
-
-        <PortScanPanel
-          portScan={displayResult.portScan}
-          scanId={scanHistoryId}
-          onRefreshed={setPortScanOverride}
-        />
-
-        <ThreatIntelPanel threatIntel={displayResult.threatIntel} />
-
-        <SoftwareInventoryPanel
-          softwareInventory={displayResult.softwareInventory}
-        />
-
-        <SubdomainDiscovery
-          url={result.url}
-          onScanSubdomain={onScanSubdomain}
-          initialResult={result.subdomains ?? null}
-        />
-
-        {scanHistoryId && (
-          <>
-            <HistoryTagsCard
-              scanId={scanHistoryId}
-              tags={scanTags}
-              onAdd={onAddTag}
-              onRemove={onRemoveTag}
-            />
-            <HistoryNotes
-              notes={scanNotes}
-              isOwner={true}
-              onSave={onSaveNotes}
-            />
-          </>
-        )}
-      </div>
-
-      {result.findings.length > 0 ? (
-        <ResultsList
-          findings={findingsWithRemediation}
-          onSelectIssue={onSelectIssue}
-        />
-      ) : (
-        <div
-          className={cn(
-            "flex flex-col items-center gap-2 rounded-md border border-dashed border-border bg-card/50 px-4 py-12 text-center",
-          )}
-        >
-          <p className="text-base font-semibold text-foreground">
-            Zero findings on this host
-          </p>
-          <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
-            Every enabled check ran and none of them fired. Add a note so you
-            know what state the host was in, or scan another target.
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onReset}
-            className="mt-1 h-8 gap-1.5 bg-transparent"
-          >
-            <RotateCcw aria-hidden className="h-3.5 w-3.5" />
-            New scan
-          </Button>
-        </div>
-      )}
+        }
+        panelFooter={
+          scanHistoryId ? (
+            <>
+              <HistoryTagsCard
+                scanId={scanHistoryId}
+                tags={scanTags}
+                onAdd={onAddTag}
+                onRemove={onRemoveTag}
+              />
+              <HistoryNotes
+                notes={scanNotes}
+                isOwner={true}
+                onSave={onSaveNotes}
+              />
+            </>
+          ) : undefined
+        }
+        emptyFindings={
+          <div className="flex flex-col items-center gap-2 rounded-md border border-dashed border-border bg-card/50 px-4 py-12 text-center">
+            <p className="text-base font-semibold text-foreground">
+              Zero findings on this host
+            </p>
+            <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
+              Every enabled check ran and none of them fired. Add a note so you
+              know what state the host was in, or scan another target.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onReset}
+              className="mt-1 h-8 gap-1.5 bg-transparent"
+            >
+              <RotateCcw aria-hidden className="h-3.5 w-3.5" />
+              New scan
+            </Button>
+          </div>
+        }
+      />
     </div>
   );
 }

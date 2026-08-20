@@ -14,17 +14,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Header } from "@/components/scanner/header";
 import { Footer } from "@/components/scanner/footer";
-import { ScanSummary } from "@/components/scanner/scan-summary";
-import { ResultsList } from "@/components/scanner/results-list";
 import { IssueDetail } from "@/components/scanner/issue-detail";
-import { ResponseHeaders } from "@/components/scanner/response-headers";
-import { DnsRecordsPanel } from "@/components/scanner/dns-records-panel";
-import { ScreenshotPanel } from "@/components/scanner/screenshot-panel";
-import { PortScanPanel } from "@/components/scanner/port-scan-panel";
-import { ThreatIntelPanel } from "@/components/scanner/threat-intel-panel";
-import { SoftwareInventoryPanel } from "@/components/scanner/software-inventory-panel";
+import { ScanResultDetail } from "@/components/scanner/scan-result-detail";
 import { SubdomainDiscovery } from "@/components/scanner/subdomain-discovery";
-import { CrawlPagesInfo } from "@/components/scanner/crawl-pages-info";
 import {
   PaginationControl,
   usePagination,
@@ -474,107 +466,63 @@ export default function HistoryPage() {
                       onPrivacyChanged={handlePrivacyChanged}
                     />
 
-                    <ScanSummary result={scanDetail} hideHeader />
-
-                    {crawlInfo && crawlInfo.pages.length > 1 && (
-                      <CrawlPagesInfo
-                        crawlInfo={crawlInfo}
-                        onSelectIssue={setSelectedIssue}
-                      />
-                    )}
-
-                    <div className="flex flex-col gap-3 border-t border-border/50 pt-5">
-                      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        More about this host
-                      </h2>
-                      {scanDetail.screenshot && scanNumericId && (
-                        <ScreenshotPanel
-                          src={API.SCAN_SCREENSHOT(selectedScanId)}
+                    <ScanResultDetail
+                      result={scanDetail}
+                      onSelectIssue={setSelectedIssue}
+                      crawlInfo={crawlInfo}
+                      screenshotSrc={
+                        scanDetail.screenshot && scanNumericId
+                          ? API.SCAN_SCREENSHOT(selectedScanId)
+                          : undefined
+                      }
+                      screenshotRefreshScanId={
+                        scanOwnerId === currentUserId
+                          ? selectedScanId
+                          : undefined
+                      }
+                      onScreenshotRefreshed={(screenshot) =>
+                        setScanDetail((prev) =>
+                          prev ? { ...prev, screenshot } : prev,
+                        )
+                      }
+                      refreshScanId={
+                        scanOwnerId === currentUserId
+                          ? selectedScanId
+                          : undefined
+                      }
+                      onDnsRefreshed={(dnsRecords) =>
+                        setScanDetail((prev) =>
+                          prev ? { ...prev, dnsRecords } : prev,
+                        )
+                      }
+                      onPortRefreshed={(portScan) =>
+                        setScanDetail((prev) =>
+                          prev ? { ...prev, portScan } : prev,
+                        )
+                      }
+                      subdomain={
+                        <SubdomainDiscovery
                           url={scanDetail.url}
-                          width={scanDetail.screenshot.width}
-                          height={scanDetail.screenshot.height}
-                          capturedAt={scanDetail.screenshot.capturedAt}
-                          scanId={
-                            scanOwnerId === currentUserId
-                              ? selectedScanId
-                              : undefined
-                          }
-                          onRefreshed={(screenshot) =>
-                            setScanDetail((prev) =>
-                              prev ? { ...prev, screenshot } : prev,
-                            )
-                          }
+                          initialResult={scanDetail.subdomains ?? null}
                         />
-                      )}
-                      {scanDetail.responseHeaders &&
-                        Object.keys(scanDetail.responseHeaders).length > 0 && (
-                          <ResponseHeaders
-                            headers={scanDetail.responseHeaders}
+                      }
+                      panelFooter={
+                        <>
+                          <HistoryTagsCard
+                            scanId={selectedScanId}
+                            tags={scanDetailTags}
+                            onAdd={handleAddTag}
+                            onRemove={handleRemoveTag}
+                            readOnly={scanOwnerId !== currentUserId}
                           />
-                        )}
-                      <DnsRecordsPanel
-                        records={scanDetail.dnsRecords}
-                        scanId={
-                          scanOwnerId === currentUserId
-                            ? selectedScanId
-                            : undefined
-                        }
-                        onRefreshed={(dnsRecords) =>
-                          setScanDetail((prev) =>
-                            prev ? { ...prev, dnsRecords } : prev,
-                          )
-                        }
-                      />
-                      <PortScanPanel
-                        portScan={scanDetail.portScan}
-                        scanId={
-                          scanOwnerId === currentUserId
-                            ? selectedScanId
-                            : undefined
-                        }
-                        onRefreshed={(portScan) =>
-                          setScanDetail((prev) =>
-                            prev ? { ...prev, portScan } : prev,
-                          )
-                        }
-                      />
-                      <ThreatIntelPanel threatIntel={scanDetail.threatIntel} />
-                      <SoftwareInventoryPanel
-                        softwareInventory={scanDetail.softwareInventory}
-                      />
-                      <SubdomainDiscovery
-                        url={scanDetail.url}
-                        initialResult={scanDetail.subdomains ?? null}
-                      />
-                      <HistoryTagsCard
-                        scanId={selectedScanId}
-                        tags={scanDetailTags}
-                        onAdd={handleAddTag}
-                        onRemove={handleRemoveTag}
-                        readOnly={scanOwnerId !== currentUserId}
-                      />
-                      <HistoryNotes
-                        notes={scanNotes}
-                        isOwner={scanOwnerId === currentUserId}
-                        onSave={handleSaveNotes}
-                      />
-                    </div>
-
-                    {scanDetail.findings.length > 0 ? (
-                      <ResultsList
-                        findings={scanDetail.findings}
-                        onSelectIssue={setSelectedIssue}
-                      />
-                    ) : (
-                      <div className="rounded-md border border-dashed border-border bg-card/50 px-4 py-10 text-center">
-                        <p className="text-sm font-semibold text-[hsl(var(--success))]">
-                          Nothing found on this scan
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Every enabled check ran and none of them fired.
-                        </p>
-                      </div>
-                    )}
+                          <HistoryNotes
+                            notes={scanNotes}
+                            isOwner={scanOwnerId === currentUserId}
+                            onSave={handleSaveNotes}
+                          />
+                        </>
+                      }
+                    />
                   </>
                 )}
               </div>

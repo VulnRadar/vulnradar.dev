@@ -29,6 +29,12 @@ export interface HistoryDetailResponse {
   subdomains?: ScanResult["subdomains"];
   /** From scan_history.result_meta: the opt-in curated port sweep result. */
   portScan?: ScanResult["portScan"];
+  /** From scan_history.result_meta: TLS grade (A+..F), when the target served HTTPS. */
+  sslGrade?: ScanResult["sslGrade"];
+  /** From scan_history.result_meta: multi-source threat-reputation summary. */
+  threatIntel?: ScanResult["threatIntel"];
+  /** From scan_history.result_meta: detected software with CVE correlation. */
+  softwareInventory?: ScanResult["softwareInventory"];
 }
 
 /**
@@ -66,5 +72,8 @@ export function mapHistoryDetailResponse(
     dnsRecords: data.dnsRecords,
     subdomains: data.subdomains,
     portScan: data.portScan,
+    sslGrade: data.sslGrade,
+    threatIntel: data.threatIntel,
+    softwareInventory: data.softwareInventory,
   };
 }

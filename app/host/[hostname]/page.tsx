@@ -14,12 +14,10 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PublicPageShell } from "@/components/shared/public-page-shell";
-import { ScanSummary } from "@/components/scanner/scan-summary";
-import { ResultsList } from "@/components/scanner/results-list";
 import { IssueDetail } from "@/components/scanner/issue-detail";
 import { ScanActionsMenu } from "@/components/scanner/scan-actions-menu";
 import { AuthenticatedBadge } from "@/components/scanner/authenticated-badge";
-import { ResponseHeaders } from "@/components/scanner/response-headers";
+import { ScanResultDetail } from "@/components/scanner/scan-result-detail";
 import { SharedScanSkeleton } from "@/components/scanner/shared-scan-skeleton";
 import { ScanTags } from "@/components/history/scan-tags";
 import { DangerScoreTrend } from "@/components/host/danger-score-trend";
@@ -260,36 +258,15 @@ export default function HostReportPage() {
                   </div>
                 </header>
 
-                <ScanSummary result={result} hideHeader hideDuration />
-
-                <DangerScoreTrend hostname={data?.host || hostname} />
-
-                {result.responseHeaders &&
-                  Object.keys(result.responseHeaders).length > 0 && (
-                    <div className="flex flex-col gap-3 border-t border-border/50 pt-5">
-                      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        More about this host
-                      </h2>
-                      <ResponseHeaders headers={result.responseHeaders} />
-                    </div>
-                  )}
-
-                {result.findings.length > 0 ? (
-                  <ResultsList
-                    findings={result.findings}
-                    onSelectIssue={setSelectedIssue}
-                  />
-                ) : (
-                  <div className="rounded-md border border-dashed border-border bg-card/50 px-4 py-10 text-center">
-                    <p className="text-sm font-semibold text-[hsl(var(--success))]">
-                      Nothing found on this scan
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Every enabled check ran against this host and none of them
-                      fired.
-                    </p>
-                  </div>
-                )}
+                <ScanResultDetail
+                  result={result}
+                  onSelectIssue={setSelectedIssue}
+                  hideDuration
+                  extendedPanels={false}
+                  afterSummary={
+                    <DangerScoreTrend hostname={data?.host || hostname} />
+                  }
+                />
 
                 <div className="flex flex-col items-start gap-3 rounded-md border border-primary/20 bg-primary/5 p-5 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-start gap-3">
