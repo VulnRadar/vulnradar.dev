@@ -10,6 +10,7 @@ import {
   navigateBrowserSession,
   pickLiveViewerUrl,
 } from "@/lib/browserbase/client";
+import { stopLiveNetworkCapture } from "@/lib/browserbase/network-capture";
 import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api/api-utils";
 import { getSession } from "@/lib/auth";
 import { validateScanTarget } from "@/lib/scanner/safe-fetch";
@@ -306,6 +307,8 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
   }
 
   await endBrowserSession(id);
+  // Tear down the live network-capture CDP connection + buffer for this session.
+  stopLiveNetworkCapture(id);
   // Clean up the ownership record AND make it the single source of truth for
   // billing: record usage only when THIS request's DELETE actually removed the
   // row (RETURNING). The scheduled cleanup pass (lib/database/cleanup.ts) also
