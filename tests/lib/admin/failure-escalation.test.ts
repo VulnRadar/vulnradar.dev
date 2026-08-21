@@ -12,7 +12,10 @@ vi.mock("@/lib/admin/alert-webhook", () => ({
 
 // The escalator persists its streak best-effort; an empty result means "no
 // stored state", so the in-memory behavior these tests assert is unchanged.
-const mockDbQuery = vi.fn(async () => ({ rows: [], rowCount: 0 }));
+const mockDbQuery = vi.fn(async (..._args: unknown[]) => ({
+  rows: [],
+  rowCount: 0,
+}));
 vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockDbQuery(...args) },
 }));

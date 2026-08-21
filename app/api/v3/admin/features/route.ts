@@ -484,11 +484,10 @@ export async function POST(req: NextRequest) {
         );
         const broadcastTitle = titleResult.rows[0]?.title || "Unknown";
 
-        // Update status to sent immediately
-        await pool.query(
-          `UPDATE broadcast_messages SET status = 'sent', sent_at = NOW() WHERE id = $1`,
-          [id],
-        );
+        // NOTE: status is flipped to 'sent' only AFTER the send loop below
+        // finishes, not here. Marking it sent up front meant a crash or a
+        // partial failure during delivery still showed the broadcast as fully
+        // sent when many recipients never got it.
 
         await logAction(
           user.id,
@@ -552,6 +551,15 @@ export async function POST(req: NextRequest) {
 
             const usersResult = await pool.query(userQuery, queryParams);
             for (const recipient of usersResult.rows) {
+              // Idempotent: skip anyone already delivered for this message, so a
+              // re-triggered send or a resend never emails the same person
+              // twice. broadcast_recipients has no unique key, so this is an
+              // app-level guard rather than ON CONFLICT.
+              const already = await pool.query(
+                `SELECT 1 FROM broadcast_recipients WHERE message_id = $1 AND user_id = $2 AND status = 'sent' LIMIT 1`,
+                [id, recipient.id],
+              );
+              if (already.rows.length > 0) continue;
               try {
                 await sendEmail({
                   to: recipient.email,
@@ -571,6 +579,13 @@ export async function POST(req: NextRequest) {
                 );
               }
             }
+            // Only now is the broadcast actually sent. A crash before this
+            // leaves it 'draft', so re-triggering resumes (the skip above means
+            // already-delivered recipients aren't emailed again).
+            await pool.query(
+              `UPDATE broadcast_messages SET status = 'sent', sent_at = NOW() WHERE id = $1`,
+              [id],
+            );
           } catch (err) {
             console.error("[Broadcast] Background job failed:", err);
           }
@@ -698,6 +713,15 @@ export async function POST(req: NextRequest) {
 
             const usersResult = await pool.query(userQuery, queryParams);
             for (const recipient of usersResult.rows) {
+              // Idempotent: skip anyone already delivered for this message, so a
+              // re-triggered send or a resend never emails the same person
+              // twice. broadcast_recipients has no unique key, so this is an
+              // app-level guard rather than ON CONFLICT.
+              const already = await pool.query(
+                `SELECT 1 FROM broadcast_recipients WHERE message_id = $1 AND user_id = $2 AND status = 'sent' LIMIT 1`,
+                [id, recipient.id],
+              );
+              if (already.rows.length > 0) continue;
               try {
                 await sendEmail({
                   to: recipient.email,
