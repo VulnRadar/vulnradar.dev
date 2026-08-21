@@ -585,7 +585,13 @@ function AdminContent() {
     setSearchLoading(true);
     const timeout = setTimeout(async () => {
       try {
-        const params = new URLSearchParams({ page: "1" });
+        // Carry the chosen page size; omitting it made the server fall back to
+        // its default while the pagination control still showed usersPageSize,
+        // so totalPages was recomputed for the wrong size.
+        const params = new URLSearchParams({
+          page: "1",
+          limit: String(usersPageSize),
+        });
         if (searchQuery.trim()) params.set("search", searchQuery.trim());
         const res = await fetch(`${API.ADMIN}?${params}`);
         if (res.ok) {
@@ -603,6 +609,9 @@ function AdminContent() {
       clearTimeout(timeout);
       setSearchLoading(false);
     };
+    // usersPageSize is read at fire time but intentionally not a dep: a page-size
+    // change has its own fetch handler, so listing it here would double-fetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery]);
 
   // Debounced teams search

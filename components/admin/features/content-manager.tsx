@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -85,13 +85,19 @@ export function ContentManager() {
   );
   const [busyId, setBusyId] = useState<string | number | null>(null);
 
+  // Ticket so a slower earlier fetch (e.g. the Hosts tab) can't apply its
+  // total/totalPages after a newer one (Shares) -- fast tab toggling otherwise
+  // binds one tab's page count to the other.
+  const fetchReqRef = useRef(0);
   const fetchPage = useCallback(async (t: Tab, p: number) => {
+    const reqId = ++fetchReqRef.current;
     setLoading(true);
     try {
       const res = await fetch(
         `/api/v3/admin/content?type=${t}&page=${p}&limit=20`,
       );
       const data = await res.json();
+      if (reqId !== fetchReqRef.current) return;
       if (t === "hosts") {
         setHosts(data.hosts || []);
       } else {
@@ -101,9 +107,11 @@ export function ContentManager() {
       setTotal(data.total || 0);
     } catch (error) {
       console.error("Error fetching admin content:", error);
-      setToast({ message: "Failed to load list", type: "error" });
+      if (reqId === fetchReqRef.current) {
+        setToast({ message: "Failed to load list", type: "error" });
+      }
     } finally {
-      setLoading(false);
+      if (reqId === fetchReqRef.current) setLoading(false);
     }
   }, []);
 
