@@ -23,21 +23,9 @@ export interface DiffResult {
   };
 }
 
-export const severityColors: Record<string, string> = {
-  critical: "bg-[hsl(var(--severity-critical))]",
-  high: "bg-[hsl(var(--severity-high))]",
-  medium: "bg-[hsl(var(--severity-medium))]",
-  low: "bg-[hsl(var(--severity-low))]",
-  info: "bg-muted-foreground/50",
-};
-
-export const severityTextColors: Record<string, string> = {
-  critical: "text-[hsl(var(--severity-critical))]",
-  high: "text-[hsl(var(--severity-high))]",
-  medium: "text-[hsl(var(--severity-medium))]",
-  low: "text-[hsl(var(--severity-low))]",
-  info: "text-muted-foreground",
-};
+// Severity colors come from the canonical severityTone()/SEVERITY_TONE in
+// components/scanner/severity-badge.tsx; the local copies here had drifted on
+// `info` (bg-muted-foreground vs the --severity-info token).
 
 export interface ParsedUrl {
   subdomain: string | null;

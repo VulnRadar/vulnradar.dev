@@ -1,11 +1,8 @@
 "use client";
 
 import { cn } from "@/lib/ui/utils";
-import {
-  type DiffResult,
-  severityColors,
-  severityTextColors,
-} from "./compare-types";
+import { severityTone } from "@/components/scanner/severity-badge";
+import { type DiffResult } from "./compare-types";
 
 interface CompareFindingsListProps {
   diff: DiffResult["diff"];
@@ -28,7 +25,7 @@ function FindingRow({
         aria-hidden="true"
         className={cn(
           "w-1.5 h-1.5 rounded-full shrink-0",
-          severityColors[severity],
+          severityTone(severity).solid,
           variant === "removed" && "opacity-50",
         )}
       />
@@ -46,7 +43,7 @@ function FindingRow({
         className={cn(
           "text-[11px] font-mono uppercase tracking-wider shrink-0",
           variant === "added"
-            ? severityTextColors[severity]
+            ? severityTone(severity).text
             : "text-muted-foreground",
         )}
       >
