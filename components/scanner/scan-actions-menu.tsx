@@ -36,6 +36,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { PageActionsMenu, type PageActionEntry } from "@/components/shared";
+import { downloadBlob, escapeCsv } from "@/lib/ui/download";
 import { ShareModal } from "./share-modal";
 import { AiVerifyResultModal } from "./ai-verify-result-modal";
 import { AiSummaryModal } from "./ai-summary-modal";
@@ -87,24 +88,6 @@ function isMobileBrowser(): boolean {
       navigator.userAgent,
     )
   );
-}
-
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-function escapeCsv(value: string): string {
-  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
 }
 
 /**

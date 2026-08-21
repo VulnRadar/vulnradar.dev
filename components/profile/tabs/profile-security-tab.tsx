@@ -28,7 +28,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { copyToClipboard } from "@/lib/ui/clipboard";
-import { API, ROUTES, APP_NAME } from "@/lib/config/constants";
+import { API, ROUTES, APP_NAME, APP_SLUG } from "@/lib/config/constants";
+import { downloadBlob } from "@/lib/ui/download";
 import { refreshAuthCache } from "@/components/providers/auth-provider";
 import type { ProfileTabProps } from "@/components/profile/types";
 
@@ -423,12 +424,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
       ],
       { type: "text/plain" },
     );
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "vulnradar-backup-codes.txt";
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `${APP_SLUG}-backup-codes.txt`);
     setCodesDownloaded(true);
   }
 

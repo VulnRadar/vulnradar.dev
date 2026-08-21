@@ -5,28 +5,11 @@ import { Check, FileJson, FileSpreadsheet, Link2 } from "lucide-react";
 import { PageActionsMenu, type PageActionEntry } from "@/components/shared";
 import { APP_SLUG } from "@/lib/config/constants";
 import { copyToClipboard } from "@/lib/ui/clipboard";
+import { downloadBlob, escapeCsv } from "@/lib/ui/download";
 import { displayUrl, type DiffResult } from "./compare-types";
 
 interface CompareActionsMenuProps {
   result: DiffResult;
-}
-
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-function escapeCsv(value: string): string {
-  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
 }
 
 /** Actions for a completed comparison: export the diff, or copy a link back to it. */

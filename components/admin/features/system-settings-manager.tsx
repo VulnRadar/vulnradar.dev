@@ -28,6 +28,8 @@ import {
   SaveConfirmationModal,
   type ChangeItem,
 } from "@/components/shared/save-confirmation-modal";
+import { downloadBlob } from "@/lib/ui/download";
+import { APP_SLUG } from "@/lib/config/constants";
 import {
   ConfirmDialog,
   useUnsavedChangesWarning,
@@ -253,12 +255,7 @@ export function SystemSettingsManager() {
     const blob = new Blob([JSON.stringify(dump, null, 2)], {
       type: "application/json",
     });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "vulnradar-settings-export.json";
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `${APP_SLUG}-settings-export.json`);
   };
 
   const importInputRef = useRef<HTMLInputElement>(null);
