@@ -84,6 +84,12 @@ const pool = new Pool({
   // queries and every other request (including login) blocks behind them.
   ...POOL_CONFIG,
   application_name: APP_SLUG,
+  // Pin every session to UTC. The daily-quota buckets on date_trunc('day',
+  // NOW()) / CURRENT_DATE (lib/rate-limiting/daily-limits.ts) while the API
+  // advertises and computes reset at "midnight UTC"; without this, a Postgres
+  // running in a non-UTC timezone would reset the counter at the server's local
+  // midnight, off the documented boundary.
+  options: "-c timezone=UTC",
 });
 
 pool.on("error", (err) => {

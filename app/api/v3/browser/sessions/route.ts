@@ -306,24 +306,30 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
   }
 
   await endBrowserSession(id);
-  // Clean up the ownership record when the session ends.
-  pool
-    .query("DELETE FROM browser_sessions WHERE id = $1", [id])
-    .catch(() => {});
+  // Clean up the ownership record AND make it the single source of truth for
+  // billing: record usage only when THIS request's DELETE actually removed the
+  // row (RETURNING). The scheduled cleanup pass (lib/database/cleanup.ts) also
+  // deletes-and-records an expired session; without the row-deletion gate here,
+  // an explicit DELETE racing that cleanup would double-count the seconds.
+  const deleted = await pool
+    .query<{ user_id: number; created_at: string }>(
+      "DELETE FROM browser_sessions WHERE id = $1 RETURNING user_id, created_at",
+      [id],
+    )
+    .catch(() => null);
 
-  // Plan usage true-up: record the session's real elapsed duration now that
-  // it's known, so the next quota check (and Profile > Billing's usage
-  // card) reflects it. Fire-and-forget, same as the ownership cleanup
-  // above -- a failure here must never block the response to a request
-  // that already successfully ended the real Browserbase session.
-  const row = ownerRow?.rows[0];
-  if (row) {
+  const deletedRow = deleted?.rows[0];
+  if (deletedRow) {
     const elapsedSeconds = Math.max(
       0,
-      Math.round((Date.now() - new Date(row.created_at).getTime()) / 1000),
+      Math.round(
+        (Date.now() - new Date(deletedRow.created_at).getTime()) / 1000,
+      ),
     );
     if (elapsedSeconds > 0) {
-      recordBrowserbaseSeconds(row.user_id, elapsedSeconds).catch(() => {});
+      recordBrowserbaseSeconds(deletedRow.user_id, elapsedSeconds).catch(
+        () => {},
+      );
     }
     // Free the concurrency slot this session held, admitting the next
     // queued request (if any) immediately rather than waiting for its own
