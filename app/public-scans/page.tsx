@@ -71,7 +71,12 @@ export default function PublicScansPage() {
         if (cancelled) return;
         setScans(data.scans || []);
         setTotal(data.total || 0);
-        setTotalPages(data.totalPages || 1);
+        const pages = data.totalPages || 1;
+        setTotalPages(pages);
+        // A stale/deep-linked ?page= past the last page returns no rows and the
+        // pagination control (rendered only when scans exist) disappears,
+        // stranding the user. Clamp back to the last valid page.
+        if (currentPage > pages) handlePageChange(pages);
       } catch {
         if (!cancelled) setError("Could not load the Public Scans directory.");
       } finally {

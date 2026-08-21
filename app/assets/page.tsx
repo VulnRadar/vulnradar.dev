@@ -100,6 +100,14 @@ export default function AssetsPage() {
   const { totalPages, getPage } = usePagination(filtered, pageSize);
   const paginatedAssets = getPage(currentPage);
 
+  // Clamp a stale/deep-linked page that now sits past the last page (e.g. a
+  // filter shrank the list), which otherwise renders a reversed "41-15 of 15"
+  // range and an empty table.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot clamp: currentPage <= totalPages after this fires, so it can't re-trigger
+    if (currentPage > totalPages) handlePageChange(totalPages);
+  }, [currentPage, totalPages, handlePageChange]);
+
   if (loading) {
     return <AssetsSkeleton />;
   }
