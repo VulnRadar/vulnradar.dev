@@ -36,6 +36,21 @@ import type {
 
 const root = document.getElementById("app")!;
 
+// The same popup document, opened as a full browser TAB (via the "Open in tab"
+// footer button below). A toolbar popup can't be resized -- the browser fixes
+// its size by content -- so this is the resizable, roomy view. In tab mode the
+// active-tab URL isn't the site the user was looking at (it's this tab), so the
+// opener passes ?url=, and actions must NOT window.close() (that would close the
+// whole tab). data-fulltab drives the wider layout in popup.css.
+const FULLTAB_PARAMS = new URLSearchParams(location.search);
+const IS_FULLTAB = FULLTAB_PARAMS.get("fulltab") === "1";
+if (IS_FULLTAB) document.documentElement.setAttribute("data-fulltab", "");
+
+/** Close the popup window, but never when running as a full tab. */
+function closePopupWindow(): void {
+  if (!IS_FULLTAB) window.close();
+}
+
 // Same "is this actually a scannable page" test used throughout the
 // background/content script (service-worker.ts's handleScanUrl/
 // handleReputationScan, detector.ts's reportPage) - chrome://, the web
@@ -181,6 +196,19 @@ function App(): TemplateResult {
                 </button>
               `
             : null
+        }
+        ${
+          IS_FULLTAB
+            ? null
+            : html`
+                <button
+                  class="footer-settings"
+                  @click=${openInTab}
+                  title="Open this view in a resizable browser tab"
+                >
+                  Open in tab
+                </button>
+              `
         }
         <button class="footer-settings" @click=${openOptions}>Settings</button>
       </div>
@@ -405,7 +433,7 @@ async function showSiteAlertAgain() {
     // The whole point of this button is "put the alert back on the page I'm
     // looking at" - leaving the popup open on top of it defeats that, same
     // as openOptions() below closing itself after handing off to a new tab.
-    window.close();
+    closePopupWindow();
   } catch (err) {
     if (err instanceof TabMessageTimeoutError) {
       // A content script WAS registered for this tab, but it's gone quiet -
@@ -424,7 +452,18 @@ async function showSiteAlertAgain() {
 
 async function openOptions() {
   await browser.runtime.openOptionsPage();
-  window.close();
+  closePopupWindow();
+}
+
+/** Open this popup UI as a full browser tab (the resizable view). Carries the
+ *  current tab's URL so the tab view scans the same site, not itself. */
+async function openInTab() {
+  const target =
+    browser.runtime.getURL("popup.html") +
+    "?fulltab=1" +
+    (state.url ? `&url=${encodeURIComponent(state.url)}` : "");
+  await browser.tabs.create({ url: target });
+  closePopupWindow();
 }
 
 async function copyUrl() {
@@ -555,7 +594,7 @@ async function openHistoryDetail(id: number) {
   } else {
     await browser.tabs.create({ url: `${VULNRADAR.apiHost}/dashboard` });
   }
-  window.close();
+  closePopupWindow();
 }
 
 // ---- Init ----
@@ -593,18 +632,25 @@ async function init() {
   const cached = await getHistory();
   state.history = cached.length > 0 ? cached : await refreshHistoryFromServer();
 
-  try {
-    // Query directly from popup context — lastFocusedWindow: true is reliable
-    // in both Chrome and Firefox. Sending tab:url to the background fails in
-    // Firefox because the background page has windowId = -1 (not in any window)
-    // so currentWindow: true returns an empty array.
-    const [tab] = await browser.tabs.query({
-      active: true,
-      lastFocusedWindow: true,
-    });
-    state.url = tab?.url ?? null;
-  } catch {
-    state.url = null;
+  if (IS_FULLTAB) {
+    // In the full-tab view the active tab IS this page, so tabs.query would
+    // return our own URL. The opener passed the site to scan as ?url= instead.
+    const passedUrl = FULLTAB_PARAMS.get("url");
+    state.url = passedUrl && isHttpUrl(passedUrl) ? passedUrl : null;
+  } else {
+    try {
+      // Query directly from popup context — lastFocusedWindow: true is reliable
+      // in both Chrome and Firefox. Sending tab:url to the background fails in
+      // Firefox because the background page has windowId = -1 (not in any window)
+      // so currentWindow: true returns an empty array.
+      const [tab] = await browser.tabs.query({
+        active: true,
+        lastFocusedWindow: true,
+      });
+      state.url = tab?.url ?? null;
+    } catch {
+      state.url = null;
+    }
   }
 
   // A manual scan for this tab may have been started by a popup instance

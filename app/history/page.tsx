@@ -413,7 +413,13 @@ export default function HistoryPage() {
   }, [filter, tagFilter, handlePageChange]);
 
   const { totalPages, getPage } = usePagination(filtered, pageSize);
-  const paginatedScans = getPage(currentPage);
+  // Clamp to the current page count. When the list shrinks below currentPage
+  // (e.g. deleting the only item on the last page), getPage already clamps its
+  // slice but the range label was computed from the raw currentPage, rendering
+  // an impossible "21-20 of 20". Use one clamped value everywhere so slice,
+  // label, and active-page button all agree.
+  const effectivePage = Math.min(currentPage, Math.max(1, totalPages));
+  const paginatedScans = getPage(effectivePage);
 
   if (loading) {
     return <HistorySkeleton />;
@@ -433,94 +439,104 @@ export default function HistoryPage() {
 
             {!detailLoading && scanDetail && (
               <div className="flex flex-col gap-4">
-                {selectedIssue ? (
-                  <IssueDetail
-                    issue={selectedIssue}
-                    onBack={() => setSelectedIssue(null)}
-                    findingUrl={
-                      scanOwnerId === currentUserId ? scanDetail.url : undefined
-                    }
-                    scanHistoryId={scanNumericId}
-                    onVerdictChanged={handleVerdictChanged}
-                    onRemediationChanged={handleRemediationChanged}
-                  />
-                ) : (
-                  <>
-                    <HistoryDetailHeader
-                      scanDetail={scanDetail}
-                      scanId={selectedScanId}
-                      isOwner={scanOwnerId === currentUserId}
-                      isPublic={scanIsPublic}
-                      onBack={handleBackToList}
-                      onDeleted={() => {
-                        setSelectedScanId(null);
-                        setScanDetail(null);
-                        fetchHistory();
-                      }}
-                      onVerified={handleFindingsUpdated}
-                      onSummaryGenerated={handleSummaryGenerated}
-                      onPrivacyChanged={handlePrivacyChanged}
-                    />
-
-                    <ScanResultDetail
-                      result={scanDetail}
-                      onSelectIssue={setSelectedIssue}
-                      crawlInfo={crawlInfo}
-                      screenshotSrc={
-                        scanDetail.screenshot && scanNumericId
-                          ? API.SCAN_SCREENSHOT(selectedScanId)
-                          : undefined
-                      }
-                      screenshotRefreshScanId={
-                        scanOwnerId === currentUserId
-                          ? selectedScanId
-                          : undefined
-                      }
-                      onScreenshotRefreshed={(screenshot) =>
-                        setScanDetail((prev) =>
-                          prev ? { ...prev, screenshot } : prev,
-                        )
-                      }
-                      refreshScanId={
-                        scanOwnerId === currentUserId
-                          ? selectedScanId
-                          : undefined
-                      }
-                      onDnsRefreshed={(dnsRecords) =>
-                        setScanDetail((prev) =>
-                          prev ? { ...prev, dnsRecords } : prev,
-                        )
-                      }
-                      onPortRefreshed={(portScan) =>
-                        setScanDetail((prev) =>
-                          prev ? { ...prev, portScan } : prev,
-                        )
-                      }
-                      subdomain={
-                        <SubdomainDiscovery
-                          url={scanDetail.url}
-                          initialResult={scanDetail.subdomains ?? null}
+                {/* Owner-only affordances. currentUserId must be a real
+                    identity: null === null would otherwise mark a signed-out
+                    viewer (or a transient /me fetch failure) as the "owner" of
+                    an ownerless public scan and expose edit/refresh controls.
+                    The API re-checks ownership regardless, so this only gates
+                    the UI. */}
+                {(() => {
+                  const isOwner =
+                    currentUserId != null && scanOwnerId === currentUserId;
+                  return (
+                    <>
+                      {selectedIssue ? (
+                        <IssueDetail
+                          issue={selectedIssue}
+                          onBack={() => setSelectedIssue(null)}
+                          findingUrl={isOwner ? scanDetail.url : undefined}
+                          scanHistoryId={scanNumericId}
+                          onVerdictChanged={handleVerdictChanged}
+                          onRemediationChanged={handleRemediationChanged}
                         />
-                      }
-                      panelFooter={
+                      ) : (
                         <>
-                          <HistoryTagsCard
+                          <HistoryDetailHeader
+                            scanDetail={scanDetail}
                             scanId={selectedScanId}
-                            tags={scanDetailTags}
-                            onAdd={handleAddTag}
-                            onRemove={handleRemoveTag}
-                            readOnly={scanOwnerId !== currentUserId}
+                            isOwner={isOwner}
+                            isPublic={scanIsPublic}
+                            onBack={handleBackToList}
+                            onDeleted={() => {
+                              setSelectedScanId(null);
+                              setScanDetail(null);
+                              // Clear ?scan= too (same as handleBackToList). Without
+                              // this the deleted id lingers in the URL and browser
+                              // Back re-loads it into a 404 skeleton bounce.
+                              updateUrlWithScan(null);
+                              fetchHistory();
+                            }}
+                            onVerified={handleFindingsUpdated}
+                            onSummaryGenerated={handleSummaryGenerated}
+                            onPrivacyChanged={handlePrivacyChanged}
                           />
-                          <HistoryNotes
-                            notes={scanNotes}
-                            isOwner={scanOwnerId === currentUserId}
-                            onSave={handleSaveNotes}
+
+                          <ScanResultDetail
+                            result={scanDetail}
+                            onSelectIssue={setSelectedIssue}
+                            crawlInfo={crawlInfo}
+                            screenshotSrc={
+                              scanDetail.screenshot && scanNumericId
+                                ? API.SCAN_SCREENSHOT(selectedScanId)
+                                : undefined
+                            }
+                            screenshotRefreshScanId={
+                              isOwner ? selectedScanId : undefined
+                            }
+                            onScreenshotRefreshed={(screenshot) =>
+                              setScanDetail((prev) =>
+                                prev ? { ...prev, screenshot } : prev,
+                              )
+                            }
+                            refreshScanId={isOwner ? selectedScanId : undefined}
+                            onDnsRefreshed={(dnsRecords) =>
+                              setScanDetail((prev) =>
+                                prev ? { ...prev, dnsRecords } : prev,
+                              )
+                            }
+                            onPortRefreshed={(portScan) =>
+                              setScanDetail((prev) =>
+                                prev ? { ...prev, portScan } : prev,
+                              )
+                            }
+                            subdomain={
+                              <SubdomainDiscovery
+                                url={scanDetail.url}
+                                initialResult={scanDetail.subdomains ?? null}
+                              />
+                            }
+                            panelFooter={
+                              <>
+                                <HistoryTagsCard
+                                  scanId={selectedScanId}
+                                  tags={scanDetailTags}
+                                  onAdd={handleAddTag}
+                                  onRemove={handleRemoveTag}
+                                  readOnly={!isOwner}
+                                />
+                                <HistoryNotes
+                                  notes={scanNotes}
+                                  isOwner={isOwner}
+                                  onSave={handleSaveNotes}
+                                />
+                              </>
+                            }
                           />
                         </>
-                      }
-                    />
-                  </>
-                )}
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             )}
 
@@ -593,7 +609,7 @@ export default function HistoryPage() {
 
             {filtered.length > 0 && (
               <PaginationControl
-                currentPage={currentPage}
+                currentPage={effectivePage}
                 totalPages={totalPages}
                 onPageChange={handlePageChange}
                 pageSize={pageSize}

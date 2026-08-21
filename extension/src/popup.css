@@ -81,6 +81,21 @@ body {
   max-width: 480px;
 }
 
+/* Full-tab view: the same document opened as a real browser tab (the "Open in
+   tab" footer button). A toolbar popup is size-locked by the browser; a tab is
+   not, so drop the width clamp and center a roomier column that can grow with
+   the window. */
+:root[data-fulltab] body {
+  max-width: none;
+  min-height: 100vh;
+}
+
+:root[data-fulltab] main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 20px;
+}
+
 main {
   padding: 16px;
   display: flex;

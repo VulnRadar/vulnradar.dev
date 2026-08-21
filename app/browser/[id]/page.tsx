@@ -11,7 +11,7 @@ import {
   Loader2,
   X,
   Timer,
-  Globe,
+  Lock,
   WifiOff,
   CheckCircle2,
 } from "lucide-react";
@@ -86,6 +86,21 @@ function statusLabel(status: number | undefined, failed?: boolean): string {
   return String(status);
 }
 
+/** Short devtools-style resource label from a CDP mimeType. */
+function resourceType(mimeType: string | undefined): string {
+  if (!mimeType) return "";
+  const m = mimeType.toLowerCase();
+  if (m.includes("html")) return "doc";
+  if (m.includes("javascript") || m.includes("ecmascript")) return "js";
+  if (m.includes("css")) return "css";
+  if (m.includes("json")) return "json";
+  if (m.startsWith("image/")) return "img";
+  if (m.includes("font")) return "font";
+  if (m.startsWith("video/") || m.startsWith("audio/")) return "media";
+  if (m.includes("xml")) return "xml";
+  return m.split("/")[1]?.slice(0, 4) ?? "";
+}
+
 export default function BrowserViewerPage({ params }: PageProps) {
   const { id: sessionId } = use(params);
   const { browserbaseLogsPollIntervalMs: LOGS_POLL_MS } = useClientConfig();
@@ -110,8 +125,10 @@ export default function BrowserViewerPage({ params }: PageProps) {
   const [minutesAllocated, setMinutesAllocated] = useState(1);
   const MAX_MINUTES = 5;
 
-  // Network logs sidebar
-  const [showLogs, setShowLogs] = useState(false);
+  // Network logs sidebar. Opens by default -- the network stream is the point
+  // of the devtools dock, so a fresh session shows it immediately rather than
+  // hiding it behind a toggle the user has to discover.
+  const [showLogs, setShowLogs] = useState(true);
   const [networkRequests, setNetworkRequests] = useState<NetworkRequest[]>([]);
   const [logsError, setLogsError] = useState<string | null>(null);
   const logsPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -325,38 +342,21 @@ export default function BrowserViewerPage({ params }: PageProps) {
           </span>
         </div>
 
-        <div className="hidden sm:block w-px h-5 bg-border/70 shrink-0" />
+        <div className="flex-1" />
 
-        {/* URL pill */}
-        {displayUrl ? (
-          <a
-            href={displayUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            title={displayUrl}
-            className="flex-1 min-w-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-muted/50 border border-border/60 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors group"
-          >
-            <Globe className="h-3 w-3 shrink-0 text-primary/60" />
-            <span className="truncate font-mono">
-              {truncateUrl(displayUrl)}
-            </span>
-            <ExternalLink className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-50 transition-opacity ml-auto" />
-          </a>
-        ) : (
-          <div className="flex-1" />
-        )}
-
-        {/* Live pulse */}
+        {/* Live pill (the URL now lives in the browser-frame address bar below) */}
         {isLive && (
           <div
-            className="shrink-0 hidden sm:flex items-center gap-1.5 text-[hsl(var(--success))]"
+            className="shrink-0 hidden sm:flex items-center gap-1.5 h-7 pl-2 pr-2.5 rounded-full bg-[hsl(var(--success))]/10 border border-[hsl(var(--success))]/20 text-[hsl(var(--success))]"
             title="Session active"
           >
-            <span className="relative flex h-2 w-2">
+            <span className="relative flex h-1.5 w-1.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[hsl(var(--success))] opacity-60" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-[hsl(var(--success))]" />
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[hsl(var(--success))]" />
             </span>
-            <span className="text-xs font-medium">Live</span>
+            <span className="text-[11px] font-semibold tracking-wide uppercase">
+              Live
+            </span>
           </div>
         )}
 
@@ -544,14 +544,51 @@ export default function BrowserViewerPage({ params }: PageProps) {
               </Button>
             </div>
           ) : viewerUrl ? (
-            <iframe
-              ref={iframeRef}
-              src={viewerUrl}
-              title="Live interactive browser"
-              className="flex-1 min-h-0 w-full border-0 bg-white"
-              sandbox="allow-same-origin allow-scripts allow-forms"
-              allow="clipboard-read; clipboard-write"
-            />
+            <div
+              className="relative flex-1 min-h-0 flex flex-col p-2 sm:p-3 bg-muted/20"
+              style={{
+                backgroundImage:
+                  "radial-gradient(hsl(var(--border) / 0.5) 1px, transparent 1px)",
+                backgroundSize: "18px 18px",
+              }}
+            >
+              <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-border/70 bg-card overflow-hidden shadow-[0_10px_40px_-16px_rgba(0,0,0,0.4)]">
+                {/* Browser chrome: window controls + live address bar. This is a
+                    real remote browser, so framing it as a browser window is
+                    honest, not decoration -- and it shows the exact URL the
+                    session is on. */}
+                <div className="shrink-0 h-9 flex items-center gap-2.5 px-3 border-b border-border/60 bg-gradient-to-b from-muted/50 to-muted/20">
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="h-3 w-3 rounded-full bg-destructive/70" />
+                    <span className="h-3 w-3 rounded-full bg-[hsl(var(--warning))]/70" />
+                    <span className="h-3 w-3 rounded-full bg-[hsl(var(--success))]/70" />
+                  </div>
+                  {displayUrl && (
+                    <a
+                      href={displayUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={displayUrl}
+                      className="group flex-1 min-w-0 flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-background/70 border border-border/50 text-xs text-muted-foreground hover:text-foreground hover:border-border transition-colors"
+                    >
+                      <Lock className="h-3 w-3 shrink-0 text-[hsl(var(--success))]" />
+                      <span className="truncate font-mono">
+                        {truncateUrl(displayUrl, 72)}
+                      </span>
+                      <ExternalLink className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-60 transition-opacity ml-auto" />
+                    </a>
+                  )}
+                </div>
+                <iframe
+                  ref={iframeRef}
+                  src={viewerUrl}
+                  title="Live interactive browser"
+                  className="flex-1 min-h-0 w-full border-0 bg-white"
+                  sandbox="allow-same-origin allow-scripts allow-forms"
+                  allow="clipboard-read; clipboard-write"
+                />
+              </div>
+            </div>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8 text-center bg-background">
               <div className="space-y-1.5">
@@ -575,22 +612,27 @@ export default function BrowserViewerPage({ params }: PageProps) {
           )}
         </div>
 
-        {/* Right: network logs sidebar. Fixed 380px only fits from sm up --
-            below that it's a full-screen overlay instead of a docked panel,
-            since 380px alone is wider than most phones. */}
+        {/* Right: live network dock, styled as a devtools Network tab. Fixed
+            420px only docks from sm up -- below that it's a full-screen overlay
+            instead, since 420px alone is wider than most phones. */}
         {showLogs && isLive && (
-          <div className="fixed inset-0 z-30 flex flex-col overflow-hidden bg-card/50 sm:static sm:inset-auto sm:z-auto sm:w-[380px] sm:shrink-0 sm:border-l border-border">
-            {/* Sidebar header */}
-            <div className="h-9 border-b border-border/60 flex items-center px-3 gap-2 shrink-0 bg-card/80">
+          <div className="fixed inset-0 z-30 flex flex-col overflow-hidden bg-card sm:static sm:inset-auto sm:z-auto sm:w-[420px] sm:shrink-0 sm:border-l border-border/70">
+            {/* Dock header */}
+            <div className="h-9 border-b border-border/60 flex items-center px-3 gap-2 shrink-0 bg-gradient-to-b from-muted/40 to-muted/10">
               <Activity className="h-3.5 w-3.5 text-primary" />
               <span className="text-xs font-semibold text-foreground">
                 Network
               </span>
-              {networkRequests.length > 0 && (
-                <span className="ml-1 text-[11px] text-muted-foreground tabular-nums">
-                  {networkRequests.length} requests
+              <span
+                className="ml-1 flex items-center gap-1 text-[10px] font-medium text-[hsl(var(--success))]"
+                title={`Streaming, refreshes every ${LOGS_POLL_MS / 1000}s`}
+              >
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[hsl(var(--success))] opacity-60" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[hsl(var(--success))]" />
                 </span>
-              )}
+                LIVE
+              </span>
               <button
                 onClick={() => setShowLogs(false)}
                 className="ml-auto p-0.5 rounded opacity-50 hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
@@ -613,8 +655,8 @@ export default function BrowserViewerPage({ params }: PageProps) {
             ) : (
               <>
                 {/* Column headers */}
-                <div className="grid grid-cols-[52px_40px_1fr] border-b border-border/40 bg-muted/30 shrink-0">
-                  {["Method", "Status", "Path"].map((h) => (
+                <div className="grid grid-cols-[44px_36px_40px_1fr] border-b border-border/40 bg-muted/30 shrink-0">
+                  {["Method", "Stat", "Type", "Path"].map((h) => (
                     <div
                       key={h}
                       className="px-2 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide"
@@ -627,17 +669,24 @@ export default function BrowserViewerPage({ params }: PageProps) {
                 {/* Request list */}
                 <div className="flex-1 overflow-y-auto">
                   {networkRequests.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-24 gap-2 text-center px-4">
-                      <Activity className="h-4 w-4 text-muted-foreground/40" />
-                      <p className="text-xs text-muted-foreground/60">
-                        Waiting for network activity...
+                    <div className="flex flex-col items-center justify-center h-full min-h-32 gap-2.5 text-center px-6">
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-50" />
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary/70" />
+                      </span>
+                      <p className="text-xs font-medium text-muted-foreground/80">
+                        Listening for requests
+                      </p>
+                      <p className="text-[10px] text-muted-foreground/50 leading-relaxed">
+                        Requests the remote browser makes appear here as they
+                        happen. Interact with the page to see traffic.
                       </p>
                     </div>
                   ) : (
                     networkRequests.map((req) => (
                       <div
                         key={req.requestId}
-                        className="grid grid-cols-[52px_40px_1fr] border-b border-border/20 hover:bg-muted/20 transition-colors"
+                        className="grid grid-cols-[44px_36px_40px_1fr] items-center border-b border-border/20 hover:bg-muted/25 transition-colors"
                         title={req.url}
                       >
                         <div className="px-2 py-1.5">
@@ -662,6 +711,11 @@ export default function BrowserViewerPage({ params }: PageProps) {
                             {statusLabel(req.status, req.failed)}
                           </span>
                         </div>
+                        <div className="px-2 py-1.5">
+                          <span className="text-[10px] font-mono text-muted-foreground/70 lowercase">
+                            {resourceType(req.mimeType)}
+                          </span>
+                        </div>
                         <div className="px-2 py-1.5 min-w-0">
                           <p className="text-[10px] font-mono text-muted-foreground truncate">
                             <span className="text-foreground/80">
@@ -677,10 +731,15 @@ export default function BrowserViewerPage({ params }: PageProps) {
               </>
             )}
 
-            {/* Sidebar footer */}
-            <div className="shrink-0 h-7 border-t border-border/40 bg-card/60 flex items-center px-3">
-              <p className="text-[10px] text-muted-foreground/50">
-                Refreshes every {LOGS_POLL_MS / 1000}s
+            {/* Dock footer */}
+            <div className="shrink-0 h-7 border-t border-border/40 bg-muted/20 flex items-center justify-between px-3">
+              <p className="text-[10px] text-muted-foreground/60 tabular-nums">
+                {networkRequests.length === 0
+                  ? "0 requests"
+                  : `${networkRequests.length} request${networkRequests.length === 1 ? "" : "s"}`}
+              </p>
+              <p className="text-[10px] text-muted-foreground/40">
+                live · {LOGS_POLL_MS / 1000}s
               </p>
             </div>
           </div>
