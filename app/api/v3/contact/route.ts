@@ -90,7 +90,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const normalizedEmail = email.toLowerCase();
+    const normalizedEmail = email.trim().toLowerCase();
+    // Validate the address shape before we send anything. This route emails a
+    // branded confirmation to whatever address is supplied and sets it as the
+    // support copy's replyTo, so accepting an unvalidated string let an
+    // unauthenticated caller point that confirmation at any garbage or
+    // malformed value. Require a real local@domain.tld shape (rate limiting +
+    // Turnstile above already bound volume).
+    if (
+      normalizedEmail.length > 254 ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
+    ) {
+      return NextResponse.json(
+        { error: "Please enter a valid email address." },
+        { status: 400 },
+      );
+    }
     const categoryLabel = CATEGORY_LABELS[category] || "Other";
 
     const contactMessageMaxLength = await getSetting(

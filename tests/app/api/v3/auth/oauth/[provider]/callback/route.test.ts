@@ -256,13 +256,28 @@ vi.stubGlobal("fetch", mockFetch);
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 const { DEVICE_TRUST_COOKIE_NAME, AUTH_SESSION_COOKIE_NAME } =
   await import("@/lib/config/constants");
-const { signOAuthState } = await import("@/lib/auth/oauth-state");
+const { signOAuthState, OAUTH_NONCE_COOKIE } =
+  await import("@/lib/auth/oauth-state");
 const { verifyPendingToken } = await import("@/lib/auth/pending-2fa");
 const { GET } =
   await import("@/app/api/v3/auth/oauth/[provider]/callback/route");
 
 function ctx(provider: string) {
   return { params: Promise.resolve({ provider }) };
+}
+
+// Sign a plain sign-in/sign-up state AND seed the matching browser-binding
+// nonce cookie the callback now requires (login-CSRF / session-fixation
+// protection). The start route sets this cookie; here we replicate that. The
+// link / github-connect flows are bound by userId instead and never use it.
+function signLoginState(
+  provider: string,
+  opts?: { intent?: "login" | "signup" },
+): string {
+  const nonce = "test-oauth-nonce";
+  const state = signOAuthState(provider, { ...opts, nonce });
+  cookieState.set(OAUTH_NONCE_COOKIE, nonce);
+  return state;
 }
 
 function callbackRequest(
@@ -362,7 +377,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
   });
 
   it("rejects a tampered state instead of trusting it", async () => {
-    const validState = signOAuthState("google");
+    const validState = signLoginState("google");
     const dot = validState.lastIndexOf(".");
     const sig = validState.slice(dot + 1);
     const tamperedChar = sig[0] === "A" ? "B" : "A";
@@ -380,6 +395,37 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
     expect(mockFetch).not.toHaveBeenCalled();
     expect(sessionInsertCalls).toHaveLength(0);
     expect(insertUserCalls).toHaveLength(0);
+  });
+
+  it("rejects a sign-in whose browser-binding nonce cookie is missing (login CSRF)", async () => {
+    // Attacker mints a validly-signed state for their own identity and lures a
+    // victim to the callback. The victim's browser never received the matching
+    // nonce cookie, so the state must be rejected before any session is made.
+    const state = signOAuthState("google", { intent: "login" });
+    // Deliberately do NOT seed the cookie (signLoginState would have).
+    const res = await GET(
+      callbackRequest("google", { code: "somecode", state }),
+      ctx("google"),
+    );
+    expect(locationOf(res).searchParams.get("error")).toBe(
+      "oauth_invalid_state",
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(sessionInsertCalls).toHaveLength(0);
+    expect(insertUserCalls).toHaveLength(0);
+  });
+
+  it("rejects a sign-in whose nonce cookie does not match the state", async () => {
+    const state = signOAuthState("google", { intent: "login" });
+    cookieState.set(OAUTH_NONCE_COOKIE, "a-different-nonce");
+    const res = await GET(
+      callbackRequest("google", { code: "somecode", state }),
+      ctx("google"),
+    );
+    expect(locationOf(res).searchParams.get("error")).toBe(
+      "oauth_invalid_state",
+    );
+    expect(sessionInsertCalls).toHaveLength(0);
   });
 
   it("rejects a state signed for a different provider than the callback path", async () => {
@@ -416,7 +462,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
 
   it("redirects with oauth_token_failed when the token exchange fails", async () => {
     tokenExchangeOk = false;
-    const state = signOAuthState("google");
+    const state = signLoginState("google");
     const res = await GET(
       callbackRequest("google", { code: "somecode", state }),
       ctx("google"),
@@ -428,7 +474,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
 
   it("redirects with oauth_user_failed when the userinfo fetch fails", async () => {
     userFetchOk = false;
-    const state = signOAuthState("google");
+    const state = signLoginState("google");
     const res = await GET(
       callbackRequest("google", { code: "somecode", state }),
       ctx("google"),
@@ -438,7 +484,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
 
   it("redirects with oauth_email_unverified when the provider's email isn't verified", async () => {
     googleUserFixture = { ...googleUserFixture, email_verified: false };
-    const state = signOAuthState("google");
+    const state = signLoginState("google");
     const res = await GET(
       callbackRequest("google", { code: "somecode", state }),
       ctx("google"),
@@ -467,7 +513,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
     mockQuery.mockImplementationOnce(async () => {
       throw new Error("db blip");
     });
-    const state = signOAuthState("google");
+    const state = signLoginState("google");
     const res = await GET(
       callbackRequest("google", { code: "somecode", state }),
       ctx("google"),
@@ -478,7 +524,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
   describe("no account with this email", () => {
     it("creates a new account, marks it 'google', seeds notification prefs, sets the avatar, and logs in", async () => {
       userByEmailRow = null;
-      const state = signOAuthState("google");
+      const state = signLoginState("google");
 
       const res = await GET(
         callbackRequest("google", { code: "somecode", state }),
@@ -507,7 +553,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
       // page silently created a brand new, disconnected account instead
       // of telling the user no account uses that identity yet.
       userByEmailRow = null;
-      const state = signOAuthState("google", { intent: "login" });
+      const state = signLoginState("google", { intent: "login" });
 
       const res = await GET(
         callbackRequest("google", { code: "somecode", state }),
@@ -526,7 +572,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
 
     it("intent=signup (the default) still creates the account as before", async () => {
       userByEmailRow = null;
-      const state = signOAuthState("google", { intent: "signup" });
+      const state = signLoginState("google", { intent: "signup" });
 
       const res = await GET(
         callbackRequest("google", { code: "somecode", state }),
@@ -547,7 +593,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
       // by google_id first finds the real one regardless of email.
       userByEmailRow = null; // no match by email
       byProviderIdRow = { id: 777, disabled_at: null };
-      const state = signOAuthState("google", { intent: "login" });
+      const state = signLoginState("google", { intent: "login" });
 
       const res = await GET(
         callbackRequest("google", { code: "somecode", state }),
@@ -567,7 +613,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
       // and hides that they already have an account.
       userByEmailRow = null;
       byProviderIdRow = { id: 777, disabled_at: null };
-      const state = signOAuthState("google", { intent: "signup" });
+      const state = signLoginState("google", { intent: "signup" });
 
       const res = await GET(
         callbackRequest("google", { code: "somecode", state }),
@@ -586,7 +632,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
     it("rejects a disabled account found via provider-id match without signing in", async () => {
       userByEmailRow = null;
       byProviderIdRow = { id: 777, disabled_at: "2026-01-01T00:00:00.000Z" };
-      const state = signOAuthState("google");
+      const state = signLoginState("google");
 
       const res = await GET(
         callbackRequest("google", { code: "somecode", state }),
@@ -608,7 +654,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
       // directly.
       userByEmailRow = { id: 55, auth_provider: "google", disabled_at: null };
       byProviderIdRow = null;
-      const state = signOAuthState("google", { intent: "login" });
+      const state = signLoginState("google", { intent: "login" });
 
       const res = await GET(
         callbackRequest("google", { code: "somecode", state }),
@@ -629,7 +675,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
     it("intent=signup refuses to silently sign in a legacy same-provider account matched only by email", async () => {
       userByEmailRow = { id: 55, auth_provider: "google", disabled_at: null };
       byProviderIdRow = null;
-      const state = signOAuthState("google", { intent: "signup" });
+      const state = signLoginState("google", { intent: "signup" });
 
       const res = await GET(
         callbackRequest("google", { code: "somecode", state }),
@@ -650,7 +696,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
   describe("an account already exists with this email", () => {
     it("rejects with oauth_email_in_use when it was created by password signup", async () => {
       userByEmailRow = { id: 42, auth_provider: "password", disabled_at: null };
-      const state = signOAuthState("google");
+      const state = signLoginState("google");
 
       const res = await GET(
         callbackRequest("google", { code: "somecode", state }),
@@ -667,7 +713,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
 
     it("rejects with oauth_email_in_use and names the other provider when it was created by GitHub", async () => {
       userByEmailRow = { id: 42, auth_provider: "github", disabled_at: null };
-      const state = signOAuthState("google");
+      const state = signLoginState("google");
 
       const res = await GET(
         callbackRequest("google", { code: "somecode", state }),
@@ -683,7 +729,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
 
     it("rejects with oauth_email_in_use for a legacy row with no auth_provider (treated as password)", async () => {
       userByEmailRow = { id: 42, auth_provider: null, disabled_at: null };
-      const state = signOAuthState("google");
+      const state = signLoginState("google");
 
       const res = await GET(
         callbackRequest("google", { code: "somecode", state }),
@@ -703,7 +749,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
         auth_provider: "google",
         disabled_at: new Date().toISOString(),
       };
-      const state = signOAuthState("google");
+      const state = signLoginState("google");
 
       const res = await GET(
         callbackRequest("google", { code: "somecode", state }),
@@ -723,7 +769,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
         two_factor_method: "app",
         email: "u@example.com",
       };
-      const state = signOAuthState("google", { intent: "login" });
+      const state = signLoginState("google", { intent: "login" });
 
       const res = await GET(
         callbackRequest("google", { code: "somecode", state }),
@@ -744,7 +790,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
         two_factor_method: "app",
         email: "u@example.com",
       };
-      const state = signOAuthState("google", { intent: "login" });
+      const state = signLoginState("google", { intent: "login" });
 
       const res = await GET(
         callbackRequest("google", { code: "somecode", state }),
@@ -771,7 +817,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
         two_factor_method: "email",
         email: "u@example.com",
       };
-      const state = signOAuthState("google", { intent: "login" });
+      const state = signLoginState("google", { intent: "login" });
 
       await GET(
         callbackRequest("google", { code: "somecode", state }),
@@ -792,7 +838,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
       };
       trustedDeviceRow = { "?column?": 1 };
       cookieState.set(DEVICE_TRUST_COOKIE_NAME, "e".repeat(64));
-      const state = signOAuthState("google", { intent: "login" });
+      const state = signLoginState("google", { intent: "login" });
 
       const res = await GET(
         callbackRequest("google", { code: "somecode", state }),
@@ -808,7 +854,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
     it("persists the GitHub @handle on a new GitHub sign-up", async () => {
       userByEmailRow = null;
       byProviderIdRow = null;
-      const state = signOAuthState("github", { intent: "signup" });
+      const state = signLoginState("github", { intent: "signup" });
 
       const res = await GET(
         callbackRequest("github", { code: "somecode", state }),
@@ -831,7 +877,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
       // GitHub API call at boot.
       userByEmailRow = null;
       byProviderIdRow = { id: 777, disabled_at: null };
-      const state = signOAuthState("github", { intent: "login" });
+      const state = signLoginState("github", { intent: "login" });
 
       const res = await GET(
         callbackRequest("github", { code: "somecode", state }),
@@ -849,7 +895,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
 
     it("does not write github_login for a Google sign-in", async () => {
       userByEmailRow = null;
-      const state = signOAuthState("google", { intent: "signup" });
+      const state = signLoginState("google", { intent: "signup" });
 
       await GET(
         callbackRequest("google", { code: "somecode", state }),

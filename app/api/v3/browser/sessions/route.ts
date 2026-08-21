@@ -177,16 +177,32 @@ export const POST = withErrorHandling(async (request: Request) => {
       void navigateBrowserSession(created.connectUrl, navigateUrl);
     }
 
-    // Record ownership so GET/DELETE can enforce it (AUDIT-004#idor-01).
-    // Fire-and-forget — if the insert fails the session still works but
-    // ownership enforcement will fail-open for this session only.
+    // Record ownership BEFORE returning success (AUDIT-004#idor-01). This row
+    // is the single source of truth for three things: GET/DELETE ownership
+    // enforcement, releasing the concurrency slot acquired above, and billing
+    // the session's metered seconds (the DELETE handler and the cleanup sweep
+    // both key off it via RETURNING). If it never persisted, the session would
+    // run unowned, its slot would leak until process restart, and its seconds
+    // would never be billed. So a failed insert must tear the session back down
+    // and fail the request, not fire-and-forget past it.
     const expiresAt = new Date(Date.now() + timeout * 1000).toISOString();
-    pool
-      .query(
+    try {
+      await pool.query(
         "INSERT INTO browser_sessions (id, user_id, expires_at) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
         [created.id, session.userId, expiresAt],
-      )
-      .catch(() => {});
+      );
+    } catch (insertErr) {
+      console.error(
+        "[browser/sessions] Failed to record session ownership; tearing the session down to avoid a leaked slot:",
+        insertErr instanceof Error ? insertErr.message : insertErr,
+      );
+      await endBrowserSession(created.id).catch(() => {});
+      await releaseConcurrencySlot();
+      return ApiResponse.error(
+        "Could not start the browser session. Please try again.",
+        500,
+      );
+    }
 
     const live = await getBrowserLiveUrls(created.id).catch(() => null);
 

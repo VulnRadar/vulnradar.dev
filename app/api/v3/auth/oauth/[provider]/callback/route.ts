@@ -35,8 +35,10 @@ import {
 } from "@/lib/auth/oauth-providers";
 import {
   verifyOAuthState,
+  OAUTH_NONCE_COOKIE,
   type OAuthStatePayload,
 } from "@/lib/auth/oauth-state";
+import { timingSafeEqual } from "node:crypto";
 import {
   exchangeOAuthCode,
   fetchOAuthUserInfo,
@@ -112,6 +114,24 @@ export async function GET(
   // lib/auth/oauth-state.ts.
   if (verified.payload.purpose === "github-connect") {
     return handleGithubConnect(verified.payload, code, baseUrl);
+  }
+
+  // Plain sign-in/sign-up: require the nonce cookie this browser was given when
+  // it STARTED the flow to match the nonce inside the signed state. This is what
+  // stops login CSRF / session fixation -- an attacker who mints a valid state
+  // for their own identity and lures a victim to this callback can't satisfy
+  // this check, because the victim's browser never received the matching cookie.
+  // The cookie is single-use: clear it whichever way this goes.
+  const cookieStore = await cookies();
+  const nonceCookie = cookieStore.get(OAUTH_NONCE_COOKIE)?.value ?? "";
+  const stateNonce = verified.payload.nonce;
+  const nonceOk =
+    nonceCookie.length > 0 &&
+    nonceCookie.length === stateNonce.length &&
+    timingSafeEqual(Buffer.from(nonceCookie), Buffer.from(stateNonce));
+  cookieStore.delete(OAUTH_NONCE_COOKIE);
+  if (!nonceOk) {
+    return NextResponse.redirect(`${baseUrl}/login?error=oauth_invalid_state`);
   }
 
   const redirectUri = `${baseUrl}/api/v3/auth/oauth/${provider}/callback`;

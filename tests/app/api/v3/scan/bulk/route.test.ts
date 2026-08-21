@@ -78,6 +78,11 @@ const mockCheckApiKeyRateLimit = vi.fn();
 vi.mock("@/lib/api/api-keys", () => ({
   validateApiKey: (...args: unknown[]) => mockValidateApiKey(...args),
   checkRateLimit: (...args: unknown[]) => mockCheckApiKeyRateLimit(...args),
+  // Early-rejection check is now the read-only peekRateLimit (it no longer
+  // burns a phantom slot). It returns the same shape and the route calls it
+  // before the per-URL checkRateLimit loop, so aliasing both to the one mock fn
+  // preserves the existing call-order-based mockResolvedValueOnce setups.
+  peekRateLimit: (...args: unknown[]) => mockCheckApiKeyRateLimit(...args),
 }));
 
 const mockSafeFetch = vi.fn();

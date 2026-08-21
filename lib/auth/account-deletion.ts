@@ -114,6 +114,15 @@ export async function deleteUserAccountData(
   // GDPR
   await client.query("DELETE FROM data_requests WHERE user_id = $1", [userId]);
 
+  // AI assistant history. The FK is ON DELETE SET NULL, so without an explicit
+  // delete the conversation content (messages JSONB -- scanned URLs, free-text
+  // prompts) would survive account deletion with only user_id nulled, purged
+  // only later by the AI_CHAT_HISTORY_DAYS retention sweep. A GDPR erasure must
+  // remove it now, so delete it here (every other user-content table cascades).
+  await client.query("DELETE FROM ai_conversations WHERE user_id = $1", [
+    userId,
+  ]);
+
   // Badges
   await client.query("DELETE FROM user_badges WHERE user_id = $1", [userId]);
 

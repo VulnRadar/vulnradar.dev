@@ -15,6 +15,7 @@ import {
   TEAM_ROLE_INVITE_LABELS,
   APP_URL,
   hasTeamPermission,
+  canAssignTeamRole,
 } from "@/lib/config/constants";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getSetting } from "@/lib/config/runtime-config";
@@ -127,6 +128,20 @@ export async function POST(request: Request) {
   ) {
     return NextResponse.json(
       { error: "You don't have permission to invite members." },
+      { status: 403 },
+    );
+  }
+
+  // Role ceiling: can't invite someone at a role that grants permissions the
+  // inviter itself lacks (e.g. a manager, who has no manage_scans, inviting an
+  // admin, who does). Otherwise manage_members alone would let a manager mint
+  // capabilities above their own.
+  if (!canAssignTeamRole(memberRes.rows[0].role, role)) {
+    return NextResponse.json(
+      {
+        error:
+          "You can't grant a role with more permissions than your own. Choose a role at or below your level.",
+      },
       { status: 403 },
     );
   }
@@ -370,6 +385,23 @@ export async function DELETE(request: Request) {
     );
   }
 
+  // Role ceiling: can't remove a member whose role holds permissions the caller
+  // lacks (e.g. a manager removing an admin). Owner passes (holds every
+  // permission). Without this, manage_members alone would let a manager evict
+  // higher-privileged admins.
+  if (
+    targetRole.rows.length > 0 &&
+    !canAssignTeamRole(myRole.rows[0].role, targetRole.rows[0].role)
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "You can't remove a member whose role has more permissions than your own.",
+      },
+      { status: 403 },
+    );
+  }
+
   // Look up the team name and the removed member's address before the delete
   // so we can tell them they lost access. The users row survives (only the
   // membership is removed), so this could run after too, but reading it here
@@ -484,6 +516,26 @@ export async function PATCH(request: Request) {
       { status: 400 },
     );
   }
+
+  // Role ceiling, both directions: the caller can neither modify a member whose
+  // CURRENT role holds permissions the caller lacks (demoting an admin as a
+  // manager), nor assign a NEW role that grants permissions the caller lacks
+  // (promoting into manage_scans). Owner passes both (owner holds every
+  // permission). manage_members alone is not enough without this.
+  const callerRole = memberRes.rows[0].role;
+  if (
+    !canAssignTeamRole(callerRole, oldRole) ||
+    !canAssignTeamRole(callerRole, role)
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "You can't change a role that has more permissions than your own. Choose a target and role at or below your level.",
+      },
+      { status: 403 },
+    );
+  }
+
   if (oldRole === role) {
     // No-op: nothing to write, nothing to notify.
     return NextResponse.json({ success: true, role });

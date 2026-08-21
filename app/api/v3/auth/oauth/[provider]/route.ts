@@ -15,7 +15,12 @@ import {
   isOAuthProviderConfigured,
   isOAuthProviderId,
 } from "@/lib/auth/oauth-providers";
-import { signOAuthState } from "@/lib/auth/oauth-state";
+import { randomBytes } from "node:crypto";
+import {
+  signOAuthState,
+  OAUTH_NONCE_COOKIE,
+  OAUTH_STATE_TTL_MS,
+} from "@/lib/auth/oauth-state";
 
 export async function GET(
   request: Request,
@@ -83,11 +88,20 @@ export async function GET(
   authUrl.searchParams.set("redirect_uri", redirectUri);
   authUrl.searchParams.set("response_type", "code");
   authUrl.searchParams.set("scope", providerConfig.scope);
+  // Plain sign-in/sign-up: bind the flow to THIS browser. Generate a nonce,
+  // sign it into the state, and drop it in a short-lived httpOnly cookie the
+  // callback will require to match -- so a state an attacker minted for their
+  // own identity can't be replayed into a victim's browser to silently log the
+  // victim into the attacker's account (login CSRF / session fixation). The
+  // link flow is already bound to the session via userId, so it needs no cookie.
+  const loginNonce =
+    action === "link" ? undefined : randomBytes(16).toString("base64url");
+
   authUrl.searchParams.set(
     "state",
     action === "link"
       ? signOAuthState(provider, { purpose: "link", userId: linkUserId })
-      : signOAuthState(provider, { intent }),
+      : signOAuthState(provider, { intent, nonce: loginNonce }),
   );
   if (provider === "google") {
     // Always show the account chooser -- without this, a browser already
@@ -96,5 +110,15 @@ export async function GET(
     authUrl.searchParams.set("prompt", "select_account");
   }
 
-  return NextResponse.redirect(authUrl.toString());
+  const response = NextResponse.redirect(authUrl.toString());
+  if (loginNonce) {
+    response.cookies.set(OAUTH_NONCE_COOKIE, loginNonce, {
+      httpOnly: true,
+      secure: baseUrl.startsWith("https://"),
+      sameSite: "lax", // must survive the top-level redirect back from the IdP
+      path: "/",
+      maxAge: Math.ceil(OAUTH_STATE_TTL_MS / 1000),
+    });
+  }
+  return response;
 }

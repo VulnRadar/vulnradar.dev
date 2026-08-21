@@ -84,10 +84,18 @@ export function signOAuthState(
     purpose?: "link" | "github-connect";
     userId?: number;
     intent?: "login" | "signup";
+    /**
+     * Caller-supplied nonce. The plain sign-in/sign-up flow passes the same
+     * value it also stores in a short-lived httpOnly cookie, so the callback
+     * can require the two to match and reject a state replayed into a victim's
+     * browser (login CSRF / session fixation). Omitted for the link /
+     * github-connect flows, which are already bound to a session via userId.
+     */
+    nonce?: string;
   },
 ): string {
   const payload: OAuthStatePayload = {
-    nonce: randomBytes(16).toString("base64url"),
+    nonce: options?.nonce ?? randomBytes(16).toString("base64url"),
     provider,
     ts: Date.now(),
     purpose: options?.purpose,
@@ -162,3 +170,14 @@ export function verifyOAuthState(
 }
 
 export const OAUTH_STATE_TTL_MS = STATE_TTL_MS;
+
+/**
+ * Name of the short-lived httpOnly cookie that binds a plain sign-in/sign-up
+ * OAuth flow to the browser that started it. The start route stores the state's
+ * nonce here; the callback requires the cookie to match the nonce inside the
+ * (HMAC-signed) state before creating a session, so a state captured by an
+ * attacker and replayed into a victim's browser is rejected (login CSRF /
+ * session fixation). Not used by the link / github-connect flows -- those are
+ * already bound to a session via the state's userId.
+ */
+export const OAUTH_NONCE_COOKIE = "vr_oauth_nonce";

@@ -29,7 +29,10 @@ describe("getUserByEmail", () => {
 
   it("returns the row when one matches", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 1, email: "u@x.com" }] });
-    expect(await getUserByEmail("u@x.com")).toEqual({ id: 1, email: "u@x.com" });
+    expect(await getUserByEmail("u@x.com")).toEqual({
+      id: 1,
+      email: "u@x.com",
+    });
   });
 
   it("returns null when no row matches", async () => {

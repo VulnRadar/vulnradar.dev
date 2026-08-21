@@ -593,6 +593,31 @@ export function hasTeamPermission(
   return Array.isArray(perms) && perms.includes(permission);
 }
 
+/**
+ * Role ceiling: a caller may only grant, or act on, a team role whose
+ * permission set is a SUBSET of the caller's own. The team roles are a partial
+ * order, not a strict ladder (manager has manage_members but not manage_scans;
+ * operator is the reverse), so a plain numeric rank can't express it -- subset
+ * is the correct relation. Without this, a manager (manage_members, NOT
+ * manage_scans) could promote a member to admin and thereby hand out
+ * manage_scans, a capability the manager itself lacks (escalation by proxy), or
+ * demote/remove an admin that outranks them. Owner holds every permission, so
+ * owner can assign or act on any role; nobody can act on a role that holds a
+ * permission they don't (returns false for an unknown role on either side).
+ */
+export function canAssignTeamRole(
+  callerRole: string | undefined,
+  otherRole: string | undefined,
+): boolean {
+  if (!callerRole || !otherRole) return false;
+  const callerPerms =
+    TEAM_ROLE_PERMISSIONS[callerRole as keyof typeof TEAM_ROLE_PERMISSIONS];
+  const otherPerms =
+    TEAM_ROLE_PERMISSIONS[otherRole as keyof typeof TEAM_ROLE_PERMISSIONS];
+  if (!Array.isArray(callerPerms) || !Array.isArray(otherPerms)) return false;
+  return otherPerms.every((p) => callerPerms.includes(p));
+}
+
 // VULNERABILITY SEVERITY LEVELS
 
 //

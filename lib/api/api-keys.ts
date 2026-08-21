@@ -560,6 +560,44 @@ export async function checkRateLimit(keyId: number, dailyLimit: number) {
   }
 }
 
+/**
+ * Read-only usage snapshot: same shape as checkRateLimit but WITHOUT inserting
+ * a usage row. For fast-fail pre-checks (e.g. bulk scan's "is this key already
+ * exhausted before we do any work") where the actual per-item enforcement is a
+ * separate atomic checkRateLimit call. Using checkRateLimit for such a pre-check
+ * would burn a phantom slot the request never actually used.
+ */
+export async function peekRateLimit(keyId: number, dailyLimit: number) {
+  const countResult = await pool.query<{ count: number }>(
+    `SELECT COUNT(*)::int AS count FROM api_usage
+       WHERE api_key_id = $1
+         AND used_at > NOW() - INTERVAL '24 hours'`,
+    [keyId],
+  );
+  const used = countResult.rows[0]?.count ?? 0;
+  const remaining = Math.max(0, dailyLimit - used);
+
+  let resetsAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const oldestResult = await pool.query<{ used_at: Date }>(
+    `SELECT used_at FROM api_usage
+       WHERE api_key_id = $1 AND used_at > NOW() - INTERVAL '24 hours'
+       ORDER BY used_at ASC LIMIT 1`,
+    [keyId],
+  );
+  if (oldestResult.rows.length > 0) {
+    const oldest = new Date(oldestResult.rows[0].used_at);
+    resetsAt = new Date(oldest.getTime() + 24 * 60 * 60 * 1000).toISOString();
+  }
+
+  return {
+    allowed: used < dailyLimit,
+    remaining,
+    limit: dailyLimit,
+    used,
+    resetsAt,
+  };
+}
+
 // rate-limit: no-op stub. The atomic checkRateLimit above both
 // counts AND inserts under a row lock — the old read-then-write
 // race is gone. Kept only so existing call sites don't crash; new

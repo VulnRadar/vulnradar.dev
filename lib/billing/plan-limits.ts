@@ -98,7 +98,11 @@ export async function getUserPlanLimits(
   // substitute the real plan id and resolve it like a real account.
   const effectivePlan: PlanId = plan === "staff" ? "pro_supporter" : plan;
 
-  const keys = PLAN_LIMIT_KEYS[effectivePlan];
+  // getUserPlan casts the raw users.plan / gifted_subscriptions.plan value with
+  // no validation, so a stale or removed plan id can reach here. Fall back to
+  // the free plan's keys rather than letting Object.values(undefined) throw a
+  // 500 -- fail closed to the most restrictive real plan.
+  const keys = PLAN_LIMIT_KEYS[effectivePlan] ?? PLAN_LIMIT_KEYS.free;
   const resolved = await getSettings(Object.values(keys));
 
   return {

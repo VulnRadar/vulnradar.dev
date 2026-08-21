@@ -329,7 +329,12 @@ describe("POST /api/v3/scan", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(mockRecordUsage).toHaveBeenCalledWith(9);
+    // The single rate-limit gate both counts+inserts the usage row AND supplies
+    // the response headers, so it must run exactly once. Calling it a second
+    // time (the old header path did) inserted a second usage row and charged the
+    // scan twice. recordUsage is a no-op the route no longer calls.
+    expect(mockCheckApiKeyRateLimit).toHaveBeenCalledTimes(1);
+    expect(mockRecordUsage).not.toHaveBeenCalled();
     expect(res.headers.get("X-RateLimit-Limit")).toBe("50");
     const json = await res.json();
     expect(json.scanId).toBe(88);

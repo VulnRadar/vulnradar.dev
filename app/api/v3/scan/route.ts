@@ -9,11 +9,7 @@ import {
   getProtocolType,
 } from "@/lib/scanner/execute-scan";
 import { getSession } from "@/lib/auth";
-import {
-  validateApiKey,
-  checkRateLimit,
-  recordUsage,
-} from "@/lib/api/api-keys";
+import { validateApiKey, checkRateLimit } from "@/lib/api/api-keys";
 import {
   hasApiKeyScope,
   apiKeyScopeErrorMessage,
@@ -50,9 +46,14 @@ export async function POST(request: NextRequest) {
     // Auth: check API key first (Bearer token), then fall back to session cookie
     const authHeader = request.headers.get("authorization");
     let apiKeyId: number | null = null;
-    let apiKeyDailyLimit = 50;
     let isApiKeyAuth = false;
     let authedUserId: number | null = null;
+    // The single quota row this request consumes (checkRateLimit both counts
+    // AND inserts atomically). Captured from the gate below and reused for the
+    // success-response headers -- calling checkRateLimit a second time there
+    // would insert a SECOND usage row and charge every scan twice.
+    let apiKeyRateLimit: Awaited<ReturnType<typeof checkRateLimit>> | null =
+      null;
     let keyData: Awaited<ReturnType<typeof validateApiKey>> | null = null;
 
     if (authHeader?.startsWith(BEARER_PREFIX)) {
@@ -85,8 +86,10 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Check rate limit
+      // Check rate limit (this is the ONE atomic count+insert for this
+      // request; reused for the success headers below, never re-called).
       const rateLimit = await checkRateLimit(keyData.keyId, keyData.dailyLimit);
+      apiKeyRateLimit = rateLimit;
 
       if (!rateLimit.allowed) {
         // Notify: this key just got rate-limited. Best-effort/fire-and-
@@ -138,7 +141,6 @@ export async function POST(request: NextRequest) {
       }
 
       apiKeyId = keyData.keyId;
-      apiKeyDailyLimit = keyData.dailyLimit;
       isApiKeyAuth = true;
       authedUserId = keyData.userId;
     } else {
@@ -392,19 +394,19 @@ export async function POST(request: NextRequest) {
       portScan,
     });
 
-    // Record API key usage and add rate limit headers against the request
-    // that was accepted, not the eventual result — the two are now
-    // decoupled in time.
-    if (isApiKeyAuth && apiKeyId) {
-      await recordUsage(apiKeyId);
-      const rateLimit = await checkRateLimit(apiKeyId, apiKeyDailyLimit);
+    // Add rate limit headers from the SAME quota row the gate consumed at the
+    // top of this request -- the slot was already counted+inserted there, so we
+    // must not call checkRateLimit again (that would insert a second usage row
+    // and charge the scan twice). apiKeyRateLimit is always set on this path
+    // because the gate ran before we got here.
+    if (isApiKeyAuth && apiKeyId && apiKeyRateLimit) {
       return NextResponse.json(
         { scanId: scanHistoryId, status: "running" },
         {
           headers: {
-            "X-RateLimit-Limit": String(rateLimit.limit),
-            "X-RateLimit-Remaining": String(rateLimit.remaining),
-            "X-RateLimit-Reset": rateLimit.resetsAt,
+            "X-RateLimit-Limit": String(apiKeyRateLimit.limit),
+            "X-RateLimit-Remaining": String(apiKeyRateLimit.remaining),
+            "X-RateLimit-Reset": apiKeyRateLimit.resetsAt,
           },
         },
       );

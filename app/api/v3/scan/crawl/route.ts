@@ -4,7 +4,6 @@ import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import {
   validateApiKey,
   checkRateLimit as checkApiKeyRateLimit,
-  recordUsage,
 } from "@/lib/api/api-keys";
 import {
   hasApiKeyScope,
@@ -20,7 +19,7 @@ import {
 } from "@/lib/config/constants";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import {
-  checkAndRecordRequest,
+  canMakeRequest,
   getRateLimitHeaders,
   getUserPlan,
 } from "@/lib/rate-limiting/daily-limits";
@@ -47,9 +46,14 @@ export async function POST(request: NextRequest) {
   // Auth: check API key first (Bearer token), then fall back to session cookie
   const authHeader = request.headers.get("authorization");
   let apiKeyId: number | null = null;
-  let apiKeyDailyLimit: number | null = null;
   let isApiKeyAuth = false;
   let authedUserId: number | null = null;
+  // The single api_usage slot this crawl consumes (checkApiKeyRateLimit counts
+  // AND inserts atomically). Captured from the gate and reused for the success
+  // headers -- calling checkApiKeyRateLimit again there would insert a second
+  // usage row and charge the crawl twice.
+  let apiKeyRateLimit: Awaited<ReturnType<typeof checkApiKeyRateLimit>> | null =
+    null;
 
   if (authHeader?.startsWith(BEARER_PREFIX)) {
     const token = authHeader.slice(7);
@@ -81,11 +85,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check API key rate limit
+    // Check API key rate limit (the ONE atomic count+insert for this crawl;
+    // reused for the success headers below, never re-called).
     const rateLimit = await checkApiKeyRateLimit(
       keyData.keyId,
       keyData.dailyLimit,
     );
+    apiKeyRateLimit = rateLimit;
 
     if (!rateLimit.allowed) {
       return NextResponse.json(
@@ -113,7 +119,6 @@ export async function POST(request: NextRequest) {
     }
 
     apiKeyId = keyData.keyId;
-    apiKeyDailyLimit = keyData.dailyLimit;
     isApiKeyAuth = true;
     authedUserId = keyData.userId;
   } else {
@@ -153,11 +158,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Daily scan quota, based on subscription plan (dailyScans) -- this route
-  // never checked it at all, for either auth method, even though a single
-  // crawl can trigger many page scans. Same check and reasoning as POST
-  // /api/v3/scan's identical call.
-  const dailyQuota = await checkAndRecordRequest(authedUserId);
+  // Daily scan quota, based on subscription plan (dailyScans). This is a
+  // read-only gate: the crawl executor increments the daily counter once per
+  // page it actually scans (execute-crawl-scan.ts's incrementDailyCount loop),
+  // so it must NOT also record here. An earlier version called
+  // checkAndRecordRequest, which burned one extra slot per crawl (charged the
+  // first page twice) and capped pages one lower than the plan allowed.
+  const dailyQuota = await canMakeRequest(authedUserId);
   if (!dailyQuota.allowed) {
     return NextResponse.json(
       {
@@ -482,17 +489,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Record API key usage against the request that was accepted.
-  if (isApiKeyAuth && apiKeyId && typeof apiKeyDailyLimit === "number") {
-    await recordUsage(apiKeyId);
-    const rateLimit = await checkApiKeyRateLimit(apiKeyId, apiKeyDailyLimit);
+  // Add rate limit headers from the SAME api_usage slot the gate consumed at
+  // the top of this request. The slot was already counted+inserted there, so we
+  // must not call checkApiKeyRateLimit again (that would insert a second usage
+  // row and charge the crawl twice). apiKeyRateLimit is always set on this path.
+  if (isApiKeyAuth && apiKeyId && apiKeyRateLimit) {
     return NextResponse.json(
       { scanId: scanHistoryId, status: "running" },
       {
         headers: {
-          "X-RateLimit-Limit": String(rateLimit.limit),
-          "X-RateLimit-Remaining": String(rateLimit.remaining),
-          "X-RateLimit-Reset": rateLimit.resetsAt,
+          "X-RateLimit-Limit": String(apiKeyRateLimit.limit),
+          "X-RateLimit-Remaining": String(apiKeyRateLimit.remaining),
+          "X-RateLimit-Reset": apiKeyRateLimit.resetsAt,
         },
       },
     );

@@ -9,6 +9,7 @@ import {
 import {
   validateApiKey,
   checkRateLimit as checkApiKeyRateLimit,
+  peekRateLimit as peekApiKeyRateLimit,
 } from "@/lib/api/api-keys";
 import {
   hasApiKeyScope,
@@ -16,6 +17,7 @@ import {
   API_KEY_SCOPES,
 } from "@/lib/api/api-key-scopes";
 import { getUserPlanLimits, planLimitMessage } from "@/lib/billing/plan-limits";
+import { resolveScanIsPublic } from "@/lib/scanner/scan-privacy";
 import { runSyncChecks } from "@/lib/scanner/engine";
 import { runAsyncChecks } from "@/lib/scanner/async-checks";
 import pool from "@/lib/database/db";
@@ -386,10 +388,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Early-rejection check: if the key is already exhausted, bail now
-    // without consuming another slot. Per-URL billing happens in the scan
-    // loop below — each URL consumes one rate-limit slot so a 100-URL
-    // bulk call costs 100 towards the daily limit, not 1.
-    const earlyCheck = await checkApiKeyRateLimit(
+    // without consuming a slot. This is a READ-ONLY peek (peekApiKeyRateLimit)
+    // -- the actual per-URL billing is the atomic checkApiKeyRateLimit in the
+    // scan loop below, so each URL consumes one slot (a 100-URL bulk call costs
+    // 100, not 1). Using the incrementing checkRateLimit here would have burned
+    // a phantom slot the request never used, making a bulk of N cost N+1.
+    const earlyCheck = await peekApiKeyRateLimit(
       keyData.keyId,
       keyData.dailyLimit,
     );
@@ -451,9 +455,6 @@ export async function POST(request: NextRequest) {
   }
 
   const { urls, isPublic } = await request.json();
-  // Public by default (matches scan_history.is_public's DB default) -- one
-  // flag for the whole batch, since a bulk scan has no per-URL privacy UI.
-  const requestedIsPublic = isPublic !== false;
 
   if (!Array.isArray(urls) || urls.length === 0) {
     return NextResponse.json(
@@ -582,6 +583,19 @@ export async function POST(request: NextRequest) {
       : Math.min(validUrls.length, quotaCheck.remaining);
   const urlsToScan = validUrls.slice(0, remaining);
   const skipped = validUrls.length - urlsToScan.length;
+
+  // One privacy flag for the whole batch (a bulk scan has no per-URL privacy
+  // UI). Resolved HERE, after validation and quota gating, so an invalid or
+  // rejected request never triggers the account-setting DB lookup. An explicit
+  // boolean wins; when the field is absent we fall back to the account's
+  // scans_private_by_default via resolveScanIsPublic -- the same resolver the
+  // single-scan/crawl/scheduled paths use. Previously this defaulted to public
+  // regardless of that setting, so an API bulk call from a "private by default"
+  // account published every URL's findings to the public host pages.
+  const requestedIsPublic = await resolveScanIsPublic(
+    authedUserId!,
+    typeof isPublic === "boolean" ? isPublic : undefined,
+  );
 
   // Run scans sequentially to avoid overwhelming resources
   const results: Array<{

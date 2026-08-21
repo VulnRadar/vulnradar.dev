@@ -168,9 +168,16 @@ export async function getDailyRequestCount(userId: number): Promise<number> {
 export async function incrementDailyCount(userId: number): Promise<number> {
   try {
     const key = `daily_scan:${userId}`;
+    // window_start MUST be date_trunc('day', NOW()) -- the SAME key the
+    // enforcement gate checkAndRecordRequest reads/writes. An earlier version
+    // used CURRENT_TIMESTAMP, which produced a distinct row per call that the
+    // gate never saw, so crawl pages incremented here didn't count against the
+    // single/bulk daily cap: a user could run a full crawl AND a full day's
+    // worth of single scans, ~2x their tier's quota. Landing on the day row
+    // makes every scan type share one counter.
     const result = await pool.query<{ new_count: string }>(
       `INSERT INTO rate_limits (key, "count", window_start)
-       VALUES ($1, 1, CURRENT_TIMESTAMP)
+       VALUES ($1, 1, date_trunc('day', NOW()))
        ON CONFLICT (key, window_start)
        DO UPDATE SET "count" = rate_limits."count" + 1
        RETURNING "count" AS new_count`,

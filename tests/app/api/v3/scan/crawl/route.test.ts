@@ -71,8 +71,13 @@ vi.mock("@/lib/rate-limiting/concurrent-scans", () => ({
 const mockCheckAndRecordRequest = vi.fn();
 const mockGetUserPlan = vi.fn();
 vi.mock("@/lib/rate-limiting/daily-limits", () => ({
+  // The crawl route's quota gate is now the read-only canMakeRequest (the
+  // executor does the per-page recording); it returns the same shape, so the
+  // existing gate mock fn drives it. checkAndRecordRequest is kept for any
+  // other importer but the route no longer calls it.
   checkAndRecordRequest: (...args: unknown[]) =>
     mockCheckAndRecordRequest(...args),
+  canMakeRequest: (...args: unknown[]) => mockCheckAndRecordRequest(...args),
   getRateLimitHeaders: () => ({}),
   getUserPlan: (...args: unknown[]) => mockGetUserPlan(...args),
 }));
