@@ -152,7 +152,7 @@ export const api = {
 
   // Public, unauthenticated -- no API key needed. Used to show the connected
   // VulnRadar instance's version in the options page, separate from the
-  // extension's own VULNRADAR.version.
+  // extension's own version (read from the manifest).
   version: () => call<VersionResponse>("GET", "/api/version"),
 
   // Never returns a finished ScanResult -- like /api/v3/scan/crawl, the

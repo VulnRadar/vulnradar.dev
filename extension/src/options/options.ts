@@ -29,6 +29,9 @@ import {
 } from "../lib/types";
 
 const root = document.getElementById("app")!;
+// Read from the manifest (filled from package.json at build) so the footer
+// version always matches the shipped build instead of a hand-kept constant.
+const EXT_VERSION = browser.runtime.getManifest().version;
 let currentAuth: AuthState | null = null;
 // Fetched once from the public, unauthenticated GET /api/version -- not the
 // version of the account you're connected to, but of the VulnRadar instance
@@ -268,7 +271,7 @@ function App(): TemplateResult {
       </div>
       <div class="sidebar-version">
         Extension
-        v${VULNRADAR.version}${appVersion ? html` &middot; VulnRadar v${appVersion}` : null}
+        v${EXT_VERSION}${appVersion ? html` &middot; VulnRadar v${appVersion}` : null}
       </div>
       ${NAV_GROUPS.map(
         (group) => html`

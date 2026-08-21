@@ -51,6 +51,11 @@ function closePopupWindow(): void {
   if (!IS_FULLTAB) window.close();
 }
 
+// Read straight from the manifest (filled from package.json at build time) so
+// the footer can never drift from the actual shipped version the way a
+// hand-maintained constant did.
+const EXT_VERSION = browser.runtime.getManifest().version;
+
 // Same "is this actually a scannable page" test used throughout the
 // background/content script (service-worker.ts's handleScanUrl/
 // handleReputationScan, detector.ts's reportPage) - chrome://, the web
@@ -185,7 +190,7 @@ function App(): TemplateResult {
     }
     <div class="popup-footer">
       <span
-        >v${VULNRADAR.version}${state.appVersion ? html` &middot; VulnRadar v${state.appVersion}` : null}</span
+        >v${EXT_VERSION}${state.appVersion ? html` &middot; VulnRadar v${state.appVersion}` : null}</span
       >
       <div class="footer-actions">
         ${
