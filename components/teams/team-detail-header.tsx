@@ -92,6 +92,7 @@ export function TeamDetailHeader({
                     className="h-9 w-9 p-0"
                     onClick={onSaveName}
                     disabled={savingName}
+                    aria-label="Save team name"
                   >
                     {savingName ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -104,6 +105,7 @@ export function TeamDetailHeader({
                     size="sm"
                     className="h-9 w-9 p-0"
                     onClick={onCancelEdit}
+                    aria-label="Cancel renaming"
                   >
                     <X className="h-4 w-4" />
                   </Button>
@@ -117,6 +119,7 @@ export function TeamDetailHeader({
                     <button
                       type="button"
                       onClick={onEditName}
+                      aria-label="Rename team"
                       className="text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-md hover:bg-muted shrink-0"
                     >
                       <Pencil className="h-3.5 w-3.5" />
@@ -144,7 +147,12 @@ export function TeamDetailHeader({
               )}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-9 w-9 p-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 w-9 p-0"
+                    aria-label="Team actions"
+                  >
                     <MoreHorizontal className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>

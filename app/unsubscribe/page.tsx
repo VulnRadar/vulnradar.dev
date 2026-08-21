@@ -362,13 +362,15 @@ function UnsubscribeContent() {
       </div>
 
       <div className="flex items-center justify-between pt-2">
-        {savedAt ? (
-          <p className="text-xs text-emerald-500">Saved.</p>
-        ) : saving ? (
+        {/* Check `saving` first: otherwise, once savedAt is set on the first
+            save, the "Saving..." indicator never shows again on later saves. */}
+        {saving ? (
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground/60">
             <Loader2 className="h-3 w-3 animate-spin" />
             <span>Saving...</span>
           </div>
+        ) : savedAt ? (
+          <p className="text-xs text-[hsl(var(--success))]">Saved.</p>
         ) : (
           <span />
         )}

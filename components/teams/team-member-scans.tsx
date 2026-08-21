@@ -53,6 +53,7 @@ export function TeamMemberScans({
             size="sm"
             className="h-8 w-8 p-0 shrink-0"
             onClick={onClose}
+            aria-label="Close member scans"
           >
             <X className="h-4 w-4" />
           </Button>
