@@ -28,6 +28,8 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import { cn } from "@/lib/ui/utils";
+import { downloadBlob } from "@/lib/ui/download";
+import { APP_SLUG } from "@/lib/config/constants";
 import { PaginationControl } from "@/components/ui/pagination-control";
 import {
   UserAvatar,
@@ -93,14 +95,10 @@ export function AuditLog({
       );
       if (!res.ok) return;
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `vulnradar-audit-log-${new Date().toISOString().split("T")[0]}.${format}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      downloadBlob(
+        blob,
+        `${APP_SLUG}-audit-log-${new Date().toISOString().split("T")[0]}.${format}`,
+      );
     } catch {
       // Best-effort: the export buttons simply stay available to retry.
     } finally {

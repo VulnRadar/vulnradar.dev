@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
 import { requireAdmin, logAction } from "@/lib/auth/authorization";
 import { getClientIp } from "@/lib/api/request-utils";
+import { APP_SLUG } from "@/lib/config/constants";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -110,7 +111,7 @@ export async function GET(request: NextRequest) {
       status: 200,
       headers: {
         "Content-Type": contentType,
-        "Content-Disposition": `attachment; filename="vulnradar-audit-log-${timestamp}.${format}"`,
+        "Content-Disposition": `attachment; filename="${APP_SLUG}-audit-log-${timestamp}.${format}"`,
       },
     });
   } catch (error) {

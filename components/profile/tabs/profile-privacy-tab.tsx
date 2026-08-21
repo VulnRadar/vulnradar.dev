@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { AlertTriangle, Clock, Download, Trash2, Loader2 } from "lucide-react";
-import { API } from "@/lib/config/constants";
+import { API, APP_SLUG } from "@/lib/config/constants";
+import { downloadBlob } from "@/lib/ui/download";
 import type { ProfileTabProps } from "@/components/profile/types";
 
 export function ProfilePrivacyTab({
@@ -152,14 +153,10 @@ export function ProfilePrivacyTab({
         // Immediately download the data as JSON
         const jsonString = JSON.stringify(data.data, null, 2);
         const blob = new Blob([jsonString], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `vulnradar-data-export-${new Date().toISOString().split("T")[0]}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        downloadBlob(
+          blob,
+          `${APP_SLUG}-data-export-${new Date().toISOString().split("T")[0]}.json`,
+        );
         setSuccess("Data export downloaded successfully.");
         setDataReqInfo({
           hasData: true,
@@ -187,14 +184,10 @@ export function ProfilePrivacyTab({
         if (data.data) {
           const jsonString = JSON.stringify(data.data, null, 2);
           const blob = new Blob([jsonString], { type: "application/json" });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = `vulnradar-data-export-${new Date().toISOString().split("T")[0]}.json`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
+          downloadBlob(
+            blob,
+            `${APP_SLUG}-data-export-${new Date().toISOString().split("T")[0]}.json`,
+          );
           setSuccess("Data export downloaded successfully.");
         } else {
           setError("No previous export data found.");
