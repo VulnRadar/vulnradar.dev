@@ -616,6 +616,9 @@ export function ChatWidget() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
+  // Aborts the in-flight chat stream (see streamToMessage) so clearChat doesn't
+  // leave an orphaned stream wedging isStreaming=true (which no-ops the next send).
+  const streamAbortRef = useRef<AbortController | null>(null);
   // Always points at the current render's sendMessage (defined further down,
   // closing over the latest `messages`), so the AI_CHAT_ASK_EVENT listener
   // below -- which only re-subscribes when isLoggedIn changes, not on every
@@ -862,6 +865,12 @@ export function ChatWidget() {
   }, [isOpen]);
 
   const clearChat = useCallback(() => {
+    // Abort any in-flight stream first, else it keeps isStreaming=true after the
+    // messages are reset and the next send no-ops until the orphan finishes.
+    streamAbortRef.current?.abort();
+    streamAbortRef.current = null;
+    setIsStreaming(false);
+    setStreamingMsgId(null);
     localStorage.removeItem(STORAGE_KEY);
     const freshId = newSessionId();
     setSessionId(freshId);
@@ -915,10 +924,13 @@ export function ChatWidget() {
     aiMessages: { role: string; content: string }[],
     aiMsgId: string,
   ): Promise<void> {
+    const controller = new AbortController();
+    streamAbortRef.current = controller;
     const res = await fetch("/api/v3/ai/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messages: aiMessages }),
+      signal: controller.signal,
     });
 
     const providerName = res.headers.get("X-AI-Provider-Name");

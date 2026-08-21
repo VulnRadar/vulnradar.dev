@@ -128,15 +128,13 @@ export default function SharesPage() {
         method: "DELETE",
       });
       if (res.ok) {
-        setShares((prev) => {
-          const updated = prev.filter((s) => s.id !== scanId);
-          const newTotalPages = Math.max(
-            1,
-            Math.ceil(updated.length / pageSize),
-          );
-          if (currentPage > newTotalPages) handlePageChange(newTotalPages);
-          return updated;
-        });
+        const updated = shares.filter((s) => s.id !== scanId);
+        setShares(updated);
+        // Page clamp is a side effect, so it runs OUTSIDE the state updater --
+        // updaters must be pure (React can call them twice under StrictMode,
+        // which would double-fire handlePageChange's history.replaceState + event).
+        const newTotalPages = Math.max(1, Math.ceil(updated.length / pageSize));
+        if (currentPage > newTotalPages) handlePageChange(newTotalPages);
       }
     } catch (err) {
       console.error("Failed to revoke share:", err);
