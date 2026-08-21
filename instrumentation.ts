@@ -3100,6 +3100,28 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
           );
         });
 
+      // Consecutive-failure streak per background worker, persisted so a worker
+      // that crash-loops (a fresh process every tick) still accumulates toward
+      // the admin-alert threshold instead of resetting its in-memory counter to
+      // zero on every boot. See lib/admin/failure-escalation.ts.
+      await pool
+        .query(
+          `
+        CREATE TABLE IF NOT EXISTS worker_failure_state (
+          event VARCHAR(100) PRIMARY KEY,
+          consecutive_failures INTEGER NOT NULL DEFAULT 0,
+          alerted BOOLEAN NOT NULL DEFAULT false,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create/verify worker_failure_state (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
       // ════════════════════════════════════════════════════════════════
       // DOMAIN OWNERSHIP VERIFICATION - domains
       //

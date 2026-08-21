@@ -10,10 +10,18 @@ vi.mock("@/lib/admin/alert-webhook", () => ({
   sendAdminAlert: (...args: unknown[]) => mockSendAdminAlert(...args),
 }));
 
+// The escalator persists its streak best-effort; an empty result means "no
+// stored state", so the in-memory behavior these tests assert is unchanged.
+const mockDbQuery = vi.fn(async () => ({ rows: [], rowCount: 0 }));
+vi.mock("@/lib/database/db", () => ({
+  default: { query: (...args: unknown[]) => mockDbQuery(...args) },
+}));
+
 import { createFailureEscalator } from "@/lib/admin/failure-escalation";
 
 beforeEach(() => {
   mockSendAdminAlert.mockReset();
+  mockDbQuery.mockClear();
 });
 
 describe("createFailureEscalator", () => {
