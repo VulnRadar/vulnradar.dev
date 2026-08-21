@@ -131,19 +131,26 @@ export function RepoDetail({
   const handleScanClick = async () => {
     const outcome = await onScan(repo.fullName);
     if (!outcome) return;
-    setScans((prev) => [
-      {
-        id: outcome.scanHistoryId ?? -1,
-        summary: outcome.result.summary,
-        findingsCount: outcome.result.summary.total,
-        duration: outcome.result.duration,
-        scannedAt: outcome.result.scannedAt,
-      },
-      ...(prev ?? []),
-    ]);
-    // Jump straight to the fresh result instead of making the user find it
-    // in the timeline they just watched grow.
-    setSelectedScanId(outcome.scanHistoryId);
+    // Only add a timeline row when the scan was actually persisted. A null
+    // scanHistoryId used to become id:-1, which collides as a React key on a
+    // second unsaved scan and makes an un-openable row (selectedScanId null
+    // also skipped the jump). The detail still shows below regardless.
+    const scanHistoryId = outcome.scanHistoryId;
+    if (scanHistoryId != null) {
+      setScans((prev) => [
+        {
+          id: scanHistoryId,
+          summary: outcome.result.summary,
+          findingsCount: outcome.result.summary.total,
+          duration: outcome.result.duration,
+          scannedAt: outcome.result.scannedAt,
+        },
+        ...(prev ?? []),
+      ]);
+      // Jump straight to the fresh result instead of making the user find it
+      // in the timeline they just watched grow.
+      setSelectedScanId(scanHistoryId);
+    }
     setScanDetail(outcome.result);
     setSelectedIssue(null);
   };

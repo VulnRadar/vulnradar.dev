@@ -155,8 +155,21 @@ export function BillingVerificationModal({
     setUserContinued(true);
 
     try {
-      await fetch("/api/v3/billing/verify/send", { method: "POST" });
+      const res = await fetch("/api/v3/billing/verify/send", {
+        method: "POST",
+      });
+      if (!res.ok) {
+        // A 429/500 previously still advanced to "check your email" even though
+        // no code was sent. Roll back so the user can retry, and surface it.
+        setUserContinued(false);
+        toast({
+          title: "Error sending code",
+          description: "Please try again in a moment",
+          variant: "destructive",
+        });
+      }
     } catch {
+      setUserContinued(false);
       toast({
         title: "Error sending code",
         description: "Please check your connection and try again",

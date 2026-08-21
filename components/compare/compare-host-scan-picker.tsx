@@ -31,12 +31,18 @@ export function CompareHostScanPicker({
   onToggle,
 }: CompareHostScanPickerProps) {
   const bothPicked = selectedA !== null && selectedB !== null;
-  const olderId = bothPicked
-    ? new Date(scans.find((s) => s.id === selectedA)!.scanned_at).getTime() <=
-      new Date(scans.find((s) => s.id === selectedB)!.scanned_at).getTime()
-      ? selectedA
-      : selectedB
-    : null;
+  // Look up both scans without a non-null assertion: a cross-host deep link can
+  // pick ids that aren't in THIS picker's list, and `scans.find(...)!` would
+  // then be undefined and crash on `.scanned_at`.
+  const scanA = bothPicked ? scans.find((s) => s.id === selectedA) : undefined;
+  const scanB = bothPicked ? scans.find((s) => s.id === selectedB) : undefined;
+  const olderId =
+    scanA && scanB
+      ? new Date(scanA.scanned_at).getTime() <=
+        new Date(scanB.scanned_at).getTime()
+        ? selectedA
+        : selectedB
+      : null;
 
   return (
     <div className="rounded-xl border border-border/50 bg-card/50 overflow-hidden">
