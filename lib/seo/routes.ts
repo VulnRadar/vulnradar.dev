@@ -41,7 +41,6 @@ const STATIC_PUBLIC_ROUTES: readonly PublicRoute[] = [
   { path: "/docs/webhooks", priority: 0.6, changeFrequency: "monthly" },
   { path: "/docs/rate-limits", priority: 0.6, changeFrequency: "monthly" },
   { path: "/docs/config", priority: 0.6, changeFrequency: "monthly" },
-  { path: "/compare", priority: 0.7, changeFrequency: "monthly" },
   { path: "/public-scans", priority: 0.6, changeFrequency: "hourly" },
   { path: "/changelog", priority: 0.6, changeFrequency: "weekly" },
   { path: "/contact", priority: 0.5, changeFrequency: "yearly" },
@@ -108,6 +107,11 @@ export const DISALLOWED_PATHS: readonly string[] = [
   "/api/",
   "/dashboard",
   "/profile",
+  // Auth-gated: redirects anon visitors (Googlebot included) to
+  // /login?redirect=/compare, so an indexed copy is a thin duplicate of the
+  // login page and it kept generating a duplicate /login?redirect= URL in
+  // Search Console. Not a public marketing page.
+  "/compare",
   "/history",
   "/assets",
   "/repos",
