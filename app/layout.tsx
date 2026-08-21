@@ -8,6 +8,7 @@ import { BackupCodesModal } from "@/components/shared/notification-center";
 import { DiscordProfileModalWrapper } from "@/components/modals/discord-profile-modal-wrapper";
 import { GithubProfileModalWrapper } from "@/components/modals/github-profile-modal-wrapper";
 import { AuthProvider } from "@/components/providers/auth-provider";
+import { Toaster } from "@/components/ui/toaster";
 import { StaffHeartbeat } from "@/components/admin/staff-heartbeat";
 import { ImpersonationBanner } from "@/components/admin/impersonation-banner";
 import { SiteNotificationsWrapper } from "@/components/shared/site-notifications";
@@ -181,6 +182,7 @@ export default async function RootLayout({
             <DiscordProfileModalWrapper />
             <GithubProfileModalWrapper />
             <ChatWidget />
+            <Toaster />
           </AuthProvider>
         </ThemeProvider>
         {/*        <Script id="tawk-to" strategy="lazyOnload">*/}
