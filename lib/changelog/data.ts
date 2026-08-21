@@ -135,6 +135,88 @@ interface Release {
 
 const CHANGELOG: Release[] = [
   {
+    version: "3.6.0",
+    date: "August 20, 2026",
+    title: "Security and Detection Hardening, Live Browser Redesign",
+    highlights: true,
+    summary:
+      "A security and correctness release. Several ways to slip past the daily scan quota or get billed twice for API scans are closed, sign-in is now tied to the browser that started it, and team roles can no longer be pushed above your own. The scan engine is hardened against pages built to hang it, and a batch of detection fixes stop it from misreading cookie flags, SPF, DMARC, CSP, and TLS chains (Detection Engine bumped to 3.3.1). On the surface, the live browser session viewer is rebuilt to look like a real browser window with the network panel open and streaming, the extension can open in a full resizable tab, and a scan's reported duration finally matches how long you actually waited.",
+    changes: [
+      {
+        icon: ShieldAlert,
+        label: "Closed a Daily Scan Quota Bypass",
+        desc: "Crawl scans recorded each page's usage in a row the single and bulk scan gate never read, so running a crawl plus a normal day of scans could add up to roughly double a plan's daily cap. Every scan type now counts against one shared daily counter, and a crawl no longer over-charges by a page.",
+        category: "security",
+      },
+      {
+        icon: Key,
+        label: "API Scans No Longer Billed Twice",
+        desc: "Each API-key scan counted against the key's daily rate limit twice: once to admit the request and once more to build the response headers. A 50-per-day key was effectively exhausted after 25 scans. The single admission check now supplies the headers too, and the bulk endpoint's early exhaustion check no longer burns a phantom slot.",
+        category: "fixed",
+      },
+      {
+        icon: Fingerprint,
+        label: "Sign-In Is Bound to the Browser That Started It",
+        desc: "OAuth sign-in and sign-up state carried no per-browser binding, so a valid sign-in link captured by an attacker could be delivered to someone else and silently log them into the attacker's account (login CSRF / session fixation). Starting a sign-in now sets a short-lived, http-only nonce that the callback requires to match before creating a session.",
+        category: "security",
+      },
+      {
+        icon: UserCog,
+        label: "Team Roles Cannot Be Escalated Past Your Own",
+        desc: "A member who could manage members but not manage scans was able to promote someone to admin (handing out a permission the promoter did not have) and to demote or remove higher-privileged admins. Inviting, changing, and removing roles is now capped to roles whose permissions are a subset of your own.",
+        category: "security",
+      },
+      {
+        icon: Gauge,
+        label: "Scanner Hardened Against Pages Built to Hang It",
+        desc: "A response body crafted with thousands of unclosed tags could drive the directory-listing check and dozens of tag and attribute patterns into catastrophic regex backtracking, blocking the scan worker for tens of seconds on a single page. Those patterns are now bounded and run in linear time, so a scanned page can no longer stall the engine.",
+        category: "security",
+      },
+      {
+        icon: ScanSearch,
+        label: "Detection Correctness: Cookies, SPF, DMARC, CSP, TLS, MTA-STS",
+        desc: "Cookie flag checks matched the flag name anywhere in the header, so a cookie with Domain=secure.example.com read as having the Secure flag; they now match the actual attribute token. SPF stopped inflating its DNS-lookup count (which false-flagged healthy Microsoft 365 domains) and now follows underscore-prefixed includes. DMARC no longer reads sp=none as p=none, CSP no longer mistakes script-src-elem for script-src, the incomplete-certificate-chain check actually fires now, and MTA-STS reads its enforcement mode from the policy file where it actually lives. Detection Engine is now 3.3.1.",
+        category: "fixed",
+      },
+      {
+        icon: Layout,
+        label: "Live Browser Session Viewer, Rebuilt",
+        desc: "The remote browser viewer now frames the live page as a real browser window, complete with an address bar showing the site you are on, on a proper workspace backdrop. The network panel opens by default and streams new requests every few seconds instead of hiding behind a toggle, and reads like a real devtools Network tab.",
+        category: "added",
+      },
+      {
+        icon: Package,
+        label: "Open the Extension in a Full Tab",
+        desc: "The browser extension popup can now open as a full, resizable browser tab from its footer. A toolbar popup is size-locked by the browser, so this is the roomy view for reading a full report; it carries the current site across so the tab scans the same page you were looking at.",
+        category: "added",
+      },
+      {
+        icon: Timer,
+        label: "Scan Duration Now Matches the Wait",
+        desc: "A scan that captured a page screenshot reported only the time the security checks took (for example 1.8s) even though you waited for the screenshot to finish too (for example 11s), so the result and the loading screen disagreed. The reported duration now spans the whole job, matching what you actually waited.",
+        category: "fixed",
+      },
+      {
+        icon: Eye,
+        label: "Bulk API Scans Honor 'Private by Default'",
+        desc: "A bulk scan submitted over the API from an account set to keep scans private published every URL's findings to the public host pages, because the bulk path defaulted to public regardless of the account setting. It now resolves privacy the same way every other scan path does, so the account default is respected.",
+        category: "security",
+      },
+      {
+        icon: Shield,
+        label: "Account Deletion, Contact Form, Team Webhooks, Session Cleanup",
+        desc: "Deleting an account now erases its AI-assistant conversation history immediately rather than leaving the content behind with only its owner removed. The contact form validates the email address before sending a confirmation to it. Webhooks assigned to a team now fire for a teammate's scans, not only the creator's. And a browser session whose ownership record failed to save is torn down instead of leaking a concurrency slot and unbilled minutes.",
+        category: "fixed",
+      },
+      {
+        icon: List,
+        label: "History View Polish",
+        desc: "Owner-only controls no longer appear for a signed-out viewer looking at a public scan, deleting the scan you have open now clears it from the address bar so Back does not bounce through a missing record, and the page counter no longer shows an impossible range after the list shrinks beneath the page you were on.",
+        category: "fixed",
+      },
+    ],
+  },
+  {
     version: "3.5.1",
     date: "August 20, 2026",
     title: "Updater Stale-File Cleanup, Build Warning Fix",

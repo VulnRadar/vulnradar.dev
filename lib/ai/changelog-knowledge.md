@@ -18,6 +18,39 @@ and full description.
 
 ---
 
+## v3.6.0 - August 20, 2026 **(highlights)**
+**Security and Detection Hardening, Live Browser Redesign**
+
+A security and correctness release. Several ways to slip past the daily scan quota or get billed twice for API scans are closed, sign-in is now tied to the browser that started it, and team roles can no longer be pushed above your own. The scan engine is hardened against pages built to hang it, and a batch of detection fixes stop it from misreading cookie flags, SPF, DMARC, CSP, and TLS chains (Detection Engine bumped to 3.3.1). On the surface, the live browser session viewer is rebuilt to look like a real browser window with the network panel open and streaming, the extension can open in a full resizable tab, and a scan's reported duration finally matches how long you actually waited.
+
+### Changes
+- [ShieldAlert] **[SECURITY]** **Closed a Daily Scan Quota Bypass**
+  Crawl scans recorded each page's usage in a row the single and bulk scan gate never read, so running a crawl plus a normal day of scans could add up to roughly double a plan's daily cap. Every scan type now counts against one shared daily counter, and a crawl no longer over-charges by a page.
+- [Key] **[FIXED]** **API Scans No Longer Billed Twice**
+  Each API-key scan counted against the key's daily rate limit twice: once to admit the request and once more to build the response headers. A 50-per-day key was effectively exhausted after 25 scans. The single admission check now supplies the headers too, and the bulk endpoint's early exhaustion check no longer burns a phantom slot.
+- [Fingerprint] **[SECURITY]** **Sign-In Is Bound to the Browser That Started It**
+  OAuth sign-in and sign-up state carried no per-browser binding, so a valid sign-in link captured by an attacker could be delivered to someone else and silently log them into the attacker's account (login CSRF / session fixation). Starting a sign-in now sets a short-lived, http-only nonce that the callback requires to match before creating a session.
+- [UserCog] **[SECURITY]** **Team Roles Cannot Be Escalated Past Your Own**
+  A member who could manage members but not manage scans was able to promote someone to admin (handing out a permission the promoter did not have) and to demote or remove higher-privileged admins. Inviting, changing, and removing roles is now capped to roles whose permissions are a subset of your own.
+- [Gauge] **[SECURITY]** **Scanner Hardened Against Pages Built to Hang It**
+  A response body crafted with thousands of unclosed tags could drive the directory-listing check and dozens of tag and attribute patterns into catastrophic regex backtracking, blocking the scan worker for tens of seconds on a single page. Those patterns are now bounded and run in linear time, so a scanned page can no longer stall the engine.
+- [ScanSearch] **[FIXED]** **Detection Correctness: Cookies, SPF, DMARC, CSP, TLS, MTA-STS**
+  Cookie flag checks matched the flag name anywhere in the header, so a cookie with Domain=secure.example.com read as having the Secure flag; they now match the actual attribute token. SPF stopped inflating its DNS-lookup count (which false-flagged healthy Microsoft 365 domains) and now follows underscore-prefixed includes. DMARC no longer reads sp=none as p=none, CSP no longer mistakes script-src-elem for script-src, the incomplete-certificate-chain check actually fires now, and MTA-STS reads its enforcement mode from the policy file where it actually lives. Detection Engine is now 3.3.1.
+- [Layout] **[ADDED]** **Live Browser Session Viewer, Rebuilt**
+  The remote browser viewer now frames the live page as a real browser window, complete with an address bar showing the site you are on, on a proper workspace backdrop. The network panel opens by default and streams new requests every few seconds instead of hiding behind a toggle, and reads like a real devtools Network tab.
+- [Package] **[ADDED]** **Open the Extension in a Full Tab**
+  The browser extension popup can now open as a full, resizable browser tab from its footer. A toolbar popup is size-locked by the browser, so this is the roomy view for reading a full report; it carries the current site across so the tab scans the same page you were looking at.
+- [Timer] **[FIXED]** **Scan Duration Now Matches the Wait**
+  A scan that captured a page screenshot reported only the time the security checks took (for example 1.8s) even though you waited for the screenshot to finish too (for example 11s), so the result and the loading screen disagreed. The reported duration now spans the whole job, matching what you actually waited.
+- [Eye] **[SECURITY]** **Bulk API Scans Honor 'Private by Default'**
+  A bulk scan submitted over the API from an account set to keep scans private published every URL's findings to the public host pages, because the bulk path defaulted to public regardless of the account setting. It now resolves privacy the same way every other scan path does, so the account default is respected.
+- [Shield] **[FIXED]** **Account Deletion, Contact Form, Team Webhooks, Session Cleanup**
+  Deleting an account now erases its AI-assistant conversation history immediately rather than leaving the content behind with only its owner removed. The contact form validates the email address before sending a confirmation to it. Webhooks assigned to a team now fire for a teammate's scans, not only the creator's. And a browser session whose ownership record failed to save is torn down instead of leaking a concurrency slot and unbilled minutes.
+- [List] **[FIXED]** **History View Polish**
+  Owner-only controls no longer appear for a signed-out viewer looking at a public scan, deleting the scan you have open now clears it from the address bar so Back does not bounce through a missing record, and the page counter no longer shows an impossible range after the list shrinks beneath the page you were on.
+
+---
+
 ## v3.5.1 - August 20, 2026
 **Updater Stale-File Cleanup, Build Warning Fix**
 
@@ -1595,7 +1628,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ## Quick reference
 
-- **Total releases:** 59
-- **Total changes documented:** 554
-- **Latest:** v3.5.1 (August 20, 2026) - Updater Stale-File Cleanup, Build Warning Fix
+- **Total releases:** 60
+- **Total changes documented:** 566
+- **Latest:** v3.6.0 (August 20, 2026) - Security and Detection Hardening, Live Browser Redesign
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release

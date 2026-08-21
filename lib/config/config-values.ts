@@ -14,7 +14,7 @@ import { GENERATED_CHECKS_LABEL } from "./check-stats.generated";
 // App metadata - UPDATE THESE FOR YOUR DEPLOYMENT
 export const CONFIG_APP_NAME = "VulnRadar";
 export const CONFIG_APP_SLUG = "vulnradar";
-export const CONFIG_APP_VERSION = "3.5.1";
+export const CONFIG_APP_VERSION = "3.6.0";
 // The minimum database schema version this app requires.
 // App 3.0.0 requires schema v3.0.0 (ai_conversations + email unsubscribe).
 // 3.0.1 made no schema changes. 3.0.2 and 3.1.0 both added tables/columns
@@ -121,7 +121,13 @@ export const CONFIG_MIN_SCHEMA_VERSION = "3.0.0";
 // (lib/scanner/adaptive-confidence.ts), closing a loop the admin Engine
 // Feedback panel's aggregation already computed but never applied. New
 // checks and a new engine-wide scoring behavior, so a minor bump.
-export const CONFIG_ENGINE_VERSION = "3.3.0";
+// 3.3.1: detection-correctness patch -- ReDoS-safe body/tag regexes, cookie
+// flag checks matched by attribute token (not whole-header substring), SPF
+// lookup-count no longer inflated by a shared regex, DMARC sp= / CSP
+// script-src-elem substring collisions fixed, TLS incomplete-chain now
+// detected, MTA-STS mode read from the policy file. Scan results change, so a
+// patch bump.
+export const CONFIG_ENGINE_VERSION = "3.3.1";
 export const CONFIG_APP_DESCRIPTION =
   "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.";
 export const CONFIG_TOTAL_CHECKS_LABEL = GENERATED_CHECKS_LABEL;
@@ -902,7 +908,10 @@ export const CONFIG_BROWSERBASE_DEFAULT_TTL_SECONDS = 360;
 
 // How often the browser session viewer page (app/browser/[id]/page.tsx)
 // polls GET /api/v3/browser/sessions/logs for new network/console log lines.
-export const CONFIG_BROWSERBASE_LOGS_POLL_INTERVAL_MS = 10_000;
+// The logs come from an in-memory CDP capture buffer (network-capture.ts), so
+// a tight interval is cheap -- it reads local state, it does not hit Browserbase
+// every tick. 3s keeps the panel feeling live without spamming the REST fallback.
+export const CONFIG_BROWSERBASE_LOGS_POLL_INTERVAL_MS = 3_000;
 
 // Live-browser sessions run against VulnRadar's own Browserbase account,
 // which itself has a real concurrency ceiling (how many sessions the
