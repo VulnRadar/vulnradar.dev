@@ -55,6 +55,43 @@ export function useModalA11y({
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
+  // Focus trap: keep Tab / Shift+Tab cycling inside the modal so a keyboard
+  // user can't step out into the (aria-hidden) page behind it -- an ARIA
+  // violation, and for the mandatory ToS gate it reaches controls the gate
+  // exists to block. Capture phase so we wrap before focus actually moves.
+  useEffect(() => {
+    if (!open) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Tab") return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const focusables = Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => el.offsetParent !== null);
+      if (focusables.length === 0) {
+        e.preventDefault();
+        panel.focus();
+        return;
+      }
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey) {
+        if (active === first || !panel.contains(active)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (active === last || !panel.contains(active)) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, [open]);
+
   // Focus management: on open, save the previously focused element and
   // move focus into the modal. On close, restore focus.
   useEffect(() => {
