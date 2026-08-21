@@ -340,7 +340,9 @@ export function AuditLog({
             }
             description={
               auditSearch || auditFilter !== "all" || timeFilter !== "all"
-                ? "Try adjusting your filters"
+                ? auditTotalPages > 1
+                  ? "Filters apply to this page only. Use Export for a full-log search across all pages."
+                  : "Try adjusting your filters"
                 : "Admin actions will appear here"
             }
           />
