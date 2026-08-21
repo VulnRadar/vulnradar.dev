@@ -142,7 +142,9 @@ describe("classifyBackupCodesColumn", () => {
     expect(result.status).toBe("ok");
     expect(result.total).toBe(2);
     expect(result.badFormatCount).toBe(0);
-  });
+    // Two real scrypt (N=2^17) hashes -- generous timeout so it doesn't flake
+    // under a loaded parallel full-suite run.
+  }, 20_000);
 
   it("counts bad-format entries within an otherwise-valid array (dead code slots)", () => {
     const result = classifyBackupCodesColumn(

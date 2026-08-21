@@ -243,7 +243,10 @@ describe("POST /api/v3/auth/login", () => {
     // account" -- the response gives an attacker no signal either way.
     expect(unknownJson.error).toBe(json.error);
     expect(sessionInsertCalls).toHaveLength(0);
-  });
+    // Two real logins, each running scrypt (N=2^17) plus the timing-
+    // equalization dummy hash -- generous timeout so it doesn't flake under a
+    // loaded parallel full-suite run.
+  }, 20_000);
 
   it("still runs a scrypt comparison for an unknown email (timing equalization)", async () => {
     userRow = null;
