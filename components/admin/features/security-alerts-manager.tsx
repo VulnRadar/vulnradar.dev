@@ -205,8 +205,11 @@ export function SecurityAlertsManager() {
         className="mb-4"
         items={[
           {
+            // Full unresolved count from the unfiltered set -- unresolvedAlerts
+            // is narrowed by the active severity filter, so using it here made
+            // "All Alerts" show only the selected severity's count.
             label: "All Alerts",
-            value: unresolvedAlerts.length,
+            value: alerts.filter((a) => !a.resolved_at).length,
             icon: ShieldAlert,
             tone: "primary",
             onClick: () => setSelectedSeverity("all"),

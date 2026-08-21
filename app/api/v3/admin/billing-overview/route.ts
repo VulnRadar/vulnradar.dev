@@ -146,9 +146,13 @@ export async function GET() {
         if ((row.plan || "free") !== plan.id) continue;
         const count = Number(row.count) || 0;
         totalUsers += count;
+        // 'canceling' (cancel-at-period-end) is still a paying, active
+        // subscription until the period ends, so it counts toward active
+        // users / MRR -- excluding it under-reports revenue.
         if (
           row.subscription_status &&
-          ACTIVE_SUBSCRIPTION_STATUSES.includes(row.subscription_status)
+          (ACTIVE_SUBSCRIPTION_STATUSES.includes(row.subscription_status) ||
+            row.subscription_status === "canceling")
         ) {
           activeUsers += count;
         }

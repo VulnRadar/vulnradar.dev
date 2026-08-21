@@ -133,15 +133,16 @@ describe("GET /api/v3/browser/sessions/logs", () => {
     });
   });
 
-  // Documented, intentional tradeoff shared with the sessions route (see
-  // AUDIT-004#idor-01 in app/api/v3/browser/sessions/logs/route.ts): a
-  // session with no ownership row is allowed through rather than denied.
-  it("fails open when no ownership row exists for the session id", async () => {
+  // FAIL CLOSED: this endpoint now streams live network traffic via CDP
+  // capture, so a session with no ownership row is denied rather than served
+  // (a row-less session is a best-effort-insert edge; better to lose its
+  // network panel than risk leaking a victim's live traffic).
+  it("fails closed (403) when no ownership row exists for the session id", async () => {
     mockQuery.mockResolvedValue({ rows: [] });
     mockGetBrowserSessionLogs.mockResolvedValue([]);
     const res = await GET(logsRequest("sess_legacy"));
-    expect(res.status).toBe(200);
-    expect(mockGetBrowserSessionLogs).toHaveBeenCalledWith("sess_legacy");
+    expect(res.status).toBe(403);
+    expect(mockGetBrowserSessionLogs).not.toHaveBeenCalled();
   });
 
   it("surfaces a BrowserBaseError's status and message", async () => {

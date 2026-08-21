@@ -130,9 +130,14 @@ export async function createSubscription(
   // alongside it. Without this check, every plan change created a parallel
   // subscription and the customer was billed for both.
   const existingSubscriptionId = user.stripe_subscription_id as string | null;
+  // 'canceling' (cancel-at-period-end) still has a live, billing Stripe
+  // subscription and keeps stripe_subscription_id, so it MUST count as switchable
+  // here -- otherwise re-subscribing/switching tier creates a second parallel
+  // subscription billed alongside the first (the exact double-bill this guards).
+  const switchableStatuses = [...ACTIVE_SUBSCRIPTION_STATUSES, "canceling"];
   if (
     existingSubscriptionId &&
-    ACTIVE_SUBSCRIPTION_STATUSES.includes(user.subscription_status)
+    switchableStatuses.includes(user.subscription_status)
   ) {
     const existingSubscription = await stripe.subscriptions
       .retrieve(existingSubscriptionId)
@@ -150,6 +155,9 @@ export async function createSubscription(
             { id: existingSubscription.items.data[0].id, price: priceId },
           ],
           proration_behavior: "create_prorations",
+          // Switching plans means the user is staying, so undo any pending
+          // cancel-at-period-end from a prior 'canceling' state.
+          cancel_at_period_end: false,
           metadata,
         },
       );

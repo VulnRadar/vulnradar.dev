@@ -26,6 +26,10 @@ import {
  */
 
 const MAX_REQUESTS = 300;
+// Bound in-flight requests too: one that never gets a response/failure event
+// (hung, aborted, or a detached frame) would otherwise linger for the whole
+// session. Oldest is evicted once this many are outstanding.
+const MAX_PENDING = 300;
 const IDLE_TTL_MS = 90_000;
 const CDP_CONNECT_TIMEOUT_MS = 8_000;
 
@@ -83,6 +87,11 @@ async function startCapture(sessionId: string, cap: Capture): Promise<void> {
       path,
       timestamp: params.timestamp as number | undefined,
     });
+    // Evict the oldest still-in-flight request if the pending set is over cap.
+    if (cap.pending.size > MAX_PENDING) {
+      const oldest = cap.pending.keys().next().value;
+      if (oldest !== undefined) cap.pending.delete(oldest);
+    }
   });
 
   conn.on("Network.responseReceived", (params) => {

@@ -20,7 +20,11 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const id = (request.nextUrl.searchParams.get("id") || "").trim();
   if (!id) return ApiResponse.badRequest("Missing session id.");
 
-  // Ownership check (AUDIT-004#idor-01).
+  // Ownership check (AUDIT-004#idor-01). FAIL CLOSED: this now streams live
+  // network traffic (hosts, paths, query strings) via CDP capture, so a session
+  // whose ownership row is missing/unreadable must be denied rather than served
+  // -- a row-less session (the ownership INSERT is best-effort) losing its
+  // network panel is the right trade against leaking a victim's live traffic.
   const ownerRow = await pool
     .query<{ user_id: number }>(
       "SELECT user_id FROM browser_sessions WHERE id = $1",
@@ -28,8 +32,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     )
     .catch(() => null);
   if (
-    ownerRow &&
-    ownerRow.rows.length > 0 &&
+    !ownerRow ||
+    ownerRow.rows.length === 0 ||
     ownerRow.rows[0].user_id !== session.userId
   ) {
     return ApiResponse.forbidden();

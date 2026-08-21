@@ -66,6 +66,16 @@ export async function deleteUserAccountData(
   await client.query("DELETE FROM scheduled_scans WHERE user_id = $1", [
     userId,
   ]);
+  // Purge the public reputation-cache snapshots this user's scans sourced
+  // BEFORE deleting the scans -- host_reputation.source_scan_id is ON DELETE SET
+  // NULL, so deleting the scans first orphans the findings copy, which keeps
+  // serving on the unauthenticated /host + reputation endpoints. Account
+  // deletion is a stronger erasure than a single-scan delete (which already
+  // does this), so the same purge applies.
+  await client.query(
+    "DELETE FROM host_reputation WHERE source_scan_id IN (SELECT id FROM scan_history WHERE user_id = $1)",
+    [userId],
+  );
   await client.query("DELETE FROM scan_history WHERE user_id = $1", [userId]);
 
   // Integrations

@@ -150,6 +150,10 @@ export function RepoDetail({
       // Jump straight to the fresh result instead of making the user find it
       // in the timeline they just watched grow.
       setSelectedScanId(scanHistoryId);
+    } else {
+      // Unsaved scan: clear any prior selection so an old timeline row isn't
+      // left highlighted while this fresh (un-openable) result renders.
+      setSelectedScanId(null);
     }
     setScanDetail(outcome.result);
     setSelectedIssue(null);

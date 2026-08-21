@@ -470,10 +470,15 @@ export async function POST(req: NextRequest) {
         // below overwrites the plan, so the best-effort change email can tell
         // an upgrade from a downgrade and knows where to send. Read-only and
         // wrapped: it never affects the write or the response.
-        let previousRow: { email: string; plan: string } | null = null;
+        let previousRow: { id: number; email: string; plan: string } | null =
+          null;
         try {
-          const prev = await pool.query<{ email: string; plan: string }>(
-            "SELECT email, plan FROM users WHERE stripe_customer_id = $1 LIMIT 1",
+          const prev = await pool.query<{
+            id: number;
+            email: string;
+            plan: string;
+          }>(
+            "SELECT id, email, plan FROM users WHERE stripe_customer_id = $1 LIMIT 1",
             [customerId],
           );
           previousRow = prev.rows[0] ?? null;
@@ -503,13 +508,20 @@ export async function POST(req: NextRequest) {
           RETURNING id`,
           [planToWrite, statusToWrite, customerId],
         );
-        if (result.rowCount && result.rowCount > 0) {
-          const userId = result.rows[0].id;
+        // Reconcile the premium badge on EVERY event, not only when the UPDATE
+        // above changed a row: grant/revoke are idempotent, and gating them on
+        // the IS DISTINCT FROM rowcount meant a retry after the row had already
+        // been updated (e.g. the first attempt committed the UPDATE then threw
+        // in the badge grant) would find rowCount:0 and skip the badge forever.
+        const reconcileUserId = result.rows[0]?.id ?? previousRow?.id;
+        if (reconcileUserId) {
           if (planToWrite !== "free") {
-            await grantPremiumBadge(userId);
+            await grantPremiumBadge(reconcileUserId);
           } else {
-            await revokePremiumBadge(userId);
+            await revokePremiumBadge(reconcileUserId);
           }
+        }
+        if (result.rowCount && result.rowCount > 0) {
           console.log(
             `[Stripe] Subscription updated for customer ${customerId}, plan: ${planToWrite}, status: ${subscription.status}`,
           );
