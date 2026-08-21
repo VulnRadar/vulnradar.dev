@@ -151,7 +151,9 @@ describe("POST /api/v3/billing/subscription/cancel", () => {
     });
 
     const statusUpdateCall = mockQuery.mock.calls[1];
-    expect(statusUpdateCall[0]).toContain("subscription_status = 'canceled'");
+    // Cancel-at-period-end writes 'canceling' (pending, still has access), not
+    // 'canceled' (the fully-terminated string the immediate branch uses).
+    expect(statusUpdateCall[0]).toContain("subscription_status = 'canceling'");
     // This route's non-immediate path never touches `plan` or clears
     // stripe_subscription_id, unlike /api/v3/billing's "cancel" action
     // (which also leaves them alone) and unlike this same route's own
