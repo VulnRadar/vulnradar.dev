@@ -95,8 +95,10 @@ export const detectors: Record<string, DetectFn> = {
   "cache-control-public-sensitive": (_url, headers, body) => {
     const cc = h(headers, "cache-control");
     if (!cc || !cc.includes("public")) return null;
-    const hasForm = /<form[^>]*method\s*=\s*["']?post/i.test(body);
-    const hasPasswd = /<input[^>]*type\s*=\s*["']?password/i.test(body);
+    // Bound the [^>]* attribute gaps to avoid O(n^2) backtracking (ReDoS) on a
+    // body full of unclosed tags; a real tag's attributes never exceed ~2000 chars.
+    const hasForm = /<form[^>]{0,2000}method\s*=\s*["']?post/i.test(body);
+    const hasPasswd = /<input[^>]{0,2000}type\s*=\s*["']?password/i.test(body);
     if (!hasForm && !hasPasswd) return null;
     return "Cache-Control: public set on page containing sensitive forms.";
   },
@@ -179,7 +181,11 @@ export const detectors: Record<string, DetectFn> = {
   "clickjacking-frameable": (_url, headers) => {
     const xfo = h(headers, "x-frame-options");
     const csp = h(headers, "content-security-policy");
-    if (xfo) return null;
+    // Only DENY / SAMEORIGIN are honored by modern browsers. ALLOW-FROM (and
+    // any other / garbage value) is ignored, leaving the page fully frameable,
+    // so it must not suppress the finding.
+    const xfoNorm = xfo?.trim().toUpperCase();
+    if (xfoNorm === "DENY" || xfoNorm === "SAMEORIGIN") return null;
     if (csp && csp.includes("frame-ancestors")) return null;
     return "No framing protection detected (no X-Frame-Options, no CSP frame-ancestors).";
   },

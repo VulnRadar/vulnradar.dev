@@ -84,13 +84,20 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "postmessage-no-origin-check": (_url, _headers, body) => {
-    const listenerPattern = /addEventListener\s*\(\s*["']message["']/;
-    if (!listenerPattern.test(body)) return null;
-    // Match any identifier's .origin access, not just the literal names
-    // "event"/"message" — handlers commonly name the param e, evt, ev, msg, etc.
-    const hasOriginCheck = /\w+\.origin\b/.test(body);
-    if (!hasOriginCheck) {
-      return "postMessage listener found without event.origin validation — any page can send messages.";
+    // Scope the .origin check to each message-listener handler body, not the
+    // whole document: an unrelated `location.origin` elsewhere on the page must
+    // not suppress a genuinely unchecked handler. Capture a bounded window of
+    // text following each addEventListener("message", ...) call as the handler.
+    const listenerPattern =
+      /addEventListener\s*\(\s*["']message["']\s*,([\s\S]{0,2000})/gi;
+    let m: RegExpExecArray | null;
+    while ((m = listenerPattern.exec(body)) !== null) {
+      const handlerRegion = m[1];
+      // Match any identifier's .origin access, not just the literal names
+      // "event"/"message" — handlers commonly name the param e, evt, ev, msg, etc.
+      if (!/\w+\.origin\b/.test(handlerRegion)) {
+        return "postMessage listener found without event.origin validation — any page can send messages.";
+      }
     }
     return null;
   },
@@ -154,7 +161,14 @@ export const detectors: Record<string, DetectFn> = {
       const tag = m[0];
       const url = m[1];
       if (/integrity\s*=/i.test(tag)) continue;
-      const host = new URL(url).hostname;
+      // A malformed src (e.g. an out-of-range port) throws from new URL(); skip
+      // that one src rather than letting the throw disable the whole check.
+      let host: string;
+      try {
+        host = new URL(url).hostname;
+      } catch {
+        continue;
+      }
       if (SRI_EXEMPT_HOSTS.has(host)) continue;
       return `External script from ${host} loaded without SRI integrity attribute.`;
     }

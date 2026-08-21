@@ -189,7 +189,12 @@ function setupChainConnect(sock: Record<string, unknown>) {
 
 describe("checkTlsCertChainCompleteness", () => {
   it("fires when verification succeeded but no intermediate was sent", async () => {
-    setupChainConnect(mockChainSocket({ authorized: true }));
+    // Node's getPeerCertificate(true) terminates a leaf-only peer chain
+    // with a truthy but EMPTY object (no valid_to), not undefined -- the
+    // exact shape the check must treat as an incomplete chain.
+    setupChainConnect(
+      mockChainSocket({ authorized: true, cert: { issuerCertificate: {} } }),
+    );
     const findings = await checkTlsCertChainCompleteness(
       "example.com",
       "https://example.com",
@@ -205,9 +210,12 @@ describe("checkTlsCertChainCompleteness", () => {
       mockChainSocket({
         authorized: true,
         cert: {
+          // A real chained cert carries real fields (valid_to); that is
+          // how it is distinguished from the empty end-of-chain marker.
           issuerCertificate: {
             subject: { CN: "Some Intermediate CA" },
             issuer: { CN: "Some Root CA" },
+            valid_to: "Dec 31 23:59:59 2035 GMT",
           },
         },
       }),

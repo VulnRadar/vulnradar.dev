@@ -200,15 +200,20 @@ async function scanSingleUrl(
   const syncFindings = syncResult.findings;
 
   let asyncFindings: Vulnerability[] = [];
+  let asyncTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
   try {
     asyncFindings = await Promise.race([
       runAsyncChecks(url, scanners, onProgress, cancelSignal),
-      new Promise<Vulnerability[]>((resolve) =>
-        setTimeout(() => resolve([]), 15000),
-      ),
+      new Promise<Vulnerability[]>((resolve) => {
+        asyncTimeoutHandle = setTimeout(() => resolve([]), 15000);
+      }),
     ]);
   } catch {
     /* non-fatal */
+  } finally {
+    // Cancel the per-page async timeout once the race settles so it can't stay
+    // pending across the rest of this page's work (and the next page's).
+    if (asyncTimeoutHandle) clearTimeout(asyncTimeoutHandle);
   }
 
   const findings = [...syncFindings, ...asyncFindings].sort(

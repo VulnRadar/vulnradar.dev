@@ -8,6 +8,7 @@
 import {
   getSetCookies,
   parseCookieName,
+  cookieHasAttribute,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
 
@@ -17,12 +18,16 @@ export const detectors: Record<string, DetectFn> = {
     if (setCookies.length === 0) return null;
     const issues: string[] = [];
     for (const cookie of setCookies) {
-      const lower = cookie.toLowerCase();
       const name = parseCookieName(cookie);
-      if (!lower.includes("httponly") && !name.startsWith("__Host-"))
+      if (
+        !cookieHasAttribute(cookie, "httponly") &&
+        !name.startsWith("__Host-")
+      )
         issues.push(`${name} missing HttpOnly`);
-      if (!lower.includes("secure")) issues.push(`${name} missing Secure`);
-      if (!lower.includes("samesite")) issues.push(`${name} missing SameSite`);
+      if (!cookieHasAttribute(cookie, "secure"))
+        issues.push(`${name} missing Secure`);
+      if (!cookieHasAttribute(cookie, "samesite"))
+        issues.push(`${name} missing SameSite`);
     }
     return issues.length > 0 ? issues.slice(0, 5).join("; ") : null;
   },
@@ -38,9 +43,7 @@ export const detectors: Record<string, DetectFn> = {
         name.includes("jwt")
       );
     });
-    const missing = sensitive.filter(
-      (c) => !c.toLowerCase().includes("httponly"),
-    );
+    const missing = sensitive.filter((c) => !cookieHasAttribute(c, "httponly"));
     return missing.length > 0
       ? `${missing.length} cookie(s) missing HttpOnly: ${missing.map(parseCookieName).join(", ")}`
       : null;
@@ -57,9 +60,7 @@ export const detectors: Record<string, DetectFn> = {
         name.includes("jwt")
       );
     });
-    const missing = sensitive.filter(
-      (c) => !c.toLowerCase().includes("secure"),
-    );
+    const missing = sensitive.filter((c) => !cookieHasAttribute(c, "secure"));
     return missing.length > 0
       ? `${missing.length} cookie(s) missing Secure: ${missing.map(parseCookieName).join(", ")}`
       : null;
@@ -76,9 +77,7 @@ export const detectors: Record<string, DetectFn> = {
         name.includes("jwt")
       );
     });
-    const missing = sensitive.filter(
-      (c) => !c.toLowerCase().includes("samesite"),
-    );
+    const missing = sensitive.filter((c) => !cookieHasAttribute(c, "samesite"));
     return missing.length > 0
       ? `${missing.length} cookie(s) missing SameSite: ${missing.map(parseCookieName).join(", ")}`
       : null;
@@ -120,8 +119,11 @@ export const detectors: Record<string, DetectFn> = {
   "set-cookie-samesite-none-no-secure": (_url, headers) => {
     const cookies = getSetCookies(headers);
     for (const c of cookies) {
-      const lower = c.toLowerCase();
-      if (lower.includes("samesite=none") && !lower.includes("secure")) {
+      const parts = c.split(";").slice(1);
+      const sameSiteNone = parts.some(
+        (p) => p.trim().toLowerCase() === "samesite=none",
+      );
+      if (sameSiteNone && !cookieHasAttribute(c, "secure")) {
         return `Cookie has SameSite=None without Secure flag: ${parseCookieName(c)}.`;
       }
     }
@@ -136,14 +138,16 @@ export const detectors: Record<string, DetectFn> = {
     if (cookies.length === 0) return null;
     const issues: string[] = [];
     for (const c of cookies) {
-      const lower = c.toLowerCase();
       const name = parseCookieName(c).toLowerCase();
       const isSessionLike =
         /session|auth|token/i.test(name) || /(^|[_.-])sid($|[_.-])/i.test(name);
       if (!isSessionLike) continue;
-      if (!lower.includes("httponly")) issues.push(`${name} missing HttpOnly`);
-      if (!lower.includes("secure")) issues.push(`${name} missing Secure`);
-      if (!lower.includes("samesite")) issues.push(`${name} missing SameSite`);
+      if (!cookieHasAttribute(c, "httponly"))
+        issues.push(`${name} missing HttpOnly`);
+      if (!cookieHasAttribute(c, "secure"))
+        issues.push(`${name} missing Secure`);
+      if (!cookieHasAttribute(c, "samesite"))
+        issues.push(`${name} missing SameSite`);
     }
     return issues.length > 0
       ? `Session cookie has issues: ${issues.join(", ")}.`
@@ -167,9 +171,19 @@ export const detectors: Record<string, DetectFn> = {
   "cookie-domain-broad": (_url, headers) => {
     const cookies = getSetCookies(headers);
     for (const c of cookies) {
-      const m = c.match(/domain\s*=\s*([^;,\s]+)/i);
-      if (m && /\./.test(m[1])) {
-        return `Cookie '${parseCookieName(c)}' sets Domain=${m[1]} (sent to all subdomains).`;
+      // Only the attribute segments (after name=value): a "domain=" inside the
+      // cookie VALUE (e.g. a stored return-URL like `last=/x?domain=acme.com`)
+      // is not the Domain attribute and must not trip this.
+      const domainAttr = c
+        .split(";")
+        .slice(1)
+        .map((p) => p.trim())
+        .find((p) => /^domain\s*=/i.test(p));
+      if (domainAttr) {
+        const value = domainAttr.replace(/^domain\s*=\s*/i, "").trim();
+        if (/\./.test(value)) {
+          return `Cookie '${parseCookieName(c)}' sets Domain=${value} (sent to all subdomains).`;
+        }
       }
     }
     return null;
@@ -189,11 +203,16 @@ export const detectors: Record<string, DetectFn> = {
   "cookie-expires-in-past": (_url, headers) => {
     const cookies = getSetCookies(headers);
     for (const c of cookies) {
-      const m = c.match(/expires\s*=\s*([^;,\s]+)/i);
+      // Capture up to the next ';' only, NOT [^;,\s]+ -- every RFC-1123 cookie
+      // date ("Thu, 01 Jan 1970 00:00:00 GMT") contains a comma and spaces, so
+      // the old class stopped at "Thu", new Date("Thu") was Invalid, and this
+      // check never fired on a genuinely past-dated cookie.
+      const m = c.match(/expires\s*=\s*([^;]+)/i);
       if (m) {
-        const d = new Date(m[1]);
+        const value = m[1].trim();
+        const d = new Date(value);
         if (!isNaN(d.getTime()) && d.getTime() < Date.now()) {
-          return `Cookie '${parseCookieName(c)}' has Expires=${m[1]} (already in the past).`;
+          return `Cookie '${parseCookieName(c)}' has Expires=${value} (already in the past).`;
         }
       }
     }
@@ -216,7 +235,11 @@ export const detectors: Record<string, DetectFn> = {
       );
     });
     for (const c of sensitive) {
-      const m = c.match(/(?:max-age|expires)\s*=\s*([^;,\s]+)/i);
+      // [^;]+ not [^;,\s]+: a numeric max-age has no comma/space so it is
+      // unaffected, but an Expires date is an RFC-1123 string with both, which
+      // the old class truncated at the weekday -- so the Expires branch below
+      // never ran. Trimmed before use.
+      const m = c.match(/(?:max-age|expires)\s*=\s*([^;]+)/i);
       if (m) {
         const v = m[1].trim();
         if (/^\d+$/.test(v)) {
@@ -252,7 +275,7 @@ export const detectors: Record<string, DetectFn> = {
     const cookies = getSetCookies(headers);
     for (const c of cookies) {
       const name = parseCookieName(c);
-      if (name.startsWith("__Host-") && !c.toLowerCase().includes("secure")) {
+      if (name.startsWith("__Host-") && !cookieHasAttribute(c, "secure")) {
         return `Cookie '${name}' uses __Host- prefix but is missing Secure.`;
       }
     }

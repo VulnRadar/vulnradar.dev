@@ -216,6 +216,7 @@ interface ChainablePeerCert {
   subject?: Record<string, string>;
   issuer?: Record<string, string>;
   issuerCertificate?: ChainablePeerCert;
+  valid_to?: string;
 }
 
 /**
@@ -273,7 +274,22 @@ export async function checkTlsCertChainCompleteness(
               true,
             ) as unknown as ChainablePeerCert;
 
-            if (authorized && cert && cert.subject && !cert.issuerCertificate) {
+            // An incomplete chain (leaf only, no intermediate) shows up as a
+            // MISSING or EMPTY issuerCertificate. Node's getPeerCertificate(true)
+            // terminates a peer-sent chain with a truthy but empty object (no
+            // real fields like valid_to), so `!cert.issuerCertificate` alone is
+            // never true in practice -- discriminate the empty end-of-chain
+            // marker by the absence of valid_to, the same signal the sibling
+            // chain walk in async-checks.ts uses. A self-referential leaf
+            // (issuerCertificate === cert, Node's root marker) is a self-signed
+            // cert reported by checkTLSCert, not a missing-intermediate case.
+            if (
+              authorized &&
+              cert &&
+              cert.subject &&
+              cert.issuerCertificate !== cert &&
+              (!cert.issuerCertificate || !cert.issuerCertificate.valid_to)
+            ) {
               const subjectCN = cert.subject?.CN ?? hostname;
               findings.push(
                 makeTlsVuln(

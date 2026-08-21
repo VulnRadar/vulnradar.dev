@@ -37,15 +37,23 @@ export const detectors: Record<string, DetectFn> = {
 
   "insecure-iframes": (url, _headers, body) => {
     if (!url.startsWith("https://")) return null;
+    // ReDoS-safe bounding: every unbounded [^>] gap inside an HTML-tag
+    // pattern is capped ([^>]* -> [^>]{0,2000}, [^>]+ -> [^>]{1,2000}). 2000
+    // is far beyond any real tag's attribute length, so every legitimate
+    // match is preserved while the O(n^2) backtracking on a body of many
+    // unclosed tags (e.g. "<form " repeated with no ">") is eliminated.
     const httpIframes =
-      body.match(/<iframe[^>]+src=["']http:\/\/[^"']+["'][^>]*>/gi) || [];
+      body.match(
+        /<iframe[^>]{1,2000}src=["']http:\/\/[^"']+["'][^>]{0,2000}>/gi,
+      ) || [];
     return httpIframes.length > 0
       ? `Found ${httpIframes.length} iframe(s) loading HTTP content on HTTPS page.`
       : null;
   },
 
   "iframe-sandbox-missing": (_url, _headers, body) => {
-    const iframes = body.match(/<iframe[^>]*src=["'][^"']+["'][^>]*>/gi) || [];
+    const iframes =
+      body.match(/<iframe[^>]{0,2000}src=["'][^"']+["'][^>]{0,2000}>/gi) || [];
     // Skip well-known trusted embed providers, which never carry a sandbox
     // attribute in their own embed code (sandboxing would break required
     // permissions) -- same allowlist idea open-form-action already uses.
@@ -80,7 +88,8 @@ export const detectors: Record<string, DetectFn> = {
   // ── Forms ────────────────────────────────────────────────────────────────
 
   "form-target-blank": (_url, _headers, body) => {
-    const forms = body.match(/<form[^>]*target=["']_blank["'][^>]*>/gi) || [];
+    const forms =
+      body.match(/<form[^>]{0,2000}target=["']_blank["'][^>]{0,2000}>/gi) || [];
     return forms.length > 0
       ? `Found ${forms.length} form(s) with target="_blank".`
       : null;
@@ -88,7 +97,9 @@ export const detectors: Record<string, DetectFn> = {
 
   "open-form-action": (_url, _headers, body) => {
     const forms =
-      body.match(/<form[^>]*action=["']https?:\/\/[^"']+["'][^>]*>/gi) || [];
+      body.match(
+        /<form[^>]{0,2000}action=["']https?:\/\/[^"']+["'][^>]{0,2000}>/gi,
+      ) || [];
     if (forms.length === 0) return null;
     const external = forms.filter((f) => {
       const match = f.match(/action=["'](https?:\/\/[^"'/]+)/i);
@@ -110,7 +121,9 @@ export const detectors: Record<string, DetectFn> = {
 
   "sensitive-form-no-csrf": (_url, _headers, body) => {
     const postForms =
-      body.match(/<form[^>]*method=["']post["'][^>]*>[\s\S]*?<\/form>/gi) || [];
+      body.match(
+        /<form[^>]{0,2000}method=["']post["'][^>]{0,2000}>[\s\S]*?<\/form>/gi,
+      ) || [];
     // Forms that submit to a different origin (newsletter signups via
     // Mailchimp/HubSpot/Typeform, search widgets, etc.) aren't protected by
     // *your* CSRF tokens anyway -- your backend never receives the
@@ -163,7 +176,7 @@ export const detectors: Record<string, DetectFn> = {
       body.includes("__NEXT_DATA__") ||
       body.includes("_next/") ||
       body.includes("__nuxt");
-    const formOpenRe = /<form[^>]*>/gi;
+    const formOpenRe = /<form[^>]{0,2000}>/gi;
     let m: RegExpExecArray | null;
     while ((m = formOpenRe.exec(body))) {
       const f = m[0];
@@ -185,10 +198,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "autocomplete-sensitive": (_url, _headers, body) => {
     const pwFields =
-      body.match(/<input[^>]*type=["']password["'][^>]*>/gi) || [];
+      body.match(/<input[^>]{0,2000}type=["']password["'][^>]{0,2000}>/gi) ||
+      [];
     const ccFields =
       body.match(
-        /<input[^>]*(?:name|id)=["'][^"']*\b(?:card[-_]?number|cc[-_]?number|credit[-_]?card|cvv|cvc)\b[^"']*["'][^>]*>/gi,
+        /<input[^>]{0,2000}(?:name|id)=["'][^"']*\b(?:card[-_]?number|cc[-_]?number|credit[-_]?card|cvv|cvc)\b[^"']*["'][^>]{0,2000}>/gi,
       ) || [];
     const noAC = [...pwFields, ...ccFields].filter(
       (f) => !/autocomplete\s*=/i.test(f),
@@ -204,7 +218,8 @@ export const detectors: Record<string, DetectFn> = {
     // it here too meant every password field missing both attributes
     // produced two findings for one underlying defect.
     const pwInputs =
-      body.match(/<input[^>]*type=["']password["'][^>]*>/gi) || [];
+      body.match(/<input[^>]{0,2000}type=["']password["'][^>]{0,2000}>/gi) ||
+      [];
     const noName = pwInputs.filter((t) => !/name\s*=\s*["']/i.test(t));
     return noName.length > 0
       ? `Found ${noName.length} password field(s) missing name attribute.`
@@ -218,7 +233,7 @@ export const detectors: Record<string, DetectFn> = {
     // strong 12-char minimum as "weak, under 6 characters" (fired on
     // VulnRadar's own /signup, which actually requires 12).
     if (
-      /<input[^>]*type=["']?password[^>]*minlength=["']?([1-5])(?!\d)["']?/i.test(
+      /<input[^>]{0,2000}type=["']?password[^>]{0,2000}minlength=["']?([1-5])(?!\d)["']?/i.test(
         body,
       )
     ) {
@@ -231,13 +246,13 @@ export const detectors: Record<string, DetectFn> = {
 
   "viewport-user-scalable-no": (_url, _headers, body) => {
     if (
-      /<meta[^>]*name=["']viewport["'][^>]*content=["'][^"']*user-scalable\s*=\s*no/i.test(
+      /<meta[^>]{0,2000}name=["']viewport["'][^>]{0,2000}content=["'][^"']*user-scalable\s*=\s*no/i.test(
         body,
       )
     )
       return "Viewport sets user-scalable=no.";
     if (
-      /<meta[^>]*name=["']viewport["'][^>]*content=["'][^"']*maximum-scale\s*=\s*1(?:\.0)?/i.test(
+      /<meta[^>]{0,2000}name=["']viewport["'][^>]{0,2000}content=["'][^"']*maximum-scale\s*=\s*1(?:\.0)?/i.test(
         body,
       )
     )
@@ -269,7 +284,7 @@ export const detectors: Record<string, DetectFn> = {
   "opengraph-injection": (_url, _headers, body) => {
     const ogTags =
       body.match(
-        /<meta[^>]*property=["']og:[^"']+["'][^>]*content=["']([^"']+)["']/gi,
+        /<meta[^>]{0,2000}property=["']og:[^"']+["'][^>]{0,2000}content=["']([^"']+)["']/gi,
       ) || [];
     const suspicious = ogTags.filter((t) =>
       /javascript:|(?:^|[\s"'])data:(?:text\/html)?|(?:^|[\s"'])on\w+\s*=/i.test(
@@ -283,7 +298,7 @@ export const detectors: Record<string, DetectFn> = {
 
   "meta-refresh": (_url, _headers, body) => {
     const metaRefresh = body.match(
-      /<meta[^>]*http-equiv=["']refresh["'][^>]*content=["']([^"']+)["']/i,
+      /<meta[^>]{0,2000}http-equiv=["']refresh["'][^>]{0,2000}content=["']([^"']+)["']/i,
     );
     if (!metaRefresh) return null;
     const content = metaRefresh[1];
@@ -293,9 +308,11 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "base-tag": (_url, _headers, body) => {
-    const baseTag = body.match(/<base[^>]*href=["']([^"']+)["']/i);
+    const baseTag = body.match(/<base[^>]{0,2000}href=["']([^"']+)["']/i);
     if (!baseTag) return null;
-    const csp = body.match(/<meta[^>]*content=["'][^"']*base-uri[^"']*["']/i);
+    const csp = body.match(
+      /<meta[^>]{0,2000}content=["'][^"']*base-uri[^"']*["']/i,
+    );
     if (csp) return null;
     return `<base> tag found with href="${baseTag[1]}". Without CSP base-uri, this can be hijacked.`;
   },
@@ -303,7 +320,7 @@ export const detectors: Record<string, DetectFn> = {
   "sensitive-meta-tags": (_url, _headers, body) => {
     const metas =
       body.match(
-        /<meta[^>]*(?:name|property)=["'][^"']*["'][^>]*content=["'][^"']+["'][^>]*>/gi,
+        /<meta[^>]{0,2000}(?:name|property)=["'][^"']*["'][^>]{0,2000}content=["'][^"']+["'][^>]{0,2000}>/gi,
       ) || [];
     const sensitiveNames = [
       "csrf",
@@ -354,7 +371,8 @@ export const detectors: Record<string, DetectFn> = {
     // FPs from body text mentioning library names (e.g. documentation pages,
     // changelogs). jQuery/Angular have dedicated src-scoped detectors below;
     // keep Lodash, Bootstrap, and Moment.js here scoped to src= only.
-    const scripts = body.match(/<script[^>]+src=["'][^"']*["'][^>]*>/gi) || [];
+    const scripts =
+      body.match(/<script[^>]{1,2000}src=["'][^"']*["'][^>]{0,2000}>/gi) || [];
     const srcBlock = scripts.join("\n");
     const libs: { name: string; pattern: RegExp; maxSafe: string }[] = [
       {
@@ -399,7 +417,9 @@ export const detectors: Record<string, DetectFn> = {
 
   "outdated-jquery": (_url, _headers, body) => {
     const scripts =
-      body.match(/<script[^>]+src=["'][^"']*jquery[^"']*["'][^>]*>/gi) || [];
+      body.match(
+        /<script[^>]{1,2000}src=["'][^"']*jquery[^"']*["'][^>]{0,2000}>/gi,
+      ) || [];
     for (const s of scripts) {
       const m = s.match(/jquery[-.v]?(\d+)\.(\d+)\.?(\d*)/i);
       if (m) {
@@ -415,7 +435,7 @@ export const detectors: Record<string, DetectFn> = {
 
   "outdated-angular": (_url, _headers, body) => {
     if (
-      /<script[^>]+src=["'][^"']*angular(?:\.min)?\.js[^"']*["'][^>]*>/i.test(
+      /<script[^>]{1,2000}src=["'][^"']*angular(?:\.min)?\.js[^"']*["'][^>]{0,2000}>/i.test(
         body,
       ) &&
       !/angular\/\d{2}\./i.test(body)
@@ -427,7 +447,9 @@ export const detectors: Record<string, DetectFn> = {
 
   "prototype-js-outdated": (_url, _headers, body) => {
     if (
-      /<script[^>]+src=["'][^"']*prototype(?:\.js)?[^"']*["'][^>]*>/i.test(body)
+      /<script[^>]{1,2000}src=["'][^"']*prototype(?:\.js)?[^"']*["'][^>]{0,2000}>/i.test(
+        body,
+      )
     ) {
       return "Prototype.js loaded via script src — outdated library with known vulnerabilities.";
     }
@@ -435,7 +457,11 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "mootools-outdated": (_url, _headers, body) => {
-    if (/<script[^>]+src=["'][^"']*mootools[^"']*["'][^>]*>/i.test(body)) {
+    if (
+      /<script[^>]{1,2000}src=["'][^"']*mootools[^"']*["'][^>]{0,2000}>/i.test(
+        body,
+      )
+    ) {
       return "MooTools loaded via script src — outdated library with potential security issues.";
     }
     return null;
@@ -444,7 +470,7 @@ export const detectors: Record<string, DetectFn> = {
   "cdn-fallback-missing": (_url, _headers, body) => {
     const cdnScripts =
       body.match(
-        /<script[^>]*src=["'][^"']*(?:cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|unpkg\.com)[^"']*["'][^>]*>/gi,
+        /<script[^>]{0,2000}src=["'][^"']*(?:cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|unpkg\.com)[^"']*["'][^>]{0,2000}>/gi,
       ) || [];
     if (cdnScripts.length > 0 && !/onerror\s*=/i.test(body)) {
       return `${cdnScripts.length} CDN script(s) without fallback mechanism.`;
@@ -457,7 +483,7 @@ export const detectors: Record<string, DetectFn> = {
   "cms-fingerprinting": (_url, headers, body) => {
     const found: string[] = [];
     const generator = body.match(
-      /<meta[^>]*name=["']generator["'][^>]*content=["']([^"']+)["']/i,
+      /<meta[^>]{0,2000}name=["']generator["'][^>]{0,2000}content=["']([^"']+)["']/i,
     );
     if (generator) found.push(`Generator: ${generator[1]}`);
     const powered = headers.get("x-powered-by");
@@ -480,15 +506,28 @@ export const detectors: Record<string, DetectFn> = {
       /<title>Index of \/[^<]*<\/title>/i,
       /<h1>Index of \/[^<]*<\/h1>/i,
       /\[To Parent Directory\]/i,
-      // Bounded to before the closing </pre> so this can't span the entire
-      // rest of the document -- a bare <pre> code sample followed, anywhere
-      // later on the page, by any link and any ISO date otherwise satisfied
-      // this with no relation to server directory browsing.
-      /<pre>(?:(?!<\/pre>)[\s\S])*<a href="[^"]*">(?:(?!<\/pre>)[\s\S])*<\/a>(?:(?!<\/pre>)[\s\S])*\d{4}-\d{2}-\d{2}(?:(?!<\/pre>)[\s\S])*<\/pre>/i,
     ];
     for (const p of indicators) {
       if (p.test(body))
         return "Directory listing indicators found in response.";
+    }
+    // Apache/nginx <pre>-formatted autoindex: a <pre> block containing BOTH a
+    // link and an ISO date. Extract each <pre>…</pre> block first (lazy inner,
+    // linear) and test its inner text with two simple bounded checks. The old
+    // single pattern chained four unbounded tempered-greedy groups; a body of
+    // many <a> tags with no date and no closing </pre> drove it into
+    // catastrophic backtracking (measured tens of seconds on ~18KB), letting a
+    // scanned page hang the shared scan worker. This shape is linear.
+    const preBlockRe = /<pre[^>]*>([\s\S]*?)<\/pre>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = preBlockRe.exec(body)) !== null) {
+      const inner = m[1];
+      if (
+        /<a\s+href="[^"]*">/i.test(inner) &&
+        /\d{4}-\d{2}-\d{2}/.test(inner)
+      ) {
+        return "Directory listing indicators found in response.";
+      }
     }
     return null;
   },
@@ -607,7 +646,7 @@ export const detectors: Record<string, DetectFn> = {
   "wp-login-exposed": (_url, _headers, body) => {
     if (
       /wp-login\.php|wp-admin\//i.test(body) &&
-      /<meta[^>]*generator[^>]*wordpress/i.test(body)
+      /<meta[^>]{0,2000}generator[^>]{0,2000}wordpress/i.test(body)
     ) {
       return "WordPress admin/login page paths exposed with WordPress generator tag.";
     }
@@ -624,7 +663,8 @@ export const detectors: Record<string, DetectFn> = {
   // ── Inline JS / dangerous APIs ──────────────────────────────────────────
 
   "dangerous-inline-js": (_url, _headers, body) => {
-    const scripts = body.match(/<script[^>]*>[\s\S]*?<\/script[^>]*>/gi) || [];
+    const scripts =
+      body.match(/<script[^>]{0,2000}>[\s\S]*?<\/script[^>]{0,2000}>/gi) || [];
     const dangerousPatterns = [
       /eval\s*\(/i,
       /document\.write\s*\(/i,
@@ -645,7 +685,7 @@ export const detectors: Record<string, DetectFn> = {
       // arbitrary serialized page text that happens to contain these
       // substrings without being executable code in that form.
       if (
-        /^\s*<script[^>]*\btype\s*=\s*["']application\/(?:json|ld\+json)["']/i.test(
+        /^\s*<script[^>]{0,2000}\btype\s*=\s*["']application\/(?:json|ld\+json)["']/i.test(
           script,
         )
       )
@@ -904,7 +944,7 @@ export const detectors: Record<string, DetectFn> = {
     // placeholder (bigger than any bound this function uses) keeps them
     // reliably apart instead.
     const html = body.replace(
-      /<(?:code|pre|kbd|samp|template)\b[^>]*>[\s\S]*?<\/(?:code|pre|kbd|samp|template)\s*>/gi,
+      /<(?:code|pre|kbd|samp|template)\b[^>]{0,2000}>[\s\S]*?<\/(?:code|pre|kbd|samp|template)\s*>/gi,
       " ".repeat(200),
     );
     const patterns = [
@@ -1067,7 +1107,7 @@ export const detectors: Record<string, DetectFn> = {
     // Strip scripts so the scanner's own detection patterns in the JS bundle
     // don't self-trigger when scanning this application.
     const html = stripExampleContent(body);
-    if (/<\/title><script|<img[^>]*onerror/gi.test(html)) {
+    if (/<\/title><script|<img[^>]{0,2000}onerror/gi.test(html)) {
       return "HTML injection patterns detected in page output.";
     }
     return null;
@@ -1079,7 +1119,7 @@ export const detectors: Record<string, DetectFn> = {
     const html = stripExampleContent(body);
     const dangerousPatterns = [
       /jaVasCript:/gi,
-      /<script[^>]*>[^<]*(?:document\.cookie|eval\(|alert\(|fetch\([^)]*document)/gi,
+      /<script[^>]{0,2000}>[^<]*(?:document\.cookie|eval\(|alert\(|fetch\([^)]*document)/gi,
     ];
     for (const p of dangerousPatterns) {
       const match = html.match(p);
@@ -1203,7 +1243,7 @@ export const detectors: Record<string, DetectFn> = {
 
   "meta-referrer-unsafe": (_url, _headers, body) => {
     const meta = body.match(
-      /<meta[^>]*name\s*=\s*["']referrer["'][^>]*content\s*=\s*["']([^"']*)["'][^>]*>/i,
+      /<meta[^>]{0,2000}name\s*=\s*["']referrer["'][^>]{0,2000}content\s*=\s*["']([^"']*)["'][^>]{0,2000}>/i,
     );
     if (!meta) return null;
     if (
@@ -1333,7 +1373,7 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "base-tag-insecure": (url, _headers, body) => {
-    const m = body.match(/<base[^>]+href\s*=\s*["']([^"']+)["']/i);
+    const m = body.match(/<base[^>]{1,2000}href\s*=\s*["']([^"']+)["']/i);
     if (
       m &&
       /^https?:\/\//i.test(m[1]) &&
@@ -1342,7 +1382,7 @@ export const detectors: Record<string, DetectFn> = {
       return `Insecure <base> tag with href="${m[1]}"`;
     }
     if (/<html/i.test(body) && /<base/i.test(body)) {
-      const href = body.match(/<base[^>]+href\s*=\s*["']([^"']+)["']/i);
+      const href = body.match(/<base[^>]{1,2000}href\s*=\s*["']([^"']+)["']/i);
       if (href && href[1] && href[1].toLowerCase().startsWith("http:")) {
         return `<base> tag uses insecure href: ${href[1]}`;
       }
@@ -1387,7 +1427,9 @@ export const detectors: Record<string, DetectFn> = {
 
   "password-no-paste": (url, _headers, body) => {
     const fields =
-      body.match(/<input[^>]*type\s*=\s*["']password["'][^>]*>/gi) || [];
+      body.match(
+        /<input[^>]{0,2000}type\s*=\s*["']password["'][^>]{0,2000}>/gi,
+      ) || [];
     const blocksPaste = fields.filter((f) =>
       /onpaste\s*=\s*["'][^"']*(?:return\s+false|preventDefault)/i.test(f),
     );
@@ -1715,7 +1757,9 @@ export const detectors: Record<string, DetectFn> = {
 
   "srcdoc-iframe": (url, _headers, body) => {
     const iframes =
-      body.match(/<iframe[^>]*srcdoc\s*=\s*["'][^"']+["'][^>]*>/gi) || [];
+      body.match(
+        /<iframe[^>]{0,2000}srcdoc\s*=\s*["'][^"']+["'][^>]{0,2000}>/gi,
+      ) || [];
     if (iframes.length > 0)
       return `Found ${iframes.length} iframe(s) using srcdoc attribute.`;
     return null;
@@ -1723,7 +1767,9 @@ export const detectors: Record<string, DetectFn> = {
 
   "sandbox-allow-scripts": (url, _headers, body) => {
     const iframes =
-      body.match(/<iframe[^>]*sandbox\s*=\s*["']([^"']+)["'][^>]*>/gi) || [];
+      body.match(
+        /<iframe[^>]{0,2000}sandbox\s*=\s*["']([^"']+)["'][^>]{0,2000}>/gi,
+      ) || [];
     const bad = iframes.filter((f) => /\ballow-scripts\b/.test(f));
     if (bad.length > 0)
       return `Found ${bad.length} sandboxed iframe(s) with allow-scripts.`;
@@ -1735,14 +1781,16 @@ export const detectors: Record<string, DetectFn> = {
     // the svg element (before </svg>). Uses negative lookahead to prevent
     // matching SVG icons that just happen to appear before Next.js's own
     // streaming <script> tags further down the body.
-    if (/<svg\b[^>]*>(?:(?!<\/svg>)[\s\S])*?<script\b/i.test(body))
+    if (/<svg\b[^>]{0,2000}>(?:(?!<\/svg>)[\s\S])*?<script\b/i.test(body))
       return "SVG with embedded <script> element detected.";
     return null;
   },
 
   "data-uri-script": (url, _headers, body) => {
     const matches =
-      body.match(/<script[^>]*src\s*=\s*["']data:[^"']+["'][^>]*>/gi) || [];
+      body.match(
+        /<script[^>]{0,2000}src\s*=\s*["']data:[^"']+["'][^>]{0,2000}>/gi,
+      ) || [];
     if (matches.length > 0)
       return `Found ${matches.length} <script> tag(s) with data: URI source.`;
     return null;
@@ -1750,14 +1798,16 @@ export const detectors: Record<string, DetectFn> = {
 
   "blob-url-script": (url, _headers, body) => {
     const matches =
-      body.match(/<script[^>]*src\s*=\s*["']blob:[^"']+["'][^>]*>/gi) || [];
+      body.match(
+        /<script[^>]{0,2000}src\s*=\s*["']blob:[^"']+["'][^>]{0,2000}>/gi,
+      ) || [];
     if (matches.length > 0)
       return `Found ${matches.length} <script> tag(s) loaded from blob: URL.`;
     return null;
   },
 
   "form-autocomplete-off": (url, _headers, body) => {
-    const forms = body.match(/<form[^>]*>/gi) || [];
+    const forms = body.match(/<form[^>]{0,2000}>/gi) || [];
     const off = forms.filter((f) => /autocomplete\s*=\s*["']off["']/i.test(f));
     if (off.length > 0)
       return `Found ${off.length} form(s) with autocomplete="off" — password managers disabled.`;
@@ -1766,7 +1816,9 @@ export const detectors: Record<string, DetectFn> = {
 
   "input-maxlength-short": (url, _headers, body) => {
     const fields =
-      body.match(/<input[^>]*type\s*=\s*["']password["'][^>]*>/gi) || [];
+      body.match(
+        /<input[^>]{0,2000}type\s*=\s*["']password["'][^>]{0,2000}>/gi,
+      ) || [];
     const short = fields.filter((f) => {
       const m = f.match(/maxlength\s*=\s*["']?(\d+)["']?/i);
       return m && parseInt(m[1], 10) < 12;
@@ -1778,7 +1830,9 @@ export const detectors: Record<string, DetectFn> = {
 
   "hidden-password-field": (url, _headers, body) => {
     const fields =
-      body.match(/<input[^>]*type\s*=\s*["']password["'][^>]*>/gi) || [];
+      body.match(
+        /<input[^>]{0,2000}type\s*=\s*["']password["'][^>]{0,2000}>/gi,
+      ) || [];
     const hidden = fields.filter(
       (f) =>
         /type\s*=\s*["']hidden["']/i.test(f) ||
@@ -1793,7 +1847,8 @@ export const detectors: Record<string, DetectFn> = {
 
   "password-visible-default": (url, _headers, body) => {
     const matches =
-      body.match(/<input[^>]*type\s*=\s*["']text["'][^>]*>/gi) || [];
+      body.match(/<input[^>]{0,2000}type\s*=\s*["']text["'][^>]{0,2000}>/gi) ||
+      [];
     const labeled = matches.filter((f) =>
       /(?:name|id)\s*=\s*["'][^"']*(?:password|passwd|pwd)[^"']*["']/i.test(f),
     );
@@ -1803,7 +1858,7 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "readonly-sensitive-field": (url, _headers, body) => {
-    const fields = body.match(/<input[^>]*>/gi) || [];
+    const fields = body.match(/<input[^>]{0,2000}>/gi) || [];
     const bad = fields.filter(
       (f) =>
         /\breadonly\b/i.test(f) &&
@@ -1818,7 +1873,8 @@ export const detectors: Record<string, DetectFn> = {
 
   "file-upload-no-restrictions": (url, _headers, body) => {
     const inputs =
-      body.match(/<input[^>]*type\s*=\s*["']file["'][^>]*>/gi) || [];
+      body.match(/<input[^>]{0,2000}type\s*=\s*["']file["'][^>]{0,2000}>/gi) ||
+      [];
     const unrestricted = inputs.filter((f) => !/\baccept\s*=/i.test(f));
     if (unrestricted.length > 0)
       return `Found ${unrestricted.length} file upload(s) without accept attribute.`;
@@ -1851,7 +1907,7 @@ export const detectors: Record<string, DetectFn> = {
   "form-formnovalidate-bypass": (url, _headers, body) => {
     const buttons =
       body.match(
-        /<button[^>]*formnovalidate[^>]*>|<input[^>]*formnovalidate[^>]*>/gi,
+        /<button[^>]{0,2000}formnovalidate[^>]{0,2000}>|<input[^>]{0,2000}formnovalidate[^>]{0,2000}>/gi,
       ) || [];
     if (buttons.length > 0)
       return `Found ${buttons.length} submit control(s) with formnovalidate attribute.`;
@@ -1860,8 +1916,9 @@ export const detectors: Record<string, DetectFn> = {
 
   "form-action-javascript-scheme": (url, _headers, body) => {
     const forms =
-      body.match(/<form[^>]*action\s*=\s*["']javascript:[^"']+["'][^>]*>/gi) ||
-      [];
+      body.match(
+        /<form[^>]{0,2000}action\s*=\s*["']javascript:[^"']+["'][^>]{0,2000}>/gi,
+      ) || [];
     if (forms.length > 0)
       return `Found ${forms.length} form(s) using javascript: action scheme.`;
     return null;
@@ -1869,7 +1926,9 @@ export const detectors: Record<string, DetectFn> = {
 
   "form-action-mailto-scheme": (url, _headers, body) => {
     const forms =
-      body.match(/<form[^>]*action\s*=\s*["']mailto:[^"']+["'][^>]*>/gi) || [];
+      body.match(
+        /<form[^>]{0,2000}action\s*=\s*["']mailto:[^"']+["'][^>]{0,2000}>/gi,
+      ) || [];
     if (forms.length > 0)
       return `Found ${forms.length} form(s) using mailto: action scheme.`;
     return null;
@@ -1877,7 +1936,9 @@ export const detectors: Record<string, DetectFn> = {
 
   "form-action-tel-scheme": (url, _headers, body) => {
     const forms =
-      body.match(/<form[^>]*action\s*=\s*["']tel:[^"']+["'][^>]*>/gi) || [];
+      body.match(
+        /<form[^>]{0,2000}action\s*=\s*["']tel:[^"']+["'][^>]{0,2000}>/gi,
+      ) || [];
     if (forms.length > 0)
       return `Found ${forms.length} form(s) using tel: action scheme.`;
     return null;
@@ -1885,7 +1946,9 @@ export const detectors: Record<string, DetectFn> = {
 
   "iframe-srcdoc-no-sandbox": (url, _headers, body) => {
     const iframes =
-      body.match(/<iframe[^>]*srcdoc\s*=\s*["'][^"']+["'][^>]*>/gi) || [];
+      body.match(
+        /<iframe[^>]{0,2000}srcdoc\s*=\s*["'][^"']+["'][^>]{0,2000}>/gi,
+      ) || [];
     const noSandbox = iframes.filter((f) => !/\bsandbox\s*=/i.test(f));
     if (noSandbox.length > 0)
       return `Found ${noSandbox.length} srcdoc iframe(s) without sandbox attribute.`;
@@ -1894,7 +1957,9 @@ export const detectors: Record<string, DetectFn> = {
 
   "iframe-allow-scripts-allow-same-origin": (url, _headers, body) => {
     const iframes =
-      body.match(/<iframe[^>]*sandbox\s*=\s*["']([^"']+)["'][^>]*>/gi) || [];
+      body.match(
+        /<iframe[^>]{0,2000}sandbox\s*=\s*["']([^"']+)["'][^>]{0,2000}>/gi,
+      ) || [];
     const bad = iframes.filter(
       (f) => /allow-scripts/.test(f) && /allow-same-origin/.test(f),
     );
@@ -1910,7 +1975,7 @@ export const detectors: Record<string, DetectFn> = {
     // fade-in) satisfied this.
     const matches =
       body.match(
-        /<svg\b[^>]*>(?:(?!<\/svg>)[\s\S])*?onload\s*=\s*["'][^"']+["']/gi,
+        /<svg\b[^>]{0,2000}>(?:(?!<\/svg>)[\s\S])*?onload\s*=\s*["'][^"']+["']/gi,
       ) || [];
     if (matches.length > 0)
       return `Found ${matches.length} SVG(s) with inline onload handler.`;
@@ -1923,7 +1988,7 @@ export const detectors: Record<string, DetectFn> = {
     // response body past any <svg> open tag.
     const matches =
       body.match(
-        /<svg\b[^>]*>(?:(?!<\/svg>)[\s\S])*?(?:SYSTEM\s+["'][^"']+["']|&xxe;)/gi,
+        /<svg\b[^>]{0,2000}>(?:(?!<\/svg>)[\s\S])*?(?:SYSTEM\s+["'][^"']+["']|&xxe;)/gi,
       ) || [];
     if (matches.length > 0)
       return `Found ${matches.length} SVG(s) referencing external entities (XXE).`;
@@ -2093,7 +2158,7 @@ export const detectors: Record<string, DetectFn> = {
     if (!hasReplayScript) return null;
     const sensitiveFields =
       body.match(
-        /<input[^>]*(?:name|id)=["'][^"']*(?:ssn|social[-_]?security|credit[-_]?card|card[-_]?number|cvv)[^"']*["'][^>]*>/gi,
+        /<input[^>]{0,2000}(?:name|id)=["'][^"']*(?:ssn|social[-_]?security|credit[-_]?card|card[-_]?number|cvv)[^"']*["'][^>]{0,2000}>/gi,
       ) || [];
     if (sensitiveFields.length === 0) return null;
     const unmasked = sensitiveFields.filter(
@@ -2109,7 +2174,7 @@ export const detectors: Record<string, DetectFn> = {
   "third-party-tracker-on-login-page": (url, _headers, body) => {
     const isLoginPage =
       /\/login|\/signin|\/sign-in/i.test(url) ||
-      /<input[^>]*type=["']password["']/i.test(body);
+      /<input[^>]{0,2000}type=["']password["']/i.test(body);
     if (!isLoginPage) return null;
     const trackers = [
       {
@@ -2144,7 +2209,7 @@ export const detectors: Record<string, DetectFn> = {
   "script-loaded-from-raw-ip": (_url, _headers, body) => {
     const matches =
       body.match(
-        /<script[^>]+src=["']https?:\/\/(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\/[^"']*["'][^>]*>/gi,
+        /<script[^>]{1,2000}src=["']https?:\/\/(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\/[^"']*["'][^>]{0,2000}>/gi,
       ) || [];
     if (matches.length === 0) return null;
     return `${matches.length} <script> tag(s) load code from a raw IP address instead of a domain name — unusual and often indicates compromise or malvertising.`;

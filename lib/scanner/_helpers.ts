@@ -128,6 +128,26 @@ export function parseCookieName(cookie: string): string {
   return cookie.split("=")[0]?.trim() ?? "";
 }
 
+/**
+ * True when a single Set-Cookie string carries the given attribute
+ * (e.g. "Secure", "HttpOnly", "SameSite"). Splits on ';' and matches the
+ * attribute TOKEN, skipping the leading name=value segment -- a naive
+ * `cookie.includes("secure")` treats `sid=x; Domain=secure.example.com` (the
+ * word "secure" is in the domain) or a `__Secure-`/`session` NAME as having the
+ * flag, which silently suppressed missing-Secure/HttpOnly/SameSite findings on
+ * real session cookies. Matches both boolean flags ("secure") and valued
+ * attributes ("samesite=lax").
+ */
+export function cookieHasAttribute(cookie: string, attribute: string): boolean {
+  const attr = attribute.toLowerCase();
+  const parts = cookie.split(";").slice(1); // drop name=value; keep attributes
+  for (const part of parts) {
+    const token = part.trim().toLowerCase();
+    if (token === attr || token.startsWith(`${attr}=`)) return true;
+  }
+  return false;
+}
+
 export type EvidenceFn = (
   url: string,
   headers: Headers,

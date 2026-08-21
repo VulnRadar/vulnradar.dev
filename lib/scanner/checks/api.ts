@@ -508,7 +508,14 @@ const rawDetectors: Record<string, DetectFn> = {
     // Match on the parameter NAME alone flagged any value, including a
     // short one-time token. Require the value to actually look like a
     // Bearer credential: JWT-shaped, or a long opaque high-entropy string.
-    const value = decodeURIComponent(match[1]);
+    // Malformed percent-encoding (e.g. ?token=100%off) throws from
+    // decodeURIComponent; guard it so the throw can't disable the whole check.
+    let value: string;
+    try {
+      value = decodeURIComponent(match[1]);
+    } catch {
+      return null;
+    }
     const looksLikeBearerToken =
       /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/.test(value) ||
       /^[A-Za-z0-9_-]{32,}$/.test(value);

@@ -30,6 +30,27 @@ const fixtures: DetectorFixtures = {
       expect: "fire",
       evidenceIncludes: "eval",
     },
+    {
+      description:
+        "prose that merely mentions eval() in a paragraph, on a page that also has an unrelated script, does not fire (scoped to script content, not the whole body)",
+      body: "<p>Security tip: never use eval() with untrusted input.</p><script>console.log('hi');</script>",
+      expect: "skip",
+    },
+  ],
+  "vibe-jwt-none-alg": [
+    {
+      description:
+        "jwt.verify() that specifies an algorithms allowlist alongside a getKey() callback does not fire (nested paren no longer truncates the capture before the option is seen)",
+      body: "<script>jwt.verify(token, getKey(), { algorithms: ['HS256'] });</script>",
+      expect: "skip",
+    },
+    {
+      description:
+        "jwt.verify() with no algorithms option specified still fires",
+      body: "<script>jwt.verify(token, secret);</script>",
+      expect: "fire",
+      evidenceIncludes: "none",
+    },
   ],
   "vibe-weak-random": [
     {

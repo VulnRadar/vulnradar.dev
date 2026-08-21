@@ -270,11 +270,20 @@ async function walkSpfChain(
     let loop = false;
     let loopAt: string | undefined;
 
-    SPF_LOOKUP_MECHANISM_RE.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = SPF_LOOKUP_MECHANISM_RE.exec(spf))) {
+    // Collect every lookup mechanism up front with a FRESH regex (a new
+    // RegExp from the shared pattern's source), not the stateful module-level
+    // object: the recursive walkSpfChain call below runs its own exec loop on
+    // the same /gi regex and leaves its lastIndex at 0, which made this outer
+    // loop re-scan from the start and multiply the lookup count -- a false
+    // "SPF Exceeds 10 DNS Lookup Limit" on healthy chains (e.g. Microsoft 365).
+    // The include-target guard allows a leading "_" so records like
+    // _spf.google.com (Google Workspace) are actually walked, not skipped.
+    const mechanisms = [
+      ...spf.matchAll(new RegExp(SPF_LOOKUP_MECHANISM_RE.source, "gi")),
+    ];
+    for (const m of mechanisms) {
       count++;
-      if (m[1].toLowerCase() === "include" && /^[a-z0-9.-]+$/i.test(m[2])) {
+      if (m[1].toLowerCase() === "include" && /^_?[a-z0-9.-]+$/i.test(m[2])) {
         const sub = await walkSpfChain(m[2], ancestors, budget);
         count += sub.lookupCount;
         if (sub.loop) {
@@ -439,7 +448,11 @@ export async function checkDMARC(
     return findings;
   }
 
-  if (dmarc.includes("p=none")) {
+  // \bp=none\b, not includes("p=none"): the subdomain-policy tag sp=none (or
+  // sp=quarantine) contains "p=none" as a substring, so a hardened record like
+  // `v=DMARC1; p=reject; sp=none` was misread as p=none and falsely flagged as
+  // accepting spoofed mail. The word boundary before p excludes the sp= form.
+  if (/\bp=none\b/i.test(dmarc)) {
     findings.push(
       makeVuln(
         url,
@@ -456,7 +469,7 @@ export async function checkDMARC(
         ],
       ),
     );
-  } else if (dmarc.includes("p=quarantine")) {
+  } else if (/\bp=quarantine\b/i.test(dmarc)) {
     findings.push(
       makeVuln(
         url,
@@ -1126,26 +1139,10 @@ async function checkMTASTS(
     const flat = records.map((r) => r.join(""));
     const stsRecord = flat.find((r) => r.includes("v=STSv1"));
     if (!stsRecord) return [missingVuln()];
-    const modeMatch = stsRecord.match(/\bmode=(\w+)/);
-    const mode = modeMatch?.[1]?.toLowerCase();
-    if (mode === "none" || mode === "testing") {
-      return [
-        makeVuln(
-          url,
-          "MTA-STS Mode Not Enforcing",
-          "medium",
-          "email",
-          `MTA-STS configured but not enforcing: mode=${mode}. Set mode=enforce to prevent SMTP downgrade attacks.`,
-          `_mta-sts.${domain} record: ${stsRecord}`,
-          "Attackers can downgrade inbound SMTP sessions from STARTTLS to plaintext. mode=none/testing provides no enforcement.",
-          "Only mode=enforce causes sending servers to abort delivery if TLS cannot be established.",
-          [
-            "Change mode: testing or mode: none to mode: enforce in your mta-sts.txt policy file.",
-            "Update the id= value in the _mta-sts DNS record to force cache invalidation.",
-          ],
-        ),
-      ];
-    }
+    // The _mta-sts TXT record only advertises v=STSv1; id=... (RFC 8461
+    // §3.1) and never carries a mode. Enforcement mode lives solely in the
+    // HTTPS policy file, so it is parsed and validated in
+    // checkMTASTSPolicyFile, not here.
     return [];
   } catch (err: unknown) {
     const code =
@@ -1230,6 +1227,30 @@ async function checkMTASTSPolicyFile(
           ],
           [],
           65,
+        ),
+      ];
+    }
+    // The policy file is the only place mode lives (RFC 8461 §3.2). A policy
+    // published with mode: testing or mode: none advertises MTA-STS but does
+    // not actually enforce TLS, so it provides no real downgrade protection.
+    const mode = text.match(/^\s*mode\s*:\s*(\w+)/im)?.[1]?.toLowerCase();
+    if (mode === "testing" || mode === "none") {
+      return [
+        makeVuln(
+          url,
+          "MTA-STS Mode Not Enforcing",
+          "medium",
+          "email",
+          `The MTA-STS policy for ${domain} is published with mode: ${mode}, which does not enforce TLS. Set mode: enforce to prevent SMTP downgrade attacks.`,
+          `GET ${policyUrl} -> mode: ${mode}`,
+          "In testing or none mode, sending servers report or ignore TLS failures but still deliver over plaintext, so inbound SMTP sessions can be downgraded from STARTTLS to cleartext by a network attacker.",
+          "Only mode: enforce causes MTA-STS-aware senders to abort delivery when TLS cannot be established. mode: testing and mode: none provide no downgrade protection.",
+          [
+            "Change the mode: line in the policy file to mode: enforce.",
+            "Update the id= value in the _mta-sts DNS TXT record to force senders to refetch the policy.",
+          ],
+          [],
+          70,
         ),
       ];
     }
@@ -2181,9 +2202,16 @@ export async function checkDNSSecurity(
     }
   }
 
-  // MX check needs SPF result to gate on (avoid flagging non-email domains)
+  // MX check needs SPF result to gate on (avoid flagging non-email domains).
+  // Gate on SPF *presence*, not a finding-free SPF: a present-but-imperfect
+  // SPF (~all soft-fail, +all, ptr:) still means the domain is configured for
+  // mail, so a missing MX on it is a real finding. checkSPF emits
+  // "Missing SPF Record" exactly when no v=spf1 record exists, so the absence
+  // of that finding is the presence signal (the same title the null-MX
+  // filter above keys on).
   const hasSPF =
-    spfResult.status === "fulfilled" && spfResult.value.length === 0;
+    spfResult.status === "fulfilled" &&
+    !spfResult.value.some((v) => v.title === "Missing SPF Record");
   const mxResult = await checkMX(domain, url, hasSPF);
   findings.push(...mxResult);
 

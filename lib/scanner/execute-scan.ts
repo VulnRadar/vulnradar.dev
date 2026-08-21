@@ -563,12 +563,19 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     // since a promise can have more than one handler attached to it.
     asyncPromise.catch(() => {});
     let asyncTimedOut = false;
-    const asyncTimeout = new Promise<AsyncCheckResult>((resolve) =>
-      setTimeout(() => {
+    // Hold the timer handle so it can be cleared once the race settles. Without
+    // clearing, a scan that wins the race via asyncPromise (async checks
+    // completed) but then spends real time on the port sweep + software/CVE
+    // lookups below still has this 15s timer pending -- it fires late and flips
+    // asyncTimedOut to true on an already-complete scan, understating engine
+    // confidence (94 instead of 97) and leaking the timer/closure.
+    let asyncTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    const asyncTimeout = new Promise<AsyncCheckResult>((resolve) => {
+      asyncTimeoutHandle = setTimeout(() => {
         asyncTimedOut = true;
         resolve({ findings: [], incomplete: ["dns", "tls", "live-fetch"] });
-      }, 15000),
-    );
+      }, 15000);
+    });
 
     // Run synchronous body/header checks and the parsed-page checks through
     // the shared engine, which builds the page context once, applies
@@ -633,6 +640,10 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
       asyncResult = await Promise.race([asyncPromise, asyncTimeout]);
     } catch {
       /* non-fatal */
+    } finally {
+      // Race settled: cancel the timeout so it can't fire late and wrongly mark
+      // an already-complete scan as timed out.
+      if (asyncTimeoutHandle) clearTimeout(asyncTimeoutHandle);
     }
 
     let sourceMapFinding: Vulnerability | null = null;
@@ -719,8 +730,6 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     // rather than being threaded through every Vulnerability literal).
     findings = attachCvssScores(findings);
 
-    const duration = Date.now() - startTime;
-
     const summary = {
       critical: findings.filter((f) => f.severity === SEVERITY_LEVELS.CRITICAL)
         .length,
@@ -803,6 +812,14 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     } catch {
       /* never: captureAndStoreScreenshot swallows its own errors */
     }
+
+    // Measure duration HERE -- after the screenshot await -- not right after the
+    // checks finish. The scan isn't marked complete until this point, so this is
+    // the wall-clock the user actually waits on the loading page. Computing it
+    // earlier reported only the checks time (e.g. 1.8s) while the user waited
+    // for the metered screenshot capture too (e.g. 11s), so the stored duration
+    // and the loading page disagreed.
+    const duration = Date.now() - startTime;
 
     const scannedAt = new Date().toISOString();
 
@@ -908,11 +925,23 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
         );
       });
 
-    // Fire webhooks for all scans (non-blocking)
+    // Fire webhooks for all scans (non-blocking). Includes both the scan
+    // owner's own webhooks AND any webhook assigned to the team this scan
+    // belongs to -- team-assigned webhooks were previously never delivered
+    // (the query filtered on user_id only), so a webhook shared to a team fired
+    // only for its creator's scans, never a teammate's. The subquery resolves
+    // the scan's team_id (NULL for a personal scan, so the team clause matches
+    // nothing there); DISTINCT-by-row means a webhook matching both clauses
+    // still fires once.
     pool
       .query(
-        "SELECT id, url, type, secret FROM webhooks WHERE user_id = $1 AND active = true",
-        [authedUserId],
+        `SELECT id, url, type, secret FROM webhooks
+         WHERE active = true
+           AND (
+             user_id = $1
+             OR team_id = (SELECT team_id FROM scan_history WHERE id = $2)
+           )`,
+        [authedUserId, scanId],
       )
       .then(({ rows }) => {
         for (const {

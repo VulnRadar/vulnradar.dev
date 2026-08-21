@@ -10,7 +10,11 @@
  * these are heuristic-based pattern matches.
  */
 
-import { stripDocBlocks, type EvidenceFn as DetectFn } from "../_helpers";
+import {
+  stripDocBlocks,
+  extractScriptContents,
+  type EvidenceFn as DetectFn,
+} from "../_helpers";
 
 function hasScript(body: string): boolean {
   return /<script[\s\S]*?>/i.test(body);
@@ -92,12 +96,17 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 
   "vibe-eval-usage": (_url, _headers, body) => {
-    // Match eval() calls that aren't inside a string or comment context
-    // and appear in script blocks
-    if (!hasScript(body)) return null;
+    // Scope eval() detection to genuine <script> content, not the whole
+    // body: prose that merely mentions eval() ("never use eval()", a
+    // security tip, a changelog line) on a page that also happens to
+    // carry any <script> otherwise self-triggers this detector.
+    const scripts = extractScriptContents(body);
+    if (scripts.length === 0) return null;
     const pattern = /\beval\s*\(/;
-    if (pattern.test(body)) {
-      return "eval() call detected in page scripts — can enable code injection if user input reaches it.";
+    for (const script of scripts) {
+      if (pattern.test(script)) {
+        return "eval() call detected in page scripts — can enable code injection if user input reaches it.";
+      }
     }
     return null;
   },
@@ -166,7 +175,10 @@ const rawDetectors: Record<string, DetectFn> = {
     if (!hasScript(body)) return null;
     // Check the jwt.verify() call's own argument list for an algorithms
     // whitelist, not the text that happens to follow the closing paren.
-    const verifyCallPattern = /jwt\.verify\(([^)]+)\)/g;
+    // The capture tolerates one level of nested parens so a common
+    // `jwt.verify(token, getKey(), { algorithms: ['HS256'] })` isn't
+    // truncated at getKey()'s ')' before the algorithms option is seen.
+    const verifyCallPattern = /jwt\.verify\s*\(((?:[^()]|\([^()]*\))*)\)/g;
     let vm: RegExpExecArray | null;
     while ((vm = verifyCallPattern.exec(body)) !== null) {
       if (!/algorithms\s*:/.test(vm[1])) {

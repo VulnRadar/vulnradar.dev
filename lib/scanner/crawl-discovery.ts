@@ -536,7 +536,12 @@ export async function discoverPages(
       const body = await readBoundedText(res, maxBodySize);
 
       let enqueuedFromThisPage = 0;
-      const anchorRegex = /<a\s[^>]*href=["']([^"'#]+?)["']/gi;
+      // Gap before href= is bounded ({0,2000}, not *) so a body of many "<a "
+      // tokens with no ">" and no href can't drive O(n^2) backtracking that
+      // hangs the crawl worker's event loop (measured ~30s on 200KB with the
+      // unbounded form). No real anchor carries 2000+ chars of attributes
+      // before href, so this matches every legitimate link.
+      const anchorRegex = /<a\s[^>]{0,2000}href=["']([^"'#]+?)["']/gi;
       let match: RegExpExecArray | null;
       while ((match = anchorRegex.exec(body)) !== null) {
         const href = match[1].trim();

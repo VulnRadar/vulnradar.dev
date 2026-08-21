@@ -25,6 +25,25 @@ function hostnameOf(url: string): string | null {
   }
 }
 
+/**
+ * Extract one CSP directive by EXACT name (the first token of a ';'-split
+ * part), returning the full directive text (e.g. "script-src 'self' 'nonce-x'")
+ * or "" when absent. A bare regex match on "script-src" up to the next ";"
+ * also matches the
+ * CSP3 sub-directives script-src-elem / script-src-attr (and likewise
+ * style-src-elem/-attr), so when a scoped -elem/-attr exception appeared before
+ * the real directive the checks read the wrong one -- a false positive or
+ * negative depending on directive order. This selects the directive itself.
+ */
+function getCspDirective(csp: string, name: string): string {
+  const target = name.toLowerCase();
+  for (const part of csp.split(";")) {
+    const trimmed = part.trim();
+    if (trimmed.split(/\s+/)[0]?.toLowerCase() === target) return trimmed;
+  }
+  return "";
+}
+
 export const detectors: Record<string, DetectFn> = {
   // ── Security header presence ────────────────────────────────────────────────
 
@@ -269,7 +288,7 @@ export const detectors: Record<string, DetectFn> = {
   "csp-unsafe-inline-script": (_url, headers, body) => {
     const csp = h(headers, "content-security-policy");
     if (!csp) return null;
-    const scriptSrc = csp.match(/script-src[^;]*/i)?.[0] || "";
+    const scriptSrc = getCspDirective(csp, "script-src");
     if (!scriptSrc.includes("'unsafe-inline'")) return null;
     if (
       scriptSrc.includes("'nonce-") ||
@@ -309,8 +328,8 @@ export const detectors: Record<string, DetectFn> = {
   "csp-allows-http-sources": (_url, headers) => {
     const csp = h(headers, "content-security-policy");
     if (!csp) return null;
-    const scriptSrc = csp.match(/script-src[^;]*/i)?.[0] || "";
-    const defaultSrc = csp.match(/default-src[^;]*/i)?.[0] || "";
+    const scriptSrc = getCspDirective(csp, "script-src");
+    const defaultSrc = getCspDirective(csp, "default-src");
     const effective = scriptSrc || defaultSrc;
     if (!effective) return null;
     if (!/(?:^|\s)http:\/\//i.test(effective)) return null;
@@ -338,7 +357,7 @@ export const detectors: Record<string, DetectFn> = {
   "csp-data-uri-allowed": (_url, headers) => {
     const csp = h(headers, "content-security-policy");
     if (!csp) return null;
-    const scriptSrc = csp.match(/script-src[^;]*/i)?.[0] || "";
+    const scriptSrc = getCspDirective(csp, "script-src");
     if (!scriptSrc.includes("data:")) return null;
     return "CSP script-src allows data: URIs, enabling XSS via data:text/html payloads.";
   },
@@ -357,12 +376,12 @@ export const detectors: Record<string, DetectFn> = {
     const frameworkDirectives: string[] = [];
 
     if (isNextJs) {
-      const styleSrc = csp.match(/style-src[^;]*/i)?.[0] || "";
+      const styleSrc = getCspDirective(csp, "style-src");
       if (styleSrc.includes("'unsafe-inline'"))
         frameworkDirectives.push(
           "style-src 'unsafe-inline' (required by Next.js styled-jsx)",
         );
-      const scriptSrc = csp.match(/script-src[^;]*/i)?.[0] || "";
+      const scriptSrc = getCspDirective(csp, "script-src");
       if (scriptSrc.includes("'unsafe-inline'"))
         frameworkDirectives.push(
           "script-src 'unsafe-inline' (consider using nonces instead)",
@@ -401,7 +420,7 @@ export const detectors: Record<string, DetectFn> = {
       /ng-version/i.test(body);
 
     const issues: string[] = [];
-    const scriptSrc = csp.match(/script-src[^;]*/i)?.[0] || "";
+    const scriptSrc = getCspDirective(csp, "script-src");
 
     if (!isFramework) {
       // Scoped to script-src, not the whole header: an ordinary
@@ -421,7 +440,7 @@ export const detectors: Record<string, DetectFn> = {
     }
 
     if (scriptSrc.includes("data:")) issues.push("data: in script-src");
-    const defaultSrc = csp.match(/default-src[^;]*/i)?.[0] || "";
+    const defaultSrc = getCspDirective(csp, "default-src");
     if (/(?:^|\s)\*(?:\s|;|$)/.test(defaultSrc))
       issues.push("wildcard in default-src");
     if (/(?:^|\s)\*(?:\s|;|$)/.test(scriptSrc))
@@ -673,7 +692,10 @@ export const detectors: Record<string, DetectFn> = {
       path = url.toLowerCase();
     }
     if (/\/(?:login|signin|signup|register)(?:\/|$)/.test(path)) return null;
-    const hasPasswd = /<input[^>]*type\s*=\s*["']?password/i.test(body);
+    // ReDoS-safe bounding: unbounded [^>] gaps inside tag patterns are capped
+    // ([^>]* -> [^>]{0,2000}, [^>]+ -> [^>]{1,2000}) so a body of many unclosed
+    // tags can't drive O(n^2) backtracking; 2000 preserves every real match.
+    const hasPasswd = /<input[^>]{0,2000}type\s*=\s*["']?password/i.test(body);
     if (hasPasswd) {
       return "Cache-Control: public set on page containing sensitive forms.";
     }
@@ -681,10 +703,10 @@ export const detectors: Record<string, DetectFn> = {
     // search/comment forms are all POST and all completely public. Only
     // flag a POST form that also collects a genuinely sensitive field.
     const sensitiveFieldRe =
-      /<input[^>]*(?:name|id)\s*=\s*["'][^"']*(?:card|ssn|cvv|account[-_]?number)[^"']*["']/i;
+      /<input[^>]{0,2000}(?:name|id)\s*=\s*["'][^"']*(?:card|ssn|cvv|account[-_]?number)[^"']*["']/i;
     const postForms =
       body.match(
-        /<form\b[^>]*method\s*=\s*["']?post[^>]*>[\s\S]*?<\/form\s*>/gi,
+        /<form\b[^>]{0,2000}method\s*=\s*["']?post[^>]{0,2000}>[\s\S]*?<\/form\s*>/gi,
       ) || [];
     const hasSensitiveForm = postForms.some((f) => sensitiveFieldRe.test(f));
     if (!hasSensitiveForm) return null;
@@ -707,9 +729,9 @@ export const detectors: Record<string, DetectFn> = {
     // <form action=...> is covered separately by form-action-http.
     const srcRefs =
       body.match(
-        /<(?:script|img|iframe|video|audio|source|object|embed)\b[^>]*\ssrc=["']http:\/\/(?!localhost)[^"']+["']/gi,
+        /<(?:script|img|iframe|video|audio|source|object|embed)\b[^>]{0,2000}\ssrc=["']http:\/\/(?!localhost)[^"']+["']/gi,
       ) || [];
-    const stylesheetRefs = (body.match(/<link\b[^>]*>/gi) || []).filter(
+    const stylesheetRefs = (body.match(/<link\b[^>]{0,2000}>/gi) || []).filter(
       (t) =>
         /\brel=["']?stylesheet["']?/i.test(t) &&
         /\shref=["']http:\/\/(?!localhost)[^"']+["']/i.test(t),
@@ -726,7 +748,9 @@ export const detectors: Record<string, DetectFn> = {
   "form-action-http": (url, _headers, body) => {
     if (!url.startsWith("https://")) return null;
     const httpForms =
-      body.match(/<form[^>]*action=["']http:\/\/[^"']+["'][^>]*>/gi) || [];
+      body.match(
+        /<form[^>]{0,2000}action=["']http:\/\/[^"']+["'][^>]{0,2000}>/gi,
+      ) || [];
     return httpForms.length > 0
       ? `Found ${httpForms.length} form(s) submitting over HTTP.`
       : null;
@@ -736,7 +760,9 @@ export const detectors: Record<string, DetectFn> = {
 
   "sri-missing": (_url, _headers, body) => {
     const externalScripts =
-      body.match(/<script[^>]+src=["']https?:\/\/[^"']+["'][^>]*>/gi) || [];
+      body.match(
+        /<script[^>]{1,2000}src=["']https?:\/\/[^"']+["'][^>]{0,2000}>/gi,
+      ) || [];
     const noSRI = externalScripts.filter((t) => {
       if (t.toLowerCase().includes("integrity=")) return false;
       // Analytics/payment/CAPTCHA vendors serve these scripts mutable and
@@ -757,7 +783,7 @@ export const detectors: Record<string, DetectFn> = {
   "sri-stylesheet-missing": (_url, _headers, body) => {
     const extStyles =
       body.match(
-        /<link[^>]+rel=["']stylesheet["'][^>]+href=["']https?:\/\/[^"']+["'][^>]*>/gi,
+        /<link[^>]{1,2000}rel=["']stylesheet["'][^>]{1,2000}href=["']https?:\/\/[^"']+["'][^>]{0,2000}>/gi,
       ) || [];
     const noSRI = extStyles.filter((t) => {
       if (t.toLowerCase().includes("integrity=")) return false;
@@ -910,7 +936,7 @@ export const detectors: Record<string, DetectFn> = {
   "csp-object-src-unsafe": (_url, headers) => {
     const csp = h(headers, "content-security-policy");
     if (!csp) return null;
-    const objectSrc = csp.match(/object-src[^;]*/i)?.[0] || "";
+    const objectSrc = getCspDirective(csp, "object-src");
     if (!objectSrc) return null;
     const values = objectSrc.replace(/^object-src\s+/i, "").trim();
     if (values === "*" || /^(https?:|data:|\*)/i.test(values)) {
@@ -922,7 +948,7 @@ export const detectors: Record<string, DetectFn> = {
   "csp-script-src-self-only": (_url, headers) => {
     const csp = h(headers, "content-security-policy");
     if (!csp) return null;
-    const scriptSrc = csp.match(/script-src[^;]*/i)?.[0] || "";
+    const scriptSrc = getCspDirective(csp, "script-src");
     if (!scriptSrc) return null;
     const sources = scriptSrc.replace(/^script-src\s+/i, "").trim();
     if (sources === "'self'") {
@@ -1223,7 +1249,7 @@ export const detectors: Record<string, DetectFn> = {
   },
   "meta-redirect-no-url": (_url, _headers, body) => {
     if (!body) return null;
-    const m = body.match(/<meta\s+http-equiv=["\']?refresh[^>]*>/i);
+    const m = body.match(/<meta\s+http-equiv=["\']?refresh[^>]{0,2000}>/i);
     if (!m) return null;
     const content = m[0].match(/content=["\']?([^"'>]*)["\']?/i)?.[1]?.trim();
     if (content === undefined) return null;
@@ -1242,14 +1268,14 @@ export const detectors: Record<string, DetectFn> = {
   },
   "autocomplete-username": (_url, _headers, body) => {
     if (!body) return null;
-    const forms = body.match(/<form\b[^>]*>[\s\S]*?<\/form\s*>/gi) || [];
+    const forms = body.match(/<form\b[^>]{0,2000}>[\s\S]*?<\/form\s*>/gi) || [];
     for (const form of forms) {
       // Only meaningful inside an actual login form: a username/email
       // input on its own (newsletter signup, contact form) has no
       // password manager autofill role to hint at.
-      if (!/<input[^>]*type\s*=\s*["']?password/i.test(form)) continue;
+      if (!/<input[^>]{0,2000}type\s*=\s*["']?password/i.test(form)) continue;
       const userInput = form.match(
-        /<input[^>]*(?:name|id)\s*=\s*["']?(?:username|user|login|email)[^>]*>/i,
+        /<input[^>]{0,2000}(?:name|id)\s*=\s*["']?(?:username|user|login|email)[^>]{0,2000}>/i,
       )?.[0];
       if (userInput && !/autocomplete\s*=\s*["']?username/i.test(userInput)) {
         return 'Login input found without autocomplete="username".';
@@ -1266,7 +1292,9 @@ export const detectors: Record<string, DetectFn> = {
     // src is an HTTPS (or base64 placeholder) image but whose data-src
     // lazy-load attribute happened to be protocol-relative fired a false
     // positive on an attribute that was never actually rendered as the src.
-    const m = body.match(/<img\b[^>]*\ssrc=["']?(\/\/[^/"'\s>][^"'\s>]*)/i);
+    const m = body.match(
+      /<img\b[^>]{0,2000}\ssrc=["']?(\/\/[^/"'\s>][^"'\s>]*)/i,
+    );
     if (m) {
       return `Image uses protocol-relative URL (${m[1]}) which fails on http:// fallback.`;
     }
@@ -1275,7 +1303,7 @@ export const detectors: Record<string, DetectFn> = {
   "open-graph-image-not-https": (_url, _headers, body) => {
     if (!body) return null;
     const m = body.match(
-      /<meta[^>]+property=["\']?og:image["\']?[^>]*content=["\']?http:\/\//i,
+      /<meta[^>]{1,2000}property=["\']?og:image["\']?[^>]{0,2000}content=["\']?http:\/\//i,
     );
     if (m)
       return "OG image is HTTP (will fail social previews on HTTPS sites).";
@@ -1289,7 +1317,7 @@ export const detectors: Record<string, DetectFn> = {
     // doesn't require an inline <meta charset> tag as well.
     const ct = h(headers, "content-type") || "";
     if (/charset\s*=/i.test(ct)) return null;
-    if (!/<meta[^>]+charset=/i.test(body)) {
+    if (!/<meta[^>]{1,2000}charset=/i.test(body)) {
       return "<meta charset> missing (XSS via UTF-7/inherited encoding risk).";
     }
     return null;
@@ -1303,8 +1331,9 @@ export const detectors: Record<string, DetectFn> = {
   },
   "inline-style-attr": (_url, _headers, body) => {
     if (!body) return null;
-    if (/<[a-z][a-z0-9]*[^>]*\bstyle\s*=/i.test(body)) {
-      const matches = body.match(/<[a-z][a-z0-9]*[^>]*\bstyle\s*=/gi) || [];
+    if (/<[a-z][a-z0-9]*[^>]{0,2000}\bstyle\s*=/i.test(body)) {
+      const matches =
+        body.match(/<[a-z][a-z0-9]*[^>]{0,2000}\bstyle\s*=/gi) || [];
       if (matches.length >= 3) {
         return `${matches.length} elements have inline style= attributes (CSP hygiene).`;
       }
@@ -1314,7 +1343,8 @@ export const detectors: Record<string, DetectFn> = {
   "target-blank-no-noopener": (_url, _headers, body) => {
     if (!body) return null;
     const links =
-      body.match(/<a\b[^>]*target=["\']?_blank["\']?[^>]*>/gi) || [];
+      body.match(/<a\b[^>]{0,2000}target=["\']?_blank["\']?[^>]{0,2000}>/gi) ||
+      [];
     // noreferrer implies noopener (severs window.opener too, plus omits the
     // Referer header) -- a link with rel="noreferrer" and no literal
     // "noopener" token is not vulnerable, so it must not be flagged.
@@ -1389,7 +1419,7 @@ export const detectors: Record<string, DetectFn> = {
     } catch {
       return null;
     }
-    const iframes = body.match(/<iframe\b[^>]*>/gi) || [];
+    const iframes = body.match(/<iframe\b[^>]{0,2000}>/gi) || [];
     const thirdParty = iframes.filter(
       (t) =>
         /src=["\']?https?:\/\//i.test(t) &&
