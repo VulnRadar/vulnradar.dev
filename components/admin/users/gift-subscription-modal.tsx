@@ -192,7 +192,7 @@ export function GiftSubscriptionModal({
                 <Button
                   variant="outline"
                   size="sm"
-                  className="w-full h-8 text-xs text-destructive dark:text-red-400 border-destructive/30 hover:bg-destructive/5 hover:border-destructive/50 gap-1.5"
+                  className="w-full h-8 text-xs text-destructive border-destructive/30 hover:bg-destructive/5 hover:border-destructive/50 gap-1.5"
                   onClick={() => setConfirmRevoke(true)}
                   disabled={isLoading}
                 >

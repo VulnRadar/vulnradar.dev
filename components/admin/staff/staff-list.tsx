@@ -371,7 +371,7 @@ export function StaffList({
                         );
                       })()}
                       {selectedAdmin.totp_enabled && (
-                        <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-2 py-0.5 font-medium">
+                        <Badge className="bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20 text-[10px] px-2 py-0.5 font-medium">
                           2FA
                         </Badge>
                       )}
