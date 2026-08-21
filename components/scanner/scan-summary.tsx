@@ -22,6 +22,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { copyToClipboard } from "@/lib/ui/clipboard";
+import { formatRelativeTime as getRelativeTime } from "@/lib/ui/relative-time";
 import { SeverityDistribution } from "@/components/scanner/severity-badge";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
 import { StatIcon, type StatTone } from "@/components/shared/stat-icon";
@@ -69,18 +70,6 @@ const VERDICT = {
 function buildAskPrompt(result: ScanResult, summary: string): string {
   const s = result.summary;
   return `Let's talk about this scan's summary for ${result.url}:\n\n"${summary}"\n\n(danger score ${result.dangerScore ?? "n/a"}/10, ${s.critical} critical / ${s.high} high / ${s.medium} medium / ${s.low} low / ${s.info} info findings)`;
-}
-
-function getRelativeTime(date: Date): string {
-  const diffMs = Date.now() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-  if (diffMins < 1) return "just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString();
 }
 
 export function Stat({

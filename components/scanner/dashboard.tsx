@@ -15,6 +15,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
+import { formatRelativeTime } from "@/lib/ui/relative-time";
 import { API, ROUTES } from "@/lib/config/constants";
 import {
   SEVERITY_ORDER,
@@ -69,15 +70,6 @@ function getHostname(url: string) {
   } catch {
     return url;
   }
-}
-
-function formatRelativeTime(d: string) {
-  const diff = Date.now() - new Date(d).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
 }
 
 function fmtDay(day: string) {

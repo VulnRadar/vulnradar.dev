@@ -20,6 +20,38 @@ export function formatAge(iso?: string | null): string | null {
 }
 
 /**
+ * Compact "time ago" label for list/table rows (history, assets, shares,
+ * public-scans, teams, badges, compare, admin, the dashboard). Short form
+ * ("just now", "5m ago", "3h ago", "2d ago") and, past a week, an absolute date
+ * ("Aug 12", or "Aug 12, 2026" once it's a prior year). Accepts a string or a
+ * Date so every caller can share it. The single source for this format --
+ * previously ~10 near-identical copies had drifted (some read "0m ago" instead
+ * of "just now", one never fell back to a date and read "92d ago" forever, and
+ * the date fallback varied between "Aug 12" and "8/12/2026").
+ */
+export function formatRelativeTime(input: string | Date): string {
+  const then =
+    input instanceof Date ? input.getTime() : new Date(input).getTime();
+  if (Number.isNaN(then)) return "";
+  const diffMs = Date.now() - then;
+  if (diffMs < 60_000) return "just now";
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  const d = new Date(then);
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    ...(d.getFullYear() !== new Date().getFullYear()
+      ? { year: "numeric" }
+      : {}),
+  });
+}
+
+/**
  * Availability label for a refresh-capped panel (subdomain discovery, DNS
  * records, port sweep). Given the absolute time the next refresh becomes
  * available, reads "Available to refresh" once that moment has passed, or
