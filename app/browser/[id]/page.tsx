@@ -316,11 +316,11 @@ export default function BrowserViewerPage({ params }: PageProps) {
             className="h-5 w-5 shrink-0"
             alt={APP_NAME}
           />
-          <span className="text-sm font-mono font-semibold text-foreground tracking-tight hidden md:inline">
+          <span className="text-sm font-semibold text-foreground tracking-tight hidden md:inline">
             {APP_NAME}
           </span>
           <span className="hidden md:inline text-border/60">·</span>
-          <span className="text-[13px] text-muted-foreground hidden md:inline font-medium">
+          <span className="text-xs text-muted-foreground hidden md:inline font-medium">
             Live Browser
           </span>
         </div>
@@ -356,13 +356,13 @@ export default function BrowserViewerPage({ params }: PageProps) {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[hsl(var(--success))] opacity-60" />
               <span className="relative inline-flex rounded-full h-2 w-2 bg-[hsl(var(--success))]" />
             </span>
-            <span className="text-[11px] font-medium">Live</span>
+            <span className="text-xs font-medium">Live</span>
           </div>
         )}
 
         {/* Timer + extend */}
         {autoCloseCountdown !== null ? (
-          <div className="shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-mono tabular-nums bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border border-[hsl(var(--warning))]/20">
+          <div className="shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium tabular-nums bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border border-[hsl(var(--warning))]/20">
             <Timer className="h-3 w-3" />
             Closing in {autoCloseCountdown}s
           </div>
@@ -370,7 +370,7 @@ export default function BrowserViewerPage({ params }: PageProps) {
           <div className="shrink-0 flex items-center gap-1">
             <div
               className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-mono tabular-nums border transition-colors",
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium tabular-nums border transition-colors",
                 expiresCritical
                   ? "bg-destructive/10 text-destructive border-destructive/20 animate-pulse"
                   : expiresSoon
@@ -405,14 +405,16 @@ export default function BrowserViewerPage({ params }: PageProps) {
 
         {/* Network logs toggle */}
         {isLive && (
-          <button
+          <Button
+            variant={showLogs ? "secondary" : "outline"}
+            size="sm"
             onClick={() => setShowLogs((v) => !v)}
             title={showLogs ? "Hide network logs" : "Show network logs"}
+            aria-pressed={showLogs}
             className={cn(
-              "shrink-0 flex items-center gap-1.5 h-8 px-2.5 rounded-md border text-[11px] font-medium transition-colors",
-              showLogs
-                ? "bg-primary/10 border-primary/30 text-primary"
-                : "border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground",
+              "shrink-0 h-8 gap-1.5 text-xs",
+              showLogs &&
+                "bg-primary/10 border-primary/30 text-primary hover:bg-primary/15",
             )}
           >
             <Activity className="h-3.5 w-3.5" />
@@ -420,7 +422,7 @@ export default function BrowserViewerPage({ params }: PageProps) {
             {networkRequests.length > 0 && (
               <span
                 className={cn(
-                  "hidden sm:inline px-1 py-0.5 rounded text-[10px] font-mono tabular-nums",
+                  "hidden sm:inline rounded px-1 py-0.5 text-[10px] tabular-nums",
                   showLogs
                     ? "bg-primary/15 text-primary"
                     : "bg-muted text-muted-foreground",
@@ -429,7 +431,7 @@ export default function BrowserViewerPage({ params }: PageProps) {
                 {networkRequests.length}
               </span>
             )}
-          </button>
+          </Button>
         )}
 
         {/* End session */}
@@ -456,8 +458,8 @@ export default function BrowserViewerPage({ params }: PageProps) {
 
       {/* Safety notice, always visible, no close button */}
       {!ended && (
-        <div className="shrink-0 flex items-center gap-2 px-4 py-1.5 bg-[hsl(var(--warning))]/10 border-b border-[hsl(var(--warning))]/15 text-[hsl(var(--warning))] text-[11px] leading-snug">
-          <AlertTriangle className="h-3 w-3 shrink-0" />
+        <div className="shrink-0 flex items-center gap-2 px-4 py-1.5 bg-[hsl(var(--warning))]/10 border-b border-[hsl(var(--warning))]/15 text-[hsl(var(--warning))] text-xs leading-snug">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
           <span>
             <span className="font-semibold">Remote session:</span> this browser
             runs on a secure cloud server, not your device. Do not enter real
@@ -585,7 +587,7 @@ export default function BrowserViewerPage({ params }: PageProps) {
                 Network
               </span>
               {networkRequests.length > 0 && (
-                <span className="text-[10px] text-muted-foreground font-mono ml-1">
+                <span className="ml-1 text-[11px] text-muted-foreground tabular-nums">
                   {networkRequests.length} requests
                 </span>
               )}
