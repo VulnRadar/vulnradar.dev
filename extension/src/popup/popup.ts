@@ -12,6 +12,7 @@ import { refreshMe } from "../lib/auth";
 import { api } from "../lib/api";
 import { getHistory, refreshHistoryFromServer } from "../lib/scan";
 import type { ScanOutcome } from "../lib/scan";
+import { classifyScanTarget } from "../lib/scan-target";
 import { applyTheme } from "../lib/theme";
 import { VULNRADAR } from "../lib/constants";
 import { sendTabMessage, TabMessageTimeoutError } from "../lib/messaging";
@@ -78,6 +79,9 @@ interface State {
   settings: Settings;
   rateLimitInfo: RateLimitInfo | null;
   copyConfirm: boolean;
+  // Set when the active tab isn't a useful target (a search engine / results
+  // page). The popup warns before scanning it, but "Scan anyway" still runs.
+  targetWarning: string | null;
   // Fetched once from the public, unauthenticated GET /api/version -- the
   // version of the VulnRadar instance VULNRADAR.apiHost points at, not the
   // account you're connected to. null until the request resolves (or fails).
@@ -97,6 +101,7 @@ const state: State = {
   settings: DEFAULT_SETTINGS,
   rateLimitInfo: null,
   copyConfirm: false,
+  targetWarning: null,
   appVersion: null,
 };
 
@@ -145,10 +150,39 @@ function App(): TemplateResult {
       isAuthed: !!state.me,
       mode: state.mode,
       families: state.settings.families,
-      onScan: triggerScan,
+      onScan: () => triggerScan(),
       onModeChange: setMode,
       onCopyUrl: copyUrl,
     })}
+    ${
+      state.targetWarning
+        ? html`
+            <div class="target-warning">
+              <div class="target-warning-text">
+                <span class="target-warning-icon">&#9888;</span>
+                <span>${state.targetWarning}</span>
+              </div>
+              <div class="target-warning-actions">
+                <button
+                  class="target-warning-proceed"
+                  @click=${() => triggerScan(true)}
+                >
+                  Scan anyway
+                </button>
+                <button
+                  class="target-warning-dismiss"
+                  @click=${() => {
+                    state.targetWarning = null;
+                    scheduleRender();
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          `
+        : null
+    }
     ${state.result ? ResultPanel(state.result, state.resultIsStale) : null}
     ${
       state.error
@@ -284,6 +318,25 @@ function ResultPanel(r: ScanResult, isStale: boolean): TemplateResult {
 
   return html`
     <div class="result" style="border-left: 3px solid ${scoreColor}">
+      ${
+        r.redirect
+          ? html`
+              <div class="result-redirect">
+                <span class="target-warning-icon">&#9888;</span>
+                <div>
+                  <div class="result-redirect-title">
+                    ${
+                      r.redirect.kind === "login"
+                        ? "This page is behind a login"
+                        : "The scanned page redirected"
+                    }
+                  </div>
+                  <div class="result-redirect-reason">${r.redirect.reason}</div>
+                </div>
+              </div>
+            `
+          : null
+      }
       <div class="result-top">
         <div class="result-score-wrap">
           <span class="score-num" style="color: ${scoreColor}">${score}</span>
@@ -504,9 +557,20 @@ async function copyReport() {
   }
 }
 
-async function triggerScan() {
+async function triggerScan(force = false) {
   // No shouldAutoScanPolicy() check here — manual scans always proceed.
   if (state.isScanning || !state.url || !state.me) return;
+  // Warn (don't block) before scanning a non-target like a search engine
+  // results page. The warning card's "Scan anyway" calls triggerScan(true).
+  if (!force) {
+    const classification = classifyScanTarget(state.url);
+    if (!classification.scannable) {
+      state.targetWarning = classification.reason ?? null;
+      scheduleRender();
+      return;
+    }
+  }
+  state.targetWarning = null;
   state.isScanning = true;
   state.error = null;
   state.result = null;

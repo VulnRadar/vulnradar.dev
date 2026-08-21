@@ -11,6 +11,7 @@
  */
 
 import type { DnsRecords } from "./dns-records";
+import type { ScanRedirectInfo } from "./scan-target-classify";
 import type { DiscoveryResult } from "./subdomain-types";
 import type { FindingRemediation } from "./remediation";
 import type { PortScanResult } from "./port-scan";
@@ -255,6 +256,15 @@ export interface ScanResult {
    * missing finding from that area as a clean result.
    */
   incomplete?: string[];
+  /**
+   * Set when the fetch followed a redirect to a different page than the one the
+   * user asked for (e.g. an auth-gated page bouncing to /login). Carries the
+   * requested and final URLs plus a human-readable reason, so the UI can warn
+   * that this scan is of the page it landed on, not the exact URL entered.
+   * Lives in scan_history.result_meta; absent when no meaningful redirect
+   * happened. See lib/scanner/scan-target-classify.ts.
+   */
+  redirect?: ScanRedirectInfo;
   /** True when the scan ran against an authenticated session (see scan/authenticated/route.ts). */
   authenticated?: boolean;
   /**

@@ -11,6 +11,7 @@
 
 import { runSyncChecks } from "./engine";
 import { runAsyncChecksDetailed, type AsyncCheckResult } from "./async-checks";
+import { classifyRedirect } from "./scan-target-classify";
 import { readSslGrade } from "./ssl-grade";
 import { readThreatIntel } from "./reputation-lookup";
 import { readDnsRecords } from "./dns-records";
@@ -843,6 +844,16 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
           ? { softwareInventory: softwareInventory.inventory }
           : {}),
         ...(incomplete.length > 0 ? { incomplete } : {}),
+        // If the fetch followed a redirect to a different page (e.g. an
+        // auth-gated page bouncing to /login), record what happened so the UI
+        // can warn "this scan is of the page it landed on, not the one you
+        // asked for". finalScanUrl is only set when it actually differed.
+        ...(() => {
+          const redirect = finalScanUrl
+            ? classifyRedirect(normalizedUrl, finalScanUrl)
+            : null;
+          return redirect ? { redirect } : {};
+        })(),
       },
       finalUrl: finalScanUrl,
     });

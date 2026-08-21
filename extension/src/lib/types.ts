@@ -134,6 +134,16 @@ export interface ScanResult {
   readonly engineConfidence?: number;
   readonly scanHistoryId?: number;
   readonly notes?: string;
+  /** Set when the scan followed a redirect away from the requested URL (e.g. a
+   *  page behind a login bouncing to /login). Surfaced from the server's
+   *  result_meta so the popup can warn this is the landed page, not the one
+   *  asked for. */
+  readonly redirect?: {
+    readonly requestedUrl: string;
+    readonly finalUrl: string;
+    readonly kind: "login" | "other";
+    readonly reason: string;
+  };
 }
 
 /**

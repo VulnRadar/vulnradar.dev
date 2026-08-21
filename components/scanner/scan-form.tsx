@@ -15,6 +15,7 @@ import {
   Lock,
   Camera,
   Network,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,6 +47,7 @@ import {
   type InlineAuthValue,
 } from "@/components/scanner/inline-auth-form";
 import { BULK_SCAN_CLIENT_URL_LIMIT } from "@/lib/config/constants";
+import { classifyScanTarget } from "@/lib/scanner/scan-target-classify";
 import { useAuth } from "@/components/providers/auth-provider";
 export type ScanMode = "quick" | "deep" | "bulk";
 export type { InlineAuthValue };
@@ -312,6 +314,9 @@ export function ScanForm({
         : me.bulkScanUrls;
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
+  // Set when the entered URL isn't a useful target (a search engine / results
+  // page). We don't block -- the user can scan anyway -- we just warn first.
+  const [targetWarning, setTargetWarning] = useState<string | null>(null);
   const [mode, setMode] = useState<ScanMode>(() =>
     parseModeFromQuery(getQueryParam("mode")),
   );
@@ -475,6 +480,21 @@ export function ScanForm({
       setError("Enter a valid domain or IPv4 address.");
       return;
     }
+    // Warn (but don't block) before scanning a non-target like a search engine
+    // results page. "Scan anyway" in the warning banner calls dispatchScan()
+    // directly, so reaching here with a warning already showing still proceeds.
+    const classification = classifyScanTarget(url);
+    if (!classification.scannable && targetWarning === null) {
+      setTargetWarning(
+        classification.reason ?? "This may not be a useful scan target.",
+      );
+      return;
+    }
+    dispatchScan();
+  }
+
+  function dispatchScan() {
+    setTargetWarning(null);
     const familyList = CHECK_FAMILIES.map((f) => f.id).filter(
       (id) => enabledFamilies.has(id) && !autoDisabled.has(id),
     );
@@ -659,6 +679,7 @@ export function ScanForm({
                 onChange={(e) => {
                   setUrl(e.target.value);
                   if (error) setError("");
+                  if (targetWarning) setTargetWarning(null);
                 }}
                 disabled={isScanning}
                 className={cn(
@@ -978,6 +999,42 @@ export function ScanForm({
               className="ml-auto"
             />
           </div>
+
+          {targetWarning && (
+            <div className="border-t border-[hsl(var(--warning))]/20 bg-[hsl(var(--warning))]/5 px-3 py-2.5">
+              <div className="flex items-start gap-2">
+                <AlertTriangle
+                  aria-hidden
+                  className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--warning))]"
+                />
+                <div className="flex-1 space-y-2">
+                  <p className="text-xs leading-snug text-foreground">
+                    {targetWarning}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      onClick={dispatchScan}
+                    >
+                      Scan anyway
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs"
+                      onClick={() => setTargetWarning(null)}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {(error || targetNote) && (
             <div className="border-t border-border px-3 py-2">

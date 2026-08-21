@@ -826,3 +826,69 @@ button:disabled {
   align-items: center;
   gap: 8px;
 }
+
+/* Pre-scan "this isn't a useful target" warning (search engines, etc.). */
+.target-warning {
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--vr-warning) 40%, transparent);
+  border-radius: var(--vr-radius);
+  background: color-mix(in srgb, var(--vr-warning) 8%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.target-warning-text {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--vr-text);
+}
+.target-warning-icon {
+  color: var(--vr-warning);
+  flex-shrink: 0;
+}
+.target-warning-actions {
+  display: flex;
+  gap: 8px;
+}
+.target-warning-proceed,
+.target-warning-dismiss {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: var(--vr-radius);
+  cursor: pointer;
+  border: 1px solid var(--vr-border);
+  background: var(--vr-card);
+  color: var(--vr-text);
+}
+.target-warning-dismiss {
+  border-color: transparent;
+  background: transparent;
+  color: var(--vr-text-muted);
+}
+
+/* Post-scan notice: the scan followed a redirect to a different page. */
+.result-redirect {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--vr-warning) 35%, transparent);
+  border-radius: var(--vr-radius);
+  background: color-mix(in srgb, var(--vr-warning) 7%, transparent);
+}
+.result-redirect-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vr-text);
+}
+.result-redirect-reason {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--vr-text-muted);
+  margin-top: 2px;
+}

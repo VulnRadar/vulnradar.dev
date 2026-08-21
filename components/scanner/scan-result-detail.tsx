@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import dynamic from "next/dynamic";
+import { AlertTriangle } from "lucide-react";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 import { ScanSummary } from "./scan-summary";
 import { ResultsList } from "./results-list";
@@ -104,6 +105,28 @@ export function ScanResultDetail({
 
   return (
     <>
+      {result.redirect && (
+        <div className="flex items-start gap-2.5 rounded-lg border border-[hsl(var(--warning))]/25 bg-[hsl(var(--warning))]/5 px-3.5 py-3">
+          <AlertTriangle
+            aria-hidden
+            className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--warning))]"
+          />
+          <div className="min-w-0 space-y-1">
+            <p className="text-sm font-medium text-foreground">
+              {result.redirect.kind === "login"
+                ? "This page is behind a login"
+                : "The scanned page redirected"}
+            </p>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {result.redirect.reason}
+            </p>
+            <p className="break-all font-mono text-[11px] text-muted-foreground/70">
+              {result.redirect.requestedUrl} &rarr; {result.redirect.finalUrl}
+            </p>
+          </div>
+        </div>
+      )}
+
       <ScanSummary result={result} hideHeader hideDuration={hideDuration} />
 
       {afterSummary}

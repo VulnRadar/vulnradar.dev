@@ -19,6 +19,8 @@ export interface HistoryDetailResponse {
   dangerScore?: number;
   engineConfidence?: number;
   incomplete?: string[];
+  /** From scan_history.result_meta: a redirect away from the requested URL. */
+  redirect?: ScanResult["redirect"];
   /** From scan_history.result_meta once a "Generate AI summary" action has run. */
   aiSummary?: string;
   /** From scan_history.result_meta when an opt-in page screenshot was captured. */
@@ -67,6 +69,7 @@ export function mapHistoryDetailResponse(
     dangerScore: data.dangerScore,
     engineConfidence: data.engineConfidence,
     incomplete: data.incomplete,
+    redirect: data.redirect,
     aiSummary: data.aiSummary,
     screenshot: data.screenshot,
     dnsRecords: data.dnsRecords,
