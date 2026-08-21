@@ -105,7 +105,13 @@ export function ScanResultDetail({
 
   return (
     <>
-      {result.redirect && (
+      {/* Suppress the redirect warning for an authenticated scan: if the user
+          supplied a login and it held (the target returned 200 as the real
+          page, so this scan IS of the page they wanted), telling them it's
+          "behind a login" would be wrong. Authenticated scans go through a
+          different executor that doesn't record a redirect at all, so this is a
+          belt-and-suspenders guard for any result that carries both. */}
+      {result.redirect && !result.authenticated && (
         <div className="flex items-start gap-2.5 rounded-lg border border-[hsl(var(--warning))]/25 bg-[hsl(var(--warning))]/5 px-3.5 py-3">
           <AlertTriangle
             aria-hidden

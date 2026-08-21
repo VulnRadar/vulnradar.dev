@@ -3080,6 +3080,26 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
           );
         });
 
+      // refunded_at: set when a Stripe charge.refunded / charge.dispute.created
+      // for the purchase's PaymentIntent claws the credit back (see the Stripe
+      // webhook's reverse*CreditPurchase calls). NULL-guarded so a reversal
+      // runs at most once per purchase even if both a dispute and a later
+      // refund fire.
+      await pool
+        .query(
+          `
+        ALTER TABLE ai_credit_purchases ADD COLUMN IF NOT EXISTS refunded_at TIMESTAMPTZ;
+        ALTER TABLE github_credit_purchases ADD COLUMN IF NOT EXISTS refunded_at TIMESTAMPTZ;
+        ALTER TABLE browserbase_credit_purchases ADD COLUMN IF NOT EXISTS refunded_at TIMESTAMPTZ;
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add refunded_at to credit purchase ledgers (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
       // ════════════════════════════════════════════════════════════════
       // DOMAIN OWNERSHIP VERIFICATION - domains
       //

@@ -164,6 +164,33 @@ export async function creditAiCreditPurchase(
 }
 
 /**
+ * Reverses an AI-credit purchase when its Stripe charge is refunded or disputed
+ * (see the Stripe webhook). Claims the reversal atomically via the refunded_at
+ * NULL-guard so it runs at most once per purchase, then deducts the granted
+ * tokens from the balance floored at 0 -- if the user already spent some, we
+ * only claw back what's left, never driving the balance negative. Returns
+ * reversed:false when there is no matching, not-already-refunded purchase (e.g.
+ * a subscription-invoice refund, or a duplicate event).
+ */
+export async function reverseAiCreditPurchase(
+  paymentIntentId: string,
+): Promise<{ reversed: boolean; userId?: number; tokens?: number }> {
+  const claimed = await pool.query<{ user_id: number; tokens: number }>(
+    `UPDATE ai_credit_purchases SET refunded_at = NOW()
+       WHERE payment_intent_id = $1 AND refunded_at IS NULL
+       RETURNING user_id, tokens`,
+    [paymentIntentId],
+  );
+  const row = claimed.rows[0];
+  if (!row) return { reversed: false };
+  await pool.query(
+    `UPDATE users SET ai_credit_balance = GREATEST(ai_credit_balance - $2, 0) WHERE id = $1`,
+    [row.user_id, row.tokens],
+  );
+  return { reversed: true, userId: row.user_id, tokens: Number(row.tokens) };
+}
+
+/**
  * Adds `tokens` (the REAL usage the AI provider reported, or a
  * character-length estimate when real usage wasn't available -- see the
  * doc comments in app/api/v3/ai/chat/route.ts) to the user's counter for

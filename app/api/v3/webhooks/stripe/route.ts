@@ -12,11 +12,20 @@ import {
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "@/lib/billing/subscription-status";
 import { grantPremiumBadge, revokePremiumBadge } from "@/lib/billing/badges";
 import { getAiCreditTier } from "@/lib/billing/ai-credit-catalog";
-import { creditAiCreditPurchase } from "@/lib/billing/ai-usage";
+import {
+  creditAiCreditPurchase,
+  reverseAiCreditPurchase,
+} from "@/lib/billing/ai-usage";
 import { getGithubCreditTier } from "@/lib/billing/github-credit-catalog";
-import { creditGithubCreditPurchase } from "@/lib/billing/github-review-usage";
+import {
+  creditGithubCreditPurchase,
+  reverseGithubCreditPurchase,
+} from "@/lib/billing/github-review-usage";
 import { getBrowserbaseCreditTier } from "@/lib/billing/browserbase-credit-catalog";
-import { creditBrowserbaseCreditPurchase } from "@/lib/billing/browserbase-usage";
+import {
+  creditBrowserbaseCreditPurchase,
+  reverseBrowserbaseCreditPurchase,
+} from "@/lib/billing/browserbase-usage";
 import pool from "@/lib/database/db";
 import Stripe from "stripe";
 
@@ -843,6 +852,84 @@ export async function POST(req: NextRequest) {
               `[Stripe] payment_intent.succeeded has browserbaseCreditTierId but missing/invalid userId or an unknown tier (event ${event.id})`,
             );
           }
+        }
+        break;
+      }
+
+      case "charge.refunded": {
+        // Claw back a one-time credit purchase whose charge was fully refunded.
+        // Partial refunds are logged, not proportionally reversed (rare, and
+        // splitting across three token/second ledgers is error-prone). A refund
+        // of a subscription invoice matches no credit purchase and is a no-op
+        // here -- the subscription lifecycle owns plan/badge.
+        const charge = event.data.object as Stripe.Charge;
+        if (!charge.refunded) {
+          console.log(
+            `[Stripe] Partial refund on charge ${charge.id}; not auto-reversing credits (event ${event.id})`,
+          );
+          break;
+        }
+        const refundPi =
+          typeof charge.payment_intent === "string"
+            ? charge.payment_intent
+            : (charge.payment_intent?.id ?? null);
+        if (!refundPi) break;
+        const [aiR, ghR, bbR] = await Promise.all([
+          reverseAiCreditPurchase(refundPi),
+          reverseGithubCreditPurchase(refundPi),
+          reverseBrowserbaseCreditPurchase(refundPi),
+        ]);
+        if (aiR.reversed)
+          console.log(
+            `[Stripe] Refund clawed back ${aiR.tokens} AI tokens from user ${aiR.userId} (payment_intent ${refundPi}, event ${event.id})`,
+          );
+        if (ghR.reversed)
+          console.log(
+            `[Stripe] Refund clawed back ${ghR.tokens} GitHub review tokens from user ${ghR.userId} (event ${event.id})`,
+          );
+        if (bbR.reversed)
+          console.log(
+            `[Stripe] Refund clawed back ${bbR.seconds}s of Browserbase credit from user ${bbR.userId} (event ${event.id})`,
+          );
+        if (!aiR.reversed && !ghR.reversed && !bbR.reversed)
+          console.log(
+            `[Stripe] charge.refunded for ${refundPi} matched no credit purchase (likely a subscription refund) (event ${event.id})`,
+          );
+        break;
+      }
+
+      case "charge.dispute.created": {
+        // A chargeback: the customer is pulling the money back. Treat it like a
+        // refund for one-time credits (the refunded_at guard makes this
+        // idempotent with any later charge.refunded). Plan/badge are left to the
+        // subscription lifecycle and admin review, since a dispute can be won.
+        // Logged at error level so a human sees it.
+        const dispute = event.data.object as Stripe.Dispute;
+        const disputePi =
+          typeof dispute.payment_intent === "string"
+            ? dispute.payment_intent
+            : (dispute.payment_intent?.id ?? null);
+        console.error(
+          `[Stripe] Dispute opened (reason: ${dispute.reason}, amount ${dispute.amount} ${dispute.currency}) on payment_intent ${disputePi} (event ${event.id})`,
+        );
+        if (disputePi) {
+          const [aiR, ghR, bbR] = await Promise.all([
+            reverseAiCreditPurchase(disputePi),
+            reverseGithubCreditPurchase(disputePi),
+            reverseBrowserbaseCreditPurchase(disputePi),
+          ]);
+          if (aiR.reversed)
+            console.log(
+              `[Stripe] Dispute clawed back ${aiR.tokens} AI tokens from user ${aiR.userId} (event ${event.id})`,
+            );
+          if (ghR.reversed)
+            console.log(
+              `[Stripe] Dispute clawed back ${ghR.tokens} GitHub review tokens from user ${ghR.userId} (event ${event.id})`,
+            );
+          if (bbR.reversed)
+            console.log(
+              `[Stripe] Dispute clawed back ${bbR.seconds}s of Browserbase credit from user ${bbR.userId} (event ${event.id})`,
+            );
         }
         break;
       }

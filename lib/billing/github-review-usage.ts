@@ -106,6 +106,29 @@ export async function creditGithubCreditPurchase(
 }
 
 /**
+ * Reverses a GitHub-review-credit purchase on a Stripe refund/dispute. Mirrors
+ * reverseAiCreditPurchase exactly (refunded_at NULL-guard for at-most-once,
+ * GREATEST-floor so a partly-spent balance never goes negative).
+ */
+export async function reverseGithubCreditPurchase(
+  paymentIntentId: string,
+): Promise<{ reversed: boolean; userId?: number; tokens?: number }> {
+  const claimed = await pool.query<{ user_id: number; tokens: number }>(
+    `UPDATE github_credit_purchases SET refunded_at = NOW()
+       WHERE payment_intent_id = $1 AND refunded_at IS NULL
+       RETURNING user_id, tokens`,
+    [paymentIntentId],
+  );
+  const row = claimed.rows[0];
+  if (!row) return { reversed: false };
+  await pool.query(
+    `UPDATE users SET github_credit_balance = GREATEST(github_credit_balance - $2, 0) WHERE id = $1`,
+    [row.user_id, row.tokens],
+  );
+  return { reversed: true, userId: row.user_id, tokens: Number(row.tokens) };
+}
+
+/**
  * Adds `tokens` (the REAL usage the AI provider reported for one call) to
  * the user's counter for the given window. Called after each AI call
  * completes, not before — see lib/ai/review-source.ts. Defaults

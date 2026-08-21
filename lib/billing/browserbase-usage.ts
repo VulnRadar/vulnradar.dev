@@ -106,6 +106,30 @@ export async function creditBrowserbaseCreditPurchase(
 }
 
 /**
+ * Reverses a Browserbase-minute credit purchase on a Stripe refund/dispute.
+ * Mirrors reverseAiCreditPurchase (refunded_at NULL-guard for at-most-once,
+ * GREATEST-floor so a partly-spent balance never goes negative). Amount is in
+ * seconds, matching this ledger.
+ */
+export async function reverseBrowserbaseCreditPurchase(
+  paymentIntentId: string,
+): Promise<{ reversed: boolean; userId?: number; seconds?: number }> {
+  const claimed = await pool.query<{ user_id: number; seconds: number }>(
+    `UPDATE browserbase_credit_purchases SET refunded_at = NOW()
+       WHERE payment_intent_id = $1 AND refunded_at IS NULL
+       RETURNING user_id, seconds`,
+    [paymentIntentId],
+  );
+  const row = claimed.rows[0];
+  if (!row) return { reversed: false };
+  await pool.query(
+    `UPDATE users SET browserbase_credit_seconds_balance = GREATEST(browserbase_credit_seconds_balance - $2, 0) WHERE id = $1`,
+    [row.user_id, row.seconds],
+  );
+  return { reversed: true, userId: row.user_id, seconds: Number(row.seconds) };
+}
+
+/**
  * Adds `seconds` (the actual elapsed duration of one ended session -- see
  * app/api/v3/browser/sessions/route.ts's DELETE handler) to the user's
  * counter for the given period. Called after a session ends, not before
