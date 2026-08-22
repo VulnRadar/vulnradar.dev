@@ -12,6 +12,10 @@ export interface ConnectPillProps {
    *  failed for a reason other than the key itself (see auth.ts's
    *  RefreshMeResult). Swaps "Not connected" for "Failed to connect". */
   readonly connectionFailed: boolean;
+  /** True during the popup's first init pass, before auth has resolved.
+   *  Shows a neutral "Connecting..." state so the first paint never briefly
+   *  claims "Not connected" before the stored key has even been read. */
+  readonly initializing?: boolean;
   readonly onOpenOptions: () => void;
 }
 
@@ -24,6 +28,14 @@ const ICON = html`<img
 />`;
 
 export function ConnectPill(props: ConnectPillProps): TemplateResult {
+  if (!props.me && props.initializing) {
+    return html`
+      <div class="pill disconnected">
+        ${ICON}
+        <span class="label">Connecting&hellip;</span>
+      </div>
+    `;
+  }
   if (!props.me) {
     return html`
       <div class="pill disconnected">

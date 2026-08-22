@@ -81,7 +81,18 @@ import type {
 
 browser.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === "install") {
-    await browser.runtime.openOptionsPage();
+    // First install: open the dedicated onboarding page (welcome.html), which
+    // walks through creating an account, generating an API key, and pasting it
+    // in -- a friendlier first run than dropping straight into the full options
+    // page. Its buttons hand off to openOptionsPage() once the user is ready.
+    // Falls back to the options page if the welcome tab can't be created.
+    try {
+      await browser.tabs.create({
+        url: browser.runtime.getURL("welcome.html"),
+      });
+    } catch {
+      await browser.runtime.openOptionsPage();
+    }
   }
   // Wipe any extension-wide default badge left over from before every
   // badge write was made tab-scoped (see lib/badge.ts) - that global value

@@ -569,6 +569,12 @@ button:disabled {
   background: var(--vr-bg);
 }
 
+.history-item:focus-visible {
+  background: var(--vr-bg);
+  outline: 2px solid var(--vr-primary);
+  outline-offset: -2px;
+}
+
 .history-item .url {
   flex: 1;
   font-family: var(--vr-mono);

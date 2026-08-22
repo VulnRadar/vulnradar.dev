@@ -405,7 +405,7 @@ textarea.input {
   font-weight: 700;
   padding: 2px 6px;
   border-radius: 4px;
-  background: var(--vr-muted, var(--vr-border));
+  background: var(--vr-border);
   color: var(--vr-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;

@@ -86,6 +86,10 @@ interface State {
   // version of the VulnRadar instance VULNRADAR.apiHost points at, not the
   // account you're connected to. null until the request resolves (or fails).
   appVersion: string | null;
+  // True until init() finishes its first pass (tab query + auth + history).
+  // Lets the very first paint show a neutral "Connecting..." shell instead of
+  // a blank popup, without briefly claiming "Not connected" before auth loads.
+  initializing: boolean;
 }
 
 const state: State = {
@@ -103,6 +107,7 @@ const state: State = {
   copyConfirm: false,
   targetWarning: null,
   appVersion: null,
+  initializing: true,
 };
 
 let renderQueued = false;
@@ -141,6 +146,7 @@ function App(): TemplateResult {
     ${ConnectPill({
       me: state.me,
       connectionFailed: state.connectionFailed,
+      initializing: state.initializing,
       onOpenOptions: openOptions,
     })}
     ${RateLimitBar()}
@@ -427,13 +433,30 @@ function ResultPanel(r: ScanResult, isStale: boolean): TemplateResult {
   `;
 }
 
+/** Enter/Space activate a non-button element given a role="button". Keeps the
+ *  history rows (and any other div-as-button) operable by keyboard and to a
+ *  screen reader, not just by mouse. */
+function onActivate(fn: () => void) {
+  return (e: KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fn();
+    }
+  };
+}
+
 function HistoryRow(row: ScanHistoryRow): TemplateResult {
   const critical = row.summary.critical + row.summary.high;
+  const open = () => openHistoryDetail(row.id);
   return html`
     <div
       class="history-item"
+      role="button"
+      tabindex="0"
       title=${row.url}
-      @click=${() => openHistoryDetail(row.id)}
+      aria-label=${`Open scan report for ${row.url}`}
+      @click=${open}
+      @keydown=${onActivate(open)}
     >
       <span
         class="badge ${critical > 0 ? "high" : row.summary.medium > 0 ? "medium" : "low"}"
@@ -693,6 +716,12 @@ async function init() {
     document.documentElement.removeAttribute("data-compact");
   }
 
+  // First paint now, after theme + settings are read from (fast) storage but
+  // BEFORE the slow refreshMe() network round-trip below. Without this the
+  // popup stays blank for the full auth request; with it the themed shell
+  // ("Connecting...") shows immediately and fills in as each piece resolves.
+  scheduleRender();
+
   const authResult = await refreshMe();
   state.me = authResult.me;
   state.connectionFailed = authResult.connectionFailed;
@@ -744,6 +773,7 @@ async function init() {
     applyScanCompletion(storage.lastScanCompletion);
   }
 
+  state.initializing = false;
   scheduleRender();
 
   // Best-effort: if VULNRADAR.apiHost is unreachable or the request fails,
