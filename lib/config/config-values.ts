@@ -131,7 +131,14 @@ export const CONFIG_ENGINE_VERSION = "3.3.1";
 export const CONFIG_APP_DESCRIPTION =
   "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.";
 export const CONFIG_TOTAL_CHECKS_LABEL = GENERATED_CHECKS_LABEL;
-export const CONFIG_APP_URL = "https://sandbox.vulnradar.dev";
+// Canonical production origin. This is the fallback when NEXT_PUBLIC_APP_URL is
+// not set at build time; it flows into every canonical tag, sitemap URL, robots
+// host, OG/Twitter URL, and JSON-LD @id. It MUST be the real public apex so a
+// build that forgets the env var (or any preview/sandbox deployment that does
+// not override it) still self-canonicalizes to the production domain rather
+// than pointing search engines and answer engines at a non-production host.
+// Self-hosters override this with NEXT_PUBLIC_APP_URL for their own domain.
+export const CONFIG_APP_URL = "https://vulnradar.dev";
 export const CONFIG_APP_REPO = "VulnRadar/vulnradar.dev";
 export const CONFIG_DISCORD_INVITE_URL = "https://discord.gg/Y7R6hdGbNe";
 // Empty until a store listing is live for this fork/deployment.

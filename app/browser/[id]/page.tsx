@@ -125,10 +125,13 @@ export default function BrowserViewerPage({ params }: PageProps) {
   const [minutesAllocated, setMinutesAllocated] = useState(1);
   const MAX_MINUTES = 5;
 
-  // Network logs sidebar. Opens by default -- the network stream is the point
-  // of the devtools dock, so a fresh session shows it immediately rather than
-  // hiding it behind a toggle the user has to discover.
-  const [showLogs, setShowLogs] = useState(true);
+  // Network logs sidebar. On desktop it opens by default -- the network stream
+  // is the point of the devtools dock. On a phone it starts CLOSED: there it
+  // renders as a bottom sheet over the browser view, and opening it on load
+  // would bury the actual browser the user came to watch. A mount effect below
+  // flips it open on wide viewports (SSR-safe: starts false, matching the
+  // server render, then corrects on the client before the session is live).
+  const [showLogs, setShowLogs] = useState(false);
   const [networkRequests, setNetworkRequests] = useState<NetworkRequest[]>([]);
   const [logsError, setLogsError] = useState<string | null>(null);
   const logsPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -176,6 +179,15 @@ export default function BrowserViewerPage({ params }: PageProps) {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: load()'s setState calls only fire after its async requests resolve, not synchronously in this effect
     void load();
   }, [load]);
+
+  // Open the network dock by default on desktop only. Kept out of the initial
+  // useState so the client's first render matches the server's (both closed),
+  // then corrected here on mount -- mobile stays closed, wide viewports open.
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot device default, runs once on mount
+    if (window.matchMedia("(min-width: 640px)").matches) setShowLogs(true);
+  }, []);
 
   // Start the virtual 1-minute countdown the first time a live session loads.
   useEffect(() => {
@@ -612,13 +624,19 @@ export default function BrowserViewerPage({ params }: PageProps) {
           )}
         </div>
 
-        {/* Right: live network dock, styled as a devtools Network tab. Fixed
-            420px only docks from sm up -- below that it's a full-screen overlay
-            instead, since 420px alone is wider than most phones. */}
+        {/* Right: live network dock, styled as a devtools Network tab. From sm
+            up it docks as a fixed 420px right rail. Below that it's a bottom
+            sheet (max 65vh, rounded top) that slides over the lower half of the
+            screen, leaving the live browser visible above it -- a full-screen
+            overlay here would bury the browser the user came to watch. */}
         {showLogs && isLive && (
-          <div className="fixed inset-0 z-30 flex flex-col overflow-hidden bg-card sm:static sm:inset-auto sm:z-auto sm:w-[420px] sm:shrink-0 sm:border-l border-border/70">
+          <div className="fixed inset-x-0 bottom-0 top-auto z-30 max-h-[65vh] rounded-t-2xl border-t border-border/70 shadow-2xl flex flex-col overflow-hidden bg-card sm:static sm:inset-auto sm:z-auto sm:max-h-none sm:rounded-none sm:shadow-none sm:border-t-0 sm:w-[420px] sm:shrink-0 sm:border-l">
+            {/* Grab handle -- mobile bottom-sheet affordance, hidden on desktop */}
+            <div className="sm:hidden flex justify-center pt-2 pb-1 shrink-0">
+              <span className="h-1 w-9 rounded-full bg-border" />
+            </div>
             {/* Dock header */}
-            <div className="h-9 border-b border-border/60 flex items-center px-3 gap-2 shrink-0 bg-gradient-to-b from-muted/40 to-muted/10">
+            <div className="h-10 sm:h-9 border-b border-border/60 flex items-center px-3 gap-2 shrink-0 bg-gradient-to-b from-muted/40 to-muted/10">
               <Activity className="h-3.5 w-3.5 text-primary" />
               <span className="text-xs font-semibold text-foreground">
                 Network
@@ -635,10 +653,11 @@ export default function BrowserViewerPage({ params }: PageProps) {
               </span>
               <button
                 onClick={() => setShowLogs(false)}
-                className="ml-auto p-0.5 rounded opacity-50 hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+                className="ml-auto -mr-1 p-2 sm:p-1 rounded opacity-60 hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
                 title="Close panel"
+                aria-label="Close network panel"
               >
-                <X className="h-3.5 w-3.5" />
+                <X className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
               </button>
             </div>
 

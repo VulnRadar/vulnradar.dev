@@ -55,6 +55,10 @@ function buildLlmsTxt(): string {
     `${oneLine(APP_DESCRIPTION)} It runs as a hosted service with a free tier and can also be self-hosted with no plan limits. The detection engine is identical on every plan and its entire check set is public, each check documented as its own page explaining the risk and how to fix it.`,
   );
   lines.push("");
+  lines.push(
+    `Coverage spans security headers and Content-Security-Policy, TLS and certificate configuration, cookie and session flags, DNS and email authentication (SPF, DMARC, DKIM, DNSSEC), exposed secrets and API keys (AWS, Stripe, GitHub, OpenAI and more), server misconfiguration and information disclosure, client-side and DOM risks, software supply-chain exposure, and the security gaps common in AI-generated code. An opt-in active-probing mode goes beyond passive analysis to submit real payloads through discovered forms and parameters, confirming reflected cross-site scripting (XSS), error-based SQL injection, server-side template injection (SSTI), OS command injection, and open redirects. Active probing is off by default and only runs against targets the user explicitly authorizes.`,
+  );
+  lines.push("");
 
   // Documentation
   lines.push("## Documentation");

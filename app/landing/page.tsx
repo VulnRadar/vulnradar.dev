@@ -43,7 +43,7 @@ function buildFaq(checkCount: number, categoryCount: number): FaqItem[] {
   return [
     {
       question: `What is ${APP_NAME}?`,
-      answer: `${APP_NAME} is an open-source web vulnerability scanner. You paste a URL and it runs ${checkCount.toLocaleString()} deterministic checks across ${categoryCount} categories from our servers: security headers, TLS and certificates, cookie flags, DNS and email records, exposed secrets, server misconfiguration, information disclosure, client-side and supply-chain risks, and the gaps common in AI-generated code. Every finding comes back with a severity, the response evidence behind it, and a concrete fix. It is GPL-3.0 licensed and can be self-hosted.`,
+      answer: `${APP_NAME} is an open-source web vulnerability scanner. You paste a URL and it runs ${checkCount.toLocaleString()} deterministic checks across ${categoryCount} categories from our servers: security headers, TLS and certificates, cookie flags, DNS and email records, exposed secrets, server misconfiguration, information disclosure, client-side and supply-chain risks, and the gaps common in AI-generated code. An opt-in active-probing mode additionally tests for SQL injection, cross-site scripting (XSS), template injection, and command injection. Every finding comes back with a severity, the response evidence behind it, and a concrete fix. It is GPL-3.0 licensed and can be self-hosted.`,
     },
     {
       question: `Is ${APP_NAME} open source?`,
@@ -72,7 +72,11 @@ function buildFaq(checkCount: number, categoryCount: number): FaqItem[] {
     },
     {
       question: "What does the scanner actually check?",
-      answer: `Security headers, TLS and certificate configuration, cookie flags, DNS and email records, exposed secrets, server misconfiguration, information disclosure, client-side risks, supply chain exposure, and the security gaps common in AI-generated code: ${categoryCount} categories in total.`,
+      answer: `Security headers, TLS and certificate configuration, cookie flags, DNS and email records, exposed secrets, server misconfiguration, information disclosure, client-side risks, supply chain exposure, and the security gaps common in AI-generated code: ${categoryCount} categories in total. With active probing enabled it also submits real values through discovered forms to test for SQL injection, reflected XSS, server-side template injection, OS command injection, and open redirects.`,
+    },
+    {
+      question: `Does ${APP_NAME} test for SQL injection and XSS?`,
+      answer: `Yes. Alongside the passive checks, ${APP_NAME} has an opt-in active-probing mode that submits real payloads through the forms and parameters it discovers and confirms reflected cross-site scripting (XSS), error-based SQL injection, server-side template injection (SSTI), OS command injection, and open redirects. Active probing is off by default and only runs against targets you explicitly authorize, so a standard scan stays passive and safe.`,
     },
     {
       question: "Is there an API?",

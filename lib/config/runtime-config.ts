@@ -130,10 +130,10 @@ export async function getSettings<K extends SettingKey>(
  * and this server-side resolution, not two.
  *
  * Deliberately falls back to the request's own origin, not the shipped
- * CONFIG_APP_URL placeholder ("https://sandbox.vulnradar.dev"), when
- * neither the database nor the environment has a value: redirecting a
- * misconfigured deployment to a domain it does not own is worse than
- * trusting the Host header the request actually arrived on. See
+ * CONFIG_APP_URL default ("https://vulnradar.dev"), when neither the
+ * database nor the environment has a value: redirecting a misconfigured
+ * deployment to a domain it does not own is worse than trusting the Host
+ * header the request actually arrived on. See
  * lib/config/constants.ts's synchronous APP_URL export for the equivalent
  * (CONFIG_APP_URL-falling-back) resolution used by code with no request to
  * fall back to.
