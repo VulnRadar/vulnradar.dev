@@ -135,6 +135,83 @@ interface Release {
 
 const CHANGELOG: Release[] = [
   {
+    version: "3.6.1",
+    date: "August 21, 2026",
+    title: "Billing Correctness, Discoverability, Mobile Live Viewer",
+    highlights: true,
+    summary:
+      "A polish and correctness release. Billing gets safer: a staff account can no longer be charged through Stripe for a plan their role already grants, a refund or chargeback now reverses the one-time AI, GitHub, and Browserbase credits it paid for, the admin MRR estimate stops overstating yearly subscribers, and the Stripe webhook registers every event those paths depend on. Search results and AI answer engines now see the full capability set, including the active injection testing (SQL injection, XSS, template and command injection) they had been underreporting. The live browser session viewer finally works on a phone, the scanner warns before scanning a page it cannot actually reach, and the browser extension (now 0.1.8) gains a real onboarding page, keyboard-accessible history, and an instant first paint.",
+    changes: [
+      {
+        icon: Crown,
+        label: "Staff Plan Changes No Longer Open a Stripe Checkout",
+        desc: "A staff or super-admin account holds its plan floor for free with no Stripe subscription, but the pricing page still offered to 'downgrade' them to a lower paid tier, which would have created a real subscription and charged them. Changing to any plan at or below that comped floor now updates the account in the database directly, with no Stripe checkout; genuinely paying up past the floor (an admin buying Elite) still goes through Stripe as before.",
+        category: "fixed",
+      },
+      {
+        icon: RefreshCw,
+        label: "Refunds and Chargebacks Reverse One-Time Credits",
+        desc: "A Stripe refund or dispute on a one-time AI, GitHub-review, or Browserbase credit purchase left the purchased credits on the account, so a buyer could refund and keep the balance. Those events now claw the credits back, at most once per charge and floored at zero, so a partial spend never drives the balance negative.",
+        category: "security",
+      },
+      {
+        icon: BarChart3,
+        label: "Admin MRR No Longer Overstates Annual Plans",
+        desc: "The admin billing overview counted every active subscriber at the full monthly price, so a yearly subscriber (billed the discounted annual amount up front) inflated monthly recurring revenue by the annual discount. Yearly subscriptions are now amortized over twelve months, tracked by a new per-account billing interval recorded on every subscription write.",
+        category: "fixed",
+      },
+      {
+        icon: Key,
+        label: "Stripe Webhook Registers Every Event It Handles",
+        desc: "The webhook auto-setup registered fewer events than the handler actually acts on, so the backup credit-grant path and the new refund and dispute reversals only fired if the matching event happened to be registered already. It now registers payment_intent.succeeded, charge.refunded, and charge.dispute.created, and backfills them onto an existing webhook on the next boot.",
+        category: "fixed",
+      },
+      {
+        icon: Search,
+        label: "Search and AI Answer Engines See the Full Capability Set",
+        desc: "The landing FAQ, the SoftwareApplication structured data, and llms.txt now explicitly name the active injection testing (SQL injection, reflected XSS, server-side template injection, OS command injection, and open redirects) alongside the passive checks, so search results and AI answer engines stop reporting that the scanner cannot do them. A new 'Does it test for SQL injection and XSS?' FAQ renders on the page and as structured data. Separately, the auth-gated compare page was dropped from the sitemap and marked noindex so it stops showing up as a crawl error.",
+        category: "added",
+      },
+      {
+        icon: Globe,
+        label: "Canonical URLs Always Point at the Production Domain",
+        desc: "The fallback canonical, sitemap, robots, and Open Graph origin defaulted to a non-production host, so any build that forgot to set the public URL would have told search and answer engines the real site lived somewhere else. The default is now the production domain; self-hosted deployments still override it with their own.",
+        category: "fixed",
+      },
+      {
+        icon: Smartphone,
+        label: "Live Browser Viewer Works on Phones",
+        desc: "On a phone the live session's network panel opened by default as a full-screen overlay, burying the browser you came to watch. It now starts closed on small screens and opens as a bottom sheet over the lower half of the screen, with a grab handle and larger tap targets, while desktop still opens it docked to the side by default.",
+        category: "fixed",
+      },
+      {
+        icon: AlertTriangle,
+        label: "Scanner Warns Before Scanning a Page It Cannot Reach",
+        desc: "Pointing the scanner at a search engine, or at a page that immediately redirects somewhere else (for example a dashboard that bounces you to a login), used to scan the wrong thing silently. It now recognizes these cases, explains why the exact page cannot be scanned, and asks whether to proceed, in both the app and the extension. When a supplied login actually works and the page returns normally, no warning is shown.",
+        category: "added",
+      },
+      {
+        icon: Package,
+        label:
+          "Extension: Onboarding, Keyboard Access, Instant First Paint (0.1.8)",
+        desc: "First install now opens a proper step-by-step onboarding page instead of the raw settings screen. Scan-history rows are operable by keyboard and screen readers, not just the mouse. The popup paints its themed shell immediately with a 'Connecting...' state instead of a blank flash while it authenticates, and the footer version reads from the manifest so it can never drift from the shipped build.",
+        category: "fixed",
+      },
+      {
+        icon: ServerCog,
+        label: "Background Worker Escalation Survives Restarts",
+        desc: "The background worker tracked its consecutive-failure streak only in memory, so a restart reset the count and could re-send or drop a failure-escalation alert. The streak is now persisted, so escalation state is continuous across restarts.",
+        category: "fixed",
+      },
+      {
+        icon: Mail,
+        label: "Admin Broadcasts Dedupe Recipients and Confirm Delivery",
+        desc: "An admin broadcast marked itself sent before delivery and could email an account more than once when the same address appeared through multiple records. It now dedupes recipients and only records a broadcast as sent after the send actually completes.",
+        category: "fixed",
+      },
+    ],
+  },
+  {
     version: "3.6.0",
     date: "August 20, 2026",
     title: "Security and Detection Hardening, Live Browser Redesign",
