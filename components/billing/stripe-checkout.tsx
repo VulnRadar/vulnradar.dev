@@ -86,7 +86,18 @@ function useConfirmSubscription(onSuccess?: () => void) {
     [onSuccess],
   );
 
-  return { status, resolvedPlan, run };
+  // For a change with no Stripe payment to confirm (a staff DB-only plan
+  // change): the plan is already written server-side, so just show success.
+  const markVerified = useCallback(
+    (plan: string) => {
+      setResolvedPlan(plan);
+      setStatus("verified");
+      onSuccess?.();
+    },
+    [onSuccess],
+  );
+
+  return { status, resolvedPlan, run, markVerified };
 }
 
 function ConfirmingStatus({ onSkip }: { onSkip: () => void }) {
@@ -182,7 +193,8 @@ function CheckoutForm({
   const elements = useElements();
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { status, resolvedPlan, run } = useConfirmSubscription(onSuccess);
+  const { status, resolvedPlan, run, markVerified } =
+    useConfirmSubscription(onSuccess);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -191,16 +203,10 @@ function CheckoutForm({
     setIsProcessing(true);
     setError(null);
 
-    // Validate the payment details BEFORE touching Stripe's subscriptions
-    // API at all -- nothing has been created yet at this point, so an
-    // invalid card number costs nothing to reject.
-    const { error: submitError } = await elements.submit();
-    if (submitError) {
-      setError(submitError.message ?? "Please check your payment details");
-      setIsProcessing(false);
-      return;
-    }
-
+    // Resolve the subscription first. A staff account changing to a plan at or
+    // below its free floor comes back as "db_updated" -- a DB-only change with
+    // no payment -- so it must be handled before we ask Stripe Elements for a
+    // card that a staff member never needs to enter.
     let subscription: Awaited<ReturnType<typeof createSubscription>>;
     try {
       subscription = await createSubscription(productId);
@@ -210,12 +216,29 @@ function CheckoutForm({
       return;
     }
 
+    if (subscription.kind === "db_updated") {
+      // Staff floor change: plan already written server-side, nothing to charge.
+      markVerified(subscription.plan);
+      return;
+    }
+
     if (subscription.kind === "switched") {
       // Became an in-place plan switch between page load and submit (the
       // account picked up an active subscription in the meantime) --
       // proration bills the existing payment method automatically, no
       // card confirmation needed.
       await run(subscription.subscriptionId);
+      return;
+    }
+
+    // "new": a real purchase. Validate the card, then confirm the PaymentIntent.
+    // An invalid card is still caught here (and by confirmPayment below); the
+    // subscription created just above is an incomplete one Stripe auto-expires
+    // if payment never confirms.
+    const { error: submitError } = await elements.submit();
+    if (submitError) {
+      setError(submitError.message ?? "Please check your payment details");
+      setIsProcessing(false);
       return;
     }
 
@@ -303,13 +326,19 @@ function SwitchPlanPanel({
 }) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { status, resolvedPlan, run } = useConfirmSubscription(onSuccess);
+  const { status, resolvedPlan, run, markVerified } =
+    useConfirmSubscription(onSuccess);
 
   const handleSwitch = async () => {
     setIsProcessing(true);
     setError(null);
     try {
       const result = await createSubscription(productId);
+      if (result.kind === "db_updated") {
+        // Staff DB-only plan change (no Stripe subscription to confirm).
+        markVerified(result.plan);
+        return;
+      }
       await run(result.subscriptionId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to switch plans");

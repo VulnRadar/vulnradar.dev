@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       // a stale one to reset to free.
       if (user?.plan && user.plan !== "free" && !isStaffRole(user.role)) {
         await pool.query(
-          `UPDATE users SET plan = 'free', subscription_status = NULL WHERE id = $1`,
+          `UPDATE users SET plan = 'free', subscription_status = NULL, billing_interval = NULL WHERE id = $1`,
           [session.userId],
         );
       }
@@ -73,7 +73,8 @@ export async function POST(request: NextRequest) {
         `UPDATE users SET
           plan = CASE WHEN role IN ('admin', 'moderator', 'support') THEN 'pro_supporter' ELSE 'free' END,
           subscription_status = 'canceled',
-          stripe_subscription_id = NULL
+          stripe_subscription_id = NULL,
+          billing_interval = NULL
         WHERE id = $1`,
         [session.userId],
       );

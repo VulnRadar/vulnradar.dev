@@ -23,13 +23,17 @@ import { ACTIVE_SUBSCRIPTION_STATUSES } from "@/lib/billing/subscription-status"
 import { grantPremiumBadge, revokePremiumBadge } from "@/lib/billing/badges";
 import { getSession } from "@/lib/auth/auth";
 import { isStaffRole } from "@/lib/auth/permissions-client";
-import { planMeetsMinimum } from "@/lib/billing/plan-limits";
+import { planMeetsMinimum, planRank } from "@/lib/billing/plan-limits";
+import { syncPreStaffPlanForManualPlanChange } from "@/lib/billing/staff-plan";
 import { APP_URL, ROUTES } from "@/lib/config/constants";
 import pool from "@/lib/database/db";
 
 export type CreateSubscriptionResult =
   | { kind: "new"; clientSecret: string; subscriptionId: string }
-  | { kind: "switched"; subscriptionId: string };
+  | { kind: "switched"; subscriptionId: string }
+  // A staff account changing to a plan at/below its free staff floor: a direct
+  // DB plan update, no Stripe subscription or charge. See createSubscription.
+  | { kind: "db_updated"; plan: string };
 
 export async function createSubscription(
   productId: string,
@@ -80,6 +84,42 @@ export async function createSubscription(
   );
   const user = userResult.rows[0];
   if (!user) throw new Error("User not found");
+
+  // billing: a staff account holds its plan floor for FREE, with no Stripe
+  // customer or subscription (lib/billing/staff-plan.ts grants pro_supporter,
+  // or elite_supporter for super_admin). Changing to a plan at or below that
+  // floor is not a purchase -- there is nothing to bill -- so move users.plan
+  // in the DB directly and skip Stripe, instead of opening a checkout that
+  // would charge a staff member for a tier their role already grants (e.g. a
+  // super_admin "downgrading" their staff Elite to Pro). Staff genuinely buying
+  // UP past the floor (an admin paying for Elite) still falls through to the
+  // Stripe flow below. Gated on having no active subscription so a staff member
+  // who DID buy up and later switches still goes through Stripe.
+  const roleIsStaff =
+    isStaffRole(sessionUser.role) || sessionUser.role === "super_admin";
+  const hasActiveStripeSub =
+    !!user.stripe_subscription_id &&
+    [...ACTIVE_SUBSCRIPTION_STATUSES, "canceling"].includes(
+      user.subscription_status,
+    );
+  if (roleIsStaff && !hasActiveStripeSub) {
+    const staffFloor =
+      sessionUser.role === "super_admin" ? "elite_supporter" : "pro_supporter";
+    if (planRank(planId) <= planRank(staffFloor)) {
+      await pool.query(
+        "UPDATE users SET plan = $1, updated_at = NOW() WHERE id = $2",
+        [planId, userId],
+      );
+      // Keep the staff-plan bookkeeping (pre_staff_plan) consistent with this
+      // manual change, same as an admin editing a staff user's plan.
+      await syncPreStaffPlanForManualPlanChange(
+        userId,
+        sessionUser.role,
+        planId,
+      );
+      return { kind: "db_updated", plan: planId };
+    }
+  }
 
   async function createStripeCustomer(): Promise<string> {
     const customer = await stripe!.customers.create({
@@ -263,13 +303,21 @@ export async function confirmSubscription(
     subscription.metadata?.productId || "",
   );
   const planToWrite = isPaid && resolvedPlan !== "free" ? resolvedPlan : "free";
+  // Billing interval drives the admin MRR estimate (yearly subs are amortized,
+  // not counted at the monthly price). null for a free result -- there's no
+  // recurring charge to attribute.
+  const billingInterval =
+    isPaid && planToWrite !== "free"
+      ? (subscription.items?.data?.[0]?.price?.recurring?.interval ?? null)
+      : null;
 
   await pool.query(
     `UPDATE users SET
       plan = $1,
       stripe_subscription_id = $2,
       subscription_status = $3,
-      stripe_customer_id = $4
+      stripe_customer_id = $4,
+      billing_interval = $6
     WHERE id = $5`,
     [
       planToWrite,
@@ -277,6 +325,7 @@ export async function confirmSubscription(
       subscription.status,
       subscription.customer as string,
       sessionUser.userId,
+      billingInterval,
     ],
   );
 

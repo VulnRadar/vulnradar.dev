@@ -9,14 +9,25 @@ type WebhookEvent = Parameters<
   Stripe["webhookEndpoints"]["create"]
 >[0]["enabled_events"][number];
 
-// Events we need for billing
-const REQUIRED_EVENTS = [
+// Every event the webhook handler (app/api/v3/webhooks/stripe/route.ts) acts
+// on. Keep this in sync with that switch: an event the handler reads but that
+// isn't registered here never arrives. hasAllEvents below re-checks this list
+// on every boot and updates an existing endpoint to add anything missing, so
+// adding an event here is enough to backfill it onto a live webhook.
+export const REQUIRED_EVENTS = [
   "checkout.session.completed",
   "customer.subscription.created",
   "customer.subscription.updated",
   "customer.subscription.deleted",
   "invoice.payment_succeeded",
   "invoice.payment_failed",
+  // One-time credit purchases (AI / GitHub / Browserbase): the webhook's
+  // backup crediting path. Was handled but never registered here, so the
+  // backup only ever ran if the fast confirm path also happened to.
+  "payment_intent.succeeded",
+  // Claw one-time credits back on a refund or chargeback.
+  "charge.refunded",
+  "charge.dispute.created",
 ] as const;
 
 // Cache to avoid repeated API calls

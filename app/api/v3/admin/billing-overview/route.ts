@@ -3,7 +3,11 @@ import pool from "@/lib/database/db";
 import { requirePermission } from "@/lib/auth/authorization";
 import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 import { getSetting } from "@/lib/config/runtime-config";
-import { PLANS, type PlanId } from "@/lib/billing/catalog";
+import {
+  PLANS,
+  type PlanId,
+  monthlyEquivalentCents,
+} from "@/lib/billing/catalog";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "@/lib/billing/subscription-status";
 
 export const runtime = "nodejs";
@@ -12,6 +16,7 @@ export const dynamic = "force-dynamic";
 interface PlanStatusCountRow {
   plan: string | null;
   subscription_status: string | null;
+  billing_interval: string | null;
   count: number;
 }
 
@@ -98,9 +103,9 @@ export async function GET() {
     ] = await Promise.all([
       getSetting("BILLING_ENABLED"),
       pool.query<PlanStatusCountRow>(
-        `SELECT plan, subscription_status, COUNT(*)::int AS count
+        `SELECT plan, subscription_status, billing_interval, COUNT(*)::int AS count
          FROM users
-         GROUP BY plan, subscription_status`,
+         GROUP BY plan, subscription_status, billing_interval`,
       ),
       pool.query<{ count: number }>(`SELECT COUNT(*)::int AS count FROM users`),
       pool.query<{ count: number }>(
@@ -142,6 +147,7 @@ export async function GET() {
     const planMix: PlanMixEntry[] = PLANS.map((plan) => {
       let totalUsers = 0;
       let activeUsers = 0;
+      let mrrCents = 0;
       for (const row of planStatusResult.rows) {
         if ((row.plan || "free") !== plan.id) continue;
         const count = Number(row.count) || 0;
@@ -155,6 +161,15 @@ export async function GET() {
             row.subscription_status === "canceling")
         ) {
           activeUsers += count;
+          // A yearly subscriber is billed the discounted annual price up
+          // front, so their monthly-run-rate contribution is that amortized
+          // amount, NOT the full monthly list price -- counting them at the
+          // monthly price overstated MRR by the annual discount. billing_
+          // interval is grouped into the row, so each interval bucket is
+          // amortized on its own.
+          mrrCents +=
+            monthlyEquivalentCents(plan.priceInCents, row.billing_interval) *
+            count;
         }
       }
       return {
@@ -163,7 +178,7 @@ export async function GET() {
         priceInCents: plan.priceInCents,
         totalUsers,
         activeUsers,
-        mrrCents: plan.priceInCents * activeUsers,
+        mrrCents,
       };
     });
 

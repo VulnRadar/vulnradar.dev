@@ -2663,6 +2663,23 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
           );
         });
 
+      // Billing interval ('month' | 'year') of the user's active Stripe
+      // subscription, written alongside plan/status by the webhook and
+      // confirmSubscription. NULL for free/staff/never-subscribed accounts.
+      // The admin MRR estimate reads it to amortize yearly subs (charged the
+      // discounted annual price up front) instead of counting them at the full
+      // monthly price. Existing subs backfill on their next Stripe event.
+      await pool
+        .query(
+          `ALTER TABLE users ADD COLUMN IF NOT EXISTS billing_interval VARCHAR(10);`,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add users.billing_interval (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
       // ════════════════════════════════════════════════════════════════
       // SUPER_ADMIN BOOTSTRAP - the first registered account
       //

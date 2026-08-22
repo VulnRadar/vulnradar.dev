@@ -72,14 +72,10 @@ async function loadWithBillingEnabled(billingEnabled: boolean) {
   return import("@/lib/billing/stripe-webhook-setup");
 }
 
-const REQUIRED_EVENTS = [
-  "checkout.session.completed",
-  "customer.subscription.created",
-  "customer.subscription.updated",
-  "customer.subscription.deleted",
-  "invoice.payment_succeeded",
-  "invoice.payment_failed",
-];
+// Imported from the source (not re-declared) so this test can never drift
+// out of sync with the actual required-events list -- adding an event there
+// is meant to backfill onto live webhooks, and this asserts exactly that.
+const { REQUIRED_EVENTS } = await import("@/lib/billing/stripe-webhook-setup");
 
 describe("ensureStripeWebhook", () => {
   it("skips entirely when billing is disabled, without calling getStripe", async () => {

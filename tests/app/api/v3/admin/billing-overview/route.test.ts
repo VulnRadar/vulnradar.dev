@@ -185,6 +185,61 @@ describe("GET /api/v3/admin/billing-overview", () => {
     });
   });
 
+  it("amortizes yearly subscribers instead of counting them at the monthly price", async () => {
+    withAdmin();
+    routeQueries({
+      planStatus: [
+        // A yearly Core subscriber. Billed 500 * 12 * 0.8 = 4800 cents up
+        // front, so the monthly run-rate is 4800 / 12 = 400 cents, NOT the
+        // full 500 monthly list price.
+        {
+          plan: "core_supporter",
+          subscription_status: "active",
+          billing_interval: "year",
+          count: 1,
+        },
+        // A monthly Pro subscriber counts at the full monthly price.
+        {
+          plan: "pro_supporter",
+          subscription_status: "active",
+          billing_interval: "month",
+          count: 1,
+        },
+        // A second yearly Pro subscriber, grouped separately by interval --
+        // proves per-interval buckets within one plan are each amortized.
+        {
+          plan: "pro_supporter",
+          subscription_status: "active",
+          billing_interval: "year",
+          count: 1,
+        },
+      ],
+      totalUsers: 3,
+      stripeCustomers: 3,
+    });
+
+    const res = await GET();
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    const byId = Object.fromEntries(
+      json.planMix.map((p: { planId: string }) => [p.planId, p]),
+    );
+    // 400 (core yearly, amortized).
+    expect(byId.core_supporter).toMatchObject({
+      activeUsers: 1,
+      mrrCents: 400,
+    });
+    // 1000 (pro monthly) + 800 (pro yearly: 1000 * 12 * 0.8 / 12) = 1800.
+    expect(byId.pro_supporter).toMatchObject({
+      activeUsers: 2,
+      mrrCents: 1800,
+    });
+    // 400 + 1800 = 2200. At the old monthly-price calc this would have been
+    // 500 + 1000 + 1000 = 2500, overstating MRR by the annual discount.
+    expect(json.totals.mrrCents).toBe(2200);
+  });
+
   it("reflects BILLING_ENABLED from runtime config", async () => {
     withAdmin();
     mockSettings({ BILLING_ENABLED: false });

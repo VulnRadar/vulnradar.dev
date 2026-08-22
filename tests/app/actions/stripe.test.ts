@@ -142,7 +142,11 @@ describe("createSubscription", () => {
     ).resolves.toMatchObject({ kind: "new" });
   });
 
-  it("allows a staff account to buy Pro Supporter for real -- at, not below, their floor", async () => {
+  it("moves a staff account to a plan at/below their floor in the DB, with no Stripe subscription", async () => {
+    // The pricing-page bug: a staff member's granted floor is comped (no
+    // Stripe customer/subscription), so a plan change to that floor or below
+    // must update users.plan directly, never open a Stripe checkout that
+    // would charge them for a tier their role already grants for free.
     mockGetSession.mockResolvedValueOnce({ userId: 7, role: "moderator" });
     mockQuery.mockResolvedValueOnce({
       rows: [
@@ -155,16 +159,40 @@ describe("createSubscription", () => {
         },
       ],
     });
-    mockSubscriptionsCreate.mockResolvedValue({
-      id: "sub_new",
-      latest_invoice: {
-        confirmation_secret: { client_secret: "secret_abc" },
-      },
-    });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE users SET plan
+    mockQuery.mockResolvedValueOnce({ rows: [{ pre_staff_plan: null }] }); // syncPreStaffPlan read
 
-    await expect(
-      createSubscription("pro_supporter_monthly"),
-    ).resolves.toMatchObject({ kind: "new" });
+    await expect(createSubscription("pro_supporter_monthly")).resolves.toEqual({
+      kind: "db_updated",
+      plan: "pro_supporter",
+    });
+    // No Stripe subscription was created.
+    expect(mockSubscriptionsCreate).not.toHaveBeenCalled();
+  });
+
+  it("moves a super_admin down from Elite to Pro in the DB, with no Stripe charge", async () => {
+    // The exact reported case: a super_admin (Elite floor) sees Pro as
+    // "Downgrade to Pro"; clicking it must not create a paid subscription.
+    mockGetSession.mockResolvedValueOnce({ userId: 7, role: "super_admin" });
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          email: "boss@example.com",
+          name: "Boss",
+          stripe_customer_id: null,
+          stripe_subscription_id: null,
+          subscription_status: null,
+        },
+      ],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE users SET plan
+    mockQuery.mockResolvedValueOnce({ rows: [{ pre_staff_plan: null }] }); // syncPreStaffPlan read
+
+    await expect(createSubscription("pro_supporter_monthly")).resolves.toEqual({
+      kind: "db_updated",
+      plan: "pro_supporter",
+    });
+    expect(mockSubscriptionsCreate).not.toHaveBeenCalled();
   });
 
   it("allows a plain user account through the staff check", async () => {
@@ -521,9 +549,42 @@ describe("confirmSubscription", () => {
     expect(result).toEqual({ plan: "elite_supporter", active: true });
     const [sql, params] = mockQuery.mock.calls[0];
     expect(sql).toContain("plan = $1");
-    expect(params).toEqual(["elite_supporter", "sub_1", "active", "cus_1", 7]);
+    expect(params).toEqual([
+      "elite_supporter",
+      "sub_1",
+      "active",
+      "cus_1",
+      7,
+      null,
+    ]);
     const [badgeInsertSql] = mockQuery.mock.calls[2];
     expect(badgeInsertSql).toContain("user_badges");
+  });
+
+  it("records the recurring interval for a paid subscription (MRR amortization)", async () => {
+    mockSubscriptionsRetrieve.mockResolvedValue({
+      id: "sub_1",
+      status: "active",
+      customer: "cus_1",
+      metadata: { userId: "7", productId: "elite_supporter_yearly" },
+      items: { data: [{ price: { recurring: { interval: "year" } } }] },
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE users
+    mockQuery.mockResolvedValueOnce(badgeRow); // badge SELECT
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // badge INSERT
+
+    await confirmSubscription("sub_1");
+
+    const [sql, params] = mockQuery.mock.calls[0];
+    expect(sql).toContain("billing_interval = $6");
+    expect(params).toEqual([
+      "elite_supporter",
+      "sub_1",
+      "active",
+      "cus_1",
+      7,
+      "year",
+    ]);
   });
 
   it("writes free and revokes the badge for a subscription that isn't paid yet", async () => {
@@ -541,7 +602,7 @@ describe("confirmSubscription", () => {
 
     expect(result).toEqual({ plan: "free", active: false });
     const [, params] = mockQuery.mock.calls[0];
-    expect(params).toEqual(["free", "sub_1", "incomplete", "cus_1", 7]);
+    expect(params).toEqual(["free", "sub_1", "incomplete", "cus_1", 7, null]);
     const [badgeDeleteSql] = mockQuery.mock.calls[2];
     expect(badgeDeleteSql).toContain("DELETE FROM user_badges");
   });

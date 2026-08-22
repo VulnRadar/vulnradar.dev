@@ -278,6 +278,24 @@ export const PRODUCTS: readonly Product[] = PLANS.flatMap((plan) => {
   return [monthly, yearly];
 });
 
+/**
+ * Monthly-equivalent revenue for a subscription at the given billing interval.
+ * A yearly plan is charged its discounted annual price up front, so its MRR
+ * contribution is that annual price spread over 12 months, NOT the full monthly
+ * list price -- counting a yearly subscriber at the monthly price overstates
+ * MRR by the annual discount. Anything other than "year" (including a null
+ * interval) is treated as monthly. Used by the admin billing overview.
+ */
+export function monthlyEquivalentCents(
+  monthlyPriceInCents: number,
+  interval: string | null | undefined,
+): number {
+  if (interval === "year") {
+    return Math.round((monthlyPriceInCents * 12 * (1 - YEARLY_DISCOUNT)) / 12);
+  }
+  return monthlyPriceInCents;
+}
+
 // Lookup helpers
 
 export function getPlanById(planId: string): Plan | undefined {

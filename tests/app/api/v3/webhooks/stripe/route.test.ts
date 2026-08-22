@@ -483,7 +483,14 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.created", () => {
     expect(mockQuery).toHaveBeenCalledTimes(5);
     const [sql, params] = mockQuery.mock.calls[1];
     expect(sql).toContain("WHERE id = $5");
-    expect(params).toEqual(["elite_supporter", "sub_1", "active", "cus_1", 42]);
+    expect(params).toEqual([
+      "elite_supporter",
+      "sub_1",
+      "active",
+      "cus_1",
+      42,
+      null,
+    ]);
   });
 
   it("BUG: when metadata is absent, the items[].price.product fallback compares Stripe's real product id against internal plan-name prefixes and silently resolves to 'free'", async () => {
@@ -621,7 +628,43 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.updated", () => {
     expect(mockQuery).toHaveBeenCalledTimes(3);
     const [sql, params] = mockQuery.mock.calls[2];
     expect(sql).toContain("WHERE stripe_customer_id = $3");
-    expect(params).toEqual(["elite_supporter", "active", "cus_5"]);
+    expect(params).toEqual(["elite_supporter", "active", "cus_5", null]);
+  });
+
+  it("persists the recurring interval so the admin MRR estimate can amortize yearly subs", async () => {
+    withIdempotency("evt_sub_updated_yearly");
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // previous email/plan pre-read
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_sub_updated_yearly",
+          type: "customer.subscription.updated",
+          data: {
+            object: {
+              customer: "cus_5",
+              status: "active",
+              metadata: { productId: "elite_supporter_yearly" },
+              items: {
+                data: [
+                  {
+                    price: {
+                      product: "prod_unrelated",
+                      recurring: { interval: "year" },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        }),
+      ),
+    );
+    expect(res.status).toBe(200);
+    const [sql, params] = mockQuery.mock.calls[2];
+    expect(sql).toContain("billing_interval = $4");
+    expect(params).toEqual(["elite_supporter", "active", "cus_5", "year"]);
   });
 
   it("grants the premium badge when an incomplete subscription transitions to active", async () => {
@@ -686,7 +729,7 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.updated", () => {
     expect(res.status).toBe(200);
     expect(mockQuery).toHaveBeenCalledTimes(5);
     const [, updateParams] = mockQuery.mock.calls[2];
-    expect(updateParams).toEqual(["free", "incomplete_expired", "cus_5"]);
+    expect(updateParams).toEqual(["free", "incomplete_expired", "cus_5", null]);
     const [badgeDeleteSql, badgeDeleteParams] = mockQuery.mock.calls[4];
     expect(badgeDeleteSql).toContain("DELETE FROM user_badges");
     expect(badgeDeleteParams).toEqual([42, 9]);
@@ -722,7 +765,7 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.updated", () => {
     );
     expect(res.status).toBe(200);
     const [, updateParams] = mockQuery.mock.calls[2];
-    expect(updateParams).toEqual(["free", "incomplete", "cus_5"]);
+    expect(updateParams).toEqual(["free", "incomplete", "cus_5", null]);
   });
 
   it("preserves the plan and badge during a past_due grace period instead of immediately downgrading", async () => {
@@ -755,7 +798,12 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.updated", () => {
     );
     expect(res.status).toBe(200);
     const [, updateParams] = mockQuery.mock.calls[2];
-    expect(updateParams).toEqual(["elite_supporter", "past_due", "cus_5"]);
+    expect(updateParams).toEqual([
+      "elite_supporter",
+      "past_due",
+      "cus_5",
+      null,
+    ]);
     const [badgeInsertSql] = mockQuery.mock.calls[4];
     expect(badgeInsertSql).toContain("user_badges");
   });

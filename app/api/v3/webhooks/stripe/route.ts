@@ -308,6 +308,13 @@ export async function POST(req: NextRequest) {
           plan && ACTIVE_SUBSCRIPTION_STATUSES.includes(subscription.status)
             ? plan
             : "free";
+        // Interval feeds the admin MRR estimate. Mirrors planToWrite: only
+        // recorded once the subscription is genuinely paid, null otherwise.
+        const intervalToWrite =
+          planToWrite !== "free"
+            ? (subscription.items?.data?.[0]?.price?.recurring?.interval ??
+              null)
+            : null;
 
         let result;
 
@@ -318,7 +325,8 @@ export async function POST(req: NextRequest) {
               plan = $1,
               stripe_subscription_id = $2,
               subscription_status = $3,
-              stripe_customer_id = $4
+              stripe_customer_id = $4,
+              billing_interval = $6
             WHERE id = $5
             RETURNING id`,
             [
@@ -327,6 +335,7 @@ export async function POST(req: NextRequest) {
               subscription.status,
               customerId,
               userId,
+              intervalToWrite,
             ],
           );
           if (result.rowCount && result.rowCount > 0) {
@@ -345,10 +354,17 @@ export async function POST(req: NextRequest) {
             `UPDATE users SET
               plan = $1,
               stripe_subscription_id = $2,
-              subscription_status = $3
+              subscription_status = $3,
+              billing_interval = $5
             WHERE stripe_customer_id = $4
             RETURNING id`,
-            [planToWrite, subscription.id, subscription.status, customerId],
+            [
+              planToWrite,
+              subscription.id,
+              subscription.status,
+              customerId,
+              intervalToWrite,
+            ],
           );
           if (result.rowCount && result.rowCount > 0) {
             console.log(
@@ -371,7 +387,8 @@ export async function POST(req: NextRequest) {
                 plan = $1,
                 stripe_subscription_id = $2,
                 subscription_status = $3,
-                stripe_customer_id = $4
+                stripe_customer_id = $4,
+                billing_interval = $6
               WHERE LOWER(email) = LOWER($5)
               RETURNING id`,
               [
@@ -380,6 +397,7 @@ export async function POST(req: NextRequest) {
                 subscription.status,
                 customerId,
                 customer.email,
+                intervalToWrite,
               ],
             );
             if (result.rowCount && result.rowCount > 0) {
@@ -474,6 +492,12 @@ export async function POST(req: NextRequest) {
           isPaid && subscription.cancel_at_period_end
             ? "canceling"
             : subscription.status;
+        // Recurring interval feeds the admin MRR estimate (yearly subs are
+        // amortized, not counted at the full monthly price). null when the
+        // result isn't paid -- there's no recurring charge to attribute.
+        const intervalToWrite = isPaid
+          ? (subscription.items?.data?.[0]?.price?.recurring?.interval ?? null)
+          : null;
 
         // Capture the account's email and current plan BEFORE the UPDATE
         // below overwrites the plan, so the best-effort change email can tell
@@ -511,11 +535,14 @@ export async function POST(req: NextRequest) {
         const result = await pool.query(
           `UPDATE users SET
             plan = $1,
-            subscription_status = $2
+            subscription_status = $2,
+            billing_interval = $4
           WHERE stripe_customer_id = $3
-            AND (plan IS DISTINCT FROM $1 OR subscription_status IS DISTINCT FROM $2)
+            AND (plan IS DISTINCT FROM $1
+              OR subscription_status IS DISTINCT FROM $2
+              OR billing_interval IS DISTINCT FROM $4)
           RETURNING id`,
-          [planToWrite, statusToWrite, customerId],
+          [planToWrite, statusToWrite, customerId, intervalToWrite],
         );
         // Reconcile the premium badge on EVERY event, not only when the UPDATE
         // above changed a row: grant/revoke are idempotent, and gating them on
@@ -586,7 +613,8 @@ export async function POST(req: NextRequest) {
           `UPDATE users SET
             plan = CASE WHEN role IN ('admin', 'moderator', 'support') THEN 'pro_supporter' ELSE 'free' END,
             subscription_status = 'canceled',
-            stripe_subscription_id = NULL
+            stripe_subscription_id = NULL,
+            billing_interval = NULL
           WHERE stripe_customer_id = $1
           RETURNING id`,
           [customerId],
