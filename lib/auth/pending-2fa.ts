@@ -32,6 +32,11 @@ function signingKey(): Buffer {
 }
 
 function computeTag(payloadB64: string): string {
+  // HMAC-SHA256 keyed with the server's 32-byte secret, signing a 2FA-pending
+  // TOKEN (userId + ts) -- a MAC, not a password hash. HMAC-SHA256 is the
+  // correct primitive for keyed token signing; a slow password KDF would be
+  // wrong here. Real password hashing lives in lib/auth/password-hash.ts.
+  // codeql[js/insufficient-password-hash]
   return createHmac("sha256", signingKey())
     .update(`${HMAC_DOMAIN}.${payloadB64}`)
     .digest("base64url");

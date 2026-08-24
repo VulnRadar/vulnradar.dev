@@ -223,6 +223,12 @@ export async function grabBanner(
           host: safeIp,
           port,
           servername: host,
+          // Intentional for a scanner: banner-grabbing MUST connect to targets
+          // with invalid/expired/self-signed certs to inspect them. This is an
+          // outbound probe to a validated public IP (resolveSafePublicIp,
+          // SSRF-guarded) that only reads a banner and transmits no secrets, so
+          // certificate trust is irrelevant here. Not a vulnerability.
+          // codeql[js/disabling-certificate-validation]
           rejectUnauthorized: false,
         })
       : new net.Socket();
