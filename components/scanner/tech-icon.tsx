@@ -1,8 +1,11 @@
 import type { IconType } from "react-icons";
+import { GrHeroku } from "react-icons/gr";
+import { FaMagento } from "react-icons/fa";
 import {
   SiCloudflare,
   SiFastly,
   SiNextdotjs,
+  SiNuxt,
   SiReact,
   SiVuedotjs,
   SiAngular,
@@ -77,8 +80,10 @@ const BRANDS: Record<string, Brand> = {
   "Fly.io": { Icon: SiFlydotio, color: "#8B5CF6" },
   Render: { Icon: SiRender, color: "#5F5CFF" },
   "GitHub Pages": { Icon: SiGithub },
+  Heroku: { Icon: GrHeroku, color: "#79589F" },
   // Front-end frameworks / libs
   "Next.js": { Icon: SiNextdotjs },
+  Nuxt: { Icon: SiNuxt, color: "#00DC82" },
   React: { Icon: SiReact, color: "#61DAFB" },
   "Vue.js": { Icon: SiVuedotjs, color: "#4FC08D" },
   Angular: { Icon: SiAngular, color: "#DD0031" },
@@ -116,6 +121,7 @@ const BRANDS: Record<string, Brand> = {
   Drupal: { Icon: SiDrupal, color: "#0678BE" },
   Joomla: { Icon: SiJoomla, color: "#5091CD" },
   Shopify: { Icon: SiShopify, color: "#7AB55C" },
+  Magento: { Icon: FaMagento, color: "#EE672F" },
   Ghost: { Icon: SiGhost, color: "#738A94" },
   Hugo: { Icon: SiHugo, color: "#FF4088" },
   Jekyll: { Icon: SiJekyll, color: "#CC0000" },
