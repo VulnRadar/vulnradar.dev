@@ -28,6 +28,9 @@ interface TicketListItem {
   created_at: string;
   last_message_at: string;
   message_count: number;
+  /** True when this ticket was shared with the viewer by a teammate. */
+  shared: boolean;
+  shared_owner_name: string | null;
 }
 
 interface ThreadMessage {
@@ -36,6 +39,8 @@ interface ThreadMessage {
   body: string;
   createdAt: string;
   authorName: string | null;
+  /** The viewer authored this message. */
+  mine: boolean;
 }
 
 interface Thread {
@@ -47,6 +52,13 @@ interface Thread {
   };
   messages: ThreadMessage[];
   viewerIsStaff: boolean;
+  viewerIsOwner: boolean;
+}
+
+interface ShareEntry {
+  userId: number;
+  email: string;
+  name: string | null;
 }
 
 function timeAgo(iso: string): string {
@@ -105,6 +117,12 @@ export function SupportTickets() {
   const [reply, setReply] = useState("");
   const [replying, setReplying] = useState(false);
 
+  // Sharing with teammates (owner only)
+  const [showShare, setShowShare] = useState(false);
+  const [shares, setShares] = useState<ShareEntry[]>([]);
+  const [eligible, setEligible] = useState<ShareEntry[]>([]);
+  const [sharesLoading, setSharesLoading] = useState(false);
+
   const loadTickets = useCallback(async () => {
     try {
       const res = await fetch(API.SUPPORT_TICKETS);
@@ -120,6 +138,7 @@ export function SupportTickets() {
   const openThread = useCallback(async (id: number) => {
     setView("thread");
     setThreadLoading(true);
+    setShowShare(false);
     setError(null);
     try {
       const res = await fetch(API.SUPPORT_TICKET(id));
@@ -228,6 +247,62 @@ export function SupportTickets() {
       void loadTickets();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not update the ticket.");
+    }
+  }
+
+  async function loadShares(ticketId: number) {
+    setSharesLoading(true);
+    try {
+      const res = await fetch(API.SUPPORT_TICKET_SHARES(ticketId));
+      if (!res.ok) throw new Error("Could not load sharing.");
+      const data = await res.json();
+      setShares(data.shares ?? []);
+      setEligible(data.eligible ?? []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load sharing.");
+    } finally {
+      setSharesLoading(false);
+    }
+  }
+
+  async function toggleShare() {
+    if (!thread) return;
+    const next = !showShare;
+    setShowShare(next);
+    if (next) await loadShares(thread.ticket.id);
+  }
+
+  async function addShare(userId: number) {
+    if (!thread) return;
+    setError(null);
+    try {
+      const res = await fetch(API.SUPPORT_TICKET_SHARES(thread.ticket.id), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || "Could not share the ticket.");
+      }
+      await loadShares(thread.ticket.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not share the ticket.");
+    }
+  }
+
+  async function removeShare(userId: number) {
+    if (!thread) return;
+    setError(null);
+    try {
+      const res = await fetch(
+        `${API.SUPPORT_TICKET_SHARES(thread.ticket.id)}?userId=${userId}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) throw new Error("Could not update sharing.");
+      await loadShares(thread.ticket.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not update sharing.");
     }
   }
 
@@ -341,13 +416,21 @@ export function SupportTickets() {
                 className="flex w-full items-center gap-3 rounded-lg border border-border/60 bg-card p-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="truncate text-sm font-medium text-foreground">
                       {t.subject}
                     </span>
                     <StatusBadge status={t.status} />
+                    {t.shared && (
+                      <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                        Shared with you
+                      </span>
+                    )}
                   </div>
                   <div className="mt-0.5 text-xs text-muted-foreground">
+                    {t.shared && t.shared_owner_name
+                      ? `From ${t.shared_owner_name} · `
+                      : ""}
                     {TICKET_CATEGORY_LABELS[t.category]} &middot;{" "}
                     {t.message_count}{" "}
                     {t.message_count === 1 ? "message" : "messages"} &middot;{" "}
@@ -382,16 +465,78 @@ export function SupportTickets() {
                 </div>
               )}
             </div>
-            {thread && OPEN_TICKET_STATUSES.includes(thread.ticket.status) && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setStatus("resolved")}
-              >
-                Mark resolved
-              </Button>
+            {thread && (
+              <div className="flex shrink-0 items-center gap-1.5">
+                {thread.viewerIsOwner && (
+                  <Button size="sm" variant="ghost" onClick={toggleShare}>
+                    {showShare ? "Done" : "Share"}
+                  </Button>
+                )}
+                {OPEN_TICKET_STATUSES.includes(thread.ticket.status) && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setStatus("resolved")}
+                  >
+                    Mark resolved
+                  </Button>
+                )}
+              </div>
             )}
           </div>
+
+          {thread && thread.viewerIsOwner && showShare && (
+            <div className="border-b border-border/60 bg-muted/20 p-3 sm:p-4">
+              <p className="mb-2 text-xs font-medium text-foreground">
+                Share this ticket with a teammate
+              </p>
+              {sharesLoading ? (
+                <p className="text-xs text-muted-foreground">Loading...</p>
+              ) : (
+                <div className="space-y-3">
+                  {shares.length > 0 && (
+                    <div className="space-y-1.5">
+                      {shares.map((s) => (
+                        <div
+                          key={s.userId}
+                          className="flex items-center justify-between gap-2 text-sm"
+                        >
+                          <span className="truncate text-foreground">
+                            {s.name ? `${s.name} (${s.email})` : s.email}
+                          </span>
+                          <button
+                            onClick={() => removeShare(s.userId)}
+                            className="shrink-0 text-xs text-destructive hover:underline"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {eligible.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {eligible.map((u) => (
+                        <button
+                          key={u.userId}
+                          onClick={() => addShare(u.userId)}
+                          className="rounded-full border border-border px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                        >
+                          + {u.name ?? u.email}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      {shares.length > 0
+                        ? "Everyone on your team already has access."
+                        : "No teammates to share with yet. Add people to a team first."}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {threadLoading ? (
             <p className="p-4 text-sm text-muted-foreground">Loading...</p>
@@ -403,22 +548,26 @@ export function SupportTickets() {
                     key={m.id}
                     className={cn(
                       "flex flex-col gap-1",
-                      m.isStaff ? "items-start" : "items-end",
+                      m.mine ? "items-end" : "items-start",
                     )}
                   >
                     <div
                       className={cn(
                         "max-w-[85%] rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap break-words",
-                        m.isStaff
-                          ? "rounded-tl-sm bg-muted text-foreground"
-                          : "rounded-tr-sm bg-primary text-primary-foreground",
+                        m.mine
+                          ? "rounded-tr-sm bg-primary text-primary-foreground"
+                          : "rounded-tl-sm bg-muted text-foreground",
                       )}
                     >
                       {m.body}
                     </div>
                     <span className="px-1 text-[11px] text-muted-foreground">
-                      {m.isStaff ? (m.authorName ?? "Support") : "You"} &middot;{" "}
-                      {timeAgo(m.createdAt)}
+                      {m.mine
+                        ? "You"
+                        : m.isStaff
+                          ? (m.authorName ?? "Support")
+                          : (m.authorName ?? "Teammate")}{" "}
+                      &middot; {timeAgo(m.createdAt)}
                     </span>
                   </div>
                 ))}

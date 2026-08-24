@@ -585,6 +585,14 @@ export async function register() {
       body TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
-    CREATE INDEX IF NOT EXISTS idx_support_ticket_messages_ticket ON support_ticket_messages(ticket_id, created_at)
+    CREATE INDEX IF NOT EXISTS idx_support_ticket_messages_ticket ON support_ticket_messages(ticket_id, created_at);
+    CREATE TABLE IF NOT EXISTS support_ticket_shares (
+      ticket_id INTEGER NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+      shared_with_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      shared_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (ticket_id, shared_with_user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_support_ticket_shares_user ON support_ticket_shares(shared_with_user_id)
   `);
 }

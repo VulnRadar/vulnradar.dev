@@ -26,11 +26,19 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // The caller's own tickets, plus any a teammate explicitly shared with them.
+  // `shared` flags the latter; `shared_owner_name` names who opened it.
   const result = await pool.query(
     `SELECT t.id, t.subject, t.category, t.status, t.created_at, t.last_message_at,
-            (SELECT COUNT(*)::int FROM support_ticket_messages m WHERE m.ticket_id = t.id) AS message_count
+            (SELECT COUNT(*)::int FROM support_ticket_messages m WHERE m.ticket_id = t.id) AS message_count,
+            (t.user_id <> $1) AS shared,
+            CASE WHEN t.user_id <> $1 THEN ownu.name ELSE NULL END AS shared_owner_name
      FROM support_tickets t
+     JOIN users ownu ON ownu.id = t.user_id
      WHERE t.user_id = $1
+        OR t.id IN (
+          SELECT ticket_id FROM support_ticket_shares WHERE shared_with_user_id = $1
+        )
      ORDER BY t.last_message_at DESC
      LIMIT 100`,
     [session.userId],

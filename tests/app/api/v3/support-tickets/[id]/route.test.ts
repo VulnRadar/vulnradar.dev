@@ -6,6 +6,10 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 
+// ticket-access.ts imports "server-only", which throws outside a react-server
+// build; neutralize it so the real resolveTicketAccess loads under vitest.
+vi.mock("server-only", () => ({}));
+
 const mockQuery = vi.fn();
 vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
@@ -165,6 +169,45 @@ describe("POST /api/v3/support-tickets/[id] (reply)", () => {
     asUser(7, "user");
     const res = await POST(req("POST", { message: "   " }), params);
     expect(res.status).toBe(400);
+  });
+});
+
+describe("shared teammate access", () => {
+  // resolveTicketAccess runs a shares lookup when the viewer is neither owner
+  // nor staff; a non-empty result grants access.
+  it("lets a shared teammate read the thread", async () => {
+    asUser(8, "user");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow()] }) // loadTicket
+      .mockResolvedValueOnce({ rows: [{ ok: 1 }] }) // shares lookup -> shared
+      .mockResolvedValueOnce({ rows: [] }); // messages
+    const res = await GET(req("GET"), params);
+    expect(res.status).toBe(200);
+  });
+
+  it("lets a shared teammate reply as a non-staff participant", async () => {
+    asUser(8, "user");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow()] }) // loadTicket
+      .mockResolvedValueOnce({ rows: [{ ok: 1 }] }) // shares lookup
+      .mockResolvedValueOnce({
+        rows: [{ id: 9, is_staff: false, body: "me too", created_at: "x" }],
+      }) // insert
+      .mockResolvedValueOnce({ rows: [] }); // update
+    const res = await POST(req("POST", { message: "me too" }), params);
+    const body = await res.json();
+    expect(res.status).toBe(201);
+    expect(body.status).toBe("awaiting_staff");
+    expect(mockQuery.mock.calls[2][1][2]).toBe(false); // is_staff false
+  });
+
+  it("forbids a shared teammate from changing status", async () => {
+    asUser(8, "user");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow()] }) // loadTicket
+      .mockResolvedValueOnce({ rows: [{ ok: 1 }] }); // shares lookup
+    const res = await PATCH(req("PATCH", { status: "resolved" }), params);
+    expect(res.status).toBe(403);
   });
 });
 

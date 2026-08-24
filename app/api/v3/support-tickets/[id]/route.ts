@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
 import { getSession } from "@/lib/auth";
-import {
-  hasStaffPermission,
-  STAFF_PERMISSIONS,
-} from "@/lib/auth/permissions-client";
+import { resolveTicketAccess } from "@/lib/support/ticket-access";
 import {
   notifyStaffOfTicketActivity,
   notifyUserOfStaffReply,
@@ -76,12 +73,13 @@ export async function GET(
   if (!ticket) {
     return NextResponse.json({ error: "Ticket not found." }, { status: 404 });
   }
-  const isStaff = hasStaffPermission(
-    session.role,
-    STAFF_PERMISSIONS.MANAGE_SUPPORT_TICKETS,
-  );
-  const isOwner = ticket.user_id === session.userId;
-  if (!isOwner && !isStaff) {
+  const access = await resolveTicketAccess({
+    ticketOwnerId: ticket.user_id,
+    ticketId: id,
+    viewerId: session.userId,
+    viewerRole: session.role,
+  });
+  if (!access.canView) {
     return NextResponse.json({ error: "Ticket not found." }, { status: 404 });
   }
 
@@ -91,8 +89,9 @@ export async function GET(
     body: string;
     created_at: string;
     author_name: string | null;
+    author_user_id: number | null;
   }>(
-    `SELECT m.id, m.is_staff, m.body, m.created_at, u.name AS author_name
+    `SELECT m.id, m.is_staff, m.body, m.created_at, m.author_user_id, u.name AS author_name
      FROM support_ticket_messages m
      LEFT JOIN users u ON u.id = m.author_user_id
      WHERE m.ticket_id = $1
@@ -105,9 +104,12 @@ export async function GET(
     isStaff: m.is_staff,
     body: m.body,
     createdAt: m.created_at,
-    // A user viewing their own ticket sees staff replies as "Support", never a
-    // staffer's real name. Staff viewers see everyone's name.
-    authorName: m.is_staff && !isStaff ? null : m.author_name,
+    // The viewer's own messages render as "You"; a shared teammate or the owner
+    // sees each other's names on the non-staff replies.
+    mine: m.author_user_id === session.userId,
+    // A non-staff viewer sees staff replies as "Support", never a staffer's real
+    // name. Staff viewers see everyone's name.
+    authorName: m.is_staff && !access.isStaff ? null : m.author_name,
   }));
 
   return NextResponse.json({
@@ -120,12 +122,13 @@ export async function GET(
       updatedAt: ticket.updated_at,
       lastMessageAt: ticket.last_message_at,
       // Owner identity is only exposed to staff.
-      ...(isStaff
+      ...(access.isStaff
         ? { ownerEmail: ticket.owner_email, ownerName: ticket.owner_name }
         : {}),
     },
     messages,
-    viewerIsStaff: isStaff,
+    viewerIsStaff: access.isStaff,
+    viewerIsOwner: access.isOwner,
   });
 }
 
@@ -170,12 +173,13 @@ export async function POST(
   if (!ticket) {
     return NextResponse.json({ error: "Ticket not found." }, { status: 404 });
   }
-  const isStaff = hasStaffPermission(
-    session.role,
-    STAFF_PERMISSIONS.MANAGE_SUPPORT_TICKETS,
-  );
-  const isOwner = ticket.user_id === session.userId;
-  if (!isOwner && !isStaff) {
+  const access = await resolveTicketAccess({
+    ticketOwnerId: ticket.user_id,
+    ticketId: id,
+    viewerId: session.userId,
+    viewerRole: session.role,
+  });
+  if (!access.canView) {
     return NextResponse.json({ error: "Ticket not found." }, { status: 404 });
   }
   if (ticket.status === "closed") {
@@ -185,9 +189,9 @@ export async function POST(
     );
   }
 
-  // A staffer replying to someone else's ticket acts as staff; a staffer
-  // replying to their OWN ticket is just a user.
-  const actingAsStaff = isStaff && !isOwner;
+  // A staffer replying to someone else's ticket acts as staff; the owner and any
+  // shared teammate reply as ordinary participants.
+  const actingAsStaff = access.isStaff && !access.isOwner;
   // Staff reply -> waiting on the user. User reply -> waiting on staff (and a
   // reply on a resolved ticket reopens it).
   const newStatus: TicketStatus = actingAsStaff
@@ -279,17 +283,26 @@ export async function PATCH(
   if (!ticket) {
     return NextResponse.json({ error: "Ticket not found." }, { status: 404 });
   }
-  const isStaff = hasStaffPermission(
-    session.role,
-    STAFF_PERMISSIONS.MANAGE_SUPPORT_TICKETS,
-  );
-  const isOwner = ticket.user_id === session.userId;
-  if (!isOwner && !isStaff) {
+  const access = await resolveTicketAccess({
+    ticketOwnerId: ticket.user_id,
+    ticketId: id,
+    viewerId: session.userId,
+    viewerRole: session.role,
+  });
+  if (!access.canView) {
     return NextResponse.json({ error: "Ticket not found." }, { status: 404 });
+  }
+  // Only the owner or staff change status; a shared teammate can read/reply but
+  // not resolve, close, or reopen someone else's ticket.
+  if (!access.isOwner && !access.isStaff) {
+    return NextResponse.json(
+      { error: "Only the ticket owner can change its status." },
+      { status: 403 },
+    );
   }
   // A ticket owner may only resolve or close their own ticket. Staff may move it
   // to any state (e.g. reopen to awaiting_user).
-  if (!isStaff && status !== "resolved" && status !== "closed") {
+  if (!access.isStaff && status !== "resolved" && status !== "closed") {
     return NextResponse.json(
       { error: "You can only resolve or close your own ticket." },
       { status: 403 },

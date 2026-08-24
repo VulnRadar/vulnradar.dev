@@ -323,8 +323,10 @@ export function SupportInbox() {
                       {m.body}
                     </div>
                     <span className="px-1 text-[11px] text-muted-foreground">
-                      {m.isStaff ? (m.authorName ?? "Staff") : "User"} &middot;{" "}
-                      {timeAgo(m.createdAt)}
+                      {m.isStaff
+                        ? (m.authorName ?? "Staff")
+                        : (m.authorName ?? "User")}{" "}
+                      &middot; {timeAgo(m.createdAt)}
                     </span>
                   </div>
                 ))}

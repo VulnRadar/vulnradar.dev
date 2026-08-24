@@ -169,6 +169,9 @@ export const API = {
   /** One ticket + its thread: GET (owner or staff), POST a reply, PATCH status. */
   SUPPORT_TICKET: (id: number | string) =>
     `/api/${API_VERSION}/support-tickets/${id}`,
+  /** Owner-only sharing of a ticket with specific teammates: GET/POST/DELETE. */
+  SUPPORT_TICKET_SHARES: (id: number | string) =>
+    `/api/${API_VERSION}/support-tickets/${id}/shares`,
   /** Staff inbox listing every user's ticket (MANAGE_SUPPORT_TICKETS). */
   ADMIN_SUPPORT_TICKETS: `/api/${API_VERSION}/admin/support-tickets`,
   ADMIN: `/api/${API_VERSION}/admin`,
