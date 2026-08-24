@@ -42,13 +42,22 @@ const AI_CRAWLERS = [
   "Meta-ExternalAgent",
 ];
 
+// Query-string patterns to keep out of the index without hiding the underlying
+// page. /login and /signup stay fully indexable and in the sitemap, but a
+// protected page bouncing an anonymous visitor produces /login?redirect=<path>
+// (and /signup?redirect=<path>) variants that Search Console flagged as
+// "duplicate without user-selected canonical". A `*` wildcard (honored by
+// Google/Bing) blocks only the redirect-carrying variants; the clean paths
+// (no ?redirect=) never match, so they crawl and index normally.
+const QUERY_DISALLOW = ["/*?redirect="];
+
 export default function robots(): MetadataRoute.Robots {
   return {
     rules: [
       {
         userAgent: "*",
         allow: "/",
-        disallow: [...DISALLOWED_PATHS],
+        disallow: [...DISALLOWED_PATHS, ...QUERY_DISALLOW],
       },
       {
         // Explicitly allow the AI answer/generative engines onto the full
@@ -57,7 +66,7 @@ export default function robots(): MetadataRoute.Robots {
         // for them). Same private/tokenised paths stay disallowed.
         userAgent: AI_CRAWLERS,
         allow: "/",
-        disallow: [...DISALLOWED_PATHS],
+        disallow: [...DISALLOWED_PATHS, ...QUERY_DISALLOW],
       },
       {
         // VulnRadar's own scan crawler honors Disallow rules that name it
@@ -69,7 +78,11 @@ export default function robots(): MetadataRoute.Robots {
         // document for others who want pages kept out of a VulnRadar scan.
         userAgent: APP_NAME,
         allow: "/",
-        disallow: [...DISALLOWED_PATHS, ...SCANNER_DISALLOWED_PATHS],
+        disallow: [
+          ...DISALLOWED_PATHS,
+          ...SCANNER_DISALLOWED_PATHS,
+          ...QUERY_DISALLOW,
+        ],
       },
     ],
     sitemap: `${APP_URL}/sitemap.xml`,
