@@ -98,6 +98,29 @@ describe("generateComplianceReport", () => {
     expect(report).toContain("Reflected Cross-Site Scripting");
   });
 
+  it("maps an injection finding to HIPAA and GDPR safeguards, and names them in the report", () => {
+    const finding = makeFinding({
+      id: "sqli--1",
+      title: "SQL Injection (Error-Based)",
+      severity: "high",
+      category: "content",
+      cwe: "CWE-89",
+      owasp: "A03:2021",
+    });
+    const frameworks = new Set(
+      getControlsForFinding(finding).map((c) => c.framework),
+    );
+    expect(frameworks.has("hipaa")).toBe(true);
+    expect(frameworks.has("gdpr")).toBe(true);
+
+    const report = generateComplianceReport(makeResult([finding]));
+    expect(report).toContain("HIPAA Security Rule");
+    expect(report).toContain("GDPR (Art. 32)");
+    // A03 -> HIPAA integrity safeguard + GDPR integrity/confidentiality article.
+    expect(report).toContain("164.312(c)(1):");
+    expect(report).toContain("Art. 5(1)(f):");
+  });
+
   it("maps a missing-security-header finding (CWE-693 / A05) to configuration controls", () => {
     const finding = makeFinding({
       id: "csp-missing--1",

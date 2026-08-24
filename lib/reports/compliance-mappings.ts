@@ -37,7 +37,8 @@ import type { Category, Vulnerability } from "@/lib/scanner/types";
  * top of this module (compliance-report.ts) states that in its disclaimer.
  */
 
-export type FrameworkKey = "pci" | "soc2" | "iso27001" | "asvs";
+export type FrameworkKey =
+  "pci" | "soc2" | "iso27001" | "asvs" | "hipaa" | "gdpr";
 
 export interface FrameworkMeta {
   key: FrameworkKey;
@@ -71,6 +72,18 @@ export const FRAMEWORKS: FrameworkMeta[] = [
     name: "OWASP ASVS 4.0",
     blurb:
       "Application Security Verification Standard. Chapter references point to the verification requirements that cover this class of finding.",
+  },
+  {
+    key: "hipaa",
+    name: "HIPAA Security Rule",
+    blurb:
+      "45 CFR Part 164 technical and administrative safeguards. References indicate the safeguard a finding is relevant to; an external scan cannot assess policies, BAAs, or physical safeguards, and this is not a compliance determination.",
+  },
+  {
+    key: "gdpr",
+    name: "GDPR (Art. 32)",
+    blurb:
+      "EU GDPR security-of-processing articles. A mapping points at the obligation a finding touches; it does not assess lawful basis, data-subject rights, or any non-security part of the regulation.",
   },
 ];
 
@@ -152,6 +165,24 @@ const CONTROLS: Record<FrameworkKey, Record<string, string>> = {
     V12: "Files and Resources",
     V13: "API and Web Service",
     V14: "Configuration",
+  },
+  hipaa: {
+    "164.308(a)(1)(ii)(A)":
+      "Risk analysis of electronic protected health information",
+    "164.308(a)(6)": "Security incident procedures",
+    "164.312(a)(1)": "Access control",
+    "164.312(b)": "Audit controls",
+    "164.312(c)(1)": "Integrity of electronic protected health information",
+    "164.312(d)": "Person or entity authentication",
+    "164.312(e)(1)": "Transmission security",
+  },
+  gdpr: {
+    "Art. 5(1)(f)": "Integrity and confidentiality of personal data",
+    "Art. 25": "Data protection by design and by default",
+    "Art. 32(1)(a)": "Encryption and pseudonymisation of personal data",
+    "Art. 32(1)(b)":
+      "Ongoing confidentiality, integrity, availability and resilience",
+    "Art. 32(1)(d)": "Regular testing and evaluation of security measures",
   },
 };
 
@@ -253,6 +284,68 @@ const OWASP_CONTROL_REFS: Record<string, Array<[FrameworkKey, string]>> = {
     ["asvs", "V12"],
   ],
 };
+
+/**
+ * HIPAA Security Rule + GDPR Art. 32 references per OWASP category. Kept as a
+ * separate supplement (rather than threaded into every array above) and merged
+ * into OWASP_CONTROL_REFS below, so the vetted PCI/SOC2/ISO/ASVS backbone stays
+ * untouched. Same "indicative, not a compliance determination" caveat applies;
+ * an external web scan maps only to the technical-safeguard / security-of-
+ * processing parts of these regimes, never their policy/process/rights scope.
+ */
+const OWASP_PRIVACY_REFS: Record<string, Array<[FrameworkKey, string]>> = {
+  A01: [
+    ["hipaa", "164.312(a)(1)"],
+    ["gdpr", "Art. 32(1)(b)"],
+    ["gdpr", "Art. 25"],
+  ],
+  A02: [
+    ["hipaa", "164.312(e)(1)"],
+    ["gdpr", "Art. 32(1)(a)"],
+  ],
+  A03: [
+    ["hipaa", "164.312(c)(1)"],
+    ["gdpr", "Art. 5(1)(f)"],
+  ],
+  A04: [
+    ["hipaa", "164.308(a)(1)(ii)(A)"],
+    ["gdpr", "Art. 25"],
+  ],
+  A05: [
+    ["hipaa", "164.312(a)(1)"],
+    ["gdpr", "Art. 32(1)(b)"],
+  ],
+  A06: [
+    ["hipaa", "164.308(a)(1)(ii)(A)"],
+    ["gdpr", "Art. 32(1)(d)"],
+  ],
+  A07: [
+    ["hipaa", "164.312(d)"],
+    ["gdpr", "Art. 32(1)(b)"],
+  ],
+  A08: [
+    ["hipaa", "164.312(c)(1)"],
+    ["gdpr", "Art. 32(1)(b)"],
+  ],
+  A09: [
+    ["hipaa", "164.312(b)"],
+    ["hipaa", "164.308(a)(6)"],
+    ["gdpr", "Art. 32(1)(d)"],
+  ],
+  A10: [
+    ["hipaa", "164.312(e)(1)"],
+    ["gdpr", "Art. 32(1)(b)"],
+  ],
+};
+
+// Fold the HIPAA/GDPR references into the backbone so every finding that
+// resolves to an OWASP category picks them up alongside PCI/SOC2/ISO/ASVS.
+for (const [category, refs] of Object.entries(OWASP_PRIVACY_REFS)) {
+  OWASP_CONTROL_REFS[category] = [
+    ...(OWASP_CONTROL_REFS[category] ?? []),
+    ...refs,
+  ];
+}
 
 /**
  * CWE -> OWASP Top 10 (2021) category, covering every CWE the scanner emits
