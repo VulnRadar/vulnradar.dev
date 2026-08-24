@@ -39,7 +39,12 @@ export interface HostReportData {
   checksRun?: number;
   engineConfidence?: number;
   incomplete?: string[];
-  /** From host_reputation.result_meta once the source scan's owner generated one. */
+  /**
+   * The AI scan summary, once the source scan's owner generated one. Resolved
+   * from the live scan_history row in the GET handler (it is written there
+   * on-demand and never copied into the host_reputation snapshot), falling back
+   * to the snapshot's result_meta.
+   */
   aiSummary?: string;
   /**
    * The rest of host_reputation.result_meta, same source and shape the owner's
@@ -90,8 +95,9 @@ export async function GET(
       result_meta: Record<string, unknown> | null;
       authenticated: boolean;
       auto_tags: string[] | null;
+      source_scan_id: number | null;
     }>(
-      `SELECT danger_score, severity_counts, findings, response_headers, last_scanned_at, result_meta, authenticated, auto_tags
+      `SELECT danger_score, severity_counts, findings, response_headers, last_scanned_at, result_meta, authenticated, auto_tags, source_scan_id
        FROM host_reputation
        WHERE host = $1`,
       [host],
@@ -113,13 +119,50 @@ export async function GET(
       return NextResponse.json(body);
     }
 
-    const meta = row.result_meta || {};
+    // host_reputation is a snapshot frozen at scan-completion time. Two kinds of
+    // data live only on the source scan_history row and never make it into that
+    // snapshot: on-demand AI enrichment (result_meta.aiSummary and per-finding
+    // aiVerdict, both written to scan_history AFTER the scan finishes), and, for
+    // rows created before findings/result_meta were added to host_reputation, the
+    // findings and meta themselves (the snapshot defaults them to []/{}, leaving
+    // the report showing only the base stats). Resolve the live source scan
+    // (public only -- the row is deleted when its scan is made private) and let
+    // its findings and result_meta win, falling back to the frozen snapshot when
+    // the source scan is missing, private, or predates source_scan_id.
+    let liveFindings: Vulnerability[] | null = null;
+    let liveMeta: Record<string, unknown> | null = null;
+    if (row.source_scan_id != null) {
+      try {
+        const live = await pool.query<{
+          findings: Vulnerability[] | null;
+          result_meta: Record<string, unknown> | null;
+        }>(
+          `SELECT findings, result_meta FROM scan_history WHERE id = $1 AND is_public = true`,
+          [row.source_scan_id],
+        );
+        const scan = live.rows[0];
+        if (scan) {
+          if (Array.isArray(scan.findings) && scan.findings.length > 0) {
+            liveFindings = scan.findings;
+          }
+          if (scan.result_meta) liveMeta = scan.result_meta;
+        }
+      } catch (liveErr) {
+        console.error(
+          `[${APP_NAME}] Host report: source scan lookup failed (using snapshot):`,
+          liveErr instanceof Error ? liveErr.message : liveErr,
+        );
+      }
+    }
+
+    // Live meta overrides the snapshot but never drops a field the snapshot had.
+    const meta = { ...(row.result_meta || {}), ...(liveMeta || {}) };
     const body: HostReportData = {
       known: true,
       host,
       dangerScore: row.danger_score,
       severityCounts: row.severity_counts,
-      findings: row.findings || [],
+      findings: liveFindings ?? row.findings ?? [],
       responseHeaders: row.response_headers || null,
       lastScannedAt: new Date(row.last_scanned_at).toISOString(),
       authenticated: row.authenticated || false,

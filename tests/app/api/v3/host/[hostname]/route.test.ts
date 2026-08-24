@@ -140,6 +140,121 @@ describe("GET /api/v3/host/[hostname]", () => {
     expect(body.known).toBe(false);
   });
 
+  it("surfaces AI results from the live source scan even though the frozen snapshot lacks them", async () => {
+    // host_reputation snapshot: no aiSummary, findings carry no aiVerdict.
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          danger_score: 5,
+          severity_counts: { critical: 0, high: 1, medium: 0, low: 0, info: 0 },
+          findings: [{ id: "a", severity: "high", title: "Missing HSTS" }],
+          response_headers: null,
+          last_scanned_at: "2026-01-01T00:00:00.000Z",
+          result_meta: { checksRun: 10 },
+          authenticated: false,
+          auto_tags: [],
+          source_scan_id: 123,
+        },
+      ],
+      rowCount: 1,
+    });
+    // Live scan_history row: AI enrichment written after the scan finished.
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          findings: [
+            {
+              id: "a",
+              severity: "high",
+              title: "Missing HSTS",
+              aiVerdict: "confirmed",
+            },
+          ],
+          result_meta: {
+            checksRun: 10,
+            aiSummary: "Hardening only, no way in.",
+          },
+        },
+      ],
+      rowCount: 1,
+    });
+
+    const res = await GET(getRequest("ai-host.com"), params("ai-host.com"));
+    const body = await res.json();
+    expect(body.aiSummary).toBe("Hardening only, no way in.");
+    expect(body.findings[0].aiVerdict).toBe("confirmed");
+    // The second query reads the live scan by source_scan_id, public only.
+    const [sql2, queryParams2] = mockQuery.mock.calls[1];
+    expect(sql2).toContain("FROM scan_history");
+    expect(sql2).toContain("is_public = true");
+    expect(queryParams2).toEqual([123]);
+  });
+
+  it("backfills findings and meta from the live scan when the snapshot predates those columns (empty)", async () => {
+    // The bug-2 case: a legacy row whose findings/result_meta were never
+    // refreshed, so the snapshot alone would render only the base stats.
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          danger_score: 4,
+          severity_counts: { critical: 0, high: 1, medium: 2, low: 0, info: 0 },
+          findings: [],
+          response_headers: null,
+          last_scanned_at: "2026-01-01T00:00:00.000Z",
+          result_meta: {},
+          authenticated: false,
+          auto_tags: [],
+          source_scan_id: 55,
+        },
+      ],
+      rowCount: 1,
+    });
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          findings: [{ id: "h", severity: "high", title: "Missing HSTS" }],
+          result_meta: { checksRun: 20, sslGrade: "B" },
+        },
+      ],
+      rowCount: 1,
+    });
+
+    const res = await GET(getRequest("legacy2.com"), params("legacy2.com"));
+    const body = await res.json();
+    expect(body.findings).toHaveLength(1);
+    expect(body.checksRun).toBe(20);
+    expect(body.sslGrade).toBe("B");
+  });
+
+  it("falls back to the snapshot when the source scan is private or deleted", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          danger_score: 6,
+          severity_counts: { critical: 0, high: 1, medium: 0, low: 0, info: 0 },
+          findings: [{ id: "s", severity: "high", title: "Snapshot finding" }],
+          response_headers: null,
+          last_scanned_at: "2026-01-01T00:00:00.000Z",
+          result_meta: { checksRun: 9 },
+          authenticated: false,
+          auto_tags: [],
+          source_scan_id: 99,
+        },
+      ],
+      rowCount: 1,
+    });
+    // Source scan is no longer public (or was deleted): no row returned.
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    const res = await GET(getRequest("fellback.com"), params("fellback.com"));
+    const body = await res.json();
+    expect(body.findings).toEqual([
+      { id: "s", severity: "high", title: "Snapshot finding" },
+    ]);
+    expect(body.checksRun).toBe(9);
+    expect(body.aiSummary).toBeUndefined();
+  });
+
   it("500s and does not leak the raw error when the query throws", async () => {
     mockQuery.mockRejectedValue(new Error("db exploded"));
     const res = await GET(getRequest("example.com"), params("example.com"));
