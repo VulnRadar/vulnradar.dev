@@ -70,6 +70,17 @@ jobs:
         # Phase 8 Commit 1: block merges on high/critical CVEs in runtime deps.
         run: npm audit --audit-level=high --omit=dev
 
+      - name: Check generated AI-knowledge files are up to date
+        # The AI system prompt is fed committed, generated files (lib/ai/*.md +
+        # lib/config/check-stats.generated.ts). If someone edits the source
+        # (changelog data, checks, docs, legal) without regenerating, the AI
+        # ships stale knowledge. Regenerate here and fail on any content drift.
+        # The compile date line is the only nondeterministic output, so it is
+        # ignored -- a real content change still fails the diff.
+        run: |
+          npm run build:knowledge
+          git diff --exit-code --ignore-matching-lines='compiled from' -- lib/ai lib/config/check-stats.generated.ts
+
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -94,6 +105,43 @@ jobs:
       # for now; thresholds are enforced locally via `npm run test:coverage`.
       - name: Run unit tests
         run: npm run test
+
+  extension:
+    name: Extension
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: extension/package-lock.json
+
+      # The browser extension is a separate package (extension/) with its own
+      # deps, tsconfig, and build. It was previously not covered by CI at all,
+      # so a change that broke its typecheck, formatting, or build could land
+      # unnoticed. This job type-checks it, enforces formatting, and builds
+      # both the Chrome and Firefox targets.
+      - name: Install extension dependencies
+        run: npm ci
+        working-directory: extension
+
+      - name: Typecheck extension
+        run: npm run typecheck
+        working-directory: extension
+
+      - name: Check extension formatting
+        run: npm run format:check
+        working-directory: extension
+
+      - name: Build extension (Chrome + Firefox)
+        run: npm run build:chrome && npm run build:firefox
+        working-directory: extension
 
   build:
     name: Build
