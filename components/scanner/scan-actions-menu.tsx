@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   BotMessageSquare,
+  CircleDot,
   Eye,
   FileCode2,
   FileJson,
@@ -19,6 +20,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -123,6 +125,15 @@ export function ScanActionsMenu({
 
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // "File as GitHub issue" dialog (VulnRadar GitHub Scanner).
+  const [githubOpen, setGithubOpen] = useState(false);
+  const [githubRepo, setGithubRepo] = useState("");
+  const [githubFiling, setGithubFiling] = useState(false);
+  const [githubError, setGithubError] = useState<string | null>(null);
+  const [githubResult, setGithubResult] = useState<{ url: string } | null>(
+    null,
+  );
 
   const [aiAvailable, setAiAvailable] = useState(false);
   const [verifying, setVerifying] = useState(false);
@@ -333,6 +344,32 @@ export function ScanActionsMenu({
       // Silently fail, matching requestShare's existing behavior.
     } finally {
       setTogglingPrivacy(false);
+    }
+  }
+
+  async function fileGithubIssue() {
+    if (githubFiling || !scanId) return;
+    const repo = githubRepo.trim();
+    if (!/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(repo)) {
+      setGithubError("Enter a repository as owner/name (e.g. octocat/site).");
+      return;
+    }
+    setGithubFiling(true);
+    setGithubError(null);
+    try {
+      const data = await apiPost<{ url: string }>(API.SCAN_GITHUB_ISSUE, {
+        scanId,
+        repo,
+      });
+      setGithubResult({ url: data.url });
+    } catch (err) {
+      setGithubError(
+        err instanceof ApiError
+          ? err.message
+          : "Could not file the issue. Try again.",
+      );
+    } finally {
+      setGithubFiling(false);
     }
   }
 
@@ -557,6 +594,16 @@ export function ScanActionsMenu({
             onSelect: togglePrivacy,
             disabled: togglingPrivacy,
           },
+          {
+            key: "github-issue",
+            label: "File as GitHub issue",
+            icon: CircleDot,
+            onSelect: () => {
+              setGithubError(null);
+              setGithubResult(null);
+              setGithubOpen(true);
+            },
+          },
         ] as PageActionEntry[])
       : []),
     ...(showAiReview
@@ -678,6 +725,82 @@ export function ScanActionsMenu({
               )}
               {viewOpening ? "Opening..." : "Open browser"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={githubOpen} onOpenChange={setGithubOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>File as GitHub issue</DialogTitle>
+            <DialogDescription>
+              The VulnRadar GitHub Scanner opens an issue in one of your repos
+              summarizing this scan&apos;s findings. Uses your connected GitHub
+              account (repo access required).
+            </DialogDescription>
+          </DialogHeader>
+
+          {githubResult ? (
+            <div className="rounded-md border border-[hsl(var(--success))]/30 bg-[hsl(var(--success))]/10 px-3 py-2.5 text-sm">
+              <p className="text-foreground">Issue created.</p>
+              <a
+                href={githubResult.url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-primary hover:underline break-all"
+              >
+                {githubResult.url}
+              </a>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <label
+                htmlFor="gh-issue-repo"
+                className="text-sm font-medium text-foreground"
+              >
+                Repository
+              </label>
+              <Input
+                id="gh-issue-repo"
+                value={githubRepo}
+                onChange={(e) => setGithubRepo(e.target.value)}
+                placeholder="owner/name"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              {githubError && (
+                <p className="text-sm text-destructive">{githubError}</p>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            {githubResult ? (
+              <Button onClick={() => setGithubOpen(false)}>Done</Button>
+            ) : (
+              <>
+                <Button
+                  variant="ghost"
+                  onClick={() => setGithubOpen(false)}
+                  disabled={githubFiling}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={fileGithubIssue}
+                  disabled={githubFiling}
+                  className="gap-2"
+                >
+                  {githubFiling && (
+                    <Loader2
+                      className="h-4 w-4 animate-spin"
+                      aria-hidden="true"
+                    />
+                  )}
+                  {githubFiling ? "Filing..." : "Create issue"}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
