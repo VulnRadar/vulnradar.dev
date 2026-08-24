@@ -3,6 +3,7 @@ export { ThemedLogo } from "./themed-logo";
 export { NotificationBell, BackupCodesModal } from "./notification-center";
 export { SiteNotificationsWrapper } from "./site-notifications";
 export { SaveConfirmationModal } from "./save-confirmation-modal";
+export { CookieNotice } from "./cookie-notice";
 export { OnboardingTour } from "./onboarding-tour";
 export { PublicPageShell } from "./public-page-shell";
 export {

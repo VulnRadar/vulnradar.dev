@@ -12,6 +12,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { StaffHeartbeat } from "@/components/admin/staff-heartbeat";
 import { ImpersonationBanner } from "@/components/admin/impersonation-banner";
 import { SiteNotificationsWrapper } from "@/components/shared/site-notifications";
+import { CookieNotice } from "@/components/shared/cookie-notice";
 import {
   APP_NAME,
   APP_DESCRIPTION,
@@ -182,6 +183,7 @@ export default async function RootLayout({
             <DiscordProfileModalWrapper />
             <GithubProfileModalWrapper />
             <ChatWidget />
+            <CookieNotice />
             <Toaster />
           </AuthProvider>
         </ThemeProvider>
