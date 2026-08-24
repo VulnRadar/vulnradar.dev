@@ -122,7 +122,7 @@
     "@types/jsonwebtoken": "9.0.10",
     "@types/node": "26.2.0",
     "@types/nodemailer": "8.0.1",
-    "@types/pg": "8.21.0",
+    "@types/pg": "8.23.1",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",
     "@typescript-eslint/eslint-plugin": "8.67.0",
@@ -132,7 +132,7 @@
     "postcss": "8.5.26",
     "prettier": "3.9.6",
     "tailwindcss": "^4.3.3",
-    "typescript": "6.0.3"
+    "typescript": "7.0.2"
   },
   "overrides": {
     "postcss": "8.5.26",
