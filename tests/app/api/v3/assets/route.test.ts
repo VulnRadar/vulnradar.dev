@@ -102,6 +102,57 @@ describe("GET /api/v3/assets", () => {
     expect(res.status).toBe(403);
   });
 
+  it("scope=all lists public hosts from host_reputation and never reads scan_history", async () => {
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("SELECT plan, role, disabled_at FROM users")) {
+        return { rows: [{ plan: "free", role: "user", disabled_at: null }] };
+      }
+      if (sql.includes("FROM host_reputation")) {
+        return {
+          rows: [
+            {
+              host: "someone-else.com",
+              severity_counts: {
+                critical: 1,
+                high: 0,
+                medium: 2,
+                low: 0,
+                info: 1,
+              },
+              findings: [
+                { title: "SQL Injection Vulnerability", severity: "critical" },
+              ],
+              last_scanned_at: "2024-02-01T00:00:00Z",
+              source_scan_id: 55,
+              scanned_url: "https://someone-else.com/x",
+            },
+          ],
+        };
+      }
+      // The privacy guarantee: scope=all must never touch scan_history (which
+      // includes private scans); it reads only the public host_reputation table.
+      if (sql.includes("FROM scan_history")) {
+        throw new Error("scope=all must not read scan_history");
+      }
+      return { rows: [] };
+    });
+
+    const req = new NextRequest("http://localhost/api/v3/assets?scope=all", {
+      method: "GET",
+    });
+    const res = await GET(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.scope).toBe("all");
+    expect(json.assets).toHaveLength(1);
+    expect(json.assets[0]).toMatchObject({
+      host: "someone-else.com",
+      isPublic: true,
+      findingsCount: 4,
+    });
+  });
+
   it("groups scans of the same host (www-stripped) and counts them, keyed to the newest scan", async () => {
     installDefaultQueryMock(
       [

@@ -100,7 +100,11 @@ function hostForGrouping(url: string): string {
   }
 }
 
-export const GET = withErrorHandling(async (_request: NextRequest) => {
+/** Cap on the public "all hosts" browse. host_reputation is small today, but
+ *  bound it so the list stays a browse, not an unbounded dump. */
+const ALL_HOSTS_MAX = 500;
+
+export const GET = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session) {
     return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
@@ -116,6 +120,58 @@ export const GET = withErrorHandling(async (_request: NextRequest) => {
   }
   const userPlan = userRes.rows[0]?.plan || "free";
   const userRole = userRes.rows[0]?.role || "user";
+
+  // scope=all: every host on file, not just the caller's own scans. This reads
+  // ONLY host_reputation, which is public-scan-only by construction (every
+  // upsertHostReputation call skips non-public scans, and the row is deleted
+  // when its source scan is flipped to private -- see that table's callers and
+  // GET /api/v3/host/[hostname]). So it exposes nothing that isn't already
+  // public at /host/[hostname]; a caller's own private scans never appear here.
+  if (request.nextUrl.searchParams.get("scope") === "all") {
+    const res = await pool.query<{
+      host: string;
+      severity_counts: Record<string, number> | null;
+      findings: Vulnerability[] | null;
+      last_scanned_at: string | Date;
+      source_scan_id: number | null;
+      scanned_url: string | null;
+    }>(
+      `SELECT host, severity_counts, findings, last_scanned_at, source_scan_id, scanned_url
+       FROM host_reputation
+       ORDER BY last_scanned_at DESC
+       LIMIT $1`,
+      [ALL_HOSTS_MAX],
+    );
+    const assets: AssetRow[] = res.rows.map((r) => {
+      const counts = r.severity_counts || {};
+      const findingsCount =
+        (counts.critical ?? 0) +
+        (counts.high ?? 0) +
+        (counts.medium ?? 0) +
+        (counts.low ?? 0) +
+        (counts.info ?? 0);
+      return {
+        host: r.host,
+        // host_reputation holds one snapshot per host, not a per-host scan
+        // count, so this is the single latest public scan.
+        scanCount: 1,
+        latestScanId: r.source_scan_id ?? 0,
+        latestUrl: r.scanned_url || `https://${r.host}`,
+        latestScannedAt: new Date(r.last_scanned_at).toISOString(),
+        findingsCount,
+        summary: counts,
+        safetyRating: getSafetyRating(r.findings || []),
+        // Every host_reputation row is a public scan by construction.
+        isPublic: true,
+      };
+    });
+    return ApiResponse.success({
+      assets,
+      totalHosts: assets.length,
+      totalScans: assets.length,
+      scope: "all",
+    });
+  }
 
   const isStaff = ["admin", "moderator", "support"].includes(userRole);
   const retentionSettingKey =

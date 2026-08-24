@@ -12,10 +12,12 @@ import {
 } from "@/components/ui/pagination-control";
 import { API } from "@/lib/config/constants";
 import {
+  getQueryParam,
   getQueryParamInt,
   QUERY_CHANGE_EVENT,
   setQueryParam,
 } from "@/lib/ui/url-state";
+import { cn } from "@/lib/ui/utils";
 import {
   AssetsStats,
   AssetsTable,
@@ -31,6 +33,11 @@ export default function AssetsPage() {
   const [assets, setAssets] = useState<AssetRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
+  // "mine" = the caller's own scanned hosts (default); "all" = every public
+  // host on file (host_reputation, public-scan-only). Synced to ?scope=.
+  const [scope, setScope] = useState<"mine" | "all">(() =>
+    getQueryParam("scope") === "all" ? "all" : "mine",
+  );
   const [currentPage, setCurrentPage] = useState(
     () => getQueryParamInt("page") ?? 1,
   );
@@ -60,7 +67,9 @@ export default function AssetsPage() {
 
   const fetchAssets = useCallback(async () => {
     try {
-      const res = await fetch(API.ASSETS);
+      const res = await fetch(
+        scope === "all" ? `${API.ASSETS}?scope=all` : API.ASSETS,
+      );
       if (!res.ok) {
         if (res.status === 401 || res.status === 403) router.push("/login");
         return;
@@ -72,7 +81,19 @@ export default function AssetsPage() {
     } finally {
       setLoading(false);
     }
-  }, [router]);
+  }, [router, scope]);
+
+  const changeScope = useCallback((next: "mine" | "all") => {
+    setScope((prev) => {
+      if (prev === next) return prev;
+      setLoading(true);
+      setAssets([]);
+      setQueryParam("scope", next === "all" ? "all" : null, {
+        replace: true,
+      });
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
@@ -121,12 +142,43 @@ export default function AssetsPage() {
 
         <div aria-label="Assets" className="mb-1 pb-2 pt-6 sm:pt-8">
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
-            Assets
+            {scope === "all" ? "All public hosts" : "Assets"}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {assets.length} distinct {assets.length === 1 ? "host" : "hosts"}{" "}
-            scanned, most recently scanned first.
+            {scope === "all"
+              ? `${assets.length} ${assets.length === 1 ? "host" : "hosts"} on file with a public scan, most recently scanned first.`
+              : `${assets.length} distinct ${assets.length === 1 ? "host" : "hosts"} you've scanned, most recently scanned first.`}
           </p>
+
+          {/* Scope toggle: your own scans vs every public host on file. The
+              "all" view reads only public scan data (host_reputation). */}
+          <div
+            role="tablist"
+            aria-label="Asset scope"
+            className="mt-3 inline-flex rounded-md border border-border bg-card p-0.5"
+          >
+            {(
+              [
+                { key: "mine", label: "My scans" },
+                { key: "all", label: "All public hosts" },
+              ] as const
+            ).map((opt) => (
+              <button
+                key={opt.key}
+                role="tab"
+                aria-selected={scope === opt.key}
+                onClick={() => changeScope(opt.key)}
+                className={cn(
+                  "rounded px-3 py-1 text-sm font-medium transition-colors",
+                  scope === opt.key
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <AssetsStats assets={assets} />
