@@ -79,7 +79,7 @@
     "@stripe/react-stripe-js": "6.8.1",
     "@stripe/stripe-js": "9.13.0",
     "@vitest/coverage-v8": "4.1.11",
-    "ai": "^7.0.65",
+    "ai": "^7.0.73",
     "bcryptjs": "3.0.3",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
