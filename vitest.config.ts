@@ -1,5 +1,14 @@
 import { defineConfig } from "vitest/config";
 import path from "node:path";
+import os from "node:os";
+
+// Cap concurrent worker processes. Vitest's default forks pool spawns roughly
+// one worker per CPU, which on a constrained runner or CI container can exhaust
+// memory/file handles mid-run and surface as intermittent
+// "Failed to start forks worker" errors (flaky, not real failures). A ceiling
+// keeps the ~10k-test suite stable while still parallelizing on multi-core
+// machines. Leaves a core free and never exceeds 6 workers.
+const MAX_TEST_FORKS = Math.max(1, Math.min((os.cpus()?.length ?? 4) - 1, 6));
 
 /**
  * Vitest config for the VulnRadar security-critical unit suite.
@@ -13,6 +22,10 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts", "tests/**/*.spec.ts"],
+    pool: "forks",
+    poolOptions: {
+      forks: { maxForks: MAX_TEST_FORKS, minForks: 1 },
+    },
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov", "html"],

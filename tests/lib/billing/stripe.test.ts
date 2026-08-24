@@ -27,6 +27,11 @@ const originalKey = process.env.STRIPE_SECRET_KEY;
 
 beforeEach(() => {
   delete process.env.STRIPE_SECRET_KEY;
+  // Defensive isolation: start every test with no stale constants mock and a
+  // fresh module registry, so a prior test's doMock/import can never leak into
+  // this one (the documented "billing disabled" flake under parallel load).
+  vi.doUnmock("@/lib/config/constants");
+  vi.resetModules();
 });
 
 afterEach(() => {
