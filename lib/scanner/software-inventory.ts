@@ -208,7 +208,61 @@ const CVE_CATALOG: Record<string, CveLookup> = {
   gunicorn: { osv: { ecosystem: "PyPI", package: "gunicorn" } },
   express: { osv: { ecosystem: "npm", package: "express" } },
   "next.js": { osv: { ecosystem: "npm", package: "next" } },
+  // Angular announces its exact version in markup (ng-version="..."), so a
+  // version-to-CVE lookup is meaningful here; the other body-detected client
+  // frameworks are versionless and so never reach a lookup.
+  angular: { osv: { ecosystem: "npm", package: "@angular/core" } },
 };
+
+// Client-side framework/tooling fingerprints read from the rendered HTML.
+// Server headers and <meta generator> tags miss modern SPA/meta-frameworks
+// (React, Vue, Svelte, Next, Nuxt, Astro, ...), which is what a Wappalyzer-style
+// lookup surfaces. Kept to strong, low-false-positive markers; `versionRe`
+// pulls a version when the markup carries one (only Angular's ng-version does).
+// Every pattern is linear (no nested quantifiers) so this stays ReDoS-safe.
+interface BodyMarker {
+  name: string;
+  category: SoftwareCategory;
+  re: RegExp;
+  versionRe?: RegExp;
+}
+const BODY_TECH_MARKERS: BodyMarker[] = [
+  {
+    name: "Next.js",
+    category: "framework",
+    re: /__NEXT_DATA__|\/_next\/static\//i,
+  },
+  { name: "Nuxt", category: "framework", re: /window\.__NUXT__|\/_nuxt\//i },
+  {
+    name: "Angular",
+    category: "framework",
+    re: /\sng-version=|_nghost-|_ngcontent-/i,
+    versionRe: /ng-version=["']([\d.]+)["']/i,
+  },
+  {
+    name: "Vue.js",
+    category: "framework",
+    re: /__VUE__|data-v-app|data-v-[0-9a-f]{6,10}=/i,
+  },
+  {
+    name: "SvelteKit",
+    category: "framework",
+    re: /__sveltekit|\/_app\/immutable\//i,
+  },
+  { name: "Astro", category: "framework", re: /astro-island|\/_astro\//i },
+  {
+    name: "Remix",
+    category: "framework",
+    re: /__remixContext|__remixManifest/i,
+  },
+  { name: "Gatsby", category: "framework", re: /___gatsby|\/page-data\//i },
+  {
+    name: "React",
+    category: "framework",
+    re: /data-reactroot|react-dom(?:\.production|\.development|\.min)?\.js|_reactListening/i,
+  },
+  { name: "Tailwind CSS", category: "library", re: /cdn\.tailwindcss\.com/i },
+];
 
 // ── Fingerprinting (pure, no network) ───────────────────────────────────────
 
@@ -374,6 +428,21 @@ export function fingerprintSoftware(
         category: "cms",
         source: "Drupal markup",
       });
+    }
+
+    // Client-side framework/tooling markers (React/Vue/Angular/Next/etc.).
+    for (const marker of BODY_TECH_MARKERS) {
+      if (marker.re.test(body)) {
+        const version = marker.versionRe
+          ? body.match(marker.versionRe)?.[1]
+          : undefined;
+        pushItem(out, seen, {
+          name: marker.name,
+          version,
+          category: marker.category,
+          source: "page markup",
+        });
+      }
     }
 
     // Reuse osv-check.ts's own client-side library detection so the same

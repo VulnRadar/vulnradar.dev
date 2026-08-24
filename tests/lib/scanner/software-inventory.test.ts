@@ -167,6 +167,66 @@ describe("fingerprintSoftware", () => {
     );
     expect(items).toEqual([]);
   });
+
+  it("detects Next.js from __NEXT_DATA__ in the markup", () => {
+    const body = `<div id="__next"></div><script id="__NEXT_DATA__">{}</script>`;
+    const items = fingerprintSoftware(
+      new Headers(),
+      body,
+      "https://example.com",
+    );
+    expect(items.find((i) => i.name === "Next.js")).toMatchObject({
+      category: "framework",
+      source: "page markup",
+    });
+  });
+
+  it("detects Angular AND its version from ng-version", () => {
+    const body = `<app-root ng-version="17.1.2"></app-root>`;
+    const items = fingerprintSoftware(
+      new Headers(),
+      body,
+      "https://example.com",
+    );
+    expect(items.find((i) => i.name === "Angular")).toMatchObject({
+      version: "17.1.2",
+      category: "framework",
+    });
+  });
+
+  it("detects Vue, React, and Tailwind from their markers", () => {
+    const vue = fingerprintSoftware(
+      new Headers(),
+      `<div data-v-app></div>`,
+      "https://example.com",
+    );
+    expect(vue.some((i) => i.name === "Vue.js")).toBe(true);
+
+    const react = fingerprintSoftware(
+      new Headers(),
+      `<div data-reactroot></div>`,
+      "https://example.com",
+    );
+    expect(react.some((i) => i.name === "React")).toBe(true);
+
+    const tw = fingerprintSoftware(
+      new Headers(),
+      `<script src="https://cdn.tailwindcss.com"></script>`,
+      "https://example.com",
+    );
+    expect(tw.find((i) => i.name === "Tailwind CSS")?.category).toBe("library");
+  });
+
+  it("lists multiple frameworks on one page (Next.js + React)", () => {
+    const body = `<div id="__next"></div><script id="__NEXT_DATA__">{}</script><div data-reactroot></div>`;
+    const names = fingerprintSoftware(
+      new Headers(),
+      body,
+      "https://example.com",
+    ).map((i) => i.name);
+    expect(names).toContain("Next.js");
+    expect(names).toContain("React");
+  });
 });
 
 // ── CVE correlation: NVD path ───────────────────────────────────────────────
