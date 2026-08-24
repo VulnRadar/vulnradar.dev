@@ -1,6 +1,6 @@
 ---
 name: Security Report
-description: Report a security vulnerability in VulnRadar (the scanner / app, not a scanned target).
+about: Report a security vulnerability in VulnRadar (the scanner / app, not a scanned target).
 title: "[Security]: "
 labels: ["security", "needs-triage"]
 assignees: ["RejectModders"]

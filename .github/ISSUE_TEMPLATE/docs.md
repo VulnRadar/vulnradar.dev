@@ -1,6 +1,6 @@
 ---
 name: Documentation Improvement
-description: Propose an addition or change to VulnRadar's documentation.
+about: Propose an addition or change to VulnRadar's documentation.
 title: "[Docs]: "
 labels: ["documentation", "enhancement"]
 assignees: []
