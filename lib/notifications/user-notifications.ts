@@ -8,12 +8,12 @@ import { getSetting } from "@/lib/config/runtime-config";
  * broadcast to an audience segment ("all", "authenticated", "staff", ...)
  * with no concept of a single recipient.
  *
- * First (and currently only) producer: a team invite sent to an email
- * address that already has an account. See
- * app/api/v3/teams/members/route.ts.
+ * Producers so far: a team invite sent to an email address that already has
+ * an account (app/api/v3/teams/members/route.ts), and a staff reply on a
+ * support ticket (app/api/v3/support-tickets/[id]/route.ts).
  */
 
-export type UserNotificationType = "team_invite";
+export type UserNotificationType = "team_invite" | "support_reply";
 
 export interface CreateUserNotificationInput {
   userId: number;

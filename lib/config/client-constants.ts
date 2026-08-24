@@ -164,6 +164,13 @@ export const API = {
   NOTIFICATIONS: `/api/${API_VERSION}/notifications`,
   CONTACT: `/api/${API_VERSION}/contact`,
   LANDING_CONTACT: `/api/${API_VERSION}/landing-contact`,
+  /** In-app support tickets: GET the caller's own tickets, POST to open one. */
+  SUPPORT_TICKETS: `/api/${API_VERSION}/support-tickets`,
+  /** One ticket + its thread: GET (owner or staff), POST a reply, PATCH status. */
+  SUPPORT_TICKET: (id: number | string) =>
+    `/api/${API_VERSION}/support-tickets/${id}`,
+  /** Staff inbox listing every user's ticket (MANAGE_SUPPORT_TICKETS). */
+  ADMIN_SUPPORT_TICKETS: `/api/${API_VERSION}/admin/support-tickets`,
   ADMIN: `/api/${API_VERSION}/admin`,
   BADGE: `/api/${API_VERSION}/badge`,
   BADGE_SCANS: `/api/${API_VERSION}/badge/scans`,

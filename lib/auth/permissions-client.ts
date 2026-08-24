@@ -83,6 +83,7 @@ export const STAFF_PERMISSIONS = {
   // Communication
   SEND_ANNOUNCEMENTS: "send_announcements",
   SEND_USER_EMAILS: "send_user_emails",
+  MANAGE_SUPPORT_TICKETS: "manage_support_tickets",
 
   // Notifications Management
   MANAGE_NOTIFICATIONS: "manage_notifications",
@@ -134,6 +135,7 @@ const ROLE_PERMISSION_MAP: Record<string, StaffPermission[]> = {
     STAFF_PERMISSIONS.VIEW_SCAN_STATS,
     STAFF_PERMISSIONS.VIEW_REPORTS,
     STAFF_PERMISSIONS.VIEW_SUBSCRIPTIONS,
+    STAFF_PERMISSIONS.MANAGE_SUPPORT_TICKETS,
   ],
   // The four specialist roles below sit at the same hierarchy tier
   // (STAFF_ROLE_HIERARCHY: support < these four === each other < moderator)

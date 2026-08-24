@@ -3409,6 +3409,50 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
           );
         });
 
+      // In-app support tickets: a two-way thread between a user (any plan,
+      // including free) and staff, for billing/scanning/account questions.
+      // support_tickets is the thread header; support_ticket_messages holds
+      // each reply. author_user_id is SET NULL (not CASCADE) so a message
+      // survives the author's account deletion for the other party's record,
+      // while a whole ticket CASCADE-deletes with its owner.
+      await pool
+        .query(
+          `
+        CREATE TABLE IF NOT EXISTS support_tickets (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          subject VARCHAR(200) NOT NULL,
+          category VARCHAR(20) NOT NULL DEFAULT 'other'
+            CHECK (category IN ('billing', 'scanning', 'account', 'other')),
+          status VARCHAR(20) NOT NULL DEFAULT 'open'
+            CHECK (status IN ('open', 'awaiting_staff', 'awaiting_user', 'resolved', 'closed')),
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          last_message_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_support_tickets_user
+          ON support_tickets(user_id, last_message_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_support_tickets_status
+          ON support_tickets(status, last_message_at DESC);
+        CREATE TABLE IF NOT EXISTS support_ticket_messages (
+          id SERIAL PRIMARY KEY,
+          ticket_id INTEGER NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+          author_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          is_staff BOOLEAN NOT NULL DEFAULT FALSE,
+          body TEXT NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_support_ticket_messages_ticket
+          ON support_ticket_messages(ticket_id, created_at);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create/verify support ticket tables (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
       // ── Stale scan sweep (safety net) ─────────────────────────────
       // Runs once at boot. Fails any scan left `pending`/`running` by a
       // PREVIOUS process (killed by a deploy, OOM, crash) -- see
