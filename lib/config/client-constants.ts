@@ -196,6 +196,8 @@ export const API = {
   ACCOUNT_GITHUB_REPOS: `/api/${API_VERSION}/account/github/repos`,
   SCAN_GITHUB: `/api/${API_VERSION}/scan/github`,
   SCAN_GITHUB_HISTORY: `/api/${API_VERSION}/scan/github/history`,
+  /** File a scan's findings as a GitHub issue (VulnRadar GitHub Scanner). */
+  SCAN_GITHUB_ISSUE: `/api/${API_VERSION}/scan/github-issue`,
   SCAN_VERIFY: `/api/${API_VERSION}/scan/verify`,
   /** Mark a single finding false_positive / confirmed / not_applicable
    *  (app/api/v3/scan/feedback/route.ts). GET reads back the caller's own

@@ -1,7 +1,9 @@
 /**
  * GitHub REST API calls made with a user's connected access token
- * (lib/github/github-connections.ts). Every call here is a GET — this
- * feature only ever reads repo metadata and source, never writes.
+ * (lib/github/github-connections.ts). Reads (repo metadata + source) for the
+ * repo-scan feature, plus one write: createRepoIssue, which files a scan's
+ * findings as a GitHub issue when the user explicitly asks (owner-initiated,
+ * never automatic).
  *
  * Not routed through lib/scanner/safe-fetch.ts's SSRF guard: every URL
  * built here targets a fixed, hardcoded api.github.com host, never a
@@ -106,6 +108,47 @@ export async function getRepoInfo(
     throw new Error("GitHub repo lookup did not return a default_branch");
   }
   return { defaultBranch: data.default_branch, private: Boolean(data.private) };
+}
+
+export interface CreatedIssue {
+  number: number;
+  htmlUrl: string;
+}
+
+/**
+ * Files a GitHub issue in owner/repo with the caller's connected token. The
+ * only write in this module -- used by POST /api/v3/scan/github-issue when a
+ * user chooses to push a scan's findings to their repo. Title/body/labels are
+ * built server-side from the scan; the token needs `repo` (or `public_repo`)
+ * scope, which the connect flow requests (lib/github/github-oauth.ts).
+ */
+export async function createRepoIssue(
+  token: string,
+  owner: string,
+  repo: string,
+  issue: { title: string; body: string; labels?: string[] },
+): Promise<CreatedIssue> {
+  const res = await fetch(`${GITHUB_API_BASE}/repos/${owner}/${repo}/issues`, {
+    method: "POST",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({
+      title: issue.title,
+      body: issue.body,
+      ...(issue.labels?.length ? { labels: issue.labels } : {}),
+    }),
+  });
+  if (!res.ok) {
+    // 403 (no write scope / issues disabled), 404 (no access), 410 (issues off).
+    throw new Error(`GitHub issue creation HTTP ${res.status}`);
+  }
+  const data = (await res.json()) as {
+    number?: number;
+    html_url?: string;
+  };
+  if (!data.number || !data.html_url) {
+    throw new Error("GitHub issue creation did not return an issue reference.");
+  }
+  return { number: data.number, htmlUrl: data.html_url };
 }
 
 export interface GithubTreeEntry {
