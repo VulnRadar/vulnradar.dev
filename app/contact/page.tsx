@@ -7,6 +7,7 @@ import {
   ContactCategorySelector,
   ContactForm,
   ContactSuccess,
+  SupportTickets,
   CATEGORIES,
 } from "@/components/contact";
 import { getQueryParam, setQueryParam } from "@/lib/ui/url-state";
@@ -71,6 +72,11 @@ export default function ContactPage() {
           )}
         </div>
       )}
+
+      {/* Tracked, two-way support tickets for signed-in users (all plans). The
+          anonymous contact form above is fire-and-forget; this is the
+          conversation thread with staff. */}
+      <SupportTickets />
     </PublicPageShell>
   );
 }

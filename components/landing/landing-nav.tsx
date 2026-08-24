@@ -23,6 +23,7 @@ function navLinks() {
     { href: ROUTES.DOCS, label: "Docs" },
     { href: ROUTES.DEMO, label: "Demo" },
     { href: ROUTES.CHANGELOG, label: "Changelog" },
+    { href: ROUTES.CONTACT, label: "Contact" },
   ];
 }
 

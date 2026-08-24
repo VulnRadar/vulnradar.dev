@@ -24,6 +24,7 @@ import {
   Ban,
   Eye,
   MessageCircle,
+  LifeBuoy,
   Activity,
   Lock,
   UserX,
@@ -48,6 +49,7 @@ import { SecurityAlertsManager } from "@/components/admin/features/security-aler
 import { SystemSettingsManager } from "@/components/admin/features/system-settings-manager";
 import { MassEmailManager } from "@/components/admin/features/mass-email-manager";
 import { AIChatsManager } from "@/components/admin/features/ai-chats-manager";
+import { SupportInbox } from "@/components/admin/features/support-inbox";
 import { UpdaterManager } from "@/components/admin/features/updater-manager";
 import { BackupManager } from "@/components/admin/features/backup-manager";
 import { ErrorLogsManager } from "@/components/admin/features/error-logs-manager";
@@ -116,6 +118,7 @@ const VALID_TABS = [
   "settings",
   "broadcast",
   "ai-chats",
+  "support-tickets",
   "updater",
   "backup",
   "queue-status",
@@ -155,6 +158,7 @@ type ActiveTab =
   | "settings"
   | "broadcast"
   | "ai-chats"
+  | "support-tickets"
   | "updater"
   | "backup"
   | "queue-status"
@@ -741,6 +745,12 @@ function AdminContent() {
           label: "AI Chats",
           icon: MessageCircle,
           permission: STAFF_PERMISSIONS.MODERATE_CONTENT,
+        },
+        {
+          key: "support-tickets" as const,
+          label: "Support",
+          icon: LifeBuoy,
+          permission: STAFF_PERMISSIONS.MANAGE_SUPPORT_TICKETS,
         },
       ],
     },
@@ -1606,6 +1616,7 @@ function AdminContent() {
             {/* Notifications */}
             {activeTab === "notifications" && <NotificationsManager />}
             {activeTab === "ai-chats" && <AIChatsManager />}
+            {activeTab === "support-tickets" && <SupportInbox />}
             {activeTab === "updater" && <UpdaterManager />}
             {activeTab === "backup" && <BackupManager />}
             {activeTab === "queue-status" && <QueueStatusManager />}

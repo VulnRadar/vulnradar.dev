@@ -30,6 +30,7 @@ const NAV_LINKS = [
   { href: ROUTES.SHARES, label: "Shared" },
   { href: ROUTES.TEAMS, label: "Teams" },
   { href: ROUTES.BADGE, label: "Badge" },
+  { href: ROUTES.CONTACT, label: "Contact" },
   { href: ROUTES.PROFILE, label: "Profile" },
 ];
 
