@@ -142,6 +142,9 @@ export const API = {
   SCAN_AUTHENTICATED: `/api/${API_VERSION}/scan/authenticated`,
   DEMO_SCAN: `/api/${API_VERSION}/demo-scan`,
   HISTORY: `/api/${API_VERSION}/history`,
+  /** Server-generated report for one scan: ?format=sarif|pdf|md|compliance|json. */
+  HISTORY_REPORT: (id: number | string, format: string) =>
+    `/api/${API_VERSION}/history/${id}/report?format=${format}`,
   /** Every distinct host the caller has scanned, grouped from their own
    *  scan_history, most-recently-scanned first (app/assets/page.tsx). */
   ASSETS: `/api/${API_VERSION}/assets`,
