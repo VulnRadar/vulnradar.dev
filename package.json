@@ -46,7 +46,7 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.39",
-    "@ai-sdk/openai": "^4.0.41",
+    "@ai-sdk/openai": "^4.0.45",
     "@hookform/resolvers": "5.8.0",
     "@neondatabase/serverless": "1.1.0",
     "@radix-ui/react-accordion": "1.2.20",
