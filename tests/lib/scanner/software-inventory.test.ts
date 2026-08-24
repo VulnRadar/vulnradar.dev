@@ -227,6 +227,59 @@ describe("fingerprintSoftware", () => {
     expect(names).toContain("Next.js");
     expect(names).toContain("React");
   });
+
+  it("detects Alpine.js and htmx from their directives", () => {
+    const alpine = fingerprintSoftware(
+      new Headers(),
+      `<div x-data="{open:false}"></div>`,
+      "https://example.com",
+    );
+    expect(alpine.some((i) => i.name === "Alpine.js")).toBe(true);
+    const htmx = fingerprintSoftware(
+      new Headers(),
+      `<button hx-post="/x">go</button>`,
+      "https://example.com",
+    );
+    expect(htmx.some((i) => i.name === "htmx")).toBe(true);
+  });
+
+  it("detects a hosting platform from a response header", () => {
+    const items = fingerprintSoftware(
+      new Headers({ "x-vercel-id": "iad1::abc" }),
+      "",
+      "https://example.com",
+    );
+    expect(items.find((i) => i.name === "Vercel")).toMatchObject({
+      category: "cdn",
+    });
+  });
+
+  it("detects GitHub Pages from the Server header value", () => {
+    const items = fingerprintSoftware(
+      new Headers({ Server: "GitHub.com" }),
+      "",
+      "https://example.com",
+    );
+    expect(items.some((i) => i.name === "GitHub Pages")).toBe(true);
+  });
+
+  it("detects a backend framework from a Set-Cookie name", () => {
+    const laravel = fingerprintSoftware(
+      new Headers({ "Set-Cookie": "laravel_session=abc; path=/; httponly" }),
+      "",
+      "https://example.com",
+    );
+    expect(laravel.find((i) => i.name === "Laravel")).toMatchObject({
+      category: "framework",
+      source: "Set-Cookie",
+    });
+    const django = fingerprintSoftware(
+      new Headers({ "Set-Cookie": "csrftoken=xyz; path=/" }),
+      "",
+      "https://example.com",
+    );
+    expect(django.some((i) => i.name === "Django")).toBe(true);
+  });
 });
 
 // ── CVE correlation: NVD path ───────────────────────────────────────────────

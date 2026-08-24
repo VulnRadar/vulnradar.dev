@@ -177,6 +177,25 @@ const CMS_GENERATOR_MAP: Record<string, string> = {
   shopify: "Shopify",
   mediawiki: "MediaWiki",
   magento: "Magento",
+  jekyll: "Jekyll",
+  eleventy: "Eleventy",
+  "11ty": "Eleventy",
+  hexo: "Hexo",
+  docusaurus: "Docusaurus",
+  "craft cms": "Craft CMS",
+  craftcms: "Craft CMS",
+  webflow: "Webflow",
+  hubspot: "HubSpot",
+  pelican: "Pelican",
+  middleman: "Middleman",
+  nikola: "Nikola",
+  vuepress: "VuePress",
+  bookstack: "BookStack",
+  concrete5: "Concrete CMS",
+  "concrete cms": "Concrete CMS",
+  prestashop: "PrestaShop",
+  contao: "Contao",
+  silverstripe: "SilverStripe",
 };
 
 // ── CVE lookup catalog: canonical name -> where to look it up ────────────────
@@ -261,7 +280,90 @@ const BODY_TECH_MARKERS: BodyMarker[] = [
     category: "framework",
     re: /data-reactroot|react-dom(?:\.production|\.development|\.min)?\.js|_reactListening/i,
   },
+  {
+    name: "Preact",
+    category: "framework",
+    re: /preact(?:\.min)?\.js|__PREACT/i,
+  },
+  {
+    name: "SolidJS",
+    category: "framework",
+    re: /_\$HY\b|solid-js/i,
+  },
+  { name: "Qwik", category: "framework", re: /q:container=|\/build\/q-/i },
+  {
+    name: "Ember.js",
+    category: "framework",
+    re: /\bember-application\b|id=["']ember\d/i,
+  },
+  {
+    name: "Alpine.js",
+    category: "framework",
+    re: /\sx-data=|alpinejs(?:@|\/)/i,
+  },
+  {
+    name: "htmx",
+    category: "framework",
+    re: /\shx-(?:get|post|target|swap)=|htmx(?:\.org|\.min)/i,
+  },
+  { name: "Backbone.js", category: "framework", re: /backbone(?:\.min)?\.js/i },
   { name: "Tailwind CSS", category: "library", re: /cdn\.tailwindcss\.com/i },
+  {
+    name: "Bootstrap",
+    category: "library",
+    re: /(?:cdn\.jsdelivr\.net\/npm\/bootstrap|\/bootstrap(?:\.bundle)?(?:\.min)?\.(?:js|css))/i,
+  },
+  {
+    name: "jQuery",
+    category: "library",
+    re: /\/jquery(?:-\d[\d.]*)?(?:\.slim)?(?:\.min)?\.js/i,
+  },
+  { name: "Stripe.js", category: "library", re: /js\.stripe\.com\/v\d/i },
+  {
+    name: "Google Analytics",
+    category: "library",
+    re: /google-analytics\.com\/(?:analytics|ga)\.js|googletagmanager\.com\/gtag\/js/i,
+  },
+  {
+    name: "Google Tag Manager",
+    category: "library",
+    re: /googletagmanager\.com\/gtm\.js/i,
+  },
+];
+
+// Hosting/platform fingerprints keyed on a response header. Presence alone is
+// the signal for the id-style headers (their value is opaque); the rest match a
+// value. Surfaced as "cdn" -- the inventory's closest category for "where this
+// site is served from" (Cloudflare, Vercel, Netlify, ...).
+interface HostingMarker {
+  name: string;
+  header: string;
+  valueRe?: RegExp;
+}
+const HOSTING_HEADER_MARKERS: HostingMarker[] = [
+  { name: "Vercel", header: "x-vercel-id" },
+  { name: "Netlify", header: "x-nf-request-id" },
+  { name: "Fly.io", header: "fly-request-id" },
+  { name: "Render", header: "x-render-origin-server" },
+  { name: "GitHub Pages", header: "server", valueRe: /github\.com/i },
+  { name: "Heroku", header: "via", valueRe: /vegur/i },
+  { name: "bunny.net", header: "server", valueRe: /bunnycdn/i },
+];
+
+// Backend framework/runtime fingerprints keyed on a Set-Cookie name. The name
+// alone is a strong, low-false-positive signal for the framework that set it.
+interface CookieMarker {
+  name: string;
+  category: SoftwareCategory;
+  re: RegExp;
+}
+const COOKIE_MARKERS: CookieMarker[] = [
+  { name: "Laravel", category: "framework", re: /\blaravel_session=/i },
+  { name: "Django", category: "framework", re: /\bcsrftoken=/i },
+  { name: "Express", category: "framework", re: /\bconnect\.sid=/i },
+  { name: "ASP.NET", category: "framework", re: /\bASP\.NET_SessionId=/i },
+  { name: "Java", category: "runtime", re: /\bJSESSIONID=/i },
+  { name: "PHP", category: "language", re: /\bPHPSESSID=/i },
 ];
 
 // ── Fingerprinting (pure, no network) ───────────────────────────────────────
@@ -392,6 +494,30 @@ export function fingerprintSoftware(
     for (const [token, name] of Object.entries(CDN_TOKENS)) {
       if (lower.includes(token)) {
         pushItem(out, seen, { name, category: "cdn", source: "Via header" });
+      }
+    }
+  }
+
+  for (const marker of HOSTING_HEADER_MARKERS) {
+    const value = getHeader(headers, marker.header);
+    if (value && (!marker.valueRe || marker.valueRe.test(value))) {
+      pushItem(out, seen, {
+        name: marker.name,
+        category: "cdn",
+        source: `${marker.header} header`,
+      });
+    }
+  }
+
+  const setCookie = getHeader(headers, "set-cookie");
+  if (setCookie) {
+    for (const marker of COOKIE_MARKERS) {
+      if (marker.re.test(setCookie)) {
+        pushItem(out, seen, {
+          name: marker.name,
+          category: marker.category,
+          source: "Set-Cookie",
+        });
       }
     }
   }

@@ -23,9 +23,8 @@ export default defineConfig({
     environment: "node",
     include: ["tests/**/*.test.ts", "tests/**/*.spec.ts"],
     pool: "forks",
-    poolOptions: {
-      forks: { maxForks: MAX_TEST_FORKS, minForks: 1 },
-    },
+    // vitest 4 caps workers via top-level maxWorkers (not poolOptions).
+    maxWorkers: MAX_TEST_FORKS,
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov", "html"],
