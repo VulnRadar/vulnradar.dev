@@ -241,6 +241,8 @@ export const ROUTES = {
   /** Browsable, searchable index of every host/URL the caller has scanned,
    *  each row linking to its /host/[hostname] aggregate report. */
   ASSETS: "/assets",
+  /** Verified-domain portfolio / attack-surface view (app/attack-surface). */
+  ATTACK_SURFACE: "/attack-surface",
   REPOS: "/repos",
   COMPARE: "/compare",
   SHARES: "/shares",

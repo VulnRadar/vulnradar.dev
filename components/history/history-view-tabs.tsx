@@ -8,6 +8,7 @@ import { cn } from "@/lib/ui/utils";
 const TABS = [
   { href: ROUTES.HISTORY, label: "My History" },
   { href: ROUTES.ASSETS, label: "Assets" },
+  { href: ROUTES.ATTACK_SURFACE, label: "Attack Surface" },
   { href: ROUTES.PUBLIC_SCANS, label: "Public Scans" },
 ];
 

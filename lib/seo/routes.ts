@@ -114,6 +114,7 @@ export const DISALLOWED_PATHS: readonly string[] = [
   "/compare",
   "/history",
   "/assets",
+  "/attack-surface",
   "/repos",
   "/shares",
   "/shared/",
