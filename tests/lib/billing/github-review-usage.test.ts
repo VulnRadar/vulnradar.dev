@@ -214,6 +214,37 @@ describe("checkGithubReviewQuota", () => {
     expect(result.message).toMatch(/free github ai review/i);
   });
 
+  it("allows a 0-limit plan via purchased credits once the free trial is spent", async () => {
+    // Regression: a free-plan user who bought GitHub credits must be able to
+    // spend them after the daily trial is used, not be blocked with the
+    // balance stuck growing forever.
+    mockResolveUserEndpoint.mockResolvedValueOnce(null);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ github_credit_balance: 50_000 }],
+    }); // getGithubCreditBalance
+    mockGetUserPlanLimits.mockResolvedValueOnce({
+      dailyScans: 25,
+      apiKeys: 1,
+      apiRequestsPerDay: 25,
+      teams: 0,
+      teamMembers: 0,
+      webhooks: 0,
+      scheduledScans: 0,
+      bulkScanUrls: 0,
+      githubReviewTokensPerWindow: 0,
+      aiTokensPerWindow: 80_000,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // getGithubReviewTokensUsed
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ free_github_review_used_at: new Date() }],
+    }); // hasUsedFreeGithubReviewToday -- used moments ago
+    const result = await checkGithubReviewQuota(1);
+    expect(result.allowed).toBe(true);
+    expect(result.isFreeTrial).toBeUndefined();
+    expect(result.creditCovered).toBe(true);
+    expect(result.creditBalance).toBe(50_000);
+  });
+
   it("blocks once usage reaches the window cap and there's no purchased credit balance", async () => {
     mockResolveUserEndpoint.mockResolvedValueOnce(null);
     mockQuery.mockResolvedValueOnce({ rows: [{ github_credit_balance: 0 }] }); // getGithubCreditBalance
@@ -352,10 +383,37 @@ describe("recordGithubReviewTokens -- credit balance spend", () => {
 
     await recordGithubReviewTokens(1, 5_000, WINDOW_START);
 
-    // Only the window UPSERT ran -- no credit-balance UPDATE, even though
-    // this "call" used real tokens, since a 0-limit plan's usage is always
-    // trial-covered, never credit-covered.
+    // Only the window UPSERT ran -- no credit-balance UPDATE, because this
+    // call defaults to creditCovered=false (a free-trial review), so a
+    // 0-limit plan's trial usage never drains a purchased balance.
     expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("spends the full amount from credits for a credit-covered 0-limit review", async () => {
+    // The other half of the H1 fix: when checkGithubReviewQuota allowed the
+    // review via credits (trial spent, creditCovered=true), the whole call is
+    // charged to the balance since a 0-limit plan has no window allowance.
+    mockQuery.mockResolvedValueOnce({ rows: [{ tokens_used: 5_000 }] }); // UPSERT ... RETURNING
+    mockGetUserPlanLimits.mockResolvedValueOnce({
+      dailyScans: 25,
+      apiKeys: 1,
+      apiRequestsPerDay: 25,
+      teams: 0,
+      teamMembers: 0,
+      webhooks: 0,
+      scheduledScans: 0,
+      bulkScanUrls: 0,
+      githubReviewTokensPerWindow: 0,
+      aiTokensPerWindow: 80_000,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // credit-balance UPDATE
+
+    await recordGithubReviewTokens(1, 5_000, WINDOW_START, true);
+
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+    const [creditSql, creditParams] = mockQuery.mock.calls[1];
+    expect(creditSql).toMatch(/UPDATE users SET github_credit_balance/);
+    expect(creditParams).toEqual([1, 5_000]);
   });
 
   it("never spends credits when billing is disabled (unlimited)", async () => {
@@ -480,26 +538,19 @@ describe("addGithubCreditBalance", () => {
 });
 
 describe("creditGithubCreditPurchase", () => {
-  it("records the purchase and credits the balance on first application", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rowCount: 1,
-      rows: [{ payment_intent_id: "pi_1" }],
-    }); // github_credit_purchases INSERT succeeds
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // addGithubCreditBalance UPDATE
+  it("records the purchase and credits the balance in one atomic statement", async () => {
+    // Guard-insert + balance increment are a single CTE now (crash-safe).
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 7 }] });
 
     const result = await creditGithubCreditPurchase("pi_1", 7, 1_000_000);
 
     expect(result).toEqual({ credited: true });
-    expect(mockQuery).toHaveBeenCalledTimes(2);
-    const [insertSql, insertParams] = mockQuery.mock.calls[0];
-    expect(insertSql).toContain("INSERT INTO github_credit_purchases");
-    expect(insertSql).toContain("ON CONFLICT (payment_intent_id) DO NOTHING");
-    expect(insertParams).toEqual(["pi_1", 7, 1_000_000]);
-    const [updateSql, updateParams] = mockQuery.mock.calls[1];
-    expect(updateSql).toMatch(
-      /github_credit_balance = github_credit_balance \+ \$2/,
-    );
-    expect(updateParams).toEqual([7, 1_000_000]);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    const [sql, params] = mockQuery.mock.calls[0];
+    expect(sql).toContain("INSERT INTO github_credit_purchases");
+    expect(sql).toContain("ON CONFLICT (payment_intent_id) DO NOTHING");
+    expect(sql).toMatch(/github_credit_balance = github_credit_balance \+/);
+    expect(params).toEqual(["pi_1", 7, 1_000_000]);
   });
 
   it("is a no-op -- does not double-credit -- when the same PaymentIntent id is applied a second time", async () => {

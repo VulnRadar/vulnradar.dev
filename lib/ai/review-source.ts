@@ -288,6 +288,7 @@ export async function runGithubAiReview(
   userId: number,
   usingOwnAi: boolean,
   isPrivate: boolean,
+  creditCovered = false,
 ): Promise<GithubAiReviewResult> {
   if (files.length === 0) {
     return {
@@ -348,7 +349,12 @@ export async function runGithubAiReview(
 
     if (result.totalTokens > 0 && !usingOwnAi) {
       try {
-        await recordGithubReviewTokens(userId, result.totalTokens);
+        await recordGithubReviewTokens(
+          userId,
+          result.totalTokens,
+          undefined,
+          creditCovered,
+        );
       } catch (err) {
         console.error(
           "[AI-REVIEW] Failed to record token usage (non-fatal):",

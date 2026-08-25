@@ -334,11 +334,8 @@ describe("POST /api/v3/webhooks/stripe: checkout.session.completed", () => {
 describe("POST /api/v3/webhooks/stripe: payment_intent.succeeded (AI credit purchase)", () => {
   it("credits the purchasing user's AI token balance via the idempotent credit function", async () => {
     withIdempotency("evt_pi_1");
-    mockQuery.mockResolvedValueOnce({
-      rowCount: 1,
-      rows: [{ payment_intent_id: "pi_1" }],
-    }); // ai_credit_purchases INSERT
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // addAiCreditBalance UPDATE
+    // The credit guard-insert + balance increment is one atomic CTE now.
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 42 }] }); // credit CTE
 
     const res = await POST(
       signedRequest(
@@ -358,14 +355,12 @@ describe("POST /api/v3/webhooks/stripe: payment_intent.succeeded (AI credit purc
       ),
     );
     expect(res.status).toBe(200);
-    // Idempotency INSERT + ai_credit_purchases INSERT + balance UPDATE.
-    expect(mockQuery).toHaveBeenCalledTimes(3);
-    const [insertSql, insertParams] = mockQuery.mock.calls[1];
-    expect(insertSql).toContain("INSERT INTO ai_credit_purchases");
-    expect(insertParams).toEqual(["pi_1", 42, 1_000_000]);
-    const [updateSql, updateParams] = mockQuery.mock.calls[2];
-    expect(updateSql).toContain("ai_credit_balance = ai_credit_balance + $2");
-    expect(updateParams).toEqual([42, 1_000_000]);
+    // Idempotency INSERT + the single credit CTE.
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+    const [creditSql, creditParams] = mockQuery.mock.calls[1];
+    expect(creditSql).toContain("INSERT INTO ai_credit_purchases");
+    expect(creditSql).toContain("ai_credit_balance = ai_credit_balance +");
+    expect(creditParams).toEqual(["pi_1", 42, 1_000_000]);
   });
 
   it("does not double-credit when the ai_credit_purchases guard already has this payment intent recorded (e.g. confirmAiCreditPurchase already applied it)", async () => {

@@ -151,16 +151,27 @@ export async function creditAiCreditPurchase(
   tokens: number,
 ): Promise<{ credited: boolean }> {
   if (tokens <= 0) return { credited: false };
+  // The idempotency-guard insert and the balance increment are ONE atomic
+  // statement (a data-modifying CTE), so a crash can never leave the ledger
+  // row written but the balance never credited -- which would strand the
+  // purchase permanently (both this and the webhook backup would then see the
+  // guard already claimed and skip crediting). The insert wins only for the
+  // first caller per payment intent; if it conflicts, `ins` is empty and the
+  // UPDATE's WHERE matches no row, so nothing is credited.
   const result = await pool.query(
-    `INSERT INTO ai_credit_purchases (payment_intent_id, user_id, tokens)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (payment_intent_id) DO NOTHING
-     RETURNING payment_intent_id`,
+    `WITH ins AS (
+       INSERT INTO ai_credit_purchases (payment_intent_id, user_id, tokens)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (payment_intent_id) DO NOTHING
+       RETURNING user_id, tokens
+     )
+     UPDATE users
+        SET ai_credit_balance = ai_credit_balance + (SELECT tokens FROM ins)
+      WHERE id = (SELECT user_id FROM ins)
+      RETURNING id`,
     [paymentIntentId, userId, tokens],
   );
-  if ((result.rowCount ?? 0) === 0) return { credited: false };
-  await addAiCreditBalance(userId, tokens);
-  return { credited: true };
+  return { credited: (result.rowCount ?? 0) > 0 };
 }
 
 /**
@@ -175,18 +186,26 @@ export async function creditAiCreditPurchase(
 export async function reverseAiCreditPurchase(
   paymentIntentId: string,
 ): Promise<{ reversed: boolean; userId?: number; tokens?: number }> {
+  // Claim (refunded_at NULL-guard, at most once) and deduct in ONE atomic
+  // statement so a crash can't leave the purchase marked refunded with the
+  // tokens never clawed back. The final SELECT returns the claimed row (or
+  // nothing); the balance UPDATE is a data-modifying CTE that always executes.
   const claimed = await pool.query<{ user_id: number; tokens: number }>(
-    `UPDATE ai_credit_purchases SET refunded_at = NOW()
-       WHERE payment_intent_id = $1 AND refunded_at IS NULL
-       RETURNING user_id, tokens`,
+    `WITH claimed AS (
+       UPDATE ai_credit_purchases SET refunded_at = NOW()
+         WHERE payment_intent_id = $1 AND refunded_at IS NULL
+         RETURNING user_id, tokens
+     ), upd AS (
+       UPDATE users
+          SET ai_credit_balance = GREATEST(ai_credit_balance - (SELECT tokens FROM claimed), 0)
+        WHERE id = (SELECT user_id FROM claimed)
+        RETURNING id
+     )
+     SELECT user_id, tokens FROM claimed`,
     [paymentIntentId],
   );
   const row = claimed.rows[0];
   if (!row) return { reversed: false };
-  await pool.query(
-    `UPDATE users SET ai_credit_balance = GREATEST(ai_credit_balance - $2, 0) WHERE id = $1`,
-    [row.user_id, row.tokens],
-  );
   return { reversed: true, userId: row.user_id, tokens: Number(row.tokens) };
 }
 
@@ -220,6 +239,7 @@ export async function recordAiTokens(
   userId: number,
   tokens: number,
   windowStart?: Date,
+  chargeCredits = true,
 ): Promise<void> {
   if (tokens <= 0) return;
   const start = windowStart ?? (await resolveCurrentWindow()).windowStart;
@@ -233,6 +253,12 @@ export async function recordAiTokens(
     [userId, start, tokens],
   );
   const newTotal = result.rows[0]?.tokens_used ?? tokens;
+
+  // The AI support chat is documented as free and never gates, so it records
+  // window usage for visibility but must NOT spend the user's purchased
+  // credit balance (which was bought for finding-verification). The paid
+  // features leave chargeCredits at its default.
+  if (!chargeCredits) return;
 
   const limits = await getUserPlanLimits(userId);
   const limitTokens = limits?.aiTokensPerWindow ?? -1;

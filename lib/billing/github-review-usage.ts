@@ -93,16 +93,22 @@ export async function creditGithubCreditPurchase(
   tokens: number,
 ): Promise<{ credited: boolean }> {
   if (tokens <= 0) return { credited: false };
+  // One atomic statement (guard-insert + balance increment) so a crash can't
+  // strand the purchase -- see creditAiCreditPurchase for the full reasoning.
   const result = await pool.query(
-    `INSERT INTO github_credit_purchases (payment_intent_id, user_id, tokens)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (payment_intent_id) DO NOTHING
-     RETURNING payment_intent_id`,
+    `WITH ins AS (
+       INSERT INTO github_credit_purchases (payment_intent_id, user_id, tokens)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (payment_intent_id) DO NOTHING
+       RETURNING user_id, tokens
+     )
+     UPDATE users
+        SET github_credit_balance = github_credit_balance + (SELECT tokens FROM ins)
+      WHERE id = (SELECT user_id FROM ins)
+      RETURNING id`,
     [paymentIntentId, userId, tokens],
   );
-  if ((result.rowCount ?? 0) === 0) return { credited: false };
-  await addGithubCreditBalance(userId, tokens);
-  return { credited: true };
+  return { credited: (result.rowCount ?? 0) > 0 };
 }
 
 /**
@@ -113,18 +119,23 @@ export async function creditGithubCreditPurchase(
 export async function reverseGithubCreditPurchase(
   paymentIntentId: string,
 ): Promise<{ reversed: boolean; userId?: number; tokens?: number }> {
+  // Claim + deduct in ONE atomic statement -- see reverseAiCreditPurchase.
   const claimed = await pool.query<{ user_id: number; tokens: number }>(
-    `UPDATE github_credit_purchases SET refunded_at = NOW()
-       WHERE payment_intent_id = $1 AND refunded_at IS NULL
-       RETURNING user_id, tokens`,
+    `WITH claimed AS (
+       UPDATE github_credit_purchases SET refunded_at = NOW()
+         WHERE payment_intent_id = $1 AND refunded_at IS NULL
+         RETURNING user_id, tokens
+     ), upd AS (
+       UPDATE users
+          SET github_credit_balance = GREATEST(github_credit_balance - (SELECT tokens FROM claimed), 0)
+        WHERE id = (SELECT user_id FROM claimed)
+        RETURNING id
+     )
+     SELECT user_id, tokens FROM claimed`,
     [paymentIntentId],
   );
   const row = claimed.rows[0];
   if (!row) return { reversed: false };
-  await pool.query(
-    `UPDATE users SET github_credit_balance = GREATEST(github_credit_balance - $2, 0) WHERE id = $1`,
-    [row.user_id, row.tokens],
-  );
   return { reversed: true, userId: row.user_id, tokens: Number(row.tokens) };
 }
 
@@ -147,6 +158,7 @@ export async function recordGithubReviewTokens(
   userId: number,
   tokens: number,
   windowStart?: Date,
+  creditCovered = false,
 ): Promise<void> {
   if (tokens <= 0) return;
   const start = windowStart ?? (await resolveCurrentWindow()).windowStart;
@@ -163,16 +175,21 @@ export async function recordGithubReviewTokens(
   const limits = await getUserPlanLimits(userId);
   const limitTokens = limits?.githubReviewTokensPerWindow ?? -1;
   // <= 0, not === -1: 0 means this plan's real entitlement is the hidden
-  // free-trial allowance (see checkGithubReviewQuota below), not a real
-  // per-window cap. recordGithubReviewTokens has no way to tell here
-  // whether THIS specific call was covered by that trial or by a purchased
-  // credit fallback -- but checkGithubReviewQuota never offers a credit
-  // fallback for the 0-limit case either (only for a real, > 0 window cap
-  // that's been exhausted), so nothing on a 0-limit plan should ever reach
-  // here having legitimately spent credits. Skipping the spend entirely
-  // for limitTokens <= 0 avoids silently draining a purchased balance for
-  // what was supposed to be a free trial review.
-  if (limitTokens <= 0) return;
+  // free-trial allowance (see checkGithubReviewQuota), not a real per-window
+  // cap. The caller tells us via `creditCovered` whether THIS review was a
+  // free-trial run (don't charge) or paid from the purchased credit balance
+  // (charge the whole thing -- there is no window allowance to consume first
+  // on a 0-limit plan). Without this branch a bought credit balance on a
+  // free plan could never be spent.
+  if (limitTokens <= 0) {
+    if (creditCovered) {
+      await pool.query(
+        `UPDATE users SET github_credit_balance = GREATEST(github_credit_balance - $2, 0) WHERE id = $1`,
+        [userId, tokens],
+      );
+    }
+    return;
+  }
 
   const previousTotal = newTotal - tokens;
   const windowPortion = Math.max(
@@ -279,6 +296,15 @@ export interface GithubReviewQuotaCheck {
    * true; every other allowed:true case needs no such follow-up.
    */
   isFreeTrial?: boolean;
+  /**
+   * True when this `allowed: true` is paid for out of the purchased credit
+   * balance rather than a window allowance or the free trial. On a 0-limit
+   * plan whose free trial is already spent, a positive credit balance still
+   * allows the review (mirroring the >0-cap credit fallback); the recorder
+   * uses this to charge the credits. Without it a free-plan user could buy
+   * credits that could never be spent.
+   */
+  creditCovered?: boolean;
   /** Present only when allowed is false. */
   message?: string;
   /** Purchased GitHub review token balance (see getGithubCreditBalance) --
@@ -360,6 +386,21 @@ export async function checkGithubReviewQuota(
         windowStart,
         windowHours,
         isFreeTrial: true,
+        creditBalance,
+      };
+    }
+    // Trial spent, but purchased credits can still pay for a review -- exactly
+    // like the >0-cap fallback below. Without this a free-plan user who bought
+    // GitHub credits could never spend them (the balance only ever grew).
+    if (creditBalance > 0) {
+      return {
+        allowed: true,
+        usingOwnAi: false,
+        usedTokens,
+        limitTokens,
+        windowStart,
+        windowHours,
+        creditCovered: true,
         creditBalance,
       };
     }

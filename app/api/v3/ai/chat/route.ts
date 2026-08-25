@@ -361,7 +361,9 @@ export async function POST(req: Request) {
         const tokensUsed =
           realUsageTokens ?? estimateTokens(inputCharCount + responseCharCount);
         try {
-          await recordAiTokens(session.userId, tokensUsed);
+          // chargeCredits: false -- chat is free and must not drain the
+          // purchased AI-credit balance; it records window usage only.
+          await recordAiTokens(session.userId, tokensUsed, undefined, false);
         } catch (err) {
           console.error(
             "[AI chat] Failed to record token usage (non-fatal):",

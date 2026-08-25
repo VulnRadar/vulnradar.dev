@@ -239,7 +239,9 @@ describe("POST /api/v3/ai/chat: token accounting", () => {
     const text = await drain(res);
 
     expect(text).toBe("Hello there");
-    expect(mockRecordAiTokens).toHaveBeenCalledWith(42, 62);
+    // chargeCredits: false -- chat records window usage but must not drain
+    // the purchased AI-credit balance.
+    expect(mockRecordAiTokens).toHaveBeenCalledWith(42, 62, undefined, false);
 
     const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     const sentPayload = JSON.parse((init as RequestInit).body as string);

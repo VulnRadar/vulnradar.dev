@@ -114,6 +114,14 @@ A capability and openness release. Support moves in-app: anyone, including free 
   When the readiness endpoint's database probe timed out under load, the pending connection could be left checked out, and repeated probes could exhaust the pool at exactly the wrong moment. The probe now always returns its connection to the pool.
 - [Mail] **[FIXED]** **Landing-Page Contact Form Works Without a Captcha Configured**
   The landing-page contact form now only enforces the Turnstile captcha when Turnstile is actually configured, matching the other contact forms, so a self-hosted deployment without a captcha key can still receive messages.
+- [GitMerge] **[FIXED]** **GitHub-Review Credits Are Now Spendable on the Free Plan**
+  Buying GitHub AI-review credits on a plan with no built-in review allowance used to leave the balance permanently unspendable once the daily free review was used. Purchased credits now pay for reviews the same way they already did on higher plans, and each covered review debits the balance it should.
+- [Bot] **[FIXED]** **AI Chat No Longer Spends Your Purchased AI Credits**
+  The AI support chat is free and was never meant to draw down the AI credits you buy for finding verification, but heavy chat usage could quietly spend them. Chat now records its usage for visibility without ever charging the credit balance.
+- [CreditCard] **[FIXED]** **Credit Purchases Can No Longer Be Lost to a Mid-Write Crash**
+  Applying or reversing a one-time AI or GitHub credit purchase now happens as a single atomic database statement, so a server restart at exactly the wrong moment can no longer record the purchase while failing to add the credits (which previously stranded the balance with no way to recover it).
+- [GitMerge] **[FIXED]** **A Free GitHub Review That Produces Nothing Is Refunded**
+  If a free trial GitHub AI review can't run (no AI provider configured, or the repository is too large for one pass), the trial slot is now returned instead of being consumed for an empty result.
 
 ---
 
@@ -1759,6 +1767,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 62
-- **Total changes documented:** 622
+- **Total changes documented:** 626
 - **Latest:** v3.7.0 (August 24, 2026) - Support Tickets, Report Exports, Attack Surface, GitHub Scanner
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release

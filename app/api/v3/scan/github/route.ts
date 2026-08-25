@@ -182,6 +182,7 @@ export async function POST(request: Request) {
         userId,
         quota.usingOwnAi,
         repoInfo.private,
+        quota.creditCovered ?? false,
       );
     } catch (err) {
       // Give the claimed slot back: a review that didn't complete must
@@ -194,6 +195,19 @@ export async function POST(request: Request) {
         await releaseFreeGithubReviewTrial(userId).catch(() => {});
       }
       throw err;
+    }
+
+    // A free-trial slot must also be returned when the review produced nothing
+    // WITHOUT throwing: no server AI endpoint configured, the run exceeded the
+    // per-run token ceiling, or zero tokens were actually spent. Otherwise the
+    // user burns their one free review for an empty result.
+    if (
+      quota.isFreeTrial &&
+      (aiResult.noEndpoint ||
+        aiResult.rejectedOverCap ||
+        aiResult.totalTokensUsed === 0)
+    ) {
+      await releaseFreeGithubReviewTrial(userId).catch(() => {});
     }
 
     const findings: Vulnerability[] = attachCvssScores([

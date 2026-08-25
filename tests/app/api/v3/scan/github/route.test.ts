@@ -287,6 +287,7 @@ describe("POST /api/v3/scan/github", () => {
       5,
       true,
       false,
+      false, // creditCovered
     );
   });
 });

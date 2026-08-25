@@ -127,25 +127,21 @@ describe("addAiCreditBalance", () => {
 });
 
 describe("creditAiCreditPurchase", () => {
-  it("records the purchase and credits the balance on first application", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rowCount: 1,
-      rows: [{ payment_intent_id: "pi_1" }],
-    }); // ai_credit_purchases INSERT succeeds
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // addAiCreditBalance UPDATE
+  it("records the purchase and credits the balance in one atomic statement", async () => {
+    // The guard-insert and the balance increment are now a single CTE, so a
+    // crash can't strand the purchase between them. One query, RETURNING the
+    // updated user row when the insert won.
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 7 }] });
 
     const result = await creditAiCreditPurchase("pi_1", 7, 1_000_000);
 
     expect(result).toEqual({ credited: true });
-    expect(mockQuery).toHaveBeenCalledTimes(2);
-    const [insertSql, insertParams] = mockQuery.mock.calls[0];
-    expect(insertSql).toContain("INSERT INTO ai_credit_purchases");
-    expect(insertSql).toContain("ON CONFLICT (payment_intent_id) DO NOTHING");
-    expect(insertSql).toContain("RETURNING payment_intent_id");
-    expect(insertParams).toEqual(["pi_1", 7, 1_000_000]);
-    const [updateSql, updateParams] = mockQuery.mock.calls[1];
-    expect(updateSql).toMatch(/ai_credit_balance = ai_credit_balance \+ \$2/);
-    expect(updateParams).toEqual([7, 1_000_000]);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    const [sql, params] = mockQuery.mock.calls[0];
+    expect(sql).toContain("INSERT INTO ai_credit_purchases");
+    expect(sql).toContain("ON CONFLICT (payment_intent_id) DO NOTHING");
+    expect(sql).toMatch(/ai_credit_balance = ai_credit_balance \+/);
+    expect(params).toEqual(["pi_1", 7, 1_000_000]);
   });
 
   it("is a no-op -- does not double-credit -- when the same PaymentIntent id is applied a second time", async () => {
@@ -163,23 +159,15 @@ describe("creditAiCreditPurchase", () => {
   });
 
   it("credits two DIFFERENT purchases (different PaymentIntent ids) independently", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rowCount: 1,
-      rows: [{ payment_intent_id: "pi_a" }],
-    });
-    mockQuery.mockResolvedValueOnce({ rows: [] });
-    mockQuery.mockResolvedValueOnce({
-      rowCount: 1,
-      rows: [{ payment_intent_id: "pi_b" }],
-    });
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 7 }] });
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 7 }] });
 
     const first = await creditAiCreditPurchase("pi_a", 7, 1_000_000);
     const second = await creditAiCreditPurchase("pi_b", 7, 3_000_000);
 
     expect(first).toEqual({ credited: true });
     expect(second).toEqual({ credited: true });
-    expect(mockQuery).toHaveBeenCalledTimes(4);
+    expect(mockQuery).toHaveBeenCalledTimes(2);
   });
 
   it("is a no-op for zero or negative token counts, without touching the database", async () => {

@@ -414,6 +414,30 @@ const CHANGELOG: Release[] = [
         desc: "The landing-page contact form now only enforces the Turnstile captcha when Turnstile is actually configured, matching the other contact forms, so a self-hosted deployment without a captcha key can still receive messages.",
         category: "fixed",
       },
+      {
+        icon: GitMerge,
+        label: "GitHub-Review Credits Are Now Spendable on the Free Plan",
+        desc: "Buying GitHub AI-review credits on a plan with no built-in review allowance used to leave the balance permanently unspendable once the daily free review was used. Purchased credits now pay for reviews the same way they already did on higher plans, and each covered review debits the balance it should.",
+        category: "fixed",
+      },
+      {
+        icon: Bot,
+        label: "AI Chat No Longer Spends Your Purchased AI Credits",
+        desc: "The AI support chat is free and was never meant to draw down the AI credits you buy for finding verification, but heavy chat usage could quietly spend them. Chat now records its usage for visibility without ever charging the credit balance.",
+        category: "fixed",
+      },
+      {
+        icon: CreditCard,
+        label: "Credit Purchases Can No Longer Be Lost to a Mid-Write Crash",
+        desc: "Applying or reversing a one-time AI or GitHub credit purchase now happens as a single atomic database statement, so a server restart at exactly the wrong moment can no longer record the purchase while failing to add the credits (which previously stranded the balance with no way to recover it).",
+        category: "fixed",
+      },
+      {
+        icon: GitMerge,
+        label: "A Free GitHub Review That Produces Nothing Is Refunded",
+        desc: "If a free trial GitHub AI review can't run (no AI provider configured, or the repository is too large for one pass), the trial slot is now returned instead of being consumed for an empty result.",
+        category: "fixed",
+      },
     ],
   },
   {
