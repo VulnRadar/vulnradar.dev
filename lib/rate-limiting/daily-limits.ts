@@ -139,7 +139,11 @@ export async function getDailyLimit(userId: number): Promise<number> {
   const settingKey =
     (PLAN_LIMIT_SETTING_KEYS as Record<string, SettingKey>)[effectivePlan] ??
     PLAN_LIMIT_SETTING_KEYS.free;
-  return Number(await getSetting(settingKey));
+  // -1 is the documented "unlimited" sentinel (registry help: "Use -1 for
+  // unlimited"). Map it to Infinity like the billing-disabled branch above,
+  // or checkAndRecordRequest treats -1 as a <=0 cap and denies every scan.
+  const limit = Number(await getSetting(settingKey));
+  return limit === -1 ? Infinity : limit;
 }
 
 /**

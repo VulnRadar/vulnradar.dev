@@ -139,6 +139,44 @@ describe("getDailyLimit (billing enabled — shipped config)", () => {
     });
     expect(await getDailyLimit(1)).toBe(PLAN_LIMITS.free);
   });
+
+  it("maps a plan limit of -1 to Infinity (the documented 'unlimited' sentinel)", async () => {
+    // An admin sets a plan's daily cap to -1, which the admin UI documents
+    // as "unlimited". The billing-disabled branch already maps -1 ->
+    // Infinity; the billing-enabled branch must too. Otherwise
+    // checkAndRecordRequest sees limit === -1 (not Infinity), hits its
+    // `limit <= 0` guard, and denies every scan on the entire tier -- the
+    // exact opposite of "unlimited".
+    mockQuery.mockImplementation(async (sql: string) => {
+      const s = String(sql).trim();
+      if (s.startsWith("SELECT key, value FROM system_settings")) {
+        return { rows: [{ key: "BILLING_FREE_LIMIT", value: "-1" }] };
+      }
+      return { rows: [{ plan: "free", role: "user", gifted_plan: null }] };
+    });
+    expect(await getDailyLimit(1)).toBe(Infinity);
+  });
+
+  it("allows a scan (does not deny) when the plan's cap is the -1 unlimited sentinel", async () => {
+    // The user-facing consequence of the bug above: with limit -1,
+    // checkAndRecordRequest must take the unlimited path, not reject.
+    mockQuery.mockImplementation(async (sql: string) => {
+      const s = String(sql).trim();
+      if (s.startsWith("SELECT key, value FROM system_settings")) {
+        return { rows: [{ key: "BILLING_FREE_LIMIT", value: "-1" }] };
+      }
+      if (s.startsWith("INSERT INTO rate_limits")) {
+        return { rows: [{ new_count: "1" }] };
+      }
+      return { rows: [{ plan: "free", role: "user", gifted_plan: null }] };
+    });
+    const result = await checkAndRecordRequest(1);
+    expect(result.allowed).toBe(true);
+    // The unlimited path reports the caller-facing -1 sentinel (not the
+    // internal Infinity) for limit/remaining.
+    expect(result.limit).toBe(-1);
+    expect(result.remaining).toBe(-1);
+  });
 });
 
 describe("getDailyLimit (billing disabled)", () => {
