@@ -110,6 +110,32 @@ function getWebhookSecret() {
   return secret;
 }
 
+/**
+ * Defence-in-depth for one-time credit grants: confirm the amount Stripe
+ * actually settled matches the tier's catalog price before crediting.
+ * Credit tier ids are immutable by contract (never re-mapped to a different
+ * price -- see each catalog's id doc comment), so a mismatch means tampered
+ * metadata or a bug, never a legitimate price change on an in-flight
+ * checkout. The webhook is already signature-verified and the amount is set
+ * server-side at PaymentIntent creation, so this should never fire; when it
+ * does, refuse the grant and log loudly rather than credit a wrong amount.
+ */
+function creditAmountMatches(
+  paymentIntent: Stripe.PaymentIntent,
+  expectedCents: number,
+  eventId: string,
+  label: string,
+): boolean {
+  const settled = paymentIntent.amount_received ?? paymentIntent.amount;
+  if (settled !== expectedCents) {
+    console.error(
+      `[Stripe] ${label} amount mismatch: settled ${settled} != tier price ${expectedCents} for payment_intent ${paymentIntent.id} (event ${eventId}). Refusing to credit.`,
+    );
+    return false;
+  }
+  return true;
+}
+
 export async function POST(req: NextRequest) {
   const stripe = getStripe();
   if (!stripe) {
@@ -797,7 +823,16 @@ export async function POST(req: NextRequest) {
           ? parseInt(paymentIntent.metadata.userId, 10)
           : null;
 
-        if (tier && purchaserId) {
+        if (
+          tier &&
+          purchaserId &&
+          creditAmountMatches(
+            paymentIntent,
+            tier.priceInCents,
+            event.id,
+            "AI credit",
+          )
+        ) {
           const result = await creditAiCreditPurchase(
             paymentIntent.id,
             purchaserId,
@@ -832,7 +867,16 @@ export async function POST(req: NextRequest) {
             ? parseInt(paymentIntent.metadata.userId, 10)
             : null;
 
-          if (githubTier && githubPurchaserId) {
+          if (
+            githubTier &&
+            githubPurchaserId &&
+            creditAmountMatches(
+              paymentIntent,
+              githubTier.priceInCents,
+              event.id,
+              "GitHub credit",
+            )
+          ) {
             const result = await creditGithubCreditPurchase(
               paymentIntent.id,
               githubPurchaserId,
@@ -864,7 +908,16 @@ export async function POST(req: NextRequest) {
             ? parseInt(paymentIntent.metadata.userId, 10)
             : null;
 
-          if (browserbaseTier && browserbasePurchaserId) {
+          if (
+            browserbaseTier &&
+            browserbasePurchaserId &&
+            creditAmountMatches(
+              paymentIntent,
+              browserbaseTier.priceInCents,
+              event.id,
+              "Browserbase credit",
+            )
+          ) {
             const result = await creditBrowserbaseCreditPurchase(
               paymentIntent.id,
               browserbasePurchaserId,

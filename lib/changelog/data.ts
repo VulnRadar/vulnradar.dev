@@ -335,6 +335,48 @@ const CHANGELOG: Release[] = [
         desc: "The privacy policy now lists Google sign-in alongside Discord and GitHub, describes the actual set of functional cookies (OAuth CSRF and pending-login cookies, the last-seen-version cookie) instead of a cookie that was never set, and discloses the 30-day retention of redacted system error logs. No behavior changed; the policy now matches what the app does.",
         category: "changed",
       },
+      {
+        icon: ShieldCheck,
+        label: "Two-Factor Codes Can No Longer Be Replayed Within Their Window",
+        desc: "A time-based one-time code is valid for a short window around the current 30-second step. The single-use guard now records the exact step a code matched rather than the wall-clock step, so a captured code can be used once and only once, closing a window where the same code could be accepted more than once.",
+        category: "security",
+      },
+      {
+        icon: ShieldAlert,
+        label: "Per-Account Login Lockout Against Distributed Brute-Force",
+        desc: "Repeated failed logins against a single account now temporarily lock that account across every source IP, not just per IP. The counter that already tracked failures now actually gates sign-in (with an auto-expiring backoff) before the expensive password check runs, throttling a password-spray spread across many addresses.",
+        category: "security",
+      },
+      {
+        icon: Radar,
+        label: "Concurrent-Scan and Crawl-Quota Races Closed",
+        desc: "Firing many scans at once could slip past the concurrent-scan cap, and two crawls started together could each spend the same remaining daily quota and overshoot it. Slot reservation now happens atomically inside a per-user locked transaction, and each crawl page is charged against the daily quota with a capped, atomic increment, so neither limit can be exceeded by racing requests.",
+        category: "fixed",
+      },
+      {
+        icon: Shield,
+        label: "Active Probes Pinned Against DNS Rebinding",
+        desc: "The CORS, HTTP-methods, X-Forwarded-Host, and open-redirect active probes now connect to the exact IP that passed the safety check, with the real hostname carried in a Host header, so a domain that re-points to an internal address between validation and the request can no longer redirect a probe at a private or metadata endpoint. These probes only ever run against domains you have verified you own.",
+        category: "security",
+      },
+      {
+        icon: Mail,
+        label: "Changing Your Email Sends a Verification Link Right Away",
+        desc: "Changing your account email resets its verified state (so the new address must be confirmed before it can be used to recover the account). It now sends the verification link to the new address immediately, instead of leaving you to discover you had to request one manually.",
+        category: "fixed",
+      },
+      {
+        icon: CreditCard,
+        label: "Credit Grants Verify the Amount Paid",
+        desc: "One-time AI, GitHub, and Browserbase credit purchases now confirm the amount actually settled matches the tier's catalog price before granting credits, an extra guard on top of Stripe's signed webhook so a mismatched or tampered charge is refused and logged rather than credited.",
+        category: "security",
+      },
+      {
+        icon: FileText,
+        label: "PDF Reports Stay Valid With Non-ASCII Content",
+        desc: "PDF report cross-reference offsets are now computed from real UTF-8 byte lengths, so a report containing non-ASCII characters (internationalized domains, response banners, accented text) no longer produces a slightly corrupt cross-reference table that strict PDF validators reject.",
+        category: "fixed",
+      },
     ],
   },
   {

@@ -348,6 +348,9 @@ describe("POST /api/v3/webhooks/stripe: payment_intent.succeeded (AI credit purc
           data: {
             object: {
               id: "pi_1",
+              // Must match the ai_credits_1m tier price (1000c); the handler
+              // refuses to credit on an amount/tier-price mismatch.
+              amount_received: 1000,
               metadata: { userId: "42", aiCreditTierId: "ai_credits_1m" },
             },
           },
@@ -377,6 +380,7 @@ describe("POST /api/v3/webhooks/stripe: payment_intent.succeeded (AI credit purc
           data: {
             object: {
               id: "pi_2",
+              amount_received: 1000,
               metadata: { userId: "42", aiCreditTierId: "ai_credits_1m" },
             },
           },
@@ -445,6 +449,31 @@ describe("POST /api/v3/webhooks/stripe: payment_intent.succeeded (AI credit purc
             object: {
               id: "pi_no_user",
               metadata: { aiCreditTierId: "ai_credits_1m" },
+            },
+          },
+        }),
+      ),
+    );
+    expect(res.status).toBe(200);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses to credit when the settled amount does not match the tier price", async () => {
+    // Anti-fraud drift guard: ai_credits_1m is 1000c, but this PaymentIntent
+    // settled only 500c. The handler must NOT credit -- only the idempotency
+    // INSERT runs, never the ai_credit_purchases INSERT or the balance UPDATE.
+    withIdempotency("evt_pi_underpaid");
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_pi_underpaid",
+          type: "payment_intent.succeeded",
+          data: {
+            object: {
+              id: "pi_underpaid",
+              amount_received: 500,
+              metadata: { userId: "42", aiCreditTierId: "ai_credits_1m" },
             },
           },
         }),
