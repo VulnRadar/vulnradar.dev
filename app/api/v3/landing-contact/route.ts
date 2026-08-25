@@ -10,6 +10,7 @@ import {
   landingContactConfirmationEmail,
 } from "@/lib/email/email";
 import { getSetting } from "@/lib/config/runtime-config";
+import { TURNSTILE_ENABLED } from "@/lib/config/constants";
 
 function asTrimmedString(value: unknown): string | null {
   if (typeof value !== "string") {
@@ -40,33 +41,39 @@ export async function POST(request: NextRequest) {
     const message = asTrimmedString(body?.message);
     const turnstileToken = asTrimmedString(body?.turnstileToken);
 
-    if (!turnstileToken) {
-      return NextResponse.json(
-        { error: "Captcha verification required." },
-        { status: 400 },
-      );
-    }
+    // Only enforce the captcha when Turnstile is actually configured, matching
+    // /contact, /signup and /support-tickets. Requiring the token
+    // unconditionally broke this endpoint entirely on any deployment that has
+    // not set up Turnstile.
+    if (TURNSTILE_ENABLED) {
+      if (!turnstileToken) {
+        return NextResponse.json(
+          { error: "Captcha verification required." },
+          { status: 400 },
+        );
+      }
 
-    // Verify Turnstile token
-    const turnstileRes = await fetch(
-      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          secret: process.env.TURNSTILE_SECRET_KEY,
-          response: turnstileToken,
-          remoteip: ip,
-        }),
-      },
-    );
-
-    const turnstileData = await turnstileRes.json();
-    if (!turnstileData.success) {
-      return NextResponse.json(
-        { error: "Captcha verification failed. Please try again." },
-        { status: 400 },
+      // Verify Turnstile token
+      const turnstileRes = await fetch(
+        "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            secret: process.env.TURNSTILE_SECRET_KEY,
+            response: turnstileToken,
+            remoteip: ip,
+          }),
+        },
       );
+
+      const turnstileData = await turnstileRes.json();
+      if (!turnstileData.success) {
+        return NextResponse.json(
+          { error: "Captcha verification failed. Please try again." },
+          { status: 400 },
+        );
+      }
     }
 
     if (!email || !message) {

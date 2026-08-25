@@ -2,15 +2,50 @@ import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
 import { getSession } from "@/lib/auth";
 import { requireStaff } from "@/lib/auth/authorization";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import { getClientIp } from "@/lib/api/request-utils";
 
-// POST: upsert a conversation (called by chat widget after each exchange)
+// A chat conversation blob is capped at 100 KB; reject anything materially
+// larger before we even parse it, so a hostile caller can't force a big JSON
+// parse. Read the raw body once (bounded) and parse from that.
+const MAX_BODY_BYTES = 110_000;
+
+// POST: upsert a conversation (called by chat widget after each exchange).
+// The widget is available to guests, so this intentionally accepts anonymous
+// writes -- but keyed rate limiting + a pre-parse size cap keep it from being
+// an unbounded, unauthenticated storage/CPU sink.
 export async function POST(req: NextRequest) {
+  const session = await getSession();
+  const userId = session?.userId ?? null;
+
+  // Rate limit per user when signed in, else per IP, so nobody (guest or not)
+  // can spam unbounded rows keyed on random UUIDs.
+  const ip = await getClientIp();
+  const rl = await checkRateLimit({
+    key: `ai-conversation:${userId ?? ip}`,
+    ...RATE_LIMITS.aiChat,
+  });
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Please slow down." },
+      { status: 429 },
+    );
+  }
+
+  const raw = await req.text();
+  if (raw.length > MAX_BODY_BYTES) {
+    return NextResponse.json(
+      { error: "Conversation too large." },
+      { status: 413 },
+    );
+  }
+
   let body: {
     sessionId?: string;
     messages?: Array<{ role: string; content: string }>;
   };
   try {
-    body = await req.json();
+    body = JSON.parse(raw);
   } catch {
     return NextResponse.json(
       { error: "Invalid request body." },
@@ -44,9 +79,6 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
-
-  const session = await getSession();
-  const userId = session?.userId ?? null;
 
   const result = await pool.query(
     `INSERT INTO ai_conversations (session_id, user_id, messages, created_at, last_message_at)

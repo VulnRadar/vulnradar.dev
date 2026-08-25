@@ -41,10 +41,18 @@ export async function GET() {
     return NextResponse.json({ remaining: 0 });
   }
 
-  const codes: string[] = user.backup_codes
-    ? JSON.parse(user.backup_codes)
-    : [];
-  return NextResponse.json({ remaining: codes.length });
+  // Guard the parse: a corrupted backup_codes value must not turn this
+  // read-only count into a 500 (every other reader guards it too).
+  let remaining = 0;
+  if (user.backup_codes) {
+    try {
+      const codes = JSON.parse(user.backup_codes);
+      if (Array.isArray(codes)) remaining = codes.length;
+    } catch {
+      remaining = 0;
+    }
+  }
+  return NextResponse.json({ remaining });
 }
 
 // POST: Regenerate backup codes (requires password)

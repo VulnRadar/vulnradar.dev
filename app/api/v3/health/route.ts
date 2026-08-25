@@ -60,15 +60,33 @@ async function probeDatabase(): Promise<DbStatus> {
   };
 
   const started = Date.now();
-  const client = await Promise.race([
-    pool.connect(),
-    new Promise<never>((_, reject) =>
-      setTimeout(
-        () => reject(new Error("health probe timed out")),
-        CONFIG_DB_HEALTHCHECK_TIMEOUT_MS,
-      ),
-    ),
-  ]);
+  // Race the connection against a timeout, but never orphan the client: if
+  // the timeout wins the race, pool.connect() may still resolve a moment
+  // later, and without this a checked-out client would never be released.
+  // Load balancers probe this endpoint every few seconds, so under DB
+  // pressure (the only time the timeout trips) that leak would compound into
+  // full pool starvation at the worst possible moment.
+  const connectPromise = pool.connect();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let client;
+  try {
+    client = await Promise.race([
+      connectPromise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("health probe timed out")),
+          CONFIG_DB_HEALTHCHECK_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } catch (err) {
+    // Timeout (or connect) lost/failed: make sure a late-arriving client is
+    // returned to the pool instead of leaking.
+    connectPromise.then((c) => c.release()).catch(() => {});
+    throw err;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 
   try {
     // One round trip: liveness and schema version together.

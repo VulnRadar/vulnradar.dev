@@ -5,10 +5,10 @@
  * outbound email, and the outbound fetch to Cloudflare's Turnstile
  * siteverify endpoint.
  *
- * Unlike app/api/v3/contact/route.ts, this route does not check
- * TURNSTILE_ENABLED at all - it unconditionally requires and verifies a
- * turnstileToken on every submission, so there is no "gating" describe
- * block here: the Turnstile path is simply the only path.
+ * Turnstile is only enforced when configured (TURNSTILE_ENABLED, derived
+ * from NEXT_PUBLIC_TURNSTILE_SITE_KEY at module load), matching /contact and
+ * /signup. This suite sets that env var before importing the route so the
+ * Turnstile path is exercised; a separate case covers the disabled path.
  */
 import {
   describe,
@@ -59,6 +59,10 @@ mockFetch.mockImplementation(async () => {
     headers: { "content-type": "application/json" },
   });
 });
+
+// TURNSTILE_ENABLED = !!NEXT_PUBLIC_TURNSTILE_SITE_KEY, read once at module
+// load, so set it before importing the route to exercise the captcha path.
+process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY = "test-site-key";
 
 const { POST } = await import("@/app/api/v3/landing-contact/route");
 
