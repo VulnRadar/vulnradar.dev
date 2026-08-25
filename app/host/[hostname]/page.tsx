@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { safeHref } from "@/lib/ui/utils";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -235,7 +236,7 @@ export default function HostReportPage() {
                         </div>
                       </div>
                       <a
-                        href={result.url}
+                        href={safeHref(result.url)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="shrink-0"

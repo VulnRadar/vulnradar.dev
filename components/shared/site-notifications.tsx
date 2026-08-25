@@ -12,7 +12,7 @@ import {
   Megaphone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/ui/utils";
+import { cn, safeHref } from "@/lib/ui/utils";
 import { STAFF_ROLES } from "@/lib/config/constants";
 import { useAuth } from "@/components/providers/auth-provider";
 import { matchesPathPattern } from "@/lib/notifications/match-path";
@@ -200,7 +200,7 @@ export function SiteBanner({ notification }: { notification: Notification }) {
                   )}
                 >
                   <a
-                    href={notification.action_url}
+                    href={safeHref(notification.action_url)}
                     target={notification.action_external ? "_blank" : "_self"}
                     rel={
                       notification.action_external
@@ -224,7 +224,7 @@ export function SiteBanner({ notification }: { notification: Notification }) {
                   className="h-8 px-3 text-xs font-semibold"
                 >
                   <a
-                    href={notification.action_url_2}
+                    href={safeHref(notification.action_url_2)}
                     target={notification.action_external_2 ? "_blank" : "_self"}
                     rel={
                       notification.action_external_2
@@ -357,7 +357,7 @@ export function SiteModal({
                 className="w-full sm:w-auto"
               >
                 <a
-                  href={notification.action_url_2}
+                  href={safeHref(notification.action_url_2)}
                   target={notification.action_external_2 ? "_blank" : "_self"}
                   rel={
                     notification.action_external_2
@@ -376,7 +376,7 @@ export function SiteModal({
             {notification.action_url && (
               <Button size="sm" asChild className="w-full sm:w-auto">
                 <a
-                  href={notification.action_url}
+                  href={safeHref(notification.action_url)}
                   target={notification.action_external ? "_blank" : "_self"}
                   rel={
                     notification.action_external
@@ -496,7 +496,7 @@ export function SiteToast({
               <div className="flex items-center gap-3 mt-1.5">
                 {notification.action_url && (
                   <a
-                    href={notification.action_url}
+                    href={safeHref(notification.action_url)}
                     target={notification.action_external ? "_blank" : "_self"}
                     rel={
                       notification.action_external
@@ -513,7 +513,7 @@ export function SiteToast({
                 )}
                 {notification.action_url_2 && (
                   <a
-                    href={notification.action_url_2}
+                    href={safeHref(notification.action_url_2)}
                     target={notification.action_external_2 ? "_blank" : "_self"}
                     rel={
                       notification.action_external_2

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { safeHref } from "@/lib/ui/utils";
 import {
   AlertTriangle,
   BotMessageSquare,
@@ -744,7 +745,7 @@ export function ScanActionsMenu({
             <div className="rounded-md border border-[hsl(var(--success))]/30 bg-[hsl(var(--success))]/10 px-3 py-2.5 text-sm">
               <p className="text-foreground">Issue created.</p>
               <a
-                href={githubResult.url}
+                href={safeHref(githubResult.url)}
                 target="_blank"
                 rel="noreferrer"
                 className="text-primary hover:underline break-all"

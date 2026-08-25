@@ -13,7 +13,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/ui/utils";
+import { cn, safeHref } from "@/lib/ui/utils";
 import { PUBLIC_PATHS } from "@/lib/config/public-paths";
 import { useAuth } from "@/components/providers/auth-provider";
 import {
@@ -545,7 +545,7 @@ export function NotificationBell() {
                             <>
                               {n.action_url && (
                                 <a
-                                  href={n.action_url}
+                                  href={safeHref(n.action_url)}
                                   onClick={() => setOpen(false)}
                                   className="text-xs font-medium text-primary hover:text-primary/80 transition-colors inline-flex items-center gap-1"
                                 >
@@ -656,7 +656,7 @@ export function NotificationBell() {
                         <div className="flex items-center gap-2">
                           {n.action_url && (
                             <a
-                              href={n.action_url}
+                              href={safeHref(n.action_url)}
                               target={n.action_external ? "_blank" : "_self"}
                               rel={
                                 n.action_external
@@ -689,7 +689,7 @@ export function NotificationBell() {
                           )}
                           {n.action_url_2 && (
                             <a
-                              href={n.action_url_2}
+                              href={safeHref(n.action_url_2)}
                               target={n.action_external_2 ? "_blank" : "_self"}
                               rel={
                                 n.action_external_2

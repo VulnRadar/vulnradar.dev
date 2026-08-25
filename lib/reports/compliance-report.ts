@@ -1,4 +1,5 @@
 import type { ScanResult, Severity, Vulnerability } from "@/lib/scanner/types";
+import { mdText } from "./md-escape";
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
 import {
   FRAMEWORKS,
@@ -90,11 +91,11 @@ function findingFix(finding: Vulnerability): string {
 /** One finding rendered under a control: title, severity, tags, and the fix. */
 function findingLines(finding: Vulnerability): string[] {
   const lines: string[] = [
-    `- ${finding.title} (${SEVERITY_LABEL[finding.severity] ?? finding.severity})`,
+    `- ${mdText(finding.title)} (${SEVERITY_LABEL[finding.severity] ?? finding.severity})`,
   ];
   const tags = findingTags(finding);
   if (tags) lines.push(`  - Tags: ${tags}`);
-  lines.push(`  - Fix: ${findingFix(finding)}`);
+  lines.push(`  - Fix: ${mdText(findingFix(finding))}`);
   return lines;
 }
 
@@ -190,7 +191,10 @@ export function generateComplianceReport(result: ScanResult): string {
   const findings = result.findings ?? [];
   const frameworkNames = FRAMEWORKS.map((f) => f.name).join(", ");
 
-  const lines: string[] = [`# Compliance mapping report for ${result.url}`, ""];
+  const lines: string[] = [
+    `# Compliance mapping report for ${mdText(result.url)}`,
+    "",
+  ];
 
   // Disclaimer, at the very top, in its own section. This framing is mandatory:
   // the report is guidance, never a certification or a statement of compliance.
@@ -217,7 +221,7 @@ export function generateComplianceReport(result: ScanResult): string {
   lines.push(
     "## Overview",
     "",
-    `- Target: ${result.url}`,
+    `- Target: ${mdText(result.url)}`,
     `- Scanned: ${formatScannedAt(result.scannedAt)}`,
     `- Findings: ${counts.critical} critical, ${counts.high} high, ${counts.medium} medium, ${counts.low} low, ${counts.info} info (${findings.length} total)`,
     `- Mapped to at least one control: ${mapped}; not mapped: ${unmapped}`,

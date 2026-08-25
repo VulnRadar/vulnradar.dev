@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { safeHref } from "@/lib/ui/utils";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -268,7 +269,7 @@ export default function SharedScanPage() {
                         </div>
                       </div>
                       <a
-                        href={result.url}
+                        href={safeHref(result.url)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="shrink-0"

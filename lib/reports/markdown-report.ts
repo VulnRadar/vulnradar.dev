@@ -1,4 +1,5 @@
 import type { ScanResult, Severity, Vulnerability } from "@/lib/scanner/types";
+import { mdText, mdInlineCode, mdFenced } from "./md-escape";
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
 import {
   getSafetyRating,
@@ -56,29 +57,33 @@ function severityCounts(findings: Vulnerability[]): Record<Severity, number> {
 }
 
 function findingSection(finding: Vulnerability): string[] {
+  // Finding fields can echo attacker-controlled response snippets from a
+  // scanned target; neutralize HTML/Markdown-active chars so the exported .md
+  // can't inject HTML in a third-party viewer (defense-in-depth, see
+  // lib/reports/md-escape.ts).
   const lines: string[] = [
-    `### ${finding.title} [${finding.severity.toUpperCase()}]`,
+    `### ${mdText(finding.title)} [${finding.severity.toUpperCase()}]`,
     "",
   ];
 
   if (finding.category) {
-    lines.push(`Category: ${finding.category}`, "");
+    lines.push(`Category: ${mdText(finding.category)}`, "");
   }
 
   if (finding.description) {
-    lines.push(finding.description, "");
+    lines.push(mdText(finding.description), "");
   }
 
   if (finding.evidence) {
     if (finding.evidence.includes("\n")) {
-      lines.push("Evidence:", "", "```", finding.evidence, "```", "");
+      lines.push("Evidence:", "", "```", mdFenced(finding.evidence), "```", "");
     } else {
-      lines.push(`Evidence: \`${finding.evidence}\``, "");
+      lines.push(`Evidence: \`${mdInlineCode(finding.evidence)}\``, "");
     }
   }
 
   if (finding.riskImpact) {
-    lines.push(`Risk and impact: ${finding.riskImpact}`, "");
+    lines.push(`Risk and impact: ${mdText(finding.riskImpact)}`, "");
   }
 
   if (finding.aiVerdict) {
@@ -86,13 +91,15 @@ function findingSection(finding: Vulnerability): string[] {
       finding.aiConfidence !== undefined
         ? ` (confidence ${finding.aiConfidence}%)`
         : "";
-    lines.push(`AI verdict: ${finding.aiVerdict}${confidence}`, "");
-    if (finding.aiReason) lines.push(finding.aiReason, "");
+    lines.push(`AI verdict: ${mdText(finding.aiVerdict)}${confidence}`, "");
+    if (finding.aiReason) lines.push(mdText(finding.aiReason), "");
   }
 
   if (finding.fixSteps && finding.fixSteps.length > 0) {
     lines.push("Fix:", "");
-    finding.fixSteps.forEach((step, i) => lines.push(`${i + 1}. ${step}`));
+    finding.fixSteps.forEach((step, i) =>
+      lines.push(`${i + 1}. ${mdText(step)}`),
+    );
     lines.push("");
   }
 
@@ -101,7 +108,7 @@ function findingSection(finding: Vulnerability): string[] {
 
 export function generateMarkdownReport(result: ScanResult): string {
   const findings = result.findings ?? [];
-  const lines: string[] = [`# Security report for ${result.url}`, ""];
+  const lines: string[] = [`# Security report for ${mdText(result.url)}`, ""];
 
   const scannedAt = result.scannedAt ? new Date(result.scannedAt) : null;
   const scannedLabel =

@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { cn } from "@/lib/ui/utils";
+import { cn, safeHref } from "@/lib/ui/utils";
 import { animations } from "@/lib/ui/animations";
 import { API, ROUTES } from "@/lib/config/constants";
 import { formatRefreshAvailability } from "@/lib/ui/relative-time";
@@ -587,7 +587,7 @@ function SubdomainRow({
         </span>
       )}
       <a
-        href={sub.url}
+        href={safeHref(sub.url)}
         target="_blank"
         rel="noopener noreferrer"
         aria-label={`Open ${sub.subdomain} in a new tab`}
