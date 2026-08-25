@@ -3,7 +3,7 @@
 Open-source web vulnerability scanner. Paste a URL, get a structured security
 report in under 3 seconds. No agent to install.
 
-**750+ deterministic checks across 18 categories** covering security headers,
+**795+ deterministic checks across 18 categories** covering security headers,
 TLS and certificates, cookies, DNS and email records, exposed secrets, server
 misconfiguration, information disclosure, client-side risks, supply chain
 exposure, and common AI-generated code antipatterns.
@@ -20,18 +20,21 @@ exposure, and common AI-generated code antipatterns.
 
 ## Features
 
-- 750+ checks across 18 categories, run in parallel
+- 795+ checks across 18 categories, run in parallel
 - Stable finding IDs, so results can be diffed between runs and gated in CI
 - Scan history, comparison between two scans, and shareable report links
 - Self-updating embed badge: generate it once, it always shows the latest scan
 - Scheduled scans, bulk scanning, and webhooks
-- REST API with token authentication
+- REST API with token authentication, plus an interactive API playground with code samples in 8 languages
+- Command-line tool to run a scan and gate CI builds on the findings
+- GitHub repository scanning with AI-assisted code review
+- AI assistant for triage and remediation questions, with optional bring-your-own-key
 - Two-factor authentication (TOTP or email) with backup codes
 - Teams with role-based access
 - CVSS 3.1 base scores computed for every finding
 - Admin password resets go out as an emailed link; admins never see a user's password
 - Admin email delivery log, with links/tokens/codes redacted before display
-- Export to PDF or JSON
+- Export to PDF, JSON, SARIF, Markdown, or a compliance crosswalk
 - Browser extension for Chrome and Firefox
 - Self-hostable under GPL-3.0
 
@@ -109,8 +112,9 @@ See [docs/architecture](https://vulnradar.dev/docs/architecture) for:
 
 ## Development
 
-Prerequisites: **Node 22 LTS** (Node 20 LTS also works; odd releases such as 21
-and 23 are unsupported by `vitest@4`, see `.nvmrc`) and PostgreSQL 14+.
+Prerequisites: **Node 22 LTS** (the `engines` field requires Node `>=22`; odd
+releases such as 21 and 23 are unsupported by `vitest@4`, see `.nvmrc`) and
+PostgreSQL 14+.
 
 ```bash
 npm install
@@ -139,7 +143,7 @@ request process.
 ## Tech Stack
 
 - **Framework:** Next.js 15.5 (App Router)
-- **UI:** React 19, TypeScript 6, Tailwind CSS 3, Radix UI primitives
+- **UI:** React 19, TypeScript 6, Tailwind CSS 4, Radix UI primitives
 - **Database:** PostgreSQL via the `pg` driver
 - **Auth:** HTTP-only session cookies, scrypt password hashing (N=2^17, params
   stored per hash so the cost can be raised without invalidating old hashes),

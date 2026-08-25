@@ -30,7 +30,8 @@ scripts/
 │       ├── _snippets.mjs         # Shared DDL constants
 │       ├── _legacy-original.mjs  # Archived pre-refactor migrate.mjs
 │       ├── 1.0.0-to-2.0.0.mjs    # v1 ↔ v2 (adds billing + badges + broadcasts + ...)
-│       └── 2.0.0-to-1.0.0.mjs    # (down half of above)
+│       ├── 2.0.0-to-1.0.0.mjs    # (down half of above)
+│       └── 2.0.0-to-3.0.0.mjs    # v2 → v3 (folds the 3.0.0-5.9.0 dev tail into one step)
 │
 ├── audit/                        # AUDIT-NNN workflow CLI
 │   ├── new.mjs                   # create-audit.mjs → allocates next ID, scaffolds dir
@@ -56,6 +57,8 @@ scripts/
 | `npm run audit:new`          | Allocate the next AUDIT-NNN id and scaffold the audit directory.                          |
 | `npm run audit:list`         | Tabular listing of all audits.                                                            |
 | `npm run audit:show`         | Full manifest + findings table for one audit.                                             |
+| `npm run audit:add-finding`  | Append a finding to an audit.                                                              |
+| `npm run audit:close`        | Transition an audit's status (in-progress / closed / shipped).                            |
 
 The CI gate `node scripts/find-duplicate-ids.mjs` is also part of the
 pre-commit checklist (see AGENTS.md).
@@ -73,20 +76,22 @@ preserved as commits, not as files in the tree.
 ## Version-aware migration
 
 The migrator tracks the database schema state (not the app release
-version). Currently two schema versions are known:
+version). Currently three schema versions are known:
 
-| Schema version | Tables | Notes                                                       |
-| -------------- | -----: | ----------------------------------------------------------- |
-| **1.0.0**      |     19 | Pre-MVP baseline.                                           |
-| **2.0.0**      |     34 | Current production schema. Same as the app's 2.3.0 release. |
+| Schema version | Tables | Notes                                                                    |
+| -------------- | -----: | ------------------------------------------------------------------------ |
+| **1.0.0**      |     19 | Pre-MVP baseline.                                                        |
+| **2.0.0**      |     34 | v2 production schema.                                                     |
+| **3.0.0**      |     47 | Current production schema (the app is at 3.7.0; schema min is v3.0.0).    |
 
-The app's `package.json` is currently at 2.3.0 but the schema is the
-same as v2, the only difference is `api_keys.key_locator`, which
-`instrumentation.ts` auto-adds on app boot. So we don't track v2.3.0 as
-a separate version in the framework.
+The app's `package.json` is at 3.7.0, well past the schema's 3.0.0
+baseline: releases after a schema version only differ by columns that
+`instrumentation.ts` auto-adds on boot, so they are not tracked as
+separate schema versions. `2.0.0-to-3.0.0.mjs` folds the whole
+3.0.0-through-5.9.0 development tail (old numbering) into one upgrade step.
 
-If your app moves to a release with a real schema change (e.g. v3.0.0
-adds new tables), see "Adding a new schema version" below.
+If a future release makes a real schema change (new tables), see
+"Adding a new schema version" below.
 
 The migrator is driven by a tiny meta table (also created by
 `instrumentation.ts` on every app boot, so it's always present):
@@ -113,7 +118,7 @@ CREATE TABLE vulnradar_schema_meta (
 
 ### Adding a new schema version
 
-1. Bump `version` in `package.json` (e.g. `2.3.0` → `3.0.0`).
+1. Bump `version` in `package.json` (e.g. `3.7.0` → `4.0.0`).
 2. Edit `instrumentation.ts` with the new tables/columns.
 3. Add the new version to `scripts/migrate/_registry.mjs` (fingerprint).
 4. Create `scripts/migrate/versions/<prev>-to-<new>.mjs` with `upgrade`

@@ -5,10 +5,12 @@ Thanks for your interest in contributing! This document covers the essentials.
 ## Development setup
 
 ```bash
-npm install --legacy-peer-deps
-cp .env.example .env.local
+npm install
+cp .env.example .env
 npm run dev
 ```
+
+Requires **Node 22** (the `engines` field is `>=22`; see `.nvmrc`).
 
 ## Scripts
 

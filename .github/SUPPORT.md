@@ -2,16 +2,14 @@
 
 ## Node.js version
 
-VulnRadar supports **Node.js 22 LTS** (primary) and **Node.js 20 LTS** (secondary). Odd-numbered releases (21, 23) and any pre-20 build are **not supported**.
+VulnRadar requires **Node.js 22 LTS**. Node 20, odd-numbered releases (21, 23), and any pre-22 build are **not supported**.
 
-This is not a stylistic preference: the dependency graph has explicit `engines` constraints that exclude other versions:
+This is not a stylistic preference. The binding constraint is VulnRadar's own `package.json`, whose `engines` field is `"node": ">=22.0.0"` (Node 20 fails that check). Several upstream dependencies pin the field further:
 
-- `vitest@4`: `^20.0.0 || ^22.0.0 || >=24.0.0`
-- `balanced-match@4`: `18 || 20 || >=22`
-- `brace-expansion@5`: `18 || 20 || >=22`
-- `minimatch@10`: `18 || 20 || >=22`
+- `vitest@4`: `^20.0.0 || ^22.0.0 || >=24.0.0` (excludes odd releases)
+- `balanced-match@4`, `brace-expansion@5`, `minimatch@10`: `18 || 20 || >=22`
 
-These come from upstream packages. We cannot override them on the consumer side. The fix is to switch Node, not to weaken the engines requirement.
+We cannot override these on the consumer side. The fix is to switch Node to 22, not to weaken the engines requirement.
 
 ## Bug reports
 
@@ -33,7 +31,7 @@ Self-hosters must use Node 22 LTS on the host that runs `npm install && npm run 
 1. **Override the Docker image** to `node:22-bookworm-slim` (or `node:22-alpine` for a smaller image).
 2. **Install Node 22 via the startup command** before the `npm install` step (e.g. `curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y nodejs && npm install && npm run build && npm run start`).
 
-The official Pterodactyl Node.js egg (`ghcr.io/parkervcp/yolks:nodejs_*`) only goes up to Node 21. Use Node 20 (`ghcr.io/parkervcp/yolks:nodejs_20`) as a fallback, or override the image entirely.
+The official Pterodactyl Node.js egg (`ghcr.io/parkervcp/yolks:nodejs_*`) only goes up to Node 21, none of which satisfy the `>=22` requirement. Override the image to `node:22-bookworm-slim` (or `node:22-alpine`), or install Node 22 via the startup command as shown above.
 
 ## Security advisories
 
