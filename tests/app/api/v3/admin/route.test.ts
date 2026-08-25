@@ -318,7 +318,7 @@ describe("GET /api/v3/admin", () => {
     expect(json.logs).toHaveLength(1);
   });
 
-  it("section=badges and section=active-admins are available to support", async () => {
+  it("section=badges is available to support, but active-admins requires VIEW_AUDIT_LOG", async () => {
     queueRole("support");
     mockQuery.mockResolvedValueOnce({ rows: [] });
     const badgesRes = await GET(
@@ -326,16 +326,17 @@ describe("GET /api/v3/admin", () => {
     );
     expect(badgesRes.status).toBe(200);
 
+    // active-admins exposes staff IPs + action history, so it is gated like
+    // the audit log -- support (no VIEW_AUDIT_LOG) is rejected.
     queueRole("support");
-    mockQuery.mockResolvedValueOnce({ rows: [] });
     const adminsRes = await GET(
       getRequest("http://localhost/api/v3/admin?section=active-admins"),
     );
-    expect(adminsRes.status).toBe(200);
+    expect(adminsRes.status).toBe(403);
   });
 
   it("section=active-admins includes super_admin in the role filter so the account is visible in the panel", async () => {
-    queueRole("support");
+    queueRole("admin"); // admin holds VIEW_AUDIT_LOG
     mockQuery.mockResolvedValueOnce({ rows: [] });
     await GET(
       getRequest("http://localhost/api/v3/admin?section=active-admins"),
@@ -1343,7 +1344,9 @@ describe("PATCH /api/v3/admin — staff plan grant/revoke wiring (lib/billing/st
   }, 20000);
 
   it("remove_admin calls syncPlanForRoleChange with the target's prior role and 'user'", async () => {
-    queueRole("admin");
+    // super_admin actor: removing a PEER admin is now super-admin-only (see the
+    // rank rule below), but the plan-sync wiring this test pins is unchanged.
+    queueRole("super_admin");
     queueTarget({
       email: "t@example.com",
       role: "admin",
@@ -1359,6 +1362,26 @@ describe("PATCH /api/v3/admin — staff plan grant/revoke wiring (lib/billing/st
     );
     expect(res.status).toBe(200);
     expect(mockSyncPlanForRoleChange).toHaveBeenCalledWith(5, "admin", "user");
+  }, 20000);
+
+  it("blocks an admin from acting on a PEER admin (rank rule)", async () => {
+    // An admin may only act on a strictly lower-ranked target; a peer admin is
+    // off-limits unless the actor is the super admin.
+    queueRole("admin");
+    queueTarget({
+      email: "peer@example.com",
+      role: "admin",
+      unsubscribe_token: null,
+    });
+    const res = await PATCH(
+      patchRequest({
+        action: "disable",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect(mockSyncPlanForRoleChange).not.toHaveBeenCalled();
   }, 20000);
 });
 

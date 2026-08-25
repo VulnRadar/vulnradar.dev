@@ -160,7 +160,7 @@ describe("DELETE /api/v3/account/oauth/[provider]", () => {
         },
       ],
     });
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 1 }] }); // UPDATE
     const res = await DELETE(req, ctx("google"));
     const json = await res.json();
     expect(res.status).toBe(200);
@@ -180,7 +180,7 @@ describe("DELETE /api/v3/account/oauth/[provider]", () => {
         },
       ],
     });
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 1 }] });
     const res = await DELETE(req, ctx("google"));
     expect(res.status).toBe(200);
   });
@@ -196,7 +196,7 @@ describe("DELETE /api/v3/account/oauth/[provider]", () => {
         },
       ],
     });
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 1 }] });
     const res = await DELETE(req, ctx("google"));
     expect(res.status).toBe(200);
   });
@@ -212,7 +212,7 @@ describe("DELETE /api/v3/account/oauth/[provider]", () => {
         },
       ],
     });
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 1 }] });
     await DELETE(req, ctx("github"));
     expect(mockQuery.mock.calls[1][0]).toContain("github_id = NULL");
     // The @handle column is cleared alongside the rest so a later reconnect

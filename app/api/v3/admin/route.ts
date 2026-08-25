@@ -286,6 +286,16 @@ export async function GET(request: NextRequest) {
 
   // Active admins
   if (section === "active-admins") {
+    // Gate on VIEW_AUDIT_LOG like the audit section above: this returns each
+    // staff member's last IP, session counts, and recent action history --
+    // the same admin-IP data the audit section is restricted for, and beyond
+    // the support tier's need-to-know.
+    if (!hasStaffPermission(session.role, STAFF_PERMISSIONS.VIEW_AUDIT_LOG)) {
+      return NextResponse.json(
+        { error: ERROR_MESSAGES.FORBIDDEN },
+        { status: 403 },
+      );
+    }
     const adminsRes = await pool.query(`
       SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.created_at, u.totp_enabled,
         (SELECT MAX(s.created_at) FROM sessions s WHERE s.user_id = u.id) as last_session_created,
@@ -545,11 +555,19 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  // Moderators cannot act on admins or other moderators
+  // Rank rule: an actor may only act on a STRICTLY lower-ranked target, unless
+  // they are the super admin (who already can't touch god-mode accounts, see
+  // above). This generalizes the old moderator-only special case so it also
+  // stops one admin from disabling/deleting/demoting/force-resetting a PEER
+  // admin -- the role hierarchy exists precisely so admins keep each other
+  // accountable, and that was unenforced within the admin tier. Self-actions
+  // (userId === session.userId) are exempt here; dangerous self-actions are
+  // already blocked earlier.
   if (
-    session.role === STAFF_ROLES.MODERATOR &&
+    session.role !== STAFF_ROLES.SUPER_ADMIN &&
+    userId !== session.userId &&
     (STAFF_ROLE_HIERARCHY[targetUser.role] || 0) >=
-      (STAFF_ROLE_HIERARCHY[STAFF_ROLES.MODERATOR] || 2)
+      (STAFF_ROLE_HIERARCHY[session.role] || 0)
   ) {
     return NextResponse.json(
       {

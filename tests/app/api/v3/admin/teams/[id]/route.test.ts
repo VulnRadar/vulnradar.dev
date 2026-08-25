@@ -53,21 +53,27 @@ describe("GET /api/v3/admin/teams/[id]", () => {
     expect(res.status).toBe(403);
   });
 
-  it("rejects a non-numeric id", async () => {
+  it("rejects a moderator — team detail (cross-tenant PII) needs VIEW_ALL_TEAMS", async () => {
     withRole("moderator");
+    const res = await GET(getRequest(), ctx("1"));
+    expect(res.status).toBe(403);
+  });
+
+  it("rejects a non-numeric id", async () => {
+    withRole("admin");
     const res = await GET(getRequest(), ctx("not-a-number"));
     expect(res.status).toBe(400);
   });
 
   it("returns 404 for an unknown team", async () => {
-    withRole("moderator");
+    withRole("admin");
     mockQuery.mockResolvedValueOnce({ rows: [] });
     const res = await GET(getRequest(), ctx("999"));
     expect(res.status).toBe(404);
   });
 
-  it("returns team detail and members for a moderator", async () => {
-    withRole("moderator");
+  it("returns team detail and members for an admin", async () => {
+    withRole("admin");
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 1, name: "Acme" }] }); // team
     mockQuery.mockResolvedValueOnce({
       rows: [{ user_id: 9, role: "owner", email: "owner@example.com" }],

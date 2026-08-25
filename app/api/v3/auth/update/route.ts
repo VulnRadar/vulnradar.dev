@@ -68,6 +68,23 @@ export async function PATCH(request: NextRequest) {
     const sensitiveChangeRequested =
       (typeof email === "string" && email.trim()) || Boolean(newPassword);
     if (sensitiveChangeRequested) {
+      // A sensitive change (email/password) verifies currentPassword below, so
+      // gate it with the strict login bucket (5 / 15 min), not the broad
+      // profile-update `api` bucket (100/hr) -- otherwise a stolen session
+      // cookie gets ~20x more online guesses against this exact re-auth check.
+      const sensitiveRl = await checkRateLimit({
+        key: `profile-reauth:${session.userId}:${clientIp}`,
+        ...RATE_LIMITS.login,
+      });
+      if (!sensitiveRl.allowed) {
+        return NextResponse.json(
+          {
+            error: `Too many attempts. Try again in ${Math.ceil(sensitiveRl.retryAfterSeconds / 60)} minute(s).`,
+          },
+          { status: 429 },
+        );
+      }
+
       const pwResult = await pool.query(
         "SELECT password_hash FROM users WHERE id = $1",
         [session.userId],

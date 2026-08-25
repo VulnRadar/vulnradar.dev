@@ -199,12 +199,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Kick off subdomain discovery concurrently with the async checks so it
-    // overlaps rather than adding wall-clock. Best-effort and time-bounded
-    // inside autoDiscoverSubdomains, and cache-backed -- a repeat demo of the
-    // same host is an instant cache hit ("fetch only if not cached"). Never
-    // throws. Only meaningful for real web hosts, which is all the demo scans.
-    const subdomainPromise = autoDiscoverSubdomains(url).catch(() => {});
+    // Read cached subdomains only. cacheOnly is essential here: the demo is
+    // anonymous, so it must never trigger the live passive-source + DNS
+    // brute-force engine against an arbitrary domain (outbound
+    // enumeration/amplification from the shared server IP) or hold the request
+    // open on a live sweep. A demo of a host that has been scanned before
+    // (e.g. this deployment's own origin) shows its cached subdomains; an
+    // uncached host simply shows none.
+    const subdomainPromise = autoDiscoverSubdomains(url, {
+      cacheOnly: true,
+    }).catch(() => {});
 
     let asyncFindings: Vulnerability[] = [];
     try {

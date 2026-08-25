@@ -68,7 +68,7 @@ function isIpLiteral(host: string): boolean {
  */
 export async function autoDiscoverSubdomains(
   url: string,
-  opts: { signal?: AbortSignal; timeoutMs?: number } = {},
+  opts: { signal?: AbortSignal; timeoutMs?: number; cacheOnly?: boolean } = {},
 ): Promise<void> {
   try {
     let hostname: string;
@@ -86,6 +86,13 @@ export async function autoDiscoverSubdomains(
       recordSubdomains(hostname, cached);
       return;
     }
+
+    // cacheOnly (e.g. the anonymous demo scan): never run the live engine.
+    // The passive-source + DNS-brute-force sweep must not be reachable by an
+    // unauthenticated caller against an arbitrary domain -- that would let the
+    // shared server IP be used for outbound enumeration/amplification. A demo
+    // simply shows nothing when the domain isn't already cached.
+    if (opts.cacheOnly) return;
 
     // 2) Cache miss: SSRF-guard the target before any external sweep, exactly
     //    as the manual route does.

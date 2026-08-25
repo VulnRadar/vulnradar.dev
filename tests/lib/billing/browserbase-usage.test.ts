@@ -116,22 +116,21 @@ describe("addBrowserbaseCreditBalanceSeconds", () => {
 });
 
 describe("creditBrowserbaseCreditPurchase", () => {
-  it("records the purchase and credits the balance on first application", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rowCount: 1,
-      rows: [{ payment_intent_id: "pi_1" }],
-    });
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+  it("records the purchase and credits the balance in one atomic statement", async () => {
+    // Guard-insert + balance increment are a single CTE now (crash-safe).
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 7 }] });
 
     const result = await creditBrowserbaseCreditPurchase("pi_1", 7, 1_800);
 
     expect(result).toEqual({ credited: true });
-    expect(mockQuery).toHaveBeenCalledTimes(2);
-    const [insertSql, insertParams] = mockQuery.mock.calls[0];
-    expect(insertSql).toContain("INSERT INTO browserbase_credit_purchases");
-    expect(insertSql).toContain("ON CONFLICT (payment_intent_id) DO NOTHING");
-    expect(insertSql).toContain("RETURNING payment_intent_id");
-    expect(insertParams).toEqual(["pi_1", 7, 1_800]);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    const [sql, params] = mockQuery.mock.calls[0];
+    expect(sql).toContain("INSERT INTO browserbase_credit_purchases");
+    expect(sql).toContain("ON CONFLICT (payment_intent_id) DO NOTHING");
+    expect(sql).toMatch(
+      /browserbase_credit_seconds_balance =\s*browserbase_credit_seconds_balance \+/,
+    );
+    expect(params).toEqual(["pi_1", 7, 1_800]);
   });
 
   it("is a no-op -- does not double-credit -- when the same PaymentIntent id is applied a second time", async () => {

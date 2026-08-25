@@ -114,18 +114,24 @@ export async function POST(request: NextRequest) {
           normalizedValue = normalizedValue.substring(0, pathIndex);
         }
 
+        // Escape LIKE metacharacters in the subdomain pattern: an admin value
+        // like "%.com" would otherwise expand its % into a wildcard and delete
+        // far more (cross-tenant) scan rows than the one domain intended. The
+        // exact-match arm uses the raw value ($1); only the LIKE arm uses the
+        // escaped value ($2). Backslash is PostgreSQL's default LIKE escape.
+        const likeEscaped = normalizedValue.replace(/[\\%_]/g, "\\$&");
         // Delete all scans matching the blocked domain (exact or subdomain)
         const result = await pool.query(
           `
           DELETE FROM scan_history
-          WHERE 
+          WHERE
             -- Match domain exactly after stripping protocol
             LOWER(REGEXP_REPLACE(url, '^[a-zA-Z][a-zA-Z0-9+.-]*://([^/]+).*$', '\\1')) = LOWER($1)
             -- Match subdomain (hostname ends with .domain)
-            OR LOWER(REGEXP_REPLACE(url, '^[a-zA-Z][a-zA-Z0-9+.-]*://([^/]+).*$', '\\1')) LIKE '%.' || LOWER($1)
+            OR LOWER(REGEXP_REPLACE(url, '^[a-zA-Z][a-zA-Z0-9+.-]*://([^/]+).*$', '\\1')) LIKE '%.' || LOWER($2)
           RETURNING id
         `,
-          [normalizedValue],
+          [normalizedValue, likeEscaped],
         );
 
         const deletedCount = result.rowCount || 0;

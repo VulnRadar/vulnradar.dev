@@ -93,16 +93,24 @@ export async function creditBrowserbaseCreditPurchase(
   seconds: number,
 ): Promise<{ credited: boolean }> {
   if (seconds <= 0) return { credited: false };
+  // One atomic statement (guard-insert + balance increment) so a crash can't
+  // strand the purchase between them -- see creditAiCreditPurchase for the
+  // full reasoning. (This ledger was previously left on two separate queries.)
   const result = await pool.query(
-    `INSERT INTO browserbase_credit_purchases (payment_intent_id, user_id, seconds)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (payment_intent_id) DO NOTHING
-     RETURNING payment_intent_id`,
+    `WITH ins AS (
+       INSERT INTO browserbase_credit_purchases (payment_intent_id, user_id, seconds)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (payment_intent_id) DO NOTHING
+       RETURNING user_id, seconds
+     )
+     UPDATE users
+        SET browserbase_credit_seconds_balance =
+              browserbase_credit_seconds_balance + (SELECT seconds FROM ins)
+      WHERE id = (SELECT user_id FROM ins)
+      RETURNING id`,
     [paymentIntentId, userId, seconds],
   );
-  if ((result.rowCount ?? 0) === 0) return { credited: false };
-  await addBrowserbaseCreditBalanceSeconds(userId, seconds);
-  return { credited: true };
+  return { credited: (result.rowCount ?? 0) > 0 };
 }
 
 /**
@@ -114,18 +122,24 @@ export async function creditBrowserbaseCreditPurchase(
 export async function reverseBrowserbaseCreditPurchase(
   paymentIntentId: string,
 ): Promise<{ reversed: boolean; userId?: number; seconds?: number }> {
+  // Claim + deduct in ONE atomic statement -- see reverseAiCreditPurchase.
   const claimed = await pool.query<{ user_id: number; seconds: number }>(
-    `UPDATE browserbase_credit_purchases SET refunded_at = NOW()
-       WHERE payment_intent_id = $1 AND refunded_at IS NULL
-       RETURNING user_id, seconds`,
+    `WITH claimed AS (
+       UPDATE browserbase_credit_purchases SET refunded_at = NOW()
+         WHERE payment_intent_id = $1 AND refunded_at IS NULL
+         RETURNING user_id, seconds
+     ), upd AS (
+       UPDATE users
+          SET browserbase_credit_seconds_balance =
+                GREATEST(browserbase_credit_seconds_balance - (SELECT seconds FROM claimed), 0)
+        WHERE id = (SELECT user_id FROM claimed)
+        RETURNING id
+     )
+     SELECT user_id, seconds FROM claimed`,
     [paymentIntentId],
   );
   const row = claimed.rows[0];
   if (!row) return { reversed: false };
-  await pool.query(
-    `UPDATE users SET browserbase_credit_seconds_balance = GREATEST(browserbase_credit_seconds_balance - $2, 0) WHERE id = $1`,
-    [row.user_id, row.seconds],
-  );
   return { reversed: true, userId: row.user_id, seconds: Number(row.seconds) };
 }
 

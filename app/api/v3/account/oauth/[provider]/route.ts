@@ -130,15 +130,35 @@ export async function DELETE(
       );
     }
 
-    if (provider === "google") {
-      await pool.query(
-        `UPDATE users SET google_id = NULL, google_email = NULL, google_name = NULL, google_avatar_url = NULL WHERE id = $1`,
-        [session.userId],
-      );
-    } else {
-      await pool.query(
-        `UPDATE users SET github_id = NULL, github_email = NULL, github_name = NULL, github_avatar_url = NULL, github_login = NULL WHERE id = $1`,
-        [session.userId],
+    // Clear the identity atomically, re-asserting "another auth method must
+    // remain" IN the WHERE clause. The SELECT-based checks above give friendly
+    // errors in the common case, but two concurrent disconnects (google +
+    // github) could each pass that check before either commits and together
+    // leave the account with zero sign-in methods. The guard here closes that
+    // race: the second UPDATE sees the first's column already NULL, matches no
+    // row, and is rejected below.
+    const clear =
+      provider === "google"
+        ? await pool.query(
+            `UPDATE users SET google_id = NULL, google_email = NULL, google_name = NULL, google_avatar_url = NULL
+             WHERE id = $1 AND google_id IS NOT NULL
+               AND (password_hash IS NOT NULL OR github_id IS NOT NULL OR discord_id IS NOT NULL)
+             RETURNING id`,
+            [session.userId],
+          )
+        : await pool.query(
+            `UPDATE users SET github_id = NULL, github_email = NULL, github_name = NULL, github_avatar_url = NULL, github_login = NULL
+             WHERE id = $1 AND github_id IS NOT NULL
+               AND (password_hash IS NOT NULL OR google_id IS NOT NULL OR discord_id IS NOT NULL)
+             RETURNING id`,
+            [session.userId],
+          );
+    if ((clear.rowCount ?? 0) === 0) {
+      return NextResponse.json(
+        {
+          error: `${OAUTH_PROVIDERS[provider].label} is your only way to sign in. Set a password or connect another account first.`,
+        },
+        { status: 400 },
       );
     }
 

@@ -163,7 +163,12 @@ export function startWatchdog(
   reason: string,
 ): NodeJS.Timeout {
   return setTimeout(() => {
-    void finalizeScanFailure(scanId, reason);
+    // Guard the rejection: the watchdog fires precisely when a scan is stuck,
+    // which is disproportionately because the DB is already unhealthy -- the
+    // moment finalizeScanFailure's query is most likely to reject. A bare
+    // `void` here would surface as an unhandled rejection from a timer with no
+    // handler and, on Node's default, terminate the whole persistent process.
+    finalizeScanFailure(scanId, reason).catch(() => {});
   }, timeoutMs);
 }
 

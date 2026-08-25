@@ -130,6 +130,22 @@ A capability and openness release. Support moves in-app: anyone, including free 
   The live demo now renders through the same result view the dashboard and history use, so it shows the full modern report (verdict, panels, and findings) instead of a stale, drifted layout. Subdomain discovery works on the demo too: it runs once server-side (or reads the cache) and displays read-only, with no refresh control.
 - [ShieldCheck] **[CHANGED]** **Regression Tests Around the Anti-SSRF Fetch Guard**
   The request guard that stops the scanner from being redirected into internal networks or the cloud-metadata endpoint now has direct regression tests covering DNS resolution to private addresses, redirects to metadata and private hosts, cross-host redirects, DNS-rebinding on a same-host redirect, and fail-closed behavior on DNS failure, so a future change can't silently weaken it.
+- [ServerCog] **[FIXED]** **A Stuck Scan Can No Longer Crash the Server**
+  The watchdog that fails a scan which has run too long now handles a database error while doing so instead of letting it bubble up as an unhandled rejection, which on the wrong Node setting could terminate the whole process (precisely when the database was already struggling). One-line safety guard on a path every scan and crawl arms.
+- [Shield] **[SECURITY]** **Demo Subdomain Discovery Is Cache-Only**
+  The demo now reads cached subdomains only and never triggers a fresh passive-source or DNS brute-force sweep, so the anonymous demo endpoint can't be used to run outbound enumeration against an arbitrary domain from the shared server or to hold a request open on a live sweep.
+- [CreditCard] **[FIXED]** **Browserbase Credit Grants Made Crash-Safe Too**
+  The one-time Browserbase-minute credit ledger now applies and reverses purchases in a single atomic statement, matching the AI and GitHub credit ledgers, so a mid-write crash can't record a purchase while failing to add (or claw back) the minutes.
+- [Gauge] **[FIXED]** **API-Key Scans Count Against the Daily Scan Limit**
+  Authenticated scans triggered with an API key now count against your plan's daily-scan cap like every other scan, instead of being bounded only by the broader API request limit (which is unlimited on the top tier).
+- [UserCog] **[SECURITY]** **Admins Can No Longer Act on Peer Admins**
+  The role hierarchy is now enforced within the admin tier: an administrator can only disable, delete, demote, or force-reset accounts ranked strictly below them. Acting on a fellow admin requires the super admin, so no single admin can unilaterally remove the others.
+- [Users] **[SECURITY]** **Tighter Gates on Cross-Tenant Admin Reads**
+  Viewing an individual team's detail (owner and member emails) now requires the same admin-only permission as the team list, closing a path to enumerate every team by id. The active-admins panel (which shows staff IPs and action history) now requires the audit-log permission, and profile re-authentication for an email or password change now uses the strict login rate limit instead of the broad API limit.
+- [ShieldAlert] **[FIXED]** **Blocked-Domain Deletion Can't Over-Match**
+  Deleting scans for a blocked domain from the admin panel now escapes wildcard characters in the value, so a value containing % or _ can no longer expand into a pattern that deletes far more scan rows than intended.
+- [Fingerprint] **[FIXED]** **Disconnecting a Sign-In Method Is Now Race-Safe**
+  Removing a linked Google or GitHub account re-checks that another way to sign in remains, in the same atomic step that clears it, so two disconnect requests fired at once can no longer leave an account with no way to sign back in.
 
 ---
 
@@ -1775,6 +1791,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 62
-- **Total changes documented:** 630
+- **Total changes documented:** 638
 - **Latest:** v3.7.0 (August 24, 2026) - Support Tickets, Report Exports, Attack Surface, GitHub Scanner
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release

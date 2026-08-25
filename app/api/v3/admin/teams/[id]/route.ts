@@ -1,14 +1,19 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
-import { requireModerator } from "@/lib/auth/authorization";
+import { requirePermission } from "@/lib/auth/authorization";
+import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 
 // Get team details with members
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const admin = await requireModerator();
+  // Reading any tenant's team detail (owner + member emails) is the same
+  // cross-tenant PII as the list route, so it needs the admin-only
+  // VIEW_ALL_TEAMS grant, not the coarse requireModerator floor -- otherwise a
+  // moderator could enumerate every team by sequential id.
+  const admin = await requirePermission(STAFF_PERMISSIONS.VIEW_ALL_TEAMS);
   if (!admin)
     return NextResponse.json(
       { error: ERROR_MESSAGES.FORBIDDEN },

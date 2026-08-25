@@ -176,6 +176,21 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     }
     authedUserId = keyData.userId;
     isApiKeyAuth = true;
+
+    // The dailyScans plan cap applies to API-key callers too (the key's own
+    // dailyLimit is a broader apiRequestsPerDay throttle, unlimited on Elite).
+    // Without this an API-key caller could run unlimited authenticated scans --
+    // each spinning up a metered browser session -- past the finite dailyScans
+    // cap. Read-only gate here; charged after the session is established below,
+    // matching POST /api/v3/scan.
+    const dailyQuota = await canMakeRequest(authedUserId);
+    if (!dailyQuota.allowed) {
+      return ApiResponse.tooManyRequests(
+        "Daily scan limit reached. Upgrade your plan or wait until midnight UTC.",
+      );
+    }
+    chargeDailyQuota = true;
+    dailyQuotaLimit = dailyQuota.limit;
   } else {
     const session = await getSession();
     if (!session) return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
