@@ -128,6 +128,8 @@ A capability and openness release. Support moves in-app: anyone, including free 
   Listing and renaming any team from the admin panel now requires the admin-level team permissions, rather than being reachable at the moderator tier through the coarse role hierarchy.
 - [ScanSearch] **[CHANGED]** **Demo Page Rebuilt on the Real Result View**
   The live demo now renders through the same result view the dashboard and history use, so it shows the full modern report (verdict, panels, and findings) instead of a stale, drifted layout. Subdomain discovery works on the demo too: it runs once server-side (or reads the cache) and displays read-only, with no refresh control.
+- [ShieldCheck] **[CHANGED]** **Regression Tests Around the Anti-SSRF Fetch Guard**
+  The request guard that stops the scanner from being redirected into internal networks or the cloud-metadata endpoint now has direct regression tests covering DNS resolution to private addresses, redirects to metadata and private hosts, cross-host redirects, DNS-rebinding on a same-host redirect, and fail-closed behavior on DNS failure, so a future change can't silently weaken it.
 
 ---
 
@@ -1773,6 +1775,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 62
-- **Total changes documented:** 629
+- **Total changes documented:** 630
 - **Latest:** v3.7.0 (August 24, 2026) - Support Tickets, Report Exports, Attack Surface, GitHub Scanner
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release

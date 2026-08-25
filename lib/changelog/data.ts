@@ -456,6 +456,12 @@ const CHANGELOG: Release[] = [
         desc: "The live demo now renders through the same result view the dashboard and history use, so it shows the full modern report (verdict, panels, and findings) instead of a stale, drifted layout. Subdomain discovery works on the demo too: it runs once server-side (or reads the cache) and displays read-only, with no refresh control.",
         category: "changed",
       },
+      {
+        icon: ShieldCheck,
+        label: "Regression Tests Around the Anti-SSRF Fetch Guard",
+        desc: "The request guard that stops the scanner from being redirected into internal networks or the cloud-metadata endpoint now has direct regression tests covering DNS resolution to private addresses, redirects to metadata and private hosts, cross-host redirects, DNS-rebinding on a same-host redirect, and fail-closed behavior on DNS failure, so a future change can't silently weaken it.",
+        category: "changed",
+      },
     ],
   },
   {
