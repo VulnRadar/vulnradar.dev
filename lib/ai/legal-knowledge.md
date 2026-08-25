@@ -297,15 +297,20 @@ card numbers.
 - Email Service (SMTP Provider): We use an email
 service for transactional emails. Only your email and name are
 shared.
+- Google OAuth (Optional): If you sign in with
+Google, we receive your basic account information (email address
+and profile) to create or match your account.
 - Discord OAuth (Optional): If you sign in with
 Discord, we receive basic account information.
-- GitHub OAuth (Optional): If you connect a GitHub
-account for repo-based AI code review, we store your GitHub
-username, user ID, granted OAuth scopes, and an encrypted copy of
-the access token. GitHub&apos;s OAuth apps have no read-only scope
-for private repositories, so the token is technically capable of
-read/write access to whatever repos you authorize, even though the
-feature itself only reads the files you select.
+- GitHub OAuth (Optional): If you sign in with
+GitHub, we receive basic account information (email address and
+profile). If you additionally connect a GitHub account for
+repo-based AI code review, we store your GitHub username, user ID,
+granted OAuth scopes, and an encrypted copy of the access token.
+GitHub&apos;s OAuth apps have no read-only scope for private
+repositories, so the token is technically capable of read/write
+access to whatever repos you authorize, even though the feature
+itself only reads the files you select.
 - Cloudflare Turnstile (CAPTCHA): Cloudflare may
 collect limited device data to prevent abuse.
 - Remote Browser Sessions (Browserbase, Optional):
@@ -403,6 +408,11 @@ reference you as the target of an admin action are de-identified
 is kept). Entries already moved to the archive before you delete
 your account keep their original data, since the archive exists
 specifically as an immutable historical record.
+- System error logs: when a server-side error
+occurs, the diagnostic message is captured for troubleshooting
+with secrets and email addresses automatically redacted before
+storage. These logs are visible only to administrators and are
+kept for 30 days, then automatically deleted.
 
 ### 7. Your Rights
 You have the right to:
@@ -434,14 +444,36 @@ verified.
 
 : remembers a device you marked as trusted so you are not asked
 for a two-factor code on it again.
-- discord_pending_login
+- vr_oauth_nonce
+
+: short-lived, set while an OAuth sign-in (Google, GitHub, or
+Discord) is in progress to protect the flow against CSRF.
+- oauth_pending_login
+
+/
+
+discord_pending_login
 
 : short-lived (5 minutes), set only mid-login if you sign in with
-Discord and two-factor authentication is required to finish.
+an OAuth provider and two-factor authentication is required to
+finish.
+- Staff-only, when applicable:
+
+staff_oidc_nonce
+
+(staff single sign-on) and
+
+imp_return_session
+
+(lets an administrator return to their own session after a logged,
+time-limited impersonation).
 
 Preference cookies (not HTTP-only, no personal data)
 
-- A sidebar cookie that remembers whether the dashboard sidebar is expanded or collapsed.
+- vulnradar_last_seen_version
+
+: remembers the last app version you saw so the "what&apos;s
+new" notification does not reappear.
 - A per-notification dismissal cookie so a banner or announcement you closed does not reappear.
 
 ### 9. Your Rights Under GDPR (EEA Residents)

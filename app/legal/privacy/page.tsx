@@ -244,17 +244,24 @@ export default async function PrivacyPage() {
               shared.
             </>,
             <>
+              <strong>Google OAuth (Optional)</strong>: If you sign in with
+              Google, we receive your basic account information (email address
+              and profile) to create or match your account.
+            </>,
+            <>
               <strong>Discord OAuth (Optional)</strong>: If you sign in with
               Discord, we receive basic account information.
             </>,
             <>
-              <strong>GitHub OAuth (Optional)</strong>: If you connect a GitHub
-              account for repo-based AI code review, we store your GitHub
-              username, user ID, granted OAuth scopes, and an encrypted copy of
-              the access token. GitHub&apos;s OAuth apps have no read-only scope
-              for private repositories, so the token is technically capable of
-              read/write access to whatever repos you authorize, even though the
-              feature itself only reads the files you select.
+              <strong>GitHub OAuth (Optional)</strong>: If you sign in with
+              GitHub, we receive basic account information (email address and
+              profile). If you additionally connect a GitHub account for
+              repo-based AI code review, we store your GitHub username, user ID,
+              granted OAuth scopes, and an encrypted copy of the access token.
+              GitHub&apos;s OAuth apps have no read-only scope for private
+              repositories, so the token is technically capable of read/write
+              access to whatever repos you authorize, even though the feature
+              itself only reads the files you select.
             </>,
             <>
               <strong>Cloudflare Turnstile (CAPTCHA)</strong>: Cloudflare may
@@ -403,6 +410,13 @@ export default async function PrivacyPage() {
               your account keep their original data, since the archive exists
               specifically as an immutable historical record.
             </>,
+            <>
+              <strong>System error logs:</strong> when a server-side error
+              occurs, the diagnostic message is captured for troubleshooting
+              with secrets and email addresses automatically redacted before
+              storage. These logs are visible only to administrators and are
+              kept for 30 days, then automatically deleted.
+            </>,
           ]}
         />
       </LegalSection>
@@ -464,10 +478,34 @@ export default async function PrivacyPage() {
             </>,
             <>
               <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+                vr_oauth_nonce
+              </code>
+              : short-lived, set while an OAuth sign-in (Google, GitHub, or
+              Discord) is in progress to protect the flow against CSRF.
+            </>,
+            <>
+              <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+                oauth_pending_login
+              </code>{" "}
+              /{" "}
+              <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
                 discord_pending_login
               </code>
               : short-lived (5 minutes), set only mid-login if you sign in with
-              Discord and two-factor authentication is required to finish.
+              an OAuth provider and two-factor authentication is required to
+              finish.
+            </>,
+            <>
+              Staff-only, when applicable:{" "}
+              <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+                staff_oidc_nonce
+              </code>{" "}
+              (staff single sign-on) and{" "}
+              <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+                imp_return_session
+              </code>{" "}
+              (lets an administrator return to their own session after a logged,
+              time-limited impersonation).
             </>,
           ]}
         />
@@ -476,7 +514,13 @@ export default async function PrivacyPage() {
         </p>
         <LegalList
           items={[
-            "A sidebar cookie that remembers whether the dashboard sidebar is expanded or collapsed.",
+            <>
+              <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+                vulnradar_last_seen_version
+              </code>
+              : remembers the last app version you saw so the &quot;what&apos;s
+              new&quot; notification does not reappear.
+            </>,
             "A per-notification dismissal cookie so a banner or announcement you closed does not reappear.",
           ]}
         />
