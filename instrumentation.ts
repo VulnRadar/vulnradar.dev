@@ -345,6 +345,11 @@ export async function register() {
         -- being impersonated). NULL for every ordinary login session. See
         -- lib/auth/impersonation.ts.
         ALTER TABLE sessions ADD COLUMN IF NOT EXISTS impersonated_by INTEGER REFERENCES users(id);
+        -- Display-only IPv4 captured out-of-band via the IPv4-only echo
+        -- endpoint (see app/api/v3/whoami-ip + auth/sessions/ipv4). NULL until
+        -- a signed-in browser on a dual-stack network pings the echo host;
+        -- never used for the session IP-binding check (that stays ip_address).
+        ALTER TABLE sessions ADD COLUMN IF NOT EXISTS ipv4_address VARCHAR(45);
       `);
 
       // ════════════════════════════════════════════════════════════════
@@ -1501,9 +1506,13 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
           status TEXT NOT NULL CHECK (status IN ('open', 'in_progress', 'fixed', 'accepted_risk', 'wont_fix')),
           note TEXT,
           assignee TEXT,
+          due_at TIMESTAMPTZ,
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
+        -- due_at (a target/SLA date for the remediation) added after the
+        -- table shipped, so an existing install needs the idempotent ALTER.
+        ALTER TABLE finding_remediation ADD COLUMN IF NOT EXISTS due_at TIMESTAMPTZ;
         CREATE UNIQUE INDEX IF NOT EXISTS idx_finding_remediation_unique
           ON finding_remediation (user_id, finding_id, finding_url);
         CREATE INDEX IF NOT EXISTS idx_finding_remediation_user

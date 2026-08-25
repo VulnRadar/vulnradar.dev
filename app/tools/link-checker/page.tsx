@@ -11,8 +11,8 @@ import { SeoPageShell, Breadcrumbs, ScanCta } from "@/lib/seo/seo-ui";
 import { APP_NAME } from "@/lib/config/constants";
 
 export const metadata: Metadata = pageMetadata({
-  title: "Link & Redirect Checker",
-  description: `Check where a link really goes and whether it is safe with ${APP_NAME}: redirect chain, security headers, TLS, and reputation, including links behind Cloudflare. Paste a URL, no signup.`,
+  title: "Link & Redirect Checker: See Where It Goes",
+  description: `See where a link really goes before you click: ${APP_NAME} follows the full redirect chain and checks headers, TLS, and reputation, even behind Cloudflare.`,
   path: "/tools/link-checker",
   keywords: [
     "cloudflare link checker",

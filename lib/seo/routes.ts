@@ -28,6 +28,7 @@ const STATIC_PUBLIC_ROUTES: readonly PublicRoute[] = [
   { path: "/demo", priority: 0.9, changeFrequency: "weekly" },
   { path: "/docs", priority: 0.8, changeFrequency: "weekly" },
   { path: "/docs/api", priority: 0.8, changeFrequency: "weekly" },
+  { path: "/docs/api/playground", priority: 0.6, changeFrequency: "monthly" },
   { path: "/checks", priority: 0.8, changeFrequency: "monthly" },
   { path: "/docs/setup", priority: 0.7, changeFrequency: "monthly" },
   { path: "/docs/extension", priority: 0.7, changeFrequency: "monthly" },

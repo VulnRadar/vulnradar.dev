@@ -3,7 +3,6 @@ export * from "./docs-nav";
 export * from "./docs-code-block";
 export * from "./docs-code-tabs";
 export * from "./docs-endpoint-card";
-export * from "./docs-endpoint-playground";
 export * from "./docs-section";
 export * from "./docs-hero";
 export * from "./docs-callout";

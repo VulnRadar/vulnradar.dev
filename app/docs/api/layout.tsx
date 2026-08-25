@@ -7,7 +7,7 @@ import {
 } from "@/components/seo/structured-data";
 
 export const metadata: Metadata = pageMetadata({
-  title: "API Reference",
+  title: "REST API Reference: Endpoints and Schema",
   description:
     "REST API reference for the scanner: authentication, scan and bulk-scan endpoints, response schema, finding IDs, severity levels, and error codes.",
   path: "/docs/api",

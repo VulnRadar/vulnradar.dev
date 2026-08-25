@@ -5,13 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { CheckCircle } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { CodeBlock, InlineCode } from "./docs-code-block";
-import { EndpointPlayground } from "./docs-endpoint-playground";
 import { type Endpoint, METHOD_COLORS } from "./docs-types";
-
-interface EndpointCardProps extends Endpoint {
-  /** Bearer key for the shared "try it live" panel, GET endpoints only. */
-  apiKey?: string;
-}
 
 export function EndpointCard({
   id,
@@ -25,8 +19,7 @@ export function EndpointCard({
   pathParams,
   errors,
   notes,
-  apiKey,
-}: EndpointCardProps) {
+}: Endpoint) {
   return (
     <Card
       id={id}
@@ -172,17 +165,6 @@ export function EndpointCard({
               ))}
             </div>
           </div>
-        )}
-
-        {/* Try it live -- GET only, see EndpointPlayground's own comment */}
-        {method === "GET" && apiKey !== undefined && (
-          <EndpointPlayground
-            endpointId={id}
-            path={path}
-            pathParams={pathParams}
-            queryParams={queryParams}
-            apiKey={apiKey}
-          />
         )}
       </div>
     </Card>

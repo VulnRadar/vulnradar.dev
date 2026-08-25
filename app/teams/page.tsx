@@ -21,7 +21,11 @@ import {
   type Member,
   type Invite,
   type MemberScan,
+  type TeamInvitation,
+  type NewTeamInvite,
   TeamsList,
+  TeamCreateDialog,
+  TeamInvitations,
   TeamDetailHeader,
   TeamInviteForm,
   TeamMembersList,
@@ -35,11 +39,18 @@ export default function TeamsPage() {
 
   // List view state
   const [teams, setTeams] = useState<Team[]>([]);
+  const [limits, setLimits] = useState<{
+    teams: number;
+    teamMembers: number;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Invitations addressed to the current user (accept/decline in-app).
+  const [invitations, setInvitations] = useState<TeamInvitation[]>([]);
+  const [inviteBusyId, setInviteBusyId] = useState<number | null>(null);
 
   // Detail view state
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
@@ -102,6 +113,7 @@ export default function TeamsPage() {
       }
       const data = await res.json();
       setTeams(data.teams || []);
+      setLimits(data.limits ?? null);
     } catch {
       /* */
     } finally {
@@ -109,29 +121,73 @@ export default function TeamsPage() {
     }
   }, [router]);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
-    fetchTeams();
-  }, [fetchTeams]);
+  const fetchInvitations = useCallback(async () => {
+    try {
+      const res = await fetch(API.TEAMS_INVITATIONS);
+      if (res.ok) {
+        const data = await res.json();
+        setInvitations(data.invitations || []);
+      }
+    } catch {
+      /* */
+    }
+  }, []);
 
-  async function handleCreate() {
-    if (!newName.trim()) return;
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the requests resolve, not synchronously in this effect
+    fetchTeams();
+    fetchInvitations();
+  }, [fetchTeams, fetchInvitations]);
+
+  async function handleCreateTeam(name: string, invites: NewTeamInvite[]) {
     setCreating(true);
     setActionError(null);
     try {
       const res = await fetch(API.TEAMS, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newName.trim() }),
+        body: JSON.stringify({ name }),
       });
-      if (res.ok) {
-        await fetchTeams();
-        setNewName("");
-        setShowCreate(false);
-      } else {
-        const data = await res.json().catch(() => ({}));
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
         setActionError(
           data.error || "We could not create that team. Try again.",
+        );
+        return;
+      }
+
+      // Send the first-run invites one at a time so the team still gets
+      // created and the user learns exactly which addresses didn't go through
+      // (already a member, over the plan's seat cap, etc.).
+      const teamId = data.team?.id;
+      const failed: string[] = [];
+      if (teamId) {
+        for (const inv of invites) {
+          try {
+            const ir = await fetch(API.TEAMS_MEMBERS, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                teamId,
+                email: inv.email,
+                role: inv.role,
+              }),
+            });
+            if (!ir.ok) {
+              const idata = await ir.json().catch(() => ({}));
+              failed.push(`${inv.email} (${idata.error || "failed"})`);
+            }
+          } catch {
+            failed.push(`${inv.email} (network error)`);
+          }
+        }
+      }
+
+      await fetchTeams();
+      setShowCreate(false);
+      if (failed.length > 0) {
+        setActionError(
+          `Team created, but some invites didn't send: ${failed.join("; ")}`,
         );
       }
     } catch {
@@ -140,6 +196,54 @@ export default function TeamsPage() {
       );
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function handleAcceptInvite(inviteId: number) {
+    setInviteBusyId(inviteId);
+    setActionError(null);
+    try {
+      const res = await fetch(API.TEAMS_ACCEPT_INVITE, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inviteId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setActionError(data.error || "We could not accept that invite.");
+        return;
+      }
+      await Promise.all([fetchTeams(), fetchInvitations()]);
+    } catch {
+      setActionError(
+        "We could not reach the server. Check your connection and try again.",
+      );
+    } finally {
+      setInviteBusyId(null);
+    }
+  }
+
+  async function handleDeclineInvite(inviteId: number) {
+    setInviteBusyId(inviteId);
+    setActionError(null);
+    try {
+      const res = await fetch(API.TEAMS_INVITATIONS, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inviteId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setActionError(data.error || "We could not decline that invite.");
+        return;
+      }
+      await fetchInvitations();
+    } catch {
+      setActionError(
+        "We could not reach the server. Check your connection and try again.",
+      );
+    } finally {
+      setInviteBusyId(null);
     }
   }
 
@@ -391,6 +495,15 @@ export default function TeamsPage() {
     return <TeamsSkeleton />;
   }
 
+  // How many people the create dialog lets you invite up front: the owner's
+  // plan seat cap minus the owner's own seat, clamped to a sane UI maximum.
+  // No limits (billing off) or the plan's -1 "unlimited" both fall back to the
+  // clamp; a plan with no team seats yields 0 (name-only creation).
+  const maxInvites =
+    !limits || limits.teamMembers < 0
+      ? 10
+      : Math.min(10, Math.max(0, limits.teamMembers - 1));
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
@@ -501,24 +614,31 @@ export default function TeamsPage() {
             )}
           </div>
         ) : (
-          <TeamsList
-            teams={teams}
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            onOpenTeam={openTeam}
-            onShowCreate={() => setShowCreate(true)}
-            showCreate={showCreate}
-            newName={newName}
-            onNewNameChange={setNewName}
-            onCreate={handleCreate}
-            onCancelCreate={() => {
-              setShowCreate(false);
-              setNewName("");
-            }}
-            creating={creating}
-          />
+          <div className="flex flex-col gap-6">
+            <TeamInvitations
+              invitations={invitations}
+              busyId={inviteBusyId}
+              onAccept={handleAcceptInvite}
+              onDecline={handleDeclineInvite}
+            />
+            <TeamsList
+              teams={teams}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              onOpenTeam={openTeam}
+              onShowCreate={() => setShowCreate(true)}
+            />
+          </div>
         )}
       </main>
+
+      <TeamCreateDialog
+        open={showCreate}
+        onOpenChange={setShowCreate}
+        maxInvites={maxInvites}
+        creating={creating}
+        onCreate={handleCreateTeam}
+      />
 
       {/* Destructive actions confirm against the thing they will destroy. */}
       <AlertDialog

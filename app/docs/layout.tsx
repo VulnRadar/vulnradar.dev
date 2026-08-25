@@ -12,7 +12,7 @@ const DESCRIPTION =
   "Guides for scanning, the REST API, webhooks, scheduled scans, self-hosting, and configuration. Start here to get a first scan running.";
 
 export const metadata: Metadata = pageMetadata({
-  title: TITLE,
+  title: "VulnRadar Docs: Scanning, API, and Self-Hosting",
   description: DESCRIPTION,
   path: "/docs",
   keywords: ["security scanner documentation", "vulnerability scanner docs"],

@@ -16,8 +16,8 @@ const CHEAPEST_PAID =
   Math.min(...getPaidPlans().map((p) => p.priceInCents)) / 100;
 
 export const metadata: Metadata = pageMetadata({
-  title: "Pricing",
-  description: `${APP_NAME} pricing: a free tier with ${BILLING_PLAN_LIMITS.free} scans a day and no card, then paid plans from $${CHEAPEST_PAID} a month. Straightforward vulnerability assessment and management pricing, same detection engine on every plan.`,
+  title: "Pricing: Free Tier and Plans From $5/mo",
+  description: `${APP_NAME} pricing: a free tier with ${BILLING_PLAN_LIMITS.free} scans a day and no card, then paid plans from $${CHEAPEST_PAID} a month. The same detection engine on every plan.`,
   path: "/pricing",
   keywords: [
     "vulnerability scanner pricing",

@@ -1,6 +1,6 @@
 # VulnRadar Legal Pages: AI Knowledge
 
-_Auto-compiled from `app/legal/*/page.tsx` on 2026-08-21._
+_Auto-compiled from `app/legal/*/page.tsx` on 2026-08-25._
 
 This file is consumed by the AI system prompt at runtime (via the
 /legal slash command) so the assistant can answer questions about

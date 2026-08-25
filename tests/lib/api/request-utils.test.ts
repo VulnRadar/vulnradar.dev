@@ -17,6 +17,7 @@ vi.mock("next/headers", () => ({
 
 const {
   getClientIp,
+  normalizeIp,
   ipsInSameSubnet,
   getUserAgent,
   getReferer,
@@ -121,6 +122,78 @@ describe("ipsInSameSubnet", () => {
         CONFIG_API_KEY_IP_BINDING_IPV6_PREFIX,
       ),
     ).toBe(false);
+  });
+});
+
+describe("normalizeIp", () => {
+  it("returns a plain valid IPv4 unchanged", () => {
+    expect(normalizeIp("203.0.113.9")).toBe("203.0.113.9");
+  });
+
+  it("returns a valid (compressed) IPv6 unchanged", () => {
+    // The exact address a user flagged: it IS a valid IPv6, so it must
+    // survive normalization untouched rather than be mangled or dropped.
+    expect(normalizeIp("2a09:bac3:9f9a:1046::19f:f7")).toBe(
+      "2a09:bac3:9f9a:1046::19f:f7",
+    );
+  });
+
+  it("strips a trailing port from an IPv4 address", () => {
+    expect(normalizeIp("203.0.113.9:54321")).toBe("203.0.113.9");
+  });
+
+  it("strips brackets and port from a bracketed IPv6 address", () => {
+    expect(normalizeIp("[2001:db8::1]:443")).toBe("2001:db8::1");
+    expect(normalizeIp("[2001:db8::1]")).toBe("2001:db8::1");
+  });
+
+  it("unwraps an IPv4-mapped IPv6 address to its IPv4 form", () => {
+    expect(normalizeIp("::ffff:203.0.113.9")).toBe("203.0.113.9");
+  });
+
+  it("trims surrounding whitespace", () => {
+    expect(normalizeIp("  203.0.113.9  ")).toBe("203.0.113.9");
+  });
+
+  it("returns null for values that are not an IP", () => {
+    expect(normalizeIp("not-an-ip")).toBeNull();
+    expect(normalizeIp("")).toBeNull();
+    expect(normalizeIp("unknown")).toBeNull();
+    // A junk suffix that is not a numeric port must not be silently stripped.
+    expect(normalizeIp("1.2.3.4:notaport")).toBeNull();
+  });
+});
+
+describe("getClientIp (normalization — always yields a real IP or 'unknown')", () => {
+  it("strips a port off the chosen x-forwarded-for hop", async () => {
+    mockHeaders.set("x-forwarded-for", "203.0.113.9:54321");
+    expect(await getClientIp()).toBe("203.0.113.9");
+  });
+
+  it("unwraps an IPv4-mapped IPv6 hop", async () => {
+    mockHeaders.set("x-forwarded-for", "::ffff:198.51.100.7");
+    expect(await getClientIp()).toBe("198.51.100.7");
+  });
+
+  it("skips a garbage rightmost hop and returns the next valid one", async () => {
+    mockHeaders.set("x-forwarded-for", "203.0.113.9, junk-not-an-ip");
+    expect(await getClientIp()).toBe("203.0.113.9");
+  });
+
+  it("normalizes the x-real-ip fallback too", async () => {
+    mockHeaders.set("x-real-ip", "198.51.100.7:8080");
+    expect(await getClientIp()).toBe("198.51.100.7");
+  });
+
+  it("returns 'unknown' when no header carries a valid IP", async () => {
+    mockHeaders.set("x-forwarded-for", "not-an-ip, still-not-an-ip");
+    expect(await getClientIp()).toBe("unknown");
+  });
+
+  it("skips a junk hop while walking past trusted proxies", async () => {
+    process.env.TRUSTED_PROXY_CIDR = "10.0.0.0/8";
+    mockHeaders.set("x-forwarded-for", "203.0.113.9, junk, 10.0.0.5");
+    expect(await getClientIp()).toBe("203.0.113.9");
   });
 });
 

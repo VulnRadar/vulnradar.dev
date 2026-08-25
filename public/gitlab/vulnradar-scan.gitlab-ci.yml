@@ -1,0 +1,111 @@
+# VulnRadar scan gate for GitLab CI.
+#
+# Scans a URL with VulnRadar and fails the pipeline when findings cross a
+# severity threshold. The finding IDs are stable, so this gates a merge request
+# the same way the GitHub Action does.
+#
+# Use it one of two ways:
+#
+#   1) include it (recommended, stays up to date):
+#        include:
+#          - remote: "https://vulnradar.dev/gitlab/vulnradar-scan.gitlab-ci.yml"
+#        vulnradar_scan:
+#          variables:
+#            VR_URL: "https://your-staging-url.com"
+#
+#   2) or copy this whole job into your own .gitlab-ci.yml.
+#
+# Required: add VULNRADAR_TOKEN as a MASKED CI/CD variable
+# (Settings > CI/CD > Variables). Create the token at Settings > API Keys in
+# VulnRadar. Never hardcode it in this file.
+#
+# Everything else is set through the variables below (shown with defaults);
+# override them on the job.
+
+vulnradar_scan:
+  stage: test
+  image: alpine:3.20
+  variables:
+    VR_URL: "" # required: the URL to scan
+    VR_API_BASE: "https://vulnradar.dev/api/v3" # self-hosting? point at your own /api/v3
+    VR_CRAWL: "false" # "true" crawls and scans up to 15 pages
+    VR_MAX_CRITICAL: "0" # fail if criticals exceed this
+    VR_MAX_HIGH: "0" # fail if highs exceed this
+    VR_MAX_MEDIUM: "-1" # fail if mediums exceed this; -1 disables the check
+    VR_TIMEOUT: "300" # give up waiting after this many seconds
+    VR_POLL_INTERVAL: "5" # seconds between status polls
+  before_script:
+    - apk add --no-cache curl jq
+  script:
+    - |
+      set -eu
+
+      if [ -z "${VULNRADAR_TOKEN:-}" ]; then
+        echo "VULNRADAR_TOKEN is not set. Add it as a masked CI/CD variable."; exit 1
+      fi
+      if [ -z "${VR_URL:-}" ]; then
+        echo "VR_URL is empty. Set it to the URL you want scanned."; exit 1
+      fi
+
+      if [ "$VR_CRAWL" = "true" ]; then
+        endpoint="$VR_API_BASE/scan/crawl"
+      else
+        endpoint="$VR_API_BASE/scan"
+      fi
+
+      # Start the scan. POST /scan runs as a background job and returns only a
+      # scanId, never findings -- the result appears on GET /scan/status/{id}.
+      code=$(curl -sS -o resp.json -w '%{http_code}' -X POST "$endpoint" \
+        -H "Authorization: Bearer $VULNRADAR_TOKEN" \
+        -H "Content-Type: application/json" \
+        -d "{\"url\": \"$VR_URL\"}")
+      if [ "$code" -ge 300 ]; then
+        echo "Failed to start scan (HTTP $code): $(cat resp.json)"; exit 1
+      fi
+      scan_id=$(jq -r '.scanId' resp.json)
+      if [ -z "$scan_id" ] || [ "$scan_id" = "null" ]; then
+        echo "No scanId in response: $(cat resp.json)"; exit 1
+      fi
+      echo "Started scan $scan_id for $VR_URL"
+
+      # Poll until it completes.
+      elapsed=0
+      done=false
+      while [ "$elapsed" -lt "$VR_TIMEOUT" ]; do
+        code=$(curl -sS -o status.json -w '%{http_code}' \
+          -H "Authorization: Bearer $VULNRADAR_TOKEN" \
+          "$VR_API_BASE/scan/status/$scan_id")
+        if [ "$code" -ge 300 ]; then
+          echo "Failed to poll status (HTTP $code): $(cat status.json)"; exit 1
+        fi
+        status=$(jq -r '.status' status.json)
+        if [ "$status" = "completed" ]; then done=true; break; fi
+        if [ "$status" = "failed" ]; then
+          echo "Scan failed: $(jq -r '.error // "unknown error"' status.json)"; exit 1
+        fi
+        sleep "$VR_POLL_INTERVAL"
+        elapsed=$((elapsed + VR_POLL_INTERVAL))
+      done
+      if [ "$done" != "true" ]; then
+        echo "Timed out after ${VR_TIMEOUT}s waiting for scan $scan_id to complete."; exit 1
+      fi
+
+      critical=$(jq -r '.result.summary.critical // 0' status.json)
+      high=$(jq -r '.result.summary.high // 0' status.json)
+      medium=$(jq -r '.result.summary.medium // 0' status.json)
+      low=$(jq -r '.result.summary.low // 0' status.json)
+      total=$(jq -r '.result.summary.total // 0' status.json)
+      echo "Scan complete: critical=$critical high=$high medium=$medium low=$low total=$total"
+
+      fail=false
+      if [ "$critical" -gt "$VR_MAX_CRITICAL" ]; then
+        echo "$critical critical finding(s) exceed the max of $VR_MAX_CRITICAL"; fail=true
+      fi
+      if [ "$high" -gt "$VR_MAX_HIGH" ]; then
+        echo "$high high finding(s) exceed the max of $VR_MAX_HIGH"; fail=true
+      fi
+      if [ "$VR_MAX_MEDIUM" -ge 0 ] && [ "$medium" -gt "$VR_MAX_MEDIUM" ]; then
+        echo "$medium medium finding(s) exceed the max of $VR_MAX_MEDIUM"; fail=true
+      fi
+
+      if [ "$fail" = "true" ]; then exit 1; fi

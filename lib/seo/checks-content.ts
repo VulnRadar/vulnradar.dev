@@ -118,9 +118,15 @@ function normalise(raw: RawCheck): SeoCheck {
 
 // Built once at module load. Flat list in category order, plus an id index
 // and per-category buckets so every accessor is O(1)/O(n-in-category).
+// A handful of check entries are kept in the data files only as disabled,
+// deduplicated placeholders (their title carries "(disabled duplicate)" and
+// their description starts with "Disabled: ..."). They are not run by the
+// scanner (that registry is separate) and must not surface as public /checks
+// pages, sitemap entries, or the public check count, where the internal marker
+// would otherwise leak into the title, H1, and OG card.
 const ALL_CHECKS: SeoCheck[] = SEO_CATEGORIES.flatMap((cat) =>
   RAW_BY_CATEGORY[cat].map(normalise),
-);
+).filter((c) => !c.title.includes("(disabled duplicate)"));
 
 const BY_ID = new Map<string, SeoCheck>(ALL_CHECKS.map((c) => [c.id, c]));
 

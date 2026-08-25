@@ -4,7 +4,7 @@ import { pageMetadata } from "@/lib/seo/metadata";
 import { ChangelogList } from "@/components/changelog/changelog-list";
 
 export const metadata: Metadata = pageMetadata({
-  title: "Changelog",
+  title: "Changelog: New Checks and Fixed Detectors",
   description:
     "Every release, in order: new checks, fixed detectors, security patches, and what changed underneath the scanner.",
   path: "/changelog",

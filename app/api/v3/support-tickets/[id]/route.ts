@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
 import { getSession } from "@/lib/auth";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { resolveTicketAccess } from "@/lib/support/ticket-access";
 import {
   notifyStaffOfTicketActivity,
@@ -166,6 +167,23 @@ export async function POST(
     return NextResponse.json(
       { error: `Message must be ${TICKET_MESSAGE_MAX} characters or fewer.` },
       { status: 400 },
+    );
+  }
+
+  // Each reply emails the other party (staff or the owner), so cap how fast one
+  // user can post replies. Per-user, not per-IP: replies are authenticated.
+  const rl = await checkRateLimit({
+    key: `ticket-reply:${session.userId}`,
+    ...RATE_LIMITS.api,
+  });
+  if (!rl.allowed) {
+    return NextResponse.json(
+      {
+        error: `Too many replies. Please wait ${Math.ceil(
+          rl.retryAfterSeconds / 60,
+        )} minute(s) and try again.`,
+      },
+      { status: 429 },
     );
   }
 

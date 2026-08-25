@@ -8,6 +8,7 @@ import {
   setQueryParam,
   setQueryParams,
   removeQueryParam,
+  LOCATION_CHANGE_EVENT,
 } from "@/lib/ui/url-state";
 import { Header } from "@/components/scanner/header";
 import { ScanHero } from "@/components/scanner/scan-hero";
@@ -329,8 +330,15 @@ function DashboardContent() {
     };
 
     syncFromUrl();
+    // Clicking the Scanner nav link while viewing a finished scan clears ?scan=
+    // via a soft navigation that fires neither popstate nor a remount, so the
+    // results would otherwise stay on screen. Re-read on any location change.
+    window.addEventListener(LOCATION_CHANGE_EVENT, syncFromUrl);
     window.addEventListener("popstate", syncFromUrl);
-    return () => window.removeEventListener("popstate", syncFromUrl);
+    return () => {
+      window.removeEventListener(LOCATION_CHANGE_EVENT, syncFromUrl);
+      window.removeEventListener("popstate", syncFromUrl);
+    };
   }, [status]);
 
   const handleFindingsUpdated = useCallback((findings: Vulnerability[]) => {

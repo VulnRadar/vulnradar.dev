@@ -7,6 +7,7 @@ import {
   CreditCard,
   Building2,
   MessageSquare,
+  LifeBuoy,
 } from "lucide-react";
 import { APP_NAME } from "@/lib/config/constants";
 
@@ -24,6 +25,12 @@ export interface StaffRole {
 }
 
 export const CATEGORIES: ContactCategory[] = [
+  {
+    id: "ticket",
+    label: "Support Ticket",
+    icon: LifeBuoy,
+    desc: "Open a tracked, two-way thread with our team",
+  },
   {
     id: "bug",
     label: "Bug Report",

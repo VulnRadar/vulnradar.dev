@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/ui/utils";
 import { copyToClipboard } from "@/lib/ui/clipboard";
@@ -10,11 +11,13 @@ import {
   CalendarClock,
   ShieldCheck,
   Loader2,
+  ArrowRight,
   type LucideIcon,
 } from "lucide-react";
 import {
   API,
   DEFAULT_NEW_KEY_SCOPES,
+  ROUTES,
   type ApiKeyScope,
 } from "@/lib/config/constants";
 import { useQueryParam } from "@/lib/ui/url-state";
@@ -38,7 +41,6 @@ import type { ConfirmAction, DeveloperSection } from "./developer/types";
 import { ApiKeysSection } from "./developer/api-keys-section";
 import { WebhooksSection } from "./developer/webhooks-section";
 import { SchedulesSection } from "./developer/schedules-section";
-import { DomainsSection } from "./developer/domains-section";
 import { DeveloperTabSkeleton } from "./developer/developer-tab-skeleton";
 import {
   localHourToUtc,
@@ -750,7 +752,30 @@ export function ProfileDeveloperTab({
       )}
 
       {activeSection === "domains" && (
-        <DomainsSection setError={setError} setSuccess={setSuccess} />
+        <div className="rounded-lg border border-border/60 bg-card p-5 sm:p-6">
+          <div className="flex items-start gap-3">
+            <div className="rounded-lg border border-primary/20 bg-primary/10 p-2 text-primary">
+              <ShieldCheck className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-semibold text-foreground">
+                Domain verification moved to Attack Surface
+              </h3>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                Verified domains now live in one place: the Attack Surface page,
+                where they double as your scanned-domain portfolio. Add, verify,
+                and remove domains there.
+              </p>
+              <Link
+                href={ROUTES.ATTACK_SURFACE}
+                className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline underline-offset-4"
+              >
+                Go to Attack Surface
+                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </Link>
+            </div>
+          </div>
+        </div>
       )}
 
       {activeSection === "schedules" && (

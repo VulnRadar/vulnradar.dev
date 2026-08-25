@@ -7,7 +7,7 @@ import {
 } from "@/components/seo/structured-data";
 
 export const metadata: Metadata = pageMetadata({
-  title: "Configuration Reference",
+  title: "Configuration Reference: Every Env Var",
   description:
     "Every configuration value: environment variables, feature flags, billing toggles, scan timeouts, retention windows, and SEO settings.",
   path: "/docs/config",

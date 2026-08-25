@@ -115,7 +115,20 @@ describe("POST /api/v3/scan/remediation", () => {
       "fixed",
       "Patched in release 4.2.",
       "alice",
+      // due_at: absent in the payload, so it normalizes to null.
+      null,
     ]);
+  });
+
+  it("stores a parseable due date and ignores an unparseable one", async () => {
+    mockQuery.mockResolvedValue({ rows: [{ status: "fixed" }] });
+
+    await POST(postRequest(validPayload({ dueAt: "2026-09-01" })));
+    expect(mockQuery.mock.calls[0][1]?.[6]).toBe("2026-09-01");
+
+    mockQuery.mockClear();
+    await POST(postRequest(validPayload({ dueAt: "not-a-date" })));
+    expect(mockQuery.mock.calls[0][1]?.[6]).toBeNull();
   });
 
   it("clears the row (DELETE) when status is set back to 'open'", async () => {

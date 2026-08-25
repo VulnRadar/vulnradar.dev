@@ -32,9 +32,7 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   if (s.startsWith("SELECT key, value FROM system_settings")) {
     return { rows: settingsRows };
   }
-  if (
-    s.startsWith("SELECT id, ip_address, user_agent, created_at, expires_at")
-  ) {
+  if (s.startsWith("SELECT id, ip_address, ipv4_address, user_agent")) {
     return { rows: sessionsListRows };
   }
   // More specific match first: deleteSessionById's two-param DELETE, vs.

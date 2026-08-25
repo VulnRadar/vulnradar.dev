@@ -4,8 +4,48 @@ import * as React from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 
 import { cn } from "@/lib/ui/utils";
+import { useCloseOnScroll } from "@/lib/ui/use-close-on-scroll";
 
-const Popover = PopoverPrimitive.Root;
+/**
+ * Wraps Radix Popover.Root so every popover in the app closes when the PAGE
+ * scrolls (see useCloseOnScroll) -- the behavior the scan form's check-families
+ * panels established, applied consistently everywhere instead of per usage.
+ *
+ * It has to own the open state to be able to close it: controlled usage
+ * (`open` + `onOpenChange`) is respected and simply gets its onOpenChange
+ * called on scroll; uncontrolled usage is tracked here so it, too, can be
+ * closed. Radix is always driven controlled from here, which is transparent to
+ * callers.
+ */
+function Popover({
+  open,
+  defaultOpen,
+  onOpenChange,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Root>) {
+  const isControlled = open !== undefined;
+  const [internalOpen, setInternalOpen] = React.useState(defaultOpen ?? false);
+  const actualOpen = isControlled ? open : internalOpen;
+
+  const setOpen = React.useCallback(
+    (next: boolean) => {
+      if (!isControlled) setInternalOpen(next);
+      onOpenChange?.(next);
+    },
+    [isControlled, onOpenChange],
+  );
+
+  const close = React.useCallback(() => setOpen(false), [setOpen]);
+  useCloseOnScroll(actualOpen, close);
+
+  return (
+    <PopoverPrimitive.Root
+      open={actualOpen}
+      onOpenChange={setOpen}
+      {...props}
+    />
+  );
+}
 
 const PopoverTrigger = PopoverPrimitive.Trigger;
 

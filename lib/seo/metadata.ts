@@ -10,6 +10,20 @@ import {
   SEO_LOCALE,
 } from "@/lib/config/constants";
 
+/**
+ * Trim a string to `max` characters on a word boundary, adding an ellipsis when
+ * it had to cut. Used to keep generated meta descriptions and titles inside the
+ * length search engines display (descriptions ~155, titles budgeted per page)
+ * without cutting mid-word. The full text still renders on the page itself.
+ */
+export function clampText(text: string, max = 155): string {
+  const clean = text.replace(/\s+/g, " ").trim();
+  if (clean.length <= max) return clean;
+  const cut = clean.slice(0, max);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${(lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trimEnd()}...`;
+}
+
 interface PageSeoOptions {
   title: string;
   description: string;
@@ -93,6 +107,7 @@ export function pageMetadata({
           width: SEO_OG_IMAGE_WIDTH,
           height: SEO_OG_IMAGE_HEIGHT,
           alt: fullTitle,
+          type: "image/png",
         },
       ],
       ...(publishedTime ? { publishedTime } : {}),

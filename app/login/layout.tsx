@@ -3,7 +3,7 @@ import { pageMetadata } from "@/lib/seo/metadata";
 import { APP_NAME } from "@/lib/config/constants";
 
 export const metadata: Metadata = pageMetadata({
-  title: "Sign In",
+  title: "Sign In to History, API Keys, and Scans",
   description: `Sign in to ${APP_NAME} to view scan history, manage API keys, schedule recurring scans, and share reports with your team.`,
   path: "/login",
   // Clean /login stays indexable and in the sitemap. Only its ?redirect=<path>

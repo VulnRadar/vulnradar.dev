@@ -121,6 +121,10 @@ export function LandingApiExample({ checkCount }: LandingApiExampleProps) {
                   "Fire on completion into Slack, Discord, or your own handler",
                 ],
                 ["Reference", "Every field and every finding ID is documented"],
+                [
+                  "Playground",
+                  "Send live calls in the browser and copy each one as curl, Python, JavaScript, Go, PHP, Java, Ruby, or C#",
+                ],
               ].map(([term, def]) => (
                 <div key={term} className="flex gap-3">
                   <dt className="font-mono text-xs uppercase tracking-wider text-muted-foreground w-[76px] shrink-0 pt-0.5">
@@ -133,13 +137,22 @@ export function LandingApiExample({ checkCount }: LandingApiExampleProps) {
               ))}
             </dl>
 
-            <Link
-              href={ROUTES.DOCS_API}
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline underline-offset-4 rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              Read the API docs
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+              <Link
+                href={ROUTES.API_PLAYGROUND}
+                className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                Try it in the playground
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+              <Link
+                href={ROUTES.DOCS_API}
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline underline-offset-4 rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                Read the API docs
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
           </div>
         </div>
       </div>

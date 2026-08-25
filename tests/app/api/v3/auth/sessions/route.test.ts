@@ -27,7 +27,7 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     return { rows: sessionRow ? [sessionRow] : [] };
   if (s.startsWith("SELECT key, value FROM system_settings"))
     return { rows: [] };
-  if (s.startsWith("SELECT id, ip_address, user_agent, created_at, expires_at"))
+  if (s.startsWith("SELECT id, ip_address, ipv4_address, user_agent"))
     return { rows: userSessionsRows };
   if (s.startsWith("DELETE FROM sessions WHERE user_id = $1")) {
     sessionsDeleteCalls.push(params);
@@ -75,7 +75,8 @@ describe("GET /api/v3/auth/sessions", () => {
     userSessionsRows = [
       {
         id: "raw-session-1",
-        ip_address: "203.0.113.5",
+        ip_address: "2001:db8::1",
+        ipv4_address: "203.0.113.5",
         user_agent:
           "Mozilla/5.0 (Windows NT 10.0) Chrome/120.0.0.0 Safari/537.36",
         created_at: "2026-01-01T00:00:00.000Z",
@@ -84,6 +85,7 @@ describe("GET /api/v3/auth/sessions", () => {
       {
         id: "raw-session-2",
         ip_address: "198.51.100.9",
+        ipv4_address: null,
         user_agent: "curl/8.0",
         created_at: "2026-01-02T00:00:00.000Z",
         expires_at: "2026-02-01T00:00:00.000Z",
@@ -105,7 +107,9 @@ describe("GET /api/v3/auth/sessions", () => {
 
     expect(current.id).toBe(hashSessionId("raw-session-1"));
     expect(current.device).toBe("Chrome on Windows");
-    expect(current.ipAddress).toBe("203.0.113.5");
+    expect(current.ipAddress).toBe("2001:db8::1");
+    // The out-of-band IPv4 rides alongside the connection's IPv6.
+    expect(current.ipv4Address).toBe("203.0.113.5");
 
     expect(other.id).toBe(hashSessionId("raw-session-2"));
     expect(other.device).toBe("curl");

@@ -112,6 +112,9 @@ export const API = {
     },
     SESSIONS: `/api/${API_VERSION}/auth/sessions`,
     SESSION_REVOKE: (id: string) => `/api/${API_VERSION}/auth/sessions/${id}`,
+    /** Record the IPv4 the IPv4-only echo host observed onto the current
+     *  session (POST { token }). See components/shared/ipv4-capture.tsx. */
+    SESSION_IPV4: `/api/${API_VERSION}/auth/sessions/ipv4`,
     TRUSTED_DEVICES: `/api/${API_VERSION}/auth/trusted-devices`,
     TRUSTED_DEVICE_REVOKE: (id: number | string) =>
       `/api/${API_VERSION}/auth/trusted-devices/${id}`,
@@ -138,6 +141,8 @@ export const API = {
   SCAN_DISCOVER_PROGRESS: (requestId: string) =>
     `/api/${API_VERSION}/scan/discover/progress/${requestId}`,
   SCAN_CRAWL: `/api/${API_VERSION}/scan/crawl`,
+  /** Parse an uploaded API spec (OpenAPI/Swagger/Postman) into scan targets. */
+  SCAN_IMPORT_SPEC: `/api/${API_VERSION}/scan/import-spec`,
   SCAN_CRAWL_DISCOVER: `/api/${API_VERSION}/scan/crawl/discover`,
   SCAN_AUTHENTICATED: `/api/${API_VERSION}/scan/authenticated`,
   DEMO_SCAN: `/api/${API_VERSION}/demo-scan`,
@@ -163,7 +168,13 @@ export const API = {
   TEAMS: `/api/${API_VERSION}/teams`,
   TEAMS_MEMBERS: `/api/${API_VERSION}/teams/members`,
   TEAMS_MEMBER_SCANS: `/api/${API_VERSION}/teams/member-scans`,
+  /** Everyone the caller shares a team with (for the remediation assignee
+   *  picker). GET only. */
+  TEAMS_TEAMMATES: `/api/${API_VERSION}/teams/teammates`,
   TEAMS_ACCEPT_INVITE: `/api/${API_VERSION}/teams/accept-invite`,
+  /** The caller's own pending team invitations: GET to list, DELETE to
+   *  decline (accept stays TEAMS_ACCEPT_INVITE by inviteId). */
+  TEAMS_INVITATIONS: `/api/${API_VERSION}/teams/invitations`,
   NOTIFICATIONS: `/api/${API_VERSION}/notifications`,
   CONTACT: `/api/${API_VERSION}/contact`,
   LANDING_CONTACT: `/api/${API_VERSION}/landing-contact`,
@@ -210,6 +221,9 @@ export const API = {
    *  statuses for a target/finding; POST upserts one (status 'open' clears
    *  it); DELETE clears one. Distinct from SCAN_FEEDBACK's accuracy verdict. */
   SCAN_REMEDIATION: `/api/${API_VERSION}/scan/remediation`,
+  /** Apply one remediation change (status + optional assignee/due) to many
+   *  findings at once (the results-list bulk bar). POST only. */
+  SCAN_REMEDIATION_BULK: `/api/${API_VERSION}/scan/remediation/bulk`,
   AI_INFO: `/api/${API_VERSION}/ai/info`,
   ACCOUNT: `/api/${API_VERSION}/account/delete`,
   COMPARE: `/api/${API_VERSION}/compare`,
@@ -219,6 +233,9 @@ export const API = {
   BROWSER_SESSIONS: `/api/${API_VERSION}/browser/sessions`,
   BROWSER_SESSION_LOGS: `/api/${API_VERSION}/browser/sessions/logs`,
   VERSION: "/api/version",
+  /** Public OpenAPI 3.1 description of the v3 API (for API clients + the docs
+   *  explorer). */
+  OPENAPI: "/api/v3/openapi.json",
   /** Public, unauthenticated: the latest public scan of a host, if any (app/host/[hostname]/page.tsx). */
   HOST: (hostname: string) => `/api/${API_VERSION}/host/${hostname}`,
   /** Public, unauthenticated: up to the last 30 public/completed scans' risk scores for a host, oldest first (components/host/danger-score-trend.tsx). */
@@ -264,6 +281,8 @@ export const ROUTES = {
   CHANGELOG: "/changelog",
   DOCS: "/docs",
   DOCS_API: "/docs/api",
+  /** Interactive API explorer (app/docs/api/playground). */
+  API_PLAYGROUND: "/docs/api/playground",
   DOCS_SETUP: "/docs/setup",
   DOCS_DEVELOPERS: "/docs/developers",
   ADMIN: "/admin",
@@ -343,3 +362,16 @@ export const API_KEY_SCOPE_DESCRIPTIONS: Record<ApiKeyScope, string> = {
 export function resolveApiKeyScopes(scopes: unknown): ApiKeyScope[] {
   return Array.isArray(scopes) ? (scopes as ApiKeyScope[]) : ALL_API_KEY_SCOPES;
 }
+
+// EXTERNAL LINK-OUTS
+
+/**
+ * Third-party inspector for a scanned URL's Open Graph / social-share tags.
+ * `{url}` is replaced with the URL-encoded target. This is a deliberate
+ * link-out (we send the user to the service, we do not fetch OG data
+ * ourselves), keeping the social-preview surface off our own engine. Set to an
+ * empty string to hide the link, or point it at a different service per
+ * deployment.
+ */
+export const OG_INSPECT_URL_TEMPLATE: string =
+  "https://www.opengraph.xyz/url/{url}";

@@ -8,7 +8,7 @@ const DESCRIPTION =
   "How to file a copyright infringement notice or a counter-notification, and the designated agent to send it to.";
 
 export const metadata: Metadata = pageMetadata({
-  title: TITLE,
+  title: "DMCA & Copyright: How to File a Notice",
   description: DESCRIPTION,
   path: "/legal/dmca",
 });

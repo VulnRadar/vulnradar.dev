@@ -11,8 +11,8 @@ import { SeoPageShell, Breadcrumbs, ScanCta } from "@/lib/seo/seo-ui";
 import { APP_NAME } from "@/lib/config/constants";
 
 export const metadata: Metadata = pageMetadata({
-  title: "Free Security Tools",
-  description: `Free, no-signup security tools from ${APP_NAME}: scan an API online, check where a link really goes, and audit a URL's security headers. Paste a URL, get real findings.`,
+  title: "Free Online Security Tools, No Signup",
+  description: `Free security tools from ${APP_NAME}, no signup: scan an API online, follow a link's real redirect chain, and audit a URL's security headers.`,
   path: "/tools",
   keywords: [
     "free security tools",

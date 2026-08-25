@@ -712,6 +712,7 @@ export {
   API_KEY_SCOPE_LABELS,
   API_KEY_SCOPE_DESCRIPTIONS,
   resolveApiKeyScopes,
+  OG_INSPECT_URL_TEMPLATE,
 } from "@/lib/config/client-constants";
 
 // Additions that only exist on the server side are now in client-constants.ts.

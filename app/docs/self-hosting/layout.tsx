@@ -8,7 +8,7 @@ import {
 } from "@/components/seo/structured-data";
 
 export const metadata: Metadata = pageMetadata({
-  title: "Self-Hosting Guide",
+  title: "Self-Hosting Guide: Deploy Your Own Instance",
   description: `Run your own ${APP_NAME} instance under GPL-3.0. Covers deployment, database setup, SMTP, environment configuration, and upgrades.`,
   path: "/docs/self-hosting",
   keywords: [

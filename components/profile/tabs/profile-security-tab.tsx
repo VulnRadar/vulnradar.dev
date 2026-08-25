@@ -46,6 +46,8 @@ type EnrolStep = "scan" | "verify";
 interface SessionItem {
   id: string;
   ipAddress: string | null;
+  // IPv4 captured out-of-band when the session's own connection was IPv6.
+  ipv4Address: string | null;
   device: string;
   createdAt: string;
   expiresAt: string;
@@ -1525,7 +1527,12 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {s.ipAddress ? `${s.ipAddress} · ` : ""}
+                    {/* Prefer the captured IPv4 (more actionable); fall back to
+                        the connection IP so a failed or absent capture never
+                        leaves this blank. */}
+                    {s.ipv4Address || s.ipAddress
+                      ? `${s.ipv4Address || s.ipAddress} · `
+                      : ""}
                     Signed in {formatDateTime(s.createdAt)}
                   </p>
                 </div>

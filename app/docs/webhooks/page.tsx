@@ -50,6 +50,7 @@ export default function WebhooksPage() {
   return (
     <div className="space-y-16">
       <DocsHero
+        id="top"
         badge="Integrations"
         title="Webhooks"
         description={`Receive real-time notifications when scans complete. ${APP_NAME} auto-detects the platform type from the URL and formats the payload accordingly.`}

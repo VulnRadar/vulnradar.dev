@@ -23,6 +23,18 @@ vi.mock("@/lib/support/ticket-notify", () => ({
   notifyUserOfStaffReply: vi.fn(),
 }));
 
+// Mock the rate limiter so it never touches the (mocked) db pool and so the
+// POST tests' mockQuery call order stays load -> insert -> update. Default:
+// allow; a test flips it to deny to assert the 429.
+const mockCheckRateLimit = vi.fn(async () => ({
+  allowed: true,
+  retryAfterSeconds: 0,
+}));
+vi.mock("@/lib/rate-limiting/rate-limit", () => ({
+  checkRateLimit: (..._args: unknown[]) => mockCheckRateLimit(),
+  RATE_LIMITS: { api: { limit: "api" } },
+}));
+
 const { GET, POST, PATCH } =
   await import("@/app/api/v3/support-tickets/[id]/route");
 
@@ -63,6 +75,8 @@ beforeEach(() => {
   mockQuery.mockReset();
   mockGetSession.mockReset();
   mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+  mockCheckRateLimit.mockReset();
+  mockCheckRateLimit.mockResolvedValue({ allowed: true, retryAfterSeconds: 0 });
 });
 
 describe("GET /api/v3/support-tickets/[id]", () => {
@@ -122,6 +136,18 @@ describe("GET /api/v3/support-tickets/[id]", () => {
 });
 
 describe("POST /api/v3/support-tickets/[id] (reply)", () => {
+  it("429s when the reply rate limit is exceeded, before any DB work", async () => {
+    asUser(7, "user");
+    mockCheckRateLimit.mockResolvedValueOnce({
+      allowed: false,
+      retryAfterSeconds: 120,
+    });
+    const res = await POST(req("POST", { message: "spam" }), params);
+    expect(res.status).toBe(429);
+    // Rate-limited before loading the ticket or inserting anything.
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
   it("owner reply moves the ticket to awaiting_staff and stores a non-staff message", async () => {
     asUser(7, "user");
     mockQuery

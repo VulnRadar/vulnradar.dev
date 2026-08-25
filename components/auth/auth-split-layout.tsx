@@ -70,74 +70,69 @@ export function AuthSplitLayout({ children }: AuthSplitLayoutProps) {
   const reasons = accountReasons();
 
   return (
-    <div className="relative overflow-hidden min-h-screen bg-background lg:grid lg:grid-cols-[minmax(0,45fr)_minmax(0,55fr)]">
-      {/* Left: why the account is worth having. Desktop only, because on a
-          phone it would push the form below the fold. */}
-      <aside className="hidden lg:flex flex-col relative z-10">
-        {/* One soft, off-center light source low behind the readout, not a
-            texture repeated across the whole page. The readout is the only
-            thing here that's actually ours; this just gives it somewhere to
-            sit rather than floating on a flat panel. */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -bottom-24 -left-24 z-0 h-[420px] w-[420px] rounded-full bg-primary/8 blur-[100px]"
-        />
+    <div className="relative flex min-h-screen flex-col overflow-hidden bg-background">
+      {/* One canvas, not two panels. A single off-center light source sits
+          behind the whole composition so both sides share the same ground.
+          No tinted panel, no divider: the pitch and the form are the same
+          surface, held together by the centered layout below. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -bottom-40 left-[22%] z-0 h-[620px] w-[620px] -translate-x-1/2 rounded-full bg-primary/[0.07] blur-[130px]"
+      />
 
-        <div className="relative z-10 flex flex-col h-full p-10 xl:p-14">
-          <AuthWordmark />
+      <header className="relative z-10 px-6 pt-6 pb-2 sm:px-10">
+        <AuthWordmark />
+      </header>
 
-          <div className="flex-1 flex flex-col justify-center py-10">
-            <div className="max-w-[360px]">
-              <h2 className="text-[28px] leading-[1.15] font-semibold tracking-tight text-foreground">
-                Paste a URL. Get findings,
-                <br />
-                not a grade out of ten.
-              </h2>
-              <p className="mt-3.5 text-sm text-muted-foreground leading-relaxed">
-                {TOTAL_CHECKS_LABEL} checks run in parallel against the live
-                response. Every finding comes back with a stable ID you can
-                reference in a pull request or gate a build on.
-              </p>
+      {/* The dead space is solved by composition, not a background: the pitch
+          and the form are pulled into one centered, bounded band, so the empty
+          room becomes symmetric outer margin instead of a gap down the middle. */}
+      <main className="relative z-10 flex flex-1 items-center justify-center px-6 py-10 sm:px-10">
+        <div className="grid w-full max-w-6xl items-center gap-y-12 lg:grid-cols-2 lg:gap-x-16 xl:gap-x-28">
+          {/* The pitch. Desktop only; on a phone it would push the form below
+              the fold. */}
+          <div className="hidden max-w-md lg:block">
+            <h2 className="text-[28px] font-semibold leading-[1.15] tracking-tight text-foreground">
+              Paste a URL. Get findings,
+              <br />
+              not a grade out of ten.
+            </h2>
+            <p className="mt-3.5 text-sm leading-relaxed text-muted-foreground">
+              {TOTAL_CHECKS_LABEL} checks run in parallel against the live
+              response. Every finding comes back with a stable ID you can
+              reference in a pull request or gate a build on.
+            </p>
 
-              <dl className="mt-7 space-y-3.5 border-l border-border/60 pl-4">
-                {reasons.map((r) => (
-                  <div key={r.label}>
-                    <dt className="text-sm font-medium text-foreground">
-                      {r.label}
-                    </dt>
-                    <dd className="text-sm text-muted-foreground leading-relaxed mt-0.5">
-                      {r.body}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
+            <dl className="mt-7 space-y-3.5 border-l border-border/60 pl-4">
+              {reasons.map((r) => (
+                <div key={r.label}>
+                  <dt className="text-sm font-medium text-foreground">
+                    {r.label}
+                  </dt>
+                  <dd className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
+                    {r.body}
+                  </dd>
+                </div>
+              ))}
+            </dl>
 
-              <ResponseReadout
-                size="sm"
-                host="yourdomain.com"
-                rows={AUTH_READOUT_ROWS}
-                leadCheckId="csp-missing"
-                className="mt-12 max-w-[300px]"
-              />
-            </div>
+            {/* The response readout as itself. It carries its own built-in
+                staggered reveal; nothing is layered on top of the card. */}
+            <ResponseReadout
+              size="sm"
+              host="yourdomain.com"
+              rows={AUTH_READOUT_ROWS}
+              leadCheckId="csp-missing"
+              className="mt-12 max-w-[300px]"
+            />
           </div>
 
-          <AuthFooter />
+          {/* The task. */}
+          <div className="mx-auto w-full max-w-sm">{children}</div>
         </div>
-      </aside>
+      </main>
 
-      {/* Right: the task itself. */}
-      <div className="relative z-10 flex flex-col min-h-screen lg:min-h-0">
-        <header className="px-5 sm:px-8 pt-6 pb-2 shrink-0 lg:hidden">
-          <AuthWordmark />
-        </header>
-
-        <main className="flex-1 flex flex-col items-center justify-center px-5 sm:px-8 py-10">
-          <div className="w-full max-w-sm">{children}</div>
-        </main>
-
-        <AuthFooter className="px-5 sm:px-8 pb-6 pt-2 lg:hidden" />
-      </div>
+      <AuthFooter className="relative z-10 px-6 pb-6 pt-2 sm:px-10" />
     </div>
   );
 }

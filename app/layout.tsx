@@ -13,6 +13,7 @@ import { StaffHeartbeat } from "@/components/admin/staff-heartbeat";
 import { ImpersonationBanner } from "@/components/admin/impersonation-banner";
 import { SiteNotificationsWrapper } from "@/components/shared/site-notifications";
 import { CookieNotice } from "@/components/shared/cookie-notice";
+import { Ipv4Capture } from "@/components/shared/ipv4-capture";
 import {
   APP_NAME,
   APP_DESCRIPTION,
@@ -176,6 +177,7 @@ export default async function RootLayout({
         >
           <AuthProvider>
             <StaffHeartbeat />
+            <Ipv4Capture />
             <ImpersonationBanner />
             <SiteNotificationsWrapper />
             <TosGate>{children}</TosGate>
@@ -187,34 +189,6 @@ export default async function RootLayout({
             <Toaster />
           </AuthProvider>
         </ThemeProvider>
-        {/*        <Script id="tawk-to" strategy="lazyOnload">*/}
-        {/*          {`var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();*/}
-        {/*Tawk_API.onLoad = function(){*/}
-        {/*  if(window.innerWidth < 640){*/}
-        {/*    Tawk_API.setProperty('fontSize', 14);*/}
-        {/*    var el = document.querySelector('iframe[title="chat widget"]');*/}
-        {/*    if(el){*/}
-        {/*      el.style.minWidth = '80px';*/}
-        {/*      el.style.minHeight = '80px';*/}
-        {/*    }*/}
-        {/*  }*/}
-        {/*};*/}
-        {/*Tawk_API.customStyle = {*/}
-        {/*  visibility: {*/}
-        {/*    desktop: { position: 'br', xOffset: 20, yOffset: 20 },*/}
-        {/*    mobile: { position: 'br', xOffset: 10, yOffset: 10 },*/}
-        {/*  },*/}
-        {/*  zIndex: 999*/}
-        {/*};*/}
-        {/*(function(){*/}
-        {/*var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];*/}
-        {/*s1.async=true;*/}
-        {/*s1.src='https://embed.tawk.to/6993aa8073d8cb1c357e314e/1jhkd41di';*/}
-        {/*s1.charset='UTF-8';*/}
-        {/*s1.setAttribute('crossorigin','*');*/}
-        {/*s0.parentNode.insertBefore(s1,s0);*/}
-        {/*})();`}*/}
-        {/*        </Script>*/}
       </body>
     </html>
   );

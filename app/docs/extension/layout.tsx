@@ -11,7 +11,7 @@ const DESCRIPTION =
   "Install the Chrome/Firefox extension, scan from the toolbar, auto-scan on navigation, and read on-page reputation alerts.";
 
 export const metadata: Metadata = pageMetadata({
-  title: TITLE,
+  title: "Browser Extension for Chrome and Firefox",
   description: DESCRIPTION,
   path: "/docs/extension",
   keywords: [

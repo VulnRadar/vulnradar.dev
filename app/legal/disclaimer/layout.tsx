@@ -8,7 +8,7 @@ const DESCRIPTION =
   "Scan results are informational, not a warranty or a penetration test. What the scanner does and does not guarantee, and where legal responsibility sits.";
 
 export const metadata: Metadata = pageMetadata({
-  title: TITLE,
+  title: "Disclaimer: Scan Results Are Informational",
   description: DESCRIPTION,
   path: "/legal/disclaimer",
 });

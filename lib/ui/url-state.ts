@@ -4,6 +4,50 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export const QUERY_CHANGE_EVENT = "vr:query-change";
 
+/**
+ * Fired whenever the URL changes by ANY means: our own setQueryParam helpers,
+ * a Next.js <Link> soft navigation, router.push/replace, or back/forward.
+ *
+ * QUERY_CHANGE_EVENT only fires for our own writes and names the exact key.
+ * This is the catch-all "the location changed, re-read what you depend on"
+ * signal, and it exists because a Next.js soft navigation to the pathname you
+ * are already on (e.g. clicking the History nav link while viewing
+ * /history?scan=X) updates the URL via history.pushState but fires neither
+ * popstate nor our own event, and the page component does not remount, so a
+ * query-driven sub-view (the open scan) would otherwise never reset.
+ */
+export const LOCATION_CHANGE_EVENT = "vr:location-change";
+
+/**
+ * Patch history.pushState/replaceState once so every URL change emits
+ * LOCATION_CHANGE_EVENT, including Next.js router navigations, which call these
+ * directly and fire no event of their own. popstate (back/forward) is bridged
+ * too. Guarded so the module being imported by many components patches once.
+ */
+function installLocationChangeBridge(): void {
+  if (typeof window === "undefined") return;
+  const w = window as typeof window & { __vrLocationBridge?: boolean };
+  if (w.__vrLocationBridge) return;
+  w.__vrLocationBridge = true;
+  const emit = () => window.dispatchEvent(new Event(LOCATION_CHANGE_EVENT));
+  const origPush = window.history.pushState.bind(window.history);
+  window.history.pushState = function (
+    ...args: Parameters<History["pushState"]>
+  ): void {
+    origPush(...args);
+    emit();
+  };
+  const origReplace = window.history.replaceState.bind(window.history);
+  window.history.replaceState = function (
+    ...args: Parameters<History["replaceState"]>
+  ): void {
+    origReplace(...args);
+    emit();
+  };
+  window.addEventListener("popstate", emit);
+}
+installLocationChangeBridge();
+
 type QueryChangeDetail = {
   key: string;
   value: string | null;
@@ -151,9 +195,13 @@ export function useQueryParam<T extends string = string>(
     const onPopState = () => syncFromUrl();
     syncFromUrl();
     window.addEventListener(QUERY_CHANGE_EVENT, onQueryChange);
+    // Catches Next.js <Link> soft navigations (which fire neither our event
+    // nor popstate) so a param cleared by navigating away actually re-syncs.
+    window.addEventListener(LOCATION_CHANGE_EVENT, onPopState);
     window.addEventListener("popstate", onPopState);
     return () => {
       window.removeEventListener(QUERY_CHANGE_EVENT, onQueryChange);
+      window.removeEventListener(LOCATION_CHANGE_EVENT, onPopState);
       window.removeEventListener("popstate", onPopState);
     };
   }, [name, fallback]);

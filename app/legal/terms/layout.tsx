@@ -8,7 +8,7 @@ const DESCRIPTION =
   "The terms that govern using the scanner: authorized use only, account responsibilities, API limits, data retention, and liability.";
 
 export const metadata: Metadata = pageMetadata({
-  title: TITLE,
+  title: "Terms of Service: Authorized Use and Limits",
   description: DESCRIPTION,
   path: "/legal/terms",
 });

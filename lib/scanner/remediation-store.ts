@@ -22,6 +22,7 @@ interface RemediationRow {
   status: RemediationStatus;
   note: string | null;
   assignee: string | null;
+  due_at: string | null;
 }
 
 /**
@@ -37,7 +38,7 @@ export async function getRemediationMap(
   const map = new Map<string, FindingRemediation>();
   try {
     const res = await pool.query<RemediationRow>(
-      `SELECT finding_id, status, note, assignee
+      `SELECT finding_id, status, note, assignee, due_at
          FROM finding_remediation
         WHERE user_id = $1 AND finding_url = $2`,
       [userId, findingUrl],
@@ -47,6 +48,7 @@ export async function getRemediationMap(
         status: row.status,
         note: row.note,
         assignee: row.assignee,
+        dueAt: row.due_at,
       });
     }
   } catch (err) {

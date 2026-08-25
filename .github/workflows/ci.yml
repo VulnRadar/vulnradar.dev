@@ -106,6 +106,12 @@ jobs:
       - name: Run unit tests
         run: npm run test
 
+      # The CLI (cli/) is a standalone, dependency-free Node package excluded
+      # from the app's tsc/eslint/vitest, so its node:test suite runs here.
+      - name: Run CLI unit tests
+        run: node --test
+        working-directory: cli
+
   extension:
     name: Extension
     runs-on: ubuntu-latest

@@ -61,6 +61,7 @@ export default function ExtensionPage() {
   return (
     <div className="space-y-16">
       <DocsHero
+        id="top"
         badge="Browser Extension"
         title="Browser Extension"
         description="Scan the page you're actually looking at, without pasting a URL. The extension runs the same engine as the web app, connected to your own account with an API key."

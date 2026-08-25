@@ -243,6 +243,37 @@ describe("fingerprintSoftware", () => {
     expect(htmx.some((i) => i.name === "htmx")).toBe(true);
   });
 
+  it("detects Cloudflare Web Analytics and Turnstile from injected script hosts", () => {
+    const analytics = fingerprintSoftware(
+      new Headers(),
+      `<script defer src="https://static.cloudflareinsights.com/beacon.min.js"></script>`,
+      "https://example.com",
+    );
+    expect(
+      analytics.find((i) => i.name === "Cloudflare Web Analytics")?.category,
+    ).toBe("library");
+
+    const turnstile = fingerprintSoftware(
+      new Headers(),
+      `<script src="https://challenges.cloudflare.com/turnstile/v0/api.js"></script>`,
+      "https://example.com",
+    );
+    expect(turnstile.some((i) => i.name === "Cloudflare Turnstile")).toBe(true);
+  });
+
+  it("implies React when only Next.js is detected (no separate React marker)", () => {
+    const items = fingerprintSoftware(
+      new Headers(),
+      `<script id="__NEXT_DATA__">{}</script>`,
+      "https://example.com",
+    );
+    const react = items.find((i) => i.name === "React");
+    expect(react).toBeDefined();
+    expect(react?.source).toBe("implied by Next.js");
+    // Next.js itself is still listed alongside its implied base library.
+    expect(items.some((i) => i.name === "Next.js")).toBe(true);
+  });
+
   it("detects a hosting platform from a response header", () => {
     const items = fingerprintSoftware(
       new Headers({ "x-vercel-id": "iad1::abc" }),

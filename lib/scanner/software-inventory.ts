@@ -329,6 +329,19 @@ const BODY_TECH_MARKERS: BodyMarker[] = [
     category: "library",
     re: /googletagmanager\.com\/gtm\.js/i,
   },
+  // Cloudflare injects the Web Analytics beacon into the HTML at the edge when
+  // the zone has it enabled, so it appears in the served markup a scan already
+  // has (distinct from the "Cloudflare" CDN row read off the Server header).
+  {
+    name: "Cloudflare Web Analytics",
+    category: "library",
+    re: /static\.cloudflareinsights\.com/i,
+  },
+  {
+    name: "Cloudflare Turnstile",
+    category: "library",
+    re: /challenges\.cloudflare\.com\/turnstile/i,
+  },
 ];
 
 // Hosting/platform fingerprints keyed on a response header. Presence alone is
@@ -585,6 +598,30 @@ export function fingerprintSoftware(
       }
     } catch {
       /* detection is best-effort; a parse hiccup just drops library rows */
+    }
+  }
+
+  // Meta-frameworks imply their base library. Next.js runs React, Nuxt runs
+  // Vue: list the base library too (what Wappalyzer does) so the inventory
+  // reflects the real runtime, not just the wrapper. Only added when the base
+  // wasn't already detected on its own.
+  const IMPLIED: Array<{ trigger: string; add: SoftwareItem }> = [
+    {
+      trigger: "next.js",
+      add: {
+        name: "React",
+        category: "framework",
+        source: "implied by Next.js",
+      },
+    },
+    {
+      trigger: "nuxt",
+      add: { name: "Vue.js", category: "framework", source: "implied by Nuxt" },
+    },
+  ];
+  for (const { trigger, add } of IMPLIED) {
+    if (seen.has(trigger) && !seen.has(add.name.toLowerCase())) {
+      pushItem(out, seen, add);
     }
   }
 

@@ -7,7 +7,7 @@ import {
 } from "@/components/seo/structured-data";
 
 export const metadata: Metadata = pageMetadata({
-  title: "Rate Limits",
+  title: "Rate Limits: Per-Plan Request and Scan Caps",
   description:
     "Per-plan request and scan limits, the headers returned on every response, what happens when a limit is hit, and how to handle backoff.",
   path: "/docs/rate-limits",

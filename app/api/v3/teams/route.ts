@@ -31,7 +31,18 @@ export async function GET() {
     [session.userId],
   );
 
-  return NextResponse.json({ teams: result.rows });
+  // The caller's own plan caps: how many teams they can own and how many
+  // seats a team can hold. The create dialog uses teamMembers to cap the
+  // first-run invite rows. null means billing is off (unlimited); the client
+  // treats that as "no cap". -1 is the plan's own "unlimited" sentinel.
+  const planLimits = await getUserPlanLimits(session.userId);
+
+  return NextResponse.json({
+    teams: result.rows,
+    limits: planLimits
+      ? { teams: planLimits.teams, teamMembers: planLimits.teamMembers }
+      : null,
+  });
 }
 
 // Create a new team

@@ -4,9 +4,9 @@ import { pageMetadata } from "@/lib/seo/metadata";
 import { BreadcrumbStructuredData } from "@/components/seo/structured-data";
 import { LegalShell } from "@/components/legal";
 
-const TITLE = "Legal";
+const TITLE = "VulnRadar Legal: Terms, Privacy, and DMCA";
 const DESCRIPTION =
-  "Terms of service, privacy policy, acceptable use, disclaimer, accessibility statement, and DMCA policy.";
+  "The terms of service, privacy policy, acceptable use policy, disclaimer, accessibility statement, and DMCA policy that govern using VulnRadar.";
 
 export const metadata: Metadata = pageMetadata({
   title: TITLE,

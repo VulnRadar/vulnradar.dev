@@ -79,6 +79,18 @@ function buildSecurityHeaders(nonce: string): Record<string, string> {
     ...(process.env.NODE_ENV === "production" ? [] : ["'unsafe-eval'"]),
   ].join(" ");
 
+  // If IPv4 capture is configured, a page on the main origin fetches the
+  // IPv4-only echo host (a different subdomain), so it must be allowed in
+  // connect-src. Off (empty) unless NEXT_PUBLIC_IPV4_ECHO_URL is set.
+  let ipv4EchoOrigin = "";
+  try {
+    if (process.env.NEXT_PUBLIC_IPV4_ECHO_URL) {
+      ipv4EchoOrigin = new URL(process.env.NEXT_PUBLIC_IPV4_ECHO_URL).origin;
+    }
+  } catch {
+    ipv4EchoOrigin = "";
+  }
+
   return {
     "Content-Security-Policy": [
       "default-src 'self'",
@@ -99,7 +111,9 @@ function buildSecurityHeaders(nonce: string): Record<string, string> {
       // wss://connect.{region}.browserbase.com/. connect-src
       // https://api.browserbase.com is for the popup calling
       // /api/v3/browser/sessions.
-      "connect-src 'self' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://api.browserbase.com wss://*.browserbase.com https://api.stripe.com",
+      `connect-src 'self' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://api.browserbase.com wss://*.browserbase.com https://api.stripe.com${
+        ipv4EchoOrigin ? ` ${ipv4EchoOrigin}` : ""
+      }`,
       // js.stripe.com: Stripe Elements/Checkout renders its card-input and
       // 3DS-challenge UI inside its own iframes -- without it here, the
       // payment form fails to open at all (frame-src blocks the iframe

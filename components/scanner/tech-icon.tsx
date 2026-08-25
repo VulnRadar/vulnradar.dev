@@ -74,6 +74,8 @@ interface Brand {
 const BRANDS: Record<string, Brand> = {
   // Hosting / CDN
   Cloudflare: { Icon: SiCloudflare, color: "#F38020" },
+  "Cloudflare Web Analytics": { Icon: SiCloudflare, color: "#F38020" },
+  "Cloudflare Turnstile": { Icon: SiCloudflare, color: "#F38020" },
   Fastly: { Icon: SiFastly, color: "#FF282D" },
   Vercel: { Icon: SiVercel },
   Netlify: { Icon: SiNetlify, color: "#00C7B7" },

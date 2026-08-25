@@ -429,13 +429,14 @@ export async function listUserSessions(userId: number): Promise<
   Array<{
     id: string;
     ip_address: string | null;
+    ipv4_address: string | null;
     user_agent: string | null;
     created_at: string;
     expires_at: string;
   }>
 > {
   const result = await pool.query(
-    `SELECT id, ip_address, user_agent, created_at, expires_at
+    `SELECT id, ip_address, ipv4_address, user_agent, created_at, expires_at
        FROM sessions
        WHERE user_id = $1 AND expires_at > NOW()
        ORDER BY created_at DESC`,

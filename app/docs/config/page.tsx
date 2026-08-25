@@ -72,6 +72,7 @@ export default function ConfigPage() {
   return (
     <div className="space-y-16">
       <DocsHero
+        id="top"
         badge="Self-Hosting"
         title="Configuration"
         description={`${APP_NAME} uses a two-layer config model: non-secret tunables live in TypeScript source, secrets live in your environment. Here's how it all fits together.`}
@@ -781,6 +782,64 @@ lib/types/
               <InlineCode>DISCORD_BOT_TOKEN</InlineCode>,{" "}
               <InlineCode>DISCORD_GUILD_ID</InlineCode>: optional. If both are
               set, the bot auto-adds connecting users to the guild
+            </li>
+          </ul>
+        </DocsSubSection>
+
+        <DocsSubSection title="Google & GitHub sign-in">
+          <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
+            <li>
+              <InlineCode>GOOGLE_CLIENT_ID</InlineCode>,{" "}
+              <InlineCode>GOOGLE_CLIENT_SECRET</InlineCode>: enable Google
+              sign-in. The Google button shows only when both are set.
+            </li>
+            <li>
+              <InlineCode>GITHUB_CLIENT_ID</InlineCode>,{" "}
+              <InlineCode>GITHUB_CLIENT_SECRET</InlineCode>: enable GitHub
+              sign-in and the GitHub repository scanner (connecting a repo to
+              scan its source). Without them, both are off.
+            </li>
+          </ul>
+          <p className="text-sm text-muted-foreground">
+            All three providers (Google, GitHub, Discord) sign in through{" "}
+            <InlineCode>/api/v3/auth/oauth/[provider]</InlineCode>; each button
+            appears only when its client id and secret are present.
+          </p>
+        </DocsSubSection>
+
+        <DocsSubSection title="IPv4 session capture (optional)">
+          <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
+            <li>
+              <InlineCode>NEXT_PUBLIC_IPV4_ECHO_URL</InlineCode>: an IPv4-only
+              host that echoes back the IP it sees. When set, a dual-stack
+              sign-in over IPv6 also captures a usable IPv4 for the session and
+              device list. Leave it unset to disable. The host must resolve over
+              IPv4 only (a DNS-only A record, no AAAA and not proxied), or it
+              cannot force the browser onto IPv4.
+            </li>
+          </ul>
+        </DocsSubSection>
+
+        <DocsSubSection title="Database pool tuning (optional)">
+          <p className="text-sm text-muted-foreground">
+            Read straight from the environment (not the admin settings) when the
+            pool is constructed, so a change needs a process restart. Sensible
+            defaults ship; override only if you have measured a need:
+          </p>
+          <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
+            <li>
+              <InlineCode>DATABASE_POOL_MAX</InlineCode>,{" "}
+              <InlineCode>DATABASE_POOL_MIN</InlineCode>: pool size bounds.
+            </li>
+            <li>
+              <InlineCode>DATABASE_IDLE_TIMEOUT_MS</InlineCode>,{" "}
+              <InlineCode>DATABASE_CONNECTION_TIMEOUT_MS</InlineCode>: idle and
+              connect timeouts.
+            </li>
+            <li>
+              <InlineCode>DATABASE_STATEMENT_TIMEOUT_MS</InlineCode>,{" "}
+              <InlineCode>DATABASE_QUERY_TIMEOUT_MS</InlineCode>: server-side
+              and client-side query time limits.
             </li>
           </ul>
         </DocsSubSection>

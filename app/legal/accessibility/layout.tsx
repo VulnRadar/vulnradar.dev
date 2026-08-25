@@ -5,10 +5,10 @@ import { BreadcrumbStructuredData } from "@/components/seo/structured-data";
 
 const TITLE = "Accessibility Statement";
 const DESCRIPTION =
-  "Conformance target, accessibility features, known limitations, and how to report a barrier.";
+  "VulnRadar's accessibility conformance target, the features that support it, known limitations we are still working on, and how to report a barrier.";
 
 export const metadata: Metadata = pageMetadata({
-  title: TITLE,
+  title: "Accessibility Statement and Conformance",
   description: DESCRIPTION,
   path: "/legal/accessibility",
 });

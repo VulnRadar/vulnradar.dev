@@ -229,6 +229,7 @@ export function DashboardResults({
       <ScanResultDetail
         result={{ ...displayResult, findings: findingsWithRemediation }}
         onSelectIssue={onSelectIssue}
+        canRemediate
         crawlInfo={crawlInfo}
         screenshotSrc={
           displayResult.screenshot && scanHistoryId

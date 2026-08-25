@@ -79,39 +79,21 @@ const nextConfig = {
       {
         source: "/(.*)",
         headers: [
-          {
-            key: "Content-Security-Policy",
-            value:
-              "default-src 'self'; " +
-              // Removed trailing 'https:' wildcard — now explicit domains only
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://embed.tawk.to https://*.tawk.to https://www.browserbase.com; " +
-              "script-src-elem 'self' 'unsafe-inline' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://embed.tawk.to https://*.tawk.to https://www.browserbase.com; " +
-              // Removed trailing 'https:' wildcard from style-src
-              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to https://www.browserbase.com; " +
-              "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to https://www.browserbase.com; " +
-              "font-src 'self' https://fonts.gstatic.com https://static.cloudflareinsights.com https://www.browserbase.com; " +
-              "img-src 'self' data: blob: https://www.browserbase.com https://static.cloudflareinsights.com https://*.tawk.to https://va.tawk.to https://cdn.discordapp.com; " +
-              // BrowserBase: the live-view iframe connects to
-              // wss://connect.{region}.browserbase.com/. We also need
-              // connect-src https://api.browserbase.com for the popup
-              // to call /api/v3/browser/sessions. Must be a separate
-              // origin from app, but we list it explicitly.
-              // headers: the trailing `https: wss:` scheme wildcards
-              // were the previous default. They let XHR/fetch go to
-              // ANY HTTPS origin on the internet — fine for development
-              // but defeats the XSS-exfiltration isolation CSP provides.
-              // Allowlist the specific API hosts the app actually calls
-              // (Stripe Checkout API + dashboard, Turnstile verify,
-              // Tawk.to, BrowserBase). Self-hosters using more
-              // integrations should add them here.
-              "connect-src 'self' https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to https://va.tawk.to https://static.cloudflareinsights.com https://api.browserbase.com wss://*.browserbase.com https://api.stripe.com; " +
-              "frame-src https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to https://www.browserbase.com; " +
-              "frame-ancestors 'none'; " +
-              "base-uri 'self'; " +
-              "form-action 'self'; " +
-              "object-src 'none'; " +
-              "upgrade-insecure-requests",
-          },
+          // NOTE: Content-Security-Policy and Permissions-Policy are NOT set
+          // here. middleware.ts is the single source of truth for the
+          // per-request nonce CSP (and the fuller Permissions-Policy).
+          // Declaring them here too shipped a SECOND, drifted copy: this
+          // headers() block applies to every response, Next.js does not
+          // de-duplicate (see the Cross-Origin-Embedder-Policy note below,
+          // where a doubled header was confirmed in a real prod scan), and
+          // the old static CSP still carried 'unsafe-inline'/'unsafe-eval'
+          // and had drifted out of sync with the real allowlist (missing
+          // js.stripe.com, the OAuth avatar hosts, the IPv4-echo origin), so
+          // where both applied their intersection could silently break Stripe
+          // and avatars, and where only the static one survived it undid the
+          // nonce hardening. This block now carries only the headers that must
+          // also cover the static assets middleware's matcher skips
+          // (_next/static, images), each identical to middleware's value.
           {
             key: "X-Frame-Options",
             value: "DENY",
@@ -124,20 +106,12 @@ const nextConfig = {
             key: "Referrer-Policy",
             value: "strict-origin-when-cross-origin",
           },
-          {
-            key: "Permissions-Policy",
-            value:
-              "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
-          },
-          {
-            // Deprecated (Chrome/Edge removed the XSS auditor it
-            // controlled; Firefox/Safari never honored it), but kept
-            // intentionally per product decision -- some header-grading
-            // tools still check for its presence, and CSP already does
-            // the real work here regardless.
-            key: "X-XSS-Protection",
-            value: "1; mode=block",
-          },
+          // Permissions-Policy is set per-request in middleware.ts (the fuller
+          // policy, which also disables interest-cohort/browsing-topics), so it
+          // is not duplicated here. X-XSS-Protection is gone entirely: the
+          // browser XSS auditor it controlled was removed from Chrome/Edge and
+          // never existed in Firefox, so it is a dead header our own scanner
+          // flags as deprecated -- CSP is the real XSS mitigation.
           {
             key: "Cross-Origin-Opener-Policy",
             value: "same-origin",

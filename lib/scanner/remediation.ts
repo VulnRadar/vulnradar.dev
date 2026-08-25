@@ -38,6 +38,21 @@ export interface FindingRemediation {
   status: RemediationStatus;
   note?: string | null;
   assignee?: string | null;
+  /** Target/SLA date as an ISO or date string, or null. */
+  dueAt?: string | null;
+}
+
+/**
+ * A due date the client sent, normalized to something Postgres can store, or
+ * null (empty / unparseable / absent). Kept as the original string so the
+ * timezone the user picked is preserved as-is. Pure and shared by the single
+ * and bulk remediation routes so they parse dates identically.
+ */
+export function normalizeDueAt(
+  dueAt: string | null | undefined,
+): string | null {
+  if (!dueAt || Number.isNaN(Date.parse(dueAt))) return null;
+  return dueAt;
 }
 
 /** Full-word label for every status, used by the detail-view control. */

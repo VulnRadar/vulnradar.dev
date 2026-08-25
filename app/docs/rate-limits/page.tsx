@@ -85,6 +85,7 @@ export default function RateLimitsPage() {
   return (
     <div className="space-y-16">
       <DocsHero
+        id="top"
         badge="API Limits"
         title="Rate Limits"
         description={`${APP_NAME} applies rate limits at two levels: per-IP limits on auth endpoints and per-user/per-key daily quotas on scan endpoints.`}

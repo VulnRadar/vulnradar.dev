@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { pageMetadata } from "@/lib/seo/metadata";
+import { pageMetadata, clampText } from "@/lib/seo/metadata";
 import {
   BreadcrumbStructuredData,
   FaqStructuredData,
@@ -58,7 +58,12 @@ export async function generateMetadata({
   const count = getChecksInCategory(cat).length;
   return pageMetadata({
     title: seo.heading,
-    description: `${seo.intro} ${count} checks, each with fix steps and code.`,
+    // Clamp to the ~155-char meta window: several category intros are long
+    // enough that appending the count sentence pushed them past 160. The full
+    // intro still renders on the page.
+    description: clampText(
+      `${seo.intro} ${count} checks, each with fix steps and code.`,
+    ),
     path: `/checks/category/${cat}`,
     keywords: seo.keywords,
   });

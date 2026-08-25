@@ -28,7 +28,7 @@ import { getCategoryCounts } from "@/lib/scanner/registry";
 
 export const metadata: Metadata = pageMetadata({
   title: "Scan Any Website for Security Issues",
-  description: `Paste a URL and get a structured security report in under 3 seconds. ${TOTAL_CHECKS_LABEL} deterministic checks across headers, TLS, cookies, DNS, and secrets. Free tier, no agent to install.`,
+  description: `Paste a URL, get a security report in under 3 seconds: ${TOTAL_CHECKS_LABEL} deterministic checks across headers, TLS, cookies, DNS, and secrets. No agent to install.`,
   path: "/landing",
 });
 

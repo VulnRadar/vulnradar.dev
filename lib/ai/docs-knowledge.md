@@ -1,6 +1,6 @@
 # VulnRadar Public Docs: AI Knowledge
 
-_Auto-compiled from `app/docs/*/page.tsx` on 2026-08-21._
+_Auto-compiled from `app/docs/*/page.tsx` on 2026-08-25._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about every public docs page. Edit
@@ -13,6 +13,524 @@ Feature[] arrays (platformFeatures, apiCategories, etc.), TOC
 headings, and prose paragraphs.
 
 ---
+
+## account-security
+Route: /docs/account-security
+
+### Sections
+- **Overview** (`#overview`)
+- **Two-step verification** (`#two-factor`)
+- **Sessions and trusted devices** (`#sessions`)
+- **Sign in with Google, GitHub, Discord** (`#oauth`)
+- **Notifications and posture digest** (`#notifications`)
+- **Your data and privacy** (`#data`)
+
+### Callouts
+> **INFO: Pick the app method if you can**
+> An authenticator app is the stronger of the two: the code is
+generated on your device and works with no signal, and it is not
+exposed if your email account is compromised. Email codes are only
+as safe as the inbox they land in. Use email codes when you cannot
+keep an authenticator app, not as the de
+
+> **INFO: Signing in is not the same as sharing scans**
+> A social login only authenticates you. It does not post anything to
+the provider and does not change who can see your scans, that is
+governed entirely by the privacy settings below.
+
+> **WARNING: Deletion is immediate and final**
+> There is no grace period or undo once the purge runs. If you only
+want to step away, sign out everywhere and turn off email
+categories instead of deleting, then export your data first if you
+might want it later.
+
+### Notes
+- Your password is the floor, not the ceiling. On its own it means a single leaked or reused credential is enough to sign in as you. Everything below sits on top of it: a second factor so a stolen password is not enough, a session list so you can see and cut off anything you do not recognise, and privacy controls over what a scan leaves behind and what stores.
+- Every control here is under Profile , split across four tabs: Security (password, two-step verification, sessions), Connections (social logins), Notifications (which emails you get), and Privacy (data export, scan visibility, account deletion). Changing anything sensitive asks for your current password again, so a hijacked session alone cannot quietly rewire your security.
+- Two-step verification (2FA) asks for a second code after your password at sign-in. offers two methods and you run one at a time: a rotating code from an authenticator app, or a code emailed to you. Turning either one on, off, or switching between them asks for your current password first. To switch, turn the active method off, then turn the other on.
+- An authenticator app is the stronger of the two: the code is generated on your device and works with no signal, and it is not exposed if your email account is compromised. Email codes are only as safe as the inbox they land in. Use email codes when you cannot keep an authenticator app, not as the default.
+- Works with Google Authenticator, Authy, 1Password, or any other TOTP app. In Profile > Security, under Two-step verification, choose Set up authenticator app and follow the two steps:
+- The secret that seeds those codes is stored encrypted at rest (AES-256-GCM), and the server refuses to set up app 2FA at all unless that encryption key is configured, so a database read never yields a usable seed. If a code is rejected, it is almost always because the 30-second window rolled over: use the one showing right now. Turning the app method off later also asks for your password and deletes both the enrolled secret and every backup code.
+- Simpler to set up and nothing to install. In Profile > Security, choose Turn on email codes and confirm your password. After that, every sign-in sends a fresh 6-digit code to your account email, which you enter to finish signing in. There are no backup codes for this method, because access to your inbox is already the recovery path. Turning it off asks for your password again.
+- When you turn on the authenticator-app method, issues eight single-use backup codes. Each one signs you in exactly once if you lose your phone, so they are the difference between a lost device and a lost account. They are shown a single time. Copy or download them then, and keep them somewhere that is not the phone running the authenticator.
+- A session is one signed-in browser or device. A trusted device is one that has already cleared 2FA and is allowed to skip the second-factor prompt for a while. Both are listed and revocable in Profile > Security, and they are the fastest way to answer "is anyone else in my account".
+- The Active sessions list shows every device currently signed in: a summary of the browser and OS, the IP address, and when it signed in. The one you are on is tagged This device. Anything you do not recognise, sign it out with one click.
+
+### Code examples
+```text
+Profile > Privacy > Export your data > Download now
+  -> vulnradar-data-export-YYYY-MM-DD.json
+```
+
+## ai
+Route: /docs/ai
+
+### Sections
+- **Overview** (`#overview`)
+- **The Vera assistant** (`#vera`)
+- **AI endpoints** (`#endpoints`)
+- **Finding verification** (`#verify`)
+- **Scan summaries** (`#summary`)
+- **Auto-tags** (`#autotag`)
+- **Bring your own key** (`#byok`)
+- **Token budgets** (`#budgets`)
+- **AI credits** (`#credits`)
+- **Privacy** (`#privacy`)
+
+### Callouts
+> **WARNING: AI can be wrong**
+> Model output is a convenience, not the source of truth. The
+findings, IDs, and severities come from the deterministic scanner;
+verify anything critical against the finding itself rather than the
+summary or the verdict.
+
+### Notes
+- Detection in is deterministic: the same URL yields the same findings and the same stable IDs, with no model in the loop. AI sits on top of that as a set of opt-in conveniences, never as the thing that decides whether a finding exists.
+- Four features call a language model: Vera (the support chat widget), finding verification , scan summaries , and auto-tags . They all resolve a provider the same way: a user&rsquo;s own key if one is configured, otherwise the deployment&rsquo;s managed AI. On a self-hosted instance with no AI_BASE_URL set, each feature simply does nothing rather than erroring.
+- AI is also per-user switchable. Any user can turn it off entirely in Profile > AI settings, which hides the chat widget and refuses verify and summary calls. Server-side setup (provider, model, key) lives in the Configuration reference ; this page is about what the features do and how they are gated.
+- Vera is the floating chat widget in the bottom-right corner (hidden on the docs, admin, and live-browser pages). It is scoped to only: it answers questions about scan findings, how to fix them, API usage, and self-hosting, and declines anything off-topic. Sending a message requires being signed in; the widget shows a sign-in gate otherwise.
+- Vera&rsquo;s system prompt is built from the live codebase, not a hand-maintained copy. The scanner-category table and check counts come straight from the check registry, alongside the severity levels, the per-scan verdict signals (0-10 danger score, safe / caution / unsafe rating, engine confidence), the API reference, and a set of common findings with their fixes. A few small account facts are also baked in: your display name, plan, role, daily scan limit, and the month you joined.
+- To keep every message small, heavier context is loaded only when you ask for it with a slash command. Type / in the composer for autocomplete.
+- Account facts are passed as a structured data block, not interpolated into instruction text, so a display name that looks like an instruction is treated as data. Anything you paste in, including scan output and scanned page content, is likewise treated as untrusted data rather than instructions, because an attacker can embed text in a page that later gets scanned.
+- The HTTP surface behind the features, all under /api/v3/. Only /ai/info is public; the chat and context routes require a session.
+- POST /api/v3/scan/verify takes a scan you own and re-checks its findings with the model. For each finding it makes a fresh HTTP probe of the target (status code, final URL, response headers, and a bounded body snippet) and asks the model whether the finding is real given that live evidence. Each finding comes back with one of three verdicts, plus a confidence score and a short reason, and the enriched findings are written back onto the scan.
+- POST /api/v3/history/"}/summary is the whole-scan counterpart to verification: one call that reads the stored scan result and returns a short, plain-language write-up. It is owner-only and takes the same dual auth (session, or a key with scan:write).
+
+### Code examples
+```bash
+curl -sS -X POST "<value>/api/v3/scan/verify" \\
+  -H "Authorization: Bearer vr_live_YOUR_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"scanHistoryId": "SCAN_PUBLIC_ID"}'
+```
+
+```bash
+curl -sS -X POST "<value>/api/v3/history/SCAN_PUBLIC_ID/summary" \\
+  -H "Authorization: Bearer vr_live_YOUR_API_KEY"
+
+# Force a regenerate instead of the cached summary
+curl -sS -X POST "<value>/api/v3/history/SCAN_PUBLIC_ID/summary?regenerate=true" \\
+  -H "Authorization: Bearer vr_live_YOUR_API_KEY"
+```
+
+## cli
+Route: /docs/cli
+
+### Sections
+- **Overview** (`#overview`)
+- **Install** (`#install`)
+- **Usage** (`#usage`)
+- **Options** (`#options`)
+- **Exit codes** (`#exit-codes`)
+- **CI example** (`#ci`)
+
+### Callouts
+> **INFO: It is the scan API underneath**
+> Every flag maps to the same POST /api/v3/scan{" "}
+the rest of these docs cover, so anything the CLI does you can also do
+with a raw request. Authentication is the same Bearer API key.
+
+### Notes
+- The vulnradar CLI wraps the scan API: it starts a scan, polls until it finishes, prints a summary, and exits non-zero when the finding counts go over the limits you set. That exit code is the whole point: drop it into a pipeline step and a regression fails the build.
+- Run it straight from npm with no global install:
+- Or install it globally if you call it often:
+- Pass your key with --api-key or the VULNRADAR_TOKEN environment variable. Prefer the variable in CI so the key never lands in shell history or logs.
+- 0 when every finding count is at or under its threshold; 1 when a threshold is exceeded or the scan errors out. That is what lets a CI job block a merge on a new critical.
+- A GitHub Actions step that fails the build on any new critical or high:
+
+### Code examples
+```bash
+npx vulnradar scan https://example.com --api-key vr_live_...
+```
+
+```yaml
+vulnradar scan <url> [options]
+```
+
+```text
+npm install -g vulnradar
+vulnradar scan https://example.com
+```
+
+```text
+- name: VulnRadar scan
+  env:
+    VULNRADAR_TOKEN: \<value>}
+  run: npx vulnradar scan https://staging.example.com --max-critical 0 --max-high 0
+```
+
+## github
+Route: /docs/github
+
+# GitHub Scanning
+Runs the secret scan and AI code review against a connected repo's source. Session only.
+
+### Sections
+- **Overview** (`#overview`)
+- **How a scan runs** (`#how-it-works`)
+- **Connecting GitHub** (`#connect`)
+- **Running a scan** (`#running`)
+- **Credits and token budgets** (`#budgets`)
+- **Filing findings as an issue** (`#filing-issues`)
+- **Privacy and limits** (`#privacy`)
+- **API endpoints** (`#endpoints`)
+
+### Callouts
+> **INFO: Session only, no API key**
+> Everything here requires a logged-in session. There is no Bearer-key
+path for GitHub scanning yet, unlike the URL scan API. Requests
+without a session return 401.
+
+> **INFO: .env files are not auto-cleared**
+> A committed .env or{" "}
+.env.example is not skipped by filename.
+Instead, obvious placeholder values on{" "}
+KEY=VALUE lines (
+your_key_here,{" "}
+changeme,{" "}
+postgres://user:password@localhost/db,
+and similar) are redacted before the detectors see them. A
+real-looking value on the same line sti
+
+> **WARNING: No AI endpoint, no AI findings**
+> If no AI provider is resolved (the server has none configured and
+you have not connected your own key), the AI pass is skipped
+cleanly: the secret findings still return and the response reports{" "}
+aiReviewSkipped: true. AI calls resolve
+your own configured endpoint first and fall back to {APP_NAME
+
+> **SUCCESS: Bring your own AI key**
+> Connect your own AI provider key in Profile > AI settings and the
+per-window cap is bypassed entirely, because those calls cost{" "}
+{APP_NAME} nothing. The per-run token ceiling below still applies.
+
+### Notes
+- The GitHub scanner is a separate scanning mode from the live-URL scanner. Instead of fetching a website and inspecting its HTTP responses, it authenticates as your connected GitHub account, lists a repo&apos;s files, fetches the text ones, and reviews the source itself. Two passes run over that source: a deterministic secret scan that reuses the URL scanner&apos;s credential detectors verbatim, and an AI pass that reads whole files looking for injection, weak crypto, auth logic mistakes, and secrets the patterns missed.
+- Everything here requires a logged-in session. There is no Bearer-key path for GitHub scanning yet, unlike the URL scan API. Requests without a session return 401.
+- The whole flow lives on /repos: connect an account, curate a working set of repos, scan one, read the findings, and file an issue. The sections below map each step to the endpoint behind it.
+- POST /api/v3/scan/github runs the pipeline in order and short-circuits at the first gate that fails, so an oversized or empty repo is rejected before a single AI token is spent.
+- Filtering happens on tree metadata alone, before any content is fetched, so it is cheap enough to run as a gate. Directory segments like node_modules, vendor, dist, build, .next, target, and venv are skipped, as are binary-looking extensions (images, fonts, archives, compiled artifacts) and, deliberately, .lock and .map files. Anything not recognized as binary is fetched and only then size-checked, so an unusual-but-valid text extension is not silently dropped.
+- Three caps bound cost and abuse. They are runtime settings an admin can retune, shipped at:
+- When a cap cuts the list short, the scan still runs on what fit and the response reports filesSkippedByCaps: true.
+- The secret pass runs every detector from the URL scanner&apos;s secrets-extended check set against each file&apos;s raw text. Those detectors already ignore the URL and headers and only read the body, so they run unmodified against source. Findings come back with confidence 70, detection method Source file pattern matching, and a location.file instead of a URL.
+- A committed .env or .env.example is not skipped by filename. Instead, obvious placeholder values on KEY=VALUE lines ( your_key_here, changeme, postgres://user:password@localhost/db, and similar) are redacted before the detectors see them. A real-looking value on the same line still fires. Detection follows the shape of the value, not the filename.
+- Line numbers are not populated on secret findings: the shared detectors return an evidence string, not a match position.
+
+### Code examples
+```text
+curl -X POST https://your-instance/api/v3/scan/github \\
+  -H "Content-Type: application/json" \\
+  --cookie "session=..." \\
+  -d '{"repoFullName":"octocat/hello-world","ref":"main"}'
+```
+
+## reports
+Route: /docs/reports
+
+### Sections
+- **Overview** (`#overview`)
+- **The report endpoint** (`#endpoint`)
+- **Report formats** (`#formats`)
+- **Access control** (`#access`)
+- **SARIF and CI** (`#sarif`)
+- **Compliance crosswalk** (`#compliance`)
+- **What the crosswalk is not** (`#caveats`)
+
+### Callouts
+> **INFO: You need a completed scan id first**
+> This endpoint reports on a scan that already ran. Start one with{" "}
+POST /scan, poll{" "}
+GET /scan/status/{"{id}"} until it is{" "}
+completed, then feed that id here. See
+the{" "}
+
+API reference
+{" "}
+for the scan and polling flow.
+
+> **WARNING: Guidance, not a compliance determination**
+> The crosswalk is indicative. It points an engineer or a reviewer at
+the requirements a finding is relevant to; it does not make a site
+compliant and it is not an audit, certification, or attestation. The
+report says exactly this in a disclaimer at the top of its output.
+
+### Notes
+- stores each scan once and renders reports from it on demand. The in-app export menu on a scan runs the report generators client-side; the same generators are exposed over one HTTP endpoint so a pipeline or a script can fetch the exact same output with a Bearer key. There is no separate "report" object to create or poll: you already have a scan id, so you already have every report.
+- The endpoint lives under /api/v3/ like the rest of the v3 API . Pick a format with the format query parameter; the response is a file download, not a JSON envelope, so pipe it to a file or hand it straight to whatever consumes it.
+- One GET, authenticated exactly like GET /history/"}. The format parameter selects the generator; the response headers tell you what came back.
+- Five outputs off the one endpoint. md and markdown are the same generator under two names; everything else is distinct.
+- The report inherits the scan&apos;s access model, so there is nothing new to authorise. A caller who can read the scan can pull any format of its report; a caller who cannot gets the same 404 the scan itself returns.
+- SARIF is the format worth wiring up first. The export is SARIF 2.1.0, the JSON schema GitHub Code Scanning consumes natively. Critical and high map to level: error, medium to warning, low and info to note. Each result carries a partialFingerprints.vulnradarFindingId equal to the stable check id, so re-running the scan updates the same alert instead of opening a duplicate. When a finding has a real computed CVSS score it is exported as security-severity; otherwise a per-band default is used.
+- Store the key as a repo secret, fetch the SARIF for a completed scan, then hand it to the official upload action. The findings appear on the Security tab, annotated against the target.
+- This endpoint reports on a scan that already ran. Start one with POST /scan, poll GET /scan/status/"} until it is completed, then feed that id here. See the API reference for the scan and polling flow.
+- The compliance format expresses each finding as the framework controls it touches, so an engineer or a GRC reviewer can see "these findings are relevant to PCI requirement 6.2.4" without hand-mapping every result. The output is Markdown: a disclaimer, an overview, one section per framework grouped by control, an explicit list of findings that did not map to anything, and a short note on how the mapping is derived.
+- Every finding is routed through its OWASP Top 10 (2021) category first, then to the controls each framework uses to govern that class of weakness. That routing is the vetted backbone; the frameworks all hang off it.
+
+### Code examples
+```bash
+curl -sS "<value>/api/v3/history/123/report?format=sarif" \\
+  -H "Authorization: Bearer vr_live_YOUR_API_KEY" \\
+  -o vulnradar.sarif
+```
+
+```yaml
+- name: Fetch VulnRadar SARIF
+  run: |
+    curl -sS "<value>/api/v3/history/\<value>}/report?format=sarif" \\
+      -H "Authorization: Bearer \<value>}" \\
+      -o vulnradar.sarif
+
+- name: Upload to code scanning
+  uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: vulnradar.sarif
+```
+
+```bash
+curl -sS "<value>/api/v3/history/123/report?format=compliance" \\
+  -H "Authorization: Bearer vr_live_YOUR_API_KEY" \\
+  -o vulnradar-compliance.md
+```
+
+## scheduled-scans
+Route: /docs/scheduled-scans
+
+### Sections
+- **Overview** (`#overview`)
+- **Creating a schedule** (`#create`)
+- **Frequencies and plan limits** (`#frequencies`)
+- **Time of day and timezones** (`#timezone`)
+- **Where results go** (`#delivery`)
+- **Pausing, teams, and auto-disable** (`#control`)
+- **The schedules API** (`#api`)
+- **How runs are triggered** (`#worker`)
+
+### Callouts
+> **INFO: This runs in a long-lived deployment**
+> The worker is an in-process poller, the same pattern as the periodic
+database cleanup job. It only runs in a persistent Node or Docker
+deployment. A serverless target has no process to poll, so schedules
+will sit due and never fire there. The feature can also be turned
+off entirely per deployment wi
+
+> **INFO: Self-hosted with billing off**
+> When BILLING_ENABLED is false, every plan
+gate here is lifted: no count cap and every frequency unlocked,
+the same way each other plan-gated feature behaves on a
+self-hosted deployment. Staff accounts are treated as Pro
+Supporter, not unlimited.
+
+> **INFO: Runs land near the slot, not on the second**
+> Each schedule gets a small, deterministic per-schedule jitter added
+to its next run: up to 25% of the interval, capped at 59 minutes,
+and capped at 15 minutes for hourly. That is what keeps a wave of
+same-cadence schedules from all firing in the same tick. Combined
+with the polling interval, expect 
+
+> **INFO: A one-off failure never disables a schedule**
+> A run that throws for a transient reason (a database hiccup, the
+scan engine erroring) is logged and rescheduled at the normal
+cadence. Only a failed safety check disables a schedule.
+
+> **INFO: Poll interval, claim limit, and concurrency are tunable**
+> The poll interval, the number of rows claimed per tick, and the
+batch concurrency are all admin settings, so an operator can dial
+the worker up or down for their deployment without a code change.
+
+### Notes
+- A scheduled scan is a stored URL plus a cadence. A background worker wakes up on a short interval, finds the schedules that are due, and runs each one through the exact same scan path a manual scan takes. The result is a normal entry in your scan history, tagged with a scheduled source, so everything that reads a scan (the history view, reports, the diff against the previous run) works on it unchanged.
+- The point is regression detection you do not have to remember. Set a production URL to re-scan daily and you get told when a new critical or high finding appears, when a header you fixed comes back, or when the target starts failing safety checks, all without opening the app. Manage schedules in the app under /profile in the Developer tab, or over the /api/v3/schedules endpoints below.
+- The worker is an in-process poller, the same pattern as the periodic database cleanup job. It only runs in a persistent Node or Docker deployment. A serverless target has no process to poll, so schedules will sit due and never fire there. The feature can also be turned off entirely per deployment with FEATURE_SCHEDULED_SCANS, in which case POST /schedules returns 403.
+- In the app, open /profile, go to the Developer tab, and pick Scheduled Scans. Paste a URL, choose a frequency, and set the time of day (and day of week or month, when the frequency needs one). The pickers are in your local time; the browser converts them to UTC once before sending.
+- Prefer the API? The same create call is one POST, documented under The schedules API below. It is session-authenticated, so it runs with your logged-in session cookie, not a Bearer key.
+- Five cadences. The two sub-daily ones are gated by plan tier, because an hourly schedule is up to 24 times the scan volume of a daily one. The other three carry no extra frequency gate beyond being able to schedule at all.
+- Separate from the frequency gate, each plan caps how many schedules you can have at once. The count is enforced on create against the schedules you personally own. These are the shipped defaults; an admin can retune them live, where -1 means unlimited and 0 disables scheduling on that plan.
+- When BILLING_ENABLED is false, every plan gate here is lifted: no count cap and every frequency unlocked, the same way each other plan-gated feature behaves on a self-hosted deployment. Staff accounts are treated as Pro Supporter, not unlimited.
+- The frequency gate is re-checked at run time, not just at creation. If your plan drops below what a sub-daily schedule needs, the worker defers that run and reschedules it at its normal cadence instead of deleting or disabling it. Re-upgrade and the next occurrence simply runs again.
+- Schedules are stored entirely in UTC. The row carries a preferred_hour_utc (0-23), a preferred_day_of_week (0-6, Sunday is 0, used only for weekly), and a preferred_day_of_month (1-28, used only for monthly). The app never asks you to think in UTC: the time-of-day pickers hold your local selection and the browser converts to UTC exactly once, at submit.
+
+## sharing
+Route: /docs/sharing
+
+# Sharing & Public Pages
+A completed scan does not have to stay in your history. Hand someone a read-only link, list it in a public directory, publish a stable per-host report, drop a live badge in a README, or diff two runs to show what changed. Every surface reads the same stored scan, and every one has an explicit privacy boundary drawn in code.
+
+### Sections
+- **Overview** (`#overview`)
+- **Sharing a scan** (`#share-links`)
+- **The Public Scans directory** (`#public-scans`)
+- **What a viewer can see** (`#redaction`)
+- **Per-host reports** (`#host-reports`)
+- **Assets and attack surface** (`#assets`)
+- **Security badges** (`#badges`)
+- **Comparing two scans** (`#compare`)
+
+### Callouts
+> **INFO: Directory rate limit**
+> The directory API is unauthenticated, so there is no session or
+key to throttle against. It is limited per IP to 60 requests a
+minute; over that returns a 429 with a{" "}
+Retry-After header.
+
+> **WARNING: Redaction only happens for a foreign badge scan**
+> There is exactly one path where {APP_NAME} redacts. A live security
+badge set to global{" "}
+scope can resolve to a public scan someone else ran. That
+person never consented to being named just because a stranger&apos;s
+badge picked up their scan, so for a foreign scan the viewer shows
+only the aggr
+
+> **INFO: It never reflects a private scan**
+> Every writer of the reputation cache skips a non-public scan, and
+flipping a scan from public to private deletes its cached row
+outright. An authenticated scan is always private, so it never lands
+here. A host nobody has publicly scanned comes back as{" "}
+known: false, and a bare IP is rejected as
+
+
+> **INFO: Global scope keeps other people private**
+> When a global badge resolves to a scan you did not run, only the
+findings summary is shown. That scan&apos;s notes and the identity
+of whoever ran it stay private, and the public gate (
+is_public = true) means a stranger&apos;s
+private or authenticated scan can never be pulled in this way.
+
+### Notes
+- stores each scan once. The public-facing surfaces are different views over that one row, each gated by its own flag on the scan_history record. Two flags do most of the work, and they are deliberately independent of each other:
+- Everything below is one of those views. Creating and revoking share links, listing them, and building badges are all session-only actions, the same as webhooks: a logged-in user, never a Bearer API key. The read-only viewer pages, the directory, and the host report need no account at all.
+- "Share this scan" issues a 64-character token and returns a link to /shared/<token>. Anyone with the link reads the full report without logging in. The token is stored as a SHA-256 hash (share_token_hash, added in migration 3.1.0), so the plaintext is never compared directly in the database.
+- A link can expire after 7, 30, or 90 days, or never (the default). Any other value is a 400. An expired link is excluded from the viewer lookup entirely, exactly like a revoked one, so its findings never reach a response for even one request. Revoking a link (DELETE on the share route, or the Revoke action on the Shared reports page) sets share_token back to null, and the link stops working immediately for everyone who already has it.
+- Re-sharing a scan that still has a live token returns the same token, so a link you already handed out stays valid. Only once a token has actually lapsed does the next share replace it with a fresh one.
+- Publishing or revoking a share is a write action scoped to the scan&apos;s own team. The scan&apos;s owner can always do it; a teammate can only when the team resource-access check grants write on that scan. For a private personal scan there is no team, so the owner is the only one who can share it. Anyone else, including a team admin reaching for a teammate&apos;s private personal scan, gets a generic 404. The endpoint never confirms a scan exists to someone who cannot manage it.
+- The Shared reports page lists every one of your links that still works (expired ones are filtered out the same way the viewer excludes them). Each row can open the share modal, toggle its public listing, or revoke it.
+- The Public Scans directory is an unauthenticated, paginated, most-recent-first list of scans someone chose to make discoverable. Each entry links straight to its read-only report. A row appears only when all three conditions hold on the underlying scan.
+- After creation, the listing status only changes through the explicit per-share toggle in the Shared reports row menu. That toggle requires an active share link (a scan with no link returns 400) and is scoped to the same owner or team-write check as sharing itself.
+- The directory API is unauthenticated, so there is no session or key to throttle against. It is limited per IP to 60 requests a minute; over that returns a 429 with a Retry-After header.
+
+### Code examples
+```text
+<a href="<value>/shared/YOUR_TOKEN" target="_blank" rel="noopener noreferrer" style="display: inline-block;"><img src="<value>/api/v3/badge/YOUR_TOKEN" alt="Secured by <value>" style="border: 0;"/></a>
+```
+
+```text
+[![Secured by <value>](<value>/api/v3/badge/YOUR_TOKEN)](<value>/shared/YOUR_TOKEN)
+```
+
+## teams
+Route: /docs/teams
+
+### Sections
+- **Overview** (`#overview`)
+- **Creating a Team** (`#creating`)
+- **Plan Limits** (`#plan-limits`)
+- **Roles and Permissions** (`#roles`)
+- **Invitations** (`#invitations`)
+- **Sharing Scans** (`#sharing`)
+- **Webhooks and Domains** (`#team-resources`)
+- **API Endpoints** (`#endpoints`)
+
+### Callouts
+> **INFO: Team roles are not staff roles**
+> A member&apos;s team role (owner, admin, manager, operator, member,
+viewer) is completely separate from their account-level staff role (
+user, support,{" "}
+moderator, admin,{" "}
+super_admin, and the specialist tiers) that
+governs the /admin panel. The members list
+surfaces a person&apos;s staff ro
+
+### Notes
+- A team is a group of accounts that can see each other&apos;s scans once those scans are shared into the team. Exactly one account is the owner (set at creation, never handed out by invite), and every other member joins through an emailed or in-app invitation. Membership attaches to an account, not an email address alone, so accepting an invite requires being signed in as the account the invite was sent to.
+- The whole feature is gated behind the FEATURE_TEAMS flag. When it is off, the create endpoint returns 403 and no team routes do anything useful.
+- POST /api/v3/teams with a name (2 to MAX_TEAM_NAME_LENGTH, 255 by default). The creator is inserted as the sole owner in the same transaction, and a URL slug is generated from the name plus a short timestamp suffix.
+- Two independent caps apply, and both are read from the owner&apos;s plan, not the plan of whoever is doing the inviting: how many teams an account may own, and how many seats a team may hold. A seat is one member plus one pending, unexpired invite, so outstanding invites count against the cap until they are accepted, declined, or expire.
+- There are six team roles. They are built from four underlying capabilities: manage_team (rename the team), manage_members (invite, remove, change roles), manage_scans (create and edit team-scoped scans), and view_reports (read shared reports), plus the owner-only delete_team. Every role holds view_reports.
+- Manager and operator are deliberate opposites: a manager handles people and settings but does not run scans, while an operator runs scans and adjusts settings but does not handle onboarding. That is why the roles are not a single ladder.
+- Because the roles are a partial order rather than a strict ranking, a caller may only invite, promote, demote, or remove someone at a role whose permission set is a subset of the caller&apos;s own (the canAssignTeamRole check). Without it, a manager (who has manage_members but not manage_scans) could promote someone to admin and hand out a capability the manager itself lacks, or evict a higher-privileged admin. The owner holds every permission, so the owner can act on any role; the owner&apos;s own role can never be changed or removed through the member routes.
+- POST /api/v3/teams/members with sends an invite. role defaults to viewer and may be any role except owner. The caller needs manage_members, the role ceiling applies, and the request is rate-limited per user to stop invite spam from a compromised account.
+- Both accept paths go through POST /api/v3/teams/accept-invite and both require a signed-in session:
+- Either way, the accept enforces that the signed-in account&apos;s email matches the invite&apos;s email (a 403 otherwise, so a guessed inviteId is useless), that the invite has not expired (400), and that you are not already a member (400). List your own pending invites with GET /api/v3/teams/invitations, and decline one with DELETE /api/v3/teams/invitations (scoped to your own email).
+
+### Code examples
+```text
+// POST /api/v3/teams
+{ "name": "Platform Security" }
+
+// 200
+{
+  "team": {
+    "id": 42,
+    "name": "Platform Security",
+    "slug": "platform-security-lq9f3k",
+    "role": "owner",
+    "member_count": 1,
+    "created_at": "2026-08-24T15:30:00.000Z"
+  }
+}
+```
+
+## triage
+Route: /docs/triage
+
+### Sections
+- **Overview** (`#overview`)
+- **Remediation tracking** (`#remediation`)
+- **Support tickets** (`#tickets`)
+
+### Callouts
+> **INFO: The freshest value wins**
+> The control seeds from the status the server attached to the
+finding, then re-confirms against the API on open, so a change
+made in another tab or session shows up rather than being silently
+overwritten.
+
+> **WARNING: Bulk is deliberately conservative**
+> Status is always applied. Assignee and due date are applied only
+when you actually set them in the bar, so a bulk "mark
+fixed" does not wipe assignees or dates you set on individual
+findings. The per-finding note is never touched by a bulk action.
+Setting the bulk status to Open clears each selected
+
+> **INFO: Per-user reply rate limit**
+> Because every reply emails the other party, replies are rate
+limited per user (not per IP, since a reply is always
+authenticated) on the standard API budget. Hit it and the reply
+returns a 429 telling you how long to wait. Opening tickets is
+bounded separately by the 20-open-tickets cap.
+
+### Notes
+- splits the after-scan workflow into two things a scan report cannot do for you. The first is deciding what to do about each finding and remembering that decision: remediation tracking. The second is asking a human when a scan alone is not enough: support tickets. Both are private to you: remediation is per-user and never appears on a shared or public view of a scan, and a ticket is visible only to you, staff, and any teammate you explicitly loop in.
+- Remediation tracking is separate from the accuracy feedback on a finding (confirmed, false positive, not applicable). That feedback tunes the global detection confidence model; remediation records what you have done about the finding and nothing else. The two controls sit next to each other on an open finding but never touch the same data.
+- The HTTP endpoints below live under /api/v3/, the same base as the rest of the app. The support ticket UI lives on the Contact page under the Support Ticket option.
+- Open any finding on your own scan and you get a Your remediation tracking control: a status, and once the status leaves Open, a note, an assignee, and a due date. It is stored per finding, per user, and it is remembered the next time you scan the same target.
+- Five states, in the order they appear in the control. Open is the default and is never stored as a row; the other four persist.
+- Once a finding is anything other than Open, three optional fields appear:
+- The control seeds from the status the server attached to the finding, then re-confirms against the API on open, so a change made in another tab or session shows up rather than being silently overwritten.
+- This is the part that makes tracking worth doing. A remediation row is keyed on the finding, not on the scan that surfaced it. The finding id is deterministic: the same check firing against the same URL always produces the same id, which is the same identity the compare, diff, and regression-alert features already rely on.
+- So a finding you marked fixed on Monday still reads fixed when you rescan the same host on Friday, even though that is a brand new scan row. The status is attached only on the owner&apos;s own result-load paths (scan status and history); the public /shared/[token] and /host/[hostname] views never read it, so your private tracking never leaks onto a link you share. If the underlying table has not been migrated yet, the read fails soft to an empty map and the result page still loads.
+- Setting one finding at a time is fine for a couple of them, but a fresh scan can surface dozens. The findings list on your own scan has an opt-in Select mode: the list stays clean (no checkboxes) until you turn it on, and only then do row checkboxes and a sticky bulk bar appear. Pick a status, optionally an assignee and a due date, and apply it to everything you selected, up to 200 findings per request.
+
+### Code examples
+```json
+finding_id = <checkId>--<fnvHash(scannedUrl)>
+
+// Deterministic: the same check against the same URL always
+// yields the same id, so a remediation row is keyed on the
+// finding, not on the scan_history row that surfaced it.
+remediation key = (user_id, finding_id, finding_url)
+```
+
+```text
+// POST /api/v3/scan/remediation/bulk
+{
+  "items": [
+    { "findingId": "hsts-missing--9f2c1a", "findingUrl": "https://example.com" },
+    { "findingId": "csp-missing--9f2c1a",  "findingUrl": "https://example.com" }
+  ],
+  "status": "in_progress",
+  "assignee": "alex"
+}
+```
 
 ## Overview
 Route: /docs
@@ -34,6 +552,7 @@ Paste a URL, get a ranked list of what is wrong with it and how to fix each one.
 - probes is optional. Leave it out and only the web checks run. Full request and response shapes are on the API reference .
 - detections live in lib/scanner/checks-data/, one JSON file per category, each paired with a detector module in lib/scanner/checks/. Every check has a stable id, so a finding you triage today keeps the same id on the next scan and in the API response.
 - Service probes are separate and opt-in. They open a bounded TCP socket, read the greeting, and report version disclosure and reachability for https:// target.
+- Beyond the check catalogue, every scan also fingerprints the software the host runs (server, framework, CDN, analytics, and client-side libraries) and correlates any version it can read against known CVEs through OSV.dev and the NVD, enriched with CISA KEV and FIRST.org EPSS. A vulnerable version raises one aggregated finding that lists its CVE IDs.
 - The full catalogue is served, unauthenticated, from GET /api/v3/finding-types. Use it if you are building an SDK and want every id ahead of time. See Developer documentation for the payload shape.
 - When crawls a site for a multi-page scan, its crawler identifies itself as and reads /robots.txt before discovering pages. To keep specific paths out of a scan, add a group that names with Disallow rules:
 - Only a group that names specifically is honored. A blanket User-agent: * rule does not fence the scanner out, so a site&rsquo;s general bot policy never quietly narrows a security scan you asked for. Rules are matched as standard robots.txt path prefixes.
@@ -157,6 +676,11 @@ API_KEY_ENCRYPTION_KEY=your-64-character-hex-key
 ```
 
 ```bash
+npm run build
+npm start
+```
+
+```bash
 docker compose exec postgres psql -U vulnradar -d vulnradar -c \\
   "UPDATE users SET role = 'admin' WHERE email = 'you@example.com'"
 ```
@@ -169,14 +693,8 @@ curl -X POST "<value>/api/v3/scan" \\
 ```
 
 ```bash
-curl -O https://raw.githubusercontent.com/<value>/main/docker-compose.yml
-curl -O https://raw.githubusercontent.com/<value>/main/.env.example
-```
-
-```bash
-git clone https://github.com/<value>.git
-cd <value>.dev
-cp .env.example .env
+docker --version
+docker compose version
 ```
 
 ## Browser Extension
@@ -461,9 +979,10 @@ Route: /docs/api
 - **Before You Ship This** (`#best-practices`)
 
 ### Callouts
-> **WARNING: Three keys, and they leak**
-> Each account is capped at 3 active keys. Keep them out of
-version control and rotate with{" "}
+> **WARNING: Keys leak, so rotate them**
+> Each plan caps how many active keys you can hold (one on the
+free tier, more on paid plans). Keep them out of version control
+and rotate with{" "}
 POST /api/v3/keys/[id]/rotate, which
 deletes the old key in the same call.
 
@@ -907,7 +1426,7 @@ List API keys for the authenticated user. Secret values are never returned.
 ```
 
 #### `POST /keys`: Create API Key
-Generate a new API key. The raw value is returned ONLY in this response, so copy and store it immediately. Up to 3 active keys per user.
+Generate a new API key. The raw value is returned ONLY in this response, so copy and store it immediately. The number of active keys you can hold depends on your plan.
 
 - **Request body:**
 ```json
@@ -1019,6 +1538,9 @@ Removes a domain. Active Probing stops being allowed against it (and its subdoma
 
 ### Headings
 - Getting a key
+- Try these calls in your browser
+- GitLab CI
+- Command line
 - Headers on a successful response
 - Body of a 429
 - Create a scan
@@ -1027,14 +1549,15 @@ Removes a domain. Active Probing stops being allowed against it (and its subdoma
 
 ### Notes
 - Authentication is either the session cookie the web app already holds, or a Bearer API key prefixed vr_live_ ( CONFIG_API_KEY_PREFIX). Which one you use changes how quota is counted, so read Rate Limits before you wire this into CI.
-- Each account is capped at 3 active keys. Keep them out of version control and rotate with POST /api/v3/keys/[id]/rotate, which deletes the old key in the same call.
-- Paste an API key to fire real GET requests against this deployment straight from each endpoint below (look for the "Try it live" toggle). Kept in memory for this page load only, never stored or sent anywhere but /api/v3.
+- Prefer a machine-readable spec? The OpenAPI 3.1 description of this API lives at /api/v3/openapi.json. Import it into Postman, Insomnia, or Bruno, or try calls right in the browser on the API playground .
+- Each plan caps how many active keys you can hold (one on the free tier, more on paid plans). Keep them out of version control and rotate with POST /api/v3/keys/[id]/rotate, which deletes the old key in the same call.
+- The API Playground loads this same spec and sends real requests: pick an endpoint, paste a key, and read the live response. Your key stays in the browser and is never stored.
 - The same three calls in curl, JavaScript, and Python. Swap the placeholder key and they run as-is. The Python tab uses the official SDK (pip install vulnradar, source at github.com/VulnRadar/Python-SDK ) instead of raw HTTP calls.
 - Finding IDs are stable, so a scan can gate a pull request: fail the build when critical or high findings show up, without hand-rolling the poll loop yourself.
 - Store your API key as a repo secret named VULNRADAR_TOKEN, never hardcoded in the workflow. Self-hosting? Point api-base-url at your own deployment's /api/v3.
-- A per-key daily quota, plus per-IP burst limits on the auth endpoints. The numbers, the reset semantics, and worked backoff code are on the Rate Limits page. What follows is the part you need while reading this reference.
-- A scan run from the web app decrements a per-user counter. A scan run with a Bearer key decrements that key&apos;s counter. Both emit the same X-RateLimit-* headers, but the reset is midnight UTC for sessions and a rolling 24 hours for keys.
-- Standard HTTP status codes. Every error body carries at least an error string; quota errors add the counters shown above.
+- The same gate as a GitLab CI job. Add VULNRADAR_TOKEN as a masked CI/CD variable, then include the template and set the URL:
+- Prefer not to include a remote file? Copy the job straight from the template into your own .gitlab-ci.yml. Self-hosting? Override VR_API_BASE with your deployment's /api/v3.
+- Same gate, from any shell or CI, dependency-free (Node 18+):
 
 ### Code examples
 ```yaml
@@ -1045,6 +1568,22 @@ Removes a domain. Active Probing stops being allowed against it (and its subdoma
     # Optional, both default to 0:
     max-critical: 0
     max-high: 0
+```
+
+```yaml
+include:
+  - remote: "<value>/gitlab/vulnradar-scan.gitlab-ci.yml"
+
+vulnradar_scan:
+  variables:
+    VR_URL: "https://your-staging-url.com"
+    # Optional, both default to 0:
+    VR_MAX_CRITICAL: "0"
+    VR_MAX_HIGH: "0"
+```
+
+```bash
+VULNRADAR_TOKEN=your-token npx vulnradar scan https://your-staging-url.com --max-high 0
 ```
 
 ```http
@@ -1611,12 +2150,21 @@ npm run lint:fix    # auto-fix
 
 | Page | Hero | Sections | Callouts | Code tabs | Code blocks | Endpoints | Features | Paragraphs | Headings |
 |---|---|---|---|---|---|---|---|---|---|
-| `/docs` | ✓ | 5 | 0 | 0 | 1 | 0 | 0 | 8 | 1 |
+| `/docs/account-security` | - | 6 | 3 | 0 | 1 | 0 | 0 | 22 | 0 |
+| `/docs/ai` | - | 10 | 1 | 0 | 2 | 0 | 0 | 19 | 0 |
+| `/docs/cli` | - | 6 | 1 | 0 | 4 | 0 | 0 | 6 | 0 |
+| `/docs/github` | ✓ | 8 | 4 | 0 | 1 | 0 | 0 | 25 | 0 |
+| `/docs/reports` | - | 7 | 2 | 0 | 3 | 0 | 0 | 12 | 0 |
+| `/docs/scheduled-scans` | - | 8 | 5 | 0 | 0 | 0 | 0 | 19 | 0 |
+| `/docs/sharing` | ✓ | 8 | 4 | 0 | 2 | 0 | 0 | 28 | 0 |
+| `/docs/teams` | - | 8 | 1 | 0 | 1 | 0 | 0 | 15 | 0 |
+| `/docs/triage` | - | 3 | 3 | 0 | 2 | 0 | 0 | 20 | 0 |
+| `/docs` | ✓ | 5 | 0 | 0 | 1 | 0 | 0 | 9 | 1 |
 | `/docs/setup` | - | 12 | 4 | 0 | 22 | 0 | 0 | 27 | 30 |
 | `/docs/extension` | ✓ | 8 | 1 | 0 | 0 | 0 | 0 | 10 | 2 |
 | `/docs/self-hosting` | - | 15 | 6 | 0 | 12 | 0 | 0 | 19 | 3 |
-| `/docs/config` | - | 9 | 3 | 0 | 2 | 0 | 0 | 26 | 0 |
-| `/docs/api` | - | 8 | 3 | 0 | 4 | 28 | 0 | 9 | 6 |
+| `/docs/config` | - | 9 | 3 | 0 | 2 | 0 | 0 | 28 | 0 |
+| `/docs/api` | - | 8 | 3 | 0 | 6 | 28 | 0 | 14 | 9 |
 | `/docs/webhooks` | ✓ | 6 | 0 | 0 | 3 | 0 | 0 | 5 | 5 |
 | `/docs/rate-limits` | - | 6 | 5 | 0 | 4 | 0 | 0 | 10 | 3 |
 | `/docs/architecture` | - | 5 | 1 | 0 | 4 | 0 | 0 | 8 | 0 |

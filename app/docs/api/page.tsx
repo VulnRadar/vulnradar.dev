@@ -15,8 +15,7 @@ import {
   EXACT_CHECK_COUNT,
   EXACT_CHECK_CATEGORY_COUNT,
 } from "@/lib/config/check-stats.generated";
-import { Eye, EyeOff } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
 import {
@@ -720,7 +719,7 @@ const endpoints: Endpoint[] = [
     path: "/keys",
     title: "Create API Key",
     description:
-      "Generate a new API key. The raw value is returned ONLY in this response, so copy and store it immediately. Up to 3 active keys per user.",
+      "Generate a new API key. The raw value is returned ONLY in this response, so copy and store it immediately. The number of active keys you can hold depends on your plan.",
     requestBody: `{
   "name": "CI"
 }`,
@@ -738,7 +737,10 @@ const endpoints: Endpoint[] = [
       "Default daily_limit comes from CONFIG_DEFAULT_API_KEY_DAILY_LIMIT (50).",
     ],
     errors: [
-      { code: 400, description: "Maximum of 3 active keys reached" },
+      {
+        code: 400,
+        description: "Active-key limit for your plan reached",
+      },
       { code: 401, description: "Unauthorized" },
     ],
   },
@@ -1018,11 +1020,6 @@ export default function APIDocsPage() {
   const [activeCodeTab, setActiveCodeTab] = useState<
     "curl" | "javascript" | "python"
   >("curl");
-  // Kept in memory only -- never persisted to localStorage/sessionStorage or
-  // sent anywhere but this deployment's own /api/v3, so it's gone the
-  // moment this page unmounts or reloads.
-  const [playgroundApiKey, setPlaygroundApiKey] = useState("");
-  const [showPlaygroundApiKey, setShowPlaygroundApiKey] = useState(false);
   const observerRef = useRef<IntersectionObserver | null>(null);
 
   useEffect(() => {
@@ -1053,6 +1050,7 @@ export default function APIDocsPage() {
   return (
     <div className="space-y-16">
       <DocsHero
+        id="top"
         badge="v3 API"
         title="API Reference"
         description={`Complete documentation for the ${APP_NAME} REST API. Integrate automated vulnerability scanning into your applications, CI/CD pipelines, or custom security tools.`}
@@ -1088,6 +1086,25 @@ export default function APIDocsPage() {
             </Link>{" "}
             before you wire this into CI.
           </p>
+          <p className="max-w-[68ch] text-sm text-muted-foreground">
+            Prefer a machine-readable spec? The{" "}
+            <Link
+              href="/api/v3/openapi.json"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              OpenAPI 3.1 description
+            </Link>{" "}
+            of this API lives at <InlineCode>/api/v3/openapi.json</InlineCode>.
+            Import it into Postman, Insomnia, or Bruno, or try calls right in
+            the browser on the{" "}
+            <Link
+              href="/docs/api/playground"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              API playground
+            </Link>
+            .
+          </p>
         </div>
       </DocsSection>
 
@@ -1120,10 +1137,11 @@ export default function APIDocsPage() {
               code="Authorization: Bearer YOUR_API_KEY_HERE"
               language="http"
             />
-            <DocsCallout variant="warning" title="Three keys, and they leak">
+            <DocsCallout variant="warning" title="Keys leak, so rotate them">
               <p>
-                Each account is capped at 3 active keys. Keep them out of
-                version control and rotate with{" "}
+                Each plan caps how many active keys you can hold (one on the
+                free tier, more on paid plans). Keep them out of version control
+                and rotate with{" "}
                 <InlineCode>POST /api/v3/keys/[id]/rotate</InlineCode>, which
                 deletes the old key in the same call.
               </p>
@@ -1148,47 +1166,24 @@ export default function APIDocsPage() {
           </div>
         </dl>
 
-        <div className="rounded-lg border border-border/50 bg-card/50 p-3 sm:p-4">
-          <label
-            htmlFor="playground-api-key"
-            className="text-sm font-medium text-foreground"
-          >
-            Try it live
-          </label>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Paste an API key to fire real GET requests against this deployment
-            straight from each endpoint below (look for the &quot;Try it
-            live&quot; toggle). Kept in memory for this page load only, never
-            stored or sent anywhere but{" "}
-            <InlineCode>{APP_URL}/api/v3</InlineCode>.
-          </p>
-          <div className="relative mt-2 max-w-sm">
-            <Input
-              id="playground-api-key"
-              name="playground-api-key"
-              type={showPlaygroundApiKey ? "text" : "password"}
-              value={playgroundApiKey}
-              onChange={(e) => setPlaygroundApiKey(e.target.value)}
-              placeholder="vr_live_..."
-              autoComplete="off"
-              className="h-9 pr-9 font-mono text-xs bg-background/50 border-border/40"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPlaygroundApiKey((v) => !v)}
-              className="absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
-              aria-label={
-                showPlaygroundApiKey ? "Hide API key" : "Show API key"
-              }
-              aria-pressed={showPlaygroundApiKey}
-            >
-              {showPlaygroundApiKey ? (
-                <EyeOff className="h-4 w-4" aria-hidden="true" />
-              ) : (
-                <Eye className="h-4 w-4" aria-hidden="true" />
-              )}
-            </button>
+        <div className="flex flex-col gap-3 rounded-lg border border-primary/20 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-foreground">
+              Try these calls in your browser
+            </h3>
+            <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
+              The API Playground loads this same spec and sends real requests:
+              pick an endpoint, paste a key, and read the live response. Your
+              key stays in the browser and is never stored.
+            </p>
           </div>
+          <Link
+            href="/docs/api/playground"
+            className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-md bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 sm:self-auto"
+          >
+            Open the API Playground
+            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          </Link>
         </div>
 
         <EndpointTable
@@ -1202,11 +1197,7 @@ export default function APIDocsPage() {
 
         <div className="space-y-6">
           {endpoints.map((endpoint) => (
-            <EndpointCard
-              key={endpoint.id}
-              {...endpoint}
-              apiKey={playgroundApiKey}
-            />
+            <EndpointCard key={endpoint.id} {...endpoint} />
           ))}
         </div>
       </DocsSection>
@@ -1308,6 +1299,56 @@ export default function APIDocsPage() {
           workflow. Self-hosting? Point <InlineCode>api-base-url</InlineCode> at
           your own deployment's <InlineCode>/api/v3</InlineCode>.
         </p>
+
+        <h3 className="pt-2 text-base font-medium text-foreground">
+          GitLab CI
+        </h3>
+        <p className="max-w-[68ch] text-sm text-muted-foreground">
+          The same gate as a GitLab CI job. Add{" "}
+          <InlineCode>VULNRADAR_TOKEN</InlineCode> as a masked CI/CD variable,
+          then include the template and set the URL:
+        </p>
+        <CodeBlock
+          code={`include:
+  - remote: "${APP_URL}/gitlab/vulnradar-scan.gitlab-ci.yml"
+
+vulnradar_scan:
+  variables:
+    VR_URL: "https://your-staging-url.com"
+    # Optional, both default to 0:
+    VR_MAX_CRITICAL: "0"
+    VR_MAX_HIGH: "0"`}
+          language="yaml"
+        />
+        <p className="max-w-[68ch] text-sm text-muted-foreground">
+          Prefer not to include a remote file? Copy the job straight from{" "}
+          <Link
+            href={`${APP_URL}/gitlab/vulnradar-scan.gitlab-ci.yml`}
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            the template
+          </Link>{" "}
+          into your own <InlineCode>.gitlab-ci.yml</InlineCode>. Self-hosting?
+          Override <InlineCode>VR_API_BASE</InlineCode> with your deployment's{" "}
+          <InlineCode>/api/v3</InlineCode>.
+        </p>
+
+        <h3 className="pt-2 text-base font-medium text-foreground">
+          Command line
+        </h3>
+        <p className="max-w-[68ch] text-sm text-muted-foreground">
+          Same gate, from any shell or CI, dependency-free (Node 18+):
+        </p>
+        <CodeBlock
+          code={`VULNRADAR_TOKEN=your-token npx vulnradar scan https://your-staging-url.com --max-high 0`}
+          language="bash"
+        />
+        <p className="max-w-[68ch] text-sm text-muted-foreground">
+          It runs the scan, waits for it, prints the severity counts, and exits
+          non-zero when findings cross your thresholds. Self-hosting? Add{" "}
+          <InlineCode>--api-base https://your-domain/api/v3</InlineCode>.
+        </p>
+
         <DocsCallout variant="info" title="POST /scan does not return findings">
           The scan runs as a background job: the create call only returns a{" "}
           <InlineCode>scanId</InlineCode>, so any gate that reads{" "}

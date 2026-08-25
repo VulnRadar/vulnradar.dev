@@ -147,12 +147,52 @@ export function ipsInSameSubnet(
 }
 
 /**
+ * Normalize a raw address string into a canonical IP, or null if it is not a
+ * valid IP. Proxies and runtimes hand us addresses that are "an IP with
+ * extra": an appended `:port`, IPv6 wrapped in `[brackets]`, or an
+ * IPv4-mapped IPv6 (`::ffff:a.b.c.d`), and occasionally something that is not
+ * an IP at all. Anything that persists or displays the client IP (session and
+ * device rows, API-key last-seen IP) must never store one of those, so this
+ * strips the wrapping and validates with `isIP` before returning.
+ *
+ * A syntactically valid IP, including a compressed IPv6 like `2001:db8::1`, is
+ * returned unchanged: there is nothing to fix about a real address.
+ */
+export function normalizeIp(raw: string): string | null {
+  let s = raw.trim();
+  if (!s) return null;
+
+  if (s.startsWith("[")) {
+    // Bracketed IPv6, optionally with a :port after the closing bracket.
+    const end = s.indexOf("]");
+    if (end === -1) return null;
+    s = s.slice(1, end);
+  } else if (s.split(":").length === 2) {
+    // Exactly one colon means an IPv4 host with a :port. Unbracketed IPv6
+    // always has more than one colon, so this never truncates an IPv6.
+    const [host, port] = s.split(":");
+    if (isIP(host) === 4 && /^\d+$/.test(port)) s = host;
+  }
+
+  // IPv4-mapped IPv6 (::ffff:a.b.c.d) -> the plain IPv4 it carries.
+  if (s.toLowerCase().startsWith("::ffff:") && isIP(s.slice(7)) === 4) {
+    s = s.slice(7);
+  }
+
+  return isIP(s) ? s : null;
+}
+
+/**
  * Extract client IP from request headers.
  *
  * Trusts `x-forwarded-for` correctly when running behind
  * a known proxy. Set `TRUSTED_PROXY_CIDR` to a comma-separated list of
  * CIDR ranges (e.g. "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8")
  * to enable right-to-left trust-chain parsing.
+ *
+ * Every candidate is run through `normalizeIp`, so a hop with a port,
+ * brackets, an IPv4-mapped prefix, or plain garbage is cleaned up or skipped;
+ * the result is always a syntactically valid IP or the literal "unknown".
  *
  * - If `TRUSTED_PROXY_CIDR` is set: walk `x-forwarded-for` from the right
  *   and return the first IP that is NOT in a trusted range. This is the
@@ -167,16 +207,17 @@ export async function getClientIp(): Promise<string> {
   const trustedCidr = process.env.TRUSTED_PROXY_CIDR;
 
   if (xff) {
+    // Normalize every hop and drop anything that is not a real IP, so a
+    // malformed or port-suffixed hop can never become the returned client IP.
     const hops = xff
       .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
+      .map((s) => normalizeIp(s))
+      .filter((ip): ip is string => ip !== null);
     if (trustedCidr) {
       // Walk right-to-left, return first IP not in a trusted CIDR.
       for (let i = hops.length - 1; i >= 0; i--) {
-        const hop = hops[i];
-        if (hop && !ipInCidrList(hop, trustedCidr)) {
-          return hop;
+        if (!ipInCidrList(hops[i], trustedCidr)) {
+          return hops[i];
         }
       }
     } else {
@@ -186,7 +227,11 @@ export async function getClientIp(): Promise<string> {
     }
   }
 
-  return h.get("x-real-ip") || h.get("cf-connecting-ip") || "unknown";
+  return (
+    normalizeIp(h.get("x-real-ip") ?? "") ??
+    normalizeIp(h.get("cf-connecting-ip") ?? "") ??
+    "unknown"
+  );
 }
 
 /**

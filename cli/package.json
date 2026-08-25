@@ -1,0 +1,30 @@
+{
+  "name": "vulnradar",
+  "version": "0.1.0",
+  "description": "Run a VulnRadar scan from the command line and gate CI on the findings.",
+  "license": "GPL-3.0",
+  "type": "module",
+  "bin": {
+    "vulnradar": "./vulnradar.mjs"
+  },
+  "files": [
+    "vulnradar.mjs",
+    "lib.mjs",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "vulnradar",
+    "security",
+    "scanner",
+    "ci",
+    "sast",
+    "dast"
+  ],
+  "homepage": "https://vulnradar.dev/docs/api"
+}

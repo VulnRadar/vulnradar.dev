@@ -42,6 +42,7 @@ export const GET = withErrorHandling(async () => {
     sessions: sessions.map((s) => ({
       id: hashSessionId(s.id),
       ipAddress: s.ip_address,
+      ipv4Address: s.ipv4_address,
       device: summarizeUserAgent(s.user_agent),
       createdAt: s.created_at,
       expiresAt: s.expires_at,

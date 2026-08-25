@@ -8,7 +8,7 @@ const DESCRIPTION =
   "What data the scanner collects, how passwords and API keys are hashed and encrypted, retention windows, and your rights under GDPR and CCPA.";
 
 export const metadata: Metadata = pageMetadata({
-  title: TITLE,
+  title: "Privacy Policy: Data, Retention, and Rights",
   description: DESCRIPTION,
   path: "/legal/privacy",
 });

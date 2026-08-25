@@ -8,8 +8,8 @@ import {
 } from "@/components/seo/structured-data";
 
 export const metadata: Metadata = pageMetadata({
-  title: "Setup Guide",
-  description: `Install and configure ${APP_NAME}: prerequisites, environment variables, database migration, and first run.`,
+  title: "Setup Guide: Install and First Scan",
+  description: `Install and configure ${APP_NAME}: prerequisites, environment variables, database migration, first run, and the checks to verify it worked.`,
   path: "/docs/setup",
   keywords: ["vulnerability scanner setup", "security scanner installation"],
 });

@@ -33,6 +33,51 @@ export const DOCS_NAV: NavSection[] = [
     ],
   },
   {
+    title: "Using VulnRadar",
+    items: [
+      {
+        href: "/docs/scheduled-scans",
+        label: "Scheduled Scans",
+        summary: "Recurring scans on a schedule, with regression alerts",
+      },
+      {
+        href: "/docs/triage",
+        label: "Triage & Remediation",
+        summary: "Track findings from open to fixed, plus support tickets",
+      },
+      {
+        href: "/docs/teams",
+        label: "Teams",
+        summary: "Roles, invitations, and sharing scans across a team",
+      },
+      {
+        href: "/docs/sharing",
+        label: "Sharing & Public Pages",
+        summary: "Share links, the public directory, host reports, badges",
+      },
+      {
+        href: "/docs/account-security",
+        label: "Account Security",
+        summary: "2FA, sessions, social logins, and your data",
+      },
+    ],
+  },
+  {
+    title: "Integrations & AI",
+    items: [
+      {
+        href: "/docs/github",
+        label: "GitHub Scanning",
+        summary: "Scan a connected repo for secrets and code flaws",
+      },
+      {
+        href: "/docs/ai",
+        label: "AI Features",
+        summary: "Vera chat, AI verification, summaries, and BYOK keys",
+      },
+    ],
+  },
+  {
     title: "Running your own",
     items: [
       {
@@ -54,6 +99,21 @@ export const DOCS_NAV: NavSection[] = [
         href: "/docs/api",
         label: "API Reference",
         summary: "Endpoints, request and response shapes, error codes",
+      },
+      {
+        href: "/docs/api/playground",
+        label: "API Playground",
+        summary: "Send live calls and copy them as code in your language",
+      },
+      {
+        href: "/docs/reports",
+        label: "Reports & Compliance",
+        summary: "Export SARIF, PDF, Markdown, or a compliance crosswalk",
+      },
+      {
+        href: "/docs/cli",
+        label: "CLI",
+        summary: "Run scans from the terminal and gate CI on findings",
       },
       {
         href: "/docs/webhooks",

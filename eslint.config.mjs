@@ -30,6 +30,8 @@ export default [
       "public/**",
       "*.config.{js,mjs,cjs,ts}",
       "scripts/**",
+      // Standalone Node CLI package with its own runtime + node:test suite.
+      "cli/**",
       ".idea/**",
       "tsconfig.tsbuildinfo",
     ],

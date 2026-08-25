@@ -11,8 +11,8 @@ import { APP_NAME } from "@/lib/config/constants";
 const ALTERNATIVES = getAllAlternatives();
 
 export const metadata: Metadata = pageMetadata({
-  title: "Alternatives",
-  description: `How ${APP_NAME}, an open-source GPL-3.0 vulnerability scanner, compares to ${ALTERNATIVES.map((a) => a.name).join(", ")}. Honest, factual side-by-side comparisons.`,
+  title: "Open-Source Scanner Alternatives Compared",
+  description: `How ${APP_NAME}, an open-source GPL-3.0 scanner, compares to Detectify, Qualys, Intruder, Probely, and IntelliRadar. Honest, factual comparisons.`,
   path: "/alternatives",
   keywords: [
     "vulnerability scanner alternatives",

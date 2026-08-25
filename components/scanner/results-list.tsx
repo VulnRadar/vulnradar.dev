@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useId } from "react";
 import {
   ChevronRight,
   ArrowDownWideNarrow,
@@ -9,23 +9,33 @@ import {
   X,
   Rows3,
   List,
+  ListChecks,
   BotMessageSquare,
   Check,
   CircleHelp,
+  Loader2,
 } from "lucide-react";
 import {
   SEVERITY_ORDER,
   SEVERITY_TONE,
 } from "@/components/scanner/severity-badge";
 import type { Severity, Vulnerability, Category } from "@/lib/scanner/types";
-import { REMEDIATION_BADGE } from "@/lib/scanner/remediation";
+import {
+  REMEDIATION_BADGE,
+  REMEDIATION_STATUSES,
+  REMEDIATION_LABELS,
+  type RemediationStatus,
+  type FindingRemediation,
+} from "@/lib/scanner/remediation";
 import { cn } from "@/lib/ui/utils";
-import { SEVERITY_PRIORITY } from "@/lib/config/constants";
+import { SEVERITY_PRIORITY, API } from "@/lib/config/constants";
 import { CATEGORY_META } from "@/lib/scanner/category-meta";
+import { useTeammates } from "./use-teammates";
 import {
   getQueryParam,
   setQueryParam,
   QUERY_CHANGE_EVENT,
+  LOCATION_CHANGE_EVENT,
 } from "@/lib/ui/url-state";
 
 /** Query param that mirrors the selected finding, e.g. ?finding=missing-csp-header. */
@@ -90,9 +100,17 @@ const FOCUS_RING =
 interface ResultsListProps {
   findings: Vulnerability[];
   onSelectIssue: (issue: Vulnerability) => void;
+  /** The scanned URL. When provided (the owner's own scan view) it turns on
+   *  the multi-select bulk remediation bar; omitted on demo / public / repo
+   *  views, which have no per-user remediation to set. */
+  scanUrl?: string;
 }
 
-export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
+export function ResultsList({
+  findings,
+  onSelectIssue,
+  scanUrl,
+}: ResultsListProps) {
   const [activeSeverities, setActiveSeverities] = useState<Set<Severity>>(
     new Set(SEVERITY_ORDER),
   );
@@ -100,6 +118,112 @@ export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
   const [sortAsc, setSortAsc] = useState(false);
   const [grouped, setGrouped] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Bulk remediation (owner scan only). `selected` holds finding ids; `overlay`
+  // lets a bulk change repaint row badges immediately without a parent refetch
+  // (effective remediation = overlay value if present, else the finding's
+  // server-attached one; a null overlay value means "cleared to open").
+  const selectable = Boolean(scanUrl);
+  // Selection is opt-in: the list stays clean (no checkboxes) until the owner
+  // turns on "Select". Only then do row checkboxes and the bulk bar appear.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [overlay, setOverlay] = useState<
+    Map<string, FindingRemediation | null>
+  >(new Map());
+  const [bulkStatus, setBulkStatus] =
+    useState<RemediationStatus>("in_progress");
+  const [bulkAssignee, setBulkAssignee] = useState("");
+  const [bulkDue, setBulkDue] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkError, setBulkError] = useState(false);
+  const teammates = useTeammates();
+  const bulkAssigneeListId = useId();
+  const showCheckboxes = selectable && selectMode;
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    clearSelection();
+  }
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelected(new Set());
+  }
+
+  // The remediation a row should show: a local bulk overlay wins over the
+  // server-attached value so badges update the instant a bulk change applies.
+  function effectiveRemediation(
+    issue: Vulnerability,
+  ): FindingRemediation | null {
+    return overlay.has(issue.id)
+      ? (overlay.get(issue.id) ?? null)
+      : (issue.remediation ?? null);
+  }
+
+  async function applyBulk() {
+    if (!scanUrl || selected.size === 0 || bulkBusy) return;
+    setBulkBusy(true);
+    setBulkError(false);
+    const ids = [...selected];
+    try {
+      const body: {
+        items: { findingId: string; findingUrl: string }[];
+        status: RemediationStatus;
+        assignee?: string;
+        dueAt?: string;
+      } = {
+        items: ids.map((id) => ({ findingId: id, findingUrl: scanUrl })),
+        status: bulkStatus,
+      };
+      // Only send assignee/dueAt when actually set, so the bulk change leaves
+      // per-finding values it wasn't meant to touch alone (the server treats an
+      // absent field as "keep existing").
+      if (bulkAssignee.trim()) body.assignee = bulkAssignee.trim();
+      if (bulkDue) body.dueAt = bulkDue;
+
+      const res = await fetch(API.SCAN_REMEDIATION_BULK, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error("bulk failed");
+
+      // Repaint the affected rows locally (no parent refetch needed).
+      setOverlay((prev) => {
+        const next = new Map(prev);
+        for (const id of ids) {
+          if (bulkStatus === "open") {
+            next.set(id, null);
+          } else {
+            const base = next.has(id)
+              ? next.get(id)
+              : findings.find((f) => f.id === id)?.remediation;
+            next.set(id, {
+              status: bulkStatus,
+              note: base?.note ?? null,
+              assignee: bulkAssignee.trim() || base?.assignee || null,
+              dueAt: bulkDue || base?.dueAt || null,
+            });
+          }
+        }
+        return next;
+      });
+      clearSelection();
+    } catch {
+      setBulkError(true);
+    } finally {
+      setBulkBusy(false);
+    }
+  }
 
   // Deep-linkable selection: the list itself is only ever mounted while no
   // finding is selected (the dashboard and history pages both swap it out
@@ -122,9 +246,11 @@ export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
       if (detail.key === FINDING_QUERY_PARAM) selectFromUrl();
     };
     window.addEventListener(QUERY_CHANGE_EVENT, onQueryChange);
+    window.addEventListener(LOCATION_CHANGE_EVENT, selectFromUrl);
     window.addEventListener("popstate", selectFromUrl);
     return () => {
       window.removeEventListener(QUERY_CHANGE_EVENT, onQueryChange);
+      window.removeEventListener(LOCATION_CHANGE_EVENT, selectFromUrl);
       window.removeEventListener("popstate", selectFromUrl);
     };
   }, [selectFromUrl]);
@@ -310,6 +436,26 @@ export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
             )}
             Group by severity
           </button>
+
+          {selectable && (
+            <button
+              type="button"
+              onClick={() =>
+                selectMode ? exitSelectMode() : setSelectMode(true)
+              }
+              aria-pressed={selectMode}
+              className={cn(
+                "inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-md border text-xs font-medium transition-colors shrink-0",
+                selectMode
+                  ? "border-primary/20 bg-primary/10 text-primary"
+                  : "border-border bg-card text-muted-foreground hover:text-foreground",
+                FOCUS_RING,
+              )}
+            >
+              <ListChecks className="h-3.5 w-3.5" />
+              {selectMode ? "Done" : "Select"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -504,17 +650,122 @@ export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
               )}
               <ul className="divide-y divide-border">
                 {group.items.map((issue) => (
-                  <li key={issue.id}>
+                  <li
+                    key={issue.id}
+                    className={
+                      showCheckboxes ? "flex items-stretch" : undefined
+                    }
+                  >
+                    {showCheckboxes && (
+                      <div className="flex items-center pl-3">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(issue.id)}
+                          onChange={() => toggleSelect(issue.id)}
+                          aria-label={`Select finding: ${issue.title}`}
+                          className="h-4 w-4 cursor-pointer accent-primary"
+                        />
+                      </div>
+                    )}
                     <FindingRow
                       issue={issue}
                       showSeverity={!group.severity}
                       onSelect={handleSelectIssue}
+                      remediation={effectiveRemediation(issue)}
+                      className={showCheckboxes ? "flex-1" : undefined}
                     />
                   </li>
                 ))}
               </ul>
             </div>
           ))}
+        </div>
+      )}
+
+      {showCheckboxes && selected.size > 0 && (
+        <div className="sticky bottom-3 z-20 mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-card/95 px-3 py-2.5 shadow-lg backdrop-blur">
+          <span className="text-xs font-semibold text-foreground">
+            {selected.size} selected
+          </span>
+          <select
+            aria-label="Set status for selected findings"
+            value={bulkStatus}
+            onChange={(e) => setBulkStatus(e.target.value as RemediationStatus)}
+            className={cn(
+              "h-8 rounded-md border border-input bg-background px-2 text-xs",
+              FOCUS_RING,
+            )}
+          >
+            {REMEDIATION_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {REMEDIATION_LABELS[s]}
+              </option>
+            ))}
+          </select>
+          {bulkStatus !== "open" && (
+            <>
+              <input
+                type="text"
+                aria-label="Assignee for selected findings"
+                list={teammates.length > 0 ? bulkAssigneeListId : undefined}
+                value={bulkAssignee}
+                onChange={(e) => setBulkAssignee(e.target.value)}
+                maxLength={120}
+                placeholder="Assignee (optional)"
+                className={cn(
+                  "h-8 w-36 rounded-md border border-input bg-background px-2 text-xs placeholder:text-muted-foreground",
+                  FOCUS_RING,
+                )}
+              />
+              {teammates.length > 0 && (
+                <datalist id={bulkAssigneeListId}>
+                  {teammates.map((t) => (
+                    <option key={t.id} value={t.name || t.email} />
+                  ))}
+                </datalist>
+              )}
+              <input
+                type="date"
+                aria-label="Due date for selected findings"
+                value={bulkDue}
+                onChange={(e) => setBulkDue(e.target.value)}
+                className={cn(
+                  "h-8 rounded-md border border-input bg-background px-2 text-xs",
+                  FOCUS_RING,
+                )}
+              />
+            </>
+          )}
+          <button
+            type="button"
+            onClick={applyBulk}
+            disabled={bulkBusy}
+            className={cn(
+              "inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-60",
+              FOCUS_RING,
+            )}
+          >
+            {bulkBusy && (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+            )}
+            Apply
+          </button>
+          <button
+            type="button"
+            onClick={clearSelection}
+            aria-label="Clear selection"
+            className={cn(
+              "inline-flex h-8 items-center rounded-md border border-border px-2 text-xs text-muted-foreground hover:text-foreground",
+              FOCUS_RING,
+            )}
+          >
+            <X className="h-3.5 w-3.5" aria-hidden />
+          </button>
+          {bulkError && (
+            <span className="text-xs text-[hsl(var(--severity-high))]">
+              Couldn&apos;t apply. Try again.
+            </span>
+          )}
         </div>
       )}
     </section>
@@ -525,15 +776,24 @@ function FindingRow({
   issue,
   showSeverity,
   onSelect,
+  remediation: remediationProp,
+  className,
 }: {
   issue: Vulnerability;
   showSeverity: boolean;
   onSelect: (issue: Vulnerability) => void;
+  /** Effective remediation for the badge. `null` means explicitly open, so it
+   *  overrides issue.remediation; undefined falls back to issue.remediation. */
+  remediation?: FindingRemediation | null;
+  className?: string;
 }) {
   const tone = SEVERITY_TONE[issue.severity] ?? SEVERITY_TONE.info;
   const verdict = issue.aiVerdict ? AI_VERDICT[issue.aiVerdict] : null;
   const VerdictIcon = verdict?.icon;
-  const remediation = issue.remediation;
+  const remediation =
+    remediationProp !== undefined
+      ? remediationProp
+      : (issue.remediation ?? null);
   const remediationBadge =
     remediation && remediation.status !== "open"
       ? REMEDIATION_BADGE[remediation.status]
@@ -555,6 +815,7 @@ function FindingRow({
         "group relative flex w-full items-start gap-3 py-3 pl-4 pr-3 text-left transition-colors hover:bg-muted/40",
         "focus-visible:outline-hidden focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
         demoted && "opacity-70 hover:opacity-100 focus-visible:opacity-100",
+        className,
       )}
     >
       <span

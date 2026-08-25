@@ -8,7 +8,7 @@ const DESCRIPTION =
   "Rules for what you may scan: authorization requirements, prohibited uses, bug bounty guidance, and rate limits.";
 
 export const metadata: Metadata = pageMetadata({
-  title: TITLE,
+  title: "Acceptable Use Policy: What You May Scan",
   description: DESCRIPTION,
   path: "/legal/acceptable-use",
 });

@@ -3,6 +3,12 @@
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { APP_NAME } from "@/lib/config/constants";
+import {
+  EXACT_LEGACY_CHECK_COUNT,
+  EXACT_PAGE_CHECK_COUNT,
+  EXACT_CHECK_COUNT,
+  EXACT_CHECK_CATEGORY_COUNT,
+} from "@/lib/config/check-stats.generated";
 import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
 import {
   DocsHero,
@@ -56,6 +62,7 @@ export default function ArchitecturePage() {
   return (
     <div className="space-y-16">
       <DocsHero
+        id="top"
         badge="Internals"
         title="Architecture"
         description={`A tour of the ${APP_NAME} codebase: how the pieces fit together, where config lives, and how a request flows from browser to database.`}
@@ -335,18 +342,19 @@ export default function ArchitecturePage() {
             <li>
               <InlineCode>lib/scanner/checks-data/*.json</InlineCode>:
               human-readable metadata (title, description, severity, category,
-              fix steps, code examples) for every legacy detector. 652 entries
-              across all 16 per-category files as of this writing; the live
-              count is always <InlineCode>GET /api/v3/finding-types</InlineCode>
-              .
+              fix steps, code examples) for every legacy detector.{" "}
+              {EXACT_LEGACY_CHECK_COUNT} entries across the per-category files;
+              the live count is always{" "}
+              <InlineCode>GET /api/v3/finding-types</InlineCode>.
             </li>
             <li>
-              <InlineCode>lib/scanner/checks/page-checks/</InlineCode>: 43
-              checks on a newer <InlineCode>PageCheck</InlineCode> architecture
-              that run against a real parsed page instead of a flat-string
-              regex. <InlineCode>lib/scanner/page-context.ts</InlineCode> builds
-              a <InlineCode>PageContext</InlineCode> once per scan (parsed
-              forms, scripts with resolved origins, CSP directives with
+              <InlineCode>lib/scanner/checks/page-checks/</InlineCode>:{" "}
+              {EXACT_PAGE_CHECK_COUNT} checks on a newer{" "}
+              <InlineCode>PageCheck</InlineCode> architecture that run against a
+              real parsed page instead of a flat-string regex.{" "}
+              <InlineCode>lib/scanner/page-context.ts</InlineCode> builds a{" "}
+              <InlineCode>PageContext</InlineCode> once per scan (parsed forms,
+              scripts with resolved origins, CSP directives with
               fallback-to-default-src semantics, parsed cookies, deduped
               third-party origins), and{" "}
               <InlineCode>lib/scanner/engine.ts</InlineCode> (
@@ -356,9 +364,10 @@ export default function ArchitecturePage() {
               <InlineCode>confidence</InlineCode> score keyed to the detection
               method and a verbatim <InlineCode>evidence</InlineCode> excerpt,
               and a dedupe pass folds duplicate findings from different checks
-              into one survivor. These checks fold into the existing 16
-              categories rather than adding a new one; combined with the legacy
-              set, the engine now runs 695 checks.
+              into one survivor. These checks fold into the existing{" "}
+              {EXACT_CHECK_CATEGORY_COUNT} categories rather than adding a new
+              one; combined with the legacy set, the engine now runs{" "}
+              {EXACT_CHECK_COUNT} checks.
             </li>
             <li>
               <InlineCode>lib/scanner/auth/</InlineCode>: ephemeral

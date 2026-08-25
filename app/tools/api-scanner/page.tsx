@@ -19,8 +19,8 @@ import { APP_NAME } from "@/lib/config/constants";
 const API_CHECKS = getChecksInCategory("api");
 
 export const metadata: Metadata = pageMetadata({
-  title: "API Scanner Online",
-  description: `Scan an API for security issues online with ${APP_NAME}: CORS policy, rate-limit headers, GraphQL introspection, and exposed OpenAPI docs. No agent to install, just paste the URL.`,
+  title: "Online API Security Scanner, No Agent",
+  description: `Scan an API online with ${APP_NAME}: CORS policy, rate-limit headers, GraphQL introspection, and exposed OpenAPI docs. No agent, just paste the URL.`,
   path: "/tools/api-scanner",
   keywords: [
     "api scanner online",

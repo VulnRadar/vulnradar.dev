@@ -22,7 +22,7 @@ import {
 } from "@/lib/seo/checks-content";
 import { APP_NAME } from "@/lib/config/constants";
 
-const TITLE = "Web Vulnerability Checks";
+const TITLE = "Every Web Vulnerability Check, With Fixes";
 const TOTAL = getAllChecks().length;
 
 export const metadata: Metadata = pageMetadata({

@@ -221,6 +221,14 @@ export default function DocsPage() {
             <InlineCode>https://</InlineCode> target.
           </p>
           <p>
+            Beyond the check catalogue, every scan also fingerprints the
+            software the host runs (server, framework, CDN, analytics, and
+            client-side libraries) and correlates any version it can read
+            against known CVEs through OSV.dev and the NVD, enriched with CISA
+            KEV and FIRST.org EPSS. A vulnerable version raises one aggregated
+            finding that lists its CVE IDs.
+          </p>
+          <p>
             The full catalogue is served, unauthenticated, from{" "}
             <InlineCode>GET /api/v3/finding-types</InlineCode>. Use it if you
             are building an SDK and want every id ahead of time. See{" "}

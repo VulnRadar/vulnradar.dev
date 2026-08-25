@@ -64,7 +64,7 @@
   <circle cx="736" cy="133" r="5" fill="#22c55e"/>
   <text x="752" y="140"
         font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
-        font-size="22" font-weight="700" fill="#e8eef8">vulnradar.dev</text>
+        font-size="22" font-weight="700" fill="#e8eef8">your-domain.com</text>
   <rect x="982" y="119" width="120" height="27" rx="13.5" fill="#1b2a44"/>
   <text x="1042" y="137" text-anchor="middle"
         font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"

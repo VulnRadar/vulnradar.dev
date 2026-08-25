@@ -63,9 +63,16 @@ export async function generateMetadata({
   }
   const label = getCategoryLabel(check.category);
   return pageMetadata({
-    title: `How to fix: ${check.title}`,
+    // Clamp only the title portion so the rendered "<title> | VulnRadar" stays
+    // in the ~50-60 range even for long check names. The page H1 keeps the full
+    // title (see below), so nothing user-visible is truncated.
+    title: `How to fix: ${clamp(check.title, 36)}`,
+    // Append riskImpact so terse one-line check descriptions still fill the
+    // ~150-char meta window instead of landing well under it; clamp caps it.
     description: clamp(
-      `${check.title} is a ${check.severity}-severity ${label.toLowerCase()} finding. ${check.description}`,
+      `${check.title} is a ${check.severity}-severity ${label.toLowerCase()} finding. ${check.description}${
+        check.riskImpact ? ` ${check.riskImpact}` : ""
+      }`,
     ),
     path: checkPath(check.id),
     type: "article",

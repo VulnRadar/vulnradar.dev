@@ -26,6 +26,7 @@ import {
   getQueryParam,
   getQueryParamInt,
   QUERY_CHANGE_EVENT,
+  LOCATION_CHANGE_EVENT,
   removeQueryParam,
   setQueryParam,
 } from "@/lib/ui/url-state";
@@ -189,9 +190,14 @@ export default function HistoryPage() {
       if (detail.key === "scan") handleQueryChange();
     };
     window.addEventListener(QUERY_CHANGE_EVENT, onChange);
+    // A soft <Link> to /history while viewing /history?scan=X clears the param
+    // without firing popstate or our event; re-read on any location change so
+    // the detail view collapses back to the list.
+    window.addEventListener(LOCATION_CHANGE_EVENT, handleQueryChange);
     window.addEventListener("popstate", handleQueryChange);
     return () => {
       window.removeEventListener(QUERY_CHANGE_EVENT, onChange);
+      window.removeEventListener(LOCATION_CHANGE_EVENT, handleQueryChange);
       window.removeEventListener("popstate", handleQueryChange);
     };
   }, [handleQueryChange]);
@@ -204,9 +210,11 @@ export default function HistoryPage() {
       if (detail.key === "page") syncPageFromUrl();
     };
     window.addEventListener(QUERY_CHANGE_EVENT, onChange);
+    window.addEventListener(LOCATION_CHANGE_EVENT, syncPageFromUrl);
     window.addEventListener("popstate", syncPageFromUrl);
     return () => {
       window.removeEventListener(QUERY_CHANGE_EVENT, onChange);
+      window.removeEventListener(LOCATION_CHANGE_EVENT, syncPageFromUrl);
       window.removeEventListener("popstate", syncPageFromUrl);
     };
   }, []);
@@ -484,6 +492,7 @@ export default function HistoryPage() {
                           <ScanResultDetail
                             result={scanDetail}
                             onSelectIssue={setSelectedIssue}
+                            canRemediate={isOwner}
                             crawlInfo={crawlInfo}
                             screenshotSrc={
                               scanDetail.screenshot && scanNumericId

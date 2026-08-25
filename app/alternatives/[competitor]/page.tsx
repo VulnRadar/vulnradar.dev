@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Check } from "lucide-react";
-import { pageMetadata } from "@/lib/seo/metadata";
+import { pageMetadata, clampText } from "@/lib/seo/metadata";
 import {
   BreadcrumbStructuredData,
   FaqStructuredData,
@@ -34,12 +34,15 @@ export async function generateMetadata({
     });
   }
   return pageMetadata({
-    title: `${alt.name} Alternative: ${APP_NAME}`,
-    description:
-      `Comparing ${APP_NAME}, an open-source GPL-3.0 scanner, to ${alt.name}. ${alt.positioning}`.slice(
-        0,
-        175,
-      ),
+    // "Open-Source X Alternative" (the " | VulnRadar" suffix is added by the
+    // template) instead of "X Alternative: VulnRadar", which doubled the brand
+    // once the suffix was appended.
+    title: `Open-Source ${alt.name} Alternative`,
+    // Word-boundary clamp instead of a hard .slice, which was cutting the
+    // positioning sentence off mid-word.
+    description: clampText(
+      `Comparing ${APP_NAME}, an open-source GPL-3.0 scanner, to ${alt.name}. ${alt.positioning}`,
+    ),
     path: `/alternatives/${alt.slug}`,
     keywords: [
       `${alt.name.toLowerCase()} alternative`,

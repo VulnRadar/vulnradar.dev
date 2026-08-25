@@ -32,6 +32,17 @@ export interface Invite {
   expires_at: string;
 }
 
+/** An invitation addressed to the current user (from GET /teams/invitations),
+ *  shown on the teams list so they can accept or decline it in-app. */
+export interface TeamInvitation {
+  id: number;
+  team_name: string;
+  invited_by_name: string | null;
+  role: string;
+  created_at: string;
+  expires_at: string;
+}
+
 export interface MemberScan {
   id: number;
   url: string;
@@ -78,6 +89,16 @@ export const ROLE_ABILITIES: Record<string, string> = {
 // first), so this just walks it directly -- a future role addition to
 // TEAM_ROLES shows up here with no edit needed here.
 export const ROLE_ORDER: readonly string[] = Object.values(TEAM_ROLES);
+
+export type InvitableRole =
+  "admin" | "manager" | "operator" | "member" | "viewer";
+
+// Least to most privileged, matching the invite UI's reading order. Derived
+// from TEAM_ROLES (excluding the non-invitable owner) so a future role shows
+// up automatically, the same way the invite API's INVITABLE_TEAM_ROLES does.
+export const INVITABLE_ROLES = Object.values(TEAM_ROLES)
+  .filter((r) => r !== TEAM_ROLES.OWNER)
+  .reverse() as InvitableRole[];
 
 // Canonical relative-time formatter (see lib/ui/relative-time.ts).
 export { formatRelativeTime } from "@/lib/ui/relative-time";

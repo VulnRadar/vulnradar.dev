@@ -336,38 +336,11 @@ export function ScanForm({
   const [scannersOpen, setScannersOpen] = useState(false);
   const [activeProbesOpen, setActiveProbesOpen] = useState(false);
 
-  // Both popovers are Radix Popover.Content, which is `position: fixed`
-  // and re-runs its Floating UI position calculation on every scroll
-  // frame to stay anchored to its trigger button. That's fine on desktop,
-  // but on iOS Safari a fixed element repositioning itself synchronously
-  // during momentum scrolling forces layout work onto the main thread on
-  // every frame, which is what actually causes the page to visibly hitch
-  // while scrolling with either panel open. Close on scroll instead of
-  // fighting that: once the user is actually scrolling, tracking the
-  // trigger's position isn't useful anyway.
-  useEffect(() => {
-    if (!scannersOpen && !activeProbesOpen) return;
-    // Registered on window with capture so it also sees scroll events from
-    // nested scrollable elements (they don't bubble, but capture-phase
-    // listeners fire regardless of bubbling) -- both popovers have their
-    // own internal overflow-y-auto list. Scrolling that list dispatches a
-    // scroll event whose target is the list div, not `document`; without
-    // this check every scroll of the popover's own content closed it
-    // immediately, making the list impossible to scroll at all. Only an
-    // actual page-level scroll (target === document) is the case this
-    // effect exists for.
-    function handleScroll(event: Event) {
-      if (event.target !== document) return;
-      setScannersOpen(false);
-      setActiveProbesOpen(false);
-    }
-    window.addEventListener("scroll", handleScroll, {
-      passive: true,
-      capture: true,
-    });
-    return () =>
-      window.removeEventListener("scroll", handleScroll, { capture: true });
-  }, [scannersOpen, activeProbesOpen]);
+  // Close-on-page-scroll (the iOS momentum-scroll hitch fix these two panels
+  // originally needed) now lives in the shared Popover wrapper
+  // (components/ui/popover.tsx via lib/ui/use-close-on-scroll.ts), so every
+  // popover in the app behaves this way and this no longer needs a bespoke
+  // effect here.
   const [bulkUrls, setBulkUrls] = useState("");
   const [bulkError, setBulkError] = useState("");
   const [authValue, setAuthValue] = useState<InlineAuthValue | null>(null);

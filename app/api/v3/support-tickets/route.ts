@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
 import { getSession } from "@/lib/auth";
+import { getClientIP } from "@/lib/rate-limiting/rate-limit";
+import { TURNSTILE_ENABLED } from "@/lib/config/constants";
 import { notifyStaffOfTicketActivity } from "@/lib/support/ticket-notify";
 import {
   TICKET_CATEGORIES,
@@ -52,7 +54,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { subject?: unknown; category?: unknown; message?: unknown };
+  let body: {
+    subject?: unknown;
+    category?: unknown;
+    message?: unknown;
+    turnstileToken?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
@@ -60,6 +67,39 @@ export async function POST(request: NextRequest) {
       { error: "Invalid request body." },
       { status: 400 },
     );
+  }
+
+  // Cloudflare Turnstile: bot/abuse gate on ticket creation, verified the same
+  // way /api/v3/contact does. No-op when Turnstile isn't configured.
+  if (TURNSTILE_ENABLED) {
+    const turnstileToken =
+      typeof body.turnstileToken === "string" ? body.turnstileToken.trim() : "";
+    if (!turnstileToken) {
+      return NextResponse.json(
+        { error: "Captcha verification required." },
+        { status: 400 },
+      );
+    }
+    const ip = await getClientIP();
+    const turnstileRes = await fetch(
+      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          secret: process.env.TURNSTILE_SECRET_KEY,
+          response: turnstileToken,
+          remoteip: ip,
+        }),
+      },
+    );
+    const turnstileData = await turnstileRes.json();
+    if (!turnstileData.success) {
+      return NextResponse.json(
+        { error: "Captcha verification failed. Please try again." },
+        { status: 400 },
+      );
+    }
   }
 
   const subject = typeof body.subject === "string" ? body.subject.trim() : "";

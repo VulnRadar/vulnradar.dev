@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Search, Users, Eye, ChevronRight, Loader2 } from "lucide-react";
+import { Plus, Search, Users, Eye, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,12 +13,6 @@ interface TeamsListProps {
   onSearchChange: (q: string) => void;
   onOpenTeam: (team: Team) => void;
   onShowCreate: () => void;
-  showCreate: boolean;
-  newName: string;
-  onNewNameChange: (v: string) => void;
-  onCreate: () => void;
-  onCancelCreate: () => void;
-  creating: boolean;
 }
 
 export function TeamsList({
@@ -27,12 +21,6 @@ export function TeamsList({
   onSearchChange,
   onOpenTeam,
   onShowCreate,
-  showCreate,
-  newName,
-  onNewNameChange,
-  onCreate,
-  onCancelCreate,
-  creating,
 }: TeamsListProps) {
   const filtered = teams.filter((t) =>
     t.name.toLowerCase().includes(searchQuery.toLowerCase()),
@@ -63,45 +51,6 @@ export function TeamsList({
           New Team
         </Button>
       </div>
-
-      {showCreate && (
-        <Card className="bg-card border-border/50">
-          <CardContent className="p-5">
-            <p className="text-sm font-medium mb-3">Create New Team</p>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Input
-                placeholder="Team name"
-                value={newName}
-                onChange={(e) => onNewNameChange(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && onCreate()}
-                className="flex-1"
-                autoFocus
-                maxLength={50}
-              />
-              <div className="flex gap-2">
-                <Button
-                  onClick={onCreate}
-                  disabled={creating || !newName.trim()}
-                  className="h-10"
-                >
-                  {creating ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    "Create"
-                  )}
-                </Button>
-                <Button
-                  variant="outline"
-                  className="h-10"
-                  onClick={onCancelCreate}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {filtered.length === 0 && !searchQuery ? (
         <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border bg-card/50 px-4 py-14 text-center">

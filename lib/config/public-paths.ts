@@ -57,6 +57,10 @@ export const PUBLIC_PATHS = [
   // ─── Public Information Pages ──────────────────────────────────
   ROUTES.PRICING,
   ROUTES.DOCS,
+  // The interactive API explorer now lives at /docs/api/playground, already
+  // covered by the ROUTES.DOCS ("/docs") prefix match above, so it needs no
+  // entry of its own. It is a tool a logged-out visitor can open; the calls it
+  // makes still require the caller's own API key.
   ROUTES.CHANGELOG,
   ROUTES.CONTACT,
   ROUTES.GDPR_REQUEST,
@@ -105,6 +109,15 @@ export const PUBLIC_PATHS = [
   "/api/v3/health",
   "/api/version",
   "/api/security-txt",
+  // IPv4 echo. Must be public: it is fetched credential-less (no session)
+  // from the IPv4-only host to observe the caller's own IPv4 for the session
+  // list. Without this it 307'd to /login and the capture silently no-op'd.
+  // It only ever returns the caller's own IP, so exposing it needs no auth.
+  "/api/v3/whoami-ip",
+  // OpenAPI spec: a public API description tools import without a session
+  // (Postman, Insomnia, an explorer). Without this it 307'd to /login and
+  // those tools got the login page back instead of the JSON spec.
+  "/api/v3/openapi.json",
   // security.txt: public per RFC 9116 — must be reachable without
   // auth so security researchers + scanners can find our disclosure
   // contact. The middleware sees the request URL BEFORE the rewrite,

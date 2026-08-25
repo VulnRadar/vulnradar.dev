@@ -11,6 +11,7 @@ import {
   getQueryParamInt,
   removeQueryParam,
   setQueryParam,
+  LOCATION_CHANGE_EVENT,
 } from "@/lib/ui/url-state";
 import {
   CompareHostPicker,
@@ -81,8 +82,14 @@ export default function ComparePage() {
       }
     };
     syncFromUrl();
+    // Also catch Next.js soft navigations (clicking the Compare nav link while
+    // a diff is open clears ?a/?b without firing popstate or remounting).
+    window.addEventListener(LOCATION_CHANGE_EVENT, syncFromUrl);
     window.addEventListener("popstate", syncFromUrl);
-    return () => window.removeEventListener("popstate", syncFromUrl);
+    return () => {
+      window.removeEventListener(LOCATION_CHANGE_EVENT, syncFromUrl);
+      window.removeEventListener("popstate", syncFromUrl);
+    };
   }, [runCompare]);
 
   // A deep link (?a=&b=) resolves selectedA/selectedB before the scan list

@@ -27,6 +27,7 @@ import {
   type RemediationStatus,
   type FindingRemediation,
 } from "@/lib/scanner/remediation";
+import { useTeammates } from "./use-teammates";
 import {
   getQueryParam,
   removeQueryParam,
@@ -218,6 +219,36 @@ function FindingFeedback({
   );
 }
 
+/** A stored due date (timestamptz string) formatted for an
+ *  <input type="date"> ("YYYY-MM-DD"), or "" when there is none. Uses the
+ *  date's local components so the day shown matches the day picked. */
+function toDateInputValue(due: string | null | undefined): string {
+  if (!due) return "";
+  const d = new Date(due);
+  if (Number.isNaN(d.getTime())) return "";
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+/** True when a due date is in the past (day granularity) AND the finding is
+ *  still open work, so the "overdue" badge only nags about things that
+ *  actually still need doing (not ones already fixed / accepted / won't-fix). */
+function isOverdue(
+  due: string | null | undefined,
+  status: RemediationStatus,
+): boolean {
+  if (!due) return false;
+  if (status === "fixed" || status === "accepted_risk" || status === "wont_fix")
+    return false;
+  const d = new Date(due);
+  if (Number.isNaN(d.getTime())) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime() < today.getTime();
+}
+
 /**
  * The owner's per-finding remediation lifecycle: Open / In progress / Fixed
  * / Accepted risk / Won't fix, plus an optional note and free-text assignee,
@@ -254,11 +285,15 @@ function RemediationControl({
   );
   const [note, setNote] = useState(initial?.note ?? "");
   const [assignee, setAssignee] = useState(initial?.assignee ?? "");
+  const [dueAt, setDueAt] = useState(toDateInputValue(initial?.dueAt));
   const [saving, setSaving] = useState(false);
   const [savedDetails, setSavedDetails] = useState(false);
   const [error, setError] = useState(false);
   const noteFieldId = useId();
   const assigneeFieldId = useId();
+  const dueFieldId = useId();
+  const assigneeListId = useId();
+  const teammates = useTeammates();
 
   // Freshest value wins: seed from the server-attached status, then confirm
   // against the API on mount (it may have changed in another tab/session).
@@ -275,6 +310,7 @@ function RemediationControl({
               status: RemediationStatus;
               note: string | null;
               assignee: string | null;
+              due_at: string | null;
             }[];
           } | null,
         ) => {
@@ -283,6 +319,7 @@ function RemediationControl({
           setStatus(row.status);
           setNote(row.note ?? "");
           setAssignee(row.assignee ?? "");
+          setDueAt(toDateInputValue(row.due_at));
         },
       )
       .catch(() => {
@@ -295,7 +332,7 @@ function RemediationControl({
 
   async function save(
     nextStatus: RemediationStatus,
-    opts: { note: string; assignee: string },
+    opts: { note: string; assignee: string; dueAt: string },
   ) {
     setSaving(true);
     setError(false);
@@ -318,6 +355,7 @@ function RemediationControl({
             status: nextStatus,
             note: opts.note.trim() || undefined,
             assignee: opts.assignee.trim() || undefined,
+            dueAt: opts.dueAt || null,
           }),
         });
         if (!res.ok) throw new Error("Failed to save remediation status");
@@ -325,6 +363,7 @@ function RemediationControl({
           status: nextStatus,
           note: opts.note.trim() || null,
           assignee: opts.assignee.trim() || null,
+          dueAt: opts.dueAt || null,
         });
       }
       return true;
@@ -338,11 +377,11 @@ function RemediationControl({
 
   async function selectStatus(next: RemediationStatus) {
     setStatus(next);
-    await save(next, { note, assignee });
+    await save(next, { note, assignee, dueAt });
   }
 
   async function saveDetails() {
-    const ok = await save(status, { note, assignee });
+    const ok = await save(status, { note, assignee, dueAt });
     if (ok) {
       setSavedDetails(true);
       setTimeout(() => setSavedDetails(false), 2000);
@@ -379,6 +418,11 @@ function RemediationControl({
             </button>
           ))}
         </div>
+        {isOverdue(dueAt, status) && (
+          <span className="inline-flex items-center rounded-md border border-[hsl(var(--severity-high))]/30 bg-[hsl(var(--severity-high))]/10 px-2 py-0.5 text-[11px] font-medium text-[hsl(var(--severity-high))]">
+            Overdue
+          </span>
+        )}
       </div>
 
       <p className="text-[11px] leading-relaxed text-muted-foreground">
@@ -419,12 +463,45 @@ function RemediationControl({
               <input
                 id={assigneeFieldId}
                 type="text"
+                // A teammate picker with a free-text fallback: the datalist
+                // suggests people you share a team with, but you can still type
+                // any name. Solo users (no teammates) just get the free field.
+                list={teammates.length > 0 ? assigneeListId : undefined}
                 value={assignee}
                 onChange={(e) => setAssignee(e.target.value)}
                 maxLength={120}
-                placeholder="name or handle"
+                placeholder={
+                  teammates.length > 0
+                    ? "Pick a teammate or type"
+                    : "name or handle"
+                }
                 className={cn(
                   "h-8 rounded-md border border-border bg-card px-2.5 text-xs text-foreground placeholder:text-muted-foreground",
+                  FOCUS_RING,
+                )}
+              />
+              {teammates.length > 0 && (
+                <datalist id={assigneeListId}>
+                  {teammates.map((t) => (
+                    <option key={t.id} value={t.name || t.email} />
+                  ))}
+                </datalist>
+              )}
+            </div>
+            <div className="flex flex-col gap-1 sm:w-40">
+              <label
+                htmlFor={dueFieldId}
+                className="text-[11px] font-medium text-muted-foreground"
+              >
+                Due date (optional)
+              </label>
+              <input
+                id={dueFieldId}
+                type="date"
+                value={dueAt}
+                onChange={(e) => setDueAt(e.target.value)}
+                className={cn(
+                  "h-8 rounded-md border border-border bg-card px-2.5 text-xs text-foreground",
                   FOCUS_RING,
                 )}
               />

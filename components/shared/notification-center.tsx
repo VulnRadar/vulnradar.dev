@@ -257,11 +257,6 @@ export function NotificationBell() {
   const [showVersionNotif, setShowVersionNotif] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  const isPublicRoute = PUBLIC_PATHS.some((p) => {
-    if (p === "/" || p === "/landing") return pathname === p;
-    return pathname.startsWith(p);
-  });
-
   const isStaff =
     me?.role && (STAFF_ROLE_VALUES as readonly string[]).includes(me.role);
 
@@ -452,13 +447,7 @@ export function NotificationBell() {
     (showVersionNotif ? 1 : 0);
 
   return (
-    <div
-      ref={ref}
-      className={cn(
-        "relative",
-        isPublicRoute && "invisible pointer-events-none",
-      )}
-    >
+    <div ref={ref} className="relative">
       <Button
         variant="ghost"
         size="icon"

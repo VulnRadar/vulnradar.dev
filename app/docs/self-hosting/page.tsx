@@ -59,6 +59,7 @@ export default function SelfHostingPage() {
   return (
     <div className="space-y-16">
       <DocsHero
+        id="top"
         badge="Deployment"
         title="Self-Hosting"
         description={`${APP_NAME} is GPL-3.0 and can be self-hosted with Docker. This guide walks through a production deployment end to end.`}

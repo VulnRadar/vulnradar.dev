@@ -1,6 +1,6 @@
 # VulnRadar Changelog - AI Knowledge
 
-_Auto-compiled from `lib/changelog/data.ts` on 2026-08-22._
+_Auto-compiled from `lib/changelog/data.ts` on 2026-08-25._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about specific versions, release
@@ -15,6 +15,73 @@ config (see `lib/config/config-values.ts`).
 Each release entry shows: version, date, title, summary, and every
 change with its category tag (added/changed/fixed/security/performance)
 and full description.
+
+---
+
+## v3.7.0 - August 24, 2026 **(highlights)**
+**Support Tickets, Report Exports, Attack Surface, GitHub Scanner**
+
+A capability and openness release. Support moves in-app: anyone, including free accounts, can open a billing or scanning ticket and talk to staff directly, share a ticket with specific teammates, and get replies by both notification and email. Any finished scan can now be pulled straight from the API as a formatted report in SARIF, PDF, Markdown, a compliance summary, or raw JSON, and the compliance crosswalk adds HIPAA and GDPR alongside PCI, SOC 2, ISO 27001, and ASVS. A new Attack Surface page collects your verified domains into one portfolio, the public assets page can now browse every public host rather than only your own, and software inventory recognizes far more of a site's real stack (client frameworks, hosting, and cookies) and labels each with its actual brand icon. You can file a scan's findings straight to GitHub as an issue from the VulnRadar GitHub Scanner. Underneath, the extension and the AI knowledge base are now built and verified in CI on every change, and the project gains a Code of Conduct, Discussions, and a Wiki.
+
+### Changes
+- [MessageSquare] **[ADDED]** **In-App Support Tickets for Every Plan**
+  Support now lives inside the app. Any account, free tiers included, can open a ticket for a billing or scanning question and hold a threaded conversation with staff, who work them from a dedicated inbox. A ticket owner can share a single ticket with specific teammates (not the whole team) so they can read and reply, and every staff reply arrives as both an in-app notification and an email. The AI assistant stays the first line; tickets are the human escalation behind it.
+- [FileDown] **[ADDED]** **Pull Any Scan's Report Straight from the API**
+  Every finished scan can now be fetched as a formatted report from the API at /api/v3/history/[id]/report, in SARIF for code-scanning tools, PDF for sharing, Markdown for a pull request, a compliance summary, or raw JSON. The endpoint enforces the same owner and team-read access as the scan itself, so nothing private leaks through the report route.
+- [FileSpreadsheet] **[ADDED]** **Compliance Reports Add HIPAA and GDPR**
+  The compliance crosswalk that maps findings to controls now covers HIPAA and GDPR in addition to PCI DSS, SOC 2, ISO 27001, and OWASP ASVS, so a single scan can speak to whichever framework an auditor is asking about.
+- [Radar] **[ADDED]** **Attack Surface Portfolio**
+  A new Attack Surface page gathers the domains you have verified into one portfolio view, so a team can see its whole footprint in a single place instead of one scan at a time. It sits alongside history and reuses the verified-domain records you already have, so there is nothing new to set up.
+- [Globe] **[ADDED]** **Browse Every Public Host, Not Just Your Own**
+  The assets page gains a scope filter. It still defaults to the hosts you have scanned, but you can now switch it to every public host on file, synced to a scope value in the URL so the view is shareable. The all-hosts view reads only from public host records, so a private scan never appears there.
+- [Layers] **[CHANGED]** **Deeper Tech-Stack Detection with Real Brand Icons**
+  Software inventory used to read mostly server headers and a few HTML markers. It now recognizes far more of a site's real stack, including client frameworks (React, Vue, Svelte, Nuxt, Angular, and more), the base library behind a meta-framework (React under Next.js, Vue under Nuxt), hosting and edge providers, framework-specific cookies, and page-embedded analytics and anti-bot widgets (Cloudflare Web Analytics, Turnstile), and it labels each detected technology with its actual brand icon instead of a generic box.
+- [GitMerge] **[ADDED]** **File Findings to GitHub as an Issue**
+  From a scan's actions menu you can open a GitHub issue with the findings for that host, filed by the VulnRadar GitHub Scanner with clear labels and a readable summary, using the GitHub token already connected to your account. Only the scan's owner can file it.
+- [Shield] **[ADDED]** **Cookie Notice**
+  A dismissible notice explains that the site uses only the cookies it needs to work, with a link to the privacy policy. It sits at the bottom of the screen instead of blocking the page, and once dismissed it stays dismissed.
+- [Bell] **[FIXED]** **The Notification Bell Shows on Every Signed-In Page**
+  The bell was hidden on public pages like Contact, the changelog, docs, and pricing, so a signed-in user reading them lost access to their notifications and pending team invites until they navigated back into the app. The bell now appears wherever the signed-in header does, on every page you can reach while logged in.
+- [LifeBuoy] **[CHANGED]** **Support Tickets Are a Contact Option, Not a Separate Panel**
+  Opening a tracked support ticket is now one of the choices on the Contact page's category picker, alongside bug reports and billing, instead of a panel bolted to the bottom of the page. Contact itself also left the crowded top navigation; it stays in the footer under Resources. A ?ticket= link from a reply email or the notification bell still jumps straight to the right conversation.
+- [Shield] **[SECURITY]** **New Support Tickets Pass a Captcha**
+  Opening a ticket now clears a Cloudflare Turnstile check, verified on the server the same way the contact form is, so the ticket queue is protected from automated abuse. It is a no-op for deployments that have not configured Turnstile.
+- [Lock] **[SECURITY]** **Dropped a Retired Live-Chat Vendor From the Security Policy**
+  The content security policy still allowlisted the third-party live-chat widget the app used before its own AI assistant replaced it. Those vendor hosts, and the dead embed snippet, are gone, so the browser no longer trusts scripts, frames, styles, or connections from a service the app does not use.
+- [Users] **[ADDED]** **Code of Conduct, Discussions, and a Wiki**
+  The project gains a Code of Conduct, a Discussions space for questions and ideas, and a Wiki that points back to the app's own docs rather than duplicating them. The GitHub issue templates were also cleaned up so filing a bug, a detector request, or a docs fix uses the right fields.
+- [Wrench] **[PERFORMANCE]** **More of the Project Is Verified in CI**
+  Continuous integration now type-checks and builds the browser extension on every change, checks its formatting, and guards the AI assistant's knowledge base against drift by regenerating it and failing if the committed copy is stale. A broken extension build or an out-of-date knowledge file is now caught before it ships.
+- [Network] **[FIXED]** **Session and Device Rows Always Show a Real IP**
+  The client-IP lookup could store whatever a proxy put in the forwarded-for header, including an address with a port, IPv6 in brackets, an IPv4-mapped IPv6 prefix, or plain junk, so a session or device row occasionally showed a value that did not read as an IP. Every candidate is now validated and normalized (ports and brackets stripped, IPv4-mapped IPv6 unwrapped) before it is stored, and a header carrying no valid IP falls back cleanly instead of saving the raw text.
+- [Fingerprint] **[ADDED]** **See a Usable IPv4 for IPv6 Sign-Ins**
+  Signing in over IPv6 left the sessions list showing only an IPv6 address, which is hard to act on. When an operator configures an IPv4-only echo host, the app now captures the matching IPv4 for a dual-stack sign-in and shows it alongside the IPv6 on the security page. It is opt-in and privacy-preserving: the value is proven by a short-lived signed token the server minted after actually observing the address (not trusted from the browser), it never affects the session's own IP-binding, and an IPv6-only network simply records nothing.
+- [Layout] **[CHANGED]** **Redesigned the Sign-In and Account Screens**
+  The account screens shared a split layout that left a wide empty band between the left-hand pitch and the form. They now sit on one canvas: the pitch and the form are pulled into a single centered, balanced band so the empty room becomes even margin instead of a gap down the middle. Sign-in, sign-up, forgot-password, and reset-password all pick this up; the forms themselves are unchanged.
+- [Lock] **[FIXED]** **Admin Panel Denies Non-Staff Instantly**
+  Opening the admin panel without access briefly showed the panel's loading skeleton before flipping to Access Denied once the server's rejection came back. It now decides from your own signed-in role first, so a non-staff visitor gets Access Denied immediately with no flash of admin chrome; the server's check still has the final say.
+- [Users] **[ADDED]** **Create a Team With Invites, and Act on Invitations In-App**
+  Creating a team is now a dialog where you name it and invite teammates up front, capped at what your plan's seats allow, instead of a bare name field. And an invitation sent to you now shows up right on the Teams page with Accept and Decline buttons, so joining a team or turning one down no longer means digging up the email or the notification.
+- [Menu] **[FIXED]** **Open Popovers Close When You Scroll, Everywhere**
+  The scan form's check-family panels already closed themselves when the page scrolled (a fixed panel re-anchoring to its button on every scroll frame hitches on iOS). That behavior now lives in the shared popover component, so every popover across the app closes on scroll the same way instead of only that one screen. Scrolling a popover's own inner list still works; only a page scroll closes it.
+- [CalendarClock] **[ADDED]** **Remediation Gets Due Dates and a Teammate Assignee**
+  Per-finding remediation tracking now takes a due date, with an Overdue badge on anything past its date that isn't already fixed, accepted, or won't-fix. The assignee field became a picker of the people you share a team with (still free-typeable), so you can hand a finding to a real teammate instead of typing a name. Both are remembered across rescans, the same way the status already was.
+- [CheckCircle2] **[ADDED]** **Set Remediation on Many Findings at Once**
+  The findings list on your own scans now has checkboxes: select several findings and a bulk bar sets their status, and optionally an assignee or due date, in one action instead of opening each one. Applying a status leaves per-finding notes and any fields you didn't set alone, and the row badges update right away.
+- [Wrench] **[ADDED]** **GitLab CI Scan Gate**
+  The merge-request scan gate that shipped for GitHub Actions now has a GitLab CI equivalent: include one remote template, set the URL and a masked token, and the pipeline fails when a scan turns up findings over your critical, high, or medium thresholds. It polls the background scan job the same way, so it reads real severity counts rather than an empty create response. Documented under CI/CD Gating in the API docs.
+- [FileText] **[ADDED]** **Machine-Readable OpenAPI Spec**
+  The public API (scan lifecycle, history, and report export) now has an OpenAPI 3.1 description served at /api/v3/openapi.json. Import it into Postman, Insomnia, or Bruno, or point an interactive explorer at it. It documents the Bearer API-key auth and scopes, the request and response shapes, and the report formats, and it's linked from the API docs.
+- [Code] **[ADDED]** **Scan From the Command Line**
+  A dependency-free command-line tool joins the GitHub Action and GitLab template for gating on scans. It runs a scan, waits for it, prints the severity counts, and exits non-zero when findings cross your critical, high, or medium thresholds, so it drops into any CI or a local shell. Point it at a self-hosted instance with --api-base.
+- [Share2] **[ADDED]** **Social Preview Link on Scan Results**
+  A scan's More about this host section now links out to a third-party inspector for the page's Open Graph and social-share tags. It is a link-out on purpose: the engine stays focused on security, and the social preview is left to a tool built for it. The target service is a single swappable setting.
+- [FileSearch] **[ADDED]** **Import an API Spec to Find Scan Targets**
+  Send an OpenAPI 3, Swagger 2, or Postman collection to /api/v3/scan/import-spec and VulnRadar pulls out the concrete URLs to scan (server and base URLs plus non-templated paths), so you can push a whole API surface through a bulk scan. The document is parsed exactly as sent and never fetched from a URL, which keeps it off the SSRF surface.
+- [Keyboard] **[ADDED]** **API Playground: Try Calls and Copy Them as Code**
+  A new API playground at /docs/api/playground lets you send real requests to the API right from the browser: pick an endpoint, fill in the parameters and a body, paste an API key, and read the JSON response. Every call also renders as ready-to-run code in the language you pick (cURL, JavaScript, Python, Go, PHP, Java, Ruby, or C#), updating as you edit the request. It is driven by the OpenAPI spec so it never drifts from the API, your key is used only in your browser and never stored, and it is linked from the API docs and the landing page.
+- [BookOpen] **[ADDED]** **Documentation Now Covers the Whole Product**
+  The docs gained pages for Teams, Scheduled Scans, Triage and Remediation, Sharing and Public Pages, Account Security, GitHub Scanning, AI Features, Reports and Compliance, and the command-line tool, plus the previously undocumented self-hosting environment variables (Google and GitHub sign-in, IPv4 session capture, database pool tuning). Every new page uses the same layout as the rest of the docs, and because the in-app AI assistant reads the docs, it now knows about all of these too. Page titles and descriptions across the whole site were also tuned to the lengths search engines display.
 
 ---
 
@@ -1659,7 +1726,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ## Quick reference
 
-- **Total releases:** 61
-- **Total changes documented:** 577
-- **Latest:** v3.6.1 (August 21, 2026) - Billing Correctness, Discoverability, Mobile Live Viewer
+- **Total releases:** 62
+- **Total changes documented:** 606
+- **Latest:** v3.7.0 (August 24, 2026) - Support Tickets, Report Exports, Attack Surface, GitHub Scanner
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release

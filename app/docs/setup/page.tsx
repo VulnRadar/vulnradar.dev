@@ -385,7 +385,11 @@ API_KEY_ENCRYPTION_KEY=your-64-character-hex-key`}
 
         <Card className="p-6 border-border/40">
           <h3 className="text-base font-semibold mb-4">Production</h3>
-          <CodeBlock code="npm run build\nnpm start" language="bash" />
+          <CodeBlock
+            code={`npm run build
+npm start`}
+            language="bash"
+          />
           <p className="text-xs text-muted-foreground mt-2">
             Listens on port 3000 by default. Put behind a reverse proxy (Caddy,
             Traefik, nginx) for TLS.
@@ -570,7 +574,8 @@ npm run db:migrate:dry-run`,
         <DocsCallout variant="success" title="Prerequisites">
           <p>Docker 24+ and Docker Compose v2.</p>
           <CodeBlock
-            code="docker --version\ndocker compose version"
+            code={`docker --version
+docker compose version`}
             language="bash"
             className="mt-2"
           />
@@ -582,7 +587,8 @@ npm run db:migrate:dry-run`,
               Step 1: Project directory
             </h3>
             <CodeBlock
-              code="mkdir -p ~/vulnradar\ncd ~/vulnradar"
+              code={`mkdir -p ~/vulnradar
+cd ~/vulnradar`}
               language="bash"
             />
           </Card>

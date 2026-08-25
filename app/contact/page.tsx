@@ -10,7 +10,11 @@ import {
   SupportTickets,
   CATEGORIES,
 } from "@/components/contact";
-import { getQueryParam, setQueryParam } from "@/lib/ui/url-state";
+import {
+  getQueryParam,
+  getQueryParamInt,
+  setQueryParam,
+} from "@/lib/ui/url-state";
 
 const VALID_CATEGORIES = CATEGORIES.map((c) => c.id);
 
@@ -19,11 +23,16 @@ export default function ContactPage() {
   const [submitted, setSubmitted] = useState(false);
   const [_error, setError] = useState<string | null>(null);
 
-  // Handle query param-based category selection (e.g., /contact?category=bug)
+  // Handle query param-based category selection (e.g., /contact?category=bug).
+  // A ?ticket=N deep link (from the ticket notification email / bell) opens the
+  // Support Ticket category so <SupportTickets> mounts and reads the id itself.
   useEffect(() => {
+    const ticketId = getQueryParamInt("ticket");
     const initial = getQueryParam("category");
-    if (initial && VALID_CATEGORIES.includes(initial)) {
+    if (ticketId && ticketId > 0) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- reads the URL's query string (an external system) to seed initial state
+      setCategory("ticket");
+    } else if (initial && VALID_CATEGORIES.includes(initial)) {
       setCategory(initial);
     }
   }, []);
@@ -63,20 +72,20 @@ export default function ContactPage() {
             selected={category}
             onSelect={handleCategoryChange}
           />
-          {category && (
+          {/* "Support Ticket" opens the tracked, two-way thread with staff
+              (SupportTickets manages its own state and sign-in prompt). Every
+              other category is the fire-and-forget anonymous contact form. */}
+          {category === "ticket" ? (
+            <SupportTickets />
+          ) : category ? (
             <ContactForm
               category={category}
               onSuccess={() => setSubmitted(true)}
               onError={setError}
             />
-          )}
+          ) : null}
         </div>
       )}
-
-      {/* Tracked, two-way support tickets for signed-in users (all plans). The
-          anonymous contact form above is fire-and-forget; this is the
-          conversation thread with staff. */}
-      <SupportTickets />
     </PublicPageShell>
   );
 }

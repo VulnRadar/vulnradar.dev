@@ -34,7 +34,7 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     return { rows: sessionRow ? [sessionRow] : [] };
   if (s.startsWith("SELECT key, value FROM system_settings"))
     return { rows: [] };
-  if (s.startsWith("SELECT id, ip_address, user_agent, created_at, expires_at"))
+  if (s.startsWith("SELECT id, ip_address, ipv4_address, user_agent"))
     return { rows: userSessionsRows };
   if (s.startsWith("DELETE FROM sessions WHERE id = $1 AND user_id = $2"))
     return { rows: [], rowCount: deleteRowCount };
@@ -123,7 +123,7 @@ describe("DELETE /api/v3/auth/sessions/[id]", () => {
     // Proves the lookup that decides the 404 was scoped to the caller's
     // own user_id, not the target session's owner.
     const selectCall = queries.find((q) =>
-      q.sql.startsWith("SELECT id, ip_address, user_agent"),
+      q.sql.startsWith("SELECT id, ip_address, ipv4_address, user_agent"),
     );
     expect(selectCall?.params).toEqual([33]);
 

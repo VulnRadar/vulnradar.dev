@@ -7,7 +7,7 @@ import {
 } from "@/components/seo/structured-data";
 
 export const metadata: Metadata = pageMetadata({
-  title: "Developer Guide",
+  title: "Developer Guide: Add a Detection Check",
   description:
     "Extend the scanner: how detection checks are structured, how to add a new check category, the registry, and how findings and confidence scores are produced.",
   path: "/docs/developers",

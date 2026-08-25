@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/ui/utils";
 import { getQueryParamInt } from "@/lib/ui/url-state";
-import { API, ROUTES } from "@/lib/config/constants";
+import { API, ROUTES, TURNSTILE_ENABLED } from "@/lib/config/constants";
+import { TurnstileWidget } from "@/components/shared/turnstile-widget";
 import {
   TICKET_CATEGORIES,
   TICKET_CATEGORY_LABELS,
@@ -112,6 +113,7 @@ export function SupportTickets() {
   const [category, setCategory] = useState<TicketCategory>("other");
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 
   // Reply box
   const [reply, setReply] = useState("");
@@ -185,19 +187,29 @@ export function SupportTickets() {
   async function submitNew(e: React.FormEvent) {
     e.preventDefault();
     if (submitting) return;
+    if (TURNSTILE_ENABLED && !turnstileToken) {
+      setError("Please complete the captcha verification.");
+      return;
+    }
     setError(null);
     setSubmitting(true);
     try {
       const res = await fetch(API.SUPPORT_TICKETS, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subject, category, message }),
+        body: JSON.stringify({
+          subject,
+          category,
+          message,
+          turnstileToken: TURNSTILE_ENABLED ? turnstileToken : null,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Could not open the ticket.");
       setSubject("");
       setMessage("");
       setCategory("other");
+      setTurnstileToken(null);
       await loadTickets();
       await openThread(data.ticket.id);
     } catch (e) {
@@ -380,8 +392,19 @@ export function SupportTickets() {
               required
             />
           </div>
+          <div className="flex justify-center sm:justify-start">
+            <TurnstileWidget
+              onVerify={setTurnstileToken}
+              onExpire={() => setTurnstileToken(null)}
+              className="cf-turnstile"
+            />
+          </div>
+
           <div className="flex items-center gap-2">
-            <Button type="submit" disabled={submitting}>
+            <Button
+              type="submit"
+              disabled={submitting || (TURNSTILE_ENABLED && !turnstileToken)}
+            >
               {submitting ? "Opening..." : "Open ticket"}
             </Button>
             <Button
@@ -390,6 +413,7 @@ export function SupportTickets() {
               onClick={() => {
                 setView("list");
                 setError(null);
+                setTurnstileToken(null);
               }}
             >
               Cancel

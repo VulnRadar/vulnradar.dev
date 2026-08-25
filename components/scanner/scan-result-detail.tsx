@@ -2,7 +2,8 @@
 
 import type { ReactNode } from "react";
 import dynamic from "next/dynamic";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Share2, ExternalLink } from "lucide-react";
+import { OG_INSPECT_URL_TEMPLATE } from "@/lib/config/constants";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 import { ScanSummary } from "./scan-summary";
 import { ResultsList } from "./results-list";
@@ -67,6 +68,10 @@ export interface ScanResultDetailProps {
   panelFooter?: ReactNode;
   /** Overrides the zero-findings block (the dashboard adds a "New scan" action). */
   emptyFindings?: ReactNode;
+  /** Owner only: turns on the findings list's multi-select bulk remediation
+   *  bar. Set on the owner's own scan surfaces (dashboard, history); left off
+   *  on the public host and shared-token views, which have no remediation. */
+  canRemediate?: boolean;
 }
 
 const SECTION_HEADING =
@@ -99,6 +104,7 @@ export function ScanResultDetail({
   subdomain,
   panelFooter,
   emptyFindings,
+  canRemediate,
 }: ScanResultDetailProps) {
   const hasResponseHeaders =
     !!result.responseHeaders && Object.keys(result.responseHeaders).length > 0;
@@ -143,7 +149,26 @@ export function ScanResultDetail({
 
       {extendedPanels ? (
         <div className="flex flex-col gap-3 border-t border-border/50 pt-5">
-          <h2 className={SECTION_HEADING}>More about this host</h2>
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+            <h2 className={SECTION_HEADING}>More about this host</h2>
+            {/* Social/OG preview lives off our engine: a link-out to a
+                third-party inspector rather than something we fetch. */}
+            {OG_INSPECT_URL_TEMPLATE && result.url && (
+              <a
+                href={OG_INSPECT_URL_TEMPLATE.replace(
+                  "{url}",
+                  encodeURIComponent(result.url),
+                )}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <Share2 aria-hidden className="h-3.5 w-3.5" />
+                Preview social cards
+                <ExternalLink aria-hidden className="h-3 w-3 opacity-70" />
+              </a>
+            )}
+          </div>
 
           {result.screenshot && screenshotSrc && (
             <ScreenshotPanel
@@ -193,7 +218,11 @@ export function ScanResultDetail({
       )}
 
       {result.findings.length > 0 ? (
-        <ResultsList findings={result.findings} onSelectIssue={onSelectIssue} />
+        <ResultsList
+          findings={result.findings}
+          onSelectIssue={onSelectIssue}
+          scanUrl={canRemediate ? result.url : undefined}
+        />
       ) : (
         (emptyFindings ?? (
           <div className="rounded-md border border-dashed border-border bg-card/50 px-4 py-10 text-center">

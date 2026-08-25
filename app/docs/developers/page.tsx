@@ -31,19 +31,19 @@ const tocItems: TocItem[] = [
   { id: "overview", label: "Overview" },
   { id: "finding-types", label: "Finding Types API" },
   { id: "building-sdks", label: "Building SDKs" },
-  { id: "sdk-checklist", label: "SDK Checklist", level: 2 },
+  { id: "sdk-checklist", label: "SDK Checklist" },
   { id: "development", label: "Development Guide" },
-  { id: "prerequisites", label: "Prerequisites", level: 2 },
-  { id: "node-version-policy", label: "Node Version Policy", level: 2 },
-  { id: "quick-start", label: "Quick Start", level: 2 },
-  { id: "scripts", label: "Scripts", level: 2 },
-  { id: "linting", label: "Linting", level: 2 },
-  { id: "typecheck", label: "Type Checking", level: 2 },
-  { id: "commits", label: "Commit Conventions", level: 2 },
-  { id: "pull-requests", label: "Pull Request Process", level: 2 },
-  { id: "structure", label: "Project Structure", level: 2 },
-  { id: "pitfalls", label: "Common Pitfalls", level: 2 },
-  { id: "debugging", label: "Debugging", level: 2 },
+  { id: "prerequisites", label: "Prerequisites" },
+  { id: "node-version-policy", label: "Node Version Policy" },
+  { id: "quick-start", label: "Quick Start" },
+  { id: "scripts", label: "Scripts" },
+  { id: "linting", label: "Linting" },
+  { id: "typecheck", label: "Type Checking" },
+  { id: "commits", label: "Commit Conventions" },
+  { id: "pull-requests", label: "Pull Request Process" },
+  { id: "structure", label: "Project Structure" },
+  { id: "pitfalls", label: "Common Pitfalls" },
+  { id: "debugging", label: "Debugging" },
   { id: "contributing", label: "Contributing" },
 ];
 
@@ -173,6 +173,7 @@ export default function DevelopersPage() {
   return (
     <div className="space-y-16">
       <DocsHero
+        id="top"
         badge="SDK Development"
         title="Developer Documentation"
         description={`Build SDKs, integrations, and tools for ${APP_NAME}: the finding types API, SDK conventions, and the contributor guide for the codebase itself.`}

@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { z } from "zod";
-import { REMEDIATION_STATUSES } from "@/lib/scanner/remediation";
+import {
+  REMEDIATION_STATUSES,
+  normalizeDueAt,
+} from "@/lib/scanner/remediation";
 
 /**
  * Per-finding remediation status (the owner's own "what have I done about
@@ -24,6 +27,10 @@ const SetSchema = z.object({
   status: z.enum(REMEDIATION_STATUSES),
   note: z.string().max(2000).optional(),
   assignee: z.string().max(120).optional(),
+  // A target/SLA date (from a date input, so "2026-09-01", or a full ISO
+  // datetime). null clears it. Parseability is enforced in the handler so a
+  // junk string becomes null rather than a DB error.
+  dueAt: z.string().max(40).nullish(),
 });
 
 /** Shared "table not migrated yet" -> 503, matching the feedback route. */
@@ -63,6 +70,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { findingId, findingUrl, status, note, assignee } = result.data;
+  const dueAt = normalizeDueAt(result.data.dueAt);
 
   try {
     // `open` is the implicit default (absence of a row), so setting it just
@@ -80,11 +88,11 @@ export async function POST(req: NextRequest) {
 
     const row = await pool.query(
       `INSERT INTO finding_remediation
-         (user_id, finding_id, finding_url, status, note, assignee)
-       VALUES ($1, $2, $3, $4, $5, $6)
+         (user_id, finding_id, finding_url, status, note, assignee, due_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (user_id, finding_id, finding_url)
-       DO UPDATE SET status = $4, note = $5, assignee = $6, updated_at = NOW()
-       RETURNING status, note, assignee, updated_at`,
+       DO UPDATE SET status = $4, note = $5, assignee = $6, due_at = $7, updated_at = NOW()
+       RETURNING status, note, assignee, due_at, updated_at`,
       [
         session.userId,
         findingId,
@@ -92,6 +100,7 @@ export async function POST(req: NextRequest) {
         status,
         note ?? null,
         assignee ?? null,
+        dueAt,
       ],
     );
 
@@ -147,7 +156,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const rows = await pool.query(
-      `SELECT finding_id, status, note, assignee, updated_at
+      `SELECT finding_id, status, note, assignee, due_at, updated_at
          FROM finding_remediation
         WHERE user_id = $1
           AND ($2::text IS NULL OR finding_url = $2)

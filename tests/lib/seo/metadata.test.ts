@@ -144,6 +144,7 @@ describe("pageMetadata", () => {
         width: SEO_OG_IMAGE_WIDTH,
         height: SEO_OG_IMAGE_HEIGHT,
         alt: `Home | ${APP_NAME}`,
+        type: "image/png",
       },
     ]);
     expect(meta.twitter?.images).toEqual([SEO_OG_IMAGE]);
@@ -162,6 +163,7 @@ describe("pageMetadata", () => {
         width: SEO_OG_IMAGE_WIDTH,
         height: SEO_OG_IMAGE_HEIGHT,
         alt: `Home | ${APP_NAME}`,
+        type: "image/png",
       },
     ]);
     expect(meta.twitter?.images).toEqual(["/custom.png"]);

@@ -41,6 +41,7 @@ import {
   ListOrdered,
   Wallet,
   Mail,
+  Loader2,
 } from "lucide-react";
 import { IPRulesManager } from "@/components/admin/features/ip-rules-manager";
 import { BlockedDataManager } from "@/components/admin/features/blocked-data-manager";
@@ -101,9 +102,12 @@ import {
 import { AdminSkeleton } from "@/components/admin/admin-skeleton";
 import {
   hasStaffPermission,
+  isStaffRole,
   STAFF_PERMISSIONS,
   type StaffPermission,
 } from "@/lib/auth/permissions-client";
+import { useAuth } from "@/components/providers/auth-provider";
+import { resolveAdminGate } from "@/lib/admin/admin-gate";
 
 const VALID_TABS = [
   "users",
@@ -180,6 +184,11 @@ function AdminContent() {
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
   const [twoFactorLockout, setTwoFactorLockout] = useState(false);
+  // Client-side auth (cached role) so an obvious non-staff visitor is denied
+  // before the admin data request would flash the skeleton. The server's 403
+  // stays authoritative on top; see resolveAdminGate.
+  const { me, isLoading: authLoading } = useAuth();
+  const viewerIsStaff = isStaffRole(me?.role);
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [page, setPage] = useState(1);
@@ -884,8 +893,16 @@ function AdminContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, callerRole]);
 
-  // Forbidden screen
-  if (forbidden) {
+  const gate = resolveAdminGate({
+    forbidden,
+    authLoading,
+    viewerIsStaff,
+    dataLoading: loading,
+  });
+
+  // Access denied: the server returned 403, or the client's own cached role
+  // already shows this viewer is not staff (so the skeleton never flashes).
+  if (gate === "deny") {
     return (
       <div className="min-h-screen bg-background flex flex-col">
         <Header />
@@ -942,7 +959,26 @@ function AdminContent() {
     );
   }
 
-  if (loading) {
+  // Auth still resolving for a viewer we cannot yet confirm as staff: a
+  // neutral loader, never the admin skeleton, so nothing admin-shaped shows
+  // before a possible deny.
+  if (gate === "auth-pending") {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <Header />
+        <main className="flex-1 flex items-center justify-center px-4">
+          <Loader2
+            className="h-6 w-6 animate-spin text-muted-foreground"
+            aria-hidden="true"
+          />
+          <span className="sr-only">Loading</span>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (gate === "loading") {
     return <AdminSkeleton />;
   }
 
