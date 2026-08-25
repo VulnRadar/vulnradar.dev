@@ -1,8 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/auth/authorization";
 import { performDatabaseCleanup } from "@/lib/database/cleanup";
-import pool from "@/lib/database/db";
-import { STAFF_ROLE_HIERARCHY } from "@/lib/config/constants";
 
 /**
  * POST /api/v3/admin/cleanup
@@ -29,22 +27,16 @@ import { STAFF_ROLE_HIERARCHY } from "@/lib/config/constants";
  *   - gifted_subscriptions (90d past expiry)
  *   - system_error_logs (30d)
  *
- * Auth: staff session (support role or above). CSRF middleware
- * applies (same-origin POST from the admin UI).
+ * Auth: full admin. Cleanup permanently deletes scan history past
+ * retention, audit logs, sessions, and tokens, so it is admin-only (not the
+ * support-tier floor it used to allow) and, via requireAdmin, also honors
+ * ENFORCE_STAFF_2FA. CSRF middleware applies (same-origin POST).
  */
-export async function POST(_request: NextRequest) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const userResult = await pool.query<{ role: string }>(
-    "SELECT role FROM users WHERE id = $1",
-    [session.userId],
-  );
-  const role = userResult.rows[0]?.role || "user";
-  if ((STAFF_ROLE_HIERARCHY[role] || 0) < (STAFF_ROLE_HIERARCHY.support || 1)) {
+export async function POST() {
+  const admin = await requireAdmin();
+  if (!admin) {
     return NextResponse.json(
-      { error: "Staff role required." },
+      { error: "Admin access required." },
       { status: 403 },
     );
   }

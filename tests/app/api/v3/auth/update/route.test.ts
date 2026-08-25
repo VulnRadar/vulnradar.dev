@@ -519,7 +519,10 @@ describe("PATCH /api/v3/auth/update", () => {
       const json = await res.json();
 
       expect(res.status).toBe(400);
-      expect(json.error).toMatch(/password needs/i);
+      // Rejected by either the advisory strength gate ("too weak") or the
+      // hard-requirements gate ("password needs") -- a low-entropy string
+      // trips the strength gate first now that it runs before the hard checks.
+      expect(json.error).toMatch(/too weak|password needs/i);
       expect(passwordUpdateCalls).toHaveLength(0);
     });
 

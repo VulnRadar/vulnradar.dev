@@ -6,21 +6,11 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
  * NotificationBell (components/shared/notification-center.tsx) both poll to
  * decide which admin-authored banner/modal/toast/bell notifications to show.
  *
- * This route trusts the `authenticated` and `staff` query params completely:
- * it does not look at the session itself, it just treats
- * `?authenticated=true` / `?staff=true` as fact and defaults both to false
- * when absent (see route.ts below). That means the two client callers are
- * fully responsible for passing them, and this codebase has twice shipped a
- * regression where the caller stopped doing that — silently breaking every
- * "Logged In Users" / "Staff Only" / "Admins Only" notification (they can
- * never match with the params defaulted false) while "Guests Only" notices
- * started showing to everyone, including logged-in users (NOT $2 is true
- * when $2 defaults false).
- *
- * These tests pin the query's audience-matching contract so that contract
- * regression is visible here even though the client-side omission itself
- * (a plain fetch() with no params) isn't something this Node-environment
- * suite can exercise directly.
+ * Audience privilege is derived from the SERVER session, never from client
+ * query params. The route used to bind `?authenticated=true&staff=true`
+ * straight into the SQL audience gate, letting any caller self-elevate to
+ * receive staff/admin-only broadcasts; these tests pin that the params are
+ * ignored and that `isStaff` comes from the session role.
  */
 
 const mockQuery = vi.fn();
@@ -28,52 +18,68 @@ vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
 }));
 
-const { GET } = await import("@/app/api/v3/notifications/active/route");
+const mockGetSession = vi.fn();
+const mockIsStaffRole = vi.fn();
+vi.mock("@/lib/auth", () => ({
+  getSession: () => mockGetSession(),
+  isStaffRole: (role: string | null | undefined) => mockIsStaffRole(role),
+}));
 
-function request(query: string): Request {
-  return new Request(`http://localhost/api/v3/notifications/active${query}`);
-}
+const { GET } = await import("@/app/api/v3/notifications/active/route");
 
 beforeEach(() => {
   mockQuery.mockReset();
   mockQuery.mockResolvedValue({ rows: [] });
+  mockGetSession.mockReset();
+  mockIsStaffRole.mockReset();
+  mockIsStaffRole.mockReturnValue(false);
 });
 
 describe("GET /api/v3/notifications/active", () => {
-  it("defaults both authenticated and staff to false when the params are omitted", async () => {
-    await GET(request(""));
+  it("treats a request with no session as an unauthenticated guest", async () => {
+    mockGetSession.mockResolvedValue(null);
+    await GET();
     expect(mockQuery).toHaveBeenCalledTimes(1);
     const [, params] = mockQuery.mock.calls[0];
     expect(params[1]).toBe(false); // isAuthenticated
     expect(params[2]).toBe(false); // isStaff
   });
 
-  it("passes authenticated=true through when the caller sends it", async () => {
-    await GET(request("?authenticated=true&staff=false"));
+  it("marks a signed-in non-staff user authenticated but not staff", async () => {
+    mockGetSession.mockResolvedValue({ userId: 5, role: "user" });
+    mockIsStaffRole.mockReturnValue(false);
+    await GET();
     const [, params] = mockQuery.mock.calls[0];
     expect(params[1]).toBe(true);
     expect(params[2]).toBe(false);
   });
 
-  it("passes staff=true through when the caller sends it", async () => {
-    await GET(request("?authenticated=true&staff=true"));
+  it("marks a signed-in staff user as staff (from the session role)", async () => {
+    mockGetSession.mockResolvedValue({ userId: 9, role: "admin" });
+    mockIsStaffRole.mockReturnValue(true);
+    await GET();
     const [, params] = mockQuery.mock.calls[0];
     expect(params[1]).toBe(true);
     expect(params[2]).toBe(true);
+    expect(mockIsStaffRole).toHaveBeenCalledWith("admin");
   });
 
-  it("treats anything other than the literal string 'true' as false", async () => {
-    await GET(request("?authenticated=1&staff=yes"));
+  it("never derives staff from a session-less caller even if isStaffRole is lax", async () => {
+    // Security regression guard: a guest must never come back as staff.
+    mockGetSession.mockResolvedValue(null);
+    mockIsStaffRole.mockReturnValue(true);
+    await GET();
     const [, params] = mockQuery.mock.calls[0];
     expect(params[1]).toBe(false);
     expect(params[2]).toBe(false);
   });
 
   it("returns the rows from the query directly as a JSON array", async () => {
+    mockGetSession.mockResolvedValue(null);
     mockQuery.mockResolvedValue({
       rows: [{ id: 1, type: "banner", audience: "all" }],
     });
-    const res = await GET(request(""));
+    const res = await GET();
     const json = await res.json();
     expect(res.status).toBe(200);
     expect(Array.isArray(json)).toBe(true);
@@ -81,8 +87,9 @@ describe("GET /api/v3/notifications/active", () => {
   });
 
   it("returns 500 and does not throw when the database errors", async () => {
+    mockGetSession.mockResolvedValue(null);
     mockQuery.mockRejectedValue(new Error("connection lost"));
-    const res = await GET(request(""));
+    const res = await GET();
     expect(res.status).toBe(500);
   });
 });

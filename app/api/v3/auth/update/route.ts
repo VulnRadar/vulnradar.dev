@@ -7,6 +7,7 @@ import {
   createSession,
 } from "@/lib/auth";
 import {
+  analyzePassword,
   checkPasswordRequirements,
   passwordRequirementsMet,
   unmetRequirementLabels,
@@ -277,9 +278,24 @@ export async function PATCH(request: NextRequest) {
     // Update password
     if (newPassword) {
       // auth: current password already verified above (sensitive-change branch).
+      // Advisory strength gate first (common/low-entropy passwords), matching
+      // signup and reset-password -- the profile change was the one path that
+      // let a user rotate to "Password1!".
+      const pwAnalysis = analyzePassword(newPassword);
+      if (pwAnalysis.score < 3) {
+        return NextResponse.json(
+          {
+            error:
+              "Password is too weak. " +
+              (pwAnalysis.feedback.warnings[0] ||
+                "Use a longer phrase or mix character types."),
+          },
+          { status: 400 },
+        );
+      }
+
       // Same hard requirements signup and reset-password enforce (length,
-      // case, digit, symbol, not built from the account's own email/name),
-      // a profile password change was the one path that skipped all of this.
+      // case, digit, symbol, not built from the account's own email/name).
       const minLength = await getSetting("PASSWORD_MIN_LENGTH");
       const pwRequirements = checkPasswordRequirements(
         newPassword,
@@ -308,6 +324,13 @@ export async function PATCH(request: NextRequest) {
       // re-create the current session so the user is not
       // immediately logged out.
       await deleteAllSessions(session.userId);
+      // Also clear trusted devices, exactly as reset-password does: someone
+      // rotating their password on suspicion of compromise must not leave a
+      // planted device_trust row that keeps skipping 2FA on the attacker's
+      // machine.
+      await pool.query("DELETE FROM device_trust WHERE user_id = $1", [
+        session.userId,
+      ]);
       const uaForSession = await getUserAgent();
       const newSessionId = await createSession(
         session.userId,

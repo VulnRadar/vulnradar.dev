@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
-import { requirePermission, logAction } from "@/lib/auth/authorization";
+import {
+  requirePermission,
+  requireAdmin,
+  logAction,
+} from "@/lib/auth/authorization";
 import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 import { getClientIp } from "@/lib/api/request-utils";
 import {
@@ -99,7 +103,11 @@ export async function GET(request: NextRequest) {
  * bulk-delete in this codebase.
  */
 export async function DELETE() {
-  const admin = await requirePermission(STAFF_PERMISSIONS.VIEW_ERROR_LOGS);
+  // Wiping the error-log trail is a destructive, audit-relevant action, so it
+  // requires full admin -- not the VIEW_ERROR_LOGS read grant (which the
+  // non-admin `ops` role holds and which correctly gates the GET above). A
+  // view-only role must not be able to erase the log it can only read.
+  const admin = await requireAdmin();
   if (!admin) {
     return NextResponse.json(
       { error: "Admin access required." },

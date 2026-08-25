@@ -1,10 +1,16 @@
 import pool from "@/lib/database/db";
+import { getSession, isStaffRole } from "@/lib/auth";
 
-export async function GET(req: Request) {
+export async function GET() {
   try {
-    const { searchParams } = new URL(req.url);
-    const isAuthenticated = searchParams.get("authenticated") === "true";
-    const isStaff = searchParams.get("staff") === "true";
+    // Derive audience privilege from the SERVER session, never from client
+    // query params. The old handler bound `?authenticated=true&staff=true`
+    // straight into the SQL audience gate, so any caller could self-elevate
+    // to receive staff/admin-only broadcasts. The session cookie is the only
+    // trustworthy source of who the caller is.
+    const session = await getSession();
+    const isAuthenticated = !!session?.userId;
+    const isStaff = isAuthenticated && isStaffRole(session?.role);
 
     const now = new Date();
 
