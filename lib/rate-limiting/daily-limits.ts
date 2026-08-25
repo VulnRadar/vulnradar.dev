@@ -197,6 +197,54 @@ export async function incrementDailyCount(userId: number): Promise<number> {
 }
 
 /**
+ * Cap-aware daily increment: bumps the shared day counter ONLY while it is
+ * still under `limit`, in one atomic statement (mirrors
+ * checkAndRecordRequest's guarded UPSERT). Returns whether this scan was
+ * recorded. The crawl loop uses this so two concurrent crawls that each sized
+ * their page batch from the same read-once `remaining` still cannot drive the
+ * counter past the cap: the moment the guard stops recording, the caller
+ * breaks and stops scanning. `limit` -1 / non-finite means unlimited.
+ */
+export async function incrementDailyCountCapped(
+  userId: number,
+  limit: number,
+): Promise<{ recorded: boolean; count: number }> {
+  if (!Number.isFinite(limit) || limit < 0) {
+    return { recorded: true, count: await incrementDailyCount(userId) };
+  }
+  const key = `daily_scan:${userId}`;
+  try {
+    const result = await pool.query<{ new_count: string }>(
+      `WITH ins AS (
+         INSERT INTO rate_limits (key, "count", window_start)
+         VALUES ($1, 1, date_trunc('day', NOW()))
+         ON CONFLICT (key, window_start)
+         DO UPDATE SET "count" = rate_limits."count" + 1
+         WHERE rate_limits."count" < $2
+         RETURNING "count"
+       )
+       SELECT "count" AS new_count FROM ins`,
+      [key, limit],
+    );
+    if (result.rows.length === 0) {
+      // At/over cap: the WHERE guard skipped the increment. Re-read the real
+      // (untouched) count so the caller can report an accurate number.
+      const current = await pool.query<{ count: number }>(
+        `SELECT "count" FROM rate_limits
+         WHERE key = $1 AND window_start = date_trunc('day', NOW())`,
+        [key],
+      );
+      return { recorded: false, count: current.rows[0]?.count ?? limit };
+    }
+    return { recorded: true, count: Number(result.rows[0].new_count) };
+  } catch (error) {
+    console.error("[DailyLimits] Error in capped daily increment:", error);
+    // Fail closed: don't record (so the caller stops scanning) on a DB error.
+    return { recorded: false, count: limit };
+  }
+}
+
+/**
  * Check if user can make a request (has remaining daily quota)
  */
 export async function canMakeRequest(userId: number): Promise<{

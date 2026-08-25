@@ -23,7 +23,6 @@ import {
   checkAndRecordRequest,
   getRateLimitHeaders,
 } from "@/lib/rate-limiting/daily-limits";
-import pool from "@/lib/database/db";
 import type { Category } from "@/lib/scanner/types";
 import {
   APP_NAME,
@@ -32,9 +31,13 @@ import {
 } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import { validateScanTarget } from "@/lib/scanner/safe-fetch";
+import { finalizeScanFailure } from "@/lib/scanner/scan-jobs";
 import { isUrlOwnedByUser } from "@/lib/domains/scope";
 import { requestsActiveProbing } from "@/lib/scanner/active-probe-catalog";
-import { checkConcurrentScanLimit } from "@/lib/rate-limiting/concurrent-scans";
+import {
+  checkConcurrentScanLimit,
+  reserveConcurrentScanSlot,
+} from "@/lib/rate-limiting/concurrent-scans";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { resolveScanIsPublic } from "@/lib/scanner/scan-privacy";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
@@ -348,23 +351,38 @@ export async function POST(request: NextRequest) {
     // the client already had the full result in hand either way).
     let scanHistoryId: number;
     try {
-      const insertResult = await pool.query(
-        `INSERT INTO scan_history
-           (user_id, url, source, notes, status, started_at, categories_total, is_public)
-         VALUES ($1, $2, $3, $4, 'pending', NOW(), $5, $6)
-         RETURNING id`,
-        [
-          authedUserId,
-          normalizedUrl,
-          isApiKeyAuth ? "api" : "web",
-          DEFAULT_SCAN_NOTE,
-          categoriesTotal,
-          requestedIsPublic,
-        ],
+      // Reserve the concurrency slot and insert the row in one locked
+      // transaction so parallel requests can't race past the earlier
+      // check-then-act concurrency check and overshoot the cap.
+      const reservation = await reserveConcurrentScanSlot(
+        authedUserId,
+        async (client) => {
+          const insertResult = await client.query(
+            `INSERT INTO scan_history
+               (user_id, url, source, notes, status, started_at, categories_total, is_public)
+             VALUES ($1, $2, $3, $4, 'pending', NOW(), $5, $6)
+             RETURNING id`,
+            [
+              authedUserId,
+              normalizedUrl,
+              isApiKeyAuth ? "api" : "web",
+              DEFAULT_SCAN_NOTE,
+              categoriesTotal,
+              requestedIsPublic,
+            ],
+          );
+          const insertedId = insertResult.rows[0]?.id;
+          if (!insertedId) throw new Error("Insert returned no id");
+          return insertedId as number;
+        },
       );
-      const insertedId = insertResult.rows[0]?.id;
-      if (!insertedId) throw new Error("Insert returned no id");
-      scanHistoryId = insertedId;
+      if (!reservation.ok) {
+        return NextResponse.json(
+          { error: reservation.check.message },
+          { status: 429 },
+        );
+      }
+      scanHistoryId = reservation.scanId;
     } catch (err) {
       console.error(
         `[${APP_NAME}] Failed to create scan_history row:`,
@@ -381,6 +399,10 @@ export async function POST(request: NextRequest) {
     // process (not serverless functions): the function keeps running after
     // this handler returns, with no risk of being killed mid-scan the way
     // it would be on a Vercel-style deployment.
+    // Detached from the request lifecycle. A throw BEFORE executeScan arms
+    // its watchdog (e.g. getSettings failing) would otherwise leave this row
+    // stuck 'pending' forever plus an unhandled rejection, so mark it failed
+    // if the background job escapes.
     void executeScan({
       scanId: scanHistoryId,
       url,
@@ -392,6 +414,11 @@ export async function POST(request: NextRequest) {
       categoriesTotal,
       captureScreenshot,
       portScan,
+    }).catch(async (err) => {
+      const message =
+        err instanceof Error ? err.message : "Scan failed to start.";
+      console.error(`[${APP_NAME}] executeScan dispatch failed:`, message);
+      await finalizeScanFailure(scanHistoryId, message).catch(() => {});
     });
 
     // Add rate limit headers from the SAME quota row the gate consumed at the

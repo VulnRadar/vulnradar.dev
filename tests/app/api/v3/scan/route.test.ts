@@ -74,9 +74,33 @@ vi.mock("@/lib/domains/scope", () => ({
 }));
 
 const mockCheckConcurrentScanLimit = vi.fn();
+// reserveConcurrentScanSlot now performs the scan_history INSERT inside a
+// locked transaction. The real helper uses pool.connect(); here we run the
+// caller's insertRow against a fake client that delegates to mockQuery, so
+// the INSERT still flows through the same mock the assertions below inspect.
+const mockReserveConcurrentScanSlot = vi.fn(
+  async (
+    _userId: number,
+    insertRow: (client: {
+      query: (...a: unknown[]) => unknown;
+    }) => Promise<number>,
+  ) => {
+    const scanId = await insertRow({
+      query: (...a: unknown[]) => mockQuery(...a),
+    });
+    return { ok: true as const, scanId };
+  },
+);
 vi.mock("@/lib/rate-limiting/concurrent-scans", () => ({
   checkConcurrentScanLimit: (...args: unknown[]) =>
     mockCheckConcurrentScanLimit(...args),
+  reserveConcurrentScanSlot: (...args: unknown[]) =>
+    mockReserveConcurrentScanSlot(
+      ...(args as [
+        number,
+        (client: { query: (...a: unknown[]) => unknown }) => Promise<number>,
+      ]),
+    ),
 }));
 
 vi.mock("@/lib/scanner/engine", () => ({

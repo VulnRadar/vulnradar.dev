@@ -11,7 +11,7 @@ import {
   API_KEY_SCOPES,
 } from "@/lib/api/api-key-scopes";
 import { executeCrawlScan } from "@/lib/scanner/execute-crawl-scan";
-import pool from "@/lib/database/db";
+import { finalizeScanFailure } from "@/lib/scanner/scan-jobs";
 import {
   APP_NAME,
   BEARER_PREFIX,
@@ -28,7 +28,10 @@ import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { resolveScanIsPublic } from "@/lib/scanner/scan-privacy";
 import { isUrlOwnedByUser } from "@/lib/domains/scope";
 import { requestsActiveProbing } from "@/lib/scanner/active-probe-catalog";
-import { checkConcurrentScanLimit } from "@/lib/rate-limiting/concurrent-scans";
+import {
+  checkConcurrentScanLimit,
+  reserveConcurrentScanSlot,
+} from "@/lib/rate-limiting/concurrent-scans";
 import { logAction } from "@/lib/auth/authorization";
 import { normalizeUrl } from "@/lib/scanner/execute-scan";
 import { establishScanSession } from "@/lib/scanner/auth/login";
@@ -426,22 +429,37 @@ export async function POST(request: NextRequest) {
   // filled in once the page count is known — see executeCrawlScan.
   let scanHistoryId: number;
   try {
-    const insertResult = await pool.query(
-      `INSERT INTO scan_history
-         (user_id, url, source, notes, status, started_at, categories_total, is_public)
-       VALUES ($1, $2, $3, $4, 'pending', NOW(), 0, $5)
-       RETURNING id`,
-      [
-        authedUserId,
-        normalizedMainUrl,
-        isApiKeyAuth ? "api" : "web",
-        DEFAULT_SCAN_NOTE,
-        requestedIsPublic,
-      ],
+    // Reserve the concurrency slot and insert the tracker row in one locked
+    // transaction so parallel crawls can't race past the earlier
+    // check-then-act concurrency check and overshoot the cap.
+    const reservation = await reserveConcurrentScanSlot(
+      authedUserId,
+      async (client) => {
+        const insertResult = await client.query(
+          `INSERT INTO scan_history
+             (user_id, url, source, notes, status, started_at, categories_total, is_public)
+           VALUES ($1, $2, $3, $4, 'pending', NOW(), 0, $5)
+           RETURNING id`,
+          [
+            authedUserId,
+            normalizedMainUrl,
+            isApiKeyAuth ? "api" : "web",
+            DEFAULT_SCAN_NOTE,
+            requestedIsPublic,
+          ],
+        );
+        const insertedId = insertResult.rows[0]?.id;
+        if (!insertedId) throw new Error("Insert returned no id");
+        return insertedId as number;
+      },
     );
-    const insertedId = insertResult.rows[0]?.id;
-    if (!insertedId) throw new Error("Insert returned no id");
-    scanHistoryId = insertedId;
+    if (!reservation.ok) {
+      return NextResponse.json(
+        { error: reservation.check.message },
+        { status: 429 },
+      );
+    }
+    scanHistoryId = reservation.scanId;
   } catch (err) {
     console.error(
       `[${APP_NAME}] Failed to create scan_history row for crawl:`,
@@ -473,6 +491,14 @@ export async function POST(request: NextRequest) {
     isPublic: requestedIsPublic,
     // In-memory session only when the crawl authenticated -- never persisted.
     ...(session ? { session, authenticated: true } : {}),
+  }).catch(async (err) => {
+    // A throw BEFORE executeCrawlScan arms its watchdog (e.g. getSettings
+    // failing) would otherwise leave this row stuck 'pending' forever plus an
+    // unhandled rejection; mark it failed if the background job escapes.
+    const message =
+      err instanceof Error ? err.message : "Crawl scan failed to start.";
+    console.error(`[${APP_NAME}] executeCrawlScan dispatch failed:`, message);
+    await finalizeScanFailure(scanHistoryId, message).catch(() => {});
   });
 
   // Audit the non-secret fact that an authenticated crawl ran: origin, method,

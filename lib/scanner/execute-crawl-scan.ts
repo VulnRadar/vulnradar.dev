@@ -11,7 +11,7 @@
 
 import {
   canMakeRequest,
-  incrementDailyCount,
+  incrementDailyCountCapped,
 } from "@/lib/rate-limiting/daily-limits";
 import { runSyncChecks, getPlannedSyncCategories } from "./engine";
 import { runAsyncChecks, getPlannedAsyncBranches } from "./async-checks";
@@ -485,9 +485,17 @@ export async function executeCrawlScan(
     }> = [];
 
     for (const pageUrl of pagesToScan) {
-      // Increment daily count before each scan (skip for API key auth)
+      // Charge the daily quota before each scan (skip for API-key auth, which
+      // uses its own per-key limits). Capped + atomic so two concurrent
+      // crawls that each sized pagesToScan from the same read-once `remaining`
+      // still can't push the shared day counter past the cap: once the guard
+      // stops recording, stop scanning the rest of this crawl's pages.
       if (!isApiKeyAuth) {
-        await incrementDailyCount(authedUserId);
+        const charge = await incrementDailyCountCapped(
+          authedUserId,
+          quotaCheck.limit,
+        );
+        if (!charge.recorded) break;
       }
       const result = await scanSingleUrl(
         pageUrl,

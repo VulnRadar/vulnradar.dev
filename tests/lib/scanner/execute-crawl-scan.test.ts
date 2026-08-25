@@ -38,10 +38,17 @@ vi.mock("@/lib/scanner/access-rules", () => ({
 }));
 
 const mockCanMakeRequest = vi.fn();
-const mockIncrementDailyCount = vi.fn();
+// The crawl loop now charges each page through the cap-aware atomic
+// incrementer (returns { recorded, count }); default to a recorded charge so
+// the loop is not broken early.
+const mockIncrementDailyCountCapped = vi.fn(async (..._args: unknown[]) => ({
+  recorded: true,
+  count: 1,
+}));
 vi.mock("@/lib/rate-limiting/daily-limits", () => ({
   canMakeRequest: (...args: unknown[]) => mockCanMakeRequest(...args),
-  incrementDailyCount: (...args: unknown[]) => mockIncrementDailyCount(...args),
+  incrementDailyCountCapped: (...args: unknown[]) =>
+    mockIncrementDailyCountCapped(...args),
 }));
 
 const mockRunSyncChecks = vi.fn();
@@ -107,7 +114,7 @@ beforeEach(() => {
     remaining: 25,
     resetsAt: "",
   });
-  mockIncrementDailyCount.mockReset();
+  mockIncrementDailyCountCapped.mockClear();
   mockRunSyncChecks.mockReset();
   mockRunSyncChecks.mockReturnValue({
     findings: [],
@@ -138,7 +145,7 @@ describe("executeCrawlScan", () => {
     );
     expect(completedCall).toBeDefined();
 
-    expect(mockIncrementDailyCount).toHaveBeenCalledTimes(2);
+    expect(mockIncrementDailyCountCapped).toHaveBeenCalledTimes(2);
   });
 
   it("accumulates progress across pages instead of resetting per page", async () => {
@@ -196,7 +203,7 @@ describe("executeCrawlScan", () => {
     );
     // Two URLs pre-selected, but the plan cap of 1 slices it to one.
     expect(perPageInserts.length).toBe(1);
-    expect(mockIncrementDailyCount).toHaveBeenCalledTimes(1);
+    expect(mockIncrementDailyCountCapped).toHaveBeenCalledTimes(1);
   });
 
   it("caps pages scanned to the remaining daily quota and reports the skipped count", async () => {
@@ -210,7 +217,7 @@ describe("executeCrawlScan", () => {
 
     await executeCrawlScan(baseParams({ scanId: 13 }));
 
-    expect(mockIncrementDailyCount).toHaveBeenCalledTimes(1);
+    expect(mockIncrementDailyCountCapped).toHaveBeenCalledTimes(1);
     const completedCall = mockQuery.mock.calls.find(
       ([sql, params]) =>
         (sql as string).includes("status = 'completed'") &&
