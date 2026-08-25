@@ -166,6 +166,8 @@ export async function checkOpenRedirectProbe(
       redirect: "error",
       signal: probeSignal(cancelSignal),
     });
+    // Safe: pinned to the IP validateScanTarget(url) resolved above (private
+    // IPs rejected); verified-owned domain. codeql[js/request-forgery]
     const res = await fetch(pageTarget.url, pageTarget.init);
     if (!res.ok) return [];
     html = await res.text();
@@ -202,6 +204,9 @@ export async function checkOpenRedirectProbe(
           signal: probeSignal(cancelSignal),
         },
       );
+      // Safe: same host as `url` (validated above), pinned to its resolved
+      // IP; only the redirect-shaped query param varies.
+      // codeql[js/request-forgery]
       const res = await fetch(probeTarget.url, probeTarget.init);
 
       if (res.status < 300 || res.status >= 400) continue;

@@ -3580,6 +3580,11 @@ export async function checkActiveCORS(
         Origin: testOrigin,
       },
     });
+    // Safe: fetchUrl/fetchInit come from applyPinnedTarget(url, safety, ...),
+    // where `safety` = validateScanTarget(url) was DNS-resolved and rejects
+    // private IPs above, the target is a verified-owned domain (route gate),
+    // and the connection is pinned to the resolved public IP.
+    // codeql[js/request-forgery]
     const res = await fetch(fetchUrl, fetchInit);
 
     const acao = res.headers.get("access-control-allow-origin") ?? "";
@@ -3651,6 +3656,8 @@ export async function checkActiveHttpMethods(
       ...FETCH_OPTS,
       signal: activeProbeSignal(cancelSignal),
     });
+    // Safe: pinned to the IP validateScanTarget(origin) resolved above; target
+    // is a verified-owned domain (route gate). codeql[js/request-forgery]
     const res = await fetch(optionsTarget.url, optionsTarget.init);
 
     const allow = res.headers.get("allow") ?? "";
@@ -3667,6 +3674,8 @@ export async function checkActiveHttpMethods(
           ...FETCH_OPTS,
           signal: activeProbeSignal(cancelSignal),
         });
+        // Safe: same origin as the OPTIONS probe, pinned to the validated IP;
+        // verified-owned domain. codeql[js/request-forgery]
         const traceRes = await fetch(traceTarget.url, traceTarget.init);
         const traceBody = await traceRes.text();
         confirmed =
@@ -3759,6 +3768,8 @@ export async function checkXForwardedHostInjection(
       },
       signal: activeProbeSignal(cancelSignal),
     });
+    // Safe: pinned to the IP validateScanTarget(url) resolved above;
+    // verified-owned domain (route gate). codeql[js/request-forgery]
     const res = await fetch(hostProbeTarget.url, hostProbeTarget.init);
 
     const body = (await res.text()).slice(0, 8192);

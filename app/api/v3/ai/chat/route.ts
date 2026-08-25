@@ -157,9 +157,28 @@ export async function POST(req: Request) {
     memberSince,
   });
 
-  const conversationMessages = messages
+  // Bound what we forward to the (paid, unmetered) provider. Only the last
+  // message was length-checked above, so without this a caller could send a
+  // huge or deeply-populated messages[] every request and amplify the AI bill.
+  // Keep only the most recent turns, and only up to a cumulative character
+  // budget -- large server-injected context blocks (one message) still fit,
+  // but an abusive backlog is trimmed from the front.
+  const MAX_CONVERSATION_MESSAGES = 60;
+  const MAX_CONVERSATION_CHARS = Math.max(maxInputLength, 20_000) * 6;
+  const recentMessages = messages
     .filter((m) => m.role === "user" || m.role === "assistant")
+    .slice(-MAX_CONVERSATION_MESSAGES)
     .map((m) => ({ role: m.role, content: String(m.content) }));
+  // Walk from the newest backward, keeping messages until the char budget is
+  // spent, then restore chronological order.
+  const conversationMessages: { role: string; content: string }[] = [];
+  let budget = MAX_CONVERSATION_CHARS;
+  for (let i = recentMessages.length - 1; i >= 0; i--) {
+    const m = recentMessages[i];
+    budget -= m.content.length;
+    if (budget < 0 && conversationMessages.length > 0) break;
+    conversationMessages.unshift(m);
+  }
 
   // Character-length estimate of the INPUT side, for the ESTIMATED-token
   // fallback below (only used when a provider never returns real usage).
