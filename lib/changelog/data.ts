@@ -450,6 +450,12 @@ const CHANGELOG: Release[] = [
         desc: "Listing and renaming any team from the admin panel now requires the admin-level team permissions, rather than being reachable at the moderator tier through the coarse role hierarchy.",
         category: "security",
       },
+      {
+        icon: ScanSearch,
+        label: "Demo Page Rebuilt on the Real Result View",
+        desc: "The live demo now renders through the same result view the dashboard and history use, so it shows the full modern report (verdict, panels, and findings) instead of a stale, drifted layout. Subdomain discovery works on the demo too: it runs once server-side (or reads the cache) and displays read-only, with no refresh control.",
+        category: "changed",
+      },
     ],
   },
   {

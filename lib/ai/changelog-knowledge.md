@@ -126,6 +126,8 @@ A capability and openness release. Support moves in-app: anyone, including free 
   A scan that was turned away, for hitting the concurrent-scan limit, an invalid or blocked URL, an unverified domain, or a failed authenticated login, used to still spend one of your daily scans with no way to get it back. The daily count is now charged only once a scan has passed every check and actually starts.
 - [Users] **[SECURITY]** **Cross-Tenant Team Admin Tightened to Admins**
   Listing and renaming any team from the admin panel now requires the admin-level team permissions, rather than being reachable at the moderator tier through the coarse role hierarchy.
+- [ScanSearch] **[CHANGED]** **Demo Page Rebuilt on the Real Result View**
+  The live demo now renders through the same result view the dashboard and history use, so it shows the full modern report (verdict, panels, and findings) instead of a stale, drifted layout. Subdomain discovery works on the demo too: it runs once server-side (or reads the cache) and displays read-only, with no refresh control.
 
 ---
 
@@ -1771,6 +1773,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 62
-- **Total changes documented:** 628
+- **Total changes documented:** 629
 - **Latest:** v3.7.0 (August 24, 2026) - Support Tickets, Report Exports, Attack Surface, GitHub Scanner
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release

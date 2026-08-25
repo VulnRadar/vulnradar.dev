@@ -12,6 +12,10 @@ import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp } from "@/lib/api/request-utils";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { safeFetch } from "@/lib/scanner/safe-fetch";
+import {
+  autoDiscoverSubdomains,
+  readSubdomains,
+} from "@/lib/scanner/subdomain-auto";
 
 function _isValidUrl(input: string): boolean {
   try {
@@ -195,6 +199,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Kick off subdomain discovery concurrently with the async checks so it
+    // overlaps rather than adding wall-clock. Best-effort and time-bounded
+    // inside autoDiscoverSubdomains, and cache-backed -- a repeat demo of the
+    // same host is an instant cache hit ("fetch only if not cached"). Never
+    // throws. Only meaningful for real web hosts, which is all the demo scans.
+    const subdomainPromise = autoDiscoverSubdomains(url).catch(() => {});
+
     let asyncFindings: Vulnerability[] = [];
     try {
       const asyncPromise = runAsyncChecks(url);
@@ -204,6 +215,16 @@ export async function POST(request: NextRequest) {
       asyncFindings = await Promise.race([asyncPromise, timeoutPromise]);
     } catch {
       // Non-fatal
+    }
+
+    // Let discovery finish (bounded by its own internal timeout) and read the
+    // cached snapshot it recorded, if any.
+    await subdomainPromise;
+    let subdomains: ReturnType<typeof readSubdomains>;
+    try {
+      subdomains = readSubdomains(urlObj.hostname);
+    } catch {
+      subdomains = undefined;
     }
 
     const findings = [...syncFindings, ...asyncFindings];
@@ -230,6 +251,7 @@ export async function POST(request: NextRequest) {
       findings,
       summary,
       responseHeaders: capturedHeaders,
+      ...(subdomains ? { subdomains } : {}),
     };
 
     return NextResponse.json({

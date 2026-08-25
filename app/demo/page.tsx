@@ -1,8 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { ScanSummary } from "@/components/scanner/scan-summary";
-import { ResultsList } from "@/components/scanner/results-list";
 import { IssueDetail } from "@/components/scanner/issue-detail";
 import {
   DemoHero,
@@ -12,7 +10,7 @@ import {
   DemoCTA,
   DemoInfo,
 } from "@/components/demo";
-import { ResponseHeaders } from "@/components/scanner/response-headers";
+import { ScanResultDetail } from "@/components/scanner/scan-result-detail";
 import { SubdomainDiscovery } from "@/components/scanner/subdomain-discovery";
 import { API } from "@/lib/config/constants";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
@@ -110,19 +108,24 @@ export default function DemoPage() {
                 }}
               />
 
-              <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-8 space-y-6">
-                <ScanSummary result={result} />
-
-                {result.responseHeaders &&
-                  Object.keys(result.responseHeaders).length > 0 && (
-                    <ResponseHeaders headers={result.responseHeaders} />
-                  )}
-
-                <SubdomainDiscovery url={result.url} />
-
-                <ResultsList
-                  findings={result.findings}
+              <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-8 flex flex-col gap-6">
+                {/* Same unified renderer every scan surface uses, so the demo
+                    shows the full modern result (verdict, SSL/DNS/ports/
+                    software inventory panels when present, findings) instead of
+                    the stale ad-hoc layout it used to. Subdomains are rendered
+                    read-only from the cache the demo scan warmed: they were
+                    fetched server-side if not already cached, and there is no
+                    refresh control -- exactly one fetch per host. */}
+                <ScanResultDetail
+                  result={result}
                   onSelectIssue={setSelectedIssue}
+                  subdomain={
+                    <SubdomainDiscovery
+                      url={result.url}
+                      readOnly
+                      cachedResult={result.subdomains ?? null}
+                    />
+                  }
                 />
               </div>
 
