@@ -510,6 +510,18 @@ const CHANGELOG: Release[] = [
         desc: "Removing a linked Google or GitHub account re-checks that another way to sign in remains, in the same atomic step that clears it, so two disconnect requests fired at once can no longer leave an account with no way to sign back in.",
         category: "fixed",
       },
+      {
+        icon: Bot,
+        label: "AI Chat Requests Are Size-Bounded",
+        desc: "The AI support chat now limits how much conversation history it forwards to the provider on each request, so an oversized or deeply-nested message list can no longer be used to run up usage.",
+        category: "fixed",
+      },
+      {
+        icon: Timer,
+        label: "Faster Email Two-Factor Verification",
+        desc: "Verifying an emailed two-factor code now reads the candidate codes in a single query instead of one lookup per candidate.",
+        category: "performance",
+      },
     ],
   },
   {

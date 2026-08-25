@@ -205,8 +205,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       // L-2: look up the row, then in Node verify the salted hash
       // (sha256(code_salt:code)). Doing the hash in Node avoids SQL-
       // injection-style hash comparison tricks.
-      const candidate = await pool.query<{ id: number; code_salt: string }>(
-        `SELECT id, code_salt FROM email_2fa_codes
+      // Pull code_hash alongside code_salt in the one query rather than
+      // re-selecting it per candidate row (was a query-per-row loop).
+      const candidate = await pool.query<{
+        id: number;
+        code_salt: string;
+        code_hash: string;
+      }>(
+        `SELECT id, code_salt, code_hash FROM email_2fa_codes
          WHERE user_id = $1
            AND expires_at > NOW()
          ORDER BY created_at DESC
@@ -218,11 +224,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         const expected = createHash("sha256")
           .update(`${row.code_salt}:${code}`)
           .digest("hex");
-        const stored = await pool.query<{ code_hash: string }>(
-          "SELECT code_hash FROM email_2fa_codes WHERE id = $1",
-          [row.id],
-        );
-        const storedHash = stored.rows[0]?.code_hash;
+        const storedHash = row.code_hash;
         const expectedBuf = Buffer.from(expected, "hex");
         const storedBuf = Buffer.from(storedHash ?? "", "hex");
         if (

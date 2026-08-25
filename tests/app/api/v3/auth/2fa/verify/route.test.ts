@@ -79,13 +79,13 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     totpLastCounter = params[0] as string;
     return { rows: [] };
   }
-  if (s.startsWith("SELECT id, code_salt FROM email_2fa_codes")) {
-    return { rows: emailCodeCandidates };
-  }
-  if (s.startsWith("SELECT code_hash FROM email_2fa_codes WHERE id = $1")) {
-    const id = params[0] as number;
+  if (s.startsWith("SELECT id, code_salt, code_hash FROM email_2fa_codes")) {
+    // The route now pulls code_hash in the same query (no per-row lookup).
     return {
-      rows: emailCodeHashes[id] ? [{ code_hash: emailCodeHashes[id] }] : [],
+      rows: emailCodeCandidates.map((c) => ({
+        ...c,
+        code_hash: emailCodeHashes[c.id] ?? null,
+      })),
     };
   }
   if (s.startsWith("DELETE FROM email_2fa_codes WHERE id = $1 RETURNING id")) {

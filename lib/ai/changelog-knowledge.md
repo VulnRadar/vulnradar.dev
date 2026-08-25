@@ -146,6 +146,10 @@ A capability and openness release. Support moves in-app: anyone, including free 
   Deleting scans for a blocked domain from the admin panel now escapes wildcard characters in the value, so a value containing % or _ can no longer expand into a pattern that deletes far more scan rows than intended.
 - [Fingerprint] **[FIXED]** **Disconnecting a Sign-In Method Is Now Race-Safe**
   Removing a linked Google or GitHub account re-checks that another way to sign in remains, in the same atomic step that clears it, so two disconnect requests fired at once can no longer leave an account with no way to sign back in.
+- [Bot] **[FIXED]** **AI Chat Requests Are Size-Bounded**
+  The AI support chat now limits how much conversation history it forwards to the provider on each request, so an oversized or deeply-nested message list can no longer be used to run up usage.
+- [Timer] **[PERFORMANCE]** **Faster Email Two-Factor Verification**
+  Verifying an emailed two-factor code now reads the candidate codes in a single query instead of one lookup per candidate.
 
 ---
 
@@ -1791,6 +1795,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 62
-- **Total changes documented:** 638
+- **Total changes documented:** 640
 - **Latest:** v3.7.0 (August 24, 2026) - Support Tickets, Report Exports, Attack Surface, GitHub Scanner
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release

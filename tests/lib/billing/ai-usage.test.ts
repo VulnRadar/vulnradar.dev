@@ -26,6 +26,7 @@ const {
   getAiCreditBalance,
   addAiCreditBalance,
   creditAiCreditPurchase,
+  reverseAiCreditPurchase,
   recordAiTokens,
   checkAiUsageQuota,
 } = await import("@/lib/billing/ai-usage");
@@ -174,6 +175,34 @@ describe("creditAiCreditPurchase", () => {
     await creditAiCreditPurchase("pi_1", 7, 0);
     await creditAiCreditPurchase("pi_1", 7, -5);
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+});
+
+describe("reverseAiCreditPurchase", () => {
+  it("claims the refund and claws back the tokens in one atomic statement", async () => {
+    // The CTE claims (refunded_at NULL-guard) + deducts, and its final SELECT
+    // returns the claimed row.
+    mockQuery.mockResolvedValueOnce({
+      rowCount: 1,
+      rows: [{ user_id: 7, tokens: 1_000_000 }],
+    });
+
+    const result = await reverseAiCreditPurchase("pi_1");
+
+    expect(result).toEqual({ reversed: true, userId: 7, tokens: 1_000_000 });
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    const [sql, params] = mockQuery.mock.calls[0];
+    expect(sql).toContain("UPDATE ai_credit_purchases SET refunded_at = NOW()");
+    expect(sql).toContain("refunded_at IS NULL"); // at-most-once guard
+    expect(sql).toMatch(/GREATEST\(ai_credit_balance - /); // floor at 0
+    expect(params).toEqual(["pi_1"]);
+  });
+
+  it("reports reversed:false and deducts nothing when nothing matches (already refunded / unknown pi)", async () => {
+    mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] });
+    const result = await reverseAiCreditPurchase("pi_unknown");
+    expect(result).toEqual({ reversed: false });
+    expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 });
 

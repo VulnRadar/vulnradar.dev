@@ -16,6 +16,7 @@ const {
   getBrowserbaseCreditBalanceSeconds,
   addBrowserbaseCreditBalanceSeconds,
   creditBrowserbaseCreditPurchase,
+  reverseBrowserbaseCreditPurchase,
   recordBrowserbaseSeconds,
   checkBrowserbaseQuota,
 } = await import("@/lib/billing/browserbase-usage");
@@ -144,6 +145,31 @@ describe("creditBrowserbaseCreditPurchase", () => {
     await creditBrowserbaseCreditPurchase("pi_1", 7, 0);
     await creditBrowserbaseCreditPurchase("pi_1", 7, -5);
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+});
+
+describe("reverseBrowserbaseCreditPurchase", () => {
+  it("claims the refund and claws back the seconds atomically", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rowCount: 1,
+      rows: [{ user_id: 7, seconds: 1_800 }],
+    });
+    const result = await reverseBrowserbaseCreditPurchase("pi_1");
+    expect(result).toEqual({ reversed: true, userId: 7, seconds: 1_800 });
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    const [sql] = mockQuery.mock.calls[0];
+    expect(sql).toContain(
+      "UPDATE browserbase_credit_purchases SET refunded_at = NOW()",
+    );
+    expect(sql).toContain("refunded_at IS NULL");
+    expect(sql).toMatch(/GREATEST\(browserbase_credit_seconds_balance - /);
+  });
+
+  it("reports reversed:false when nothing matches", async () => {
+    mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] });
+    expect(await reverseBrowserbaseCreditPurchase("pi_x")).toEqual({
+      reversed: false,
+    });
   });
 });
 

@@ -251,7 +251,7 @@ have contradicted what the code actually does.
 - `api-rest-mass-assignment-risk` (high) inferred an unvalidated-input
   vulnerability purely from response _output_ containing `role`/`isAdmin`
   fields, which a normal `/api/me` returns for any legitimately-admin user
- , downgraded to low and reworded to describe what was actually observed.
+  , downgraded to low and reworded to describe what was actually observed.
 - `api-graphql-suggestions-enabled` matched the bare phrase "did you mean"
   anywhere in any page (ubiquitous in ordinary e-commerce/docs search UIs,
   unrelated to GraphQL) while confidently asserting a GraphQL error

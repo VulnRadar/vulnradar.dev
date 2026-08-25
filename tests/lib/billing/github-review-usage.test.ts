@@ -57,6 +57,7 @@ const {
   getGithubCreditBalance,
   addGithubCreditBalance,
   creditGithubCreditPurchase,
+  reverseGithubCreditPurchase,
 } = await import("@/lib/billing/github-review-usage");
 
 const WINDOW_START = new Date("2026-03-15T05:00:00.000Z");
@@ -560,5 +561,30 @@ describe("creditGithubCreditPurchase", () => {
 
     expect(result).toEqual({ credited: false });
     expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("reverseGithubCreditPurchase", () => {
+  it("claims the refund and claws back the tokens atomically", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rowCount: 1,
+      rows: [{ user_id: 7, tokens: 500_000 }],
+    });
+    const result = await reverseGithubCreditPurchase("pi_1");
+    expect(result).toEqual({ reversed: true, userId: 7, tokens: 500_000 });
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    const [sql] = mockQuery.mock.calls[0];
+    expect(sql).toContain(
+      "UPDATE github_credit_purchases SET refunded_at = NOW()",
+    );
+    expect(sql).toContain("refunded_at IS NULL");
+    expect(sql).toMatch(/GREATEST\(github_credit_balance - /);
+  });
+
+  it("reports reversed:false when nothing matches", async () => {
+    mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] });
+    expect(await reverseGithubCreditPurchase("pi_x")).toEqual({
+      reversed: false,
+    });
   });
 });
