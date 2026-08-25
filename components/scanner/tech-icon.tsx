@@ -52,6 +52,11 @@ import {
   SiHubspot,
   SiPrestashop,
   SiDotnet,
+  SiSentry,
+  SiPosthog,
+  SiHotjar,
+  SiIntercom,
+  SiGoogle,
 } from "react-icons/si";
 import { Boxes } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
@@ -106,6 +111,12 @@ const BRANDS: Record<string, Brand> = {
   "Stripe.js": { Icon: SiStripe, color: "#635BFF" },
   "Google Analytics": { Icon: SiGoogleanalytics, color: "#E37400" },
   "Google Tag Manager": { Icon: SiGoogletagmanager, color: "#246FDB" },
+  "Vercel Analytics": { Icon: SiVercel },
+  Sentry: { Icon: SiSentry, color: "#8B5CF6" },
+  PostHog: { Icon: SiPosthog, color: "#1D4AFF" },
+  Hotjar: { Icon: SiHotjar, color: "#FF3C00" },
+  Intercom: { Icon: SiIntercom, color: "#1F8DED" },
+  "Google reCAPTCHA": { Icon: SiGoogle, color: "#4285F4" },
   // Back-end frameworks / languages / servers
   Laravel: { Icon: SiLaravel, color: "#FF2D20" },
   Django: { Icon: SiDjango, color: "#44B78B" },

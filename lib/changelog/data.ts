@@ -176,7 +176,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Layers,
         label: "Deeper Tech-Stack Detection with Real Brand Icons",
-        desc: "Software inventory used to read mostly server headers and a few HTML markers. It now recognizes far more of a site's real stack, including client frameworks (React, Vue, Svelte, Nuxt, Angular, and more), the base library behind a meta-framework (React under Next.js, Vue under Nuxt), hosting and edge providers, framework-specific cookies, and page-embedded analytics and anti-bot widgets (Cloudflare Web Analytics, Turnstile), and it labels each detected technology with its actual brand icon instead of a generic box.",
+        desc: "Software inventory used to read mostly server headers and a few HTML markers. It now recognizes far more of a site's real stack, including client frameworks (React, Vue, Svelte, Nuxt, Angular, and more), the base library behind a meta-framework (React under Next.js, Vue under Nuxt), hosting and edge providers, framework-specific cookies, and page-embedded analytics, monitoring, and anti-bot widgets (Cloudflare Web Analytics, Plausible, PostHog, Segment, Hotjar, Mixpanel, Sentry, Vercel Analytics, Intercom, reCAPTCHA, hCaptcha, Turnstile), and it labels each detected technology with its actual brand icon instead of a generic box.",
         category: "changed",
       },
       {
@@ -314,7 +314,7 @@ const CHANGELOG: Release[] = [
       {
         icon: BookOpen,
         label: "Documentation Now Covers the Whole Product",
-        desc: "The docs gained pages for Teams, Scheduled Scans, Triage and Remediation, Sharing and Public Pages, Account Security, GitHub Scanning, AI Features, Reports and Compliance, and the command-line tool, plus the previously undocumented self-hosting environment variables (Google and GitHub sign-in, IPv4 session capture, database pool tuning). Every new page uses the same layout as the rest of the docs, and because the in-app AI assistant reads the docs, it now knows about all of these too. Page titles and descriptions across the whole site were also tuned to the lengths search engines display.",
+        desc: "The docs gained pages for Teams, Scheduled Scans, Triage and Remediation, Sharing and Public Pages, Account Security, GitHub Scanning, AI Features, Reports and Compliance, and the command-line tool (installable from the repo until it lands on npm), plus the previously undocumented self-hosting environment variables (Google and GitHub sign-in, IPv4 session capture, database pool tuning). Every new page uses the same layout as the rest of the docs, and because the in-app AI assistant reads the docs, it now knows about all of these too. Page titles and descriptions across the whole site were also tuned to the lengths search engines display.",
         category: "added",
       },
     ],

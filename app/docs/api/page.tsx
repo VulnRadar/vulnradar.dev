@@ -1345,22 +1345,6 @@ vulnradar_scan:
           <InlineCode>/api/v3</InlineCode>.
         </p>
 
-        <h3 className="pt-2 text-base font-medium text-foreground">
-          Command line
-        </h3>
-        <p className="max-w-[68ch] text-sm text-muted-foreground">
-          Same gate, from any shell or CI, dependency-free (Node 18+):
-        </p>
-        <CodeBlock
-          code={`VULNRADAR_TOKEN=your-token npx vulnradar scan https://your-staging-url.com --max-high 0`}
-          language="bash"
-        />
-        <p className="max-w-[68ch] text-sm text-muted-foreground">
-          It runs the scan, waits for it, prints the severity counts, and exits
-          non-zero when findings cross your thresholds. Self-hosting? Add{" "}
-          <InlineCode>--api-base https://your-domain/api/v3</InlineCode>.
-        </p>
-
         <DocsCallout variant="info" title="POST /scan does not return findings">
           The scan runs as a background job: the create call only returns a{" "}
           <InlineCode>scanId</InlineCode>, so any gate that reads{" "}

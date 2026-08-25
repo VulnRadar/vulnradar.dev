@@ -342,6 +342,43 @@ const BODY_TECH_MARKERS: BodyMarker[] = [
     category: "library",
     re: /challenges\.cloudflare\.com\/turnstile/i,
   },
+  // Analytics and product tooling loaded from a recognizable host or global.
+  { name: "Plausible", category: "library", re: /plausible\.io\/js\//i },
+  { name: "Fathom Analytics", category: "library", re: /cdn\.usefathom\.com/i },
+  {
+    name: "PostHog",
+    category: "library",
+    re: /app\.posthog\.com|\bposthog\.init\(/i,
+  },
+  {
+    name: "Segment",
+    category: "library",
+    re: /cdn\.segment\.com\/analytics/i,
+  },
+  { name: "Hotjar", category: "library", re: /static\.hotjar\.com/i },
+  { name: "Mixpanel", category: "library", re: /cdn\.mxpnl\.com/i },
+  {
+    name: "Sentry",
+    category: "library",
+    re: /browser\.sentry-cdn\.com|@sentry\/(browser|nextjs|react)/i,
+  },
+  {
+    name: "Vercel Analytics",
+    category: "library",
+    re: /\/_vercel\/insights|va\.vercel-scripts\.com/i,
+  },
+  {
+    name: "Intercom",
+    category: "library",
+    re: /widget\.intercom\.io|js\.intercomcdn\.com/i,
+  },
+  // Anti-bot / CAPTCHA widgets, alongside the Cloudflare Turnstile marker above.
+  {
+    name: "Google reCAPTCHA",
+    category: "library",
+    re: /\/recaptcha\/api\.js|gstatic\.com\/recaptcha/i,
+  },
+  { name: "hCaptcha", category: "library", re: /hcaptcha\.com\/1\/api\.js/i },
 ];
 
 // Hosting/platform fingerprints keyed on a response header. Presence alone is

@@ -261,6 +261,20 @@ describe("fingerprintSoftware", () => {
     expect(turnstile.some((i) => i.name === "Cloudflare Turnstile")).toBe(true);
   });
 
+  it("detects analytics, monitoring, and CAPTCHA vendors from their hosts", () => {
+    const items = fingerprintSoftware(
+      new Headers(),
+      `<script defer src="https://plausible.io/js/script.js"></script>
+       <script src="https://browser.sentry-cdn.com/7.0.0/bundle.min.js"></script>
+       <script src="https://www.google.com/recaptcha/api.js"></script>`,
+      "https://example.com",
+    );
+    const names = items.map((i) => i.name);
+    expect(names).toContain("Plausible");
+    expect(names).toContain("Sentry");
+    expect(names).toContain("Google reCAPTCHA");
+  });
+
   it("implies React when only Next.js is detected (no separate React marker)", () => {
     const items = fingerprintSoftware(
       new Headers(),

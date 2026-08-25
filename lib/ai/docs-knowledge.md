@@ -130,17 +130,25 @@ Route: /docs/cli
 the rest of these docs cover, so anything the CLI does you can also do
 with a raw request. Authentication is the same Bearer API key.
 
+> **INFO: Coming to npm**
+> Once the package is published you will be able to run it with{" "}
+npx vulnradar scan <url> and skip the
+clone. This page will switch to that the moment it ships.
+
 ### Notes
 - The vulnradar CLI wraps the scan API: it starts a scan, polls until it finishes, prints a summary, and exits non-zero when the finding counts go over the limits you set. That exit code is the whole point: drop it into a pipeline step and a regression fails the build.
-- Run it straight from npm with no global install:
-- Or install it globally if you call it often:
+- The CLI lives in the cli/ folder of the repo and is not on npm yet. Until it is, install it straight from the source, which puts a vulnradar command on your PATH:
+- Prefer not to install globally? Run the entrypoint directly from the clone with node cli/vulnradar.mjs scan <url>. It needs Node 18 or newer and has no dependencies of its own.
 - Pass your key with --api-key or the VULNRADAR_TOKEN environment variable. Prefer the variable in CI so the key never lands in shell history or logs.
 - 0 when every finding count is at or under its threshold; 1 when a threshold is exceeded or the scan errors out. That is what lets a CI job block a merge on a new critical.
-- A GitHub Actions step that fails the build on any new critical or high:
+- Once the CLI is on the runner (see Install), a GitHub Actions step fails the build on any new critical or high:
+- Want a gate with nothing to install? The API docs cover a GitHub Action, a GitLab template, and a plain curl script that hit the same API.
 
 ### Code examples
 ```bash
-npx vulnradar scan https://example.com --api-key vr_live_...
+git clone https://github.com/<value>.git
+cd vulnradar.dev/cli
+npm install -g .
 ```
 
 ```yaml
@@ -148,15 +156,14 @@ vulnradar scan <url> [options]
 ```
 
 ```text
-npm install -g vulnradar
-vulnradar scan https://example.com
+vulnradar scan https://example.com --api-key vr_live_...
 ```
 
 ```text
 - name: VulnRadar scan
   env:
     VULNRADAR_TOKEN: \<value>}
-  run: npx vulnradar scan https://staging.example.com --max-critical 0 --max-high 0
+  run: vulnradar scan https://staging.example.com --max-critical 0 --max-high 0
 ```
 
 ## github
@@ -1548,7 +1555,6 @@ Removes a domain. Active Probing stops being allowed against it (and its subdoma
 - Getting a key
 - Try these calls in your browser
 - GitLab CI
-- Command line
 - Headers on a successful response
 - Body of a 429
 - Create a scan
@@ -1588,10 +1594,6 @@ vulnradar_scan:
     # Optional, both default to 0:
     VR_MAX_CRITICAL: "0"
     VR_MAX_HIGH: "0"
-```
-
-```bash
-VULNRADAR_TOKEN=your-token npx vulnradar scan https://your-staging-url.com --max-high 0
 ```
 
 ```http
@@ -2160,7 +2162,7 @@ npm run lint:fix    # auto-fix
 |---|---|---|---|---|---|---|---|---|---|
 | `/docs/account-security` | - | 6 | 3 | 0 | 1 | 0 | 0 | 22 | 0 |
 | `/docs/ai` | - | 10 | 1 | 0 | 2 | 0 | 0 | 19 | 0 |
-| `/docs/cli` | - | 6 | 1 | 0 | 4 | 0 | 0 | 6 | 0 |
+| `/docs/cli` | - | 6 | 2 | 0 | 4 | 0 | 0 | 7 | 0 |
 | `/docs/github` | ✓ | 8 | 4 | 0 | 1 | 0 | 0 | 25 | 0 |
 | `/docs/reports` | - | 7 | 2 | 0 | 3 | 0 | 0 | 12 | 0 |
 | `/docs/scheduled-scans` | - | 8 | 5 | 0 | 0 | 0 | 0 | 19 | 0 |
@@ -2172,7 +2174,7 @@ npm run lint:fix    # auto-fix
 | `/docs/extension` | ✓ | 8 | 1 | 0 | 0 | 0 | 0 | 10 | 2 |
 | `/docs/self-hosting` | - | 15 | 6 | 0 | 12 | 0 | 0 | 19 | 3 |
 | `/docs/config` | - | 9 | 3 | 0 | 2 | 0 | 0 | 28 | 0 |
-| `/docs/api` | - | 8 | 4 | 0 | 6 | 28 | 0 | 15 | 9 |
+| `/docs/api` | - | 8 | 4 | 0 | 5 | 28 | 0 | 13 | 8 |
 | `/docs/webhooks` | ✓ | 6 | 0 | 0 | 3 | 0 | 0 | 5 | 5 |
 | `/docs/rate-limits` | - | 6 | 5 | 0 | 4 | 0 | 0 | 10 | 3 |
 | `/docs/architecture` | - | 5 | 1 | 0 | 4 | 0 | 0 | 8 | 0 |

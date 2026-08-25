@@ -10,7 +10,7 @@ import {
   CodeBlock,
   InlineCode,
 } from "@/components/docs";
-import { APP_NAME } from "@/lib/config/constants";
+import { APP_NAME, APP_REPO } from "@/lib/config/constants";
 
 const tocItems: TocItem[] = [
   { id: "overview", label: "Overview" },
@@ -52,7 +52,7 @@ export default function CliPage() {
         id="top"
         badge="CLI"
         title="Command-Line Interface"
-        description={`Run a ${APP_NAME} scan from a terminal or a CI job and fail the build when findings cross a threshold you set. There is no install step: npx fetches it on demand.`}
+        description={`Run a ${APP_NAME} scan from a terminal or a CI job and fail the build when findings cross a threshold you set. Install it from the repo until it lands on npm.`}
       />
 
       <DocsSection id="overview" title="Overview">
@@ -72,20 +72,35 @@ export default function CliPage() {
 
       <DocsSection id="install" title="Install">
         <p className="text-sm text-muted-foreground">
-          Run it straight from npm with no global install:
+          The CLI lives in the <InlineCode>cli/</InlineCode> folder of the repo
+          and is not on npm yet. Until it is, install it straight from the
+          source, which puts a <InlineCode>vulnradar</InlineCode> command on
+          your PATH:
         </p>
         <CodeBlock
           language="bash"
-          code={`npx vulnradar scan https://example.com --api-key vr_live_...`}
+          code={`git clone https://github.com/${APP_REPO}.git
+cd vulnradar.dev/cli
+npm install -g .`}
         />
         <p className="text-sm text-muted-foreground">
-          Or install it globally if you call it often:
+          Then run it from anywhere:
         </p>
         <CodeBlock
           language="bash"
-          code={`npm install -g vulnradar
-vulnradar scan https://example.com`}
+          code={`vulnradar scan https://example.com --api-key vr_live_...`}
         />
+        <p className="text-sm text-muted-foreground">
+          Prefer not to install globally? Run the entrypoint directly from the
+          clone with{" "}
+          <InlineCode>node cli/vulnradar.mjs scan &lt;url&gt;</InlineCode>. It
+          needs Node 18 or newer and has no dependencies of its own.
+        </p>
+        <DocsCallout variant="info" title="Coming to npm">
+          Once the package is published you will be able to run it with{" "}
+          <InlineCode>npx vulnradar scan &lt;url&gt;</InlineCode> and skip the
+          clone. This page will switch to that the moment it ships.
+        </DocsCallout>
       </DocsSection>
 
       <DocsSection id="usage" title="Usage">
@@ -166,16 +181,27 @@ vulnradar scan https://example.com`}
 
       <DocsSection id="ci" title="CI example">
         <p className="text-sm text-muted-foreground">
-          A GitHub Actions step that fails the build on any new critical or
-          high:
+          Once the CLI is on the runner (see Install), a GitHub Actions step
+          fails the build on any new critical or high:
         </p>
         <CodeBlock
           language="yaml"
           code={`- name: VulnRadar scan
   env:
     VULNRADAR_TOKEN: \${{ secrets.VULNRADAR_TOKEN }}
-  run: npx vulnradar scan https://staging.example.com --max-critical 0 --max-high 0`}
+  run: vulnradar scan https://staging.example.com --max-critical 0 --max-high 0`}
         />
+        <p className="text-sm text-muted-foreground">
+          Want a gate with nothing to install? The{" "}
+          <a
+            href="/docs/api"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            API docs
+          </a>{" "}
+          cover a GitHub Action, a GitLab template, and a plain curl script that
+          hit the same API.
+        </p>
       </DocsSection>
     </div>
   );
