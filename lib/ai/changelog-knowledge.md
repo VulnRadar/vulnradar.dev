@@ -102,6 +102,18 @@ A capability and openness release. Support moves in-app: anyone, including free 
   One-time AI, GitHub, and Browserbase credit purchases now confirm the amount actually settled matches the tier's catalog price before granting credits, an extra guard on top of Stripe's signed webhook so a mismatched or tampered charge is refused and logged rather than credited.
 - [FileText] **[FIXED]** **PDF Reports Stay Valid With Non-ASCII Content**
   PDF report cross-reference offsets are now computed from real UTF-8 byte lengths, so a report containing non-ASCII characters (internationalized domains, response banners, accented text) no longer produces a slightly corrupt cross-reference table that strict PDF validators reject.
+- [Bell] **[SECURITY]** **Staff-Only Notices Stay Staff-Only**
+  The endpoint that decides which admin-authored banners and bell notices you see now derives whether you are a staff member from your server session, not from a value the browser sends. Previously a request could ask to be treated as staff and receive staff- and admin-audience notices; that audience gate is now enforced server-side.
+- [ShieldCheck] **[SECURITY]** **Stronger Password and Session Hygiene on Profile Changes**
+  Changing your password from your profile now runs the same weak/common-password check as signup and reset, and clears your trusted devices (so a planted device can no longer keep skipping two-factor after a password rotation). Wiping the admin error-log trail and running the on-demand database cleanup are now restricted to full admins rather than lower staff tiers.
+- [Globe] **[SECURITY]** **Safer Links Throughout the App**
+  Every place the app turns a stored URL into a clickable link (admin-authored notification buttons, scanned target and subdomain links) now passes it through a scheme check, so only real web links open and a javascript: or data: URL can never execute on click. Exported Markdown and compliance reports also neutralize HTML in scanned evidence, so opening one in another viewer can't run embedded markup.
+- [Bot] **[FIXED]** **AI Chat Conversation Saves Are Rate-Limited**
+  Saving an AI support-chat transcript is now rate-limited per user (or per address for guests) and rejects oversized payloads before parsing them, so the endpoint can't be used to write unbounded rows.
+- [Activity] **[FIXED]** **Readiness Check No Longer Leaks a Database Connection on a Slow Probe**
+  When the readiness endpoint's database probe timed out under load, the pending connection could be left checked out, and repeated probes could exhaust the pool at exactly the wrong moment. The probe now always returns its connection to the pool.
+- [Mail] **[FIXED]** **Landing-Page Contact Form Works Without a Captcha Configured**
+  The landing-page contact form now only enforces the Turnstile captcha when Turnstile is actually configured, matching the other contact forms, so a self-hosted deployment without a captcha key can still receive messages.
 
 ---
 
@@ -1747,6 +1759,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 62
-- **Total changes documented:** 616
+- **Total changes documented:** 622
 - **Latest:** v3.7.0 (August 24, 2026) - Support Tickets, Report Exports, Attack Surface, GitHub Scanner
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release

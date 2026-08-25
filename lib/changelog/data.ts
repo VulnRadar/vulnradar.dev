@@ -377,6 +377,43 @@ const CHANGELOG: Release[] = [
         desc: "PDF report cross-reference offsets are now computed from real UTF-8 byte lengths, so a report containing non-ASCII characters (internationalized domains, response banners, accented text) no longer produces a slightly corrupt cross-reference table that strict PDF validators reject.",
         category: "fixed",
       },
+      {
+        icon: Bell,
+        label: "Staff-Only Notices Stay Staff-Only",
+        desc: "The endpoint that decides which admin-authored banners and bell notices you see now derives whether you are a staff member from your server session, not from a value the browser sends. Previously a request could ask to be treated as staff and receive staff- and admin-audience notices; that audience gate is now enforced server-side.",
+        category: "security",
+      },
+      {
+        icon: ShieldCheck,
+        label: "Stronger Password and Session Hygiene on Profile Changes",
+        desc: "Changing your password from your profile now runs the same weak/common-password check as signup and reset, and clears your trusted devices (so a planted device can no longer keep skipping two-factor after a password rotation). Wiping the admin error-log trail and running the on-demand database cleanup are now restricted to full admins rather than lower staff tiers.",
+        category: "security",
+      },
+      {
+        icon: Globe,
+        label: "Safer Links Throughout the App",
+        desc: "Every place the app turns a stored URL into a clickable link (admin-authored notification buttons, scanned target and subdomain links) now passes it through a scheme check, so only real web links open and a javascript: or data: URL can never execute on click. Exported Markdown and compliance reports also neutralize HTML in scanned evidence, so opening one in another viewer can't run embedded markup.",
+        category: "security",
+      },
+      {
+        icon: Bot,
+        label: "AI Chat Conversation Saves Are Rate-Limited",
+        desc: "Saving an AI support-chat transcript is now rate-limited per user (or per address for guests) and rejects oversized payloads before parsing them, so the endpoint can't be used to write unbounded rows.",
+        category: "fixed",
+      },
+      {
+        icon: Activity,
+        label:
+          "Readiness Check No Longer Leaks a Database Connection on a Slow Probe",
+        desc: "When the readiness endpoint's database probe timed out under load, the pending connection could be left checked out, and repeated probes could exhaust the pool at exactly the wrong moment. The probe now always returns its connection to the pool.",
+        category: "fixed",
+      },
+      {
+        icon: Mail,
+        label: "Landing-Page Contact Form Works Without a Captcha Configured",
+        desc: "The landing-page contact form now only enforces the Turnstile captcha when Turnstile is actually configured, matching the other contact forms, so a self-hosted deployment without a captcha key can still receive messages.",
+        category: "fixed",
+      },
     ],
   },
   {
