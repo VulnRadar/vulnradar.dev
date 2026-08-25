@@ -82,6 +82,12 @@ A capability and openness release. Support moves in-app: anyone, including free 
   A new API playground at /docs/api/playground lets you send real requests to the API right from the browser: pick an endpoint, fill in the parameters and a body, paste an API key, and read the JSON response. Every call also renders as ready-to-run code in the language you pick (cURL, JavaScript, Python, Go, PHP, Java, Ruby, or C#), updating as you edit the request. It is driven by the OpenAPI spec so it never drifts from the API, your key is used only in your browser and never stored, and it is linked from the API docs and the landing page.
 - [BookOpen] **[ADDED]** **Documentation Now Covers the Whole Product**
   The docs gained pages for Teams, Scheduled Scans, Triage and Remediation, Sharing and Public Pages, Account Security, GitHub Scanning, AI Features, Reports and Compliance, and the command-line tool (installable from the repo until it lands on npm), plus the previously undocumented self-hosting environment variables (Google and GitHub sign-in, IPv4 session capture, database pool tuning). Every new page uses the same layout as the rest of the docs, and because the in-app AI assistant reads the docs, it now knows about all of these too. Page titles and descriptions across the whole site were also tuned to the lengths search engines display.
+- [Gauge] **[FIXED]** **Unlimited Scan Tiers No Longer Lock Themselves Out**
+  Setting a plan's daily scan cap to -1 (the documented 'unlimited' value) used to do the opposite: it denied every scan on that tier. The unlimited sentinel is now resolved the same way whether or not billing is enabled, so an unlimited tier is genuinely unlimited.
+- [Keyboard] **[ADDED]** **Skip-to-Main-Content Link**
+  A keyboard-accessible 'Skip to main content' link now sits at the top of every page and is revealed on focus, letting keyboard and screen-reader users jump past the navigation straight to the page content. Each page's main region carries the matching landmark.
+- [Lock] **[CHANGED]** **Privacy Policy Accuracy Pass**
+  The privacy policy now lists Google sign-in alongside Discord and GitHub, describes the actual set of functional cookies (OAuth CSRF and pending-login cookies, the last-seen-version cookie) instead of a cookie that was never set, and discloses the 30-day retention of redacted system error logs. No behavior changed; the policy now matches what the app does.
 
 ---
 
@@ -1727,6 +1733,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 62
-- **Total changes documented:** 606
+- **Total changes documented:** 609
 - **Latest:** v3.7.0 (August 24, 2026) - Support Tickets, Report Exports, Attack Surface, GitHub Scanner
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release

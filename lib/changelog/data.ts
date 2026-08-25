@@ -317,6 +317,24 @@ const CHANGELOG: Release[] = [
         desc: "The docs gained pages for Teams, Scheduled Scans, Triage and Remediation, Sharing and Public Pages, Account Security, GitHub Scanning, AI Features, Reports and Compliance, and the command-line tool (installable from the repo until it lands on npm), plus the previously undocumented self-hosting environment variables (Google and GitHub sign-in, IPv4 session capture, database pool tuning). Every new page uses the same layout as the rest of the docs, and because the in-app AI assistant reads the docs, it now knows about all of these too. Page titles and descriptions across the whole site were also tuned to the lengths search engines display.",
         category: "added",
       },
+      {
+        icon: Gauge,
+        label: "Unlimited Scan Tiers No Longer Lock Themselves Out",
+        desc: "Setting a plan's daily scan cap to -1 (the documented 'unlimited' value) used to do the opposite: it denied every scan on that tier. The unlimited sentinel is now resolved the same way whether or not billing is enabled, so an unlimited tier is genuinely unlimited.",
+        category: "fixed",
+      },
+      {
+        icon: Keyboard,
+        label: "Skip-to-Main-Content Link",
+        desc: "A keyboard-accessible 'Skip to main content' link now sits at the top of every page and is revealed on focus, letting keyboard and screen-reader users jump past the navigation straight to the page content. Each page's main region carries the matching landmark.",
+        category: "added",
+      },
+      {
+        icon: Lock,
+        label: "Privacy Policy Accuracy Pass",
+        desc: "The privacy policy now lists Google sign-in alongside Discord and GitHub, describes the actual set of functional cookies (OAuth CSRF and pending-login cookies, the last-seen-version cookie) instead of a cookie that was never set, and discloses the 30-day retention of redacted system error logs. No behavior changed; the policy now matches what the app does.",
+        category: "changed",
+      },
     ],
   },
   {
