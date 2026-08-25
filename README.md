@@ -1,7 +1,13 @@
+<div align="center">
+
+<img src="https://raw.githubusercontent.com/VulnRadar/vulnradar.dev/main/public/favicon.png" width="96" height="96" alt="VulnRadar logo" />
+
 # VulnRadar
 
 Open-source web vulnerability scanner. Paste a URL, get a structured security
 report in under 3 seconds. No agent to install.
+
+</div>
 
 **795+ deterministic checks across 18 categories** covering security headers,
 TLS and certificates, cookies, DNS and email records, exposed secrets, server
