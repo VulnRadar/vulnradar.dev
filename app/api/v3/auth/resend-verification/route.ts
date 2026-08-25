@@ -1,18 +1,14 @@
 import { NextRequest } from "next/server";
 import pool from "@/lib/database/db";
-import { sendEmail, emailVerificationEmail } from "@/lib/email/email";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp } from "@/lib/api/request-utils";
-import crypto from "crypto";
-import { createHash } from "node:crypto";
 import {
   ApiResponse,
   parseBody,
   Validate,
   withErrorHandling,
 } from "@/lib/api/api-utils";
-import { APP_URL } from "@/lib/config/constants";
-import { getSetting } from "@/lib/config/runtime-config";
+import { sendEmailVerification } from "@/lib/auth/email-verification";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const ip = await getClientIp();
@@ -61,43 +57,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     });
   }
 
-  // Delete existing tokens
-  await pool.query("DELETE FROM email_verification_tokens WHERE user_id = $1", [
-    user.id,
-  ]);
-
-  // Generate new token
-  const token = crypto.randomBytes(32).toString("hex");
-  // regression fix — store sha256(token) so
-  // verify-email can match. Previously this route stored the raw token
-  // while verify-email hashed it, so all resend-generated links were
-  // dead. This also closes the M-2 vuln the previous
-  // opened in signup — same hashing on both sides.
-  const tokenHash = createHash("sha256").update(token).digest("hex");
-  const emailVerificationHours = await getSetting("EMAIL_VERIFICATION_HOURS");
-  const expiresAt = new Date(
-    Date.now() + emailVerificationHours * 60 * 60 * 1000,
-  );
-
-  await pool.query(
-    "INSERT INTO email_verification_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",
-    [user.id, tokenHash, expiresAt],
-  );
-
-  // Send verification email in background (don't block the response)
-  const verifyLink = `${APP_URL}/verify-email?token=${token}`;
-  const emailContent = emailVerificationEmail(user.name || "there", verifyLink);
-
-  setImmediate(() => {
-    sendEmail({
-      to: normalizedEmail,
-      subject: emailContent.subject,
-      text: emailContent.text,
-      html: emailContent.html,
-    }).catch((err) => {
-      console.error("[Email Error] Failed to send verification email:", err);
-    });
-  });
+  // Mint + send a fresh verification link (stores sha256(token), clears any
+  // prior tokens first). Shared with the profile email-change path.
+  await sendEmailVerification(user.id, user.name, normalizedEmail);
 
   return ApiResponse.success({
     message:

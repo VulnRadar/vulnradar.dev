@@ -25,6 +25,7 @@ import {
   ERROR_MESSAGES,
 } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
+import { sendEmailVerification } from "@/lib/auth/email-verification";
 
 export async function PATCH(request: NextRequest) {
   const session = await getSession();
@@ -189,6 +190,12 @@ export async function PATCH(request: NextRequest) {
           "UPDATE users SET email = $1, email_verified_at = NULL, updated_at = NOW() WHERE id = $2",
           [trimmedEmail, session.userId],
         );
+
+        // Send a verification link to the new address immediately. Without
+        // this the account was left with email_verified_at NULL and no token
+        // ever issued, so the user was stranded (locked out at next login)
+        // until they manually found and hit resend-verification.
+        await sendEmailVerification(session.userId, currentName, trimmedEmail);
 
         // Send account changes email to BOTH old and new email addresses (non-blocking)
         const emailContent = profileEmailChangedEmail(

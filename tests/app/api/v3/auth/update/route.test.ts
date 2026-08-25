@@ -344,8 +344,14 @@ describe("PATCH /api/v3/auth/update", () => {
       expect(emailUpdateQuery?.sql).toContain("email_verified_at = NULL");
 
       await new Promise((resolve) => setImmediate(resolve));
-      // One notification to the old address, one to the new address.
-      expect(mockSendEmail).toHaveBeenCalledTimes(2);
+      // One notification to the old address, one to the new address, plus a
+      // verification link sent to the new address (email_verified_at was
+      // reset, so the new address must be re-verified before login).
+      expect(mockSendEmail).toHaveBeenCalledTimes(3);
+      const sentTo = mockSendEmail.mock.calls.map(
+        ([p]) => (p as { to: string }).to,
+      );
+      expect(sentTo).toContain("new-address@example.com");
     });
   });
 

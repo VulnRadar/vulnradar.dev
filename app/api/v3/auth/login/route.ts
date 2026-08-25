@@ -9,6 +9,7 @@ import {
 import pool from "@/lib/database/db";
 import {
   checkRateLimit,
+  peekRateLimit,
   getRateLimit,
   RATE_LIMITS,
 } from "@/lib/rate-limiting/rate-limit";
@@ -82,6 +83,25 @@ export const POST = withErrorHandling(async (request: Request) => {
     // attacker enumerate which provider owns a given address.
     await verifyPassword(password, await getDummyHash());
     return ApiResponse.unauthorized(ERROR_MESSAGES.INVALID_CREDENTIALS);
+  }
+
+  // Per-account lockout gate. The failed-password branch below records
+  // login-fail:${user.id} across IPs; once that counter is exhausted the
+  // account is temporarily locked here, before the expensive scrypt verify,
+  // so a distributed brute-force spread across many IPs is actually
+  // throttled (the IP gate above alone would miss it) and stops burning CPU
+  // on a locked account. The window auto-expires, so the backoff is
+  // temporary. Read-only peek so this gate does not itself inflate the count.
+  const accountLock = await peekRateLimit({
+    key: `login-fail:${user.id}`,
+    ...RATE_LIMITS.login,
+  });
+  if (!accountLock.allowed) {
+    const minutes = Math.ceil(accountLock.retryAfterSeconds / 60);
+    return ApiResponse.tooManyRequests(
+      `Too many failed attempts for this account. Try again in ${minutes} minute(s).`,
+      accountLock.retryAfterSeconds,
+    );
   }
 
   const valid = await verifyPassword(password, user.password_hash);

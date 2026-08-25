@@ -14,12 +14,17 @@ export function generateSecret(): string {
 // NEVER_CONFIGURABLE in lib/config/registry.ts): it's a brute-force/drift
 // tradeoff on the second factor itself, and every caller relies on this
 // same default since none passes an explicit window.
-export function verifyTOTP(
+// Verify a code and return WHICH time-step counter it matched (or null).
+// Callers that enforce single-use replay prevention must key their guard on
+// the matched counter, not the current wall-clock step: a code is valid for
+// `window` steps on either side, so recording the wall-clock step would let
+// the same code be replayed once per step it stays valid for.
+export function verifyTOTPWithCounter(
   secret: string,
   token: string,
   timeStep = 30,
   window = CONFIG_TOTP_VERIFY_WINDOW,
-): boolean {
+): { valid: boolean; counter: number | null } {
   // Normalize input — TOTP codes are always 6 digits
   if (typeof token !== "string" || !/^\d{6}$/.test(token)) {
     // Still do a comparison against a dummy token to keep the timing path
@@ -29,26 +34,44 @@ export function verifyTOTP(
       Math.floor(Date.now() / 1000 / timeStep),
     );
     timingSafeEqual(Buffer.from(dummy), Buffer.from(dummy));
-    return false;
+    return { valid: false, counter: null };
   }
 
   const time = Math.floor(Date.now() / 1000 / timeStep);
-  const expectedBuffers: Buffer[] = [];
-  for (let i = -window; i <= window; i++) {
-    expectedBuffers.push(Buffer.from(hotpGenerate(secret, time + i), "utf8"));
-  }
   const actual = Buffer.from(token, "utf8");
-  // Always compare against every candidate so all paths take the same time.
-  let matched = false;
-  for (const candidate of expectedBuffers) {
+  // Compare against every candidate (no early return) so all paths take the
+  // same time; keep the highest matching counter if more than one collides.
+  let matchedCounter: number | null = null;
+  for (let i = -window; i <= window; i++) {
+    const counter = time + i;
+    const candidate = Buffer.from(hotpGenerate(secret, counter), "utf8");
     if (
       candidate.length === actual.length &&
       timingSafeEqual(candidate, actual)
     ) {
-      matched = true;
+      matchedCounter = counter;
     }
   }
-  return matched;
+  return { valid: matchedCounter !== null, counter: matchedCounter };
+}
+
+export function verifyTOTP(
+  secret: string,
+  token: string,
+  timeStep = 30,
+  window = CONFIG_TOTP_VERIFY_WINDOW,
+): boolean {
+  return verifyTOTPWithCounter(secret, token, timeStep, window).valid;
+}
+
+// Generate the current 6-digit code for a secret (companion to verifyTOTP,
+// used by enrollment self-checks and tests).
+export function generateTOTP(
+  secret: string,
+  timeStep = 30,
+  atMs = Date.now(),
+): string {
+  return hotpGenerate(secret, Math.floor(atMs / 1000 / timeStep));
 }
 
 // Generate the otpauth:// URI for QR code generation

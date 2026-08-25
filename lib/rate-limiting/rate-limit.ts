@@ -185,6 +185,49 @@ export async function checkRateLimit(
 }
 
 /**
+ * Read-only view of a limiter bucket: the current count for the active
+ * window and whether the NEXT attempt would be rejected, WITHOUT
+ * incrementing. Use this to gate a request on a counter that a different code
+ * path records (e.g. gate a login on the per-account failure counter that
+ * only the failed-password branch increments), so the gate does not itself
+ * inflate the count.
+ */
+export async function peekRateLimit(
+  config: RateLimitConfig,
+): Promise<RateLimitResult> {
+  const { key } = config;
+  const { maxAttempts, windowSeconds } = config.limit
+    ? await getRateLimit(config.limit)
+    : { maxAttempts: config.maxAttempts, windowSeconds: config.windowSeconds };
+
+  const now = new Date();
+  const windowMs = windowSeconds * 1000;
+  const bucketStart = new Date(Math.floor(now.getTime() / windowMs) * windowMs);
+
+  const result = await pool.query<{ count: string }>(
+    `SELECT "count" FROM rate_limits WHERE key = $1 AND window_start = $2`,
+    [key, bucketStart],
+  );
+  const count = Number(result.rows[0]?.count ?? 0);
+
+  // The bucket is full at count === maxAttempts (the last allowed attempt),
+  // so the next increment would be rejected once count >= maxAttempts.
+  if (count >= maxAttempts) {
+    const nextBucket = new Date(bucketStart.getTime() + windowMs);
+    const retryAfter = Math.max(
+      1,
+      Math.ceil((nextBucket.getTime() - now.getTime()) / 1000),
+    );
+    return { allowed: false, remaining: 0, retryAfterSeconds: retryAfter };
+  }
+  return {
+    allowed: true,
+    remaining: Math.max(0, maxAttempts - count),
+    retryAfterSeconds: 0,
+  };
+}
+
+/**
  * @deprecated Use getClientIp from request-utils instead
  */
 export async function getClientIP(): Promise<string> {

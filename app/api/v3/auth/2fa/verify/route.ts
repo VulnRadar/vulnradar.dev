@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual, createHash } from "node:crypto";
 import { createSession, verifyPassword } from "@/lib/auth";
 import { decryptApiKey } from "@/lib/auth/crypto";
-import { verifyTOTP } from "@/lib/auth/totp";
+import { verifyTOTPWithCounter } from "@/lib/auth/totp";
 import pool from "@/lib/database/db";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { newLoginEmail } from "@/lib/email/email";
@@ -274,14 +274,18 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
           { status: 400 },
         );
       }
-      verified = verifyTOTP(decryptedSecret, code);
+      const totpResult = verifyTOTPWithCounter(decryptedSecret, code);
+      verified = totpResult.valid;
 
       if (verified) {
         // TOTP replay prevention: each 30-second time-step may only be used
         // once per account. Lock the row, compare against the stored counter,
         // and advance it atomically so two concurrent requests with the same
-        // code can't both pass (AUDIT-004#auth-01).
-        const stepCounter = BigInt(Math.floor(Date.now() / 1000 / 30));
+        // code can't both pass (AUDIT-004#auth-01). Key the guard on the
+        // step the code actually matched, not the current wall-clock step:
+        // a code is valid for +/- window steps, so using the wall-clock step
+        // would let the same code be replayed once per step it stays valid.
+        const stepCounter = BigInt(totpResult.counter as number);
         const stepClient = await pool.connect();
         let replayDetected = false;
         try {
