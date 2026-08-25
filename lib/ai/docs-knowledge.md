@@ -986,6 +986,14 @@ and rotate with{" "}
 POST /api/v3/keys/[id]/rotate, which
 deletes the old key in the same call.
 
+> **INFO: Scopes**
+> Each key carries scopes: scan:write{" "}
+(start scans), scan:read (read history
+and reports), and scan:delete (delete
+scans). New keys default to write and read; choose the set when
+you generate a key in Profile -> Developer -> API Keys. A
+route you call without the scope it needs returns 403 naming
+
 > **INFO: POST /scan does not return findings**
 > The scan runs as a background job: the create call only returns a{" "}
 scanId, so any gate that reads{" "}
@@ -1186,7 +1194,7 @@ Discover links from a target without scanning them. Useful for previewing what a
 ```
 
 #### `POST /scan/discover`: Discover Subdomains
-Enumerate subdomains for a domain. Aggregates results from crt.sh, HackerTarget, Subdomain.Center, RapidDNS, and brute-force DNS.
+Enumerate subdomains for a domain. Aggregates nine passive sources (crt.sh, HackerTarget, Subdomain.Center, RapidDNS, AlienVault OTX, Anubis, CertSpotter, urlscan.io, and the Wayback Machine) plus prefix DNS brute-force.
 
 - **Request body:**
 ```json
@@ -1551,13 +1559,13 @@ Removes a domain. Active Probing stops being allowed against it (and its subdoma
 - Authentication is either the session cookie the web app already holds, or a Bearer API key prefixed vr_live_ ( CONFIG_API_KEY_PREFIX). Which one you use changes how quota is counted, so read Rate Limits before you wire this into CI.
 - Prefer a machine-readable spec? The OpenAPI 3.1 description of this API lives at /api/v3/openapi.json. Import it into Postman, Insomnia, or Bruno, or try calls right in the browser on the API playground .
 - Each plan caps how many active keys you can hold (one on the free tier, more on paid plans). Keep them out of version control and rotate with POST /api/v3/keys/[id]/rotate, which deletes the old key in the same call.
+- Each key carries scopes: scan:write (start scans), scan:read (read history and reports), and scan:delete (delete scans). New keys default to write and read; choose the set when you generate a key in Profile -> Developer -> API Keys. A route you call without the scope it needs returns 403 naming the missing one.
 - The API Playground loads this same spec and sends real requests: pick an endpoint, paste a key, and read the live response. Your key stays in the browser and is never stored.
 - The same three calls in curl, JavaScript, and Python. Swap the placeholder key and they run as-is. The Python tab uses the official SDK (pip install vulnradar, source at github.com/VulnRadar/Python-SDK ) instead of raw HTTP calls.
 - Finding IDs are stable, so a scan can gate a pull request: fail the build when critical or high findings show up, without hand-rolling the poll loop yourself.
 - Store your API key as a repo secret named VULNRADAR_TOKEN, never hardcoded in the workflow. Self-hosting? Point api-base-url at your own deployment's /api/v3.
 - The same gate as a GitLab CI job. Add VULNRADAR_TOKEN as a masked CI/CD variable, then include the template and set the URL:
 - Prefer not to include a remote file? Copy the job straight from the template into your own .gitlab-ci.yml. Self-hosting? Override VR_API_BASE with your deployment's /api/v3.
-- Same gate, from any shell or CI, dependency-free (Node 18+):
 
 ### Code examples
 ```yaml
@@ -2164,7 +2172,7 @@ npm run lint:fix    # auto-fix
 | `/docs/extension` | ✓ | 8 | 1 | 0 | 0 | 0 | 0 | 10 | 2 |
 | `/docs/self-hosting` | - | 15 | 6 | 0 | 12 | 0 | 0 | 19 | 3 |
 | `/docs/config` | - | 9 | 3 | 0 | 2 | 0 | 0 | 28 | 0 |
-| `/docs/api` | - | 8 | 3 | 0 | 6 | 28 | 0 | 14 | 9 |
+| `/docs/api` | - | 8 | 4 | 0 | 6 | 28 | 0 | 15 | 9 |
 | `/docs/webhooks` | ✓ | 6 | 0 | 0 | 3 | 0 | 0 | 5 | 5 |
 | `/docs/rate-limits` | - | 6 | 5 | 0 | 4 | 0 | 0 | 10 | 3 |
 | `/docs/architecture` | - | 5 | 1 | 0 | 4 | 0 | 0 | 8 | 0 |

@@ -52,6 +52,7 @@ const endpoints: Endpoint[] = [
       'probes is an array of "<service>:<port>" strings. Supported services: ssh, smtp, imap, pop3, ftp, mongodb. Default port is used if you omit it. Each probe opens a TCP socket to the hostname or IP, reads the banner, and reports version disclosure and reachability.',
       "scanners (advanced) accepts category names to restrict web checks: headers, ssl, tls, content, cookies, configuration, information-disclosure, dns, email, api, code, secrets-extended, vibe-code, client-side, supply-chain, host-validation, reputation, active-probes. Omit to run all 17 default categories. reputation only produces findings when the deployment has WEB_RISK_API_KEY configured. active-probes is opt-in only: it submits real requests to the target (SQLi/XSS/SSTI/command-injection/open-redirect canary payloads, spoofed-Origin CORS reflection, dangerous HTTP methods, X-Forwarded-Host injection, a live GraphQL introspection query) and never runs unless you name it explicitly, even if scanners is omitted.",
       "active-probes additionally requires the target's domain (or its parent) to be a verified domain on your account -- see POST /domains below. A request naming active-probes against an unverified domain is rejected with 403 DOMAIN_NOT_VERIFIED before the scan starts.",
+      "To run only some active probes, pass a scoped token in scanners instead of the bare category: active-probes:<id>, where id is one of xss, sqli, ssti, command-injection, open-redirect, graphql, cors, http-methods, x-forwarded-host. List several to select several; the bare active-probes runs them all.",
       "Service probes are independent of the URL scheme: you can ask for an SSH probe on an https:// target or a raw IPv4.",
       "SSRF protection rejects localhost and private IP targets.",
       "A scan_history row is created before scanning starts, in status pending, then running. Poll GET /scan/status/{scanId} (see below) for progress and the completed result; there is no synchronous response body with findings on this endpoint anymore.",
@@ -376,7 +377,7 @@ const endpoints: Endpoint[] = [
     path: "/scan/discover",
     title: "Discover Subdomains",
     description:
-      "Enumerate subdomains for a domain. Aggregates results from crt.sh, HackerTarget, Subdomain.Center, RapidDNS, and brute-force DNS.",
+      "Enumerate subdomains for a domain. Aggregates nine passive sources (crt.sh, HackerTarget, Subdomain.Center, RapidDNS, AlienVault OTX, Anubis, CertSpotter, urlscan.io, and the Wayback Machine) plus prefix DNS brute-force.",
     requestBody: `{
   "url": "https://example.com",
   "forceRefresh": false
@@ -1144,6 +1145,17 @@ export default function APIDocsPage() {
                 and rotate with{" "}
                 <InlineCode>POST /api/v3/keys/[id]/rotate</InlineCode>, which
                 deletes the old key in the same call.
+              </p>
+            </DocsCallout>
+            <DocsCallout variant="info" title="Scopes">
+              <p>
+                Each key carries scopes: <InlineCode>scan:write</InlineCode>{" "}
+                (start scans), <InlineCode>scan:read</InlineCode> (read history
+                and reports), and <InlineCode>scan:delete</InlineCode> (delete
+                scans). New keys default to write and read; choose the set when
+                you generate a key in Profile -&gt; Developer -&gt; API Keys. A
+                route you call without the scope it needs returns 403 naming the
+                missing one.
               </p>
             </DocsCallout>
           </div>
