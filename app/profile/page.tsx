@@ -669,7 +669,11 @@ function ProfileContent() {
     <div className="min-h-screen bg-background flex flex-col">
       <Header />
 
-      <main className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 flex flex-col gap-6 sm:gap-8 min-w-0">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 flex flex-col gap-6 sm:gap-8 min-w-0"
+      >
         {/* Page Header — top-left pattern (matches Admin / Shared pages) */}
         <div className="mb-2">
           <h1 className="text-2xl font-semibold tracking-tight">

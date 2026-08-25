@@ -87,7 +87,11 @@ export function AuthSplitLayout({ children }: AuthSplitLayoutProps) {
       {/* The dead space is solved by composition, not a background: the pitch
           and the form are pulled into one centered, bounded band, so the empty
           room becomes symmetric outer margin instead of a gap down the middle. */}
-      <main className="relative z-10 flex flex-1 items-center justify-center px-6 py-10 sm:px-10">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="relative z-10 flex flex-1 items-center justify-center px-6 py-10 sm:px-10"
+      >
         <div className="grid w-full max-w-6xl items-center gap-y-12 lg:grid-cols-2 lg:gap-x-16 xl:gap-x-28">
           {/* The pitch. Desktop only; on a phone it would push the form below
               the fold. */}

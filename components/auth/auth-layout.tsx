@@ -22,7 +22,11 @@ export function AuthLayout({ children, width = "narrow" }: AuthLayoutProps) {
         <AuthWordmark />
       </header>
 
-      <main className="flex-1 flex flex-col items-center justify-center px-5 sm:px-8 py-10">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="flex-1 flex flex-col items-center justify-center px-5 sm:px-8 py-10"
+      >
         <div
           className={cn(
             "w-full",

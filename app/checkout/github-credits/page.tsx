@@ -134,7 +134,11 @@ export default function GithubCreditsCheckoutPage() {
         aria-hidden="true"
       />
 
-      <main className="container max-w-4xl mx-auto px-4 py-8 md:py-12">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="container max-w-4xl mx-auto px-4 py-8 md:py-12"
+      >
         <div className="mb-8 max-w-2xl">
           <h1 className="text-2xl md:text-3xl font-bold mb-2">
             Buy more GitHub review tokens

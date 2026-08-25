@@ -101,7 +101,11 @@ export default function AdminConversationPage({ params }: PageProps) {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Header />
-      <main className="flex-1 w-full max-w-4xl mx-auto px-4 sm:px-6 py-8">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="flex-1 w-full max-w-4xl mx-auto px-4 sm:px-6 py-8"
+      >
         <div className="mb-6">
           <Button
             asChild

@@ -92,7 +92,11 @@ export default function BadgePage() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
-      <main className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10"
+      >
         <header className="mb-8 max-w-xl">
           <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">
             Badge

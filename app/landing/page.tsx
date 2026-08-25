@@ -98,7 +98,7 @@ export default async function LandingPage() {
       <SoftwareStructuredData nonce={nonce} />
       <FaqStructuredData items={faq} nonce={nonce} />
       <LandingNav />
-      <main className="flex-1 min-w-0">
+      <main id="main-content" tabIndex={-1} className="flex-1 min-w-0">
         <LandingHero checkCount={checkCount} categoryCount={categoryCount} />
         <LandingSampleFinding />
         <LandingHowItWorks categoryCount={categoryCount} />

@@ -150,7 +150,11 @@ export default function SharesPage() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
-      <main className="w-full max-w-6xl mx-auto flex-1 px-4 py-6 sm:px-6 sm:py-8">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="w-full max-w-6xl mx-auto flex-1 px-4 py-6 sm:px-6 sm:py-8"
+      >
         <div className="flex flex-col gap-5">
           <div className="pb-2 pt-2 sm:pt-4">
             <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">

@@ -21,7 +21,11 @@ export default function AttackSurfacePage() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <Header />
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6"
+      >
         <div className="mb-6">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             Attack surface

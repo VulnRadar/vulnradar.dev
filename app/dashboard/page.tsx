@@ -876,7 +876,11 @@ function DashboardContent() {
       <OnboardingTour />
       <Header />
 
-      <main className={`flex-1 pb-16 ${CONTAINER}`}>
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className={`flex-1 pb-16 ${CONTAINER}`}
+      >
         {/* Idle: the scan console, then whatever this account has already found */}
         {status === "idle" && (
           <>

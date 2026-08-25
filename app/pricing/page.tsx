@@ -69,7 +69,11 @@ export default function PricingPage() {
     return (
       <div className="min-h-screen flex flex-col bg-background">
         <LandingNav />
-        <main className="flex-1 max-w-3xl w-full mx-auto px-4 sm:px-6 py-20 sm:py-28">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="flex-1 max-w-3xl w-full mx-auto px-4 sm:px-6 py-20 sm:py-28"
+        >
           <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight mb-5 text-balance">
             There is nothing to pay for here
           </h1>
@@ -145,7 +149,7 @@ export default function PricingPage() {
     <div className="min-h-screen flex flex-col bg-background">
       <LandingNav />
 
-      <main className="flex-1">
+      <main id="main-content" tabIndex={-1} className="flex-1">
         <PricingHero billing={billing} onBillingChange={setBilling} />
 
         <PricingCards

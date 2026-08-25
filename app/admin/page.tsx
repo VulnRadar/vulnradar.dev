@@ -906,7 +906,11 @@ function AdminContent() {
     return (
       <div className="min-h-screen bg-background flex flex-col">
         <Header />
-        <main className="flex-1 flex items-center justify-center px-4">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="flex-1 flex items-center justify-center px-4"
+        >
           <div className="text-center flex flex-col items-center gap-4">
             <div className="h-14 w-14 rounded-2xl bg-destructive/10 flex items-center justify-center">
               {twoFactorLockout ? (
@@ -966,7 +970,11 @@ function AdminContent() {
     return (
       <div className="min-h-screen bg-background flex flex-col">
         <Header />
-        <main className="flex-1 flex items-center justify-center px-4">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="flex-1 flex items-center justify-center px-4"
+        >
           <Loader2
             className="h-6 w-6 animate-spin text-muted-foreground"
             aria-hidden="true"
@@ -1003,7 +1011,11 @@ function AdminContent() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Header />
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-8">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-8"
+      >
         {/* Page Header */}
         <div className="mb-6">
           <h1 className="text-2xl font-semibold tracking-tight">Admin Panel</h1>

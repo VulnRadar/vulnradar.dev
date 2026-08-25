@@ -11,7 +11,11 @@ export function LegalShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <LandingNav />
-      <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-8 sm:px-6 sm:py-10">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="mx-auto w-full max-w-4xl flex-1 px-4 py-8 sm:px-6 sm:py-10"
+      >
         <LegalNav />
         {children}
       </main>
