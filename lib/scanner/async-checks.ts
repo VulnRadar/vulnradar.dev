@@ -3568,10 +3568,11 @@ export async function checkActiveCORS(
 
     // .test TLD is IANA-reserved — never a real domain
     const testOrigin = "https://cors-probe.vulnradar.test";
-    // Safe: validateScanTarget(url) was checked above (DNS-resolved, not just
-    // a syntactic hostname check) on this exact url before it reaches fetch.
-    // codeql[js/request-forgery]
-    const res = await fetch(url, {
+    // Pin to the IP validateScanTarget just resolved so the OS can't
+    // re-resolve the hostname to a rebound private/metadata IP at connect
+    // time (HTTP is IP-pinned with a Host header; HTTPS relies on the
+    // immediate DNS re-resolution, same as safeFetch's siblings).
+    const { url: fetchUrl, init: fetchInit } = applyPinnedTarget(url, safety, {
       ...FETCH_OPTS,
       signal: activeProbeSignal(cancelSignal),
       headers: {
@@ -3579,6 +3580,7 @@ export async function checkActiveCORS(
         Origin: testOrigin,
       },
     });
+    const res = await fetch(fetchUrl, fetchInit);
 
     const acao = res.headers.get("access-control-allow-origin") ?? "";
     // Only fire on exact reflection; wildcard is caught by passive cors-wildcard check
@@ -3641,15 +3643,15 @@ export async function checkActiveHttpMethods(
     const safety = await validateScanTarget(origin);
     if (!safety.safe) return [];
 
-    // Safe: validateScanTarget(origin) was checked above (DNS-resolved, not
-    // just a syntactic hostname check) on this exact origin before it reaches
-    // fetch.
-    // codeql[js/request-forgery]
-    const res = await fetch(origin, {
+    // Pin to the IP validateScanTarget just resolved so a DNS rebind can't
+    // redirect the connect to a private/metadata IP (HTTP pinned + Host
+    // header; HTTPS relies on the immediate re-resolution).
+    const optionsTarget = applyPinnedTarget(origin, safety, {
       method: "OPTIONS",
       ...FETCH_OPTS,
       signal: activeProbeSignal(cancelSignal),
     });
+    const res = await fetch(optionsTarget.url, optionsTarget.init);
 
     const allow = res.headers.get("allow") ?? "";
     if (!allow) return [];
@@ -3659,14 +3661,13 @@ export async function checkActiveHttpMethods(
     if (/\bTRACE\b|\bTRACK\b/i.test(allow)) {
       let confirmed = false;
       try {
-        // Safe: same origin as the OPTIONS probe above, already checked
-        // against validateScanTarget (DNS-resolved) earlier in this function.
-        // codeql[js/request-forgery]
-        const traceRes = await fetch(origin, {
+        // Same origin as the OPTIONS probe; pin the resolved IP the same way.
+        const traceTarget = applyPinnedTarget(origin, safety, {
           method: "TRACE",
           ...FETCH_OPTS,
           signal: activeProbeSignal(cancelSignal),
         });
+        const traceRes = await fetch(traceTarget.url, traceTarget.init);
         const traceBody = await traceRes.text();
         confirmed =
           traceRes.status === 200 &&
@@ -3747,10 +3748,10 @@ export async function checkXForwardedHostInjection(
 
     const testHost = "vulnradar-host-probe.invalid";
 
-    // Safe: validateScanTarget(url) was checked above (DNS-resolved, not just
-    // a syntactic hostname check) on this exact url before it reaches fetch.
-    // codeql[js/request-forgery]
-    const res = await fetch(url, {
+    // Pin to the IP validateScanTarget just resolved so a DNS rebind can't
+    // point the connect at a private/metadata IP (HTTP pinned + Host header;
+    // HTTPS relies on the immediate re-resolution).
+    const hostProbeTarget = applyPinnedTarget(url, safety, {
       ...FETCH_OPTS,
       headers: {
         ...FETCH_OPTS.headers,
@@ -3758,6 +3759,7 @@ export async function checkXForwardedHostInjection(
       },
       signal: activeProbeSignal(cancelSignal),
     });
+    const res = await fetch(hostProbeTarget.url, hostProbeTarget.init);
 
     const body = (await res.text()).slice(0, 8192);
     const locationHeader = res.headers.get("location") ?? "";

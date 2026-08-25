@@ -260,6 +260,38 @@ function setHostHeader(
 }
 
 /**
+ * Rewrite an HTTP url to target the IP a prior validateScanTarget already
+ * resolved (with the real host preserved in a Host header), so the OS cannot
+ * re-resolve the hostname to a rebound private/metadata IP at connect time.
+ * HTTPS is returned unchanged -- swapping the hostname would break TLS/SNI, so
+ * there the protection is the immediate DNS re-resolution, not IP pinning
+ * (the same limitation safeFetch documents). Unlike safeFetch this does NOT
+ * touch redirect handling, so a probe that needs to inspect a raw cross-host
+ * 3xx (e.g. the open-redirect canary) keeps working. Pass the `resolvedIp`
+ * from the SafetyCheckResult you already validated the url with.
+ */
+export function pinToResolvedIp(
+  url: string,
+  resolvedIp: string | undefined,
+  init?: RequestInit,
+): { url: string; init: RequestInit | undefined } {
+  if (!resolvedIp) return { url, init };
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return { url, init };
+  }
+  if (parsed.protocol !== "http:") return { url, init };
+
+  const originalHostname = parsed.hostname;
+  const originalPort = parsed.port;
+  parsed.hostname = isIP(resolvedIp) === 6 ? `[${resolvedIp}]` : resolvedIp;
+  if (originalPort) parsed.port = originalPort;
+  return { url: parsed.href, init: setHostHeader(init, originalHostname) };
+}
+
+/**
  * Merge extra headers onto an init, with the extras winning. Returns a new
  * init: the caller's object is never mutated, which is what keeps
  * session headers from leaking from one redirect hop to the next.

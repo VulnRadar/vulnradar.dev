@@ -483,15 +483,21 @@ export function generatePdfReport(result: ScanResult): Uint8Array {
   objects[pagesId - 1].content =
     `${pagesId} 0 obj\n<< /Type /Pages /Kids [${kidsArray}] /Count ${pages.length} >>\nendobj\n`;
 
-  // Assemble PDF bytes
+  // Assemble PDF bytes. xref offsets must be UTF-8 BYTE offsets, not JS
+  // string lengths (UTF-16 code units): any non-ASCII byte in a URL, banner,
+  // evidence string, or an em dash would otherwise shift every later
+  // offset, corrupting the xref table for strict PDF validators. Track a
+  // running byte count as each chunk is appended.
   let pdf = "%PDF-1.4\n";
+  let byteLength = Buffer.byteLength(pdf, "utf8");
   const offsets: number[] = [];
   for (const obj of objects) {
-    offsets.push(pdf.length);
+    offsets.push(byteLength);
     pdf += obj.content;
+    byteLength += Buffer.byteLength(obj.content, "utf8");
   }
 
-  const xrefOffset = pdf.length;
+  const xrefOffset = byteLength;
   pdf += "xref\n";
   pdf += `0 ${objects.length + 1}\n`;
   pdf += "0000000000 65535 f \n";

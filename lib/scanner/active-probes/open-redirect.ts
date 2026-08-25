@@ -1,4 +1,8 @@
-import { isPrivateHostname, validateScanTarget } from "../safe-fetch";
+import {
+  isPrivateHostname,
+  validateScanTarget,
+  pinToResolvedIp,
+} from "../safe-fetch";
 import { generateId } from "../_helpers";
 import { getCheckDef } from "../registry";
 import type { Vulnerability, Category } from "../types";
@@ -153,15 +157,16 @@ export async function checkOpenRedirectProbe(
 
   let html: string;
   try {
-    // Safe: validateScanTarget(url) was checked above (DNS-resolved, not
-    // just a syntactic hostname check) on this exact url before it reaches
-    // fetch.
-    // codeql[js/request-forgery]
-    const res = await fetch(url, {
+    // Pin to the IP validateScanTarget just resolved so a DNS rebind can't
+    // point the connect at a private/metadata IP (HTTP pinned + Host header;
+    // HTTPS relies on the immediate re-resolution). Does not alter redirect
+    // handling, so `redirect: "error"` still behaves as before.
+    const pageTarget = pinToResolvedIp(url, safety.resolvedIp, {
       headers: { "User-Agent": USER_AGENT },
       redirect: "error",
       signal: probeSignal(cancelSignal),
     });
+    const res = await fetch(pageTarget.url, pageTarget.init);
     if (!res.ok) return [];
     html = await res.text();
   } catch {
@@ -185,15 +190,19 @@ export async function checkOpenRedirectProbe(
     probeUrl.searchParams.set(candidate.paramName, CANARY_TARGET);
 
     try {
-      // Safe: probeUrl is the same host as `url`, already validated above;
-      // only the query string (a redirect-shaped parameter this exact page
-      // already uses) is attacker-influenced.
-      // codeql[js/request-forgery]
-      const res = await fetch(probeUrl.toString(), {
-        headers: { "User-Agent": USER_AGENT },
-        redirect: "manual",
-        signal: probeSignal(cancelSignal),
-      });
+      // probeUrl is the same host as `url` (validated above), so reuse its
+      // resolved IP to pin the connect. redirect: "manual" is preserved, so
+      // the cross-host canary 3xx is still returned for inspection.
+      const probeTarget = pinToResolvedIp(
+        probeUrl.toString(),
+        safety.resolvedIp,
+        {
+          headers: { "User-Agent": USER_AGENT },
+          redirect: "manual",
+          signal: probeSignal(cancelSignal),
+        },
+      );
+      const res = await fetch(probeTarget.url, probeTarget.init);
 
       if (res.status < 300 || res.status >= 400) continue;
       const location = res.headers.get("location") ?? "";
