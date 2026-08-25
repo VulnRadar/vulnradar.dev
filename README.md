@@ -9,10 +9,11 @@ report in under 3 seconds. No agent to install.
 
 </div>
 
-**795+ deterministic checks across 18 categories** covering security headers,
+**Deterministic checks across 18 categories** covering security headers,
 TLS and certificates, cookies, DNS and email records, exposed secrets, server
 misconfiguration, information disclosure, client-side risks, supply chain
-exposure, and common AI-generated code antipatterns.
+exposure, and common AI-generated code antipatterns. Same URL, same findings,
+same stable IDs every run.
 
 [![Secured by VulnRadar](https://vulnradar.dev/api/v3/badge/9e5fb4e1fe33513bf6799a588fe9831b844f1cfbdedde844e5fafdd379f6a51c)](https://vulnradar.dev/shared/9e5fb4e1fe33513bf6799a588fe9831b844f1cfbdedde844e5fafdd379f6a51c)
 
@@ -26,7 +27,7 @@ exposure, and common AI-generated code antipatterns.
 
 ## Features
 
-- 795+ checks across 18 categories, run in parallel
+- Deterministic checks across 18 categories, run in parallel
 - Stable finding IDs, so results can be diffed between runs and gated in CI
 - Scan history, comparison between two scans, and shareable report links
 - Self-updating embed badge: generate it once, it always shows the latest scan

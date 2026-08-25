@@ -1,4 +1,4 @@
-# AUDIT-001 — Auth, session, and scanner hardening
+# AUDIT-001, Auth, session, and scanner hardening
 
 **ID:** AUDIT-001
 **Created:** 2026-06-28T14:35:00Z

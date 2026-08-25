@@ -1,4 +1,4 @@
-# Comprehensive v3 security audit — applied fixes
+# Comprehensive v3 security audit, applied fixes
 
 **ID:** AUDIT-003
 **Created:** 2026-07-02T00:00:00Z
@@ -12,9 +12,9 @@
 
 All 12 confirmed findings applied in a single commit. Verification: `npx tsc --noEmit` → 0 errors, `npm test` → 3831 passed, `npm run build` → clean.
 
-## Critical finding — admin gate dead code
+## Critical finding, admin gate dead code
 
-The most impactful finding was structural: the admin PATCH route's password re-authentication gate lived inside the switch statement as fallthrough cases that ended with `break`. After `break`, the switch exits. The actual action handlers appeared as duplicate `case` labels below the gate — code the JS engine never reaches. Every sensitive admin action (email change, disable, delete, password reset, session revoke) ran without any password challenge. Fixed by moving the gate to a `Set<string>` check before the switch.
+The most impactful finding was structural: the admin PATCH route's password re-authentication gate lived inside the switch statement as fallthrough cases that ended with `break`. After `break`, the switch exits. The actual action handlers appeared as duplicate `case` labels below the gate, code the JS engine never reaches. Every sensitive admin action (email change, disable, delete, password reset, session revoke) ran without any password challenge. Fixed by moving the gate to a `Set<string>` check before the switch.
 
 ## Deferred findings
 

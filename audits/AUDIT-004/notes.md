@@ -1,4 +1,4 @@
-# Deferred security items — DB migrations, CI/CD, and code hardening
+# Deferred security items, DB migrations, CI/CD, and code hardening
 
 **ID:** AUDIT-004
 **Created:** 2026-07-02T06:00:00Z
@@ -10,7 +10,7 @@
 Items discovered during AUDIT-003 that could not be applied immediately because they require:
 
 - **DB schema migrations** (totp_last_counter, share_token_hash, billing_verification_codes salt)
-- **CI/CD workflow changes** (GitHub Actions SHA pinning — carry-over from AUDIT-002#ci-01)
+- **CI/CD workflow changes** (GitHub Actions SHA pinning, carry-over from AUDIT-002#ci-01)
 - **Further design decisions** (BrowserBase session ownership store, AI chat rate limiting strategy)
 - **Follow-up from AUDIT-003 partial fixes** (next.config.mjs CSP still has bare https:)
 
@@ -18,11 +18,11 @@ Items discovered during AUDIT-003 that could not be applied immediately because 
 
 | Priority | ID                                                 | Why                                                                   |
 | -------- | -------------------------------------------------- | --------------------------------------------------------------------- |
-| 1        | auth-01                                            | TOTP replay — active 2FA bypass window                                |
-| 2        | rate-01                                            | AI chat cost amplification — unbounded spend                          |
-| 3        | auth-02                                            | 2FA enrollment without password — session hijack enables 2FA takeover |
-| 4        | rate-02                                            | Admin brute-force window — password gate without lockout              |
-| 5        | ci-01                                              | Supply chain — mutable GH Actions tags                                |
+| 1        | auth-01                                            | TOTP replay, active 2FA bypass window                                |
+| 2        | rate-01                                            | AI chat cost amplification, unbounded spend                          |
+| 3        | auth-02                                            | 2FA enrollment without password, session hijack enables 2FA takeover |
+| 4        | rate-02                                            | Admin brute-force window, password gate without lockout              |
+| 5        | ci-01                                              | Supply chain, mutable GH Actions tags                                |
 | 6        | idor-01                                            | BrowserBase session IDOR                                              |
 | 7        | headers-01                                         | next.config.mjs CSP still wide open                                   |
 | 8        | secrets-01                                         | Share token hashing (schema migration)                                |

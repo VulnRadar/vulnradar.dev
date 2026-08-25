@@ -6,7 +6,7 @@ more than one audit per day was needed.
 
 ## Naming
 
-Every audit is identified by **`AUDIT-NNN`** — zero-padded sequential
+Every audit is identified by **`AUDIT-NNN`**, a zero-padded sequential
 ID. The ID is allocated at creation time and never reused. The date
 the audit was created lives in `manifest.json`, not in the ID.
 
@@ -55,13 +55,13 @@ node scripts/audit/close.mjs AUDIT-001 --status shipped --commit bcc9e86
 
 Date-based filenames can't disambiguate two audits on the same day.
 Sequential IDs always can. The date is still recorded in `manifest.json`
-for ordering and filtering — it's metadata, not identity.
+for ordering and filtering, and it is metadata, not identity.
 
 ## Why not full docs in each audit folder?
 
 The audit report lives in the commit message + the manifest's `summary`
 field. Long-form prose belongs in `docs/` or `app/changelog/`. The
-audit folder holds structured data only — finding IDs are stable,
+audit folder holds structured data only, and finding IDs are stable,
 parseable, and referenceable from code comments.
 
 ## Adding a new finding

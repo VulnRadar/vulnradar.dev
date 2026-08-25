@@ -134,12 +134,12 @@ functional overlaps regardless of naming, which is how the
 duplicate/overlapping-check findings (scanner-05, part of scanner-08)
 were found; (2) for headers.json specifically, several entries'
 templated `"evidence"` field embeds a `headers-<slug>` string that
-doesn't match the entry's own `"id"` — a leftover fingerprint from
+doesn't match the entry's own `"id"`, a leftover fingerprint from
 whatever process re-pointed a stale/renamed id at an existing detector
 without updating the rest of the metadata (scanner-06). Cross-checking
 those two systematic signals against the actual `.ts` logic, rather
 than trusting titles at face value, is what surfaced most of the real
-bugs here — several checks (`coop-missing`, `charset-meta-missing`,
+bugs here, several checks (`coop-missing`, `charset-meta-missing`,
 `cors-null-origin-allowed`) had titles/descriptions/fix-steps that
 were about a _completely different, unrelated concept_ than what the
 code actually detected.
@@ -149,25 +149,25 @@ plausibly have contributed to the same kind of Walmart-style inflated
 score/finding-count as the four scanner-01..04 bugs):
 
 - `x-xss-protection-block` (scanner-12) fired a "finding" on every HTML
-  page that correctly omits the deprecated X-XSS-Protection header —
+  page that correctly omits the deprecated X-XSS-Protection header -
   its own evidence text said "that's correct" while still being
   reported. This is likely the single highest-volume false-positive of
   everything reviewed in this audit wave (fires once per HTML page on
   every well-run site in existence).
 - `content-disposition-inline` (scanner-11) matched image/audio/video
   MIME types in its "no Content-Disposition" branch, so it recommended
-  forcing a download on ordinary `<img>`/`<video>` assets — i.e. fired
+  forcing a download on ordinary `<img>`/`<video>` assets, i.e. fired
   on nearly every image on every page.
 - `sri-missing` at severity `high` (scanner-07) fires on any external
   script without SRI, but SRI is structurally impractical for
   continuously-updated third-party vendor scripts (GA, GTM, payment
-  SDKs) that virtually every production site loads — this would have
+  SDKs) that virtually every production site loads, this would have
   fired at "high" against almost the entire web, GitHub/Cloudflare
   included.
 - `cookie-third-party-no-samesite-none-secure` (scanner-08, `high`)
   conflated "has an explicit cookie Domain= attribute" with "is a
-  third-party/cross-site cookie" — completely ordinary at any company
-  with subdomain SSO — and told developers to add `SameSite=None`,
+  third-party/cross-site cookie", completely ordinary at any company
+  with subdomain SSO, and told developers to add `SameSite=None`,
   which is _worse_ advice for a first-party cookie, not better.
 
 Judgment calls flagged but NOT changed (recorded as findings for human
@@ -175,7 +175,7 @@ review, no code changed):
 
 - `ratelimit-policy-missing`'s remaining premise (absence of
   RateLimit-* headers on an `api.*` host implies absence of rate
-  limiting) is still a heuristic that can't be verified passively —
+  limiting) is still a heuristic that can't be verified passively -
   fixed the concrete header-name gap (scanner-10) but the underlying
   design tradeoff (can't confirm rate limiting without active testing)
   is a reasonable, common scanner design choice, not a bug to unilaterally
@@ -195,7 +195,7 @@ Vary-header family (`vary-header-cookie`, `vary-header-missing`,
 `vary-cookie-on-static-resource`, `vary-origin-missing-cors`) or the
 CDN-cache-header disclosure checks (`x-amz-cf-id`, `x-vercel-cache`,
 `x-nextjs-cache`, `x-netlify-cache`, `x-cache-hits`,
-`x-cache-status-cloudflare`) — all correctly scoped to `info`/`low` and
+`x-cache-status-cloudflare`), all correctly scoped to `info`/`low` and
 their code matches their documented behavior.
 
 ---
@@ -214,10 +214,10 @@ files, and 2399 lines of page-checks/*.ts all read in full before any
 change.
 
 dns.ts, email.ts, and tls.ts are intentionally all-`() => null` placeholders
-(the real detection is async, in async-checks.ts) — nothing to fix there.
+(the real detection is async, in async-checks.ts), nothing to fix there.
 The 9 `page-checks/*.ts` files other than mixed-content.ts and scripts.ts
 (cookies, csp, disclosure, forms, framework-fingerprint, jwt,
-leaked-secrets, libraries, links) were the newest code in the whole scope —
+leaked-secrets, libraries, links) were the newest code in the whole scope -
 each already carries deliberate hedging (capped confidence, explanation
 text telling the reader what would make it a false positive, correct
 `ctx.isHttps`/`ctx.isFrameworkPage` gating) and cross-references the
@@ -229,7 +229,7 @@ have contradicted what the code actually does.
 
 - secrets-extended.ts's ~51 per-provider `secret-*` detectors (Stripe,
   Google, AWS, GitHub, npm, Datadog, etc.) had zero placeholder-value
-  filtering, unlike the file's own `hardcoded-secrets` detector — a
+  filtering, unlike the file's own `hardcoded-secrets` detector, a
   `.env.example` or README documenting a fake-but-correctly-shaped
   credential would satisfy a provider's format regex and get reported as a
   confirmed secret, several at `critical` severity. Added a shared
@@ -239,24 +239,24 @@ have contradicted what the code actually does.
   equivalent gap.
 - All 51 entries in secrets-extended.json were typed `"header"` (93%
   confidence) despite every one of their detectors reading only the
-  response body — corrected to `"body-pattern"` (70%), the same mislabeling
+  response body, corrected to `"body-pattern"` (70%), the same mislabeling
   class AUDIT-008 content-07 fixed for a single check, present here across
   an entire file.
 - `ssl.ts`'s `mixed-protocol-content` had no HTTPS gate at all, so it fired
   "HTTPS page loading HTTP resources" on plain HTTP pages that merely
   contained an absolute `http://` src/href/action (i.e. almost every HTTP
-  page) — the newer PageCheck equivalents in page-checks/mixed-content.ts
+  page), the newer PageCheck equivalents in page-checks/mixed-content.ts
   already gate on `ctx.isHttps` correctly; this older detector was the one
   left behind.
 - `api-rest-mass-assignment-risk` (high) inferred an unvalidated-input
   vulnerability purely from response _output_ containing `role`/`isAdmin`
   fields, which a normal `/api/me` returns for any legitimately-admin user
-  — downgraded to low and reworded to describe what was actually observed.
+ , downgraded to low and reworded to describe what was actually observed.
 - `api-graphql-suggestions-enabled` matched the bare phrase "did you mean"
   anywhere in any page (ubiquitous in ordinary e-commerce/docs search UIs,
   unrelated to GraphQL) while confidently asserting a GraphQL error
   response was seen; `api-graphql-introspection-enabled` had a second,
-  fully unscoped branch matching `__schema{` on any page — the identical
+  fully unscoped branch matching `__schema{` on any page, the identical
   bug class as the already-fixed content.json `graphql-introspection`
   (content-03), just under a different id, still at `high`. Both gated on
   actual GraphQL context and had severity/evidence corrected.
@@ -271,7 +271,7 @@ have contradicted what the code actually does.
   precedent.
 - `idor-sequential-id-in-url`'s keyword list included `item`/`record`,
   which name public, no-ownership-concept resources (a catalog product
-  page) just as often as private ones — an ordinary `/item/42` product URL
+  page) just as often as private ones, an ordinary `/item/42` product URL
   was flagged as an IDOR risk. Removed both words.
 - `api-rate-limit-per-ip-no-auth` read an unrelated `x-forwarded-for`
   response header as confirming "rate-limit keyed on IP" (a non sequitur)
@@ -281,11 +281,11 @@ have contradicted what the code actually does.
   non-sequitur branch and reworded evidence as a verification prompt.
 - `api-graphql-error-stack-trace` fired on a bare `"stacktrace":"` key
   anywhere in any response while unconditionally claiming
-  "GraphQL error.extensions.stacktrace leaked" — gated on actual GraphQL
+  "GraphQL error.extensions.stacktrace leaked", gated on actual GraphQL
   context (`/graphql` URL or a JSON `extensions` object).
 - ~15 more `api.json` entries typed `"header"` despite reading only body
   and/or URL (soap-endpoint, xml-rpc, the GraphQL/OpenAPI/JSONP/WebSocket
-  checks, `api-bearer-header-leak`) — corrected to `body-pattern`,
+  checks, `api-bearer-header-leak`), corrected to `body-pattern`,
   `combined`, or `url-check` to match what each detector actually inspects.
 - Wrapped every detector in `api.ts` and `supply-chain.ts` with
   `stripDocBlocks()` (same pattern vibe-code.ts already uses), so a
@@ -297,14 +297,14 @@ have contradicted what the code actually does.
 ### Observed but not changed
 
 - `host-header-injection` (host-validation.ts) checks the passively-fetched
-  response's own headers for an `x-forwarded-host` value it never sent —
+  response's own headers for an `x-forwarded-host` value it never sent -
   the scanner's main fetch never sets that header (confirmed against
   `FETCH_OPTS` in async-checks.ts), so this can essentially never fire in
   the normal scan flow. The _real_, correctly-designed active probe for
   this already exists as `checkXForwardedHostInjection` in async-checks.ts
   and reports independently via `makeVuln`. This is a dead/inert detector,
   not a false-positive generator, so it's outside this audit's brief
-  (accuracy of what fires) — flagging for whoever next touches
+  (accuracy of what fires), flagging for whoever next touches
   host-validation.ts rather than unilaterally rewriting the sync detector
   to duplicate the async probe's job.
 - `api-jwt-alg-none` / `api-jwt-missing-exp-claim` in api.ts are close
