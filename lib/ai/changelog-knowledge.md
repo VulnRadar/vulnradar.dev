@@ -122,6 +122,10 @@ A capability and openness release. Support moves in-app: anyone, including free 
   Applying or reversing a one-time AI or GitHub credit purchase now happens as a single atomic database statement, so a server restart at exactly the wrong moment can no longer record the purchase while failing to add the credits (which previously stranded the balance with no way to recover it).
 - [GitMerge] **[FIXED]** **A Free GitHub Review That Produces Nothing Is Refunded**
   If a free trial GitHub AI review can't run (no AI provider configured, or the repository is too large for one pass), the trial slot is now returned instead of being consumed for an empty result.
+- [Gauge] **[FIXED]** **Rejected Scans No Longer Count Against Your Daily Limit**
+  A scan that was turned away, for hitting the concurrent-scan limit, an invalid or blocked URL, an unverified domain, or a failed authenticated login, used to still spend one of your daily scans with no way to get it back. The daily count is now charged only once a scan has passed every check and actually starts.
+- [Users] **[SECURITY]** **Cross-Tenant Team Admin Tightened to Admins**
+  Listing and renaming any team from the admin panel now requires the admin-level team permissions, rather than being reachable at the moderator tier through the coarse role hierarchy.
 
 ---
 
@@ -1767,6 +1771,6 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 ## Quick reference
 
 - **Total releases:** 62
-- **Total changes documented:** 626
+- **Total changes documented:** 628
 - **Latest:** v3.7.0 (August 24, 2026) - Support Tickets, Report Exports, Attack Surface, GitHub Scanner
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release

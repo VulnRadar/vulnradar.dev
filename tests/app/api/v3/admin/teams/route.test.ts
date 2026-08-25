@@ -104,14 +104,20 @@ describe("GET /api/v3/admin/teams", () => {
     expect(res.status).toBe(403);
   });
 
-  it("rejects a support-tier caller — teams admin is moderator+ only", async () => {
+  it("rejects a support-tier caller — listing all teams needs VIEW_ALL_TEAMS", async () => {
     withRole("support");
     const res = await GET(getRequest());
     expect(res.status).toBe(403);
   });
 
-  it("allows a moderator to list teams", async () => {
+  it("rejects a moderator — VIEW_ALL_TEAMS is an admin-only grant", async () => {
     withRole("moderator");
+    const res = await GET(getRequest());
+    expect(res.status).toBe(403);
+  });
+
+  it("allows an admin to list teams", async () => {
+    withRole("admin");
     mockQuery.mockResolvedValueOnce({ rows: [{ count: "1" }] }); // count
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 1, name: "Acme" }] }); // teams
     const res = await GET(getRequest());
@@ -142,33 +148,39 @@ describe("PATCH /api/v3/admin/teams", () => {
     expect(res.status).toBe(403);
   });
 
-  it("requires teamId", async () => {
+  it("rejects a moderator — MANAGE_ANY_TEAM is an admin-only grant", async () => {
     withRole("moderator");
+    const res = await PATCH(patchRequest({ teamId: 1, name: "New Name" }));
+    expect(res.status).toBe(403);
+  });
+
+  it("requires teamId", async () => {
+    withRole("admin");
     const res = await PATCH(patchRequest({ name: "New Name" }));
     expect(res.status).toBe(400);
   });
 
   it("rejects a name shorter than 2 characters", async () => {
-    withRole("moderator");
+    withRole("admin");
     const res = await PATCH(patchRequest({ teamId: 1, name: "x" }));
     expect(res.status).toBe(400);
   });
 
   it("rejects a name longer than MAX_TEAM_NAME_LENGTH (255 by default)", async () => {
-    withRole("moderator");
+    withRole("admin");
     const res = await PATCH(patchRequest({ teamId: 1, name: "x".repeat(256) }));
     expect(res.status).toBe(400);
   });
 
   it("returns 404 for an unknown team", async () => {
-    withRole("moderator");
+    withRole("admin");
     mockQuery.mockResolvedValueOnce({ rows: [] });
     const res = await PATCH(patchRequest({ teamId: 999, name: "New Name" }));
     expect(res.status).toBe(404);
   });
 
-  it("lets a moderator rename a team and audit-logs it", async () => {
-    withRole("moderator");
+  it("lets an admin rename a team and audit-logs it", async () => {
+    withRole("admin");
     mockQuery.mockResolvedValueOnce({ rows: [{ name: "Old Name" }] }); // current name
     mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE
     const res = await PATCH(patchRequest({ teamId: 1, name: "New Name" }));

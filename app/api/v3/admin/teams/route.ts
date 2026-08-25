@@ -4,14 +4,18 @@ import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import { getClientIp } from "@/lib/api/request-utils";
 import {
-  requireModerator,
+  requirePermission,
   requireAdmin,
   logAuditAction,
 } from "@/lib/auth/authorization";
+import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 
 // List all teams with stats
 export async function GET(request: Request) {
-  const admin = await requireModerator();
+  // VIEW_ALL_TEAMS is an admin-only grant (moderators don't hold it), so use
+  // the granular permission rather than the coarse requireModerator floor,
+  // which over-granted the cross-tenant team list to moderators.
+  const admin = await requirePermission(STAFF_PERMISSIONS.VIEW_ALL_TEAMS);
   if (!admin)
     return NextResponse.json(
       { error: ERROR_MESSAGES.FORBIDDEN },
@@ -70,7 +74,9 @@ export async function GET(request: Request) {
 
 // Update team (admin override)
 export async function PATCH(request: Request) {
-  const admin = await requireModerator();
+  // Renaming any team is an admin-only capability (MANAGE_ANY_TEAM), not a
+  // moderator one -- match the permission model rather than the coarse floor.
+  const admin = await requirePermission(STAFF_PERMISSIONS.MANAGE_ANY_TEAM);
   if (!admin)
     return NextResponse.json(
       { error: ERROR_MESSAGES.FORBIDDEN },

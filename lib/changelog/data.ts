@@ -438,6 +438,18 @@ const CHANGELOG: Release[] = [
         desc: "If a free trial GitHub AI review can't run (no AI provider configured, or the repository is too large for one pass), the trial slot is now returned instead of being consumed for an empty result.",
         category: "fixed",
       },
+      {
+        icon: Gauge,
+        label: "Rejected Scans No Longer Count Against Your Daily Limit",
+        desc: "A scan that was turned away, for hitting the concurrent-scan limit, an invalid or blocked URL, an unverified domain, or a failed authenticated login, used to still spend one of your daily scans with no way to get it back. The daily count is now charged only once a scan has passed every check and actually starts.",
+        category: "fixed",
+      },
+      {
+        icon: Users,
+        label: "Cross-Tenant Team Admin Tightened to Admins",
+        desc: "Listing and renaming any team from the admin panel now requires the admin-level team permissions, rather than being reachable at the moderator tier through the coarse role hierarchy.",
+        category: "security",
+      },
     ],
   },
   {

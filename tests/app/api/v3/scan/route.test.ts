@@ -53,10 +53,18 @@ vi.mock("@/lib/rate-limiting/rate-limit", async (importOriginal) => {
   };
 });
 
-const mockCheckAndRecordRequest = vi.fn();
+// The daily-quota gate is now the read-only canMakeRequest (charged after
+// validation + slot reservation via incrementDailyCountCapped), so the old
+// checkAndRecordRequest mock fn drives canMakeRequest -- same shape.
+const mockCanMakeRequest = vi.fn();
+const mockIncrementDailyCountCapped = vi.fn(async (..._args: unknown[]) => ({
+  recorded: true,
+  count: 1,
+}));
 vi.mock("@/lib/rate-limiting/daily-limits", () => ({
-  checkAndRecordRequest: (...args: unknown[]) =>
-    mockCheckAndRecordRequest(...args),
+  canMakeRequest: (...args: unknown[]) => mockCanMakeRequest(...args),
+  incrementDailyCountCapped: (...args: unknown[]) =>
+    mockIncrementDailyCountCapped(...args),
   getRateLimitHeaders: () => ({}),
 }));
 
@@ -158,8 +166,8 @@ beforeEach(() => {
   mockExecuteScan.mockReset();
   mockExecuteScan.mockResolvedValue(undefined);
   mockValidateApiKey.mockReset();
-  mockCheckAndRecordRequest.mockReset();
-  mockCheckAndRecordRequest.mockResolvedValue({
+  mockCanMakeRequest.mockReset();
+  mockCanMakeRequest.mockResolvedValue({
     allowed: true,
     limit: 100,
     used: 1,
@@ -318,7 +326,7 @@ describe("POST /api/v3/scan", () => {
   });
 
   it("rejects a session-auth request with 429 when the account's dailyScans quota is exhausted", async () => {
-    mockCheckAndRecordRequest.mockResolvedValue({
+    mockCanMakeRequest.mockResolvedValue({
       allowed: false,
       limit: 25,
       used: 25,
@@ -328,7 +336,7 @@ describe("POST /api/v3/scan", () => {
     expect(res.status).toBe(429);
     const json = await res.json();
     expect(json.error).toMatch(/daily scan limit reached/i);
-    expect(mockCheckAndRecordRequest).toHaveBeenCalledWith(42);
+    expect(mockCanMakeRequest).toHaveBeenCalledWith(42);
     expect(mockExecuteScan).not.toHaveBeenCalled();
     expect(mockQuery).not.toHaveBeenCalled();
   });
@@ -366,7 +374,7 @@ describe("POST /api/v3/scan", () => {
     // it's a distinct, usually much smaller cap than apiRequestsPerDay
     // (keyData.dailyLimit above), which alone used to bound API-triggered
     // scans (unbounded on a plan with apiRequestsPerDay: -1).
-    expect(mockCheckAndRecordRequest).toHaveBeenCalledWith(42);
+    expect(mockCanMakeRequest).toHaveBeenCalledWith(42);
   });
 
   it("rejects an API-key request with 429 when the account's dailyScans quota is exhausted, even though the key's own rate limit still has room", async () => {
@@ -376,7 +384,7 @@ describe("POST /api/v3/scan", () => {
       dailyLimit: 5000, // plenty of apiRequestsPerDay room left
       needsTermsAcceptance: false,
     });
-    mockCheckAndRecordRequest.mockResolvedValue({
+    mockCanMakeRequest.mockResolvedValue({
       allowed: false,
       limit: 150,
       used: 150,

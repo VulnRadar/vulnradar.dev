@@ -14,7 +14,10 @@ import {
   checkRateLimit as checkGlobalRateLimit,
   RATE_LIMITS,
 } from "@/lib/rate-limiting/rate-limit";
-import { checkAndRecordRequest } from "@/lib/rate-limiting/daily-limits";
+import {
+  canMakeRequest,
+  incrementDailyCountCapped,
+} from "@/lib/rate-limiting/daily-limits";
 import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
 import { logAction } from "@/lib/auth/authorization";
 import pool from "@/lib/database/db";
@@ -138,6 +141,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const authHeader = request.headers.get("authorization");
   let authedUserId: number | null = null;
   let isApiKeyAuth = false;
+  // Set in the session branch when the read-only daily-quota gate passes; the
+  // counter is CHARGED only after the auth session is established below, so a
+  // request rejected before then (login failure 422, invalid target) never
+  // burns a scan from the daily allowance.
+  let chargeDailyQuota = false;
+  let dailyQuotaLimit = -1;
 
   if (authHeader?.startsWith(BEARER_PREFIX)) {
     const token = authHeader.slice(BEARER_PREFIX.length);
@@ -182,12 +191,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       );
     }
 
-    const dailyQuota = await checkAndRecordRequest(session.userId);
+    const dailyQuota = await canMakeRequest(session.userId);
     if (!dailyQuota.allowed) {
       return ApiResponse.tooManyRequests(
         "Daily scan limit reached. Upgrade your plan or wait until midnight UTC.",
       );
     }
+    chargeDailyQuota = true;
+    dailyQuotaLimit = dailyQuota.limit;
   }
 
   let body: unknown;
@@ -322,6 +333,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     );
   }
   const session = loginResult.session;
+
+  // The authenticated session is established and the target validated, so the
+  // scan is genuinely going ahead now -- charge the daily quota here rather
+  // than up front, capped + atomic so a concurrent scan can't exceed the cap.
+  if (chargeDailyQuota && authedUserId) {
+    await incrementDailyCountCapped(authedUserId, dailyQuotaLimit);
+  }
 
   const startTime = Date.now();
   let responseBody = "";

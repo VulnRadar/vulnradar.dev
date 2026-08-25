@@ -53,12 +53,14 @@ vi.mock("@/lib/rate-limiting/rate-limit", async (importOriginal) => {
 });
 
 vi.mock("@/lib/rate-limiting/daily-limits", () => ({
-  checkAndRecordRequest: vi.fn(async () => ({
+  // Read-only gate; the charge happens after the auth session is established.
+  canMakeRequest: vi.fn(async () => ({
     allowed: true,
     limit: 100,
     used: 1,
     resetsAt: new Date().toISOString(),
   })),
+  incrementDailyCountCapped: vi.fn(async () => ({ recorded: true, count: 1 })),
   getRateLimitHeaders: () => ({}),
 }));
 
