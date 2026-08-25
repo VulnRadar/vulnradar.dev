@@ -73,6 +73,11 @@ updates:
       # Only get major Next.js updates as PRs you manually review
       - dependency-name: "next"
         update-types: ["version-update:semver-major"]
+      # TypeScript majors are held until @typescript-eslint supports them
+      # (its peer range caps at <6.1.0, so TS 7 breaks lint + typecheck).
+      # Revisit when typescript-eslint ships TS 7 support.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   # GitHub Actions themselves
   - package-ecosystem: "github-actions"

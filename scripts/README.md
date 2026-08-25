@@ -57,7 +57,7 @@ scripts/
 | `npm run audit:new`          | Allocate the next AUDIT-NNN id and scaffold the audit directory.                          |
 | `npm run audit:list`         | Tabular listing of all audits.                                                            |
 | `npm run audit:show`         | Full manifest + findings table for one audit.                                             |
-| `npm run audit:add-finding`  | Append a finding to an audit.                                                              |
+| `npm run audit:add-finding`  | Append a finding to an audit.                                                             |
 | `npm run audit:close`        | Transition an audit's status (in-progress / closed / shipped).                            |
 
 The CI gate `node scripts/find-duplicate-ids.mjs` is also part of the
@@ -78,11 +78,11 @@ preserved as commits, not as files in the tree.
 The migrator tracks the database schema state (not the app release
 version). Currently three schema versions are known:
 
-| Schema version | Tables | Notes                                                                    |
-| -------------- | -----: | ------------------------------------------------------------------------ |
-| **1.0.0**      |     19 | Pre-MVP baseline.                                                        |
-| **2.0.0**      |     34 | v2 production schema.                                                     |
-| **3.0.0**      |     47 | Current production schema (the app is at 3.7.0; schema min is v3.0.0).    |
+| Schema version | Tables | Notes                                                                  |
+| -------------- | -----: | ---------------------------------------------------------------------- |
+| **1.0.0**      |     19 | Pre-MVP baseline.                                                      |
+| **2.0.0**      |     34 | v2 production schema.                                                  |
+| **3.0.0**      |     47 | Current production schema (the app is at 3.7.0; schema min is v3.0.0). |
 
 The app's `package.json` is at 3.7.0, well past the schema's 3.0.0
 baseline: releases after a schema version only differ by columns that
