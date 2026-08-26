@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * VulnRadar — Version-aware Database Migration
+ * VulnRadar: Version-aware Database Migration
  *
  * Detects the current schema version, lets you pick a target version,
  * shows the diff as a plan, and applies it inside a single transaction.
@@ -68,7 +68,7 @@ import { backupDatabase } from "../_lib/_lib.backup.mjs";
 const DRY_RUN = process.argv.includes("--dry-run");
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
   log(`
-VulnRadar — Version-aware Database Migration
+VulnRadar: Version-aware Database Migration
 
 Usage:
   npm run db:migrate              # run the migration
@@ -106,7 +106,7 @@ ${listVersionFiles()
 // ── Welcome banner (shown at the very top of the run) ─────────────────────
 function showWelcome(meta, dbHost) {
   banner(
-    `VulnRadar ${meta.version} — Database Migration`,
+    `VulnRadar ${meta.version}: Database Migration`,
     "Version-aware. Detects your current schema, lets you pick any target.",
   );
   log(`  ${c.dim}App version:${c.reset}  ${c.bold}${meta.version}${c.reset}`);
@@ -145,7 +145,7 @@ function showPlanSummary({
   log("");
   if (direction === "same") {
     log(
-      `    ${c.cyan}•${c.reset} Already at target — the plan will be empty (idempotent no-op).`,
+      `    ${c.cyan}•${c.reset} Already at target: the plan will be empty (idempotent no-op).`,
     );
     log(
       `    ${c.cyan}•${c.reset} Re-running anyway as a safety net to catch any missed steps.`,
@@ -164,11 +164,11 @@ function showPlanSummary({
   log("");
   if (direction === "downgrade") {
     log(
-      `  ${c.red}${c.bold}Destructive downgrade:${c.reset} ${c.red}will DROP tables and columns — see the red warning below.${c.reset}`,
+      `  ${c.red}${c.bold}Destructive downgrade:${c.reset} ${c.red}will DROP tables and columns; see the red warning below.${c.reset}`,
     );
   } else if (direction === "same") {
     log(
-      `  ${c.yellow}${c.bold}Heads up:${c.reset} Same version — nothing destructive. This is a safety-net re-run.`,
+      `  ${c.yellow}${c.bold}Heads up:${c.reset} Same version: nothing destructive. This is a safety-net re-run.`,
     );
   } else {
     log(
@@ -268,10 +268,7 @@ function showDowngradeWarning(current, target, destructiveSteps) {
   );
   body.push(`${c.bold}To cancel:${c.reset}   type ${c.bold}n${c.reset}`);
 
-  warningBox(
-    `DESTRUCTIVE OPERATION — DOWNGRADING ${current} → ${target}`,
-    body,
-  );
+  warningBox(`DESTRUCTIVE OPERATION: DOWNGRADING ${current} → ${target}`, body);
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
@@ -288,7 +285,7 @@ async function main() {
     process.exit(1);
   }
 
-  // 1. Welcome banner — the very first thing the user sees.
+  // 1. Welcome banner: the very first thing the user sees.
   showWelcome(projectMeta, `${parsed.host}:${parsed.port}`);
 
   // 2. Connect.
@@ -326,7 +323,7 @@ async function main() {
 
   try {
     // 4. Detect current version.
-    section("Step 1 — Detect current schema version");
+    section("Step 1: Detect current schema version");
     await ensureMetaTable(livePool);
     let meta = await readMeta(livePool);
     let current;
@@ -352,7 +349,7 @@ async function main() {
         `Meta table says: ${c.bold}${current}${c.reset} ${c.dim}(app: ${meta.appVersion}, applied: ${meta.appliedAt.toISOString()})${c.reset}`,
       );
     } else {
-      if (!meta) info("No meta row — fingerprint-detecting...");
+      if (!meta) info("No meta row: fingerprint-detecting...");
       const actual = await getActualSchema(livePool);
       const detected = fingerprintDetect(actual);
       if (!detected.version) {
@@ -366,7 +363,7 @@ async function main() {
       }
       current = detected.version;
       info(
-        `Detected: ${c.bold}${current}${c.reset} ${c.dim}(confidence: ${detected.confidence})${c.reset} — ${detected.reason}`,
+        `Detected: ${c.bold}${current}${c.reset} ${c.dim}(confidence: ${detected.confidence})${c.reset} ${c.dim}·${c.reset} ${detected.reason}`,
       );
       info(
         `Meta not yet written. It will be recorded after a migration (or initialized if you pick the same version below).`,
@@ -375,7 +372,7 @@ async function main() {
     log("");
 
     // 5. Pick target version.
-    section("Step 2 — Pick target version");
+    section("Step 2: Pick target version");
     const target = await pickTargetVersion(recommended);
     if (target === null) {
       info("Cancelled.");
@@ -383,7 +380,7 @@ async function main() {
     }
     log("");
 
-    // Determine direction. "same" means current === target — the
+    // Determine direction. "same" means current === target: the
     // migration is still executed (idempotently) as a safety net, to
     // catch any missed steps or stale meta.
     const direction = isUpgrade(current, target)
@@ -393,7 +390,7 @@ async function main() {
         : "same";
 
     // 6. Plan summary (always shown, even for same version).
-    section("Step 3 — Plan summary");
+    section("Step 3: Plan summary");
     showPlanSummary({
       meta: projectMeta,
       current,
@@ -411,12 +408,12 @@ async function main() {
     );
 
     // 8. Render the plan steps (or "no changes" message for same version).
-    section("Step 4 — Detailed plan");
+    section("Step 4: Detailed plan");
     const destructiveSteps = plan.steps.filter((s) => s.destructive);
     if (plan.steps.length === 0) {
       if (direction === "same") {
         info(
-          `No changes needed — already at ${c.bold}${current}${c.reset}. The migration is idempotent, so re-running it is a no-op safety net.`,
+          `No changes needed: already at ${c.bold}${current}${c.reset}. The migration is idempotent, so re-running it is a no-op safety net.`,
         );
       } else {
         info("No changes needed.");
@@ -518,13 +515,13 @@ async function main() {
     // against). Labeled with the version being migrated FROM, since
     // that's the state this snapshot can actually restore.
     if (plan.steps.length > 0) {
-      section("Step 5 — Back up database");
+      section("Step 5: Back up database");
       await backupDatabase(process.env.DATABASE_URL, current);
       log("");
     }
 
     // 12. Execute.
-    section("Step 6 — Execute");
+    section("Step 6: Execute");
     if (plan.steps.length === 0) {
       log(
         `  ${c.dim}0.${c.reset}  ${c.dim}SKIP${c.reset}  (no DDL to run; schema is already at the target version)`,

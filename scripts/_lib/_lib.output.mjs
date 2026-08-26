@@ -1,5 +1,5 @@
 /**
- * VulnRadar — Terminal output helpers.
+ * VulnRadar: Terminal output helpers.
  *
  * Coloured logs, banner, section headers. Pure functions, no I/O.
  */
@@ -62,9 +62,15 @@ export function banner(title, subtitle) {
 }
 
 export function section(title) {
+  // A cyan pointer + bold title + a dim rule filling out to a consistent
+  // width. Reads with a clearer hierarchy than an all-bold `--- title ---`
+  // line, and the fixed target width keeps every step header the same
+  // length regardless of how long its title is.
+  const RULE_WIDTH = 66;
+  const fill = Math.max(0, RULE_WIDTH - visibleLength(title) - 2);
   log("");
   log(
-    `${c.bold}─── ${title} ${"─".repeat(Math.max(0, 60 - title.length))}${c.reset}`,
+    `${c.cyan}${c.bold}▸${c.reset} ${c.bold}${title}${c.reset} ${c.dim}${"─".repeat(fill)}${c.reset}`,
   );
   log("");
 }
@@ -73,8 +79,8 @@ export function section(title) {
  * Draw a red-bordered box containing one or more lines. Used for loud
  * warnings (destructive downgrades, etc.) so the user can't miss them.
  *
- * @param {string | string[]} headline  — first line(s), rendered bold + bright red
- * @param {string[]} body              — additional lines, rendered red
+ * @param {string | string[]} headline : first line(s), rendered bold + bright red
+ * @param {string[]} body             : additional lines, rendered red
  */
 export function warningBox(headline, body = []) {
   const headlines = Array.isArray(headline) ? headline : [headline];
