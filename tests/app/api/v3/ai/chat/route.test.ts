@@ -198,6 +198,64 @@ describe("POST /api/v3/ai/chat: input length enforcement", () => {
   });
 });
 
+describe("POST /api/v3/ai/chat: large context blocks reach the model", () => {
+  /** Pull the messages[] actually forwarded to the upstream provider. */
+  function forwardedContent(): string {
+    const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const sent = JSON.parse((init as RequestInit).body as string) as {
+      messages: { role: string; content: string }[];
+    };
+    return sent.messages.map((m) => m.content).join("\n");
+  }
+
+  it("forwards a server-injected context block that is larger than the conversational char budget (the /changelog case, ~250k)", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      sseUpstreamResponse([{ choices: [{ delta: { content: "ok" } }] }]),
+    );
+    // The real changelog-knowledge.md is ~250k chars; the conversational
+    // budget (max(maxInputLength,20k)*6 = 120k here) is far smaller, so the
+    // old backward-walk trim dropped the whole context and the AI "forgot"
+    // the changelog the user had just loaded.
+    const marker = "CHANGELOG_MARKER_zzq";
+    const bigContext = `<context cmd="changelog">${marker}${"x".repeat(250_000)}</context>`;
+    const res = await POST(
+      postRequest({
+        messages: [
+          { role: "user", content: bigContext },
+          { role: "assistant", content: "Changelog loaded." },
+          { role: "user", content: "What changed in the latest version?" },
+        ],
+      }),
+    );
+    expect(res.status).toBe(200);
+    // The loaded context MUST reach the provider, or /changelog is pointless.
+    expect(forwardedContent()).toContain(marker);
+  });
+
+  it("still trims an abusive backlog of plain (non-context) turns to protect against cost amplification", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      sseUpstreamResponse([{ choices: [{ delta: { content: "ok" } }] }]),
+    );
+    // 40 plain user turns of 5k chars each = 200k, well over the 120k
+    // conversational budget: the OLDEST turns must be dropped.
+    const messages = [];
+    for (let i = 0; i < 40; i++) {
+      messages.push({
+        role: "user",
+        content: `OLD_TURN_${i} ${"y".repeat(5000)}`,
+      });
+      messages.push({ role: "assistant", content: `reply ${i}` });
+    }
+    messages.push({ role: "user", content: "NEWEST_QUESTION marker" });
+    const res = await POST(postRequest({ messages }));
+    expect(res.status).toBe(200);
+    const forwarded = forwardedContent();
+    expect(forwarded).toContain("NEWEST_QUESTION marker");
+    // The very oldest turn is beyond the budget and must have been trimmed.
+    expect(forwarded).not.toContain("OLD_TURN_0 ");
+  });
+});
+
 describe("POST /api/v3/ai/chat: unified AI usage quota", () => {
   it("is free/unmetered: still calls the upstream provider even when the quota reports not allowed", async () => {
     mockCheckAiUsageQuota.mockResolvedValue({

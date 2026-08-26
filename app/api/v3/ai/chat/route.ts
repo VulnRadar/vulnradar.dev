@@ -160,23 +160,48 @@ export async function POST(req: Request) {
   // Bound what we forward to the (paid, unmetered) provider. Only the last
   // message was length-checked above, so without this a caller could send a
   // huge or deeply-populated messages[] every request and amplify the AI bill.
-  // Keep only the most recent turns, and only up to a cumulative character
-  // budget -- large server-injected context blocks (one message) still fit,
-  // but an abusive backlog is trimmed from the front.
+  //
+  // Two separate budgets, because there are two kinds of message with very
+  // different size profiles:
+  //   - Plain conversational turns (what the user typed, what the model
+  //     replied): each is small, and a long backlog of them is exactly the
+  //     cost-amplification vector, so they get a tight budget.
+  //   - Server-injected context blocks (/docs, /changelog, /checks, ... --
+  //     one message each, wrapped in <context ...> by handleCommand in
+  //     chat-widget.tsx): these are known server-side knowledge files and
+  //     routinely run FAR larger than a turn (the changelog alone is ~250k).
+  //     They are the entire point of the loaders, so counting them against
+  //     the turn budget silently dropped the context the user had just
+  //     loaded (the AI would "forget" the changelog the moment they asked
+  //     about it). They get their own generous budget instead.
+  //
+  // Walk newest -> oldest and SKIP (not stop at) anything over its budget, so
+  // an older-but-large context block is never cut off just because the turns
+  // in front of it already spent the turn budget.
   const MAX_CONVERSATION_MESSAGES = 60;
-  const MAX_CONVERSATION_CHARS = Math.max(maxInputLength, 20_000) * 6;
+  const MAX_CONVERSATION_CHARS = Math.max(maxInputLength, 20_000) * 6; // ~120k
+  // Comfortably fits every context loader that can be open at once
+  // (changelog ~250k + docs ~100k + checks index ~72k + legal ~35k), with
+  // margin, while still capping a caller who wraps an abusive payload in a
+  // <context> tag to defeat the turn budget.
+  const MAX_CONTEXT_CHARS = 700_000;
+  const isContextBlock = (content: string) => content.startsWith("<context");
   const recentMessages = messages
     .filter((m) => m.role === "user" || m.role === "assistant")
     .slice(-MAX_CONVERSATION_MESSAGES)
     .map((m) => ({ role: m.role, content: String(m.content) }));
-  // Walk from the newest backward, keeping messages until the char budget is
-  // spent, then restore chronological order.
   const conversationMessages: { role: string; content: string }[] = [];
-  let budget = MAX_CONVERSATION_CHARS;
+  let turnBudget = MAX_CONVERSATION_CHARS;
+  let contextBudget = MAX_CONTEXT_CHARS;
   for (let i = recentMessages.length - 1; i >= 0; i--) {
     const m = recentMessages[i];
-    budget -= m.content.length;
-    if (budget < 0 && conversationMessages.length > 0) break;
+    if (isContextBlock(m.content)) {
+      contextBudget -= m.content.length;
+      if (contextBudget < 0 && conversationMessages.length > 0) continue;
+    } else {
+      turnBudget -= m.content.length;
+      if (turnBudget < 0 && conversationMessages.length > 0) continue;
+    }
     conversationMessages.unshift(m);
   }
 

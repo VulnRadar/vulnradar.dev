@@ -136,6 +136,22 @@ interface Release {
 
 const CHANGELOG: Release[] = [
   {
+    version: "3.7.2",
+    date: "August 25, 2026",
+    title: "The AI Assistant Stops Forgetting Loaded Context",
+    highlights: false,
+    summary:
+      "A fix for the in-app AI assistant. Loading a large context block with a slash command, most visibly /changelog, then asking a question left the assistant answering as if nothing had loaded. The request-size guard added in the previous release trimmed the whole conversation to a character budget that a big context block, the changelog is around 250k characters, blew past on its own, so the block was dropped before it ever reached the model. Context blocks now get their own separate, generous budget and are no longer discarded to make room for recent chat turns, so /changelog, /docs, /checks, and /legal actually stay loaded for the questions that follow.",
+    changes: [
+      {
+        icon: Bot,
+        label: "The Assistant Keeps the Context You Load",
+        desc: "Running a slash command like /changelog loads a block of reference text for the assistant to answer from, but a size guard meant to bound request cost was trimming that block back out whenever it was larger than the recent-conversation budget. The changelog on its own is far larger than that budget, so it was always dropped and the assistant answered as though it had never been loaded. Loaded context now has its own budget separate from the back-and-forth of the chat, so it stays available for your follow-up questions instead of being discarded. The cost guard on ordinary chat turns is unchanged.",
+        category: "fixed",
+      },
+    ],
+  },
+  {
     version: "3.7.1",
     date: "August 25, 2026",
     title: "History Overflow, Dashboard Layout, Discord Sign-In, Staff 2FA",
