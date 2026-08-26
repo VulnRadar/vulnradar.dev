@@ -1,21 +1,16 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/database/db";
-import { getSession } from "@/lib/auth";
-import {
-  hasStaffPermission,
-  STAFF_PERMISSIONS,
-} from "@/lib/auth/permissions-client";
+import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 import { getClientIp } from "@/lib/api/request-utils";
-import { logAction } from "@/lib/auth/authorization";
+import { logAction, requirePermission } from "@/lib/auth/authorization";
 
 export async function GET() {
   try {
-    const session = await getSession();
-    if (
-      !session ||
-      !hasStaffPermission(session.role, STAFF_PERMISSIONS.VIEW_USERS)
-    ) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // requirePermission (not a raw getSession + hasStaffPermission) so this
+    // also honors ENFORCE_STAFF_2FA like every other gated admin route.
+    const admin = await requirePermission(STAFF_PERMISSIONS.VIEW_USERS);
+    if (!admin) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
     const result = await pool.query(
@@ -34,12 +29,9 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const session = await getSession();
-    if (
-      !session ||
-      !hasStaffPermission(session.role, STAFF_PERMISSIONS.SEND_ANNOUNCEMENTS)
-    ) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const admin = await requirePermission(STAFF_PERMISSIONS.SEND_ANNOUNCEMENTS);
+    if (!admin) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
     // audit-log: trusted client IP only.
@@ -136,12 +128,12 @@ export async function POST(req: Request) {
         action_url_2,
         action_external_2,
         priority,
-        session.userId,
+        admin.userId,
       ],
     );
 
     await logAction(
-      session.userId,
+      admin.userId,
       null,
       "notification_created",
       `Created ${type} notification: "${title}" (audience: ${audience})`,

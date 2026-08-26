@@ -41,6 +41,16 @@ export interface AdminUser {
   // before this column existed (they get it on next sign-in) and for accounts
   // with no GitHub sign-in. Distinct from a repo connection's github_username.
   github_login: string | null;
+  // Discord SIGN-IN identity (users.discord_id), set when an account is
+  // created or linked via "Sign in with Discord". Distinct from the richer
+  // discord_connections row (server join + bot tokens) surfaced separately as
+  // detail.discordConnection: signing up with Discord populates these columns
+  // but does NOT create a discord_connections row, so the admin panel must
+  // read these to reflect the sign-in link the same way it does google_id /
+  // github_id, or a Discord-signup account looks unlinked.
+  discord_id: string | null;
+  discord_username: string | null;
+  discord_email: string | null;
 }
 
 export interface BadgeDef {

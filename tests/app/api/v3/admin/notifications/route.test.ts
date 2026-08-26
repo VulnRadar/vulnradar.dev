@@ -1,8 +1,9 @@
 /**
  * Route-level tests for GET/POST /api/v3/admin/notifications (site-wide
- * bell/banner notifications). Gated by hasStaffPermission (real, from
- * lib/auth/permissions-client.ts) against VIEW_USERS (GET) and
- * SEND_ANNOUNCEMENTS (POST). Only getSession and the database are mocked.
+ * bell/banner notifications). Gated by requirePermission (real, from
+ * lib/auth/authorization.ts) against VIEW_USERS (GET) and SEND_ANNOUNCEMENTS
+ * (POST) so ENFORCE_STAFF_2FA is honored. Only getSession and the database
+ * are mocked.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
@@ -41,8 +42,15 @@ function postRequest(body: unknown): Request {
   });
 }
 
+// requirePermission does its own SELECT id, role, totp_enabled FROM users.
+// totp_enabled: true so passesTwoFactorEnforcement short-circuits before
+// ever calling getSetting("ENFORCE_STAFF_2FA") -- this file doesn't mock
+// runtime-config, so an unmocked getSetting would consume a query slot.
 function withRole(role: string) {
-  mockGetSession.mockResolvedValue({ userId: 1, role });
+  mockGetSession.mockResolvedValue({ userId: 1 });
+  mockQuery.mockResolvedValueOnce({
+    rows: [{ id: 1, role, totp_enabled: true }],
+  });
 }
 
 beforeEach(() => {
@@ -55,13 +63,13 @@ describe("GET /api/v3/admin/notifications", () => {
   it("rejects an unauthenticated caller", async () => {
     mockGetSession.mockResolvedValue(null);
     const res = await GET();
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(403);
   });
 
   it("rejects a plain user (no staff permissions at all)", async () => {
     withRole("user");
     const res = await GET();
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(403);
   });
 
   it("allows a support-tier caller to view (VIEW_USERS)", async () => {
@@ -78,20 +86,20 @@ describe("POST /api/v3/admin/notifications", () => {
   it("rejects an unauthenticated caller", async () => {
     mockGetSession.mockResolvedValue(null);
     const res = await POST(postRequest({ title: "t", message: "m" }));
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(403);
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
   it("rejects support (lacks SEND_ANNOUNCEMENTS)", async () => {
     withRole("support");
     const res = await POST(postRequest({ title: "t", message: "m" }));
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(403);
   });
 
   it("rejects a moderator — SEND_ANNOUNCEMENTS is admin-only even though moderator has many other staff permissions", async () => {
     withRole("moderator");
     const res = await POST(postRequest({ title: "t", message: "m" }));
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(403);
     expect(mockLogAction).not.toHaveBeenCalled();
   });
 
@@ -119,7 +127,6 @@ describe("POST /api/v3/admin/notifications", () => {
     withRole("admin");
     const res = await POST(postRequest({ title: "t" }));
     expect(res.status).toBe(400);
-    expect(mockQuery).not.toHaveBeenCalled();
   });
 
   it("rejects a javascript: action_url (XSS guard)", async () => {
@@ -132,7 +139,6 @@ describe("POST /api/v3/admin/notifications", () => {
       }),
     );
     expect(res.status).toBe(400);
-    expect(mockQuery).not.toHaveBeenCalled();
   });
 
   it("rejects a protocol-relative action_url", async () => {
@@ -175,7 +181,6 @@ describe("POST /api/v3/admin/notifications", () => {
       }),
     );
     expect(res.status).toBe(400);
-    expect(mockQuery).not.toHaveBeenCalled();
   });
 
   it("accepts a second action button alongside the first", async () => {

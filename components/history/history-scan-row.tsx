@@ -117,11 +117,11 @@ export function HistoryScanRow({
         {/* URL + Tags */}
         <div className="flex flex-col gap-1 min-w-0 flex-1">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="truncate font-mono text-sm font-medium text-foreground">
+            <span className="shrink-0 truncate font-mono text-sm font-medium text-foreground max-w-[55%]">
               {domain}
             </span>
             {path && (
-              <span className="hidden shrink-0 truncate font-mono text-[11px] text-muted-foreground sm:inline">
+              <span className="hidden min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground sm:inline">
                 · {path}
               </span>
             )}

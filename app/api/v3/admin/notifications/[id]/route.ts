@@ -1,24 +1,19 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/database/db";
-import { getSession } from "@/lib/auth";
-import {
-  hasStaffPermission,
-  STAFF_PERMISSIONS,
-} from "@/lib/auth/permissions-client";
+import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 import { getClientIp } from "@/lib/api/request-utils";
-import { logAction } from "@/lib/auth/authorization";
+import { logAction, requirePermission } from "@/lib/auth/authorization";
 
 export async function PUT(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const session = await getSession();
-    if (
-      !session ||
-      !hasStaffPermission(session.role, STAFF_PERMISSIONS.SEND_ANNOUNCEMENTS)
-    ) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // requirePermission (not a raw getSession + hasStaffPermission) so this
+    // also honors ENFORCE_STAFF_2FA like every other gated admin route.
+    const admin = await requirePermission(STAFF_PERMISSIONS.SEND_ANNOUNCEMENTS);
+    if (!admin) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
     // audit-log: trusted client IP only.
@@ -131,7 +126,7 @@ export async function PUT(
 
     const updatedNotif = result.rows[0];
     await logAction(
-      session.userId,
+      admin.userId,
       null,
       "notification_updated",
       `Updated notification: "${updatedNotif.title}" (ID: ${id})`,
@@ -153,12 +148,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const session = await getSession();
-    if (
-      !session ||
-      !hasStaffPermission(session.role, STAFF_PERMISSIONS.SEND_ANNOUNCEMENTS)
-    ) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // requirePermission (not a raw getSession + hasStaffPermission) so this
+    // also honors ENFORCE_STAFF_2FA like every other gated admin route.
+    const admin = await requirePermission(STAFF_PERMISSIONS.SEND_ANNOUNCEMENTS);
+    if (!admin) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
     // audit-log: trusted client IP only.
@@ -185,7 +179,7 @@ export async function DELETE(
     }
 
     await logAction(
-      session.userId,
+      admin.userId,
       null,
       "notification_deleted",
       `Deleted notification: "${notifTitle}" (ID: ${id})`,

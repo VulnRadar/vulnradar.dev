@@ -1,7 +1,8 @@
 /**
  * Route-level tests for PUT/DELETE /api/v3/admin/notifications/[id] (edit or
  * remove a site-wide notification). Same SEND_ANNOUNCEMENTS gate as the
- * collection route's POST. Only getSession and the database are mocked.
+ * collection route's POST, via requirePermission so ENFORCE_STAFF_2FA is
+ * honored. Only getSession and the database are mocked.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
@@ -50,8 +51,14 @@ function deleteRequest(): Request {
   });
 }
 
+// requirePermission does its own SELECT id, role, totp_enabled FROM users.
+// totp_enabled: true so passesTwoFactorEnforcement short-circuits before
+// ever calling getSetting("ENFORCE_STAFF_2FA").
 function withRole(role: string) {
-  mockGetSession.mockResolvedValue({ userId: 1, role });
+  mockGetSession.mockResolvedValue({ userId: 1 });
+  mockQuery.mockResolvedValueOnce({
+    rows: [{ id: 1, role, totp_enabled: true }],
+  });
 }
 
 beforeEach(() => {
@@ -64,14 +71,14 @@ describe("PUT /api/v3/admin/notifications/[id]", () => {
   it("rejects an unauthenticated caller", async () => {
     mockGetSession.mockResolvedValue(null);
     const res = await PUT(putRequest({ title: "t" }), ctx("1"));
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(403);
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
   it("rejects a moderator — SEND_ANNOUNCEMENTS is admin-only", async () => {
     withRole("moderator");
     const res = await PUT(putRequest({ title: "t" }), ctx("1"));
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(403);
     expect(mockLogAction).not.toHaveBeenCalled();
   });
 
@@ -82,7 +89,6 @@ describe("PUT /api/v3/admin/notifications/[id]", () => {
       ctx("1"),
     );
     expect(res.status).toBe(400);
-    expect(mockQuery).not.toHaveBeenCalled();
   });
 
   it("rejects a javascript: action_url_2", async () => {
@@ -92,7 +98,6 @@ describe("PUT /api/v3/admin/notifications/[id]", () => {
       ctx("1"),
     );
     expect(res.status).toBe(400);
-    expect(mockQuery).not.toHaveBeenCalled();
   });
 
   it("returns 404 when the notification does not exist", async () => {
@@ -126,13 +131,13 @@ describe("DELETE /api/v3/admin/notifications/[id]", () => {
   it("rejects an unauthenticated caller", async () => {
     mockGetSession.mockResolvedValue(null);
     const res = await DELETE(deleteRequest(), ctx("1"));
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(403);
   });
 
   it("rejects a moderator", async () => {
     withRole("moderator");
     const res = await DELETE(deleteRequest(), ctx("1"));
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(403);
   });
 
   it("returns 404 when the notification does not exist", async () => {

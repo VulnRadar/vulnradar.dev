@@ -1,33 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
-import { STAFF_ROLE_HIERARCHY } from "@/lib/config/constants";
 import { getClientIp } from "@/lib/api/request-utils";
+import { requireStaff } from "@/lib/auth/authorization";
 
 // POST - Update staff member's activity heartbeat
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session)
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    // Verify user is staff
-    const userResult = await pool.query(
-      "SELECT role FROM users WHERE id = $1",
-      [session.userId],
-    );
-    const user = userResult.rows[0];
-    if (!user)
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-
-    const role = user.role || "user";
-    if (
-      (STAFF_ROLE_HIERARCHY[role] || 0) < (STAFF_ROLE_HIERARCHY.support || 1)
-    ) {
-      return NextResponse.json(
-        { error: "Not authorized as staff" },
-        { status: 403 },
-      );
+    // requireStaff (not a raw getSession + role check) so the heartbeat also
+    // honors ENFORCE_STAFF_2FA like every other gated admin route.
+    const admin = await requireStaff();
+    if (!admin) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
     let section = "dashboard";
@@ -52,7 +35,7 @@ export async function POST(request: NextRequest) {
          user_agent = $4,
          updated_at = NOW()
        RETURNING user_id, last_heartbeat, current_section`,
-      [session.userId, section || "dashboard", ip, userAgent],
+      [admin.userId, section || "dashboard", ip, userAgent],
     );
 
     return NextResponse.json({

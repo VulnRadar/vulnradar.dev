@@ -361,15 +361,15 @@ export function Dashboard() {
               Nothing in the last window. Run a scan above and it lands here.
             </p>
           ) : (
-            <ul className="divide-y divide-border">
+            <ul className="flex flex-1 flex-col divide-y divide-border">
               {data.recentScans.slice(0, 6).map((scan) => {
                 const worst = worstSeverity(scan.summary);
                 const tone = worst ? SEVERITY_TONE[worst] : null;
                 return (
-                  <li key={scan.id}>
+                  <li key={scan.id} className="flex-1">
                     <a
                       href={`${ROUTES.HISTORY}?scan=${scan.id}`}
-                      className="group relative flex items-center gap-3 py-2 pl-4 pr-4 transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                      className="group relative flex h-full items-center gap-3 py-2 pl-4 pr-4 transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                     >
                       <span
                         aria-hidden

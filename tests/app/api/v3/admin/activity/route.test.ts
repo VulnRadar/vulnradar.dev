@@ -1,7 +1,7 @@
 /**
- * Route-level tests for POST (heartbeat) at /api/v3/admin/activity. Auth
- * here is an inline getSession + role lookup (not the shared requireStaff
- * helper), requiring staff hierarchy >= support. Only the database is mocked.
+ * Route-level tests for POST (heartbeat) at /api/v3/admin/activity. Auth is
+ * the shared requireStaff helper (staff hierarchy >= support, honoring
+ * ENFORCE_STAFF_2FA). Only getSession and the database are mocked.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
@@ -22,8 +22,13 @@ vi.mock("@/lib/api/request-utils", () => ({
 
 const { POST } = await import("@/app/api/v3/admin/activity/route");
 
+// requireStaff does its own SELECT role, totp_enabled FROM users WHERE id=$1.
+// totp_enabled: true so passesTwoFactorEnforcement short-circuits before
+// ever calling getSetting("ENFORCE_STAFF_2FA").
 function queueRole(role: string | null) {
-  mockQuery.mockResolvedValueOnce({ rows: role ? [{ role }] : [] });
+  mockQuery.mockResolvedValueOnce({
+    rows: role ? [{ role, totp_enabled: true }] : [],
+  });
 }
 
 function postRequest(body?: unknown): NextRequest {
@@ -44,14 +49,14 @@ describe("POST /api/v3/admin/activity (heartbeat)", () => {
   it("requires authentication", async () => {
     mockGetSession.mockResolvedValue(null);
     const res = await POST(postRequest({ section: "dashboard" }));
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(403);
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it("returns 404 when the session's user no longer exists", async () => {
+  it("rejects when the session's user no longer exists", async () => {
     queueRole(null);
     const res = await POST(postRequest({ section: "dashboard" }));
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(403);
   });
 
   it("rejects a plain user (below support tier)", async () => {

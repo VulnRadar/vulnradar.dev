@@ -136,6 +136,40 @@ interface Release {
 
 const CHANGELOG: Release[] = [
   {
+    version: "3.7.1",
+    date: "August 25, 2026",
+    title: "History Overflow, Dashboard Layout, Discord Sign-In, Staff 2FA",
+    highlights: false,
+    summary:
+      "A maintenance release cleaning up four things reported right after 3.7.0. On the history page, a scan whose URL carried a long query string no longer runs across the columns beside it; the path trims with an ellipsis instead. The dashboard's Recent Scans panel fills its card rather than leaving a gap under the last row when the column next to it runs taller. In the admin user panel, an account created with Sign in with Discord now shows as linked the same way Google and GitHub sign-ins already did (the account was always linked, only the admin display read the wrong source). And three admin endpoints that checked a caller's role without also applying the staff two-factor lockout now route through the same permission gate as the rest of the admin area.",
+    changes: [
+      {
+        icon: List,
+        label: "Long URLs No Longer Overflow the History List",
+        desc: "A scan whose URL carried a long query string (a login redirect, a signed share link) pushed its path past the edge of its row on the history page and ran across the source and severity columns next to it. The path now stays inside its own space and trims with an ellipsis, so every row lines up no matter how long the URL is.",
+        category: "fixed",
+      },
+      {
+        icon: Layout,
+        label: "Recent Scans Fills the Dashboard Card",
+        desc: "The Recent Scans panel on the dashboard left a block of empty space under the last row whenever the column beside it ran taller. Its rows now stretch to fill the card, so the two columns line up instead of leaving a gap.",
+        category: "fixed",
+      },
+      {
+        icon: Link2,
+        label: "Admin Panel Shows Discord Sign-In Links",
+        desc: "An account created with Sign in with Discord was correctly linked (it can sign back in with Discord), but the admin user panel read only the separate server-connection record and showed it as No Discord linked. The panel now reads the sign-in link the same way it already does for Google and GitHub, so a Discord signup shows as connected.",
+        category: "fixed",
+      },
+      {
+        icon: Fingerprint,
+        label: "Staff 2FA Enforcement Covers Every Admin Route",
+        desc: "When staff two-factor is required, three admin endpoints (site notifications and the staff activity heartbeat) checked the caller's role without also applying the two-factor lockout, unlike the rest of the admin surface. They now route through the same permission gate as every other staff action, so the requirement holds everywhere.",
+        category: "fixed",
+      },
+    ],
+  },
+  {
     version: "3.7.0",
     date: "August 24, 2026",
     title: "Support Tickets, Report Exports, Attack Surface, GitHub Scanner",

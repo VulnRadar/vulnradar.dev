@@ -786,6 +786,18 @@ export function UserDetailPanel({
                         <span className="opacity-70">&middot; in server</span>
                       )}
                     </div>
+                  ) : u.discord_id ? (
+                    // Discord SIGN-IN with no discord_connections row: created
+                    // by "Sign in with Discord" (users.discord_id set) without
+                    // ever going through the server-join connect flow. Mirrors
+                    // the google_id / github_id sign-in chips above so a
+                    // Discord-signup account no longer reads as unlinked.
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-[#5865F2]/10 border border-[#5865F2]/25 text-[#5865F2]">
+                      <FaDiscord className="h-3 w-3" aria-hidden="true" />
+                      {u.discord_username ??
+                        u.discord_email ??
+                        "Discord sign-in"}
+                    </div>
                   ) : (
                     <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-muted/50 border border-border/50 text-muted-foreground">
                       <FaDiscord className="h-3 w-3" aria-hidden="true" />

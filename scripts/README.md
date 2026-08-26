@@ -82,9 +82,9 @@ version). Currently three schema versions are known:
 | -------------- | -----: | ---------------------------------------------------------------------- |
 | **1.0.0**      |     19 | Pre-MVP baseline.                                                      |
 | **2.0.0**      |     34 | v2 production schema.                                                  |
-| **3.0.0**      |     47 | Current production schema (the app is at 3.7.0; schema min is v3.0.0). |
+| **3.0.0**      |     47 | Current production schema (the app is at 3.7.1; schema min is v3.0.0). |
 
-The app's `package.json` is at 3.7.0, well past the schema's 3.0.0
+The app's `package.json` is at 3.7.1, well past the schema's 3.0.0
 baseline: releases after a schema version only differ by columns that
 `instrumentation.ts` auto-adds on boot, so they are not tracked as
 separate schema versions. `2.0.0-to-3.0.0.mjs` folds the whole
