@@ -28,11 +28,13 @@ import { DEFAULT_SETTINGS } from "../lib/types";
 import type {
   AuthMe,
   RateLimitInfo,
+  ReportFormat,
   ScanHistoryRow,
   ScanMode,
   ScanResult,
   Severity,
   Settings,
+  Vulnerability,
 } from "../lib/types";
 
 const root = document.getElementById("app")!;
@@ -90,6 +92,14 @@ interface State {
   // Lets the very first paint show a neutral "Connecting..." shell instead of
   // a blank popup, without briefly claiming "Not connected" before auth loads.
   initializing: boolean;
+  // Finding ids currently expanded to show evidence / impact / fix steps.
+  // The API already sends those fields on every finding; before this they
+  // were fetched and then thrown away, with only title + description shown.
+  expandedFindings: ReadonlySet<string>;
+  // Report format currently downloading (null when idle), so the export
+  // buttons can show progress and not be double-fired.
+  exportingFormat: ReportFormat | null;
+  exportError: string | null;
 }
 
 const state: State = {
@@ -108,6 +118,9 @@ const state: State = {
   targetWarning: null,
   appVersion: null,
   initializing: true,
+  expandedFindings: new Set<string>(),
+  exportingFormat: null,
+  exportError: null,
 };
 
 let renderQueued = false;
@@ -208,7 +221,9 @@ function App(): TemplateResult {
                 <div class="section-title">This site</div>
               </div>
               <div class="history">
-                ${siteHistory.slice(0, 5).map((row) => HistoryRow(row))}
+                ${withPrevious(siteHistory.slice(0, 5), state.history).map(
+                  ({ row, previous }) => HistoryRow(row, previous),
+                )}
               </div>
             </div>
           `
@@ -222,7 +237,9 @@ function App(): TemplateResult {
                 <div class="section-title">Recent scans</div>
               </div>
               <div class="history">
-                ${otherHistory.slice(0, 5).map((row) => HistoryRow(row))}
+                ${withPrevious(otherHistory.slice(0, 5), state.history).map(
+                  ({ row, previous }) => HistoryRow(row, previous),
+                )}
               </div>
             </div>
           `
@@ -383,24 +400,7 @@ function ResultPanel(r: ScanResult, isStale: boolean): TemplateResult {
         r.findings.length > 0
           ? html`
               <div class="findings">
-                ${r.findings.slice(0, 20).map(
-                  (v) => html`
-                    <div
-                      class="finding"
-                      style="border-left: 3px solid ${severityHex(v.severity)}"
-                    >
-                      <div class="finding-header">
-                        <span
-                          class="badge ${v.severity}"
-                          style="font-size:9px;padding:1px 5px;flex-shrink:0"
-                          >${v.severity}</span
-                        >
-                        <span class="finding-title">${v.title}</span>
-                      </div>
-                      ${v.description ? html`<div class="finding-desc">${v.description}</div>` : null}
-                    </div>
-                  `,
-                )}
+                ${r.findings.slice(0, 20).map((v) => FindingRow(v))}
                 ${
                   r.findings.length > 20
                     ? html`
@@ -414,6 +414,7 @@ function ResultPanel(r: ScanResult, isStale: boolean): TemplateResult {
             `
           : html`<div class="no-findings">No vulnerabilities detected.</div>`
       }
+      ${r.scanHistoryId ? ExportBar(r) : null}
       <div class="result-footer">
         <span
           >${formatCount(r.findings.length)} findings &middot;
@@ -433,6 +434,199 @@ function ResultPanel(r: ScanResult, isStale: boolean): TemplateResult {
   `;
 }
 
+const EXPORT_FORMATS: readonly { format: ReportFormat; label: string }[] = [
+  { format: "pdf", label: "PDF" },
+  { format: "sarif", label: "SARIF" },
+  { format: "md", label: "Markdown" },
+  { format: "json", label: "JSON" },
+];
+
+/**
+ * Export this scan as a real report file. Hits the same
+ * GET /api/v3/history/[id]/report the dashboard and CI use, so the popup
+ * produces byte-identical output rather than a second, drifting formatter.
+ * Only rendered once the scan has a history id (an unsaved scan has nothing
+ * to export).
+ */
+function ExportBar(r: ScanResult): TemplateResult {
+  const busy = state.exportingFormat !== null;
+  return html`
+    <div class="export-bar">
+      <span class="export-label">Export</span>
+      <div class="export-buttons">
+        ${EXPORT_FORMATS.map(
+          ({ format, label }) => html`
+            <button
+              class="export-btn"
+              ?disabled=${busy}
+              title=${`Download this scan as ${label}`}
+              @click=${() => exportReport(r, format)}
+            >
+              ${state.exportingFormat === format ? "…" : label}
+            </button>
+          `,
+        )}
+      </div>
+    </div>
+    ${
+      state.exportError
+        ? html`<div class="export-error">${state.exportError}</div>`
+        : null
+    }
+  `;
+}
+
+/**
+ * One finding, collapsed to severity + title + description, expanding to the
+ * detail the API has been sending all along: where it was found (evidence),
+ * why it matters (riskImpact / explanation), how to fix it (fixSteps), and
+ * further reading (references). Before this, those fields arrived on every
+ * scan and were silently dropped, so the popup could tell you that something
+ * was wrong but never what to do about it.
+ */
+function FindingRow(v: Vulnerability): TemplateResult {
+  const isOpen = state.expandedFindings.has(v.id);
+  const hasDetail = Boolean(
+    v.evidence ||
+    v.riskImpact ||
+    v.explanation ||
+    (v.fixSteps && v.fixSteps.length > 0) ||
+    (v.references && v.references.length > 0),
+  );
+
+  const toggle = () => {
+    const next = new Set(state.expandedFindings);
+    if (next.has(v.id)) next.delete(v.id);
+    else next.add(v.id);
+    state.expandedFindings = next;
+    scheduleRender();
+  };
+
+  return html`
+    <div
+      class="finding"
+      style="border-left: 3px solid ${severityHex(v.severity)}"
+    >
+      <div
+        class="finding-header ${hasDetail ? "finding-header-clickable" : ""}"
+        role=${hasDetail ? "button" : "presentation"}
+        tabindex=${hasDetail ? "0" : "-1"}
+        aria-expanded=${hasDetail ? String(isOpen) : "false"}
+        aria-label=${
+          hasDetail
+            ? `${isOpen ? "Hide" : "Show"} details for ${v.title}`
+            : v.title
+        }
+        @click=${hasDetail ? toggle : null}
+        @keydown=${hasDetail ? onActivate(toggle) : null}
+      >
+        <span
+          class="badge ${v.severity}"
+          style="font-size:9px;padding:1px 5px;flex-shrink:0"
+          >${v.severity}</span
+        >
+        <span class="finding-title">${v.title}</span>
+        ${
+          hasDetail
+            ? html`<span class="finding-chevron ${isOpen ? "open" : ""}"
+                >&#9662;</span
+              >`
+            : null
+        }
+      </div>
+      ${
+        v.description
+          ? html`<div class="finding-desc">${v.description}</div>`
+          : null
+      }
+      ${isOpen ? FindingDetail(v) : null}
+    </div>
+  `;
+}
+
+function FindingDetail(v: Vulnerability): TemplateResult {
+  return html`
+    <div class="finding-detail">
+      ${
+        v.evidence
+          ? html`
+              <div class="fd-block">
+                <div class="fd-label">Evidence</div>
+                <pre class="fd-evidence">${v.evidence}</pre>
+              </div>
+            `
+          : null
+      }
+      ${
+        v.riskImpact
+          ? html`
+              <div class="fd-block">
+                <div class="fd-label">Why it matters</div>
+                <div class="fd-text">${v.riskImpact}</div>
+              </div>
+            `
+          : null
+      }
+      ${
+        v.explanation && v.explanation !== v.riskImpact
+          ? html`
+              <div class="fd-block">
+                <div class="fd-label">Details</div>
+                <div class="fd-text">${v.explanation}</div>
+              </div>
+            `
+          : null
+      }
+      ${
+        v.fixSteps && v.fixSteps.length > 0
+          ? html`
+              <div class="fd-block">
+                <div class="fd-label">How to fix</div>
+                <ol class="fd-steps">
+                  ${v.fixSteps.map((s) => html`<li>${s}</li>`)}
+                </ol>
+              </div>
+            `
+          : null
+      }
+      ${
+        v.references && v.references.length > 0
+          ? html`
+              <div class="fd-block">
+                <div class="fd-label">References</div>
+                <div class="fd-refs">
+                  ${v.references
+                    .slice(0, 4)
+                    .map(
+                      (href) => html`
+                        <a
+                          href=${href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          >${shortRef(href)}</a
+                        >
+                      `,
+                    )}
+                </div>
+              </div>
+            `
+          : null
+      }
+    </div>
+  `;
+}
+
+/** Hostname + a trimmed path, so a long docs URL stays on one line. */
+function shortRef(href: string): string {
+  try {
+    const u = new URL(href);
+    const s = u.hostname.replace(/^www\./, "") + u.pathname.replace(/\/$/, "");
+    return s.length > 44 ? s.slice(0, 43) + "…" : s;
+  } catch {
+    return href.slice(0, 44);
+  }
+}
+
 /** Enter/Space activate a non-button element given a role="button". Keeps the
  *  history rows (and any other div-as-button) operable by keyboard and to a
  *  screen reader, not just by mouse. */
@@ -445,29 +639,81 @@ function onActivate(fn: () => void) {
   };
 }
 
-function HistoryRow(row: ScanHistoryRow): TemplateResult {
+/**
+ * One past scan. `previous` is the next-older scan of the SAME url, when the
+ * loaded history has one, so the row can say whether things got better or
+ * worse since then instead of only showing a raw count. Rescanning is
+ * offered inline: re-running the exact url you are looking at was previously
+ * a trip through the dashboard.
+ */
+function HistoryRow(
+  row: ScanHistoryRow,
+  previous?: ScanHistoryRow,
+): TemplateResult {
   const critical = row.summary.critical + row.summary.high;
   const open = () => openHistoryDetail(row.id);
+  const delta = previous ? row.findings_count - previous.findings_count : null;
+
   return html`
-    <div
-      class="history-item"
-      role="button"
-      tabindex="0"
-      title=${row.url}
-      aria-label=${`Open scan report for ${row.url}`}
-      @click=${open}
-      @keydown=${onActivate(open)}
-    >
-      <span
-        class="badge ${critical > 0 ? "high" : row.summary.medium > 0 ? "medium" : "low"}"
-        style="font-size:9px;padding:1px 6px"
+    <div class="history-item">
+      <div
+        class="history-main"
+        role="button"
+        tabindex="0"
+        title=${row.url}
+        aria-label=${`Open scan report for ${row.url}`}
+        @click=${open}
+        @keydown=${onActivate(open)}
       >
-        ${row.findings_count}
-      </span>
-      <span class="url">${truncateHostPath(row.url)}</span>
-      <span class="when">${formatRelative(row.scanned_at)}</span>
+        <span
+          class="badge ${
+            critical > 0 ? "high" : row.summary.medium > 0 ? "medium" : "low"
+          }"
+          style="font-size:9px;padding:1px 6px"
+        >
+          ${row.findings_count}
+        </span>
+        ${
+          delta !== null && delta !== 0
+            ? html`<span
+                class="trend ${delta < 0 ? "trend-better" : "trend-worse"}"
+                title=${`${Math.abs(delta)} ${delta < 0 ? "fewer" : "more"} findings than the previous scan of this URL`}
+                >${delta < 0 ? "▼" : "▲"}${Math.abs(delta)}</span
+              >`
+            : null
+        }
+        <span class="url">${truncateHostPath(row.url)}</span>
+        <span class="when">${formatRelative(row.scanned_at)}</span>
+      </div>
+      <button
+        class="history-rescan"
+        ?disabled=${state.isScanning}
+        title=${`Rescan ${row.url}`}
+        aria-label=${`Rescan ${row.url}`}
+        @click=${() => rescanUrl(row.url)}
+      >
+        &#8635;
+      </button>
     </div>
   `;
+}
+
+/**
+ * Pair each row with the next-older scan of the same url, so HistoryRow can
+ * render a trend. `rows` is expected newest-first (the order the history API
+ * returns), so the match is simply the next later entry with that url.
+ */
+function withPrevious(
+  rows: readonly ScanHistoryRow[],
+  all: readonly ScanHistoryRow[],
+): { row: ScanHistoryRow; previous?: ScanHistoryRow }[] {
+  return rows.map((row) => {
+    const idx = all.indexOf(row);
+    const previous = all
+      .slice(idx + 1)
+      .find((candidate) => candidate.url === row.url);
+    return previous ? { row, previous } : { row };
+  });
 }
 
 function truncateHostPath(url: string, max = 40): string {
@@ -637,6 +883,46 @@ async function triggerScan(force = false) {
 }
 
 /**
+ * Re-run a scan for a url straight from its history row, without having to
+ * navigate there first. Same background relay as triggerScan (so it survives
+ * the popup closing) and the same target-classification warning is skipped:
+ * this url was already scanned once deliberately.
+ */
+async function rescanUrl(url: string) {
+  if (state.isScanning || !state.me) return;
+  state.isScanning = true;
+  state.error = null;
+  state.result = null;
+  state.targetWarning = null;
+  scheduleRender();
+
+  let outcome: ScanOutcome;
+  try {
+    outcome = (await browser.runtime.sendMessage({
+      kind: "scan:url",
+      url,
+      mode: state.mode,
+    })) as ScanOutcome;
+  } catch (err) {
+    state.isScanning = false;
+    state.error = err instanceof Error ? err.message : "Scan failed";
+    scheduleRender();
+    return;
+  }
+
+  state.isScanning = false;
+  if (outcome.ok) {
+    state.result = outcome.result;
+    state.resultIsStale = false;
+    state.history = await getHistory();
+    state.rateLimitInfo = await get("rateLimitInfo");
+  } else {
+    state.error = outcome.error ?? "Scan failed";
+  }
+  scheduleRender();
+}
+
+/**
  * Applies a background-recorded scan outcome to popup state. Shared by the
  * "still running, wait for it" and "already finished while we were closed"
  * reconciliation paths in init()/watchInProgressScan().
@@ -676,6 +962,43 @@ function watchInProgressScan(url: string): void {
       scheduleRender();
     })();
   });
+}
+
+/**
+ * Ask the service worker to fetch + save a report. The download runs there,
+ * not here: this popup is destroyed the moment the browser's save dialog
+ * takes focus, which would revoke a blob URL created in this context
+ * mid-download.
+ */
+async function exportReport(r: ScanResult, format: ReportFormat) {
+  if (state.exportingFormat) return;
+  const id = r.scanHistoryId;
+  if (!id) return;
+
+  let host = "scan";
+  try {
+    host = new URL(r.url).hostname || "scan";
+  } catch {
+    /* keep the default */
+  }
+
+  state.exportingFormat = format;
+  state.exportError = null;
+  scheduleRender();
+  try {
+    const res = (await browser.runtime.sendMessage({
+      kind: "report:export",
+      id,
+      format,
+      host,
+    })) as { ok?: true; error?: string } | undefined;
+    if (res?.error) state.exportError = res.error;
+  } catch (err) {
+    state.exportError = err instanceof Error ? err.message : String(err);
+  } finally {
+    state.exportingFormat = null;
+    scheduleRender();
+  }
 }
 
 async function openHistoryDetail(id: number) {

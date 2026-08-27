@@ -170,6 +170,14 @@ export interface ScanStatusResponse {
   readonly error?: string;
 }
 
+/**
+ * Report formats GET /api/v3/history/[id]/report accepts. Mirrors that
+ * route's own FORMATS list; the extension exposes the four a person would
+ * plausibly want from a popup (the server also accepts "markdown" as an
+ * alias for "md", and "compliance", neither of which needs its own button).
+ */
+export type ReportFormat = "sarif" | "pdf" | "md" | "json";
+
 export interface ScanHistoryRow {
   readonly id: number;
   readonly url: string;

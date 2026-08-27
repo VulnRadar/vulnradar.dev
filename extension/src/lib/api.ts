@@ -13,6 +13,7 @@
 import { VULNRADAR } from "./constants";
 import type {
   ApiError,
+  ReportFormat,
   ReputationResponse,
   ScanHistoryRow,
   ScanJobStarted,
@@ -144,6 +145,49 @@ function safeJson(text: string): unknown {
   } catch {
     return text;
   }
+}
+
+/**
+ * Fetch a generated report as raw bytes. Separate from call<T> above
+ * because GET /api/v3/history/[id]/report answers with a FILE (a PDF, a
+ * SARIF/JSON document, a Markdown document), not the JSON envelope every
+ * other endpoint returns, so it must not be run through safeJson.
+ *
+ * Returns the bytes plus the content type, so the caller can hand them to
+ * the browser's download machinery. Same Bearer-only auth and
+ * credentials:"omit" rule as call<T>: a logged-in vulnradar.dev session
+ * cookie must never silently authenticate an extension request.
+ */
+export async function fetchReport(
+  apiKey: string,
+  scanId: number,
+  format: ReportFormat,
+  timeoutMs: number = VULNRADAR.apiTimeoutMs,
+): Promise<{ bytes: ArrayBuffer; contentType: string }> {
+  const url = `${VULNRADAR.apiHost}/api/v3/history/${scanId}/report?format=${encodeURIComponent(format)}`;
+  const res = await fetch(url, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${apiKey}` },
+    signal: combineSignals(undefined, timeoutMs),
+    credentials: "omit",
+  });
+
+  if (!res.ok) {
+    // Error responses ARE json, so surface the server's message the same
+    // way call<T> does rather than a bare status code.
+    const text = await res.text().catch(() => "");
+    const json = text ? safeJson(text) : null;
+    const errBody: ApiError =
+      json && typeof json === "object"
+        ? (json as ApiError)
+        : { error: text || res.statusText };
+    throw new VulnRadarApiError(res.status, errBody);
+  }
+
+  return {
+    bytes: await res.arrayBuffer(),
+    contentType: res.headers.get("content-type") ?? "application/octet-stream",
+  };
 }
 
 export const api = {

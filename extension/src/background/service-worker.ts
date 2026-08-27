@@ -38,7 +38,7 @@
 
 import browser from "webextension-polyfill";
 import type Browser from "webextension-polyfill";
-import { api, VulnRadarApiError } from "../lib/api";
+import { api, fetchReport, VulnRadarApiError } from "../lib/api";
 import {
   clear as clearAuth,
   pasteKey as authPasteKey,
@@ -71,6 +71,7 @@ import { clearBadge, setBadgeForResult, setBadgeForScore } from "../lib/badge";
 import { VULNRADAR } from "../lib/constants";
 import { DEFAULT_SETTINGS } from "../lib/types";
 import type {
+  ReportFormat,
   ReputationResponse,
   ScanResult,
   Settings,
@@ -207,6 +208,13 @@ browser.runtime.onMessage.addListener(
         break;
       case "history:detail":
         promise = handleHistoryDetail(m.id as number);
+        break;
+      case "report:export":
+        promise = handleReportExport(
+          m.id as number,
+          m.format as ReportFormat,
+          m.host as string,
+        );
         break;
       case "auth:status":
         promise = refreshMe();
@@ -599,6 +607,70 @@ async function handleHistoryDetail(
       return { error: err.body.error || `API error ${err.status}` };
     }
     return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** How long to keep a report's blob URL alive waiting on the browser's
+ *  save dialog before giving up and revoking it (5 minutes). */
+const REPORT_DOWNLOAD_SETTLE_MS = 5 * 60 * 1000;
+
+/**
+ * Download a generated report for one scan. Runs HERE rather than in the
+ * popup because the popup is torn down the moment it loses focus (which
+ * the browser's own save dialog does): a blob URL created there would be
+ * revoked mid-download. The service worker outlives it, so the object URL
+ * stays valid until browser.downloads reports the download has settled.
+ */
+async function handleReportExport(
+  id: number,
+  format: ReportFormat,
+  host: string,
+): Promise<{ ok: true } | { error: string }> {
+  const apiKey = await getApiKey();
+  if (!apiKey) return { error: "Not connected" };
+
+  let objectUrl: string | null = null;
+  try {
+    const { bytes, contentType } = await fetchReport(apiKey, id, format);
+    const blob = new Blob([bytes], { type: contentType });
+    objectUrl = URL.createObjectURL(blob);
+
+    const safeHost = (host || "scan").replace(/[^a-zA-Z0-9._-]/g, "-");
+    const ext = format === "md" ? "md" : format === "pdf" ? "pdf" : "json";
+    const filename = `vulnradar-${safeHost}-${id}.${ext}`;
+
+    const downloadId = await browser.downloads.download({
+      url: objectUrl,
+      filename,
+      saveAs: true,
+    });
+
+    // Hold the object URL alive until the download is no longer in
+    // progress, then revoke it so the blob can be collected.
+    await new Promise<void>((resolve) => {
+      const done = (delta: Browser.Downloads.OnChangedDownloadDeltaType) => {
+        if (delta.id !== downloadId) return;
+        if (delta.state?.current === "in_progress") return;
+        browser.downloads.onChanged.removeListener(done);
+        resolve();
+      };
+      browser.downloads.onChanged.addListener(done);
+      // Backstop: if the user leaves the save dialog open (or the browser
+      // never reports a terminal state), don't hang this handler forever.
+      setTimeout(() => {
+        browser.downloads.onChanged.removeListener(done);
+        resolve();
+      }, REPORT_DOWNLOAD_SETTLE_MS);
+    });
+
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof VulnRadarApiError) {
+      return { error: err.body.error || `API error ${err.status}` };
+    }
+    return { error: err instanceof Error ? err.message : String(err) };
+  } finally {
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
   }
 }
 

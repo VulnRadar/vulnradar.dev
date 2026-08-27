@@ -5,6 +5,9 @@ One-click vulnerability scanning for any website you visit, powered by [VulnRada
 - **Click the toolbar icon** to scan the current page
 - **Optional auto-scan** when a tab loads / changes
 - **18 check families** + **6 service probes** configurable per family
+- **Expand any finding** for the evidence, why it matters, and the steps to fix it
+- **Export a scan** as PDF, SARIF, Markdown, or JSON, straight from the popup
+- **Scan history per site**, with a trend against the previous scan and one-click rescan
 - All requests go to `https://vulnradar.dev/api/v3/*` using your VulnRadar **API key** (Bearer auth)
 
 ## Install (development build)

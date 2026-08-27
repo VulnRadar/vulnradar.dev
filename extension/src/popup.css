@@ -531,6 +531,147 @@ button:disabled {
   padding: 4px 0;
 }
 
+/* --- Expandable finding detail --- */
+
+.finding-header-clickable {
+  cursor: pointer;
+}
+
+.finding-header-clickable:focus-visible {
+  outline: 2px solid var(--vr-primary);
+  outline-offset: 2px;
+  border-radius: var(--vr-radius-sm);
+}
+
+.finding-chevron {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--vr-text-muted);
+  transition: transform 0.15s ease;
+}
+
+.finding-chevron.open {
+  transform: rotate(180deg);
+}
+
+.finding-detail {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--vr-border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fd-block {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.fd-label {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--vr-text-muted);
+}
+
+.fd-text {
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.fd-evidence {
+  margin: 0;
+  padding: 6px 8px;
+  background: var(--vr-card);
+  border: 1px solid var(--vr-border);
+  border-radius: var(--vr-radius-sm);
+  font-family: var(--vr-mono);
+  font-size: 10px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.fd-steps {
+  margin: 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.fd-refs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fd-refs a {
+  font-size: 10px;
+  font-family: var(--vr-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Export bar --- */
+
+.export-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--vr-border);
+}
+
+.export-label {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--vr-text-muted);
+  flex-shrink: 0;
+}
+
+.export-buttons {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.export-btn {
+  padding: 3px 8px;
+  border: 1px solid var(--vr-border);
+  border-radius: var(--vr-radius-pill);
+  background: var(--vr-bg);
+  color: var(--vr-text-muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.export-btn:hover:not(:disabled) {
+  border-color: var(--vr-primary);
+  color: var(--vr-primary);
+}
+
+.export-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.export-error {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--vr-danger);
+}
+
 .result-footer {
   display: flex;
   justify-content: space-between;
@@ -558,21 +699,74 @@ button:disabled {
 .history-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+  gap: 4px;
   border-radius: var(--vr-radius-sm);
   font-size: 12px;
-  cursor: pointer;
 }
 
 .history-item:hover {
   background: var(--vr-bg);
 }
 
-.history-item:focus-visible {
-  background: var(--vr-bg);
+/* The clickable "open this scan" region. Separate from .history-item so the
+   rescan button beside it is its own control rather than nested inside a
+   role="button", which is invalid and unreachable by keyboard. */
+.history-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 6px 4px 6px 10px;
+  border-radius: var(--vr-radius-sm);
+  cursor: pointer;
+}
+
+.history-main:focus-visible {
   outline: 2px solid var(--vr-primary);
   outline-offset: -2px;
+}
+
+.history-rescan {
+  flex-shrink: 0;
+  margin-right: 6px;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--vr-radius-sm);
+  background: none;
+  color: var(--vr-text-muted);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.history-item:hover .history-rescan {
+  border-color: var(--vr-border);
+}
+
+.history-rescan:hover:not(:disabled) {
+  color: var(--vr-primary);
+  border-color: var(--vr-primary);
+}
+
+.history-rescan:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Findings delta vs the previous scan of the same URL. */
+.trend {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.trend-better {
+  color: var(--vr-success);
+}
+
+.trend-worse {
+  color: var(--vr-danger);
 }
 
 .history-item .url {
