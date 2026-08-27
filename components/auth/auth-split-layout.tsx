@@ -49,7 +49,12 @@ function accountReasons(): { label: string; body: string }[] {
   return [
     {
       label: "History",
-      body: `Scans kept for ${BILLING_HISTORY_RETENTION.free} days on the free plan, so you can diff today against last week.`,
+      // Same -1 = unlimited sentinel guard as the pricing surfaces: this read
+      // "Scans kept for -1 days" on the login and signup pages.
+      body:
+        BILLING_HISTORY_RETENTION.free === -1
+          ? "Every scan is kept on the free plan, so you can diff today against last week."
+          : `Scans kept for ${BILLING_HISTORY_RETENTION.free} days on the free plan, so you can diff today against last week.`,
     },
     {
       label: "API keys",

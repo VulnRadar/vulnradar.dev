@@ -34,6 +34,17 @@ export const metadata: Metadata = pageMetadata({
 
 const FREE_SCANS = BILLING_PLAN_LIMITS.free;
 const FREE_RETENTION = BILLING_HISTORY_RETENTION.free;
+// Retention is stored as -1 for "unlimited" (see CONFIG_BILLING_*_RETENTION in
+// lib/config/config-values.ts). Render that as words, never as the raw number:
+// this FAQ shipped "keeps results for -1 days" to the live site. Same guard
+// components/pricing/pricing-faq.tsx and app/pricing/page.tsx already apply.
+const FREE_RETENTION_CLAUSE =
+  FREE_RETENTION === -1
+    ? "keeps every result, with no history limit"
+    : `keeps results for ${FREE_RETENTION} days`;
+// Only claim paid plans extend retention when retention is actually finite.
+const PAID_RETENTION_CLAUSE =
+  FREE_RETENTION === -1 ? "" : " and extend retention";
 
 // Questions people actually type into search. Rendered on the page and marked
 // up as an FAQPage from the same array, so the structured data can never
@@ -52,7 +63,7 @@ function buildFaq(checkCount: number, categoryCount: number): FaqItem[] {
     {
       question: "Is it free to use?",
       answer: BILLING_ENABLED
-        ? `Yes. The free tier runs ${FREE_SCANS} scans a day with no card, and keeps results for ${FREE_RETENTION} days. Paid plans raise the daily limit and extend retention. The detection engine is identical on every plan.`
+        ? `Yes. The free tier runs ${FREE_SCANS} scans a day with no card, and ${FREE_RETENTION_CLAUSE}. Paid plans raise the daily limit${PAID_RETENTION_CLAUSE}. The detection engine is identical on every plan.`
         : "Yes. Billing is disabled on this deployment, so every account has full access to the scanner and the API.",
     },
     {
