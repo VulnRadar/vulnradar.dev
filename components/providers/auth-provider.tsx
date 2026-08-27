@@ -17,6 +17,7 @@ import {
   getStaffPermissions,
   type StaffPermission,
 } from "@/lib/auth/permissions-client";
+import { computeAuthPresence } from "@/lib/auth/auth-presence";
 
 export interface MeResponse {
   userId: number;
@@ -104,30 +105,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [userRole],
   );
 
-  // Keep localStorage + injected <style> in sync so the blocking
-  // script in layout.tsx shows the right elements before React loads.
+  // Keep localStorage + the injected <style> in sync so the blocking script
+  // in layout.tsx shows the right elements before React loads. Runs on EVERY
+  // resolved /me result, signed in or out: a logged-out result must actively
+  // tear the cache + CSS down, or a session revoked elsewhere ("Sign out
+  // everywhere", an admin force-logout, another device, or plain expiry)
+  // leaves this browser reading a stale vr_auth_cache on the next visit and
+  // showing a logged-in shell for an account that is no longer signed in.
   useEffect(() => {
-    if (!me) return;
+    // `me` is undefined only while the very first fetch is in flight; don't
+    // clobber the cache mid-load, wait for the real result.
+    if (isLoading) return;
+
+    const { cache, css } = computeAuthPresence(me);
     try {
-      localStorage.setItem("vr_auth_cache", JSON.stringify(me));
+      if (cache === null) localStorage.removeItem("vr_auth_cache");
+      else localStorage.setItem("vr_auth_cache", cache);
     } catch {}
 
-    // Update the injected style tag to match live auth state
-    const userIsStaff = isStaffRole(me.role);
-    let css = "";
-    if (me.userId)
-      css +=
-        ".vr-auth-only{visibility:visible!important;pointer-events:auto!important}";
-    if (userIsStaff) css += ".vr-staff-only{display:flex!important}";
-
     let el = document.getElementById("vr-auth-css");
-    if (!el) {
+    if (!el && css) {
       el = document.createElement("style");
       el.id = "vr-auth-css";
       document.head.appendChild(el);
     }
-    el.textContent = css;
-  }, [me]);
+    if (el) el.textContent = css;
+  }, [me, isLoading]);
 
   return (
     <AuthContext.Provider value={{ me: me ?? null, isLoading, ...authHelpers }}>

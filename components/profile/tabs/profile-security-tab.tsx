@@ -30,7 +30,10 @@ import { cn } from "@/lib/ui/utils";
 import { copyToClipboard } from "@/lib/ui/clipboard";
 import { API, ROUTES, APP_NAME, APP_SLUG } from "@/lib/config/constants";
 import { downloadBlob } from "@/lib/ui/download";
-import { refreshAuthCache } from "@/components/providers/auth-provider";
+import {
+  refreshAuthCache,
+  clearAuthCache,
+} from "@/components/providers/auth-provider";
 import type { ProfileTabProps } from "@/components/profile/types";
 
 // The API issues this many backup codes per set. Kept as one named value so
@@ -394,6 +397,13 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
     try {
       const res = await fetch(API.AUTH.SESSIONS, { method: "DELETE" });
       if (res.ok) {
+        // Tear down the cached logged-in state (localStorage vr_auth_cache,
+        // the injected auth-only CSS, SWR's in-memory me) right away, the
+        // same way the header logout does. Without this the redirect below
+        // lands on a page whose pre-React blocking script still reads the
+        // stale cache and flashes a signed-in shell for an account whose
+        // sessions were just revoked.
+        clearAuthCache();
         setSuccess("All sessions signed out. Redirecting to sign in.");
         setShowLogoutModal(false);
         setTimeout(() => (window.location.href = "/login"), 2000);
