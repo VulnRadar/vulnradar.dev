@@ -57,8 +57,17 @@ describe("GET /api/v3/compare", () => {
     await GET(compareRequest("1", "2"));
 
     const [sql, params] = mockQuery.mock.calls[0];
-    expect(sql).toContain("WHERE id IN ($1, $2) AND user_id = $3");
-    expect(params).toEqual(["1", "2", 42]);
+    // Scoped to the caller. This is the assertion that matters: without it
+    // the route would read another user's scans.
+    expect(sql).toContain("user_id = $5");
+    // Both id shapes resolve, because the history list hands the client
+    // public_id while older bookmarks still carry the numeric id.
+    expect(sql).toContain("public_id = $1");
+    expect(sql).toContain("public_id = $2");
+    expect(sql).toContain("id = $3");
+    expect(sql).toContain("id = $4");
+    // "1" and "2" are legacy numeric ids, so they resolve on both arms.
+    expect(params).toEqual(["1", "2", 1, 2, 42]);
   });
 
   it("rejects comparing a scan owned by another user instead of silently allowing it", async () => {
@@ -69,6 +78,7 @@ describe("GET /api/v3/compare", () => {
       rows: [
         {
           id: "1",
+          public_id: "a1b2c3d4e5f60718293a4b5c6d7e8f90",
           url: "https://example.com",
           summary: { critical: 0 },
           findings: [],
@@ -85,6 +95,25 @@ describe("GET /api/v3/compare", () => {
     expect(res.status).toBe(404);
     const json = await res.json();
     expect(json.error).toBe("One or both scans not found");
+  });
+
+  it("looks scans up by public_id, the id shape the history list returns", async () => {
+    // Regression: this route matched `id IN ($1,$2)` against the SERIAL
+    // primary key, but app/api/v3/history/route.ts projects
+    // `sh.public_id AS id`, so every id the compare page holds is a 32-char
+    // hex. A public_id beginning with a digit was coerced to a different
+    // scan of the caller's own by getQueryParamInt's parseInt; one beginning
+    // with a letter became null.
+    const publicA = "7a3f0000000000000000000000000001";
+    const publicB = "7a3f0000000000000000000000000002";
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await GET(compareRequest(publicA, publicB));
+
+    const [, params] = mockQuery.mock.calls[0];
+    // Both resolve as public_ids; neither is a legacy numeric id, so the
+    // numeric arms are null and cannot collide with an unrelated row.
+    expect(params).toEqual([publicA, publicB, null, null, 42]);
   });
 
   it("returns 404 when neither scan ID belongs to the caller", async () => {

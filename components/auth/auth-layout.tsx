@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ThemedLogo } from "@/components/shared/themed-logo";
-import { APP_NAME, ROUTES } from "@/lib/config/constants";
+import { APP_NAME, ROUTES } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
 import { focus, transitions } from "@/lib/ui/animations";
 

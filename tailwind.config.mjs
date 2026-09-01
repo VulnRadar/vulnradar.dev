@@ -12,6 +12,20 @@ import tailwindcssAnimate from "tailwindcss-animate";
  */
 const config = {
   darkMode: "class",
+  // NOTE: `lib/` is NOT here, and that is a real trap rather than an
+  // oversight nobody has noticed. Several modules under lib/ hold Tailwind
+  // class strings that only ever appear there -- lib/config/client-constants
+  // .ts's ROLE_BADGE_STYLES is the worst of them -- and a class that appears
+  // nowhere in a scanned file generates no CSS, with no build error and no
+  // warning. Three staff badges shipped with no colour at all this way.
+  //
+  // The safelist lives in the `@source inline(...)` block at the top of
+  // app/globals.css, so a class string added under lib/ has to be added
+  // there too. Widening this array to include "./lib/**/*.{ts,tsx}" would
+  // remove the need for that half of the safelist, but it also puts the
+  // whole scanner tree (thousands of lines of check descriptions and
+  // remediation prose) through Tailwind's candidate extractor, so it is a
+  // change to make deliberately and measure, not a one-line tidy-up.
   content: [
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
@@ -61,16 +75,17 @@ const config = {
           4: "hsl(var(--chart-4))",
           5: "hsl(var(--chart-5))",
         },
-        sidebar: {
-          DEFAULT: "hsl(var(--sidebar-background))",
-          foreground: "hsl(var(--sidebar-foreground))",
-          primary: "hsl(var(--sidebar-primary))",
-          "primary-foreground": "hsl(var(--sidebar-primary-foreground))",
-          accent: "hsl(var(--sidebar-accent))",
-          "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
-          border: "hsl(var(--sidebar-border))",
-          ring: "hsl(var(--sidebar-ring))",
-        },
+        // No `sidebar` group here. It used to declare eight utilities
+        // (bg-sidebar, text-sidebar-foreground and siblings) resolving to
+        // --sidebar-background and friends, and not one of those CSS
+        // variables was defined in app/globals.css or anywhere else. So the
+        // utilities existed, IntelliSense offered them, and each compiled to
+        // hsl() with an empty argument, which is an invalid colour the
+        // browser drops: a transparent element with no error anywhere. The
+        // product's two sidebars (/profile and /admin) both hand-rolled
+        // bg-primary/10 instead. If a real sidebar palette is wanted, define
+        // the variables in :root and .dark in the same change that adds the
+        // group back, never one without the other.
       },
       borderRadius: {
         lg: "var(--radius)",

@@ -10,6 +10,7 @@ import pool from "@/lib/database/db";
 import {
   checkRateLimit,
   peekRateLimit,
+  resetRateLimit,
   getRateLimit,
   RATE_LIMITS,
 } from "@/lib/rate-limiting/rate-limit";
@@ -20,11 +21,14 @@ import {
   parseBody,
   withErrorHandling,
 } from "@/lib/api/api-utils";
-import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
+import {
+  getClientIp,
+  getUserAgent,
+  rateLimitIpKey,
+} from "@/lib/api/request-utils";
 import { signPendingToken } from "@/lib/auth/pending-2fa";
 import {
   AUTH_2FA_PENDING_COOKIE,
-  AUTH_2FA_PENDING_MAX_AGE,
   DEVICE_TRUST_COOKIE_NAME,
   ERROR_MESSAGES,
 } from "@/lib/config/constants";
@@ -48,6 +52,26 @@ async function getDummyHash(): Promise<string> {
   return dummyHashCache;
 }
 
+/**
+ * How much larger the per-ACCOUNT failed-login bucket is than the per-IP one.
+ * Derived rather than a second registry key so an operator tuning the login
+ * limit moves both together and the two can never drift into the state where
+ * one IP's whole allowance is exactly enough to lock an account out.
+ */
+const ACCOUNT_LOCK_ATTEMPT_MULTIPLIER = 5;
+const ACCOUNT_LOCK_WINDOW_MULTIPLIER = 4;
+
+async function resolveAccountLockLimit(): Promise<{
+  maxAttempts: number;
+  windowSeconds: number;
+}> {
+  const { maxAttempts, windowSeconds } = await getRateLimit("login");
+  return {
+    maxAttempts: maxAttempts * ACCOUNT_LOCK_ATTEMPT_MULTIPLIER,
+    windowSeconds: windowSeconds * ACCOUNT_LOCK_WINDOW_MULTIPLIER,
+  };
+}
+
 export const POST = withErrorHandling(async (request: Request) => {
   // Parse body
   const parsed = await parseBody<{ email: string; password: string }>(request);
@@ -64,7 +88,10 @@ export const POST = withErrorHandling(async (request: Request) => {
 
   // Rate limit by IP
   const ip = await getClientIp();
-  const rl = await checkRateLimit({ key: `login:${ip}`, ...RATE_LIMITS.login });
+  const rl = await checkRateLimit({
+    key: `login:${rateLimitIpKey(ip)}`,
+    ...RATE_LIMITS.login,
+  });
   if (!rl.allowed) {
     const minutes = Math.ceil(rl.retryAfterSeconds / 60);
     return ApiResponse.tooManyRequests(
@@ -92,9 +119,20 @@ export const POST = withErrorHandling(async (request: Request) => {
   // throttled (the IP gate above alone would miss it) and stops burning CPU
   // on a locked account. The window auto-expires, so the backoff is
   // temporary. Read-only peek so this gate does not itself inflate the count.
+  //
+  // Deliberately NOT the same bucket size as the per-IP gate above. Sharing
+  // it made the lock trivially weaponizable: one attacker IP is allowed
+  // exactly `login` attempts per window, which was exactly enough to fill
+  // the account bucket, so a single address could lock any known account out
+  // continuously by firing its whole allowance at the top of each window,
+  // and the victim was refused even with the correct password and a valid
+  // 2FA code. The account cap is therefore a multiple of the per-IP cap over
+  // a longer window: filling it now takes several source addresses, which is
+  // what a genuine distributed attempt looks like.
+  const accountLockLimit = await resolveAccountLockLimit();
   const accountLock = await peekRateLimit({
     key: `login-fail:${user.id}`,
-    ...RATE_LIMITS.login,
+    ...accountLockLimit,
   });
   if (!accountLock.allowed) {
     const minutes = Math.ceil(accountLock.retryAfterSeconds / 60);
@@ -116,7 +154,7 @@ export const POST = withErrorHandling(async (request: Request) => {
     try {
       const fail = await checkRateLimit({
         key: `login-fail:${user.id}`,
-        ...RATE_LIMITS.login,
+        ...accountLockLimit,
       });
       if (!fail.allowed) {
         const alertGate = await checkRateLimit({
@@ -147,6 +185,16 @@ export const POST = withErrorHandling(async (request: Request) => {
     }
     return ApiResponse.unauthorized(ERROR_MESSAGES.INVALID_CREDENTIALS);
   }
+
+  // The password was correct, so forgive the account's failure counter. The
+  // counter exists to detect a brute-force in progress; leaving it standing
+  // after the real owner has just proved they hold the password meant a
+  // half-full bucket kept counting toward a lockout the owner could do
+  // nothing about (there is no unlock-by-email path). The per-IP bucket is
+  // deliberately NOT cleared: that one throttles the source address, not
+  // the account, and clearing it would let one address reset its own quota
+  // by interleaving a valid login.
+  await resetRateLimit(`login-fail:${user.id}`);
 
   // Check if account is disabled or email not verified
   const userInfoResult = await pool.query(
@@ -255,6 +303,17 @@ export const POST = withErrorHandling(async (request: Request) => {
     // Set a short-lived SIGNED cookie proving the password factor passed. The
     // verify route trusts the userId inside it, so it must not be forgeable
     // (a bare String(user.id) was -- see lib/auth/pending-2fa.ts).
+    //
+    // Resolved live, not from the compiled AUTH_2FA_PENDING_MAX_AGE constant:
+    // the verify route, the email-code sender, and both OAuth callbacks all
+    // already read getSetting("2FA_PENDING_MAX_AGE_SECONDS"), so this route
+    // handing out a cookie with the shipped default made an admin who
+    // lengthened the window get a cookie that expired before the token it
+    // carries did, and one who shortened it get a cookie that outlived the
+    // token check (AUDIT-009#settings-04).
+    const pendingMaxAgeSeconds = await getSetting(
+      "2FA_PENDING_MAX_AGE_SECONDS",
+    );
     response.cookies.set(
       AUTH_2FA_PENDING_COOKIE,
       signPendingToken({ userId: user.id, ts: Date.now() }),
@@ -263,7 +322,7 @@ export const POST = withErrorHandling(async (request: Request) => {
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
         path: "/",
-        maxAge: AUTH_2FA_PENDING_MAX_AGE, // seconds
+        maxAge: pendingMaxAgeSeconds, // seconds
       },
     );
     return response;

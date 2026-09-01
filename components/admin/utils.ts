@@ -39,6 +39,7 @@ export const AUDIT_FILTER_CATEGORIES = [
       "impersonate",
       "verify_email",
       "unverify_email",
+      "view_user_detail",
     ],
   },
   {
@@ -213,14 +214,45 @@ export const AVATAR_COLORS = [
 ];
 
 /**
- * Format bytes to human-readable size
+ * Format bytes to human-readable size.
+ *
+ * This used to be a second, wrong implementation with no callers: its unit
+ * table stopped at "GB", so anything at or above 1 TB indexed past the end
+ * and rendered "1 undefined". The body below is the one backup-manager.tsx
+ * had defined privately and was the only one actually rendering bytes; it
+ * handles TB and drops to 0 decimals at or above 10 of a unit. One export,
+ * one behaviour.
  */
 export function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = bytes / 1024;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+/**
+ * Absolute timestamp formatter for admin tables.
+ *
+ * Four private copies of this lived in components/admin/features (backup and
+ * billing-overview without seconds, email-logs and error-logs with), so the
+ * same panel showed two different precisions depending on which tab you were
+ * on. One function with an explicit flag instead: log views pass
+ * `withSeconds` because ordering within a minute is the point there.
+ */
+export function formatTimestamp(iso: string, withSeconds = false): string {
+  return new Date(iso).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    ...(withSeconds ? { second: "2-digit" as const } : {}),
+  });
 }
 
 /**
@@ -232,7 +264,16 @@ export function truncate(text: string, maxLength: number): string {
 }
 
 /**
- * Parse URL hash for admin panel routing
+ * Parse URL hash for admin panel routing.
+ *
+ * SUPERSEDED, and not wired to anything. The panel abandoned '#users/user-12'
+ * hash routing for query params: state goes through updateUrlWithUser in
+ * app/admin/page.tsx, which calls setQueryParam/setQueryParams. Neither this
+ * nor buildAdminHash below has a caller anywhere, tests included, and the tab
+ * whitelist below lists five destinations against the panel's twenty (the
+ * live set is NAV_GROUPS in app/admin/page.tsx, flattened into
+ * ALL_ADMIN_TABS). Extend the query-param path, not these. Kept because
+ * removing an export is the owner's call.
  */
 export function parseAdminHash(hash: string): {
   tab: string | null;

@@ -11,7 +11,9 @@ import {
   SeverityPill,
   Breadcrumbs,
   ScanCta,
+  ContributeCheckCta,
 } from "@/lib/seo/seo-ui";
+import { ChecksFilter } from "./checks-filter";
 import {
   SEO_CATEGORIES,
   getChecksInCategory,
@@ -20,14 +22,22 @@ import {
   getCategoryBlurb,
   getAllChecks,
 } from "@/lib/seo/checks-content";
-import { APP_NAME } from "@/lib/config/constants";
+import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/config/constants";
 
 const TITLE = "Every Web Vulnerability Check, With Fixes";
 const TOTAL = getAllChecks().length;
 
+// Two numbers, both true, one click apart in the search results: the landing
+// page's meta description says TOTAL_CHECKS_LABEL ("795+", counting the
+// PageCheck-architecture detectors that deliberately have no standalone page)
+// and this page counts only the ones with a public fix guide. Presented alone
+// the smaller number read as the larger one having been marketing. State both
+// so they reconcile instead of contradicting.
+const COUNT_SENTENCE = `The ${TOTAL} security checks with a public fix guide, out of ${TOTAL_CHECKS_LABEL} ${APP_NAME} runs against a URL, grouped into 18 categories.`;
+
 export const metadata: Metadata = pageMetadata({
   title: TITLE,
-  description: `The full list of ${TOTAL} security checks ${APP_NAME} runs against a URL, grouped into 18 categories. Every check has a page explaining the risk and how to fix it.`,
+  description: `${COUNT_SENTENCE} Every one has a page explaining the risk and how to fix it.`,
   path: "/checks",
   keywords: [
     "web vulnerability checks",
@@ -41,7 +51,7 @@ export const metadata: Metadata = pageMetadata({
 const FAQ = [
   {
     question: `How many checks does ${APP_NAME} run?`,
-    answer: `${APP_NAME} documents ${TOTAL} checks across 18 categories, from security headers and TLS to secret detection and DNS. Each one has its own page with the risk it catches and the fix.`,
+    answer: `${APP_NAME} runs ${TOTAL_CHECKS_LABEL} checks and documents ${TOTAL} of them across 18 categories, from security headers and TLS to secret detection and DNS. Each documented one has its own page with the risk it catches and the fix. The rest run inside multi-page analysis, where a finding depends on several pages at once, so there is no single-check page to link to.`,
   },
   {
     question: "Do I have to run every check?",
@@ -76,9 +86,12 @@ export default async function ChecksIndexPage() {
             Every check {APP_NAME} runs
           </h1>
           <p className="mt-4 text-base sm:text-lg text-muted-foreground leading-relaxed">
-            {TOTAL} security checks, grouped into 18 categories. Not a marketing
-            number: every one is a real page that tells you what it catches, why
-            it matters, and how to fix it with code you can paste.
+            {TOTAL} security checks with a public fix guide, grouped into 18
+            categories. Not a marketing number: every one is a real page that
+            tells you what it catches, why it matters, and how to fix it with
+            code you can paste. A scan runs {TOTAL_CHECKS_LABEL} in total, the
+            difference being detectors that only fire across several pages at
+            once and so have no standalone page here.
           </p>
           <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-sm border-t border-border/40 pt-4">
             <span className="text-muted-foreground">
@@ -133,7 +146,9 @@ export default async function ChecksIndexPage() {
           </div>
         </section>
 
-        {/* Full crawlable index, grouped and collapsible, no JS needed. */}
+        {/* Full crawlable index. Every link is in the server HTML; the filter
+            island above only hides rows, so JS-off and crawler views are the
+            complete list. */}
         <section className="mt-14" aria-labelledby="all-checks">
           <h2
             id="all-checks"
@@ -141,10 +156,7 @@ export default async function ChecksIndexPage() {
           >
             Every check, by category
           </h2>
-          <p className="text-sm text-muted-foreground mb-5">
-            Expand a category to jump straight to any single check.
-          </p>
-          <div className="space-y-2">
+          <ChecksFilter>
             {SEO_CATEGORIES.map((cat) => {
               const checks = getChecksInCategory(cat);
               return (
@@ -159,7 +171,13 @@ export default async function ChecksIndexPage() {
                       </span>
                       {getCategoryLabel(cat)}
                     </span>
-                    <span className="text-xs text-muted-foreground tabular-nums">
+                    {/* data-count carries the unfiltered total so the filter
+                        island can show a live match count here and put the
+                        real one back when the filter is cleared. */}
+                    <span
+                      data-count={checks.length}
+                      className="text-xs text-muted-foreground tabular-nums"
+                    >
                       {checks.length}
                     </span>
                   </summary>
@@ -167,6 +185,11 @@ export default async function ChecksIndexPage() {
                     {checks.map((c) => (
                       <li
                         key={c.id}
+                        // Haystack for the filter island: the id matters as
+                        // much as the title, since the id is what a finding,
+                        // the API and a CI gate all refer to.
+                        data-check={`${c.title} ${c.id}`.toLowerCase()}
+                        data-severity={c.severity}
                         className="flex items-center gap-2 min-w-0 text-sm"
                       >
                         <SeverityPill
@@ -185,8 +208,10 @@ export default async function ChecksIndexPage() {
                 </details>
               );
             })}
-          </div>
+          </ChecksFilter>
         </section>
+
+        <ContributeCheckCta />
       </div>
 
       <ScanCta

@@ -16,7 +16,7 @@ import {
   Search,
   ShieldAlert,
 } from "lucide-react";
-import { API, ROUTES } from "@/lib/config/constants";
+import { API, ROUTES } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
 import { useQueryParam } from "@/lib/ui/url-state";
 import { GithubRepoPickerModal } from "@/components/repos/github-repo-picker-modal";
@@ -111,6 +111,9 @@ interface GithubStatus {
 export default function ReposPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /** A failed *load*, as opposed to a failed action. Never auto-dismissed. */
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [summariesFailed, setSummariesFailed] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
 
   const [status, setStatus] = useState<GithubStatus>({ connected: false });
@@ -139,6 +142,11 @@ export default function ReposPage() {
       return () => clearTimeout(t);
     }
   }, [success]);
+  // Only the action banner auto-dismisses. `error` is feedback on something
+  // the user just did ("that scan could not be started"), so eight seconds is
+  // long enough to read it and it should not linger. A failed *load* is a
+  // different thing: the empty list it explains stays on screen forever, so
+  // it lives in loadError below, which never times out and offers a retry.
   useEffect(() => {
     if (error) {
       const t = setTimeout(() => setError(null), 8000);
@@ -149,13 +157,21 @@ export default function ReposPage() {
   const loadSummaries = useCallback(async () => {
     try {
       const res = await fetch(API.SCAN_GITHUB_HISTORY);
-      if (!res.ok) return;
+      if (!res.ok) {
+        setSummariesFailed(true);
+        return;
+      }
       const data = await res.json();
       const map: Record<string, RepoScanSummary> = {};
       for (const s of data.summaries as RepoScanSummary[]) map[s.repo] = s;
       setSummaries(map);
+      setSummariesFailed(false);
     } catch {
-      /* the list still works without "last scanned" info */
+      // The repo list still works without "last scanned" info, but a repo
+      // whose last scan simply failed to load used to render exactly like
+      // one that has never been scanned. On a security tool that is the
+      // wrong way round to be wrong, so say which it is.
+      setSummariesFailed(true);
     }
   }, []);
 
@@ -169,38 +185,51 @@ export default function ReposPage() {
       const res = await fetch(API.ACCOUNT_GITHUB_REPOS);
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Failed to load repositories.");
+        setLoadError(
+          data.error ||
+            "Your repositories could not be loaded. That is a problem on our side, not an empty working set.",
+        );
         setRepos([]);
         return;
       }
       const nameSet = new Set(names);
+      setLoadError(null);
       setRepos(
         (data.repos as GithubRepo[]).filter((r) => nameSet.has(r.fullName)),
       );
     } catch {
-      setError("Failed to load repositories.");
+      setLoadError(
+        "Could not reach the server, so your repositories were not loaded.",
+      );
       setRepos([]);
     }
     setReposLoading(false);
   }, []);
 
-  useEffect(() => {
-    async function init() {
-      try {
-        const res = await fetch(API.ACCOUNT_GITHUB);
-        const data: GithubStatus = await res.json();
-        setStatus(data);
-        if (data.connected && data.selectedRepos?.length) {
-          await Promise.all([
-            loadWorkingSet(data.selectedRepos),
-            loadSummaries(),
-          ]);
-        }
-      } catch {
-        setError("Failed to load your GitHub connection status.");
+  // No setLoading(true) at the top: `loading` starts true, and setting it
+  // synchronously from the mount effect below is a cascading render. The
+  // retry button flips it itself, from an event handler, where it belongs.
+  const init = useCallback(async () => {
+    try {
+      const res = await fetch(API.ACCOUNT_GITHUB);
+      const data: GithubStatus = await res.json();
+      setStatus(data);
+      if (data.connected && data.selectedRepos?.length) {
+        await Promise.all([
+          loadWorkingSet(data.selectedRepos),
+          loadSummaries(),
+        ]);
       }
-      setLoading(false);
+    } catch {
+      setLoadError(
+        "Your GitHub connection status could not be loaded, so this page cannot tell whether you have connected an account.",
+      );
     }
+    setLoading(false);
+  }, [loadWorkingSet, loadSummaries]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- init() is a useCallback the rule cannot see into; its first statement is an awaited fetch, so nothing calls setState synchronously here. It is a useCallback rather than a function declared inside this effect so the load-failure banner's Try again button can re-run the identical load.
     init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -323,6 +352,40 @@ export default function ReposPage() {
         tabIndex={-1}
         className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col gap-5"
       >
+        {/* A load failure, not an action failure: it explains the empty list
+            below it, so unlike the banner underneath it does not time out
+            after eight seconds and leave the emptiness unexplained. */}
+        {loadError && (
+          <div
+            role="alert"
+            className="flex flex-wrap items-center gap-3 px-4 py-3 rounded-xl text-sm border bg-destructive/10 text-destructive border-destructive/20"
+          >
+            <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className="flex-1 min-w-0">{loadError}</span>
+            <button
+              type="button"
+              onClick={() => {
+                setLoadError(null);
+                setLoading(true);
+                init();
+              }}
+              className="inline-flex h-9 items-center rounded-md border border-destructive/30 px-3 text-xs font-medium hover:bg-destructive/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Try again
+            </button>
+          </div>
+        )}
+
+        {summariesFailed && (
+          <p
+            role="status"
+            className="text-xs text-muted-foreground px-1 leading-relaxed"
+          >
+            Scan history could not be loaded, so the &ldquo;last scanned&rdquo;
+            line on each repository below is missing rather than empty.
+          </p>
+        )}
+
         {(error || success) && (
           <div
             role={error ? "alert" : "status"}
@@ -331,7 +394,7 @@ export default function ReposPage() {
               "flex items-center gap-3 px-4 py-3 rounded-xl text-sm border",
               error
                 ? "bg-destructive/10 text-destructive border-destructive/20"
-                : "bg-[hsl(var(--success)/0.1)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.2)]",
+                : "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20",
             )}
           >
             {error ? (

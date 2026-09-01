@@ -65,6 +65,11 @@ import {
   type ScheduleFrequency,
 } from "./schedule-timing";
 import { userMeetsScheduleFrequency } from "@/lib/billing/plan-limits";
+import { checkAccessRules } from "./access-rules";
+import {
+  getDailyLimit,
+  incrementDailyCountCapped,
+} from "@/lib/rate-limiting/daily-limits";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import {
   scheduleDisabledEmail,
@@ -97,11 +102,19 @@ export interface DueSchedule {
   preferred_hour_utc: number;
   preferred_day_of_week: number;
   preferred_day_of_month: number;
+  /**
+   * The team the schedule was created against, or null for a personal
+   * schedule. Threaded into the scan_history row this worker inserts so a
+   * scheduled run is visible to the team the same way a manual team scan is:
+   * scan_history.team_id is what every team-scoped read filters on, and a run
+   * that omitted it was silently private to the schedule's owner.
+   */
+  team_id: number | null;
 }
 
 export interface ProcessOutcome {
   id: number;
-  outcome: "scanned" | "blocked" | "plan_gated" | "error";
+  outcome: "scanned" | "blocked" | "plan_gated" | "quota_gated" | "error";
   detail?: string;
 }
 
@@ -120,7 +133,7 @@ export async function claimDueSchedules(
   try {
     await client.query("BEGIN");
     const { rows } = await client.query<DueSchedule>(
-      `SELECT id, user_id, url, frequency, preferred_hour_utc, preferred_day_of_week, preferred_day_of_month
+      `SELECT id, user_id, url, frequency, preferred_hour_utc, preferred_day_of_week, preferred_day_of_month, team_id
        FROM scheduled_scans
        WHERE active = true AND next_run_at <= NOW()
        ORDER BY next_run_at ASC
@@ -263,6 +276,36 @@ export async function processSchedule(
       return { id: schedule.id, outcome: "plan_gated" };
     }
 
+    // security: honour the admin blocklist at run time, the same way the
+    // target safety check above is re-run rather than trusted from creation
+    // time. Without this a target an admin blocklists after the schedule
+    // exists keeps being scanned on every cadence, because the blocklist was
+    // only ever consulted on the manual-scan routes.
+    const accessCheck = await checkAccessRules(normalizedUrl);
+    if (!accessCheck.allowed) {
+      const reason = accessCheck.reason || "Target blocked by access rules";
+      await deactivateForUnsafeTarget(schedule, reason);
+      return { id: schedule.id, outcome: "blocked", detail: reason };
+    }
+
+    // billing: charge the daily scan quota, exactly as every manual path
+    // does. Scheduled runs used to be entirely unmetered: they neither
+    // checked nor consumed dailyScans, so an Elite account (unlimited
+    // schedules, hourly cadence) could run an unbounded number of full scans
+    // a day against a 500/day cap, and the usage figure the account sees in
+    // GET /api/v3/billing read zero the whole time. Over quota reschedules at
+    // the normal cadence rather than deactivating, matching how the plan gate
+    // above treats a temporary condition.
+    const dailyLimit = await getDailyLimit(schedule.user_id);
+    const charge = await incrementDailyCountCapped(
+      schedule.user_id,
+      dailyLimit,
+    );
+    if (!charge.recorded) {
+      await rescheduleNext(schedule, now);
+      return { id: schedule.id, outcome: "quota_gated" };
+    }
+
     const isRawIpTarget = isRawIpv4(schedule.url) || isRawIpv4(normalizedUrl);
     const protocolType = getProtocolType(normalizedUrl);
     const plannedSync = isRawIpTarget ? [] : getPlannedSyncCategories(null);
@@ -275,10 +318,15 @@ export async function processSchedule(
     // isPublic) rather than hardcoding true.
     const isPublic = await resolveScanIsPublic(schedule.user_id, undefined);
 
+    // team_id is carried over from the schedule row. Every manual scan route
+    // writes it, and the team-scoped history reads filter on it, so a
+    // scheduled run of a TEAM schedule that omitted the column produced a row
+    // only the schedule's owner could see -- the team never saw the result of
+    // the schedule it owns. ref: AUDIT-011#drift-01
     const insertRes = await pool.query<{ id: number }>(
       `INSERT INTO scan_history
-         (user_id, url, source, notes, status, started_at, categories_total, is_public)
-       VALUES ($1, $2, 'scheduled', $3, 'pending', NOW(), $4, $5)
+         (user_id, url, source, notes, status, started_at, categories_total, is_public, team_id)
+       VALUES ($1, $2, 'scheduled', $3, 'pending', NOW(), $4, $5, $6)
        RETURNING id`,
       [
         schedule.user_id,
@@ -286,6 +334,7 @@ export async function processSchedule(
         DEFAULT_SCAN_NOTE,
         categoriesTotal,
         isPublic,
+        schedule.team_id ?? null,
       ],
     );
     const scanHistoryId = insertRes.rows[0]?.id;
@@ -411,6 +460,19 @@ export interface RunDueSchedulesStats {
  *  the periodic timer) so the admin cleanup-style "force a run now" pattern
  *  is available if this ever gets a manual trigger endpoint. */
 export async function runDueSchedules(): Promise<RunDueSchedulesStats> {
+  // The FEATURE_SCHEDULED_SCANS kill switch used to be read in exactly one
+  // place, POST /api/v3/schedules, so turning it off in /admin blocked new
+  // schedules and left every existing one firing on its normal cadence
+  // forever. An operator flipping it to shed load, or because scheduled
+  // scanning is hurting a target, got no part of what the switch promises.
+  // Claim nothing while it is off: returning empty stats rather than
+  // throwing keeps the failure escalator quiet, since a disabled feature is
+  // not a failing worker. The resolver caches settings for 30s, so this read
+  // costs nothing per tick. ref: AUDIT-012#logic-07
+  if (!(await getSetting("FEATURE_SCHEDULED_SCANS"))) {
+    return { processed: 0, scanned: 0, blocked: 0, planGated: 0, errors: 0 };
+  }
+
   const claimLimit = await getSetting("SCHEDULE_WORKER_CLAIM_LIMIT");
   const due = await claimDueSchedules(claimLimit);
   if (due.length === 0) {
@@ -472,7 +534,21 @@ export function schedulePeriodicScheduledScans(
           `[${APP_NAME}] Scheduled scan worker: ${formatStats(stats)}`,
         );
       }
-      escalator.recordSuccess();
+      // processSchedule catches every per-schedule failure and reports it as
+      // `{ outcome: "error" }` rather than rethrowing, so a pass in which
+      // 100% of due scans failed still returned normally and used to be
+      // recorded as a healthy pass. That reset the escalator's streak to zero
+      // on every tick, which meant the "worker is failing" alert could never
+      // fire no matter how long the worker had been useless. A pass that
+      // processed work, scanned nothing, and errored on everything is a
+      // failed pass. ref: AUDIT-012#obs-03
+      if (stats.processed > 0 && stats.scanned === 0 && stats.errors > 0) {
+        escalator.recordFailure(
+          "Every due scheduled scan is failing -- no scheduled scan has run successfully across consecutive worker passes",
+        );
+      } else {
+        escalator.recordSuccess();
+      }
     } catch (err) {
       console.error(`[${APP_NAME}] Scheduled scan worker pass failed:`, err);
       escalator.recordFailure(

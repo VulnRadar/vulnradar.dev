@@ -86,3 +86,15 @@ export function getDomain(url: string) {
     return url;
   }
 }
+
+/**
+ * What a tag add/remove handler resolves to: `null` when the change was
+ * persisted, the message to show when it was not.
+ *
+ * The plain `void` arm is deliberate. The read-only surfaces (/host,
+ * /shared, the public-scans row) pass a no-op because `readOnly` already
+ * hides every control that could call it, and they should not have to
+ * invent a return value for a handler that never runs. `undefined` is
+ * treated as success by ScanTags, same as `null`.
+ */
+export type TagMutationResult = void | Promise<string | null>;

@@ -20,6 +20,29 @@ const migration = await import("@/scripts/migrate/versions/2.0.0-to-3.0.0.mjs");
 const { transitions, findVersionFile, VERSIONS, getVersion } =
   await import("@/scripts/migrate/_registry.mjs");
 const { buildPlan } = await import("@/scripts/migrate/_planner.mjs");
+const { buildMigrationSchema, UPGRADE_CHAIN } =
+  await import("@/scripts/_lib/_lib.schema-parity.mjs");
+
+/**
+ * How many tables this step is supposed to create, DERIVED rather than
+ * typed in. It is the difference between the schema a database has after
+ * the 1.0.0 -> 2.0.0 step and the schema it has after this one, both
+ * parsed from the version files themselves.
+ *
+ * This used to be the literal `31` (and `18` before that). A hardcoded
+ * count only fails when someone adds a table to this file and forgets to
+ * update the number, which is the harmless direction; it says nothing at
+ * all about a table added to instrumentation.ts and never added here,
+ * which is the direction that shipped broken twice. The real guard is
+ * tests/scripts/migrate/schema-parity.test.ts, which compares this file's
+ * output against instrumentation.ts by name. This number is derived so it
+ * cannot go stale on the way.
+ */
+const schemaAfterV2 = await buildMigrationSchema(UPGRADE_CHAIN.slice(0, 1));
+const schemaAfterV3 = await buildMigrationSchema();
+const EXPECTED_NEW_TABLE_COUNT = [...schemaAfterV3.tables.keys()].filter(
+  (t: string) => !schemaAfterV2.tables.has(t),
+).length;
 
 describe("2.0.0-to-3.0.0 migration: exports", () => {
   it("declares the correct from/to versions", () => {
@@ -67,7 +90,12 @@ describe("2.0.0-to-3.0.0 migration: exports", () => {
         "ai_credit_purchases",
       ]),
     );
-    expect(names).toHaveLength(18);
+    // The list above is documentation: arrayContaining is a subset check
+    // against names somebody typed, so it can only fail for a name that is
+    // already written down. See EXPECTED_NEW_TABLE_COUNT's comment and
+    // tests/scripts/migrate/schema-parity.test.ts for the guard that
+    // actually notices a table nobody remembered.
+    expect(names).toHaveLength(EXPECTED_NEW_TABLE_COUNT);
   });
 
   it("upgrade adds the finding_remediation table (per-finding remediation status lifecycle)", () => {
@@ -300,7 +328,9 @@ describe("2.0.0-to-3.0.0 migration: exports", () => {
       ]),
     );
     expect(migration.downgrade.dropTables).not.toContain("scan_credentials");
-    expect(migration.downgrade.dropTables).toHaveLength(18);
+    expect(migration.downgrade.dropTables).toHaveLength(
+      EXPECTED_NEW_TABLE_COUNT,
+    );
   });
 
   it("downgrade drops every AUDIT-009 migration-01 column, except columns on tables it already drops wholesale", () => {
@@ -493,19 +523,10 @@ describe("2.0.0-to-3.0.0 migration: registry + planner wiring", () => {
     const createTableSteps = plan.steps.filter(
       (s: { kind: string }) => s.kind === "createTable",
     );
-    // 7 original tables + 4 added by AUDIT-009 migration-01
-    // (processed_stripe_events, user_ai_configs, cve_kev_cache,
-    // webhook_deliveries) that instrumentation.ts had but this file didn't,
-    // + 1 for the unified AI usage table (ai_usage),
-    // + 1 for the admin error-logs table (system_error_logs),
-    // + 1 for the auto-tag dismissal log (auto_tag_dismissals),
-    // + 1 for admin-promoted auto-tag rules (promoted_auto_tag_rules),
-    // + 1 for the AI credit purchase idempotency ledger
-    // (ai_credit_purchases),
-    // + 1 for the auto-updating embed badge tokens (host_badges),
-    // + 1 for the per-finding remediation status lifecycle
-    // (finding_remediation).
-    expect(createTableSteps.length).toBe(18);
+    // One createTable step per declared table. The declared set itself is
+    // checked against instrumentation.ts by
+    // tests/scripts/migrate/schema-parity.test.ts.
+    expect(createTableSteps.length).toBe(EXPECTED_NEW_TABLE_COUNT);
     expect(
       createTableSteps.some((s: { label: string }) =>
         s.label.includes("scan_credentials"),
@@ -519,7 +540,7 @@ describe("2.0.0-to-3.0.0 migration: registry + planner wiring", () => {
     const dropTableSteps = plan.steps.filter(
       (s: { kind: string }) => s.kind === "dropTable",
     );
-    expect(dropTableSteps.length).toBe(18);
+    expect(dropTableSteps.length).toBe(EXPECTED_NEW_TABLE_COUNT);
     expect(
       dropTableSteps.every((s: { destructive: boolean }) => s.destructive),
     ).toBe(true);

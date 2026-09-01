@@ -1,7 +1,7 @@
 import { vi, type Mock } from "vitest";
 
 /**
- * Lenient mock pool for the scripts/db-diagnose.mjs / scripts/db-repair.mjs
+ * Lenient mock pool for the scripts/maintenance/db-diagnose.mjs / scripts/maintenance/db-repair.mjs
  * orchestration suites, which exercise the WIRING across every check
  * module at once (already unit-tested individually in
  * tests/scripts/_lib.check-*.test.ts) rather than re-verifying each
@@ -12,7 +12,7 @@ import { vi, type Mock } from "vitest";
  * throwing.
  *
  * Introspection defaults to a minimal but coherent schema: just `users`
- * with the five columns scripts/db-diagnose-2fa.mjs requires, no other
+ * with the five columns scripts/maintenance/db-diagnose-2fa.mjs requires, no other
  * tables. That's enough for every check module to run and legitimately
  * find nothing. Pass `overrides` (checked before any default) to widen
  * the schema or inject specific COUNT/SELECT results for a test.

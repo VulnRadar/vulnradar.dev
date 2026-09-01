@@ -74,3 +74,43 @@ export async function getAssignableTeamIds(
     .filter((r) => hasTeamPermission(r.role, "manage_scans"))
     .map((r) => r.team_id);
 }
+
+export type ResolvedTeamAssignment =
+  { ok: true; teamId: number | null } | { ok: false; error: string };
+
+/**
+ * Validate a caller-supplied `teamId` for a resource that is being CREATED,
+ * the counterpart to the PATCH-time check in
+ * app/api/v3/history/[id]/route.ts.
+ *
+ * Until this existed no scan-creation path wrote scan_history.team_id at
+ * all, so every team read path (GET /api/v3/teams/member-scans, every
+ * getTeamResourceAccess team branch) matched zero rows and team scan
+ * sharing was dead end to end.
+ *
+ * Omitted/null means a personal scan, which stays the default: a scan is
+ * only ever shared with a team because the request said so, never because
+ * the caller happens to be in one. A supplied id is checked against
+ * getAssignableTeamIds rather than trusted, since assigning a scan to a
+ * team the caller does not manage would publish it to strangers.
+ */
+export async function resolveNewResourceTeamId(
+  callerId: number,
+  requested: unknown,
+): Promise<ResolvedTeamAssignment> {
+  if (requested === undefined || requested === null) {
+    return { ok: true, teamId: null };
+  }
+  if (!Number.isInteger(requested) || (requested as number) <= 0) {
+    return {
+      ok: false,
+      error: "Invalid teamId. Use a team id, or omit it for a personal scan.",
+    };
+  }
+  const teamId = requested as number;
+  const assignable = await getAssignableTeamIds(callerId);
+  if (!assignable.includes(teamId)) {
+    return { ok: false, error: "You cannot assign scans to that team." };
+  }
+  return { ok: true, teamId };
+}

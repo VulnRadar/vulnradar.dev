@@ -51,7 +51,9 @@ export function CopyButton({
       onClick={copy}
       aria-label={copied ? `Copied ${label}` : `Copy ${label}`}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-background/80 px-2 py-1",
+        // px-2.5 py-2 rather than px-2 py-1: the copy button sits at
+        // text-[11px], so the smaller padding made it a ~24px target.
+        "inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-background/80 px-2.5 py-2",
         "text-[11px] font-medium text-muted-foreground",
         "hover:bg-muted hover:text-foreground transition-colors",
         "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",

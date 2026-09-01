@@ -349,7 +349,21 @@ export type ScanProgressPhase = "start" | "done";
  * ("dns" | "tls" | "live-fetch") for the async layer
  * (lib/scanner/async-checks.ts).
  */
+/**
+ * What a unit of work turned up, reported alongside its "done" event.
+ *
+ * Deliberately only the two fields a live progress view can show: never
+ * evidence, remediation or ids. A status poll runs every 2 seconds, so the
+ * payload has to stay small, and a partial list is not a result -- it exists
+ * so the wait shows the scan working rather than an empty bar.
+ * ref: AUDIT-014#scanui-02
+ */
+export interface ScanProgressSnapshot {
+  newFindings: { severity: Severity; title: string }[];
+}
+
 export type ScanProgressHook = (
   category: string,
   phase: ScanProgressPhase,
+  snapshot?: ScanProgressSnapshot,
 ) => void;

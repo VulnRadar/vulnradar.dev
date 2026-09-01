@@ -53,7 +53,7 @@ export default function ContactPage() {
   return (
     <PublicPageShell maxWidth="max-w-2xl" padding="py-8 sm:py-12">
       <header className="mb-8">
-        <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground">
+        <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight mb-5 text-balance text-foreground">
           Contact
         </h1>
         <p className="text-muted-foreground leading-relaxed mt-2">

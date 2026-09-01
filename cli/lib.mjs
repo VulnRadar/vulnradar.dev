@@ -8,7 +8,15 @@ export const DEFAULTS = {
   maxCritical: 0,
   maxHigh: 0,
   maxMedium: -1, // -1 disables the medium check
+  // Matches the server's single-scan budget (CONFIG_SCAN_TIMEOUT_SECONDS).
   timeout: 300,
+  // A crawl runs under a much larger server-side budget
+  // (CONFIG_CRAWL_SCAN_TIMEOUT_SECONDS), enforced by the crawl watchdog. The
+  // CLI used to keep waiting only 300s with --crawl, so `vulnradar scan
+  // --crawl` in CI printed "Timed out" and exited 1 on a crawl the server
+  // still had ten minutes left to finish, and the scan itself completed fine
+  // a minute later. An explicit --timeout still wins over both.
+  crawlTimeout: 900,
   pollInterval: 5,
   json: false,
 };
@@ -23,10 +31,20 @@ export function parseArgs(argv) {
   const out = {
     command: undefined,
     url: undefined,
-    apiKey: process.env.VULNRADAR_TOKEN || undefined,
     help: false,
     ...DEFAULTS,
+    // Env forms sit after the spread so they override the shipped defaults
+    // and are still beaten by an explicit flag below. VULNRADAR_API_BASE is
+    // the sibling of VULNRADAR_TOKEN: the docs tell CI users to prefer the
+    // environment over flags, and until now only the token had that form,
+    // so a self-hosted CI had to repeat --api-base on every invocation.
+    apiKey: process.env.VULNRADAR_TOKEN || undefined,
+    apiBase: process.env.VULNRADAR_API_BASE || DEFAULTS.apiBase,
   };
+
+  // Whether --timeout was given explicitly. Without this the crawl default
+  // below could not tell "user asked for 300" from "nobody said".
+  let timeoutExplicit = false;
 
   const takeNumber = (name, raw) => {
     const n = Number(raw);
@@ -65,9 +83,14 @@ export function parseArgs(argv) {
       case "--max-medium":
         out.maxMedium = takeNumber(arg, argv[++i]) ?? out.maxMedium;
         break;
-      case "--timeout":
-        out.timeout = takeNumber(arg, argv[++i]) ?? out.timeout;
+      case "--timeout": {
+        const t = takeNumber(arg, argv[++i]);
+        if (t !== null) {
+          out.timeout = t;
+          timeoutExplicit = true;
+        }
         break;
+      }
       case "--poll-interval":
         out.pollInterval = takeNumber(arg, argv[++i]) ?? out.pollInterval;
         break;
@@ -83,6 +106,11 @@ export function parseArgs(argv) {
         }
     }
   }
+
+  // Resolved after the loop, not inside the --crawl case: the flags can
+  // arrive in either order, so `--timeout 60 --crawl` must still mean 60.
+  if (out.crawl && !timeoutExplicit) out.timeout = DEFAULTS.crawlTimeout;
+
   return out;
 }
 
@@ -122,12 +150,14 @@ Usage:
 
 Options:
   --api-key <key>        API token (or set VULNRADAR_TOKEN).
-  --api-base <url>       API base URL (default ${DEFAULTS.apiBase}).
+  --api-base <url>       API base URL, for a self-hosted instance
+                         (or set VULNRADAR_API_BASE; default ${DEFAULTS.apiBase}).
   --crawl                Crawl and scan up to 15 pages instead of one URL.
   --max-critical <n>     Fail if criticals exceed this (default ${DEFAULTS.maxCritical}).
   --max-high <n>         Fail if highs exceed this (default ${DEFAULTS.maxHigh}).
   --max-medium <n>       Fail if mediums exceed this; -1 disables (default ${DEFAULTS.maxMedium}).
-  --timeout <seconds>    Give up waiting for the scan (default ${DEFAULTS.timeout}).
+  --timeout <seconds>    Give up waiting for the scan (default ${DEFAULTS.timeout},
+                         or ${DEFAULTS.crawlTimeout} with --crawl, matching the server's budget).
   --poll-interval <s>    Seconds between status polls (default ${DEFAULTS.pollInterval}).
   --json                 Print the raw completed result as JSON.
   -h, --help             Show this help.

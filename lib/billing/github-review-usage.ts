@@ -54,11 +54,13 @@ export async function getGithubReviewTokensUsed(
  * allowance).
  */
 export async function getGithubCreditBalance(userId: number): Promise<number> {
-  const result = await pool.query<{ github_credit_balance: number }>(
-    "SELECT github_credit_balance FROM users WHERE id = $1",
-    [userId],
-  );
-  return result.rows[0]?.github_credit_balance ?? 0;
+  const result = await pool.query<{
+    github_credit_balance: string | number | null;
+  }>("SELECT github_credit_balance FROM users WHERE id = $1", [userId]);
+  // BIGINT column: node-pg returns it as a string to protect values past
+  // 2^53, so this must be coerced or callers get a string from a
+  // Promise<number>. Balances are bounded far below that, so Number is exact.
+  return Number(result.rows[0]?.github_credit_balance ?? 0);
 }
 
 /**

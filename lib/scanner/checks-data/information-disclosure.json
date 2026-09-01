@@ -625,7 +625,7 @@
   {
     "id": "html-comment-leaks",
     "type": "body-pattern",
-    "title": "Sensitive information in HTML comments",
+    "title": "Credentials or keys embedded in HTML comments",
     "category": "information-disclosure",
     "severity": "medium",
     "description": "HTML comments in the page source contain potentially sensitive information such as developer notes, internal paths, or debug data.",
@@ -874,7 +874,7 @@
   {
     "id": "django-debug-page-exposure",
     "type": "body-pattern",
-    "title": "Django debug mode enabled in production",
+    "title": "Django technical 500 debug page exposed",
     "category": "information-disclosure",
     "severity": "critical",
     "description": "A Django debug error page (yellow screen) is visible, indicating DEBUG=True in the production environment.",

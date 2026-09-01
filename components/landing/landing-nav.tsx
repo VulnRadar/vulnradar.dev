@@ -5,7 +5,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ArrowRight, LayoutDashboard, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { APP_NAME, BILLING_ENABLED, ROUTES } from "@/lib/config/constants";
+import {
+  APP_NAME,
+  BILLING_ENABLED,
+  ROUTES,
+} from "@/lib/config/client-constants";
 import { ThemedLogo } from "@/components/shared/themed-logo";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { backdrops, focus, transitions } from "@/lib/ui/animations";
@@ -16,6 +20,13 @@ interface LandingNavProps {
   /** Short label rendered beside the wordmark, e.g. "Staff", "Shared report". */
   badge?: string;
 }
+
+// The inner row is capped at the same measure on every public page. There used
+// to be a containerClass prop so the docs shell could widen its bar to
+// max-w-360 and line the wordmark up with its sidebar; that made the docs top
+// bar the only one that did not match the rest of the public surface, so it is
+// gone. If a page needs a wider measure, widen the page, not the nav.
+const NAV_CONTAINER = "max-w-6xl";
 
 function navLinks() {
   return [
@@ -40,17 +51,31 @@ export function LandingNav({ badge }: LandingNavProps) {
 
   return (
     <>
+      {/* a11y (SC 1.3.1): the landing page renders more than one navigation
+          landmark (this bar plus the footer's), and an unnamed one cannot be
+          told apart in a screen reader's landmark list. Named the way
+          components/scanner/header.tsx and components/legal/legal-nav.tsx
+          already name theirs. */}
       <nav
+        aria-label="Main"
         className={cn(
-          // top offset matches the fixed site-banner's real height (0 when
-          // no banner is showing) via --vr-banner-h, set in
-          // site-notifications.tsx -- otherwise a banner overlaps this nav
-          // instead of sitting above it.
-          "sticky top-(--vr-banner-h,0px) z-50 border-b border-border/50 transition-[top] duration-300",
+          // top offset matches the real height of whichever fixed banners are
+          // showing (0 when none are): --vr-banner-h from
+          // site-notifications.tsx and --vr-imp-banner-h from
+          // components/admin/impersonation-banner.tsx. Otherwise a banner
+          // overlaps this nav instead of sitting above it. The impersonation
+          // one is z-60 against this nav's z-50, so while a staff member was
+          // impersonating a user it covered every link in here.
+          "sticky top-[calc(var(--vr-banner-h,0px)+var(--vr-imp-banner-h,0px))] z-50 border-b border-border/50 transition-[top] duration-300",
           backdrops.header,
         )}
       >
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-6">
+        <div
+          className={cn(
+            NAV_CONTAINER,
+            "mx-auto px-4 sm:px-6 h-14 flex items-center gap-6",
+          )}
+        >
           <Link
             href={ROUTES.HOME}
             className={cn(
@@ -121,7 +146,10 @@ export function LandingNav({ badge }: LandingNavProps) {
                 </Link>
                 <Link href={ROUTES.SIGNUP}>
                   <Button size="sm" className="h-8 gap-1.5">
-                    Get Started
+                    {/* "Get Started" was title case on a sentence-case page and
+                        named no action. This is the first button a visitor
+                        sees on a page whose whole argument is specificity. */}
+                    Start free
                     <ArrowRight className="h-3.5 w-3.5" />
                   </Button>
                 </Link>
@@ -135,7 +163,11 @@ export function LandingNav({ badge }: LandingNavProps) {
               aria-controls="landing-nav-mobile"
               aria-label={open ? "Close menu" : "Open menu"}
               className={cn(
-                "md:hidden inline-flex items-center justify-center h-8 w-8 rounded-md border border-border text-muted-foreground hover:text-foreground",
+                // 44px. This button only exists below md, so it is only ever
+                // hit by a finger, and at 32px it was under the touch
+                // minimum while being the only way to reach the nav links on
+                // a phone.
+                "md:hidden inline-flex items-center justify-center h-11 w-11 rounded-md border border-border text-muted-foreground hover:text-foreground",
                 transitions.colors,
                 focus.ring,
               )}
@@ -150,7 +182,12 @@ export function LandingNav({ badge }: LandingNavProps) {
             id="landing-nav-mobile"
             className="md:hidden border-t border-border/50 bg-background"
           >
-            <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex flex-col">
+            <div
+              className={cn(
+                NAV_CONTAINER,
+                "mx-auto px-4 sm:px-6 py-3 flex flex-col",
+              )}
+            >
               {links.map((link) => (
                 <Link
                   key={link.href}
@@ -188,7 +225,7 @@ export function LandingNav({ badge }: LandingNavProps) {
           nav down below a banner is a paint-only shift, so without this the
           nav visually overlaps whatever comes right after it in the page. */}
       <div
-        className="h-(--vr-banner-h,0px) transition-[height] duration-300"
+        className="h-[calc(var(--vr-banner-h,0px)+var(--vr-imp-banner-h,0px))] transition-[height] duration-300"
         aria-hidden="true"
       />
     </>

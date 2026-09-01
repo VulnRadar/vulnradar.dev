@@ -13,9 +13,12 @@ import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
-import { ROUTES } from "@/lib/config/constants";
+import { ROUTES } from "@/lib/config/client-constants";
+import { useAuth } from "@/components/providers/auth-provider";
 import { createSubscription, confirmSubscription } from "@/app/actions/stripe";
 import { getPlanById } from "@/lib/billing/catalog";
+import { CHECKOUT_CONFIRM_BACKOFF_MS } from "./checkout-confirm";
+import { InlineAlert } from "@/components/shared/inline-alert";
 
 /** Mirrors the PaymentElement's own shape (tabs row, then card/email
  * fields) so there's no layout jump once Stripe's real form mounts. Only
@@ -63,7 +66,7 @@ function useConfirmSubscription(onSuccess?: () => void) {
   const run = useCallback(
     async (subscriptionId: string) => {
       setStatus("confirming");
-      const delays = [500, 1000, 1500, 2000, 3000];
+      const delays = CHECKOUT_CONFIRM_BACKOFF_MS;
       for (let attempt = 0; attempt <= delays.length; attempt++) {
         try {
           const result = await confirmSubscription(subscriptionId);
@@ -100,7 +103,12 @@ function useConfirmSubscription(onSuccess?: () => void) {
   return { status, resolvedPlan, run, markVerified };
 }
 
-function ConfirmingStatus({ onSkip }: { onSkip: () => void }) {
+// The escape hatch used to call onSuccess(), which swapped this screen for
+// "You are subscribed" without going anywhere: the user was told the
+// subscription had confirmed while it was in fact still retrying, and was left
+// sitting on the checkout route. It navigates for real now, the same way the
+// three credit purchase screens do.
+function ConfirmingStatus() {
   return (
     <div
       className="flex flex-col items-center justify-center py-10 text-center"
@@ -121,10 +129,10 @@ function ConfirmingStatus({ onSkip }: { onSkip: () => void }) {
       <Button
         variant="ghost"
         size="sm"
-        onClick={onSkip}
+        asChild
         className="text-muted-foreground hover:text-foreground"
       >
-        Go to the dashboard now
+        <Link href={ROUTES.DASHBOARD}>Go to the dashboard now</Link>
       </Button>
     </div>
   );
@@ -136,7 +144,7 @@ function VerifiedStatus({ plan }: { plan: string }) {
       className="flex flex-col items-center justify-center py-10 text-center"
       role="status"
     >
-      <div className="w-14 h-14 rounded-full bg-[hsl(var(--success)/0.12)] flex items-center justify-center mb-5">
+      <div className="w-14 h-14 rounded-full bg-[hsl(var(--success))]/10 flex items-center justify-center mb-5">
         <Check
           className="h-7 w-7 text-[hsl(var(--success))]"
           aria-hidden="true"
@@ -163,7 +171,7 @@ function PendingStatus() {
       className="flex flex-col items-center justify-center py-10 text-center"
       role="status"
     >
-      <div className="w-14 h-14 rounded-full bg-[hsl(var(--warning)/0.12)] flex items-center justify-center mb-5">
+      <div className="w-14 h-14 rounded-full bg-[hsl(var(--warning))]/10 flex items-center justify-center mb-5">
         <AlertTriangle
           className="h-7 w-7 text-[hsl(var(--warning))]"
           aria-hidden="true"
@@ -191,6 +199,7 @@ function CheckoutForm({
 }) {
   const stripe = useStripe();
   const elements = useElements();
+  const { isStaff } = useAuth();
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { status, resolvedPlan, run, markVerified } =
@@ -203,10 +212,29 @@ function CheckoutForm({
     setIsProcessing(true);
     setError(null);
 
-    // Resolve the subscription first. A staff account changing to a plan at or
-    // below its free floor comes back as "db_updated" -- a DB-only change with
-    // no payment -- so it must be handled before we ask Stripe Elements for a
-    // card that a staff member never needs to enter.
+    // Returns false (and renders the message) when the card details are not
+    // valid, so callers can bail out.
+    const validateCard = async () => {
+      const { error: submitError } = await elements.submit();
+      if (submitError) {
+        setError(submitError.message ?? "Please check your payment details");
+        setIsProcessing(false);
+        return false;
+      }
+      return true;
+    };
+
+    // Validate the card BEFORE anything exists on Stripe's side, the way
+    // ai-credit-checkout.tsx does: creating the subscription first meant every
+    // mistyped card number left an orphan incomplete subscription behind.
+    //
+    // Staff are the one exception, and the reason the old order existed: a
+    // staff account changing to a plan at or below its free floor resolves to
+    // "db_updated", a DB-only change with no payment, so it must not be
+    // blocked by an empty card form it never needs to fill in. Its card is
+    // validated below instead, on the branch that actually charges.
+    if (!isStaff && !(await validateCard())) return;
+
     let subscription: Awaited<ReturnType<typeof createSubscription>>;
     try {
       subscription = await createSubscription(productId);
@@ -231,22 +259,19 @@ function CheckoutForm({
       return;
     }
 
-    // "new": a real purchase. Validate the card, then confirm the PaymentIntent.
-    // An invalid card is still caught here (and by confirmPayment below); the
-    // subscription created just above is an incomplete one Stripe auto-expires
-    // if payment never confirms.
-    const { error: submitError } = await elements.submit();
-    if (submitError) {
-      setError(submitError.message ?? "Please check your payment details");
-      setIsProcessing(false);
-      return;
-    }
+    // "new": a real purchase. Everyone but staff already validated above; a
+    // staff account that turned out to be making a real payment validates now.
+    if (isStaff && !(await validateCard())) return;
 
     const { error: confirmError, paymentIntent } = await stripe.confirmPayment({
       elements,
       clientSecret: subscription.clientSecret,
       confirmParams: {
-        return_url: `${window.location.origin}/checkout/success`,
+        // ?kind= tells /checkout/success what it is confirming. Without it the
+        // page assumed a subscription for every flow, so a redirect-method
+        // credit top-up polled for a plan change that was never going to
+        // happen and then warned that a successful payment had failed.
+        return_url: `${window.location.origin}/checkout/success?kind=subscription`,
       },
       redirect: "if_required",
     });
@@ -270,7 +295,7 @@ function CheckoutForm({
 
   if (status === "verified") return <VerifiedStatus plan={resolvedPlan!} />;
   if (status === "confirming") {
-    return <ConfirmingStatus onSkip={() => onSuccess?.()} />;
+    return <ConfirmingStatus />;
   }
   if (status === "pending") return <PendingStatus />;
 
@@ -281,18 +306,7 @@ function CheckoutForm({
           layout: "tabs",
         }}
       />
-      {error && (
-        <p
-          role="alert"
-          className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-        >
-          <AlertTriangle
-            className="h-4 w-4 shrink-0 mt-0.5"
-            aria-hidden="true"
-          />
-          <span>{error}</span>
-        </p>
-      )}
+      {error && <InlineAlert tone="error">{error}</InlineAlert>}
       <Button
         type="submit"
         disabled={!stripe || !elements || isProcessing}
@@ -348,7 +362,7 @@ function SwitchPlanPanel({
 
   if (status === "verified") return <VerifiedStatus plan={resolvedPlan!} />;
   if (status === "confirming") {
-    return <ConfirmingStatus onSkip={() => onSuccess?.()} />;
+    return <ConfirmingStatus />;
   }
   if (status === "pending") return <PendingStatus />;
 
@@ -358,18 +372,7 @@ function SwitchPlanPanel({
         You already have an active subscription. Switching plans prorates the
         difference on your existing payment method, no new card details needed.
       </p>
-      {error && (
-        <p
-          role="alert"
-          className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-        >
-          <AlertTriangle
-            className="h-4 w-4 shrink-0 mt-0.5"
-            aria-hidden="true"
-          />
-          <span>{error}</span>
-        </p>
-      )}
+      {error && <InlineAlert tone="error">{error}</InlineAlert>}
       <Button
         onClick={handleSwitch}
         disabled={isProcessing}

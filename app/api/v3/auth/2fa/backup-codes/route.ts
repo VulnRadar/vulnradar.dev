@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
-import { getSession, verifyPassword, hashPassword } from "@/lib/auth";
+import { getSession, hashPassword } from "@/lib/auth";
+import { verifyReauthPassword } from "@/lib/auth/reauth";
 import { backupCodesRegeneratedEmail } from "@/lib/email/email";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import pool from "@/lib/database/db";
@@ -81,15 +82,9 @@ export async function POST(request: NextRequest) {
   }
 
   const { password } = await request.json();
-  if (!password) {
-    return NextResponse.json(
-      { error: "Password is required to regenerate backup codes." },
-      { status: 400 },
-    );
-  }
 
   const result = await pool.query(
-    "SELECT password_hash, totp_enabled FROM users WHERE id = $1",
+    "SELECT totp_enabled FROM users WHERE id = $1",
     [session.userId],
   );
   const user = result.rows[0];
@@ -97,8 +92,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "2FA is not enabled." }, { status: 400 });
   }
 
-  if (!(await verifyPassword(password, user.password_hash))) {
-    return NextResponse.json({ error: "Incorrect password." }, { status: 401 });
+  // An OAuth-only account has no password to re-enter, so its session is the
+  // re-auth signal instead (see verifyReauthPassword). Demanding one
+  // unconditionally meant a Google/GitHub/Discord account could never
+  // regenerate its backup codes.
+  const reauth = await verifyReauthPassword(session.userId, password, {
+    missing: "Password is required to regenerate backup codes.",
+    wrong: "Incorrect password.",
+  });
+  if (!reauth.ok) {
+    return NextResponse.json(
+      { error: reauth.error },
+      { status: reauth.status === 400 ? 400 : 401 },
+    );
   }
 
   const backupCodes = generateBackupCodes(8);

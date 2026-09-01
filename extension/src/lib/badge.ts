@@ -9,6 +9,7 @@
 
 import browser from "webextension-polyfill";
 import type { ScanResult } from "./types";
+import { CLEAN_SOLID, SEVERITY_SOLID } from "./tokens";
 
 /**
  * Exported so the content script's reputation popup can color its danger
@@ -24,7 +25,12 @@ import type { ScanResult } from "./types";
  * the tier a score belongs to.
  */
 export function colorForScore(score: number): string {
-  return score >= 8 ? "#ef4444" : score >= 5 ? "#eab308" : "#22c55e";
+  // Same ramp as everywhere else (lib/tokens.json), not a private copy.
+  return score >= 8
+    ? SEVERITY_SOLID.critical
+    : score >= 5
+      ? SEVERITY_SOLID.medium
+      : CLEAN_SOLID;
 }
 
 /**

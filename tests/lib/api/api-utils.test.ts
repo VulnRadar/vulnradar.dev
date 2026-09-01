@@ -50,6 +50,7 @@ const {
   safeQuery,
   withErrorHandling,
 } = await import("@/lib/api/api-utils");
+const { currentRequestId } = await import("@/lib/database/request-context");
 const { ERROR_MESSAGES } = await import("@/lib/config/constants");
 
 beforeEach(() => {
@@ -481,5 +482,111 @@ describe("withErrorHandling", () => {
     // ERROR_MESSAGES.SERVER_ERROR default ApiResponse.serverError()
     // falls back to when called with no argument.
     expect((await res.json()).error).toBe("An unexpected error occurred");
+  });
+});
+
+/**
+ * AUDIT-012#obs-07. withErrorHandling is where a request's correlation id
+ * crosses from the Edge runtime (middleware.ts sets the header) into
+ * Node-side AsyncLocalStorage, which is the only channel available: the two
+ * runtimes never share a store instance. Everything downstream --
+ * lib/database/error-log-capture.ts stamping the id onto every
+ * system_error_logs row a handler causes -- depends on this one wrapper
+ * entering the context, so it is worth asserting directly.
+ */
+describe("withErrorHandling: request correlation id", () => {
+  const request = (headers: Record<string, string> = {}) =>
+    new Request("https://vulnradar.dev/api/v3/scan", { headers });
+
+  it("re-enters the id middleware set on the request header", async () => {
+    const seen: (string | null)[] = [];
+    const wrapped = withErrorHandling(async (_req: Request) => {
+      seen.push(currentRequestId());
+      return ApiResponse.success({ ok: true });
+    });
+    await wrapped(
+      request({ "x-request-id": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e" }),
+    );
+    expect(seen).toEqual(["b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e"]);
+  });
+
+  it("keeps the same id across an await inside the handler", async () => {
+    // The reason this is AsyncLocalStorage and not a module-level variable:
+    // a console.error fired after the handler awaits something must still
+    // see its own request's id, not whichever request most recently started.
+    let after: string | null = null;
+    const wrapped = withErrorHandling(async (_req: Request) => {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      after = currentRequestId();
+      return ApiResponse.success({ ok: true });
+    });
+    await wrapped(
+      request({ "x-request-id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" }),
+    );
+    expect(after).toBe("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
+  });
+
+  it("holds a distinct id for two overlapping requests", async () => {
+    const release: (() => void)[] = [];
+    const wrapped = withErrorHandling(async (_req: Request) => {
+      await new Promise<void>((resolve) => release.push(resolve));
+      return ApiResponse.success({ id: currentRequestId() });
+    });
+    const a = wrapped(
+      request({ "x-request-id": "11111111-1111-4111-8111-111111111111" }),
+    );
+    const b = wrapped(
+      request({ "x-request-id": "22222222-2222-4222-8222-222222222222" }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 1));
+    for (const resolve of release) resolve();
+    expect((await (await a).json()).id).toBe(
+      "11111111-1111-4111-8111-111111111111",
+    );
+    expect((await (await b).json()).id).toBe(
+      "22222222-2222-4222-8222-222222222222",
+    );
+  });
+
+  it("mints its own id rather than storing a malformed header", async () => {
+    // The value is written verbatim into an admin-facing table, so a header
+    // that is not an opaque token is discarded outright. middleware.ts
+    // overwrites whatever the client sent, but a route reached outside the
+    // middleware matcher has no such guarantee.
+    const seen: (string | null)[] = [];
+    const wrapped = withErrorHandling(async (_req: Request) => {
+      seen.push(currentRequestId());
+      return ApiResponse.success({ ok: true });
+    });
+    await wrapped(request({ "x-request-id": "'; DROP TABLE users; --" }));
+    expect(seen[0]).not.toBe("'; DROP TABLE users; --");
+    expect(seen[0]).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("still sets an id when there is no request argument at all", async () => {
+    const seen: (string | null)[] = [];
+    const wrapped = withErrorHandling(async () => {
+      seen.push(currentRequestId());
+      return ApiResponse.success({ ok: true });
+    });
+    await wrapped();
+    expect(seen[0]).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("tags an error thrown by the handler with the same id", async () => {
+    // The 500 path is the one that matters most: that console.error is the
+    // row an operator goes looking for.
+    let logged: string | null = null;
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {
+      logged = currentRequestId();
+    });
+    const wrapped = withErrorHandling(async (_req: Request) => {
+      throw new Error("kaboom");
+    });
+    await wrapped(
+      request({ "x-request-id": "33333333-3333-4333-8333-333333333333" }),
+    );
+    spy.mockRestore();
+    expect(logged).toBe("33333333-3333-4333-8333-333333333333");
   });
 });

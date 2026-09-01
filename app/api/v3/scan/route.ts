@@ -35,12 +35,17 @@ import { validateScanTarget } from "@/lib/scanner/safe-fetch";
 import { finalizeScanFailure } from "@/lib/scanner/scan-jobs";
 import { isUrlOwnedByUser } from "@/lib/domains/scope";
 import { requestsActiveProbing } from "@/lib/scanner/active-probe-catalog";
+import { reserveConcurrentScanSlot } from "@/lib/rate-limiting/concurrent-scans";
 import {
-  checkConcurrentScanLimit,
-  reserveConcurrentScanSlot,
-} from "@/lib/rate-limiting/concurrent-scans";
+  checkTargetScanLimit,
+  targetScanLimitMessage,
+} from "@/lib/rate-limiting/target-limits";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { resolveScanIsPublic } from "@/lib/scanner/scan-privacy";
+import {
+  resolveNewScanTeamIds,
+  attachNewScanTeams,
+} from "@/lib/teams/scan-teams";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { rateLimitedEmail } from "@/lib/email/email";
@@ -122,7 +127,7 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json(
           {
-            error: "Rate limit exceeded. 50 requests per 24 hours.",
+            error: `Rate limit exceeded. ${rateLimit.limit} requests per 24 hours. Resets at ${rateLimit.resetsAt}`,
             limit: rateLimit.limit,
             used: rateLimit.used,
             remaining: rateLimit.remaining,
@@ -216,17 +221,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Capacity, not demand-shaping: VulnRadar runs as one persistent
-    // process with no job queue, so every 'pending'/'running' scan shares
-    // that process's resources with everyone else's. See
-    // lib/rate-limiting/concurrent-scans.ts.
-    const concurrency = await checkConcurrentScanLimit(authedUserId);
-    if (!concurrency.allowed) {
-      return NextResponse.json(
-        { error: concurrency.message, statusCode: "CONCURRENT_SCAN_LIMIT" },
-        { status: 429 },
-      );
-    }
+    // Concurrent-scan capacity (VulnRadar runs as one persistent process with
+    // no job queue, so every 'pending'/'running' scan shares its resources)
+    // is enforced ONLY by reserveConcurrentScanSlot below, which counts and
+    // inserts inside one advisory-locked transaction. The best-effort
+    // check-then-act pre-check that used to sit here resolved the user's plan
+    // and ran the same COUNT a second time on every single scan, two extra
+    // round trips in front of the request purely to fail slightly earlier for
+    // the rare caller who is already at capacity.
 
     const body = await request.json();
     const { url, scanners, isPublic } = body;
@@ -272,8 +274,69 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // SSRF protection - validate target is not internal/private
-    const safetyCheck = await validateScanTarget(normalizedUrl);
+    // Domain ownership: active-probes submits real exploit-attempt
+    // payloads (SQLi/XSS/SSTI canaries, a live GraphQL introspection
+    // query) to the target instead of only reading responses -- it must
+    // never run against a URL the caller hasn't proven control over (see
+    // lib/domains/scope.ts). This is a authorization gate, separate from
+    // (and in addition to) the SSRF/access-rules safety checks below,
+    // which apply regardless of which categories are requested.
+    // A curated port sweep (portScan) is held to the exact same gate: it makes
+    // this server a scan source against the target, so the caller must own the
+    // domain. One ownership check covers both intrusive capabilities; the
+    // ternary short-circuits so an ordinary scan (no active probes, no port
+    // scan) never pays for the DB lookup at all.
+    const wantsActiveProbing = requestsActiveProbing(selectedScanners);
+    const needsOwnershipCheck = wantsActiveProbing || portScan;
+
+    // These five gates do not depend on each other, so they run as ONE wave
+    // instead of five sequential round trips (a blocking DNS resolution plus
+    // up to four DB queries) in front of every scan. They are still EVALUATED
+    // in the original priority order below, so a request failing more than
+    // one of them gets exactly the error it got before. The trade-off: a
+    // request that fails an early gate now also pays for the later lookups it
+    // used to skip, which is a fixed cost paid once against a saving paid on
+    // every successful scan.
+    const [
+      safetyCheck,
+      accessCheck,
+      ownsUrl,
+      requestedIsPublic,
+      teamAssignment,
+      targetLimit,
+    ] = await Promise.all([
+      // SSRF protection - validate target is not internal/private
+      validateScanTarget(normalizedUrl),
+      // Access rules (blacklist/whitelist)
+      checkAccessRules(normalizedUrl),
+      needsOwnershipCheck
+        ? isUrlOwnedByUser(normalizedUrl, authedUserId)
+        : Promise.resolve(true),
+      // Public unless the request explicitly says otherwise, or (when it
+      // says nothing) the account's own "scans are private by default"
+      // setting says otherwise. See lib/scanner/scan-jobs.ts's
+      // finalizeScanSuccess, which skips upsertHostReputation for a scan
+      // whose is_public ends up false here.
+      resolveScanIsPublic(
+        authedUserId,
+        typeof isPublic === "boolean" ? isPublic : undefined,
+      ),
+      // Team assignment. Omitted means a personal scan, which is what every
+      // scan was before this: no creation path wrote the column, so GET
+      // /api/v3/teams/member-scans could only ever return an empty list
+      // however many teams the account belonged to. Only a request that names
+      // teams the caller can manage shares the scan with them. `teamIds`
+      // shares with several at once; `teamId` is the original single-team
+      // form and still works.
+      resolveNewScanTeamIds(authedUserId, body),
+      // Volume aimed at the TARGET, shared across every account rather than
+      // scoped to this caller (see lib/rate-limiting/target-limits.ts). It
+      // counts here, inside the same wave as the other gates, so a request
+      // that is refused further down still contributes: over-counting a
+      // protection limiter fails safe, under-counting it does not.
+      checkTargetScanLimit(normalizedUrl),
+    ]);
+
     if (!safetyCheck.safe) {
       return NextResponse.json(
         { error: safetyCheck.reason || "URL blocked for security reasons" },
@@ -281,8 +344,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check access rules (blacklist/whitelist)
-    const accessCheck = await checkAccessRules(normalizedUrl);
     if (!accessCheck.allowed) {
       return NextResponse.json(
         {
@@ -295,23 +356,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Domain ownership: active-probes submits real exploit-attempt
-    // payloads (SQLi/XSS/SSTI canaries, a live GraphQL introspection
-    // query) to the target instead of only reading responses -- it must
-    // never run against a URL the caller hasn't proven control over (see
-    // lib/domains/scope.ts). This is a authorization gate, separate from
-    // (and in addition to) the SSRF/access-rules safety checks above,
-    // which apply regardless of which categories are requested.
-    // A curated port sweep (portScan) is held to the exact same gate: it makes
-    // this server a scan source against the target, so the caller must own the
-    // domain. One ownership check covers both intrusive capabilities; the `||`
-    // short-circuits so an ordinary scan (no active probes, no port scan) never
-    // pays for the DB lookup at all.
-    const wantsActiveProbing = requestsActiveProbing(selectedScanners);
-    if (
-      (wantsActiveProbing || portScan) &&
-      !(await isUrlOwnedByUser(normalizedUrl, authedUserId))
-    ) {
+    if (!targetLimit.allowed) {
+      // A verified owner of the domain is exempt: this limit exists to stop
+      // VulnRadar being pointed at a THIRD party in volume, and someone who
+      // has proven control of the domain is not a third party. The ownership
+      // lookup is paid for only on this rejection path (and reuses the one the
+      // wave above already ran when active probing or a port scan was asked
+      // for), so an ordinary scan never adds a query for it.
+      const ownsTarget = needsOwnershipCheck
+        ? ownsUrl
+        : await isUrlOwnedByUser(normalizedUrl, authedUserId);
+      if (!ownsTarget) {
+        return NextResponse.json(
+          {
+            error: targetScanLimitMessage(targetLimit.rootDomain),
+            statusCode: "TARGET_RATE_LIMIT",
+          },
+          {
+            status: 429,
+            headers: {
+              "Retry-After": String(targetLimit.retryAfterSeconds),
+            },
+          },
+        );
+      }
+    }
+
+    if (needsOwnershipCheck && !ownsUrl) {
       return NextResponse.json(
         {
           error: wantsActiveProbing
@@ -320,6 +391,13 @@ export async function POST(request: NextRequest) {
           statusCode: "DOMAIN_NOT_VERIFIED",
         },
         { status: 403 },
+      );
+    }
+
+    if (!teamAssignment.ok) {
+      return NextResponse.json(
+        { error: teamAssignment.error },
+        { status: 400 },
       );
     }
 
@@ -338,18 +416,6 @@ export async function POST(request: NextRequest) {
     );
     const categoriesTotal = plannedSync.length + plannedAsync.length;
 
-    // Public unless the request explicitly says otherwise, or (when it
-    // says nothing) the account's own "scans are private by default"
-    // setting says otherwise. Resolved this late so a request that gets
-    // rejected above (bad URL, SSRF, access rules) never pays for the
-    // account-default lookup. See lib/scanner/scan-jobs.ts's
-    // finalizeScanSuccess, which skips upsertHostReputation for a scan
-    // whose is_public ends up false here.
-    const requestedIsPublic = await resolveScanIsPublic(
-      authedUserId,
-      typeof isPublic === "boolean" ? isPublic : undefined,
-    );
-
     // Create the scan_history row immediately so there is something to
     // poll. This now happens BEFORE any scanning: without a row, there is
     // nowhere to report progress or a result, so a failure here is fatal
@@ -365,8 +431,8 @@ export async function POST(request: NextRequest) {
         async (client) => {
           const insertResult = await client.query(
             `INSERT INTO scan_history
-               (user_id, url, source, notes, status, started_at, categories_total, is_public)
-             VALUES ($1, $2, $3, $4, 'pending', NOW(), $5, $6)
+               (user_id, url, source, notes, status, started_at, categories_total, is_public, team_id)
+             VALUES ($1, $2, $3, $4, 'pending', NOW(), $5, $6, $7)
              RETURNING id`,
             [
               authedUserId,
@@ -375,6 +441,7 @@ export async function POST(request: NextRequest) {
               DEFAULT_SCAN_NOTE,
               categoriesTotal,
               requestedIsPublic,
+              teamAssignment.primaryTeamId,
             ],
           );
           const insertedId = insertResult.rows[0]?.id;
@@ -383,12 +450,21 @@ export async function POST(request: NextRequest) {
         },
       );
       if (!reservation.ok) {
+        // Same body the removed pre-check returned, so an API client keying
+        // on statusCode sees no change now that the reservation is the only
+        // concurrency gate.
         return NextResponse.json(
-          { error: reservation.check.message },
+          {
+            error: reservation.check.message,
+            statusCode: "CONCURRENT_SCAN_LIMIT",
+          },
           { status: 429 },
         );
       }
       scanHistoryId = reservation.scanId;
+      // The INSERT above carries the primary team; this writes the rest of
+      // the set into scan_history_teams and is a no-op below two teams.
+      await attachNewScanTeams(scanHistoryId, teamAssignment.teamIds);
       // Charge the daily quota now that the scan is definitely going ahead
       // (validated + slot reserved). Capped + atomic so a concurrent scan
       // can't push the counter past the cap; if the cap was reached in the

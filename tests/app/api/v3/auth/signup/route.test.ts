@@ -18,13 +18,16 @@ let existingUserRow: Record<string, unknown> | null = null;
 let createdUserId = 100;
 let insertedUserCalls: unknown[][] = [];
 let verificationTokenInserts: unknown[][] = [];
+// Admin overrides the route's rate limits should resolve through, exactly as a
+// real system_settings row would.
+let systemSettingsRows: { key: string; value: string }[] = [];
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   const s = sql.trim();
   queries.push({ sql: s, params });
 
   if (s.startsWith("SELECT key, value FROM system_settings"))
-    return { rows: [] };
+    return { rows: systemSettingsRows };
   if (s.startsWith("DELETE FROM rate_limits")) return { rows: [] };
   if (s.startsWith("UPDATE rate_limits")) return { rows: [] };
   if (s.startsWith("INSERT INTO rate_limits")) {
@@ -131,6 +134,7 @@ beforeEach(async () => {
   createdUserId = 100;
   insertedUserCalls = [];
   verificationTokenInserts = [];
+  systemSettingsRows = [];
   turnstileSuccess = true;
   invalidateSettingsCache();
 });
@@ -231,17 +235,89 @@ describe("POST /api/v3/auth/signup", () => {
     expect(insertedUserCalls).toHaveLength(0);
   });
 
-  it("rejects a duplicate email without creating a second account", async () => {
-    existingUserRow = { id: 1, email: "alex.morgan@example.com" };
-    const res = await POST(
-      postSignup({
-        name: "Alex Morgan",
+  // AUDIT-012#auth-09: signup used to answer 409 for a registered address and
+  // 200 for an unregistered one, which enumerates accounts in one request per
+  // address. The response must now be byte-identical either way, and the real
+  // answer must go to the inbox instead.
+  describe("duplicate email (account enumeration)", () => {
+    it("answers a registered address with the same 200 body a new one gets, and creates nothing", async () => {
+      existingUserRow = {
+        id: 1,
         email: "alex.morgan@example.com",
-        password: STRONG_PASSWORD,
-      }),
-    );
-    expect(res.status).toBe(409);
-    expect(insertedUserCalls).toHaveLength(0);
+        name: "Alex Morgan",
+      };
+      const res = await POST(
+        postSignup({
+          name: "Someone Else",
+          email: "alex.morgan@example.com",
+          password: STRONG_PASSWORD,
+        }),
+      );
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.requiresVerification).toBe(true);
+      expect(insertedUserCalls).toHaveLength(0);
+      expect(verificationTokenInserts).toHaveLength(0);
+    });
+
+    it("is indistinguishable from a fresh signup: same status and same body", async () => {
+      const fresh = await POST(
+        postSignup({
+          name: "Alex Morgan",
+          email: "alex.morgan@example.com",
+          password: STRONG_PASSWORD,
+        }),
+      );
+      const freshBody = await fresh.json();
+      await new Promise((resolve) => setImmediate(resolve));
+
+      existingUserRow = {
+        id: 1,
+        email: "taken@example.com",
+        name: "Alex Morgan",
+      };
+      const duplicate = await POST(
+        postSignup({
+          name: "Alex Morgan",
+          email: "taken@example.com",
+          password: STRONG_PASSWORD,
+        }),
+      );
+      const duplicateBody = await duplicate.json();
+
+      expect(duplicate.status).toBe(fresh.status);
+      expect(duplicateBody).toEqual(freshBody);
+    });
+
+    it("emails the existing account instead of creating a row, so a real owner is never stranded on a silent 200", async () => {
+      existingUserRow = {
+        id: 1,
+        email: "alex.morgan@example.com",
+        name: "Alex Morgan",
+      };
+      await POST(
+        postSignup({
+          name: "Someone Else",
+          email: "alex.morgan@example.com",
+          password: STRONG_PASSWORD,
+        }),
+      );
+
+      // The notice is queued via setImmediate, like the verification email.
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(mockSendEmail).toHaveBeenCalledTimes(1);
+      const sent = mockSendEmail.mock.calls[0][0] as {
+        to: string;
+        subject: string;
+        text: string;
+      };
+      expect(sent.to).toBe("alex.morgan@example.com");
+      expect(sent.subject).toMatch(/tried to sign up/i);
+      // It has to point the real owner somewhere useful, not just say "no".
+      expect(sent.text).toContain("/login");
+      expect(sent.text).toContain("/forgot-password");
+    });
   });
 
   it("creates the account on a valid signup and stores a hashed (not raw) verification token", async () => {
@@ -293,6 +369,30 @@ describe("POST /api/v3/auth/signup", () => {
       postSignup({
         name: "Alex Morgan",
         email: "Alex.Morgan@Example.com", // different casing, same normalized key
+        password: STRONG_PASSWORD,
+      }),
+    );
+
+    expect(res.status).toBe(429);
+    expect(insertedUserCalls).toHaveLength(0);
+  });
+
+  // AUDIT-014#magic-08: the per-email bucket was two inline literals, so an
+  // operator tightening every limiter in the admin panel during a signup flood
+  // left the one bucket that actually stops it at its compiled value.
+  it("resolves the per-email signup cap from the admin setting, not a compiled literal", async () => {
+    systemSettingsRows = [
+      { key: "RATE_LIMIT_SIGNUP_EMAIL_ATTEMPTS", value: "1" },
+    ];
+    invalidateSettingsCache();
+    // One prior attempt is already under the shipped cap of 5, but at the
+    // admin's tightened cap of 1 the next request must be refused.
+    rateLimitCounts.set("signup-email:alex.morgan@example.com", 1);
+
+    const res = await POST(
+      postSignup({
+        name: "Alex Morgan",
+        email: "alex.morgan@example.com",
         password: STRONG_PASSWORD,
       }),
     );

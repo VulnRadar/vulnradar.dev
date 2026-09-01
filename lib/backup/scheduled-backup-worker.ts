@@ -19,7 +19,7 @@ import { CONFIG_SCHEDULED_BACKUP_INTERVAL_MS } from "@/lib/config/config-values"
 import { APP_NAME } from "@/lib/config/constants";
 
 export type ScheduledBackupOutcome =
-  "disabled" | "skipped_job_active" | "started";
+  "disabled" | "skipped_job_active" | "started" | "failed";
 
 /**
  * One tick: enabled check, then single-flight reservation, then hand off to
@@ -38,8 +38,13 @@ export async function runScheduledBackupPass(): Promise<ScheduledBackupOutcome> 
   const job = createJob(null);
   if (!job) return "skipped_job_active";
 
-  await runBackupJob(job.id);
-  return "started";
+  // runBackupJob never rejects: it reports a spawn error or a non-zero exit
+  // through its resolved result. Awaiting it and returning "started"
+  // unconditionally (the old shape) meant a backup that failed on every run
+  // still looked like a clean pass to the escalator below, so the alert built
+  // for a broken backup could never fire. Surface the failure instead.
+  const result = await runBackupJob(job.id);
+  return result.ok ? "started" : "failed";
 }
 
 let activeBackupTimer: NodeJS.Timeout | null = null;
@@ -62,7 +67,13 @@ export function schedulePeriodicBackup(
       if (outcome === "started") {
         console.log(`[${APP_NAME}] Scheduled backup worker: backup started.`);
       }
-      escalator.recordSuccess();
+      if (outcome === "failed") {
+        escalator.recordFailure(
+          "Automatic database backups are failing -- the scheduled pg_dump exited with an error",
+        );
+      } else {
+        escalator.recordSuccess();
+      }
     } catch (err) {
       console.error(`[${APP_NAME}] Scheduled backup worker pass failed:`, err);
       escalator.recordFailure(

@@ -11,7 +11,7 @@ export async function GET(
 ) {
   // Reading any tenant's team detail (owner + member emails) is the same
   // cross-tenant PII as the list route, so it needs the admin-only
-  // VIEW_ALL_TEAMS grant, not the coarse requireModerator floor -- otherwise a
+  // VIEW_ALL_TEAMS grant, not a coarse moderator-tier floor -- otherwise a
   // moderator could enumerate every team by sequential id.
   const admin = await requirePermission(STAFF_PERMISSIONS.VIEW_ALL_TEAMS);
   if (!admin)

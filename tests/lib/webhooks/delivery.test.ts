@@ -22,6 +22,15 @@ vi.mock("@/lib/scanner/safe-fetch", () => ({
   validateScanTarget: (...args: unknown[]) => mockValidateScanTarget(...args),
 }));
 
+// FEATURE_WEBHOOKS now gates delivery, not just registration. Mocked at
+// the module boundary so it does not consume the mockQuery call sequence
+// the webhook_deliveries assertions below depend on.
+const mockGetSetting = vi.fn(async (_key: string) => true as unknown);
+vi.mock("@/lib/config/runtime-config", () => ({
+  getSetting: (...a: unknown[]) =>
+    mockGetSetting(...(a as Parameters<typeof mockGetSetting>)),
+}));
+
 const mockSendNotificationEmail = vi.fn();
 vi.mock("@/lib/notifications/notifications", () => ({
   sendNotificationEmail: (...args: unknown[]) =>
@@ -54,6 +63,8 @@ beforeEach(() => {
   mockValidateScanTarget.mockReset();
   mockValidateScanTarget.mockResolvedValue({ safe: true });
   mockSendNotificationEmail.mockReset();
+  mockGetSetting.mockReset();
+  mockGetSetting.mockResolvedValue(true);
   vi.useRealTimers();
 });
 
@@ -289,5 +300,20 @@ describe("deliverWebhook: webhook_failures notification", () => {
     await expect(
       deliverWebhook(webhook, "scan.completed", "{}"),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("FEATURE_WEBHOOKS kill switch", () => {
+  it("does not POST, log, or notify when the feature is off", async () => {
+    mockGetSetting.mockResolvedValue(false);
+
+    await deliverWebhook(webhook, "scan.completed", JSON.stringify({ a: 1 }));
+
+    expect(mockSafeFetch).not.toHaveBeenCalled();
+    expect(mockSendNotificationEmail).not.toHaveBeenCalled();
+    const deliveryLogs = mockQuery.mock.calls.filter(([sql]) =>
+      String(sql).includes("webhook_deliveries"),
+    );
+    expect(deliveryLogs).toHaveLength(0);
   });
 });

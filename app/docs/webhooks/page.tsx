@@ -1,14 +1,12 @@
-"use client";
-
-import { useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { APP_NAME } from "@/lib/config/constants";
-import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
+import type { TocItem } from "@/components/docs/docs-types";
+import { DocsTocSpy } from "../docs-toc-spy";
 import {
   DocsHero,
   DocsSection,
   CodeBlock,
+  DocsTable,
   EndpointCard,
   InlineCode,
 } from "@/components/docs";
@@ -23,39 +21,16 @@ const tocItems: TocItem[] = [
 ];
 
 export default function WebhooksPage() {
-  const { setActiveSection, setTocItems } = useDocsContext();
-  const observerRef = useRef<IntersectionObserver | null>(null);
-
-  useEffect(() => {
-    setTocItems(tocItems);
-    return () => setTocItems([]);
-  }, [setTocItems]);
-
-  useEffect(() => {
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) setActiveSection(entry.target.id);
-        });
-      },
-      { rootMargin: "-20% 0px -70% 0px", threshold: 0 },
-    );
-    tocItems.forEach((item) => {
-      const el = document.getElementById(item.id);
-      if (el) observerRef.current?.observe(el);
-    });
-    return () => observerRef.current?.disconnect();
-  }, [setActiveSection]);
-
   return (
     <div className="space-y-16">
+      <DocsTocSpy items={tocItems} />
       <DocsHero
         id="top"
         badge="Integrations"
         title="Webhooks"
         description={`Receive real-time notifications when scans complete. ${APP_NAME} auto-detects the platform type from the URL and formats the payload accordingly.`}
         stats={[
-          { value: "0-∞", label: "Max per user, by plan" },
+          { value: "1-∞", label: "Max per user, by plan" },
           { value: "3", label: "Platform types" },
           { value: "HTTPS", label: "Required" },
         ]}
@@ -72,11 +47,12 @@ export default function WebhooksPage() {
           non-2xx response) gets exactly one retry a few seconds later; if that
           also fails, the attempt is logged and, if you have the notification
           enabled, you get an email. The per-user cap is set by your plan, not a
-          flat number: <strong className="text-foreground">0</strong> on Free,{" "}
+          flat number: <strong className="text-foreground">1</strong> on Free,{" "}
           <strong className="text-foreground">1</strong> on Core Supporter,{" "}
           <strong className="text-foreground">5</strong> on Pro Supporter, and{" "}
           <strong className="text-foreground">unlimited</strong> on Elite
-          Supporter.
+          Supporter. Free accounts do get a webhook: the step up you pay for is
+          1 to 5 at Pro Supporter.
         </p>
       </DocsSection>
 
@@ -86,48 +62,49 @@ export default function WebhooksPage() {
           with the <InlineCode>type</InlineCode> body field if needed.
         </p>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {[
+        {/* Three platforms with three parallel attributes each is a table,
+          not three cards. As cards the reader had to scan across all three
+          to line up the URL patterns, which is the exact comparison this
+          section exists to answer. */}
+        <DocsTable
+          caption="Webhook platforms, the URL pattern each is detected by, and the payload shape it receives"
+          columns={[
+            { key: "platform", header: "Platform" },
+            { key: "pattern", header: "URL pattern" },
+            { key: "payload", header: "Payload shape" },
+          ]}
+          data={[
             {
-              name: "Discord",
+              platform: "Discord",
               pattern:
                 "discord.com/api/webhooks/* or discordapp.com/api/webhooks/*",
-              description: "Rich embeds with color-coded severity",
-              color:
-                "bg-[hsl(var(--chart-4))]/10 text-[hsl(var(--chart-4))] border-[hsl(var(--chart-4))]/20",
+              payload: "Rich embeds with colour-coded severity",
             },
             {
-              name: "Slack",
+              platform: "Slack",
               pattern: "hooks.slack.com/*",
-              description: "Block Kit with section fields",
-              color:
-                "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20",
+              payload: "Block Kit with section fields",
             },
             {
-              name: "Generic",
+              platform: "Generic",
               pattern: "Any other HTTPS endpoint",
-              description: "Plain JSON { event, data }",
-              color: "bg-muted text-muted-foreground border-border/50",
+              payload: "Plain JSON { event, data }",
             },
-          ].map((platform) => (
-            <Card
-              key={platform.name}
-              className="p-4 border-border/50 bg-card/50"
-            >
-              <div className="flex items-center gap-3 mb-3">
-                <Badge variant="outline" className={platform.color}>
-                  {platform.name}
-                </Badge>
-              </div>
-              <p className="text-sm text-muted-foreground mb-2">
-                {platform.description}
-              </p>
-              <InlineCode className="block truncate">
-                {platform.pattern}
-              </InlineCode>
-            </Card>
-          ))}
-        </div>
+          ]}
+        />
+        <p className="max-w-[68ch] text-sm text-muted-foreground">
+          Generic is the row most integrations end up on: anything that is not
+          Discord or Slack gets the plain{" "}
+          <InlineCode>{`{ event, data }`}</InlineCode> body, which is the one
+          documented in{" "}
+          <a
+            href="#payloads"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            Webhook Payloads
+          </a>{" "}
+          below.
+        </p>
       </DocsSection>
 
       <DocsSection id="endpoints" title="API Endpoints">
@@ -144,16 +121,18 @@ export default function WebhooksPage() {
             path="/webhooks"
             title="List Webhooks"
             description="Retrieve all webhooks for the authenticated user."
-            responseExample={`[
-  {
-    "id": 1,
-    "url": "https://discord.com/api/webhooks/xxx/yyy",
-    "name": "Security Alerts",
-    "type": "discord",
-    "active": true,
-    "created_at": "2026-03-10T15:30:00.000Z"
-  }
-]`}
+            responseExample={`{
+  "webhooks": [
+    {
+      "id": 1,
+      "url": "https://discord.com/api/webhooks/xxx/yyy",
+      "name": "Security Alerts",
+      "type": "discord",
+      "active": true,
+      "created_at": "2026-03-10T15:30:00.000Z"
+    }
+  ]
+}`}
             errors={[{ code: 401, description: "Unauthorized" }]}
           />
 
@@ -178,7 +157,7 @@ export default function WebhooksPage() {
   "secret": "b6f2e1...9c4a"
 }`}
             notes={[
-              "Per-user limit is set by your plan: 0 on Free, 1 on Core Supporter, 5 on Pro Supporter, unlimited on Elite Supporter",
+              "Per-user limit is set by your plan: 1 on Free, 1 on Core Supporter, 5 on Pro Supporter, unlimited on Elite Supporter",
               "URL must be HTTPS (no localhost, no private IPs, no link-local)",
               "type defaults to auto-detect; allowed values are auto | discord | slack | generic. Only the detected value is stored.",
               "secret is only ever returned on this response. Save it now: it signs every delivery and is never shown again.",
@@ -197,14 +176,17 @@ export default function WebhooksPage() {
             method="PATCH"
             path="/webhooks"
             title="Test Webhook"
-            description="Sends a test payload to verify the webhook is reachable and accepts the format. Returns the response status from your endpoint."
+            description="Sends a test payload to verify the webhook is reachable and accepts the format. A 200 means your endpoint answered with a 2xx; the response does not relay your endpoint's exact status code."
             requestBody={`{
   "id": 1
 }`}
             responseExample={`{
   "success": true,
-  "status": 204
+  "message": "Test webhook sent successfully"
 }`}
+            notes={[
+              "The test delivery is NOT signed and carries no User-Agent: it goes out with Content-Type: application/json only. A consumer that rejects unsigned payloads will fail the Test button even though real deliveries would verify fine. Allow the test through, or verify against a real scan instead.",
+            ]}
             errors={[
               {
                 code: 400,
@@ -400,8 +382,10 @@ export default function WebhooksPage() {
             <InlineCode>{`X-VulnRadar-Signature: sha256=<hex>`}</InlineCode>, an
             HMAC-SHA256 of the exact request body using that secret -- compute
             the same HMAC on your end and compare to verify a payload actually
-            came from {APP_NAME}. Lost the secret? Delete the webhook and create
-            a new one.
+            came from {APP_NAME}. The one exception is the Test button, whose
+            delivery is unsigned and carries no{" "}
+            <InlineCode>User-Agent</InlineCode>. Lost the secret? Delete the
+            webhook and create a new one.
           </li>
           <li>
             <strong className="text-foreground">Timeout:</strong> 10 seconds per
@@ -419,7 +403,7 @@ export default function WebhooksPage() {
           </li>
           <li>
             <strong className="text-foreground">Per-user cap, by plan:</strong>{" "}
-            0 on Free, 1 on Core Supporter, 5 on Pro Supporter, unlimited on
+            1 on Free, 1 on Core Supporter, 5 on Pro Supporter, unlimited on
             Elite Supporter. Delete or upgrade to add more.
           </li>
           <li>

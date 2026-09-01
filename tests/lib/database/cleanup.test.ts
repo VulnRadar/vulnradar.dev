@@ -3,11 +3,13 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 /**
  * Tests for lib/database/cleanup.ts: the periodic cleanup job.
  *
- * pool.connect() is mocked to return a fake client whose `query` inspects
- * the SQL text and returns a scripted rowCount -- the same "mock at the
- * database boundary" pattern the rest of this suite uses for `pool.query`,
- * extended to the client-transaction shape this file actually calls
- * (pool.connect -> client.query(...) -> client.release()).
+ * One scripted responder answers BOTH `pool.query` and the fake client's
+ * `query`, inspecting the SQL text and returning a scripted rowCount -- the
+ * same "mock at the database boundary" pattern the rest of this suite uses.
+ * Both are routed through it because the pass now runs each retention prune
+ * autocommitted on the pool and reserves a client transaction only for the
+ * archive-then-purge pair on admin_audit_log (AUDIT-012#perf-22), so an
+ * assertion about a prune must not care which of the two issued it.
  *
  * The headline case here is a regression test for a real bug fixed this
  * session: schedulePeriodicCleanup(intervalMs) used to silently ignore its
@@ -36,8 +38,14 @@ let expiredBrowserSessionRows: {
   expires_at: string | null;
 }[] = [];
 
-const clientQuery = vi.fn(async (sql: string, params?: unknown[]) => {
-  const s = sql.trim();
+async function scriptedQuery(sql: string, params?: unknown[]) {
+  const s = String(sql).trim();
+  // The settings resolver reads system_settings through the same pool; it is
+  // not part of the cleanup pass, so it is answered before anything is
+  // recorded and never enters the positional `calls` queue.
+  if (s.startsWith("SELECT key, value FROM system_settings")) {
+    return { rows: retentionSettingsRows };
+  }
   calls.push({ sql: s, params });
 
   if (queryFailureFor && s.startsWith(queryFailureFor)) {
@@ -104,6 +112,8 @@ const clientQuery = vi.fn(async (sql: string, params?: unknown[]) => {
     return { rowCount: 1, rows: [] };
   if (s.startsWith("DELETE FROM system_error_logs"))
     return { rowCount: 5, rows: [] };
+  if (s.startsWith("DELETE FROM webhook_deliveries"))
+    return { rowCount: 11, rows: [] };
   if (s.startsWith("CREATE TABLE IF NOT EXISTS admin_audit_log_archive"))
     return { rows: [] };
   if (s.startsWith("SELECT id, admin_id, target_user_id"))
@@ -112,7 +122,9 @@ const clientQuery = vi.fn(async (sql: string, params?: unknown[]) => {
     return { rowCount: 1, rows: [] };
 
   return { rows: [] };
-});
+}
+
+const clientQuery = vi.fn(scriptedQuery);
 
 const mockConnect = vi.fn(async () => ({
   query: clientQuery,
@@ -126,13 +138,7 @@ const mockConnect = vi.fn(async () => ({
 // -1 (keep forever) on all four plans, so no scan_history delete fires
 // unless a test explicitly overrides one via retentionSettingsRows.
 let retentionSettingsRows: { key: string; value: string }[] = [];
-const mockPoolQuery = vi.fn(async (sql: string, params?: unknown[]) => {
-  const s = String(sql).trim();
-  if (s.startsWith("SELECT key, value FROM system_settings")) {
-    return { rows: retentionSettingsRows };
-  }
-  return { rows: [] };
-});
+const mockPoolQuery = vi.fn(scriptedQuery);
 
 vi.mock("@/lib/database/db", () => ({
   default: {
@@ -196,11 +202,39 @@ afterEach(() => {
 });
 
 describe("performDatabaseCleanup", () => {
-  it("wraps every delete in BEGIN/COMMIT under READ COMMITTED isolation", async () => {
+  // ref: AUDIT-012#perf-22. The pass used to wrap all thirty DELETEs in one
+  // BEGIN/COMMIT on a single pooled client, holding one of the ten pool
+  // connections and every deleted row's lock for the whole run, and undoing
+  // twenty-nine unrelated prunes if the last one failed. It is now one
+  // autocommitted statement per table, with a transaction reserved for the
+  // single genuinely coupled pair.
+  it("runs the retention prunes autocommitted, not inside one long transaction", async () => {
     await performDatabaseCleanup();
-    expect(calls[0].sql).toBe("BEGIN");
-    expect(calls[1].sql).toBe("SET TRANSACTION ISOLATION LEVEL READ COMMITTED");
-    expect(calls[calls.length - 1].sql).toBe("COMMIT");
+    expect(calls[0].sql).toBe("DELETE FROM sessions WHERE expires_at < NOW()");
+    expect(calls[calls.length - 1].sql).toContain(
+      "DELETE FROM webhook_deliveries",
+    );
+    // Exactly one transaction, and it is the archive-then-purge pair.
+    const begins = calls.filter((c) => c.sql === "BEGIN");
+    expect(begins).toHaveLength(1);
+    expect(calls.filter((c) => c.sql === "COMMIT")).toHaveLength(1);
+    expect(mockConnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps archive-then-purge on admin_audit_log inside one transaction", async () => {
+    await performDatabaseCleanup();
+    const beginAt = calls.findIndex((c) => c.sql === "BEGIN");
+    const commitAt = calls.findIndex((c) => c.sql === "COMMIT");
+    const purgeAt = calls.findIndex((c) =>
+      c.sql.startsWith("DELETE FROM admin_audit_log WHERE"),
+    );
+    const archiveAt = calls.findIndex((c) =>
+      c.sql.startsWith("SELECT id, admin_id, target_user_id"),
+    );
+    expect(beginAt).toBeGreaterThanOrEqual(0);
+    expect(archiveAt).toBeGreaterThan(beginAt);
+    expect(purgeAt).toBeGreaterThan(archiveAt);
+    expect(commitAt).toBeGreaterThan(purgeAt);
   });
 
   it("aggregates rowCounts from every delete into the returned stats", async () => {
@@ -262,9 +296,6 @@ describe("performDatabaseCleanup", () => {
 
     expect(stats.archivedAuditLogs).toBe(2);
 
-    const ensureTableIdx = calls.findIndex((c) =>
-      c.sql.startsWith("CREATE TABLE IF NOT EXISTS admin_audit_log_archive"),
-    );
     const selectIdx = calls.findIndex((c) =>
       c.sql.startsWith("SELECT id, admin_id, target_user_id"),
     );
@@ -275,10 +306,13 @@ describe("performDatabaseCleanup", () => {
       c.sql.startsWith("DELETE FROM admin_audit_log"),
     );
 
-    // Table creation, then select-to-archive, then the archive insert, all
-    // strictly before the DELETE that actually purges the rows.
-    expect(ensureTableIdx).toBeGreaterThanOrEqual(0);
-    expect(selectIdx).toBeGreaterThan(ensureTableIdx);
+    // Select-to-archive, then the archive insert, both strictly before the
+    // DELETE that actually purges the rows. No CREATE TABLE anywhere in the
+    // transaction: instrumentation.ts creates the archive table at boot, so
+    // the cleanup pass no longer runs DDL inside its own long transaction
+    // (AUDIT-013#schema-02).
+    expect(calls.some((c) => c.sql.includes("CREATE TABLE"))).toBe(false);
+    expect(selectIdx).toBeGreaterThanOrEqual(0);
     expect(insertIdx).toBeGreaterThan(selectIdx);
     expect(deleteIdx).toBeGreaterThan(insertIdx);
 
@@ -397,6 +431,21 @@ describe("performDatabaseCleanup", () => {
     expect(errorLogs?.params).toEqual([30]);
   });
 
+  it("prunes webhook_deliveries, which used to be the one log table nothing ever deleted (AUDIT-012 perf-27)", async () => {
+    // lib/webhooks/delivery.ts writes a row per delivery attempt and
+    // retries once on failure, so a customer with a broken endpoint wrote
+    // two rows per event forever with no rule to remove any of them.
+    const stats = await performDatabaseCleanup();
+    const deliveries = calls.find((c) =>
+      c.sql.startsWith("DELETE FROM webhook_deliveries"),
+    );
+    expect(deliveries).toBeDefined();
+    expect(deliveries?.sql).toContain("attempted_at");
+    expect(deliveries?.sql).toContain("INTERVAL '1 day'");
+    expect(deliveries?.params).toEqual([30]);
+    expect(stats.oldWebhookDeliveries).toBe(11);
+  });
+
   it("purges AI chat history on the admin-configurable AI_CHAT_HISTORY_DAYS window (shipped default 90, GDPR data-minimization fix)", async () => {
     // retentionSettingsRows is empty by default (see mockPoolQuery above),
     // so AI_CHAT_HISTORY_DAYS resolves to its shipped default -- 90, chosen
@@ -421,7 +470,7 @@ describe("performDatabaseCleanup", () => {
     expect(aiConversations?.params).toEqual([30]);
   });
 
-  it("releases the client even on the happy path", async () => {
+  it("releases the audit-transaction client even on the happy path", async () => {
     await performDatabaseCleanup();
     expect(releaseSpy).toHaveBeenCalledTimes(1);
   });
@@ -530,30 +579,51 @@ describe("performDatabaseCleanup", () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     queryFailureFor = "SELECT id FROM badges";
     const stats = await performDatabaseCleanup();
-    // The badge branch's own try/catch swallows the error; the surrounding
-    // transaction still commits and every other stat is still collected.
+    // The badge branch's own try/catch swallows the error; every later prune
+    // still runs and every other stat is still collected.
     expect(stats.oldAuditLogs).toBe(1);
-    expect(calls[calls.length - 1].sql).toBe("COMMIT");
+    expect(calls[calls.length - 1].sql).toContain(
+      "DELETE FROM webhook_deliveries",
+    );
     expect(errSpy).toHaveBeenCalled();
     errSpy.mockRestore();
   });
 
-  it("rolls back and rethrows when a delete fails", async () => {
+  // ref: AUDIT-012#perf-22. The throw is preserved (the caller's failure
+  // escalation depends on it), but the prunes that already succeeded are now
+  // durably committed instead of being rolled back with it.
+  it("rethrows when a prune fails, keeping the unrelated prunes that already committed", async () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     queryFailureFor = "DELETE FROM api_usage";
     await expect(performDatabaseCleanup()).rejects.toThrow(/simulated failure/);
+    // The sessions prune ran before the failure and is not undone: there is
+    // no ROLLBACK to undo it with.
+    expect(calls.some((c) => c.sql.startsWith("DELETE FROM sessions"))).toBe(
+      true,
+    );
+    expect(calls.some((c) => c.sql === "ROLLBACK")).toBe(false);
+    // The failure landed before the audit pair, so no transaction was opened.
+    expect(calls.some((c) => c.sql === "BEGIN")).toBe(false);
+    errSpy.mockRestore();
+  });
+
+  it("rolls the audit archive+purge pair back together when the purge fails", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    queryFailureFor = "DELETE FROM admin_audit_log WHERE";
+    await expect(performDatabaseCleanup()).rejects.toThrow(/simulated failure/);
+    expect(calls.some((c) => c.sql === "BEGIN")).toBe(true);
     expect(calls.some((c) => c.sql === "ROLLBACK")).toBe(true);
     expect(calls.some((c) => c.sql === "COMMIT")).toBe(false);
     expect(releaseSpy).toHaveBeenCalledTimes(1);
     errSpy.mockRestore();
   });
 
-  it("still rethrows the original error even if ROLLBACK itself fails on a dead connection", async () => {
+  it("still rethrows the original error even if the audit ROLLBACK itself fails on a dead connection", async () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    queryFailureFor = "DELETE FROM api_usage";
+    queryFailureFor = "DELETE FROM admin_audit_log WHERE";
     rollbackShouldFail = true;
     await expect(performDatabaseCleanup()).rejects.toThrow(
-      /simulated failure for: DELETE FROM api_usage/,
+      /simulated failure for: DELETE FROM admin_audit_log WHERE/,
     );
     expect(releaseSpy).toHaveBeenCalledTimes(1);
     errSpy.mockRestore();
@@ -589,6 +659,7 @@ describe("formatCleanupStats", () => {
       oldErrorLogs: 0,
       archivedAuditLogs: 0,
       oldEmailLogs: 0,
+      oldWebhookDeliveries: 0,
     };
     expect(formatCleanupStats(zeroStats)).toBe("no records to clean");
   });
@@ -621,6 +692,7 @@ describe("formatCleanupStats", () => {
       oldErrorLogs: 0,
       archivedAuditLogs: 0,
       oldEmailLogs: 0,
+      oldWebhookDeliveries: 0,
     };
     const summary = formatCleanupStats(stats);
     expect(summary).toContain("5 total");
@@ -657,6 +729,7 @@ describe("formatCleanupStats", () => {
       oldErrorLogs: 0,
       archivedAuditLogs: 0,
       oldEmailLogs: 0,
+      oldWebhookDeliveries: 0,
     };
     const summary = formatCleanupStats(stats);
     expect(summary).toContain("4 total");
@@ -691,6 +764,7 @@ describe("formatCleanupStats", () => {
       oldErrorLogs: 12,
       archivedAuditLogs: 0,
       oldEmailLogs: 0,
+      oldWebhookDeliveries: 0,
     };
     const summary = formatCleanupStats(stats);
     expect(summary).toContain("12 total");
@@ -725,6 +799,7 @@ describe("formatCleanupStats", () => {
       oldErrorLogs: 0,
       archivedAuditLogs: 6,
       oldEmailLogs: 0,
+      oldWebhookDeliveries: 0,
     };
     const summary = formatCleanupStats(stats);
     // Same 6 rows counted once via oldAuditLogs -- archivedAuditLogs
@@ -762,6 +837,7 @@ describe("formatCleanupStats", () => {
       oldErrorLogs: 0,
       archivedAuditLogs: 0,
       oldEmailLogs: 0,
+      oldWebhookDeliveries: 0,
     };
     const summary = formatCleanupStats(stats);
     expect(summary).toContain("23 total");

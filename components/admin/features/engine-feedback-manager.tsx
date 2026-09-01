@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useId } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -370,131 +370,178 @@ export function EngineFeedbackManager() {
               }
             />
           ) : (
-            <TableScrollArea maxHeight="60vh">
-              <Table>
-                <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
-                  <TableRow className="border-y border-border/50 hover:bg-transparent">
-                    <TableHead className="px-5 h-10">
-                      <SortableHeader
-                        label="Check"
-                        active={checkSortColumn === "title"}
-                        direction={
-                          checkSortColumn === "title"
-                            ? checkSortDirection
-                            : null
-                        }
-                        onClick={() => toggleCheckSort("title")}
-                      />
-                    </TableHead>
-                    <TableHead className="px-4 h-10">
-                      <SortableHeader
-                        label="Category"
-                        active={checkSortColumn === "category"}
-                        direction={
-                          checkSortColumn === "category"
-                            ? checkSortDirection
-                            : null
-                        }
-                        onClick={() => toggleCheckSort("category")}
-                      />
-                    </TableHead>
-                    <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      Severity
-                    </TableHead>
-                    <TableHead className="px-4 h-10 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      Confirmed
-                    </TableHead>
-                    <TableHead className="px-4 h-10 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      False Pos.
-                    </TableHead>
-                    <TableHead className="px-4 h-10 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      N/A
-                    </TableHead>
-                    <TableHead className="px-4 h-10 text-right">
-                      <SortableHeader
-                        label="Total"
-                        align="right"
-                        active={checkSortColumn === "total"}
-                        direction={
-                          checkSortColumn === "total"
-                            ? checkSortDirection
-                            : null
-                        }
-                        onClick={() => toggleCheckSort("total")}
-                      />
-                    </TableHead>
-                    <TableHead className="px-5 h-10 text-right">
-                      <SortableHeader
-                        label="FP Rate"
-                        align="right"
-                        active={checkSortColumn === "falsePositiveRate"}
-                        direction={
-                          checkSortColumn === "falsePositiveRate"
-                            ? checkSortDirection
-                            : null
-                        }
-                        onClick={() => toggleCheckSort("falsePositiveRate")}
-                      />
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredChecks.map((c) => (
-                    <TableRow key={c.checkId} className="border-border/40">
-                      <TableCell className="px-5 py-3">
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">
-                            {c.title}
-                          </p>
-                          <p className="text-xs text-muted-foreground truncate font-mono">
-                            {c.checkId}
-                          </p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">
-                        {c.category ?? "Unknown"}
-                      </TableCell>
-                      <TableCell className="px-4 py-3">
-                        {c.severity ? (
-                          <SeverityBadge severity={toSeverity(c.severity)} />
-                        ) : (
-                          <span className="text-sm text-muted-foreground">
-                            Unknown
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="px-4 py-3 text-right text-sm tabular-nums">
-                        {c.confirmed}
-                      </TableCell>
-                      <TableCell className="px-4 py-3 text-right text-sm tabular-nums">
-                        {c.falsePositive}
-                      </TableCell>
-                      <TableCell className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
-                        {c.notApplicable}
-                      </TableCell>
-                      <TableCell className="px-4 py-3 text-right text-sm tabular-nums">
-                        {c.total}
-                      </TableCell>
-                      <TableCell className="px-5 py-3">
-                        <div className="flex items-center justify-end gap-2">
-                          <span
-                            className={cn(
-                              "text-sm font-semibold tabular-nums",
-                              c.flagged
-                                ? "text-destructive"
-                                : "text-foreground",
+            <>
+              {/* Desktop table. Eight columns do not fit a phone, so the
+                  md:hidden card list below carries the same data. */}
+              <div className="hidden md:block">
+                <TableScrollArea maxHeight="60vh">
+                  <Table>
+                    <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
+                      <TableRow className="border-y border-border/50 hover:bg-transparent">
+                        <TableHead className="px-5 h-10">
+                          <SortableHeader
+                            label="Check"
+                            active={checkSortColumn === "title"}
+                            direction={
+                              checkSortColumn === "title"
+                                ? checkSortDirection
+                                : null
+                            }
+                            onClick={() => toggleCheckSort("title")}
+                          />
+                        </TableHead>
+                        <TableHead className="px-4 h-10">
+                          <SortableHeader
+                            label="Category"
+                            active={checkSortColumn === "category"}
+                            direction={
+                              checkSortColumn === "category"
+                                ? checkSortDirection
+                                : null
+                            }
+                            onClick={() => toggleCheckSort("category")}
+                          />
+                        </TableHead>
+                        <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Severity
+                        </TableHead>
+                        <TableHead className="px-4 h-10 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Confirmed
+                        </TableHead>
+                        <TableHead className="px-4 h-10 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          False Pos.
+                        </TableHead>
+                        <TableHead className="px-4 h-10 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          N/A
+                        </TableHead>
+                        <TableHead className="px-4 h-10 text-right">
+                          <SortableHeader
+                            label="Total"
+                            align="right"
+                            active={checkSortColumn === "total"}
+                            direction={
+                              checkSortColumn === "total"
+                                ? checkSortDirection
+                                : null
+                            }
+                            onClick={() => toggleCheckSort("total")}
+                          />
+                        </TableHead>
+                        <TableHead className="px-5 h-10 text-right">
+                          <SortableHeader
+                            label="FP Rate"
+                            align="right"
+                            active={checkSortColumn === "falsePositiveRate"}
+                            direction={
+                              checkSortColumn === "falsePositiveRate"
+                                ? checkSortDirection
+                                : null
+                            }
+                            onClick={() => toggleCheckSort("falsePositiveRate")}
+                          />
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredChecks.map((c) => (
+                        <TableRow key={c.checkId} className="border-border/40">
+                          <TableCell className="px-5 py-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium truncate">
+                                {c.title}
+                              </p>
+                              <p className="text-xs text-muted-foreground truncate font-mono">
+                                {c.checkId}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">
+                            {c.category ?? "Unknown"}
+                          </TableCell>
+                          <TableCell className="px-4 py-3">
+                            {c.severity ? (
+                              <SeverityBadge
+                                severity={toSeverity(c.severity)}
+                              />
+                            ) : (
+                              <span className="text-sm text-muted-foreground">
+                                Unknown
+                              </span>
                             )}
-                          >
-                            {c.falsePositiveRate}%
-                          </span>
-                          <FlaggedBadge flagged={c.flagged} />
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableScrollArea>
+                          </TableCell>
+                          <TableCell className="px-4 py-3 text-right text-sm tabular-nums">
+                            {c.confirmed}
+                          </TableCell>
+                          <TableCell className="px-4 py-3 text-right text-sm tabular-nums">
+                            {c.falsePositive}
+                          </TableCell>
+                          <TableCell className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                            {c.notApplicable}
+                          </TableCell>
+                          <TableCell className="px-4 py-3 text-right text-sm tabular-nums">
+                            {c.total}
+                          </TableCell>
+                          <TableCell className="px-5 py-3">
+                            <div className="flex items-center justify-end gap-2">
+                              <span
+                                className={cn(
+                                  "text-sm font-semibold tabular-nums",
+                                  c.flagged
+                                    ? "text-destructive"
+                                    : "text-foreground",
+                                )}
+                              >
+                                {c.falsePositiveRate}%
+                              </span>
+                              <FlaggedBadge flagged={c.flagged} />
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableScrollArea>
+              </div>
+
+              {/* Mobile cards */}
+              <div className="md:hidden divide-y divide-border/40">
+                {filteredChecks.map((c) => (
+                  <div key={c.checkId} className="px-4 py-3.5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium wrap-break-word">
+                          {c.title}
+                        </p>
+                        <p className="text-xs text-muted-foreground font-mono wrap-break-word">
+                          {c.checkId}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {c.severity && (
+                          <SeverityBadge severity={toSeverity(c.severity)} />
+                        )}
+                        <FlaggedBadge flagged={c.flagged} />
+                      </div>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      <span>{c.category ?? "Unknown"}</span>
+                      <span>Confirmed {c.confirmed}</span>
+                      <span>False pos. {c.falsePositive}</span>
+                      <span>N/A {c.notApplicable}</span>
+                      <span>Total {c.total}</span>
+                      <span
+                        className={cn(
+                          "font-semibold tabular-nums",
+                          c.flagged ? "text-destructive" : "text-foreground",
+                        )}
+                      >
+                        FP rate {c.falsePositiveRate}%
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -555,7 +602,7 @@ export function EngineFeedbackManager() {
             />
           ) : (
             <TableScrollArea maxHeight="40vh">
-              <Table>
+              <Table className="min-w-[600px]">
                 <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
                   <TableRow className="border-y border-border/50 hover:bg-transparent">
                     <TableHead className="px-5 h-10">
@@ -678,7 +725,7 @@ export function EngineFeedbackManager() {
             />
           ) : (
             <TableScrollArea maxHeight="40vh">
-              <Table>
+              <Table className="min-w-[600px]">
                 <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
                   <TableRow className="border-y border-border/50 hover:bg-transparent">
                     <TableHead className="px-5 h-10">Tag</TableHead>
@@ -806,6 +853,13 @@ function PromoteTagModal({
   const [minCount, setMinCount] = useState(1);
   const [saving, setSaving] = useState(false);
 
+  // Stable ids so each <label htmlFor> names its control; these fields were
+  // announced as a run of unnamed edit boxes to a screen reader.
+  const cwesId = useId();
+  const categoriesId = useId();
+  const minSeverityId = useId();
+  const minCountId = useId();
+
   const { dialogProps, titleProps } = useModalA11y({
     open: true,
     onClose,
@@ -838,8 +892,11 @@ function PromoteTagModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
       onClick={onClose}
     >
+      {/* max-h + overflow-y-auto match every other admin modal. Without them
+          a short viewport clipped the Promote to Rule button, the modal's
+          whole purpose, with no way to scroll to it. */}
       <div
-        className="bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-2xl"
+        className="bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-2xl max-h-[80vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
         {...dialogProps}
       >
@@ -858,10 +915,14 @@ function PromoteTagModal({
 
         <div className="space-y-3">
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">
+            <label
+              htmlFor={cwesId}
+              className="text-xs font-medium text-muted-foreground mb-1 block"
+            >
               CWE ids (comma-separated, e.g. CWE-79, CWE-89)
             </label>
             <Input
+              id={cwesId}
               value={cwes}
               onChange={(e) => setCwes(e.target.value)}
               placeholder="CWE-79, CWE-89"
@@ -869,10 +930,14 @@ function PromoteTagModal({
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">
+            <label
+              htmlFor={categoriesId}
+              className="text-xs font-medium text-muted-foreground mb-1 block"
+            >
               Categories (comma-separated)
             </label>
             <Input
+              id={categoriesId}
               value={categories}
               onChange={(e) => setCategories(e.target.value)}
               placeholder="dns, email"
@@ -881,10 +946,14 @@ function PromoteTagModal({
           </div>
           <div className="flex items-center gap-4">
             <div className="flex-1">
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+              <label
+                htmlFor={minSeverityId}
+                className="text-xs font-medium text-muted-foreground mb-1 block"
+              >
                 Minimum severity
               </label>
               <select
+                id={minSeverityId}
                 value={minSeverity}
                 onChange={(e) => setMinSeverity(e.target.value)}
                 className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
@@ -897,10 +966,14 @@ function PromoteTagModal({
               </select>
             </div>
             <div className="flex-1">
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+              <label
+                htmlFor={minCountId}
+                className="text-xs font-medium text-muted-foreground mb-1 block"
+              >
                 Minimum matching findings
               </label>
               <Input
+                id={minCountId}
                 type="number"
                 min={1}
                 value={minCount}

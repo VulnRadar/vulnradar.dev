@@ -41,6 +41,7 @@
 
 import * as net from "node:net";
 import { lookup } from "node:dns/promises";
+import { CONFIG_PORT_SCAN_CACHE_TTL_MS } from "@/lib/config/config-values";
 import { isPrivateHostname, isPrivateIP } from "./safe-fetch";
 import { generateId } from "./_helpers";
 import type { Vulnerability } from "./types";
@@ -242,17 +243,49 @@ const COMMON_PORTS: ReadonlyMap<number, string> = new Map<number, string>([
 ]);
 
 // Bounds. Worst case (all curated ports filtered/silent) is
-// ceil(ports/CONCURRENCY) waves * PER_PORT_CONNECT_TIMEOUT_MS, kept comfortably
-// under OVERALL_DEADLINE_MS. The whole sweep runs concurrently with the rest of
-// the scan and is awaited (bounded) before result_meta is assembled.
-const CONCURRENCY = 24;
-const PER_PORT_CONNECT_TIMEOUT_MS = 1500;
-/** After a successful connect (port is open), how long to wait for a banner
- *  before closing. Short so a chatty service is captured without holding the
- *  socket open. */
-const BANNER_READ_WINDOW_MS = 400;
-const OVERALL_DEADLINE_MS = 12_000;
-const MAX_BANNER_BYTES = 256;
+// ceil(ports/concurrency) waves * connectTimeoutMs, kept comfortably under
+// overallDeadlineMs. The whole sweep runs concurrently with the rest of the
+// scan and is awaited (bounded) before result_meta is assembled.
+//
+// All five are admin-editable (PORT_SCAN_* in the registry's Scanning group)
+// and resolved once per sweep, then threaded down into probePort rather than
+// read as module constants: 1500 ms is aggressive for a distant target, and 24
+// simultaneous connects is what an IDS flags as a sweep, so a self-hoster
+// scanning their own estate through a firewall they do not control needs to be
+// able to slow it down without editing this file (AUDIT-014#magic-12).
+interface PortScanTuning {
+  concurrency: number;
+  connectTimeoutMs: number;
+  bannerReadWindowMs: number;
+  overallDeadlineMs: number;
+  maxBannerBytes: number;
+}
+
+async function resolvePortScanTuning(): Promise<PortScanTuning> {
+  // Imported lazily, not at the top of the file, and deliberately so. The
+  // settings resolver opens the Postgres pool at module load, and this module
+  // also exports resolveSafePublicIp, the internal-range guard that
+  // lib/scanner/protocols/banner.ts (and anything else doing a raw socket
+  // connect) depends on. A static import here would make every one of those
+  // callers drag a database connection into their module graph just to reuse
+  // an SSRF check that does no I/O of its own. The dynamic import is resolved
+  // once and cached by the module system, so the sweep pays nothing per call.
+  const { getSettings } = await import("@/lib/config/runtime-config");
+  const s = await getSettings([
+    "PORT_SCAN_CONCURRENCY",
+    "PORT_SCAN_CONNECT_TIMEOUT_MS",
+    "PORT_SCAN_BANNER_READ_WINDOW_MS",
+    "PORT_SCAN_OVERALL_DEADLINE_MS",
+    "PORT_SCAN_MAX_BANNER_BYTES",
+  ] as const);
+  return {
+    concurrency: Number(s.PORT_SCAN_CONCURRENCY),
+    connectTimeoutMs: Number(s.PORT_SCAN_CONNECT_TIMEOUT_MS),
+    bannerReadWindowMs: Number(s.PORT_SCAN_BANNER_READ_WINDOW_MS),
+    overallDeadlineMs: Number(s.PORT_SCAN_OVERALL_DEADLINE_MS),
+    maxBannerBytes: Number(s.PORT_SCAN_MAX_BANNER_BYTES),
+  };
+}
 
 /** Syntactic hostname guard, matching validateBannerTarget's first check:
  *  no control chars, no path, bounded length. */
@@ -311,6 +344,7 @@ function probePort(
   port: number,
   service: string,
   signal: AbortSignal,
+  tuning: PortScanTuning,
 ): Promise<OpenPort | "closed" | null> {
   return new Promise((resolve) => {
     if (signal.aborted) {
@@ -342,7 +376,7 @@ function probePort(
         resolve(signal.aborted ? null : "closed");
         return;
       }
-      const trimmed = banner.slice(0, MAX_BANNER_BYTES).replace(/\0/g, "");
+      const trimmed = banner.slice(0, tuning.maxBannerBytes).replace(/\0/g, "");
       resolve({
         port,
         service,
@@ -356,7 +390,7 @@ function probePort(
     // Inactivity timeout covers the connect phase (a filtered port never
     // answers). Shorter than the deadline, so the sweep stays bounded even if
     // every port is silent.
-    socket.setTimeout(PER_PORT_CONNECT_TIMEOUT_MS);
+    socket.setTimeout(tuning.connectTimeoutMs);
     socket.once("timeout", () => finish(false));
     socket.once("error", () => finish(false));
 
@@ -367,10 +401,10 @@ function probePort(
     socket.connect(port, ip, () => {
       // Connection accepted => the port is open regardless of whether a banner
       // follows. Give the service a brief window to speak first.
-      bannerTimer = setTimeout(() => finish(true), BANNER_READ_WINDOW_MS);
+      bannerTimer = setTimeout(() => finish(true), tuning.bannerReadWindowMs);
       socket.on("data", (chunk: Buffer) => {
         banner += chunk.toString("utf8");
-        if (banner.length >= MAX_BANNER_BYTES) finish(true);
+        if (banner.length >= tuning.maxBannerBytes) finish(true);
       });
     });
   });
@@ -397,13 +431,18 @@ export async function scanPorts(
   const targetIp = await resolveSafePublicIp(cleanHost);
   if (!targetIp || signal.aborted) return null;
 
+  // Resolved once for the whole sweep, not per port: every probe in one sweep
+  // must agree on the bounds, and re-resolving 130 times would be pointless
+  // churn against the settings cache.
+  const tuning = await resolvePortScanTuning();
+
   // Hard overall deadline: an internal controller aborts every in-flight and
   // pending probe once the wall-clock budget is spent. Combined with the
   // caller's signal so a cancelled scan also stops the sweep at once.
   const deadlineController = new AbortController();
   const deadlineTimer = setTimeout(
     () => deadlineController.abort(),
-    OVERALL_DEADLINE_MS,
+    tuning.overallDeadlineMs,
   );
   const relayAbort = () => deadlineController.abort();
   signal.addEventListener("abort", relayAbort, { once: true });
@@ -420,7 +459,13 @@ export async function scanPorts(
       if (i >= ports.length) return;
       const port = ports[i];
       const service = COMMON_PORTS.get(port) ?? "unknown";
-      const result = await probePort(targetIp, port, service, effectiveSignal);
+      const result = await probePort(
+        targetIp,
+        port,
+        service,
+        effectiveSignal,
+        tuning,
+      );
       if (result === "closed") {
         closed.push({ port, service });
       } else if (result) {
@@ -431,7 +476,7 @@ export async function scanPorts(
 
   try {
     await Promise.all(
-      Array.from({ length: Math.min(CONCURRENCY, ports.length) }, () =>
+      Array.from({ length: Math.min(tuning.concurrency, ports.length) }, () =>
         worker(),
       ),
     );
@@ -465,7 +510,7 @@ export async function scanPorts(
 // grow unbounded.
 // ════════════════════════════════════════════════════════════════════════════
 
-const PORT_SCAN_TTL_MS = 5 * 60 * 1000;
+const PORT_SCAN_TTL_MS = CONFIG_PORT_SCAN_CACHE_TTL_MS;
 const portScanStore = new Map<string, { result: PortScanResult; at: number }>();
 
 function prunePortScanStore(now: number): void {

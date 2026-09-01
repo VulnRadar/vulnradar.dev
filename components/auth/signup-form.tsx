@@ -6,8 +6,11 @@ import { ArrowLeft, Loader2, Eye, EyeOff, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { PASSWORD_MIN_LENGTH, TURNSTILE_ENABLED } from "@/lib/config/constants";
-import { API } from "@/lib/config/client-constants";
+import {
+  API,
+  PASSWORD_MIN_LENGTH,
+  TURNSTILE_ENABLED,
+} from "@/lib/config/client-constants";
 import {
   analyzePassword,
   checkPasswordRequirements,

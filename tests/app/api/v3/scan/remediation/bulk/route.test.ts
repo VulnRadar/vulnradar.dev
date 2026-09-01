@@ -55,19 +55,23 @@ describe("POST /api/v3/scan/remediation/bulk", () => {
     expect(res.status).toBe(400);
   });
 
-  it("upserts every item, preserving assignee/due when they aren't sent", async () => {
+  it("upserts every item in ONE statement, preserving assignee/due when they aren't sent", async () => {
     const res = await POST(postRequest({ items: ITEMS, status: "fixed" }));
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.count).toBe(2);
-    expect(calls).toHaveLength(2);
+    // One statement, not one per item: a single INSERT ... SELECT over
+    // unnest() is atomic, so a partial failure can no longer leave half the
+    // selection changed while the UI says nothing was applied.
+    expect(calls).toHaveLength(1);
 
     expect(calls[0].sql).toContain("INSERT INTO finding_remediation");
+    expect(calls[0].sql).toContain("unnest($2::text[], $3::text[])");
     // status set; assignee/due NOT touched (booleans false); note never in SET.
     expect(calls[0].params).toEqual([
       42,
-      "csp-missing--a",
-      "https://example.com/",
+      ["csp-missing--a", "hsts-missing--b"],
+      ["https://example.com/", "https://example.com/"],
       "fixed",
       null, // assignee value
       null, // due value
@@ -88,8 +92,8 @@ describe("POST /api/v3/scan/remediation/bulk", () => {
     );
     expect(calls[0].params).toEqual([
       42,
-      "csp-missing--a",
-      "https://example.com/",
+      ["csp-missing--a"],
+      ["https://example.com/"],
       "in_progress",
       "Alice",
       "2026-09-01",
@@ -98,13 +102,29 @@ describe("POST /api/v3/scan/remediation/bulk", () => {
     ]);
   });
 
-  it("clears each row with a DELETE when status is 'open'", async () => {
+  it("clears the selection with one DELETE when status is 'open'", async () => {
     await POST(postRequest({ items: ITEMS, status: "open" }));
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(1);
     expect(calls[0].sql).toContain("DELETE FROM finding_remediation");
+    expect(calls[0].sql).toContain("unnest($2::text[], $3::text[])");
     expect(calls[0].params).toEqual([
       42,
-      "csp-missing--a",
+      ["csp-missing--a", "hsts-missing--b"],
+      ["https://example.com/", "https://example.com/"],
+    ]);
+  });
+
+  it("collapses a duplicated (findingId, findingUrl) pair", async () => {
+    // A single INSERT ... ON CONFLICT cannot touch the same row twice, and
+    // the selection UI can hand the same finding over twice when it appears
+    // on two pages of one scan.
+    await POST(
+      postRequest({ items: [ITEMS[0], ITEMS[0], ITEMS[1]], status: "fixed" }),
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0].params[1]).toEqual(["csp-missing--a", "hsts-missing--b"]);
+    expect(calls[0].params[2]).toEqual([
+      "https://example.com/",
       "https://example.com/",
     ]);
   });

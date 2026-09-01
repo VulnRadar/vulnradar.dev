@@ -53,17 +53,20 @@ export async function GET(request: NextRequest) {
     const { page, limit, offset } = parsePagination(searchParams);
 
     if (type === "hosts") {
-      const countRes = await pool.query<{ count: string }>(
-        `SELECT COUNT(*) FROM host_reputation`,
-      );
-      const total = parseInt(countRes.rows[0]?.count || "0", 10);
-      const rowsRes = await pool.query(
-        `SELECT host, danger_score, severity_counts, last_scanned_at, source_scan_id, auto_tags
+      // perf: COUNT(*) scans the whole table whatever the sibling LIMIT is,
+      // so awaiting it before the page query doubled the wall time of every
+      // page load for no reason. The two are independent.
+      const [countRes, rowsRes] = await Promise.all([
+        pool.query<{ count: string }>(`SELECT COUNT(*) FROM host_reputation`),
+        pool.query(
+          `SELECT host, danger_score, severity_counts, last_scanned_at, source_scan_id, auto_tags
            FROM host_reputation
            ORDER BY last_scanned_at DESC
            LIMIT $1 OFFSET $2`,
-        [limit, offset],
-      );
+          [limit, offset],
+        ),
+      ]);
+      const total = parseInt(countRes.rows[0]?.count || "0", 10);
       return NextResponse.json({
         hosts: rowsRes.rows,
         page,
@@ -73,12 +76,13 @@ export async function GET(request: NextRequest) {
     }
 
     if (type === "shares") {
-      const countRes = await pool.query<{ count: string }>(
-        `SELECT COUNT(*) FROM scan_history WHERE share_token IS NOT NULL`,
-      );
-      const total = parseInt(countRes.rows[0]?.count || "0", 10);
-      const rowsRes = await pool.query(
-        `SELECT sh.id, sh.url, sh.scanned_at, sh.findings_count,
+      // See the hosts branch above: count and page run together.
+      const [countRes, rowsRes] = await Promise.all([
+        pool.query<{ count: string }>(
+          `SELECT COUNT(*) FROM scan_history WHERE share_token IS NOT NULL`,
+        ),
+        pool.query(
+          `SELECT sh.id, sh.url, sh.scanned_at, sh.findings_count,
                 sh.share_publicly_listed, sh.share_expires_at,
                 u.email as user_email
            FROM scan_history sh
@@ -86,8 +90,10 @@ export async function GET(request: NextRequest) {
           WHERE sh.share_token IS NOT NULL
           ORDER BY sh.scanned_at DESC
           LIMIT $1 OFFSET $2`,
-        [limit, offset],
-      );
+          [limit, offset],
+        ),
+      ]);
+      const total = parseInt(countRes.rows[0]?.count || "0", 10);
       return NextResponse.json({
         shares: rowsRes.rows,
         page,

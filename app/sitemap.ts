@@ -7,14 +7,18 @@ import { PUBLIC_ROUTES } from "@/lib/seo/routes";
 export const dynamic = "force-static";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  // One timestamp for the whole generation. Using a per-entry `new Date()`
-  // would claim every page changed at a slightly different moment on every
-  // build, which is noise rather than signal.
-  const lastModified = new Date();
+  // Fallback only, for the routes with no derivable source date (the
+  // hand-listed marketing and legal pages). Every route that CAN say when its
+  // source last changed does: this used to be the value for all ~820 URLs,
+  // which, on a force-static route rebuilt on every deploy, told crawlers the
+  // entire site changed at the same instant several times a week. Google
+  // ignores lastmod site-wide when it is not consistently accurate, so the
+  // field was costing the sitemap its one freshness signal.
+  const buildTime = new Date();
 
   return PUBLIC_ROUTES.map((route) => ({
     url: `${APP_URL}${route.path}`,
-    lastModified,
+    lastModified: route.lastModified ? new Date(route.lastModified) : buildTime,
     changeFrequency: route.changeFrequency,
     priority: route.priority,
   }));

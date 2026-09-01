@@ -7,6 +7,7 @@ import {
   ChevronsRight,
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
+import { toggles } from "@/lib/ui/animations";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
@@ -97,7 +98,10 @@ export function PaginationControl({
                   if (size !== pageSize) onPageSizeChange(size);
                 }}
                 className={cn(
-                  "h-7 min-w-9 px-2 rounded-md text-xs font-medium transition-all",
+                  "h-7 min-w-9 px-2 rounded-md text-xs font-medium",
+                  // `transition-all` here animated min-width too, so the whole
+                  // segmented group visibly re-flowed on every size change.
+                  toggles.control,
                   size === pageSize
                     ? "bg-primary text-primary-foreground shadow-xs"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
@@ -114,13 +118,22 @@ export function PaginationControl({
         </div>
       )}
 
-      {/* Right: page navigation */}
+      {/* Right: page navigation. Wraps because the row is four arrow buttons
+          plus up to seven number slots, about 388px, against a 343px phone
+          viewport: without it /history and /assets grew a horizontal page
+          scroll as soon as a user passed 50 scans.
+
+          Every control in it is 44px on touch and drops back to 32px from
+          sm up. At 32px square with 4px between them, the four arrows were
+          under the minimum tap target and close enough together that
+          "next page" and "last page" were easy to confuse on a phone; the
+          row already wraps, so the extra height costs nothing but space. */}
       {totalPages > 1 && (
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center justify-center gap-1">
           {/* First page */}
           <button
             className={cn(
-              "h-8 w-8 rounded-lg flex items-center justify-center transition-colors border border-border/40",
+              "h-11 w-11 sm:h-8 sm:w-8 rounded-lg flex items-center justify-center border border-border/40 transition-colors duration-150 ease-out",
               currentPage <= 1
                 ? "text-muted-foreground/30 cursor-not-allowed bg-muted/10"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted/50 hover:border-border/60",
@@ -135,7 +148,7 @@ export function PaginationControl({
           {/* Previous page */}
           <button
             className={cn(
-              "h-8 w-8 rounded-lg flex items-center justify-center transition-colors border border-border/40",
+              "h-11 w-11 sm:h-8 sm:w-8 rounded-lg flex items-center justify-center border border-border/40 transition-colors duration-150 ease-out",
               currentPage <= 1
                 ? "text-muted-foreground/30 cursor-not-allowed bg-muted/10"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted/50 hover:border-border/60",
@@ -153,7 +166,7 @@ export function PaginationControl({
               p === "ellipsis" ? (
                 <span
                   key={`ellipsis-${i}`}
-                  className="w-8 text-center text-xs text-muted-foreground/50 select-none"
+                  className="w-11 sm:w-8 text-center text-xs text-muted-foreground/50 select-none"
                 >
                   ...
                 </span>
@@ -161,7 +174,8 @@ export function PaginationControl({
                 <button
                   key={p}
                   className={cn(
-                    "h-8 min-w-8 px-2 rounded-lg text-xs font-medium transition-all",
+                    "h-11 min-w-11 sm:h-8 sm:min-w-8 px-2 rounded-lg text-xs font-medium",
+                    toggles.control,
                     p === currentPage
                       ? "bg-primary text-primary-foreground shadow-xs"
                       : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
@@ -179,7 +193,7 @@ export function PaginationControl({
           {/* Next page */}
           <button
             className={cn(
-              "h-8 w-8 rounded-lg flex items-center justify-center transition-colors border border-border/40",
+              "h-11 w-11 sm:h-8 sm:w-8 rounded-lg flex items-center justify-center border border-border/40 transition-colors duration-150 ease-out",
               currentPage >= totalPages
                 ? "text-muted-foreground/30 cursor-not-allowed bg-muted/10"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted/50 hover:border-border/60",
@@ -194,7 +208,7 @@ export function PaginationControl({
           {/* Last page */}
           <button
             className={cn(
-              "h-8 w-8 rounded-lg flex items-center justify-center transition-colors border border-border/40",
+              "h-11 w-11 sm:h-8 sm:w-8 rounded-lg flex items-center justify-center border border-border/40 transition-colors duration-150 ease-out",
               currentPage >= totalPages
                 ? "text-muted-foreground/30 cursor-not-allowed bg-muted/10"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted/50 hover:border-border/60",

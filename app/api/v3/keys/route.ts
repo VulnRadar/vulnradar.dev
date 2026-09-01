@@ -10,6 +10,7 @@ import {
   withErrorHandling,
 } from "@/lib/api/api-utils";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { ERROR_MESSAGES, DEFAULT_NEW_KEY_SCOPES } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import {
@@ -37,6 +38,26 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   if (!(await getSetting("FEATURE_API_KEYS"))) {
     return ApiResponse.forbidden("API keys are disabled on this deployment.");
+  }
+
+  // abuse: minting an API key is the one credential-creating action here that
+  // had no limiter at all, and the credential it creates outlives the session
+  // that created it: DELETE /api/v3/auth/sessions and a password change both
+  // clear sessions and device_trust and neither touches api_keys. So a
+  // briefly-held session cookie could be turned into as many long-lived keys
+  // as the plan allows, as fast as the loop runs (AUDIT-012#auth-08). Keyed
+  // on user AND client IP, reusing the login limiter's admin-configurable
+  // numbers so an operator tightening login also tightens this.
+  const keyIp = await getClientIp();
+  const createRl = await checkRateLimit({
+    key: `keys-create:${session.userId}:${keyIp}`,
+    ...RATE_LIMITS.login,
+  });
+  if (!createRl.allowed) {
+    return ApiResponse.tooManyRequests(
+      "Too many API key creation attempts. Please try again later.",
+      createRl.retryAfterSeconds,
+    );
   }
 
   const parsed = await parseBody<{ name?: string; scopes?: unknown }>(request);

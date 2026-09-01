@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 
+// lib/config/server-constants.ts (the SMTP credentials and the Browserbase
+// configured-check) carries `import "server-only"`, a bundler marker package
+// whose default entry throws outside a react-server context. Neutralize it so
+// the module under test loads here (AUDIT-012#fe-15).
+vi.mock("server-only", () => ({}));
+
 /**
  * Route-level tests for POST/GET/DELETE /api/v3/browser/sessions.
  *
@@ -439,6 +445,57 @@ describe("POST /api/v3/browser/sessions", () => {
     expect(res.status).toBe(402);
     const json = await res.json();
     expect(json.error).toBe("quota exceeded");
+  });
+
+  // Browserbase bills by session-seconds. If the ownership INSERT fails and
+  // the session is not torn down, it keeps running (and billing) with nothing
+  // in the database that could ever release it. Nothing else in the product
+  // notices: the caller sees a normal 500 and the cost only shows up on the
+  // operator's monthly invoice (AUDIT-013#cov-12).
+  it("tears the remote session down when recording ownership fails", async () => {
+    mockCreateBrowserSession.mockResolvedValue({
+      id: "sess_orphan",
+      status: "RUNNING",
+      url: "",
+    });
+    mockQuery.mockRejectedValueOnce(new Error("deadlock detected"));
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const res = await POST(postRequest({}));
+
+    expect(res.status).toBe(500);
+    expect(mockEndBrowserSession).toHaveBeenCalledWith("sess_orphan");
+    expect(mockReleaseConcurrencySlot).toHaveBeenCalled();
+    errSpy.mockRestore();
+  });
+
+  it("still fails the request when the teardown itself throws, and never leaves the slot held", async () => {
+    mockCreateBrowserSession.mockResolvedValue({
+      id: "sess_orphan_2",
+      status: "RUNNING",
+      url: "",
+    });
+    mockQuery.mockRejectedValueOnce(new Error("deadlock detected"));
+    mockEndBrowserSession.mockRejectedValue(new Error("browserbase down"));
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const res = await POST(postRequest({}));
+
+    expect(res.status).toBe(500);
+    expect(mockEndBrowserSession).toHaveBeenCalledWith("sess_orphan_2");
+    expect(mockReleaseConcurrencySlot).toHaveBeenCalled();
+    errSpy.mockRestore();
+  });
+
+  it("never tears the session down on the ordinary success path", async () => {
+    mockCreateBrowserSession.mockResolvedValue({
+      id: "sess_ok",
+      status: "RUNNING",
+      url: "",
+    });
+    const res = await POST(postRequest({}));
+    expect(res.status).toBe(200);
+    expect(mockEndBrowserSession).not.toHaveBeenCalled();
   });
 
   it("still returns 200 with a null liveViewerUrl when fetching live URLs fails", async () => {

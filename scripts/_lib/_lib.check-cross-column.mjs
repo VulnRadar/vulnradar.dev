@@ -9,7 +9,7 @@
  *     `disable` action has no role check blocking it, so an admin CAN be
  *     disabled (e.g. an admin leaving staff). Not corruption -- dropped.
  *   - totp_enabled/totp_secret consistency: already covered by
- *     scripts/db-diagnose-2fa.mjs's classifyUser, which db-diagnose.mjs
+ *     scripts/maintenance/db-diagnose-2fa.mjs's classifyUser, which db-diagnose.mjs
  *     calls directly and folds into its own report instead of
  *     reimplementing it here.
  *

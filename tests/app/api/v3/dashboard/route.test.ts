@@ -33,8 +33,22 @@ function installDefaultQueryMock() {
     if (sql.includes("SELECT disabled_at FROM users")) {
       return { rows: [{ disabled_at: null }] };
     }
-    if (sql.includes("COUNT(*)::int as count FROM scan_history")) {
-      return { rows: [{ count: 12 }] };
+    // One query now answers total scans, unique sites and the source split:
+    // three whole-table aggregates over the same rows used to take three of
+    // the pool's ten connections on their own.
+    if (sql.includes("WITH base AS")) {
+      return {
+        rows: [
+          {
+            total_scans: 12,
+            unique_sites: 3,
+            source_breakdown: [
+              { source: "web", count: 8 },
+              { source: "api", count: 4 },
+            ],
+          },
+        ],
+      };
     }
     if (sql.includes("ORDER BY scanned_at DESC LIMIT $2")) {
       return {
@@ -60,21 +74,10 @@ function installDefaultQueryMock() {
     if (sql.includes("generate_series")) {
       return {
         rows: [
-          { day: "2024-01-01", scans: 2 },
-          { day: "2024-01-02", scans: 0 },
+          { day: "2024-01-01", scans: 2, issues: 7 },
+          { day: "2024-01-02", scans: 0, issues: 0 },
         ],
       };
-    }
-    if (sql.includes("GROUP BY source")) {
-      return {
-        rows: [
-          { source: "web", count: 8 },
-          { source: "api", count: 4 },
-        ],
-      };
-    }
-    if (sql.includes("COUNT(DISTINCT url)")) {
-      return { rows: [{ count: 3 }] };
     }
     return { rows: [] };
   });
@@ -115,8 +118,9 @@ describe("GET /api/v3/dashboard", () => {
   it("scopes every query, including the disabled-account check, to the session's own userId", async () => {
     await GET();
 
-    // disabled_at check + 7 dashboard queries run inside Promise.all.
-    expect(mockQuery.mock.calls.length).toBe(8);
+    // disabled_at check + 5 dashboard queries run inside Promise.all. It was
+    // 7 before the three whole-table aggregates were folded into one.
+    expect(mockQuery.mock.calls.length).toBe(6);
     for (const [, params] of mockQuery.mock.calls) {
       // Every query is scoped by the session's userId as the first param;
       // the Recent Scans and Top Vulnerabilities queries also pass the
@@ -142,8 +146,11 @@ describe("GET /api/v3/dashboard", () => {
     expect(json.topVulnerabilities).toEqual([
       { title: "Missing CSP", severity: "medium", count: 4 },
     ]);
+    // issues comes from the query now. It used to be hardcoded to 0, so the
+    // activity tooltip read "N scans - 0 issues" for every day on the main
+    // dashboard no matter what the scans actually found.
     expect(json.dailyActivity).toEqual([
-      { day: "2024-01-01", scans: 2, issues: 0 },
+      { day: "2024-01-01", scans: 2, issues: 7 },
       { day: "2024-01-02", scans: 0, issues: 0 },
     ]);
     expect(json.sourceBreakdown).toEqual([

@@ -200,8 +200,30 @@ async function fetchGithubUserInfo(
     // The @handle itself, unconditionally -- not the display-name fallback
     // above. This is what forms a real github.com/<login> URL.
     login: typeof user.login === "string" ? user.login : null,
-    avatarUrl: typeof user.avatar_url === "string" ? user.avatar_url : null,
+    // ?s=128 for the same reason as the Discord branch below: with
+    // images.unoptimized on, githubusercontent's default-resolution avatar is
+    // downloaded whole to fill a 14px circle. GitHub already carries a query
+    // string on these URLs (?v=4), so append rather than assume.
+    avatarUrl:
+      typeof user.avatar_url === "string"
+        ? withAvatarSize(user.avatar_url, "s", 128)
+        : null,
   };
+}
+
+/** Append a provider size cap to an avatar URL without clobbering whatever
+ *  query string it already carries, and without failing the whole sign-in if
+ *  the provider ever hands back something URL() cannot parse. */
+function withAvatarSize(url: string, param: string, size: number): string {
+  try {
+    const parsed = new URL(url);
+    if (!parsed.searchParams.has(param)) {
+      parsed.searchParams.set(param, String(size));
+    }
+    return parsed.toString();
+  } catch {
+    return url;
+  }
 }
 
 async function fetchDiscordUserInfo(
@@ -226,9 +248,15 @@ async function fetchDiscordUserInfo(
     email: data.email,
     emailVerified: data.verified === true,
     name: typeof data.username === "string" ? data.username : null,
+    // ?size=128 matters: next.config.mjs sets images.unoptimized, so every
+    // next/image is a pass-through <img> with no resizing. Without the cap
+    // Discord's CDN serves the full-resolution PNG (up to 1024px) and the
+    // browser downloads all of it to paint a 14px circle on /public-scans.
+    // The Discord CONNECT flow (app/api/v3/account/discord/route.ts) already
+    // caps its URL the same way; only this sign-in path did not.
     avatarUrl:
       typeof data.avatar === "string" && typeof data.id === "string"
-        ? `https://cdn.discordapp.com/avatars/${data.id}/${data.avatar}.png`
+        ? `https://cdn.discordapp.com/avatars/${data.id}/${data.avatar}.png?size=128`
         : null,
   };
 }

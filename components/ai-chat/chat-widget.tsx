@@ -21,8 +21,6 @@ import {
   Lock,
   AlertCircle,
 } from "lucide-react";
-import ReactMarkdown, { type Components } from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/ui/utils";
@@ -31,8 +29,20 @@ import {
   APP_NAME,
   AI_CHAT_HISTORY_DAYS,
   AI_CHAT_MAX_INPUT_LENGTH,
-} from "@/lib/config/constants";
+} from "@/lib/config/client-constants";
+// The path form of the logo. constants' LOGO_URL is the absolute one, meant
+// for emails and structured data.
+import { CONFIG_LOGO_URL } from "@/lib/config/config-values";
 import { parseSegments } from "@/lib/ai/think-parser";
+// This widget used to carry its own byte-identical copies of the markdown
+// component map, MarkdownContent and ThinkBlock. message-content.tsx exists to
+// be the one renderer the widget and the admin conversation viewer share, and
+// its own comment says so, so a link rel or code-block change lands in both
+// places instead of one. Importing them is what makes that true.
+import {
+  MarkdownContent,
+  ThinkBlock,
+} from "@/components/ai-chat/message-content";
 import {
   SLASH_COMMANDS,
   buildHelpText,
@@ -199,95 +209,6 @@ function persistConversation(sessionId: string, messages: ChatMessage[]) {
   }).catch(() => {});
 }
 
-const mdComponents: Components = {
-  p: ({ node: _node, ...props }) => (
-    <p className="mb-2 last:mb-0 leading-relaxed" {...props} />
-  ),
-  h1: ({ node: _node, ...props }) => (
-    <h1 className="text-sm font-semibold mt-3 mb-1.5 first:mt-0" {...props} />
-  ),
-  h2: ({ node: _node, ...props }) => (
-    <h2 className="text-sm font-semibold mt-3 mb-1.5 first:mt-0" {...props} />
-  ),
-  h3: ({ node: _node, ...props }) => (
-    <h3 className="text-sm font-semibold mt-2.5 mb-1 first:mt-0" {...props} />
-  ),
-  ul: ({ node: _node, ...props }) => (
-    <ul className="list-disc pl-4 my-1.5 space-y-0.5" {...props} />
-  ),
-  ol: ({ node: _node, ...props }) => (
-    <ol className="list-decimal pl-4 my-1.5 space-y-0.5" {...props} />
-  ),
-  li: ({ node: _node, ...props }) => (
-    <li className="leading-relaxed" {...props} />
-  ),
-  pre: ({ node: _node, ...props }) => (
-    <pre
-      className="bg-black/30 border border-border/30 rounded-md p-2.5 my-2 text-[11px] font-mono overflow-x-auto whitespace-pre"
-      {...props}
-    />
-  ),
-  code: ({ className, children, ...props }) => {
-    const isBlock = /language-/.test(className || "");
-    if (isBlock) {
-      return (
-        <code className={cn("font-mono text-[11px]", className)} {...props}>
-          {children}
-        </code>
-      );
-    }
-    return (
-      <code
-        className="bg-black/30 px-1 py-0.5 rounded text-[0.82em] font-mono border border-border/20"
-        {...props}
-      >
-        {children}
-      </code>
-    );
-  },
-  a: ({ node: _node, ...props }) => (
-    <a
-      className="text-primary underline underline-offset-2 hover:text-primary/80"
-      target="_blank"
-      rel="noopener noreferrer"
-      {...props}
-    />
-  ),
-  blockquote: ({ node: _node, ...props }) => (
-    <blockquote
-      className="border-l-2 border-primary/30 pl-3 my-1.5 text-muted-foreground/80"
-      {...props}
-    />
-  ),
-  table: ({ node: _node, ...props }) => (
-    <table className="text-[11px] my-2 border-collapse w-full" {...props} />
-  ),
-  th: ({ node: _node, ...props }) => (
-    <th
-      className="border border-border/40 px-2 py-1 text-left font-semibold bg-muted/30"
-      {...props}
-    />
-  ),
-  td: ({ node: _node, ...props }) => (
-    <td className="border border-border/40 px-2 py-1 align-top" {...props} />
-  ),
-  strong: ({ node: _node, ...props }) => (
-    <strong className="font-semibold text-foreground" {...props} />
-  ),
-  em: ({ node: _node, ...props }) => <em className="italic" {...props} />,
-  hr: ({ node: _node, ...props }) => (
-    <hr className="border-border/30 my-2" {...props} />
-  ),
-};
-
-function MarkdownContent({ content }: { content: string }) {
-  return (
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
-      {content}
-    </ReactMarkdown>
-  );
-}
-
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = useCallback(async () => {
@@ -301,30 +222,22 @@ function CopyButton({ text }: { text: string }) {
     <button
       type="button"
       onClick={handleCopy}
-      className="absolute top-1 right-1 h-5 w-5 flex items-center justify-center rounded text-muted-foreground/40 hover:text-muted-foreground hover:bg-black/20 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-all touch-manipulation"
+      // Hover-gated from sm up only, same reasoning as the copy control in
+      // components/scanner/dns-records-panel.tsx: a touch device never
+      // produces hover, so below that this button was permanently invisible
+      // and copying a reply was impossible on a phone. The after: overlay
+      // widens the tap area from 20px to 44px without moving the 20px icon
+      // box, which would otherwise sit on top of the first line of the reply.
+      className="absolute top-1 right-1 h-5 w-5 flex items-center justify-center rounded text-muted-foreground/40 hover:text-muted-foreground hover:bg-muted after:absolute after:-inset-3 sm:after:hidden sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 transition-all touch-manipulation"
       title={copied ? "Copied" : "Copy"}
       aria-label={copied ? "Copied" : "Copy message"}
     >
       {copied ? (
-        <Check className="h-2.5 w-2.5 text-emerald-500" />
+        <Check className="h-2.5 w-2.5 text-[hsl(var(--success))]" />
       ) : (
         <Copy className="h-2.5 w-2.5" />
       )}
     </button>
-  );
-}
-
-function ThinkBlock({ content }: { content: string }) {
-  return (
-    <details className="group/thk mb-2">
-      <summary className="flex items-center gap-1.5 cursor-pointer text-[10px] text-muted-foreground/50 hover:text-muted-foreground/70 transition-colors list-none [&::-webkit-details-marker]:hidden [&::marker]:hidden select-none">
-        <ChevronDown className="h-2.5 w-2.5 transition-transform duration-150 group-open/thk:rotate-180" />
-        <span className="font-mono">View reasoning</span>
-      </summary>
-      <div className="mt-1.5 pl-3 border-l border-border/40 text-[10px] text-muted-foreground/50 leading-relaxed whitespace-pre-wrap font-mono">
-        {content}
-      </div>
-    </details>
   );
 }
 
@@ -634,6 +547,60 @@ export function ChatWidget() {
     mq.addEventListener("change", update);
     return () => mq.removeEventListener("change", update);
   }, []);
+
+  // How far to lift the launcher so it clears a bar pinned to the bottom of
+  // the viewport. The 56px launcher sat at bottom-5 right-5 on every route,
+  // which on a phone put it directly on top of the profile page's "Save
+  // Changes" button, and on the bottom-right of the pricing, checkout, contact
+  // and legal forms. A hard-coded route list would go stale the first time
+  // another page grows an action bar, so measure instead: probe what is
+  // painted under the launcher's own centre and step above anything fixed
+  // that is anchored to the bottom edge. Only runs while the launcher is the
+  // thing on screen (the open panel covers that corner itself).
+  const [barLift, setBarLift] = useState(0);
+  useEffect(() => {
+    if (isOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- resets the measurement when the panel opens and the probe stops running; gated on isOpen so it fires on the state change, not every render
+      setBarLift(0);
+      return;
+    }
+    const el = toggleRef.current;
+    if (!el) return;
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      const r = el.getBoundingClientRect();
+      const stack = document.elementsFromPoint(
+        r.left + r.width / 2,
+        r.top + r.height / 2,
+      );
+      let lift = 0;
+      for (const node of stack) {
+        if (node === el || node.contains(el)) continue;
+        if (getComputedStyle(node).position !== "fixed") continue;
+        const nr = node.getBoundingClientRect();
+        // Only a bar sitting on the bottom edge can collide with a
+        // bottom-anchored launcher; a fixed header or a full-screen scrim
+        // must not push it around.
+        if (nr.bottom < window.innerHeight - 24 || nr.top <= 0) continue;
+        lift = window.innerHeight - nr.top + 12;
+        break;
+      }
+      setBarLift((prev) => (prev === lift ? prev : lift));
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(measure);
+    };
+    schedule();
+    const observer = new MutationObserver(schedule);
+    observer.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener("resize", schedule);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", schedule);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [isOpen, pathname]);
 
   // Wipe in-memory state when the user signs out so no conversation data
   // lingers in the component (localStorage is cleared by clearAuthCache).
@@ -1341,12 +1308,14 @@ export function ChatWidget() {
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="relative shrink-0">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
+                {/* CONFIG_LOGO_URL, not a hardcoded /favicon.svg, so a
+                    self-hoster's own mark reaches the chat header too. */}
                 <img
-                  src="/favicon.svg"
+                  src={CONFIG_LOGO_URL}
                   alt={APP_NAME}
                   className="h-6 w-6 rounded-full"
                 />
-                <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-emerald-500 border-2 border-card" />
+                <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-[hsl(var(--success))] border-2 border-card" />
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-mono font-semibold tracking-tight leading-none">
@@ -1367,7 +1336,7 @@ export function ChatWidget() {
                 variant="ghost"
                 size="sm"
                 onClick={clearChat}
-                className="h-8 w-8 p-0 text-muted-foreground/50 hover:text-foreground touch-manipulation"
+                className="h-11 w-11 sm:h-8 sm:w-8 p-0 text-muted-foreground/50 hover:text-foreground touch-manipulation"
                 title="Clear conversation"
                 aria-label="Clear conversation"
               >
@@ -1381,7 +1350,7 @@ export function ChatWidget() {
                 variant="ghost"
                 size="sm"
                 onClick={() => setIsOpen(false)}
-                className="h-8 w-8 p-0 text-muted-foreground/50 hover:text-foreground touch-manipulation sm:hidden"
+                className="h-11 w-11 p-0 text-muted-foreground/50 hover:text-foreground touch-manipulation sm:hidden"
                 aria-label="Close"
               >
                 <X className="h-4 w-4" />
@@ -1413,9 +1382,22 @@ export function ChatWidget() {
             <>
               {/* Messages */}
               <div className="relative flex-1 min-h-0">
+                {/* role="log" + aria-live: the whole point of this panel is
+                    that replies arrive on their own, and without a live
+                    region a screen-reader user got no signal that anything
+                    had been said at all. "log" rather than "status" because
+                    the content is an accumulating transcript, not a single
+                    replaced value, and aria-relevant="additions text" keeps
+                    the token-by-token stream from re-reading the message
+                    every time it grows. */}
                 <div
                   ref={scrollRef}
                   onScroll={handleScroll}
+                  role="log"
+                  aria-live="polite"
+                  aria-relevant="additions text"
+                  aria-busy={isStreaming}
+                  aria-label={`Conversation with ${BOT_NAME}`}
                   className="h-full overflow-y-auto overscroll-contain px-3 py-4 space-y-3"
                   style={
                     { WebkitOverflowScrolling: "touch" } as React.CSSProperties
@@ -1493,14 +1475,30 @@ export function ChatWidget() {
               {/* Input area with autocomplete */}
               <div className="relative shrink-0">
                 {/* Slash command autocomplete */}
+                {/* The slash-command autocomplete is a real combobox popup:
+                    typing filters it and the arrow keys move a highlight
+                    that only existed as a background colour, so a screen
+                    reader was told nothing about the list, its length, or
+                    which entry was selected. listbox/option plus the
+                    aria-activedescendant on the textarea below is the
+                    documented pairing for exactly this control. */}
                 {cmdSuggestions.length > 0 && (
-                  <div className="absolute bottom-full left-3 right-3 mb-1 bg-card border border-border/60 rounded-lg shadow-lg shadow-black/30 overflow-hidden z-10">
+                  <div
+                    id="chat-cmd-list"
+                    role="listbox"
+                    aria-label="Slash commands"
+                    className="absolute bottom-full left-3 right-3 mb-1 bg-card border border-border/60 rounded-lg shadow-lg shadow-black/30 overflow-hidden z-10"
+                  >
                     {cmdSuggestions.map((c, i) => {
                       const needsAuth = c.requiresAuth && !isLoggedIn;
                       return (
                         <button
                           key={`${c.cmd}-${c.args ?? ""}-${i}`}
                           type="button"
+                          id={`chat-cmd-option-${i}`}
+                          role="option"
+                          aria-selected={i === cmdHighlight}
+                          aria-disabled={needsAuth || undefined}
                           onClick={() => {
                             if (needsAuth) return;
                             applySuggestion(c);
@@ -1547,6 +1545,16 @@ export function ChatWidget() {
                       }}
                       onKeyDown={handleKeyDown}
                       placeholder="Ask a question or type / for commands..."
+                      aria-label={`Message ${BOT_NAME}`}
+                      role="combobox"
+                      aria-expanded={cmdSuggestions.length > 0}
+                      aria-controls="chat-cmd-list"
+                      aria-autocomplete="list"
+                      aria-activedescendant={
+                        cmdSuggestions.length > 0
+                          ? `chat-cmd-option-${cmdHighlight}`
+                          : undefined
+                      }
                       disabled={isStreaming || isLoadingCmd}
                       maxLength={AI_CHAT_MAX_INPUT_LENGTH}
                       rows={1}
@@ -1612,14 +1620,30 @@ export function ChatWidget() {
       <button
         ref={toggleRef}
         onClick={() => setIsOpen((v) => !v)}
+        style={{
+          // 1.25rem is bottom-5. --vr-cookie-h is the cookie notice's measured
+          // height (components/shared/cookie-notice.tsx), the same offset the
+          // docs "Contents" trigger uses; barLift clears a page's own bottom
+          // action bar. Inline rather than an arbitrary Tailwind value because
+          // barLift is a runtime measurement.
+          bottom: `calc(1.25rem + var(--vr-cookie-h, 0px) + ${barLift}px)`,
+        }}
         className={cn(
-          "fixed bottom-5 right-5 z-50",
+          "fixed right-5 z-50",
           "h-14 w-14 rounded-full flex items-center justify-center",
           "bg-primary text-primary-foreground",
           "hover:bg-primary/90",
           "shadow-lg",
           "transition-all duration-150 active:scale-95 touch-manipulation",
-          "focus:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60",
+          // a11y (SC 2.4.7): no ring colour of its own. This was
+          // focus-visible:ring-primary/60, a utility-layer rule that beat the
+          // base-layer remap in app/globals.css and drew a 60%-opacity
+          // --primary ring, inset, on a --primary fill: about 1.0:1 in both
+          // themes, i.e. no visible focus at all on the support launcher that
+          // sits on every page. Dropping it lets .bg-primary:focus-visible
+          // re-point --ring to --primary-foreground (7.06:1 / 7.65:1) the way
+          // it already does for every other primary button.
+          "focus:outline-hidden",
           isOpen && "hidden sm:flex",
         )}
         aria-label={isOpen ? "Close chat" : `Open ${BOT_NAME}`}

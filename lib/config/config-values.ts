@@ -4,17 +4,19 @@
 // Self-hosters: Modify these values to customize your deployment.
 
 // GENERATED_CHECKS_LABEL comes from check-stats.generated.ts (written by
-// scripts/compile-checks-knowledge.mjs on every build/dev start, see its
+// scripts/knowledge/compile-checks-knowledge.mjs on every build/dev start, see its
 // roundDownForLabel) so the "N+ checks" marketing number can never drift from
 // the real, current check count the way a hand-typed "750+" eventually did. It
-// remains admin-overridable at runtime (see TOTAL_CHECKS_LABEL in
-// lib/config/registry.ts) -- this is only the shipped default.
+// is the value the app actually renders. TOTAL_CHECKS_LABEL in
+// lib/config/registry.ts is a build-tier entry, which means the admin panel
+// stores what you type there and nothing reads it: this generated label is
+// what ships. See the SettingTier doc comment in registry.ts.
 import { GENERATED_CHECKS_LABEL } from "./check-stats.generated";
 
 // App metadata - UPDATE THESE FOR YOUR DEPLOYMENT
 export const CONFIG_APP_NAME = "VulnRadar";
 export const CONFIG_APP_SLUG = "vulnradar";
-export const CONFIG_APP_VERSION = "3.7.2";
+export const CONFIG_APP_VERSION = "3.8.0";
 // The minimum database schema version this app requires.
 // App 3.0.0 requires schema v3.0.0 (ai_conversations + email unsubscribe).
 // 3.0.1 made no schema changes. 3.0.2 and 3.1.0 both added tables/columns
@@ -128,8 +130,18 @@ export const CONFIG_MIN_SCHEMA_VERSION = "3.0.0";
 // detected, MTA-STS mode read from the policy file. Scan results change, so a
 // patch bump.
 export const CONFIG_ENGINE_VERSION = "3.3.1";
-export const CONFIG_APP_DESCRIPTION =
-  "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.";
+// The most syndicated sentence in the product: it is the root meta
+// description, the OpenGraph and Twitter description, the PWA manifest
+// description, all three JSON-LD description fields, and the opening line of
+// llms.txt. So it is the sentence that represents VulnRadar in every search
+// result, every link unfurl, and every AI answer. It said "instant reports
+// with severity ratings, actionable fix guidance, and team collaboration
+// tools", which any competitor could have pasted verbatim; it now names the
+// three things that are actually distinctive (deterministic checks, the
+// response evidence, a finding ID stable across runs). Keep it under ~200
+// characters: search snippets truncate around 155, so the mechanism has to
+// land in the first clause.
+export const CONFIG_APP_DESCRIPTION = `Open-source web vulnerability scanner. Paste a URL, get ${GENERATED_CHECKS_LABEL} deterministic checks back with the response evidence, a stable finding ID, and the config line that fixes it.`;
 export const CONFIG_TOTAL_CHECKS_LABEL = GENERATED_CHECKS_LABEL;
 // Canonical production origin. This is the fallback when NEXT_PUBLIC_APP_URL is
 // not set at build time; it flows into every canonical tag, sitemap URL, robots
@@ -140,8 +152,23 @@ export const CONFIG_TOTAL_CHECKS_LABEL = GENERATED_CHECKS_LABEL;
 // Self-hosters override this with NEXT_PUBLIC_APP_URL for their own domain.
 export const CONFIG_APP_URL = "https://vulnradar.dev";
 export const CONFIG_APP_REPO = "VulnRadar/vulnradar.dev";
+// The three values below are VulnRadar's OWN community and store listings,
+// not empty placeholders. That matters because components/seo/structured-
+// data.tsx puts all three into the JSON-LD Organization node's `sameAs`
+// array, and sameAs is an assertion of identity, not a link: a fork that
+// ships these unchanged tells Google and every answer engine that its
+// organisation and VulnRadar's are the same entity, and points its own
+// users at someone else's Discord and someone else's extension listing.
+// That file's filter(Boolean) only drops a value that IS empty, so it
+// guards nothing while these are set.
+//
+// A fork or rebranded deployment overrides each one with the matching
+// NEXT_PUBLIC_* variable (see lib/config/constants.ts and .env.example), or
+// edits it here. There is no way to blank one through the environment,
+// since an empty variable falls back to these defaults: a fork that has no
+// Discord or no store listing sets the constant below to "" instead, which
+// makes the filter(Boolean) load-bearing again.
 export const CONFIG_DISCORD_INVITE_URL = "https://discord.gg/Y7R6hdGbNe";
-// Empty until a store listing is live for this fork/deployment.
 export const CONFIG_CHROME_WEB_STORE_URL =
   "https://chromewebstore.google.com/detail/nbmifpplhhejdfokaglpomdnbaifngfj";
 // Firefox AMO review passed 2026-08-15 -- see extension/README.md's status
@@ -222,17 +249,32 @@ export const CONFIG_SEO_KEYWORDS = [
 // Social card image, relative to the app root. 1200x630 is the size Twitter,
 // LinkedIn, Slack, and Discord all render without cropping. Static asset: edit
 // public/og-image.svg then run `node scripts/build-og-image.mjs` to refresh the
-// PNG. Admin-overridable at runtime via SEO_OG_IMAGE in lib/config/registry.ts.
+// PNG. SEO_OG_IMAGE in lib/config/registry.ts is a build-tier entry, so an
+// admin edit there is stored and never read: this constant is what ships.
 export const CONFIG_SEO_OG_IMAGE = "/og-image.png";
 export const CONFIG_SEO_OG_IMAGE_WIDTH = 1200;
 export const CONFIG_SEO_OG_IMAGE_HEIGHT = 630;
 
 // Social handles. Leave a value empty to omit that tag entirely.
+//
+// Empty here is deliberate, not an oversight: lib/seo/metadata.ts and
+// app/layout.tsx both drop the `twitter:site` tag rather than emit an empty
+// one, so an unset handle publishes nothing instead of publishing something
+// broken. The cost of leaving it unset is that X cards carry no "@handle"
+// attribution line and no account for a resharer to follow. Set it here (with
+// the leading @) or via NEXT_PUBLIC_SEO_TWITTER_HANDLE once the deployment
+// has an account.
 export const CONFIG_SEO_TWITTER_HANDLE = "";
 export const CONFIG_SEO_GITHUB_URL = `https://github.com/${CONFIG_APP_REPO}`;
 
 // Search Console / Bing / Yandex ownership tokens. Leave empty to skip.
-// Prefer setting these via env in a self-hosted deployment.
+//
+// Empty is the correct SHIPPED default whatever the deployment does: a token
+// proves ownership of one property, so a fork or a self-hoster publishing
+// VulnRadar's token in their own <head> would be claiming a site they do not
+// own. Set them per deployment via NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION and
+// NEXT_PUBLIC_BING_SITE_VERIFICATION (see lib/config/constants.ts), or verify
+// by DNS TXT record instead and leave these alone.
 export const CONFIG_SEO_GOOGLE_VERIFICATION = "";
 export const CONFIG_SEO_BING_VERIFICATION = "";
 
@@ -463,6 +505,30 @@ export const CONFIG_RATE_LIMIT_SIGNUP_WINDOW_MINUTES = 60;
 export const CONFIG_RATE_LIMIT_FORGOT_PASSWORD_ATTEMPTS = 3;
 export const CONFIG_RATE_LIMIT_FORGOT_PASSWORD_WINDOW_MINUTES = 10;
 
+// The two per-EMAIL counters that sit on top of the per-IP signup and
+// forgot-password limits above. These are the buckets that actually stop the
+// attack each route's own comment describes: an attacker rotating IPs through
+// a residential proxy pool defeats the per-IP limit entirely, but every
+// request still lands on the same normalized address here. They were inline
+// literals at the two call sites until AUDIT-014#magic-08, which meant an
+// operator responding to a signup- or reset-flood could tighten every limiter
+// in the admin panel and leave these two at their compiled values.
+export const CONFIG_RATE_LIMIT_SIGNUP_EMAIL_ATTEMPTS = 5;
+export const CONFIG_RATE_LIMIT_SIGNUP_EMAIL_WINDOW_MINUTES = 60;
+
+export const CONFIG_RATE_LIMIT_FORGOT_PASSWORD_EMAIL_ATTEMPTS = 3;
+export const CONFIG_RATE_LIMIT_FORGOT_PASSWORD_EMAIL_WINDOW_MINUTES = 60;
+
+// Per-user caps on domain verification. Adding a domain writes a row and mints
+// a verification token; verifying fires a live DNS lookup. Both are cheap
+// individually and unbounded without a gate. These numbers are the ones the
+// API docs quote, so they have to be editable for the docs to stay true.
+export const CONFIG_RATE_LIMIT_DOMAIN_ADD_ATTEMPTS = 20;
+export const CONFIG_RATE_LIMIT_DOMAIN_ADD_WINDOW_MINUTES = 60;
+
+export const CONFIG_RATE_LIMIT_DOMAIN_VERIFY_ATTEMPTS = 30;
+export const CONFIG_RATE_LIMIT_DOMAIN_VERIFY_WINDOW_MINUTES = 60;
+
 export const CONFIG_RATE_LIMIT_API_REQUESTS = 100;
 export const CONFIG_RATE_LIMIT_API_WINDOW_MINUTES = 60;
 
@@ -584,6 +650,38 @@ export const CONFIG_SUBDOMAIN_CACHE_TTL_HOURS = 4;
 // probing discovered subdomains.
 export const CONFIG_SUBDOMAIN_DISCOVERY_HTTP_CONCURRENCY = 25;
 
+// Network behaviour of the curated TCP port sweep (lib/scanner/port-scan.ts).
+// Every one of these was an inline literal until AUDIT-014#magic-12, which
+// left the two knobs a self-hoster most needs untunable: 1500 ms is aggressive
+// for a target a continent away (a filtered port on a slow path reports as
+// closed rather than as unknown), and 24 simultaneous connects across the
+// curated list is exactly the shape an IDS flags as a port sweep. Someone
+// scanning their own estate through a firewall they do not control needs to be
+// able to slow this down without editing the scanner.
+//
+// Worst case (every curated port filtered and silent) is
+// ceil(ports / CONCURRENCY) waves * CONNECT_TIMEOUT_MS, which must stay
+// comfortably under OVERALL_DEADLINE_MS. Lowering concurrency or raising the
+// connect timeout without also raising the deadline just means the sweep is
+// cut short and reports fewer ports; it can never fail a scan.
+export const CONFIG_PORT_SCAN_CONCURRENCY = 24;
+export const CONFIG_PORT_SCAN_CONNECT_TIMEOUT_MS = 1500;
+// After a successful connect (the port is open), how long to wait for a banner
+// before closing. Short so a chatty service is captured without holding the
+// socket open.
+export const CONFIG_PORT_SCAN_BANNER_READ_WINDOW_MS = 400;
+export const CONFIG_PORT_SCAN_OVERALL_DEADLINE_MS = 12_000;
+// Bytes of volunteered banner kept per open port. The sweep never writes to
+// the target, so this only bounds what a chatty service can push at us.
+export const CONFIG_PORT_SCAN_MAX_BANNER_BYTES = 256;
+// How long the owner-only refresh route reuses the last sweep for a host
+// instead of re-scanning. NOT admin-configurable (see NEVER_CONFIGURABLE in
+// registry.ts): components/scanner/port-scan-panel.tsx hardcodes the same
+// window to render "available to refresh in Xm", and that panel is client-side
+// with no access to the settings resolver, so a runtime edit here would leave
+// the button promising a fresh sweep the server would answer from cache.
+export const CONFIG_PORT_SCAN_CACHE_TTL_MS = 5 * 60 * 1000;
+
 // Caps for the link-following crawl-discovery endpoint (POST
 // /api/v3/scan/crawl/discover), distinct from the main crawl-scan job below.
 // How many pages the picker may FIND and list. Kept generous (not the per-plan
@@ -652,12 +750,76 @@ export const CONFIG_BULK_SCAN_CLIENT_URL_LIMIT = 10;
 // traffic sent to someone else's site.
 export const CONFIG_SCANNER_ACTIVE_PROBE_MAX_FORMS = 10;
 
+// SCORING THRESHOLDS - UPDATE IF NEEDED
+//
+// The tier boundaries of the two user-visible scoring engines: the
+// safe/caution/unsafe verdict (lib/scanner/safety-rating.ts) and the SSL
+// letter grade (lib/scanner/ssl-grade.ts). Both were bare inline comparisons
+// until AUDIT-014#magic-07, which meant an operator running against a fleet
+// where five missing hardening headers is normal had no way to stop every host
+// reading "caution" short of forking the scanner.
+//
+// NOT admin-configurable (see NEVER_CONFIGURABLE in registry.ts). Editing them
+// here and rebuilding is the supported path, and the reason is not laziness:
+// getSafetyRating runs in the BROWSER as well as on the server (it is imported
+// by components/scanner/scan-summary.tsx, components/shares/*, and
+// components/badge/badge-types.ts, which recompute the verdict from a scan's
+// stored findings), so a value only the server could resolve would have the
+// scan page and the badge/PDF/public-scans list disagreeing about the same
+// scan. The SSL cutoffs are server-side only, but the resulting letter is
+// stamped into every stored result, so retuning them at runtime would silently
+// put historical grades on a different scale from new ones.
+//
+// The weights each finding contributes (SEVERITY_WEIGHTS, the exploitable/
+// hardening multipliers, the confidence blend) stay as named constants in
+// safety-rating.ts: they describe how the engine reasons, not where an
+// operator's bar sits.
+
+// A weighted count of critical EXPLOITABLE findings at or above this makes a
+// site "unsafe". 1 means a single unverified critical is enough; AI-verified
+// false positives contribute less than 1 each, so several discounted criticals
+// can still add up to it.
+export const CONFIG_SAFETY_UNSAFE_CRITICAL_EXPLOIT_WEIGHT = 1;
+// Weighted count of HIGH exploitable findings that makes a site "unsafe".
+export const CONFIG_SAFETY_UNSAFE_HIGH_EXPLOIT_WEIGHT = 2;
+// Weighted count of MEDIUM exploitable findings that drops a site to
+// "caution".
+export const CONFIG_SAFETY_CAUTION_MEDIUM_EXPLOIT_WEIGHT = 3;
+// Weighted count of high/critical HARDENING findings (missing headers and
+// other defensive gaps, never evidence of an active vulnerability) that drops
+// a site to "caution". This is the one to raise on a fleet where a few missing
+// headers are normal and expected.
+export const CONFIG_SAFETY_CAUTION_HIGH_HARDENING_WEIGHT = 5;
+
+// Minimum 0-100 TLS score for each letter. A score below the D floor is an F.
+// Ordered strictly descending; computeSslGrade takes the first one the score
+// clears.
+export const CONFIG_SSL_GRADE_A_PLUS_MIN_SCORE = 95;
+export const CONFIG_SSL_GRADE_A_MIN_SCORE = 80;
+export const CONFIG_SSL_GRADE_B_MIN_SCORE = 65;
+export const CONFIG_SSL_GRADE_C_MIN_SCORE = 50;
+export const CONFIG_SSL_GRADE_D_MIN_SCORE = 35;
+
 // API CONFIGURATION
 
 export const CONFIG_API_KEY_PREFIX = "vr_live_";
 export const CONFIG_DEFAULT_API_KEY_DAILY_LIMIT = 50;
-export const CONFIG_API_CURRENT_VERSION = "v3";
-export const CONFIG_API_SUPPORTED_VERSIONS = ["v3"];
+// The single source of truth for the versioned API path. Everything else
+// derives from it rather than spelling "v3" out again: client-constants.ts
+// re-exports it as API_VERSION and builds every entry of the API route map
+// from that, and the two exports below feed the docs and the API reference
+// display. They used to be unconnected copies of the same fact, so bumping
+// the version that builds every API path left the docs still reading "v3".
+//
+// The direction of this dependency was inverted deliberately
+// (AUDIT-012#fe-15). API_VERSION used to be declared in client-constants.ts
+// and imported here, which was fine only while client-constants.ts imported
+// nothing. It now reads the CONFIG_* values in this file like every other
+// constants module does, so declaring the literal here is what keeps the two
+// from forming an import cycle.
+export const CONFIG_API_VERSION = "v3";
+export const CONFIG_API_CURRENT_VERSION = CONFIG_API_VERSION;
+export const CONFIG_API_SUPPORTED_VERSIONS = [CONFIG_API_VERSION];
 
 // AI CHAT CONFIGURATION
 //
@@ -757,10 +919,21 @@ export const CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS = 600_000;
 // stored on one of the caller's own scans), verify-batch takes an arbitrary
 // caller-supplied findings array -- with no cap, any authenticated caller
 // (including a free-tier API key) could force unbounded AI spend in a single
-// request. 50 is "a few dozen" with headroom: comfortably above a realistic
-// scan's finding count, and small enough that 50 findings / 10-per-chunk
-// (CONFIG_AI_VERIFY_CHUNK_SIZE) = 5 chunks finishes in a small fraction of
+// request. 50 findings / 10-per-chunk (CONFIG_AI_VERIFY_CHUNK_SIZE) = 5
+// chunks, which finishes in a small fraction of
 // CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS even in a slow-provider worst case.
+//
+// This is a spend cap, NOT a statement about how many findings a real scan
+// produces. It used to read "comfortably above a realistic scan's finding
+// count", which contradicted CONFIG_AI_VERIFY_CHUNK_SIZE's own comment forty
+// lines up ("can run past 100") and is simply not true: a real 57-finding
+// scan is what prompted the chunk and timeout raises above. Nothing
+// truncates at this number -- app/api/v3/scan/verify-batch/route.ts answers
+// 400 with the limit in the message, and the in-app "Verify with AI" action
+// goes through /api/v3/scan/verify, which is not capped here at all because
+// it only ever reads findings already stored on the caller's own scan.
+// Raise this if the API surface should accept larger batches; do not raise
+// it on the assumption that scans stay under it.
 export const CONFIG_AI_VERIFY_BATCH_MAX_FINDINGS = 50;
 
 // Characters of the live-probed page body sent to the AI verifier for
@@ -905,11 +1078,12 @@ export const CONFIG_GITHUB_REVIEW_MAX_FILE_BYTES = 300_000;
 //   3. Restart the server. If unset, the View Page button hides.
 //
 // Tunables:
-//   CONFIG_BROWSERBASE_MAX_TTL_SECONDS = 300 (5 min hard cap -- matches the
-//     product promise and prevents runaway sessions).
+//   CONFIG_BROWSERBASE_MAX_TTL_SECONDS = 360 (6 min hard cap: the user
+//     budget is 5 minutes and the extra 60 seconds absorbs session boot
+//     and viewer page load, so the person still gets their full five).
+//     This block used to say 300 while the line below set 360, which is
+//     the number an operator reads first and the one that was wrong.
 
-// 360s (6 min) gives a 60-second buffer over the 5-minute user budget to
-// account for session boot and viewer page load time.
 export const CONFIG_BROWSERBASE_MAX_TTL_SECONDS = 360;
 export const CONFIG_BROWSERBASE_DEFAULT_TTL_SECONDS = 360;
 
@@ -1010,7 +1184,18 @@ export const CONFIG_SCAN_SCREENSHOT_SETTLE_MS = 1_200;
 
 // Hard wall-clock ceiling on the whole capture (session open, navigate,
 // settle, grab). Past this the capture is abandoned and returns null.
-export const CONFIG_SCAN_SCREENSHOT_MAX_WAIT_MS = 30_000;
+//
+// Derived from its own parts rather than written as a flat 30_000, which
+// was six seconds of slack nobody could account for and, since the capture
+// is awaited inline, six extra seconds a user could be made to wait past
+// the whole rest of the scan. The budget is now exactly the navigation
+// timeout, plus the settle, plus 8s for the remote session to boot, so
+// changing either of the two above moves this with them instead of
+// silently eating into the session-boot allowance.
+export const CONFIG_SCAN_SCREENSHOT_MAX_WAIT_MS =
+  CONFIG_SCAN_SCREENSHOT_NAV_TIMEOUT_MS +
+  CONFIG_SCAN_SCREENSHOT_SETTLE_MS +
+  8_000;
 
 // BrowserBase session TTL for one capture. Short: the browser is only open
 // long enough to render one page and read one frame.
@@ -1274,6 +1459,19 @@ export const CONFIG_BILLING_FREE_BULK_SCAN_URLS = 5;
 export const CONFIG_BILLING_CORE_SUPPORTER_BULK_SCAN_URLS = 10;
 export const CONFIG_BILLING_PRO_SUPPORTER_BULK_SCAN_URLS = 25;
 export const CONFIG_BILLING_ELITE_SUPPORTER_BULK_SCAN_URLS = 100;
+
+// Pages one crawl may actually SELECT to scan, per plan. Distinct from the
+// deployment-wide discovery cap (CRAWL_DISCOVER_MAX_PAGES): the picker can
+// surface hundreds of pages, this is how many of them the caller may queue.
+// This was the only per-plan entitlement with no registry key at all
+// (AUDIT-011#drift-23), which meant it was missing from Admin > Settings >
+// Billing and from the /pricing comparison, and a user met it as a 403 rather
+// than as a plan difference. -1 (unlimited) is not meaningful here: a crawl of
+// unbounded width is a denial-of-service against our own scan pipeline.
+export const CONFIG_BILLING_FREE_CRAWL_PAGES = 25;
+export const CONFIG_BILLING_CORE_SUPPORTER_CRAWL_PAGES = 50;
+export const CONFIG_BILLING_PRO_SUPPORTER_CRAWL_PAGES = 100;
+export const CONFIG_BILLING_ELITE_SUPPORTER_CRAWL_PAGES = 250;
 
 // GitHub repo review: AI TOKENS allowed per fixed AI_USAGE_WINDOW_HOURS
 // window (the same window CONFIG_BILLING_*_AI_TOKENS_PER_WINDOW below

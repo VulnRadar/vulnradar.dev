@@ -43,6 +43,23 @@ vi.mock("@/lib/api/request-utils", () => ({
   getClientIp: vi.fn(async () => "127.0.0.1"),
 }));
 
+// Sending an invite is password-gated (send_staff_invite in
+// PASSWORD_GATED_ACTIONS): it grants the same privilege PATCH
+// /api/v3/admin's set_role does, so it requires the same re-auth. Only the
+// hash comparison is mocked; the route's own gate runs for real.
+const mockVerifyPassword = vi.fn(
+  async (plain: string, _hash: string) => plain === "correct-admin-pw",
+);
+vi.mock("@/lib/auth/password-hash", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/auth/password-hash")>();
+  return {
+    ...actual,
+    verifyPassword: (plain: string, hash: string) =>
+      mockVerifyPassword(plain, hash),
+  };
+});
+
 // staffInviteEmail runs for real (importOriginal) so the invite link built
 // from the plaintext token is exercised; only the outbound send is mocked.
 const mockSendEmail = vi.fn(async (_params: unknown) => {});
@@ -62,12 +79,19 @@ function queueRole(role: string | null, id = 1) {
   });
 }
 
-function postRequest(body: unknown): NextRequest {
+// Supplies the re-auth password unless a test overrides it, so the existing
+// cases keep testing what they were written to test.
+function postRequest(body: Record<string, unknown>): NextRequest {
   return new NextRequest("http://localhost/api/v3/admin/staff-invites", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ currentAdminPassword: "correct-admin-pw", ...body }),
   });
+}
+
+/** The route's password-hash lookup, queued right after requireAdmin's. */
+function queueAdminPassword() {
+  mockQuery.mockResolvedValueOnce({ rows: [{ password_hash: "hashed" }] });
 }
 
 function deleteRequest(body: unknown): NextRequest {
@@ -83,6 +107,7 @@ beforeEach(() => {
   mockGetSession.mockReset();
   mockLogAction.mockReset();
   mockSendEmail.mockReset();
+  mockVerifyPassword.mockClear();
   mockGetSession.mockResolvedValue({ userId: 1 });
 });
 
@@ -133,12 +158,50 @@ describe("POST /api/v3/admin/staff-invites — authorization", () => {
     );
     expect(res.status).toBe(400);
   });
+
+  // send_staff_invite is in PASSWORD_GATED_ACTIONS. Granting the same role
+  // through PATCH /api/v3/admin has always required re-auth; this route used
+  // to grant it on requireAdmin() alone.
+  it("rejects an invite sent without the admin's own password", async () => {
+    queueRole("admin");
+    const res = await POST(
+      new NextRequest("http://localhost/api/v3/admin/staff-invites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "new@example.com", role: "admin" }),
+      }),
+    );
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.error).toMatch(/re-enter your password/i);
+    // Only requireAdmin's lookup ran: nothing was written.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invite sent with the wrong password", async () => {
+    queueRole("admin");
+    queueAdminPassword();
+    const res = await POST(
+      postRequest({
+        email: "new@example.com",
+        role: "admin",
+        currentAdminPassword: "wrong-pw",
+      }),
+    );
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.error).toMatch(/password is incorrect/i);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
 });
 
 describe("POST /api/v3/admin/staff-invites — super_admin account protection", () => {
   it("refuses to invite an existing super_admin's email into a lower role (would silently demote them on accept)", async () => {
     queueRole("admin"); // caller: a plain admin, not super_admin
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // ensureStaffInvitesTable
+    queueAdminPassword();
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 9, role: "super_admin" }],
     }); // existingUser lookup finds the super_admin
@@ -151,6 +214,9 @@ describe("POST /api/v3/admin/staff-invites — super_admin account protection", 
     const json = await res.json();
     expect(json.error).toMatch(/cannot be modified/i);
     // Stops immediately: no pending-invite check, no INSERT, no email, no log.
+    // Three queries ran: requireAdmin's role lookup, the re-auth password
+    // lookup, and the existingUser lookup. No CREATE TABLE: the route no
+    // longer runs staff_invites' DDL per request (AUDIT-013#schema-02).
     expect(mockQuery).toHaveBeenCalledTimes(3);
     expect(mockLogAction).not.toHaveBeenCalled();
     expect(mockSendEmail).not.toHaveBeenCalled();
@@ -158,7 +224,7 @@ describe("POST /api/v3/admin/staff-invites — super_admin account protection", 
 
   it("still allows inviting an existing non-super_admin account (the guard only blocks super_admin targets)", async () => {
     queueRole("super_admin", 1);
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // ensureStaffInvitesTable
+    queueAdminPassword();
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 9, role: "moderator" }] }); // existingUser
     mockQuery.mockResolvedValueOnce({ rows: [] }); // existingInvite (none pending)
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 501 }] }); // INSERT ... RETURNING id
@@ -184,7 +250,7 @@ describe("POST /api/v3/admin/staff-invites — super_admin account protection", 
 describe("POST /api/v3/admin/staff-invites — invite lifecycle", () => {
   it("rejects when the target already holds that exact role", async () => {
     queueRole("admin");
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // ensureStaffInvitesTable
+    queueAdminPassword();
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 9, role: "moderator" }] });
 
     const res = await POST(
@@ -197,7 +263,7 @@ describe("POST /api/v3/admin/staff-invites — invite lifecycle", () => {
 
   it("rejects a duplicate pending invite for the same email", async () => {
     queueRole("admin");
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // ensureStaffInvitesTable
+    queueAdminPassword();
     mockQuery.mockResolvedValueOnce({ rows: [] }); // existingUser: no account yet
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 42 }] }); // existingInvite: pending
 
@@ -211,7 +277,7 @@ describe("POST /api/v3/admin/staff-invites — invite lifecycle", () => {
 
   it("creates the invite, stores only the hashed token, and audit-logs the action", async () => {
     queueRole("admin", 1);
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // ensureStaffInvitesTable
+    queueAdminPassword();
     mockQuery.mockResolvedValueOnce({ rows: [] }); // existingUser: no account
     mockQuery.mockResolvedValueOnce({ rows: [] }); // existingInvite: none pending
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 501 }] }); // INSERT ... RETURNING id
@@ -228,6 +294,8 @@ describe("POST /api/v3/admin/staff-invites — invite lifecycle", () => {
     expect(json.inviteId).toBe(501);
 
     // Email is normalized (trimmed + lowercased) before storage.
+    // Index 4, not 3: the re-auth password lookup runs between requireAdmin
+    // and the existingUser lookup.
     const insertCall = mockQuery.mock.calls[4];
     expect(insertCall[0]).toContain("INSERT INTO staff_invites");
     const [tokenHash, storedEmail, storedRole] = insertCall[1] as string[];
@@ -262,11 +330,11 @@ describe("POST /api/v3/admin/staff-invites — invite lifecycle", () => {
 
   it("does not fail the request if the invite email fails to send", async () => {
     queueRole("admin", 1);
-    mockQuery.mockResolvedValueOnce({ rows: [] });
-    mockQuery.mockResolvedValueOnce({ rows: [] });
-    mockQuery.mockResolvedValueOnce({ rows: [] });
-    mockQuery.mockResolvedValueOnce({ rows: [{ id: 501 }] });
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+    queueAdminPassword();
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // existingUser
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // existingInvite
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 501 }] }); // INSERT
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // inviterRes
     mockSendEmail.mockRejectedValueOnce(new Error("smtp down"));
 
     const res = await POST(
@@ -301,7 +369,6 @@ describe("GET /api/v3/admin/staff-invites — authorization", () => {
 describe("GET /api/v3/admin/staff-invites — listing", () => {
   it("returns only pending (unaccepted, unexpired) invites for an admin", async () => {
     queueRole("admin");
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // ensureStaffInvitesTable
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
@@ -323,7 +390,7 @@ describe("GET /api/v3/admin/staff-invites — listing", () => {
     expect(json.invites[0].email).toBe("pending@example.com");
 
     // The listing query filters to still-actionable rows only.
-    const selectCall = mockQuery.mock.calls[2];
+    const selectCall = mockQuery.mock.calls[1];
     expect(selectCall[0]).toContain("FROM staff_invites");
     expect(selectCall[0]).toContain("accepted_at IS NULL");
     expect(selectCall[0]).toContain("expires_at > NOW()");
@@ -331,7 +398,6 @@ describe("GET /api/v3/admin/staff-invites — listing", () => {
 
   it("returns an empty list when nothing is pending", async () => {
     queueRole("admin");
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // ensureStaffInvitesTable
     mockQuery.mockResolvedValueOnce({ rows: [] }); // no pending invites
 
     const res = await GET();
@@ -369,7 +435,6 @@ describe("DELETE /api/v3/admin/staff-invites — revoke", () => {
 
   it("deletes a pending invite row and audit-logs the revoke", async () => {
     queueRole("admin", 1);
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // ensureStaffInvitesTable
     mockQuery.mockResolvedValueOnce({
       rows: [{ email: "pending@example.com", role: "support" }],
     }); // DELETE ... RETURNING
@@ -380,7 +445,7 @@ describe("DELETE /api/v3/admin/staff-invites — revoke", () => {
     expect(json).toEqual({ success: true, id: 7 });
 
     // The revoke only ever removes a still-pending row.
-    const deleteCall = mockQuery.mock.calls[2];
+    const deleteCall = mockQuery.mock.calls[1];
     expect(deleteCall[0]).toContain("DELETE FROM staff_invites");
     expect(deleteCall[0]).toContain("accepted_at IS NULL");
     expect(deleteCall[1]).toEqual([7]);
@@ -396,7 +461,6 @@ describe("DELETE /api/v3/admin/staff-invites — revoke", () => {
 
   it("returns 404 when no pending invite matches that id", async () => {
     queueRole("admin");
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // ensureStaffInvitesTable
     mockQuery.mockResolvedValueOnce({ rows: [] }); // DELETE matched nothing
 
     const res = await DELETE(deleteRequest({ id: 999 }));

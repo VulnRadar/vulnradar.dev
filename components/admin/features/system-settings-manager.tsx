@@ -29,7 +29,7 @@ import {
   type ChangeItem,
 } from "@/components/shared/save-confirmation-modal";
 import { downloadBlob } from "@/lib/ui/download";
-import { APP_SLUG } from "@/lib/config/constants";
+import { APP_SLUG } from "@/lib/config/client-constants";
 import {
   ConfirmDialog,
   useUnsavedChangesWarning,
@@ -77,7 +77,13 @@ export function SystemSettingsManager() {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [resetTarget, setResetTarget] = useState<SettingKey | null>(null);
+  const [confirmCleanup, setConfirmCleanup] = useState(false);
   const [resettingKey, setResettingKey] = useState<SettingKey | null>(null);
+  // A failed load must not render every field at its shipped default with no
+  // "Customized" badges. That looks exactly like a clean install, so an admin
+  // edits from a false baseline and can silently revert real configuration
+  // across the whole product on the next save.
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [cleanupRunning, setCleanupRunning] = useState(false);
   const [cleanupResult, setCleanupResult] = useState<{
@@ -91,8 +97,13 @@ export function SystemSettingsManager() {
   // then scrolls the panel into view) plus the cleanup card below it.
   const tocItems: AdminTocItem[] = [
     ...SETTINGS_TABS.map((tab) => ({
-      id: "settings-panel",
+      // Unique id per tab: every entry used to be "settings-panel", which is
+      // the React key in AdminMobileToc, so tapping one tab could switch to
+      // another. targetId keeps the single scroll anchor.
+      id: `settings-tab-${tab}`,
+      targetId: "settings-panel",
       label: tab,
+      active: activeTab === tab,
       onSelect: () => setActiveTab(tab),
     })),
     { id: "settings-cleanup", label: "Database Cleanup" },
@@ -100,17 +111,23 @@ export function SystemSettingsManager() {
 
   const fetchEffective = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const { ok, data } = await callFeaturesApi({
         section: "system_settings",
         action: "effective",
       });
-      if (ok) {
-        setEffective((data.effective as EffectiveMap) ?? {});
-        setOverridden(new Set((data.overridden as SettingKey[]) ?? []));
+      if (!ok) {
+        setLoadError(
+          (data.error as string) || "Could not load the current settings.",
+        );
+        return;
       }
+      setEffective((data.effective as EffectiveMap) ?? {});
+      setOverridden(new Set((data.overridden as SettingKey[]) ?? []));
     } catch (error) {
       console.error("Error fetching effective settings:", error);
+      setLoadError("Could not load the current settings.");
     } finally {
       setLoading(false);
     }
@@ -368,7 +385,14 @@ export function SystemSettingsManager() {
     }
   };
 
+  // Confirmation was spent on the wrong action: resetting one setting to its
+  // default (trivially reversible, the value is right there) opened a dialog,
+  // while this button permanently deleted scan history and audit-log rows
+  // across every account in the database on a single click, from a card that
+  // looks like the rest of the settings page. Retention cleanup is not
+  // undoable, so it gets the confirmation instead.
   const runCleanup = async () => {
+    setConfirmCleanup(false);
     setCleanupRunning(true);
     setCleanupResult(null);
     try {
@@ -481,92 +505,139 @@ export function SystemSettingsManager() {
         </div>
 
         <CardContent className="p-3 sm:p-4">
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            {/* Below lg, the "Contents" drawer (AdminMobileTocTrigger below)
+          {loadError ? (
+            <div className="flex flex-col items-center gap-3 py-10 px-4 text-center">
+              <div className="p-2.5 rounded-lg bg-destructive/10">
+                <AlertTriangle
+                  className="h-5 w-5 text-destructive"
+                  aria-hidden="true"
+                />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  Couldn&apos;t load system settings
+                </p>
+                <p className="text-xs text-muted-foreground mt-1 max-w-md">
+                  {loadError} The editor is hidden rather than shown filled with
+                  shipped defaults, because saving from that state would wipe
+                  your real overrides.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 border-border/40"
+                onClick={fetchEffective}
+                disabled={loading}
+              >
+                <RefreshCw
+                  className={cn("h-4 w-4", loading && "animate-spin")}
+                  aria-hidden="true"
+                />
+                Try again
+              </Button>
+            </div>
+          ) : (
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+              {/* Below lg, the "Contents" drawer (AdminMobileTocTrigger below)
                 already switches tabs, so this strip would just be a second,
                 wrapping copy of the same nav competing for space above the
                 fold. */}
-            <TabsList className="hidden lg:flex h-auto flex-wrap justify-start gap-1 bg-muted/50 p-1">
-              {SETTINGS_TABS.map((tab) => (
-                <TabsTrigger
-                  key={tab}
-                  value={tab}
-                  className="gap-1.5 text-xs sm:text-sm"
-                >
-                  {tab}
-                  {changeCountByTab[tab] > 0 && (
-                    <span className="inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold">
-                      {changeCountByTab[tab]}
-                    </span>
-                  )}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+              <TabsList className="hidden lg:flex h-auto flex-wrap justify-start gap-1 bg-muted/50 p-1">
+                {SETTINGS_TABS.map((tab) => (
+                  <TabsTrigger
+                    key={tab}
+                    value={tab}
+                    className="gap-1.5 text-xs sm:text-sm"
+                  >
+                    {tab}
+                    {changeCountByTab[tab] > 0 && (
+                      <span className="inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold">
+                        {changeCountByTab[tab]}
+                      </span>
+                    )}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
 
-            {SETTINGS_TABS.map((tab) => (
-              <TabsContent key={tab} value={tab} className="mt-4">
-                {tabHasBuildTierFields(tab) && (
-                  <div className="flex items-start gap-3 p-3 mb-3 rounded-lg border border-primary/20 bg-primary/5">
-                    <Info
-                      className="h-4 w-4 text-primary shrink-0 mt-0.5"
-                      aria-hidden="true"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      These settings are baked into the built pages. Saving here
-                      updates the database immediately, but the change only
-                      shows up after the next build and deploy.
-                    </p>
-                  </div>
-                )}
-                {loading ? (
-                  <SettingsFieldsSkeleton />
-                ) : (
-                  <div className="rounded-lg border border-border/40 overflow-hidden">
-                    {(() => {
-                      const tabFields = FIELDS_BY_GROUP[tab] ?? [];
-                      const defByKey = Object.fromEntries(tabFields);
-                      const clusters = clusterSettingKeys(
-                        tabFields.map(([key]) => key),
-                      );
-                      return clusters.map((cluster, ci) => (
-                        <div
-                          key={cluster.label ?? `_${ci}`}
-                          className={cn(ci > 0 && "border-t border-border/40")}
-                        >
-                          {cluster.label && (
-                            <p className="px-4 sm:px-5 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 bg-muted/20">
-                              {cluster.label}
-                            </p>
-                          )}
-                          <div className="divide-y divide-border/40">
-                            {cluster.keys.map((key) => (
-                              <SettingField
-                                key={key}
-                                fieldKey={key}
-                                def={defByKey[key]}
-                                value={
-                                  (changes[key] ??
-                                    effectiveValueFor(
-                                      key,
-                                      effective,
-                                    )) as FieldValue
-                                }
-                                isOverridden={overridden.has(key)}
-                                isPending={key in changes}
-                                isResetting={resettingKey === key}
-                                onChange={handleFieldChange}
-                                onResetRequest={setResetTarget}
-                              />
-                            ))}
+              {SETTINGS_TABS.map((tab) => (
+                <TabsContent key={tab} value={tab} className="mt-4">
+                  {tabHasBuildTierFields(tab) && (
+                    <div className="flex items-start gap-3 p-3 mb-3 rounded-lg border border-primary/20 bg-primary/5">
+                      <Info
+                        className="h-4 w-4 text-primary shrink-0 mt-0.5"
+                        aria-hidden="true"
+                      />
+                      {/* This used to read "the change only shows up after the
+                        next build and deploy", which is false: no build step
+                        reads system_settings, so a rebuild picks up the
+                        compiled constant again and the saved row is ignored.
+                        The registry's own doc comment (lib/config/registry.ts,
+                        SettingTier) records the same rule. */}
+                      <p className="text-xs text-muted-foreground">
+                        These settings are compiled into the app. Saving one
+                        records it in the database and it shows up here, but the
+                        running app keeps using the value from
+                        lib/config/config-values.ts (or its environment
+                        override), and a rebuild will not change that. To change
+                        one for real, edit that file or the env var named in the
+                        field&apos;s help text, then rebuild. APP_URL is the one
+                        exception: OAuth sign-in reads the saved value live.
+                      </p>
+                    </div>
+                  )}
+                  {loading ? (
+                    <SettingsFieldsSkeleton />
+                  ) : (
+                    <div className="rounded-lg border border-border/40 overflow-hidden">
+                      {(() => {
+                        const tabFields = FIELDS_BY_GROUP[tab] ?? [];
+                        const defByKey = Object.fromEntries(tabFields);
+                        const clusters = clusterSettingKeys(
+                          tabFields.map(([key]) => key),
+                        );
+                        return clusters.map((cluster, ci) => (
+                          <div
+                            key={cluster.label ?? `_${ci}`}
+                            className={cn(
+                              ci > 0 && "border-t border-border/40",
+                            )}
+                          >
+                            {cluster.label && (
+                              <p className="px-4 sm:px-5 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 bg-muted/20">
+                                {cluster.label}
+                              </p>
+                            )}
+                            <div className="divide-y divide-border/40">
+                              {cluster.keys.map((key) => (
+                                <SettingField
+                                  key={key}
+                                  fieldKey={key}
+                                  def={defByKey[key]}
+                                  value={
+                                    (changes[key] ??
+                                      effectiveValueFor(
+                                        key,
+                                        effective,
+                                      )) as FieldValue
+                                  }
+                                  isOverridden={overridden.has(key)}
+                                  isPending={key in changes}
+                                  isResetting={resettingKey === key}
+                                  onChange={handleFieldChange}
+                                  onResetRequest={setResetTarget}
+                                />
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      ));
-                    })()}
-                  </div>
-                )}
-              </TabsContent>
-            ))}
-          </Tabs>
+                        ));
+                      })()}
+                    </div>
+                  )}
+                </TabsContent>
+              ))}
+            </Tabs>
+          )}
         </CardContent>
       </Card>
 
@@ -602,7 +673,7 @@ export function SystemSettingsManager() {
               variant="outline"
               size="sm"
               className="h-8 gap-1.5 border-border/40 shrink-0"
-              onClick={runCleanup}
+              onClick={() => setConfirmCleanup(true)}
               disabled={cleanupRunning}
             >
               {cleanupRunning ? (
@@ -659,9 +730,11 @@ export function SystemSettingsManager() {
         </CardContent>
       </Card>
 
-      {/* Floating save bar, scoped to the active tab's pending changes */}
+      {/* Floating save bar, scoped to the active tab's pending changes.
+          bottom offsets by --vr-cookie-h so the z-60 cookie notice does not
+          cover it, same as /profile's save bar. */}
       {hasTabChanges && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pointer-events-none">
+        <div className="fixed bottom-(--vr-cookie-h,0px) left-0 right-0 z-50 p-4 pointer-events-none transition-[bottom] duration-300">
           <div className="max-w-lg mx-auto pointer-events-auto">
             <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl bg-card border border-border/50 shadow-lg backdrop-blur-xs">
               <div className="flex items-center gap-3">
@@ -752,6 +825,16 @@ export function SystemSettingsManager() {
         variant="destructive"
       />
 
+      {/* Retention cleanup: irreversible and database-wide, so it confirms. */}
+      <ConfirmDialog
+        open={confirmCleanup}
+        title="Run retention cleanup now?"
+        description="This permanently deletes scan history and audit-log rows that are past their retention window, across every account on this instance, not just yours. It cannot be undone. Cleanup also runs on its own schedule, so this is only needed to force it early."
+        confirmLabel="Delete expired rows"
+        onConfirm={runCleanup}
+        onCancel={() => setConfirmCleanup(false)}
+      />
+
       {/* Reset-to-default confirmation */}
       <ConfirmDialog
         open={resetTarget !== null}
@@ -771,6 +854,7 @@ export function SystemSettingsManager() {
       <AdminMobileTocTrigger
         isOpen={tocOpen}
         onToggle={() => setTocOpen((o) => !o)}
+        raised={hasTabChanges}
       />
       <AdminMobileToc
         title="System Settings"

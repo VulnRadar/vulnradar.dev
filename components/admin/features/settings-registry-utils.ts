@@ -50,7 +50,11 @@ export const FIELDS_BY_GROUP: Record<
   return buckets;
 })();
 
-/** True when any field on this tab is build-tier (applies on next deploy). */
+/**
+ * True when any field on this tab is build-tier, meaning the running app
+ * reads the compiled constant rather than the saved row. Not "applies on the
+ * next deploy": no build step reads system_settings at all.
+ */
 export function tabHasBuildTierFields(group: string): boolean {
   return (FIELDS_BY_GROUP[group] ?? []).some(([, def]) => def.tier === "build");
 }

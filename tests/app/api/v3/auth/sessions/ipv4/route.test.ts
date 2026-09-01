@@ -46,6 +46,7 @@ vi.mock("next/headers", () => ({
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 const { AUTH_SESSION_COOKIE_NAME } = await import("@/lib/config/constants");
 const { signIpv4Token } = await import("@/lib/auth/ipv4-echo-token");
+const { hashSessionId } = await import("@/lib/auth/auth");
 const { POST } = await import("@/app/api/v3/auth/sessions/ipv4/route");
 
 const URL = "http://localhost/api/v3/auth/sessions/ipv4";
@@ -76,7 +77,9 @@ describe("POST /api/v3/auth/sessions/ipv4", () => {
     expect(res.status).toBe(200);
     expect(json.success).toBe(true);
     expect(json.ip).toBe("203.0.113.9");
-    expect(updateCalls).toEqual([["203.0.113.9", "sess-1", 42]]);
+    // The UPDATE keys on the digest of the cookie, never the cookie itself
+    // (AUDIT-012#auth-07).
+    expect(updateCalls).toEqual([["203.0.113.9", hashSessionId("sess-1"), 42]]);
   });
 
   it("rejects a forged/invalid token without writing", async () => {

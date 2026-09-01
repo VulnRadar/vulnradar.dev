@@ -1,7 +1,14 @@
-﻿import { NextResponse } from "next/server";
+﻿import { randomUUID } from "node:crypto";
+import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
+import { MAX_REQUEST_BODY_BYTES } from "@/lib/api/request-limits";
+import {
+  REQUEST_ID_HEADER,
+  normalizeRequestId,
+  runWithRequestId,
+} from "@/lib/database/request-context";
 
 /**
  * JSON response helpers
@@ -168,12 +175,12 @@ export const Validate = {
 };
 
 /**
- * L-10: Hard cap on JSON request bodies. Without this, a client can
- * send a multi-GB JSON body that the server will buffer before
- * rejecting. 1 MiB is more than enough for our route shapes (the
- * largest legitimate payload is a few KB).
+ * L-10: Hard cap on JSON request bodies. The value and the reasoning now live
+ * in lib/api/request-limits.ts, because middleware.ts enforces the same cap
+ * for every /api/ request and cannot import this module (edge runtime, and
+ * this one pulls in the pool). The check below is the second line, not the
+ * only one. ref: AUDIT-013#dup-04
  */
-const MAX_REQUEST_BODY_BYTES = 1 * 1024 * 1024;
 
 /**
  * Request body parsing with error handling
@@ -259,16 +266,39 @@ export async function safeQuery<T = unknown>(
  * Returns a function with the same shape as the original, so it works
  * for routes that take just `(req)`, routes that take `(req, ctx)` for
  * dynamic params, and routes that take `(_req, { params })`.
+ *
+ * AUDIT-012#obs-07: this is also where a request's correlation id enters
+ * Node-side context. middleware.ts mints the id and forwards it as the
+ * `x-request-id` request header; it cannot hand over an AsyncLocalStorage
+ * because it runs on the Edge runtime and this does not, so the header is
+ * the only channel and something on the Node side has to re-enter it.
+ * Doing it in this wrapper (rather than per route) means every
+ * console.error a handler triggers, at any depth, tags its
+ * system_error_logs row with the same id -- which is the whole point:
+ * route -> executeScan -> a check -> safeFetch used to produce four
+ * unrelated-looking rows.
  */
 export function withErrorHandling<TArgs extends unknown[]>(
   handler: (...args: TArgs) => Promise<NextResponse>,
 ): (...args: TArgs) => Promise<NextResponse> {
   return async (...args: TArgs) => {
-    try {
-      return await handler(...args);
-    } catch (error) {
-      console.error("[API Error]", error);
-      return ApiResponse.serverError("An unexpected error occurred");
-    }
+    // Falls back to a locally minted id when the header is absent or
+    // malformed (a route reached outside the middleware matcher, or an
+    // internal caller invoking a wrapped handler directly). The row is
+    // still correlated with its siblings; it just is not one the client
+    // was told about.
+    const first = args[0];
+    const requestId =
+      (first instanceof Request
+        ? normalizeRequestId(first.headers.get(REQUEST_ID_HEADER))
+        : null) ?? randomUUID();
+    return runWithRequestId(requestId, async () => {
+      try {
+        return await handler(...args);
+      } catch (error) {
+        console.error("[API Error]", error);
+        return ApiResponse.serverError("An unexpected error occurred");
+      }
+    });
   };
 }

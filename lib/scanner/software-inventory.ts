@@ -1025,57 +1025,97 @@ export async function correlateSoftwareCves(
     const entries: SoftwareInventoryEntry[] = [];
     const findings: Vulnerability[] = [];
 
-    for (const item of items) {
+    // Plan every item first, then run the live lookups concurrently.
+    //
+    // The lookups used to be issued from inside this walk with a bare `await`
+    // per item, so a page advertising nginx + PHP + WordPress (exactly what
+    // CVE_CATALOG is built for) paid three full NVD round trips back to back,
+    // and the MAX_CVE_LOOKUPS cap put the worst case at 8 x the threat-intel
+    // timeout of pure sequential wall clock, on the scan's critical path,
+    // after every check had already finished. Planning first also makes the
+    // cap and the cancel check deterministic: both are decided in item order
+    // here rather than depending on which request happened to return first.
+    // ref: AUDIT-012#perf-01
+    type Slot = {
+      item: SoftwareItem;
+      /** Resolved without a network call: ineligible item, cache hit, cancelled, or capped. */
+      outcome?: CorrelationOutcome;
+      /** Set only when this slot still needs a live lookup. */
+      pending?: { lookup: CveLookup; key: string };
+    };
+
+    const slots: Slot[] = items.map((item) => {
       const lookup =
         item.version && item.category !== "library"
           ? CVE_CATALOG[item.name.toLowerCase()]
           : undefined;
 
       // Not eligible for correlation: list it as-is (name/version/category).
-      if (!lookup || !externalAllowed) {
-        entries.push({ ...item });
-        continue;
-      }
+      if (!lookup || !externalAllowed) return { item };
 
       const key = cacheKey(host, item);
-      let outcome = readCache(key);
+      const cached = readCache(key);
+      if (cached !== undefined) return { item, outcome: cached };
 
-      if (outcome === undefined) {
-        if (cancelSignal?.aborted) {
-          entries.push({ ...item, cveStatus: "unknown" });
-          continue;
+      if (cancelSignal?.aborted)
+        return { item, outcome: { status: "unknown" } };
+
+      if (lookupsUsed >= MAX_CVE_LOOKUPS) {
+        if (!cappedLogged) {
+          console.error(
+            `[${APP_NAME}] software-inventory: reached the ${MAX_CVE_LOOKUPS}-lookup cap for ${host}; remaining version-bearing items were listed but not CVE-correlated.`,
+          );
+          cappedLogged = true;
         }
-        if (lookupsUsed >= MAX_CVE_LOOKUPS) {
-          if (!cappedLogged) {
-            console.error(
-              `[${APP_NAME}] software-inventory: reached the ${MAX_CVE_LOOKUPS}-lookup cap for ${host}; remaining version-bearing items were listed but not CVE-correlated.`,
-            );
-            cappedLogged = true;
-          }
-          entries.push({ ...item, cveStatus: "unknown" });
-          continue;
-        }
-        lookupsUsed++;
-        outcome = lookup.osv
-          ? await correlateViaOsv(
-              lookup.osv.ecosystem,
-              lookup.osv.package,
-              item.version!,
-            )
-          : lookup.nvd
-            ? await correlateViaNvd(
-                lookup.nvd.vendor,
-                lookup.nvd.product,
-                item.version!,
-                timeoutMs,
-              )
-            : { status: "unknown" };
-        writeCache(key, outcome);
+        return { item, outcome: { status: "unknown" } };
       }
+      lookupsUsed++;
+      return { item, pending: { lookup, key } };
+    });
 
+    // Bounded concurrency: MAX_CVE_LOOKUPS is 8, so four at a time drains the
+    // worst case in two waves without turning the scan into a burst against
+    // NVD, which rate-limits unauthenticated callers.
+    const CVE_LOOKUP_CONCURRENCY = 4;
+    const pendingSlots = slots.filter((s) => s.pending);
+    let nextPending = 0;
+    const workers = Array.from(
+      { length: Math.min(CVE_LOOKUP_CONCURRENCY, pendingSlots.length) },
+      async () => {
+        while (nextPending < pendingSlots.length) {
+          const slot = pendingSlots[nextPending++];
+          const { lookup, key } = slot.pending!;
+          const outcome: CorrelationOutcome = lookup.osv
+            ? await correlateViaOsv(
+                lookup.osv.ecosystem,
+                lookup.osv.package,
+                slot.item.version!,
+              )
+            : lookup.nvd
+              ? await correlateViaNvd(
+                  lookup.nvd.vendor,
+                  lookup.nvd.product,
+                  slot.item.version!,
+                  timeoutMs,
+                )
+              : { status: "unknown" };
+          writeCache(key, outcome);
+          slot.outcome = outcome;
+        }
+      },
+    );
+    await Promise.all(workers);
+
+    for (const slot of slots) {
+      const outcome = slot.outcome;
+      // No outcome at all means the item was never eligible for correlation.
+      if (!outcome) {
+        entries.push({ ...slot.item });
+        continue;
+      }
       if (outcome.status === "vulnerable") {
         const entry: SoftwareInventoryEntry = {
-          ...item,
+          ...slot.item,
           cveStatus: "vulnerable",
           cve: {
             count: outcome.match.count,
@@ -1087,7 +1127,7 @@ export async function correlateSoftwareCves(
         entries.push(entry);
         findings.push(buildSoftwareFinding(host, entry));
       } else {
-        entries.push({ ...item, cveStatus: outcome.status });
+        entries.push({ ...slot.item, cveStatus: outcome.status });
       }
     }
 

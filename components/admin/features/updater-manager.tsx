@@ -18,6 +18,7 @@ import {
   Info,
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
+import { useVisibleInterval } from "@/lib/hooks/use-visible-interval";
 
 interface UpdaterStatus {
   current: string;
@@ -106,14 +107,20 @@ export function UpdaterManager() {
   // disabled). The request itself worked fine; there was just no way to
   // tell it had, especially when the status hadn't actually changed.
   const [refreshing, setRefreshing] = useState(false);
+  // With status still null the panel asserts "cosign: Not installed" and
+  // "tar: Not found", which are claims about the host, not "unknown". Track
+  // the failure so the row can say so instead.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [job, setJob] = useState<UpdaterJob | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch("/api/v3/admin/updater/status");
-      if (res.ok) {
+      if (!res.ok) {
+        setLoadFailed(true);
+      } else {
+        setLoadFailed(false);
         const data = (await res.json()) as UpdaterStatus;
         setStatus(data);
         if (data.activeJobId) {
@@ -125,7 +132,7 @@ export function UpdaterManager() {
         }
       }
     } catch {
-      /* ignore */
+      setLoadFailed(true);
     }
     setLoading(false);
   }, []);
@@ -152,12 +159,6 @@ export function UpdaterManager() {
       if (res.ok) {
         const data = (await res.json()) as { job: UpdaterJob };
         setJob(data.job);
-        if (data.job.status === "completed" || data.job.status === "failed") {
-          if (pollRef.current) {
-            clearInterval(pollRef.current);
-            pollRef.current = null;
-          }
-        }
       }
     } catch {
       /* ignore, retry on next tick */
@@ -168,12 +169,20 @@ export function UpdaterManager() {
     if (!job?.id) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- poll-on-job-change: pollJob's setState calls only fire after its async request resolves, not synchronously in this effect
     pollJob(job.id);
-    pollRef.current = setInterval(() => pollJob(job.id), 2000);
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job?.id]);
+
+  // Slows down rather than stopping while the tab is hidden: an update job is
+  // in flight and this poll is how the panel learns it finished or failed.
+  // Polls only while the job is still running. A terminal status drops the
+  // delay to null, which is how this hook expresses 'stop', replacing the
+  // manual clearInterval that used to live inside pollJob.
+  const jobId = job?.id;
+  const jobActive =
+    Boolean(jobId) && job?.status !== "completed" && job?.status !== "failed";
+  useVisibleInterval(() => jobId && pollJob(jobId), jobActive ? 2000 : null, {
+    hiddenDelayMs: 10_000,
+  });
 
   const startUpdate = async (password: string) => {
     try {
@@ -285,6 +294,18 @@ export function UpdaterManager() {
         </div>
 
         <CardContent className="p-4 sm:p-5 space-y-5">
+          {!status && loadFailed && (
+            <div className="flex items-start gap-3 p-3 rounded-lg border border-destructive/30 bg-destructive/10">
+              <AlertTriangle
+                className="h-4 w-4 text-destructive shrink-0 mt-0.5"
+                aria-hidden="true"
+              />
+              <p className="text-sm text-destructive">
+                Couldn&apos;t load updater status. Everything below is unknown,
+                not absent. Use Refresh to try again.
+              </p>
+            </div>
+          )}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
@@ -305,7 +326,11 @@ export function UpdaterManager() {
                 cosign
               </p>
               <p className="font-medium mt-0.5">
-                {status?.cosignAvailable ? "Available" : "Not installed"}
+                {!status
+                  ? "Unknown"
+                  : status.cosignAvailable
+                    ? "Available"
+                    : "Not installed"}
               </p>
             </div>
             <div>
@@ -313,7 +338,11 @@ export function UpdaterManager() {
                 tar
               </p>
               <p className="font-medium mt-0.5">
-                {status?.tarAvailable ? "Available" : "Not found"}
+                {!status
+                  ? "Unknown"
+                  : status.tarAvailable
+                    ? "Available"
+                    : "Not found"}
               </p>
             </div>
           </div>
@@ -330,7 +359,7 @@ export function UpdaterManager() {
             </a>
           )}
 
-          {!status?.cosignAvailable && (
+          {status && !status.cosignAvailable && (
             <p className="text-xs text-muted-foreground flex items-start gap-1.5">
               <AlertTriangle
                 className="h-3.5 w-3.5 shrink-0 mt-0.5"

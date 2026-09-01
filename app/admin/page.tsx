@@ -1,18 +1,12 @@
 "use client";
 
-import React, {
-  useState,
-  useEffect,
-  useCallback,
-  useMemo,
-  useRef,
-} from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import dynamic from "next/dynamic";
 import type { LucideIcon } from "lucide-react";
 import {
   Users,
   ShieldCheck,
   ShieldOff,
-  Search,
   Shield,
   Globe,
   Settings,
@@ -22,17 +16,10 @@ import {
   RefreshCw,
   History,
   Ban,
-  Eye,
   MessageCircle,
   LifeBuoy,
   Activity,
-  Lock,
-  UserX,
   KeyRound,
-  Webhook,
-  Calendar,
-  Zap,
-  UserPlus,
   Share2,
   DownloadCloud,
   DatabaseBackup,
@@ -42,64 +29,33 @@ import {
   Wallet,
   Mail,
   Loader2,
+  ServerCrash,
 } from "lucide-react";
-import { IPRulesManager } from "@/components/admin/features/ip-rules-manager";
-import { BlockedDataManager } from "@/components/admin/features/blocked-data-manager";
-import { ContentManager } from "@/components/admin/features/content-manager";
-import { SecurityAlertsManager } from "@/components/admin/features/security-alerts-manager";
-import { SystemSettingsManager } from "@/components/admin/features/system-settings-manager";
-import { MassEmailManager } from "@/components/admin/features/mass-email-manager";
-import { AIChatsManager } from "@/components/admin/features/ai-chats-manager";
-import { SupportInbox } from "@/components/admin/features/support-inbox";
-import { UpdaterManager } from "@/components/admin/features/updater-manager";
-import { BackupManager } from "@/components/admin/features/backup-manager";
-import { ErrorLogsManager } from "@/components/admin/features/error-logs-manager";
-import { EmailLogsManager } from "@/components/admin/features/email-logs-manager";
-import { EngineFeedbackManager } from "@/components/admin/features/engine-feedback-manager";
-import { QueueStatusManager } from "@/components/admin/features/queue-status-manager";
-import { BillingOverviewManager } from "@/components/admin/features/billing-overview-manager";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Header } from "@/components/scanner/header";
 import { Footer } from "@/components/scanner/footer";
 import { cn } from "@/lib/ui/utils";
-import { getPlanById } from "@/lib/billing/catalog";
-import { PaginationControl } from "@/components/ui/pagination-control";
 import {
-  STAFF_ROLES,
-  STAFF_ROLE_LABELS,
   STAFF_ROLE_HIERARCHY,
-  ROLE_BADGE_STYLES,
   API,
   ROUTES,
-} from "@/lib/config/constants";
+} from "@/lib/config/client-constants";
 import {
   getAllQueryParams,
   setQueryParam,
   setQueryParams,
 } from "@/lib/ui/url-state";
-import { NotificationsManager } from "@/components/admin/notifications";
 import {
-  EmptyState,
-  SortableHeader,
-  TableScrollArea,
-  StatBar,
+  StatBarSkeleton,
+  DataTableSkeleton,
+  HealthCardSkeleton,
   AdminMobileToc,
   AdminMobileSectionTrigger,
   type AdminTocItem,
   type SortDirection,
 } from "@/components/admin/shared";
 import { AdminSkeleton } from "@/components/admin/admin-skeleton";
+import { ACTION_LABELS } from "@/components/admin/config";
 import {
   hasStaffPermission,
   isStaffRole,
@@ -108,8 +64,17 @@ import {
 } from "@/lib/auth/permissions-client";
 import { useAuth } from "@/components/providers/auth-provider";
 import { resolveAdminGate } from "@/lib/admin/admin-gate";
+import {
+  buildHealthRows,
+  worstHealthState,
+  type HealthMetrics,
+} from "@/components/admin/features/health-overview-utils";
+
+// Matches queue-status-manager.tsx's own poll interval.
+const HEALTH_POLL_INTERVAL_MS = 45_000;
 
 const VALID_TABS = [
+  "overview",
   "users",
   "audit",
   "admins",
@@ -143,13 +108,178 @@ import type {
   Team,
   TeamMember,
 } from "@/components/admin/types";
-import { UserAvatar, Toast as AdminToast } from "@/components/admin/shared";
-import { UserDetailPanel } from "@/components/admin/users";
-import { AuditLog } from "@/components/admin/audit";
-import { StaffList } from "@/components/admin/staff";
-import { TeamsList } from "@/components/admin/teams";
+import { Toast as AdminToast } from "@/components/admin/shared";
+// Response envelopes for the admin API. Annotating each fetcher's
+// res.json() with these turns a route that renames or drops an envelope key
+// into a compile error instead of a runtime undefined.
+import type {
+  AdminUsersResponse,
+  AdminAuditResponse,
+  AdminStaffResponse,
+  AdminTeamsResponse,
+  AdminTeamDetailResponse,
+  AdminUserDetailResponse,
+  AdminBadgesResponse,
+  AdminActionResponse,
+  TeamRenameResponse,
+  TeamDeleteResponse,
+} from "@/components/admin/types.responses";
+
+// Every tab panel is code-split. All of them used to be static imports, so
+// one /admin visit downloaded and parsed ~1.3 MB of JavaScript (the second
+// heaviest route in the build) to render exactly one panel; user-detail-panel
+// alone is 2,900 lines, staff-list 1,200, notifications-manager 1,100. Only
+// one panel renders at a time behind its `activeTab === ...` guard, so the
+// rest are fetched on demand. ssr:false because this whole page is a client
+// component behind an auth gate: there is nothing to server-render.
+const panel = (
+  load: () => Promise<{ default: React.ComponentType }>,
+): React.ComponentType =>
+  dynamic(load, { ssr: false, loading: () => <PanelSkeleton /> });
+
+function PanelSkeleton() {
+  return (
+    <div className="space-y-4">
+      <StatBarSkeleton segments={4} />
+      <div className="rounded-xl border border-border/50 bg-card/50 p-4">
+        <DataTableSkeleton rows={6} />
+      </div>
+    </div>
+  );
+}
+
+const IPRulesManager = panel(() =>
+  import("@/components/admin/features/ip-rules-manager").then((m) => ({
+    default: m.IPRulesManager,
+  })),
+);
+const BlockedDataManager = panel(() =>
+  import("@/components/admin/features/blocked-data-manager").then((m) => ({
+    default: m.BlockedDataManager,
+  })),
+);
+const ContentManager = panel(() =>
+  import("@/components/admin/features/content-manager").then((m) => ({
+    default: m.ContentManager,
+  })),
+);
+const SecurityAlertsManager = panel(() =>
+  import("@/components/admin/features/security-alerts-manager").then((m) => ({
+    default: m.SecurityAlertsManager,
+  })),
+);
+const SystemSettingsManager = panel(() =>
+  import("@/components/admin/features/system-settings-manager").then((m) => ({
+    default: m.SystemSettingsManager,
+  })),
+);
+const MassEmailManager = panel(() =>
+  import("@/components/admin/features/mass-email-manager").then((m) => ({
+    default: m.MassEmailManager,
+  })),
+);
+const AIChatsManager = panel(() =>
+  import("@/components/admin/features/ai-chats-manager").then((m) => ({
+    default: m.AIChatsManager,
+  })),
+);
+const SupportInbox = panel(() =>
+  import("@/components/admin/features/support-inbox").then((m) => ({
+    default: m.SupportInbox,
+  })),
+);
+const UpdaterManager = panel(() =>
+  import("@/components/admin/features/updater-manager").then((m) => ({
+    default: m.UpdaterManager,
+  })),
+);
+const BackupManager = panel(() =>
+  import("@/components/admin/features/backup-manager").then((m) => ({
+    default: m.BackupManager,
+  })),
+);
+const ErrorLogsManager = panel(() =>
+  import("@/components/admin/features/error-logs-manager").then((m) => ({
+    default: m.ErrorLogsManager,
+  })),
+);
+const EmailLogsManager = panel(() =>
+  import("@/components/admin/features/email-logs-manager").then((m) => ({
+    default: m.EmailLogsManager,
+  })),
+);
+const EngineFeedbackManager = panel(() =>
+  import("@/components/admin/features/engine-feedback-manager").then((m) => ({
+    default: m.EngineFeedbackManager,
+  })),
+);
+const QueueStatusManager = panel(() =>
+  import("@/components/admin/features/queue-status-manager").then((m) => ({
+    default: m.QueueStatusManager,
+  })),
+);
+const BillingOverviewManager = panel(() =>
+  import("@/components/admin/features/billing-overview-manager").then((m) => ({
+    default: m.BillingOverviewManager,
+  })),
+);
+const HealthOverview = dynamic(
+  () =>
+    import("@/components/admin/features/health-overview").then((m) => ({
+      default: m.HealthOverview,
+    })),
+  // Overview is the tab the panel lands on, so this fallback is the first
+  // thing anyone opening /admin sees. PanelSkeleton (a stat strip over a
+  // table) is the shape of the tab this one replaced, so the load sequence
+  // drew counters and a table on the way to a status list.
+  { ssr: false, loading: () => <HealthCardSkeleton /> },
+);
+
+// These four take props, so they keep their own typed dynamic() calls rather
+// than going through the prop-less `panel` helper above.
+const NotificationsManager = dynamic(
+  () =>
+    import("@/components/admin/notifications").then((m) => ({
+      default: m.NotificationsManager,
+    })),
+  { ssr: false, loading: () => <PanelSkeleton /> },
+);
+const UserDetailPanel = dynamic(
+  () =>
+    import("@/components/admin/users").then((m) => ({
+      default: m.UserDetailPanel,
+    })),
+  { ssr: false, loading: () => <PanelSkeleton /> },
+);
+// Imported from its own path rather than the components/admin/users barrel:
+// the barrel would pull the 2,900-line user-detail-panel into the same chunk
+// as the directory table, which is the opposite of what code-splitting these
+// panels was for.
+const UsersTab = dynamic(
+  () =>
+    import("@/components/admin/users/users-tab").then((m) => ({
+      default: m.UsersTab,
+    })),
+  { ssr: false, loading: () => <PanelSkeleton /> },
+);
+const AuditLog = dynamic(
+  () =>
+    import("@/components/admin/audit").then((m) => ({ default: m.AuditLog })),
+  { ssr: false, loading: () => <PanelSkeleton /> },
+);
+const StaffList = dynamic(
+  () =>
+    import("@/components/admin/staff").then((m) => ({ default: m.StaffList })),
+  { ssr: false, loading: () => <PanelSkeleton /> },
+);
+const TeamsList = dynamic(
+  () =>
+    import("@/components/admin/teams").then((m) => ({ default: m.TeamsList })),
+  { ssr: false, loading: () => <PanelSkeleton /> },
+);
 
 type ActiveTab =
+  | "overview"
   | "users"
   | "audit"
   | "admins"
@@ -184,6 +314,10 @@ function AdminContent() {
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
   const [twoFactorLockout, setTwoFactorLockout] = useState(false);
+  // Terminal state for a server fault, kept separate from `forbidden` so a
+  // 500 or a dropped connection never renders as "Access Denied". 0 means the
+  // request never completed (network error / non-JSON body).
+  const [loadFailedStatus, setLoadFailedStatus] = useState<number | null>(null);
   // Client-side auth (cached role) so an obvious non-staff visitor is denied
   // before the admin data request would flash the skeleton. The server's 403
   // stays authoritative on top; see resolveAdminGate.
@@ -200,7 +334,10 @@ function AdminContent() {
     message: string;
     type: "success" | "error";
   } | null>(null);
-  const [activeTab, setActiveTab] = useState<ActiveTab>("users");
+  // Lands on the health overview, not the user directory. AUDIT-014
+  // qols-02: "is anything wrong right now" used to cost six clicks through
+  // six panels, so it was the check that got skipped.
+  const [activeTab, setActiveTab] = useState<ActiveTab>("overview");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -239,9 +376,22 @@ function AdminContent() {
     direction: SortDirection;
   }>({ column: null, direction: null });
   const [updateAvailable, setUpdateAvailable] = useState(false);
+  // Health lives at the page level rather than inside the overview panel so
+  // the worst state can be mirrored onto the nav item as a coloured dot: an
+  // operator sitting on any other tab still sees that something went red.
+  const [health, setHealth] = useState<HealthMetrics | null>(null);
+  const [healthLoading, setHealthLoading] = useState(true);
+  const [healthRefreshing, setHealthRefreshing] = useState(false);
+  const [healthFailed, setHealthFailed] = useState(false);
+  // Read at fire time by fetchData, which is a stable useCallback with no
+  // deps: without the ref, paging or searching would drop the active sort.
+  const userSortRef = useRef<{
+    column: "name" | "joined" | null;
+    direction: SortDirection;
+  }>({ column: null, direction: null });
   const teamsSearchInitRef = useRef(false);
   const fetchTeamsRef = useRef<
-    ((p?: number, search?: string) => Promise<void>) | null
+    ((p?: number, search?: string, limit?: number) => Promise<void>) | null
   >(null);
 
   const showToast = useCallback(
@@ -275,7 +425,13 @@ function AdminContent() {
 
   // FETCH FUNCTIONS - must be defined before handleHashChange
   const fetchData = useCallback(
-    async (p: number, search: string, isInitial: boolean, limit: number) => {
+    async (
+      p: number,
+      search: string,
+      isInitial: boolean,
+      limit: number,
+      sort?: { column: "name" | "joined" | null; direction: SortDirection },
+    ) => {
       if (isInitial) setLoading(true);
       else setSearchLoading(true);
       try {
@@ -284,6 +440,14 @@ function AdminContent() {
           limit: String(limit),
         });
         if (search.trim()) params.set("search", search.trim());
+        // Sort is applied by the server across the whole table. Passed as an
+        // argument rather than read from state so the header control can
+        // refetch with its new value before the state update commits.
+        const activeSort = sort ?? userSortRef.current;
+        if (activeSort.column && activeSort.direction) {
+          params.set("sort", activeSort.column);
+          params.set("dir", activeSort.direction);
+        }
         const res = await fetch(`${API.ADMIN}?${params}`);
         if (res.status === 403) {
           const data = await res.json().catch(() => null);
@@ -293,7 +457,27 @@ function AdminContent() {
           setSearchLoading(false);
           return;
         }
-        const data = await res.json();
+        // Anything else that is not ok is a server fault, not an
+        // authorization one. It used to fall through to res.json() and land
+        // in the catch below, which called setForbidden(true) and told the
+        // operator their account lacked permission during an outage: the
+        // wrong debugging path, with no retry and no status code anywhere.
+        if (!res.ok) {
+          setLoadFailedStatus(res.status);
+          setLoading(false);
+          setSearchLoading(false);
+          return;
+        }
+        const data: AdminUsersResponse | null = await res
+          .json()
+          .catch(() => null);
+        if (!data) {
+          setLoadFailedStatus(res.status);
+          setLoading(false);
+          setSearchLoading(false);
+          return;
+        }
+        setLoadFailedStatus(null);
         setStats(data.stats);
         setUsers(data.users);
         setPage(data.page);
@@ -301,7 +485,7 @@ function AdminContent() {
         if (data.callerRole) setCallerRole(data.callerRole);
       } catch (error) {
         console.error("Failed to fetch admin data", error);
-        setForbidden(true);
+        setLoadFailedStatus(0);
       }
       setLoading(false);
       setSearchLoading(false);
@@ -316,7 +500,7 @@ function AdminContent() {
         const res = await fetch(
           `${API.ADMIN}?section=audit&page=${p}&limit=${limit}`,
         );
-        const data = await res.json();
+        const data: AdminAuditResponse = await res.json();
         setAuditLogs(data.logs);
         setAuditPage(data.page);
         setAuditTotalPages(data.totalPages);
@@ -332,7 +516,7 @@ function AdminContent() {
     setAdminsLoading(true);
     try {
       const res = await fetch(`${API.ADMIN}?section=active-admins`);
-      const data = await res.json();
+      const data: AdminStaffResponse = await res.json();
       setActiveAdmins(data.admins || []);
     } catch (error) {
       console.error("Failed to fetch active admins", error);
@@ -341,14 +525,21 @@ function AdminContent() {
   }, []);
 
   const fetchTeams = useCallback(
-    async (p = 1, search?: string) => {
+    async (p = 1, search?: string, limit = teamsPageSize) => {
       setTeamsLoading(true);
       try {
-        const params = new URLSearchParams({ page: String(p), limit: "10" });
+        // limit follows the page-size selector. It used to be hardcoded to
+        // "10", so picking 50 highlighted the button and still returned 10.
+        // Taken as an argument as well as from state so the selector can
+        // pass its new value before the state update has committed.
+        const params = new URLSearchParams({
+          page: String(p),
+          limit: String(limit),
+        });
         const searchTerm = search !== undefined ? search : teamsSearch;
         if (searchTerm.trim()) params.set("search", searchTerm.trim());
         const res = await fetch(`/api/v3/admin/teams?${params}`);
-        const data = await res.json();
+        const data: AdminTeamsResponse = await res.json();
         setTeams(data.teams || []);
         setTeamsPage(data.page || 1);
         setTeamsTotalPages(data.totalPages || 1);
@@ -357,7 +548,7 @@ function AdminContent() {
       }
       setTeamsLoading(false);
     },
-    [teamsSearch],
+    [teamsSearch, teamsPageSize],
   );
 
   // Keep ref in sync with latest fetchTeams so debounced effect can call it
@@ -373,7 +564,7 @@ function AdminContent() {
         const res = await fetch(
           `${API.ADMIN}?section=user-detail&userId=${userId}`,
         );
-        const data = await res.json();
+        const data: AdminUserDetailResponse = await res.json();
         setSelectedUser(data);
         if (!skipUrlUpdate) updateUrlWithUser(userId, activeTab, false);
       } catch {
@@ -384,11 +575,29 @@ function AdminContent() {
     [activeTab, updateUrlWithUser, showToast],
   );
 
+  const fetchHealth = useCallback(async (isInitial = false) => {
+    if (isInitial) setHealthLoading(true);
+    else setHealthRefreshing(true);
+    try {
+      const res = await fetch("/api/v3/admin/health");
+      if (res.ok) {
+        setHealth((await res.json()) as HealthMetrics);
+        setHealthFailed(false);
+      } else {
+        setHealthFailed(true);
+      }
+    } catch {
+      setHealthFailed(true);
+    }
+    setHealthLoading(false);
+    setHealthRefreshing(false);
+  }, []);
+
   const fetchAllBadges = useCallback(async () => {
     try {
       const res = await fetch(`${API.ADMIN}?section=badges`);
       if (res.ok) {
-        const data = await res.json();
+        const data: AdminBadgesResponse = await res.json();
         setAllBadges(data.badges || []);
       }
     } catch {
@@ -403,7 +612,7 @@ function AdminContent() {
     const tab = params.tab;
     const user = params.user;
     if (!tab && !user) {
-      setQueryParam("tab", "users", { replace: true });
+      setQueryParam("tab", "overview", { replace: true });
       setSelectedUser(null);
       return;
     }
@@ -442,19 +651,35 @@ function AdminContent() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
     fetchData(1, "", true, 10);
     fetchAllBadges();
+    fetchHealth(true);
     // Lightweight, once-per-page-load check so the "Updater" nav item can
     // show a dot without every admin having to open that tab first.
     fetch("/api/v3/admin/updater/status")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => setUpdateAvailable(data?.status === "behind"))
       .catch(() => {});
-  }, [fetchData, fetchAllBadges]);
+  }, [fetchData, fetchAllBadges, fetchHealth]);
+
+  // Same cadence as queue-status-manager's own poll. Cheap: seven bounded
+  // aggregates in one request, and it is what keeps the nav dot honest while
+  // the operator is sitting on another tab. Not started for a visitor the
+  // server already refused: the deny screen has no dot to keep honest, and
+  // polling a 403 every 45 seconds for as long as that tab stays open is
+  // pure noise in the rate limiter and the logs.
+  useEffect(() => {
+    if (forbidden) return;
+    const timer = setInterval(
+      () => fetchHealth(false),
+      HEALTH_POLL_INTERVAL_MS,
+    );
+    return () => clearInterval(timer);
+  }, [fetchHealth, forbidden]);
 
   async function fetchTeamMembers(teamId: number) {
     setTeamMembersLoading(true);
     try {
       const res = await fetch(`/api/v3/admin/teams/${teamId}`);
-      const data = await res.json();
+      const data: AdminTeamDetailResponse = await res.json();
       setTeamMembers(data);
     } catch {
       showToast("Failed to load team members", "error");
@@ -474,7 +699,7 @@ function AdminContent() {
         showToast("Team renamed successfully", "success");
         fetchTeams(teamsPage);
       } else {
-        const data = await res.json();
+        const data: TeamRenameResponse = await res.json();
         showToast(data.error || "Failed to rename team", "error");
       }
     } catch {
@@ -495,7 +720,7 @@ function AdminContent() {
         showToast("Team deleted successfully", "success");
         fetchTeams(teamsPage);
       } else {
-        const data = await res.json();
+        const data: TeamDeleteResponse = await res.json();
         showToast(data.error || "Failed to delete team", "error");
       }
     } catch {
@@ -508,6 +733,13 @@ function AdminContent() {
     userId: number,
     action: string,
     extra?: Record<string, unknown>,
+    // `toast` lets a batched caller collapse N per-item toasts into one
+    // summary: the badge multi-select in user-detail-panel commits up to a
+    // dozen award/revoke PATCHes in one save and used to fire a separate
+    // "Badge awarded." for each, which stacked and told the operator nothing
+    // about the batch as a whole. Pass a string to override the label, or
+    // false to stay silent. Not part of `extra`, which is sent as request body.
+    options?: { toast?: string | false },
   ): Promise<{
     ok: boolean;
     error?: string;
@@ -525,45 +757,20 @@ function AdminContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId, action, ...extra }),
       });
-      const data = await res.json();
+      const data: AdminActionResponse = await res.json();
       if (res.ok) {
-        const labels: Record<string, string> = {
-          set_role: "User role updated.",
-          make_admin: "User promoted to admin.",
-          remove_admin: "Admin privileges removed.",
-          reset_password: "Password reset email sent to the user.",
-          revoke_sessions: "All sessions revoked.",
-          revoke_api_keys: "All API keys revoked.",
-          disable: "Account disabled.",
-          enable: "Account re-enabled.",
-          delete: "User deleted.",
-          award_badge: "Badge awarded.",
-          revoke_badge: "Badge removed from user.",
-          create_badge: "Badge created.",
-          delete_badge: "Badge deleted permanently.",
-          update_name: "Name updated.",
-          update_email: "Email updated.",
-          update_plan: "Plan updated.",
-          notify_account_changes: "Account change email sent to user.",
-          reset_2fa: "Two-factor authentication reset.",
-          delete_scans: "All scans deleted.",
-          clear_rate_limits: "Rate limits cleared.",
-          gift_subscription: "Subscription gifted successfully.",
-          revoke_gift: "Gifted subscription revoked.",
-          toggle_ai_ban: "AI chat access updated.",
-          verify_email: "Email verified.",
-          unverify_email: "Email unverified.",
-          send_notification: "Notification sent.",
-          send_email: "Email sent.",
-          reset_daily_limit: "Daily scan count reset.",
-          reset_ai_usage: "AI usage window reset.",
-          reset_github_review_usage: "GitHub review usage window reset.",
-          reset_free_github_trial: "Free GitHub review trial reset.",
-        };
         if (action === "create_badge" || action === "delete_badge") {
           fetchAllBadges();
         }
-        showToast(labels[action] || "Action completed.", "success");
+        // ACTION_LABELS lives in components/admin/config.ts. This used to be
+        // an inlined duplicate that had drifted ahead of the exported one, so
+        // a label added in the obvious place never appeared.
+        if (options?.toast !== false) {
+          showToast(
+            options?.toast || ACTION_LABELS[action] || "Action completed.",
+            "success",
+          );
+        }
         // Skip refetch for badge award/revoke - onBadgesChanged handles optimistic UI update
         if (action !== "award_badge" && action !== "revoke_badge") {
           await fetchData(page, searchQuery, false, usersPageSize);
@@ -643,31 +850,24 @@ function AdminContent() {
     };
   }, [teamsSearch]);
 
-  // Client-side sort of the currently loaded page of users. Does not
-  // trigger a refetch; only reorders what's already on screen.
-  const sortedUsers = useMemo(() => {
-    if (!userSort.column || !userSort.direction) return users;
-    const dir = userSort.direction === "asc" ? 1 : -1;
-    return [...users].sort((a, b) => {
-      if (userSort.column === "name") {
-        const an = (a.name || a.email).toLowerCase();
-        const bn = (b.name || b.email).toLowerCase();
-        return an < bn ? -1 * dir : an > bn ? 1 * dir : 0;
-      }
-      // "joined"
-      return (
-        (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) *
-        dir
-      );
-    });
-  }, [users, userSort]);
+  // The rows exactly as the server ordered them. This used to be a
+  // client-side memo that sorted only the page already on screen while the
+  // header control looked like a real sort, so clicking "Joined" on page 1
+  // of 40 answered "oldest of these ten", not "oldest account".
+  const sortedUsers = users;
 
   const toggleUserSort = (column: "name" | "joined") => {
-    setUserSort((prev) => {
-      if (prev.column !== column) return { column, direction: "asc" };
-      if (prev.direction === "asc") return { column, direction: "desc" };
-      return { column: null, direction: null };
-    });
+    const next: { column: "name" | "joined" | null; direction: SortDirection } =
+      userSort.column !== column
+        ? { column, direction: "asc" }
+        : userSort.direction === "asc"
+          ? { column, direction: "desc" }
+          : { column: null, direction: null };
+    setUserSort(next);
+    userSortRef.current = next;
+    // Back to page 1: the row that was on page 3 under the old order is not
+    // on page 3 under the new one.
+    fetchData(1, searchQuery, false, usersPageSize, next);
   };
 
   // Every item below carries either `permission` (checked against the
@@ -688,6 +888,19 @@ function AdminContent() {
   // forbidden/loading render vs. a loaded one).
   const NAV_GROUPS_RAW = [
     {
+      label: "Operations",
+      items: [
+        {
+          // No permission gate: every role that reaches this page can see
+          // the overview, and the API decides which health rows that role
+          // is actually allowed to read.
+          key: "overview" as const,
+          label: "Overview",
+          icon: Activity,
+        },
+      ],
+    },
+    {
       label: "User Management",
       items: [
         {
@@ -702,7 +915,15 @@ function AdminContent() {
           icon: UsersRound,
           minHierarchy: STAFF_ROLE_HIERARCHY.moderator,
         },
-        { key: "admins" as const, label: "Active Staff", icon: Shield },
+        {
+          key: "admins" as const,
+          label: "Active Staff",
+          icon: Shield,
+          // section=active-admins is gated on VIEW_AUDIT_LOG server-side
+          // (app/api/v3/admin/route.ts). This tab carried no gate at all, so
+          // billing/content_manager/ops saw it and got a guaranteed 403.
+          permission: STAFF_PERMISSIONS.VIEW_AUDIT_LOG,
+        },
       ],
     },
     {
@@ -834,7 +1055,14 @@ function AdminContent() {
     },
   ];
 
+  // Takes the widest item shape rather than an optional-only one: the
+  // Overview item carries neither gate (every role that reaches this page
+  // sees it), and TypeScript will not narrow a union member with no
+  // properties in common down to `{ permission?, minHierarchy? }`.
   function canSeeNavItem(item: {
+    key: string;
+    label: string;
+    icon: LucideIcon;
     permission?: StaffPermission;
     minHierarchy?: number;
   }): boolean {
@@ -899,6 +1127,54 @@ function AdminContent() {
     viewerIsStaff,
     dataLoading: loading,
   });
+
+  // Server fault, not an authorization one. Shown only to a viewer whose
+  // cached role already says staff, so a non-staff visitor still gets the
+  // deny screen below rather than a hint that the panel exists.
+  if (loadFailedStatus !== null && !forbidden && viewerIsStaff) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <Header />
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="flex-1 flex items-center justify-center px-4"
+        >
+          <div className="text-center flex flex-col items-center gap-4">
+            <div className="h-14 w-14 rounded-2xl bg-destructive/10 flex items-center justify-center">
+              <ServerCrash className="h-7 w-7 text-destructive" />
+            </div>
+            <div>
+              <h1 className="text-xl font-semibold tracking-tight">
+                Couldn&apos;t load the admin panel
+              </h1>
+              <p className="text-sm text-muted-foreground mt-1 max-w-xs">
+                The admin data request failed. This is a server or network
+                problem, not a permissions one, so your account is fine.
+              </p>
+              <p className="text-xs font-mono text-muted-foreground/70 mt-2">
+                {loadFailedStatus === 0
+                  ? "no response"
+                  : `HTTP ${loadFailedStatus}`}
+              </p>
+            </div>
+            <Button
+              size="sm"
+              className="h-8 gap-1.5"
+              onClick={() => {
+                setLoadFailedStatus(null);
+                fetchData(page, searchQuery, true, usersPageSize);
+              }}
+            >
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+              Retry
+            </Button>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
 
   // Access denied: the server returned 403, or the client's own cached role
   // already shows this viewer is not staff (so the skeleton never flashes).
@@ -992,6 +1268,13 @@ function AdminContent() {
 
   const activeTabMeta = ALL_ADMIN_TABS.find((t) => t.key === activeTab);
 
+  // Worst health state, mirrored onto the Overview nav item so a fault is
+  // visible from whichever tab the operator happens to be on. Amber and red
+  // only: a green dot on a healthy panel is noise.
+  const worstHealth = worstHealthState(
+    buildHealthRows(health, { updateAvailable }),
+  );
+
   // Site-wide section list for the mobile drawer, grouped the same way
   // NAV_GROUPS groups the desktop sidebar.
   const mobileSectionItems: AdminTocItem[] = NAV_GROUPS.reduce<AdminTocItem[]>(
@@ -1011,10 +1294,14 @@ function AdminContent() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Header />
+      {/* max-w-6xl is the app's signed-in page width (history, assets, repos,
+          teams, shares and dashboard all use it). /admin was the only one at
+          max-w-7xl, 128px wider than every page you reach it from, so the
+          content edge jumped on entry and again on exit. */}
       <main
         id="main-content"
         tabIndex={-1}
-        className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-8"
+        className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-8"
       >
         {/* Page Header */}
         <div className="mb-6">
@@ -1049,7 +1336,11 @@ function AdminContent() {
             />
 
             {/* Desktop: grouped vertical nav, self-start is required for sticky to work in a flex row */}
-            <nav className="hidden lg:flex flex-col gap-5 sticky top-20 self-start">
+            {/* The sticky offset has to track both banner heights the way
+                components/scanner/header.tsx does, or the nav paints over the
+                top of this sidebar. --vr-imp-banner-h matters here more than
+                anywhere: impersonation is started from this very panel. */}
+            <nav className="hidden lg:flex flex-col gap-5 sticky top-[calc(5rem+var(--vr-banner-h,0px)+var(--vr-imp-banner-h,0px))] self-start transition-[top] duration-300">
               {NAV_GROUPS.map((group) => (
                 <div key={group.label}>
                   <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest px-2 mb-1.5">
@@ -1071,6 +1362,11 @@ function AdminContent() {
                             handleTabChange(tab.key);
                           }
                         }}
+                        // a11y (SC 4.1.2): which section is open was carried
+                        // in colour and weight only.
+                        aria-current={
+                          activeTab === tab.key ? "page" : undefined
+                        }
                         className={cn(
                           "flex items-center gap-2.5 px-2.5 py-2 text-sm rounded-lg transition-all",
                           "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
@@ -1090,6 +1386,23 @@ function AdminContent() {
                             aria-label="Update available"
                           />
                         )}
+                        {tab.key === "overview" &&
+                          (worstHealth === "crit" ||
+                            worstHealth === "warn") && (
+                            <span
+                              className={cn(
+                                "h-1.5 w-1.5 rounded-full shrink-0",
+                                worstHealth === "crit"
+                                  ? "bg-destructive"
+                                  : "bg-[hsl(var(--warning))]",
+                              )}
+                              aria-label={
+                                worstHealth === "crit"
+                                  ? "A health check is critical"
+                                  : "A health check needs attention"
+                              }
+                            />
+                          )}
                       </a>
                     ))}
                   </div>
@@ -1100,82 +1413,17 @@ function AdminContent() {
 
           {/* Main content */}
           <div className="flex-1 min-w-0 flex flex-col gap-6">
-            {/* Stats row, Users tab only. A live count strip, not a grid of
-                  decorative cards. Filtering the table by these segments
-                  (e.g. Disabled) needs a status filter the admin API does
-                  not expose yet (it only takes page/limit/search), so these
-                  stay informational until that lands. */}
-            {activeTab === "users" && stats && !selectedUser && (
-              <div className="space-y-3">
-                <StatBar
-                  items={[
-                    {
-                      label: "Total Users",
-                      value: Number(stats.total_users),
-                      icon: Users,
-                      tone: "primary",
-                    },
-                    {
-                      label: "Total Scans",
-                      value: Number(stats.total_scans),
-                      icon: Activity,
-                      tone: "purple",
-                    },
-                    {
-                      label: "Scans (24h)",
-                      value: Number(stats.scans_24h),
-                      icon: Zap,
-                      tone: "orange",
-                    },
-                    {
-                      label: "2FA Enabled",
-                      value: Number(stats.users_with_2fa),
-                      icon: Lock,
-                      tone: "success",
-                    },
-                    {
-                      label: "Disabled",
-                      value: Number(stats.disabled_users),
-                      icon: UserX,
-                      tone: "destructive",
-                    },
-                  ]}
-                />
-                <StatBar
-                  items={[
-                    {
-                      label: "New Users (7d)",
-                      value: Number(stats.new_users_7d),
-                      icon: UserPlus,
-                      tone: "success",
-                    },
-                    {
-                      label: "Active API Keys",
-                      value: Number(stats.active_api_keys),
-                      icon: KeyRound,
-                      tone: "purple",
-                    },
-                    {
-                      label: "Active Webhooks",
-                      value: Number(stats.active_webhooks),
-                      icon: Webhook,
-                      tone: "orange",
-                    },
-                    {
-                      label: "Schedules",
-                      value: Number(stats.active_schedules),
-                      icon: Calendar,
-                      tone: "primary",
-                    },
-                    {
-                      label: "Shared Scans",
-                      value: Number(stats.shared_scans),
-                      icon: Share2,
-                      tone: "muted",
-                    },
-                  ]}
-                />
-              </div>
+            {/* Operations */}
+            {activeTab === "overview" && (
+              <HealthOverview
+                metrics={health}
+                loading={healthLoading}
+                refreshing={healthRefreshing}
+                loadFailed={healthFailed}
+                updateAvailable={updateAvailable}
+                onRefresh={() => fetchHealth(false)}
+                onNavigate={handleTabChange}
+              />
             )}
 
             {/* Feature sections */}
@@ -1227,393 +1475,34 @@ function AdminContent() {
               />
             )}
 
-            {/* Users table */}
+            {/* Users: the growth strip, directory table and mobile list all
+                live in components/admin/users/users-tab.tsx (AUDIT-014
+                qols-01). It was ~500 lines inlined here while every other
+                destination was already its own code-split component. */}
             {activeTab === "users" && !selectedUser && (
-              <Card className="border-border/50 bg-card/50 overflow-hidden">
-                <CardHeader className="pb-4 pt-5 px-5">
-                  <div className="flex flex-col gap-4">
-                    {/* Title row */}
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="p-2 rounded-lg bg-primary/10 shrink-0">
-                          <Users
-                            className="h-4 w-4 text-primary"
-                            aria-hidden="true"
-                          />
-                        </div>
-                        <div className="min-w-0">
-                          <CardTitle className="text-base font-semibold truncate">
-                            User Directory
-                          </CardTitle>
-                          <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                            Manage and view all registered users
-                          </p>
-                        </div>
-                      </div>
-                      <Badge
-                        variant="secondary"
-                        className="text-xs font-medium h-6 px-2.5 shrink-0"
-                      >
-                        {stats ? Number(stats.total_users).toLocaleString() : 0}{" "}
-                        users
-                      </Badge>
-                    </div>
-                    {/* Search and actions row */}
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                      <div className="relative flex-1">
-                        <Search
-                          className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
-                          aria-hidden="true"
-                        />
-                        <Input
-                          placeholder="Search by name or email..."
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                          aria-label="Search users by name or email"
-                          className="pl-9 h-10 bg-background/50 border-border/40 focus:border-primary/50"
-                        />
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-10 px-3 gap-2 border-border/40 shrink-0"
-                        aria-label="Refresh users"
-                        onClick={() =>
-                          fetchData(page, searchQuery, false, usersPageSize)
-                        }
-                      >
-                        <RefreshCw
-                          className={cn(
-                            "h-4 w-4",
-                            searchLoading && "animate-spin",
-                          )}
-                          aria-hidden="true"
-                        />
-                        <span className="hidden sm:inline">Refresh</span>
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-0">
-                  {/* Desktop table */}
-                  <div className="hidden md:block">
-                    {sortedUsers.length === 0 ? (
-                      <EmptyState
-                        icon={Search}
-                        title="No users found"
-                        description={
-                          searchQuery
-                            ? `No results for "${searchQuery}". Try a different search term.`
-                            : "No users have registered yet."
-                        }
-                      />
-                    ) : (
-                      <TableScrollArea maxHeight="65vh">
-                        <Table>
-                          <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
-                            <TableRow className="border-y border-border/50 hover:bg-transparent">
-                              <TableHead className="px-5 h-10">
-                                <SortableHeader
-                                  label="User"
-                                  active={userSort.column === "name"}
-                                  direction={
-                                    userSort.column === "name"
-                                      ? userSort.direction
-                                      : null
-                                  }
-                                  onClick={() => toggleUserSort("name")}
-                                />
-                              </TableHead>
-                              <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                Activity
-                              </TableHead>
-                              <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                Status
-                              </TableHead>
-                              <TableHead className="px-4 h-10">
-                                <SortableHeader
-                                  label="Joined"
-                                  active={userSort.column === "joined"}
-                                  direction={
-                                    userSort.column === "joined"
-                                      ? userSort.direction
-                                      : null
-                                  }
-                                  onClick={() => toggleUserSort("joined")}
-                                />
-                              </TableHead>
-                              <TableHead className="px-5 h-10 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                Actions
-                              </TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody
-                            className={cn(
-                              "transition-opacity duration-200",
-                              searchLoading && "opacity-40 pointer-events-none",
-                            )}
-                          >
-                            {sortedUsers.map((u) => (
-                              <TableRow
-                                key={u.id}
-                                className="border-border/40 cursor-pointer group"
-                                onClick={() => fetchUserDetail(u.id)}
-                              >
-                                <TableCell className="px-5 py-4">
-                                  <div className="flex items-center gap-3">
-                                    <UserAvatar
-                                      name={u.name}
-                                      email={u.email}
-                                      avatarUrl={u.avatar_url}
-                                    />
-                                    <div className="min-w-0">
-                                      <p className="text-sm font-medium truncate">
-                                        {u.name || "Unnamed"}
-                                      </p>
-                                      <p className="text-xs text-muted-foreground truncate font-mono">
-                                        {u.email}
-                                      </p>
-                                    </div>
-                                  </div>
-                                </TableCell>
-                                <TableCell className="px-4 py-4">
-                                  <div className="flex flex-col gap-0.5">
-                                    <span className="text-sm font-medium">
-                                      {u.scan_count}{" "}
-                                      <span className="text-muted-foreground font-normal">
-                                        scans
-                                      </span>
-                                    </span>
-                                    <span className="text-xs text-muted-foreground">
-                                      {u.api_key_count} API keys
-                                    </span>
-                                  </div>
-                                </TableCell>
-                                <TableCell className="px-4 py-4">
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    {u.disabled_at ? (
-                                      <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-2 py-0.5 font-medium">
-                                        Disabled
-                                      </Badge>
-                                    ) : (
-                                      <Badge className="bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20 text-[10px] px-2 py-0.5 font-medium">
-                                        Active
-                                      </Badge>
-                                    )}
-                                    {u.role &&
-                                      u.role !== STAFF_ROLES.USER &&
-                                      ROLE_BADGE_STYLES[u.role] && (
-                                        <Badge
-                                          className={cn(
-                                            ROLE_BADGE_STYLES[u.role],
-                                            "text-[10px] px-2 py-0.5 font-medium",
-                                          )}
-                                        >
-                                          {STAFF_ROLE_LABELS[u.role] || u.role}
-                                        </Badge>
-                                      )}
-                                    {(() => {
-                                      const effectivePlan =
-                                        u.gifted_plan || u.plan;
-                                      if (
-                                        effectivePlan &&
-                                        effectivePlan !== "free"
-                                      ) {
-                                        const planLabel =
-                                          getPlanById(effectivePlan)?.badge
-                                            ?.text || effectivePlan;
-                                        return (
-                                          <Badge
-                                            className={cn(
-                                              "text-[10px] px-2 py-0.5 font-medium",
-                                              u.gifted_plan
-                                                ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
-                                                : "bg-primary/10 text-primary border-primary/20",
-                                            )}
-                                          >
-                                            {planLabel}
-                                            {u.gifted_plan ? " (Gift)" : ""}
-                                          </Badge>
-                                        );
-                                      }
-                                      return null;
-                                    })()}
-                                    {u.totp_enabled && (
-                                      <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-2 py-0.5 font-medium">
-                                        2FA
-                                      </Badge>
-                                    )}
-                                  </div>
-                                </TableCell>
-                                <TableCell className="px-4 py-4 text-sm text-muted-foreground whitespace-nowrap">
-                                  {new Date(u.created_at).toLocaleDateString(
-                                    "en-US",
-                                    {
-                                      month: "short",
-                                      day: "numeric",
-                                      year: "numeric",
-                                    },
-                                  )}
-                                </TableCell>
-                                <TableCell className="px-5 py-4">
-                                  <div className="flex items-center justify-end">
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity"
-                                      asChild
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      <a
-                                        href={`/admin?tab=users&user=${u.id}`}
-                                        aria-label={`View ${u.name || u.email}`}
-                                        onClick={(e) => {
-                                          if (!e.ctrlKey && !e.metaKey) {
-                                            e.preventDefault();
-                                            fetchUserDetail(u.id);
-                                          }
-                                        }}
-                                      >
-                                        <Eye
-                                          className="h-3.5 w-3.5"
-                                          aria-hidden="true"
-                                        />
-                                        <span className="text-xs">View</span>
-                                      </a>
-                                    </Button>
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </TableScrollArea>
-                    )}
-                  </div>
-
-                  {/* Mobile list */}
-                  <div
-                    className={cn(
-                      "md:hidden flex flex-col transition-opacity duration-200",
-                      searchLoading && "opacity-40 pointer-events-none",
-                    )}
-                  >
-                    {sortedUsers.length === 0 && (
-                      <EmptyState
-                        icon={Search}
-                        title="No users found"
-                        description={
-                          searchQuery
-                            ? `No results for "${searchQuery}".`
-                            : "No users have registered yet."
-                        }
-                      />
-                    )}
-                    {sortedUsers.map((u) => (
-                      <a
-                        key={u.id}
-                        href={`/admin?tab=users&user=${u.id}`}
-                        onClick={(e) => {
-                          if (!e.ctrlKey && !e.metaKey) {
-                            e.preventDefault();
-                            fetchUserDetail(u.id);
-                          }
-                        }}
-                        className="flex items-center gap-3 px-5 py-4 border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-                      >
-                        <UserAvatar
-                          name={u.name}
-                          email={u.email}
-                          size="sm"
-                          avatarUrl={u.avatar_url}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <p className="text-sm font-medium truncate">
-                              {u.name || "Unnamed"}
-                            </p>
-                            {u.disabled_at ? (
-                              <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5 shrink-0">
-                                Disabled
-                              </Badge>
-                            ) : u.role &&
-                              u.role !== STAFF_ROLES.USER &&
-                              ROLE_BADGE_STYLES[u.role] ? (
-                              <Badge
-                                className={cn(
-                                  ROLE_BADGE_STYLES[u.role],
-                                  "text-[10px] px-1.5 shrink-0",
-                                )}
-                              >
-                                {STAFF_ROLE_LABELS[u.role]}
-                              </Badge>
-                            ) : null}
-                          </div>
-                          <p className="text-xs text-muted-foreground truncate font-mono">
-                            {u.email}
-                          </p>
-                          <div className="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground">
-                            <span>{u.scan_count} scans</span>
-                            <span className="text-border">|</span>
-                            <span>
-                              {new Date(u.created_at).toLocaleDateString(
-                                "en-US",
-                                { month: "short", day: "numeric" },
-                              )}
-                            </span>
-                            {(() => {
-                              const effectivePlan = u.gifted_plan || u.plan;
-                              if (effectivePlan && effectivePlan !== "free") {
-                                const label =
-                                  getPlanById(effectivePlan)?.badge?.text ||
-                                  effectivePlan;
-                                return (
-                                  <>
-                                    <span className="text-border">|</span>
-                                    <Badge
-                                      className={cn(
-                                        "text-[10px] px-1.5 py-0",
-                                        u.gifted_plan
-                                          ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
-                                          : "bg-primary/10 text-primary border-primary/20",
-                                      )}
-                                    >
-                                      {label}
-                                    </Badge>
-                                  </>
-                                );
-                              }
-                              return null;
-                            })()}
-                          </div>
-                        </div>
-                        <Eye
-                          className="h-4 w-4 text-muted-foreground/50 shrink-0"
-                          aria-hidden="true"
-                        />
-                      </a>
-                    ))}
-                  </div>
-
-                  {/* Pagination */}
-                  {sortedUsers.length > 0 && (
-                    <div className="px-5 py-4 border-t border-border/40 bg-muted/20">
-                      <PaginationControl
-                        currentPage={page}
-                        totalPages={totalPages}
-                        onPageChange={(p) =>
-                          fetchData(p, searchQuery, false, usersPageSize)
-                        }
-                        pageSize={usersPageSize}
-                        onPageSizeChange={(s) => {
-                          setUsersPageSize(s);
-                          fetchData(1, searchQuery, false, s);
-                        }}
-                      />
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+              <UsersTab
+                stats={stats}
+                users={sortedUsers}
+                page={page}
+                totalPages={totalPages}
+                pageSize={usersPageSize}
+                searchQuery={searchQuery}
+                onSearchQueryChange={setSearchQuery}
+                searchLoading={searchLoading}
+                sort={userSort}
+                onToggleSort={toggleUserSort}
+                onRefresh={() =>
+                  fetchData(page, searchQuery, false, usersPageSize)
+                }
+                onPageChange={(p) =>
+                  fetchData(p, searchQuery, false, usersPageSize)
+                }
+                onPageSizeChange={(s) => {
+                  setUsersPageSize(s);
+                  fetchData(1, searchQuery, false, s);
+                }}
+                onOpenUser={fetchUserDetail}
+              />
             )}
 
             {/* Audit log */}

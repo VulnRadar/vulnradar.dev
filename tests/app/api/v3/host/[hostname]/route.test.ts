@@ -2,10 +2,10 @@
  * Route-level tests for GET /api/v3/host/[hostname].
  *
  * Public, unauthenticated counterpart to GET /api/v3/scan/reputation: backs
- * the no-login report page at /host/[hostname]. No session/API-key check
- * and no rate limiting (same as GET /api/v3/shared/[token], the closest
- * existing precedent for a public no-login report), just host_reputation
- * looked up by the normalized hostname.
+ * the no-login report page at /host/[hostname]. No session/API-key check,
+ * just host_reputation looked up by the normalized hostname -- but it IS
+ * rate limited per IP: it is one row per hostname over the whole public-scan
+ * corpus, so without a cap the corpus could be walked for free.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
@@ -13,6 +13,24 @@ import { NextRequest } from "next/server";
 const mockQuery = vi.fn();
 vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
+}));
+
+// Rate limiter mocked at the module boundary: the real one reads the client
+// IP through next/headers and writes to the pool, neither of which this
+// suite wires up. mockRateLimit lets the refusal branch be driven directly.
+const mockRateLimit = vi.fn(async () => ({
+  allowed: true,
+  remaining: 10,
+  retryAfterSeconds: 0,
+}));
+vi.mock("@/lib/rate-limiting/rate-limit", () => ({
+  checkRateLimit: (...a: unknown[]) =>
+    mockRateLimit(...(a as Parameters<typeof mockRateLimit>)),
+  RATE_LIMITS: { publicScans: { limit: "publicScans" } },
+}));
+vi.mock("@/lib/api/request-utils", () => ({
+  getClientIp: async () => "203.0.113.9",
+  rateLimitIpKey: (ip: string) => ip,
 }));
 
 const { GET } = await import("@/app/api/v3/host/[hostname]/route");
@@ -31,12 +49,32 @@ function params(hostname: string) {
 beforeEach(() => {
   mockQuery.mockReset();
   mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+  mockRateLimit.mockReset();
+  mockRateLimit.mockResolvedValue({
+    allowed: true,
+    remaining: 10,
+    retryAfterSeconds: 0,
+  });
 });
 
 describe("GET /api/v3/host/[hostname]", () => {
   it("requires no auth at all -- no session or API key mock is even wired up", async () => {
     const res = await GET(getRequest("example.com"), params("example.com"));
     expect(res.status).toBe(200);
+  });
+
+  it("rate limits per IP and reads nothing when the cap is hit", async () => {
+    mockRateLimit.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 42,
+    });
+
+    const res = await GET(getRequest("example.com"), params("example.com"));
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("42");
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 
   it("400s for a raw-IP hostname (host_reputation only tracks domains)", async () => {

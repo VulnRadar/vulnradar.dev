@@ -7,17 +7,16 @@
 // (lib/scanner/ssl-grade.ts) already auto-populate -- instead of the user
 // having to press "Discover subdomains".
 //
-// This is deliberately best-effort and time-bounded so it can never fail,
-// stall, or slow a scan beyond a hard cap:
+// This is deliberately best-effort and OFF the scan's critical path, so it
+// can never fail, stall, or slow a scan:
 //
 //   1. Cache hit (the common repeat case): the per-domain subdomain_cache is
 //      read read-only via getCachedSubdomainSnapshot and recorded instantly,
-//      with zero external work.
-//   2. Cache miss: the shared discovery engine runs, bounded by
-//      DEFAULT_AUTO_TIMEOUT_MS. If it does not finish in time, the scan
-//      completes normally with no panel -- but the engine keeps running in
-//      the background and warms the DB cache, so the NEXT scan of that domain
-//      is an instant cache hit.
+//      with zero external work. This is the only phase a scan waits for.
+//   2. Cache miss: the shared discovery engine is kicked off and NOT awaited
+//      (see DEFAULT_AUTO_TIMEOUT_MS). The scan completes normally with no
+//      panel while the engine keeps running in the background and warms the
+//      DB cache, so the NEXT scan of that domain is an instant cache hit.
 //
 // It reuses the SAME engine and SAME per-domain cache as the manual
 // POST /api/v3/scan/discover route, so nothing external is hit twice and no
@@ -40,17 +39,29 @@ import type { DiscoveryResult } from "./subdomain-types";
 export type { DiscoveryResult } from "./subdomain-types";
 
 /**
- * Hard cap on how long a scan will wait for a fresh (cache-miss) discovery.
- * Aligned to the scan's own async-check ceiling (executeScan runs this
- * concurrently with runAsyncChecksDetailed, which already races ~15s), so the
- * first scan of a fresh domain can actually capture the passive sources -- most
- * of the unreachable/CT-log subdomains come from crt.sh, whose own request
- * timeout is 15s. A 10s cap here would always cut crt.sh off, so the first scan
- * would surface nothing and only the background cache-warm made the *next* scan
- * complete. Since discovery overlaps the async checks, this rarely adds
- * wall-clock beyond what the scan already spends.
+ * How long a scan waits for a fresh (cache-miss) discovery. Zero: it does not
+ * wait at all.
+ *
+ * This used to be a 15s cap that the scan awaited before assembling
+ * result_meta, on the reasoning that discovery overlaps the async checks and
+ * so costs no extra wall clock. That reasoning was wrong in the case that
+ * matters. A cache miss runs four sequential stages (nine passive sources, of
+ * which crt.sh alone allows itself 15s, a 191-prefix DNS brute force, DNS
+ * resolution of up to 1000 passive names, then HTTP reachability probing of
+ * every host), so it cannot finish inside any cap short enough to keep a scan
+ * fast: on a miss it reliably burned the whole 15s, and since the wait happens
+ * after the fetch, every first scan of a domain took 15-20s instead of 2-5s.
+ * Nothing on screen needs it either -- components/scanner/subdomain-discovery.tsx
+ * renders from a null snapshot and offers a "Discover subdomains" button.
+ *
+ * The sweep still runs; it is simply not on the scan's critical path any more.
+ * It warms both the per-domain DB cache (subdomain-discovery-engine.ts) and
+ * this module's side channel, so the NEXT scan of that domain is an instant
+ * cache hit that does render the panel. A caller that genuinely wants to block
+ * on a fresh sweep passes an explicit `timeoutMs`.
+ * ref: AUDIT-011#scan-01
  */
-const DEFAULT_AUTO_TIMEOUT_MS = 15_000;
+const DEFAULT_AUTO_TIMEOUT_MS = 0;
 
 /** True for a bare IPv4 or IPv6 literal, which has no registrable domain to enumerate. */
 function isIpLiteral(host: string): boolean {
@@ -65,6 +76,10 @@ function isIpLiteral(host: string): boolean {
  * proceeds with no subdomain panel. Only records when at least one subdomain
  * was found, so an empty discovery leaves the owner's manual "Discover"
  * button as the fallback rather than an empty panel.
+ *
+ * Resolving does NOT mean discovery finished. By default it resolves as soon
+ * as the cache lookup settles and leaves any fresh sweep running in the
+ * background; pass `timeoutMs` to actually wait for one.
  */
 export async function autoDiscoverSubdomains(
   url: string,
@@ -81,9 +96,18 @@ export async function autoDiscoverSubdomains(
     if (!hostname || !hostname.includes(".") || isIpLiteral(hostname)) return;
 
     // 1) Cache hit: instant, read-only, no external work.
+    //
+    // The hit is decided by "a fresh cache row exists", NOT by "the row has
+    // subdomains in it". Gating on a non-empty array meant a domain that
+    // genuinely has no discoverable subdomains -- the normal case for a
+    // personal site or a single-host deployment -- read as a miss on every
+    // single scan and re-ran the full sweep forever, never once benefiting
+    // from the cache it had just written. An empty row is a real answer.
+    // Nothing is recorded for it, so the panel stays hidden and the owner
+    // keeps the manual "Discover" button. ref: AUDIT-011#scan-02
     const cached = await getCachedSubdomainSnapshot(url);
-    if (cached && cached.subdomains.length > 0) {
-      recordSubdomains(hostname, cached);
+    if (cached) {
+      if (cached.subdomains.length > 0) recordSubdomains(hostname, cached);
       return;
     }
 
@@ -101,15 +125,29 @@ export async function autoDiscoverSubdomains(
 
     const rootDomain = extractRootDomain(hostname);
 
-    // The engine keeps running (and warms the DB cache) even after we stop
-    // awaiting it on timeout, so a slow first scan still makes the next scan
-    // of this domain an instant cache hit.
+    // The engine keeps running (and warms the DB cache) whether or not anyone
+    // is still awaiting it, so a slow first scan still makes the next scan of
+    // this domain an instant cache hit. Recording is attached to the engine
+    // promise itself rather than to the race below, so a result that lands
+    // after we stopped waiting still populates the side channel (5 min TTL)
+    // for whatever reads it next in this process.
     const enginePromise = discoverSubdomainsForRoot(rootDomain);
-    enginePromise.catch(() => {}); // never surface a late rejection
+    const recorded = enginePromise
+      .then((result) => {
+        if (result && result.subdomains.length > 0) {
+          recordSubdomains(hostname, result);
+        }
+        return result;
+      })
+      .catch(() => null); // never surface a late rejection
 
     const timeoutMs = opts.timeoutMs ?? DEFAULT_AUTO_TIMEOUT_MS;
-    const result = await Promise.race<DiscoveryResult | null>([
-      enginePromise.catch(() => null),
+    // Default: return now and let the sweep finish in the background. See
+    // DEFAULT_AUTO_TIMEOUT_MS for why waiting was the wrong trade.
+    if (timeoutMs <= 0) return;
+
+    await Promise.race<DiscoveryResult | null>([
+      recorded,
       new Promise<null>((resolve) => {
         const timer = setTimeout(() => resolve(null), timeoutMs);
         opts.signal?.addEventListener(
@@ -122,10 +160,6 @@ export async function autoDiscoverSubdomains(
         );
       }),
     ]);
-
-    if (result && result.subdomains.length > 0) {
-      recordSubdomains(hostname, result);
-    }
   } catch {
     // Best-effort: automatic discovery must never affect the scan.
   }

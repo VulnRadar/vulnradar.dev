@@ -33,7 +33,22 @@ import {
   Toast,
 } from "@/components/admin/shared";
 import { cn } from "@/lib/ui/utils";
-import { ROUTES } from "@/lib/config/constants";
+import { ROUTES } from "@/lib/config/client-constants";
+
+/**
+ * The 0-4 safe / 5-7 caution / 8-10 unsafe bands that getDangerScore anchors
+ * its tierBase/tierCap to (lib/scanner/safety-rating.ts), and that
+ * components/host/danger-score-trend-utils.ts and extension/src/lib/badge.ts
+ * both encode. This table used to bucket at 4 and 7 instead of 5 and 8, so a
+ * score of 4 (top of the safe band) rendered amber and a 7 (top of caution)
+ * rendered red, disagreeing with the engine's own verdict on the same host.
+ */
+function dangerBandClass(score: number): string {
+  if (score >= 8) return "border-destructive/30 text-destructive";
+  if (score >= 5)
+    return "border-[hsl(var(--severity-medium))]/30 text-[hsl(var(--severity-medium))]";
+  return "border-border/50 text-muted-foreground";
+}
 
 interface HostRow {
   host: string;
@@ -292,8 +307,11 @@ export function ContentManager() {
             </div>
 
             <div className="mt-4 inline-flex rounded-lg border border-border/40 bg-muted/30 p-1">
+              {/* a11y (SC 4.1.2): which half of this switcher is active was
+                  carried in background and text colour only. */}
               <button
                 onClick={() => switchTab("hosts")}
+                aria-pressed={tab === "hosts"}
                 className={cn(
                   "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
                   tab === "hosts"
@@ -305,6 +323,7 @@ export function ContentManager() {
               </button>
               <button
                 onClick={() => switchTab("shares")}
+                aria-pressed={tab === "shares"}
                 className={cn(
                   "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
                   tab === "shares"
@@ -330,51 +349,118 @@ export function ContentManager() {
                   description="Nothing has been scanned publicly yet."
                 />
               ) : (
-                <TableScrollArea maxHeight="28rem">
-                  <Table>
-                    <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
-                      <TableRow className="border-y border-border/50 hover:bg-transparent">
-                        <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                          Host
-                        </TableHead>
-                        <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                          Danger
-                        </TableHead>
-                        <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                          Last Scanned
-                        </TableHead>
-                        <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground" />
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {hosts.map((row) => (
-                        <TableRow key={row.host} className="border-border/30">
-                          <TableCell className="px-4 py-2.5">
-                            <a
-                              href={ROUTES.HOST(row.host)}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-xs font-mono text-primary hover:underline"
+                <>
+                  {/* Desktop table plus an md:hidden card list, the pattern the
+                      sibling admin panels use. Without the card list this table
+                      shipped to phones and scrolled inside a viewport too
+                      narrow to read it. */}
+                  <div className="hidden md:block">
+                    <TableScrollArea maxHeight="28rem">
+                      <Table>
+                        <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
+                          <TableRow className="border-y border-border/50 hover:bg-transparent">
+                            <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                              Host
+                            </TableHead>
+                            <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                              Danger
+                            </TableHead>
+                            <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                              Last Scanned
+                            </TableHead>
+                            <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground" />
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {hosts.map((row) => (
+                            <TableRow
+                              key={row.host}
+                              className="border-border/30"
                             >
-                              {row.host}
-                            </a>
-                          </TableCell>
-                          <TableCell className="px-4 py-2.5">
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                "text-[10px] px-1.5 py-0",
-                                row.danger_score >= 7
-                                  ? "border-destructive/30 text-destructive"
-                                  : row.danger_score >= 4
-                                    ? "border-[hsl(var(--severity-medium))]/30 text-[hsl(var(--severity-medium))]"
-                                    : "border-border/50 text-muted-foreground",
-                              )}
-                            >
-                              {row.danger_score}/10
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
+                              <TableCell className="px-4 py-2.5">
+                                <a
+                                  href={ROUTES.HOST(row.host)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-xs font-mono text-primary hover:underline"
+                                >
+                                  {row.host}
+                                </a>
+                              </TableCell>
+                              <TableCell className="px-4 py-2.5">
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "text-[10px] px-1.5 py-0",
+                                    dangerBandClass(row.danger_score),
+                                  )}
+                                >
+                                  {row.danger_score}/10
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
+                                {new Date(
+                                  row.last_scanned_at,
+                                ).toLocaleDateString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                })}
+                              </TableCell>
+                              <TableCell className="px-4 py-2.5 text-right">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                  onClick={() => setPendingPurgeHost(row.host)}
+                                  disabled={busyId === row.host}
+                                >
+                                  {busyId === row.host ? (
+                                    <Loader2
+                                      aria-hidden="true"
+                                      className="h-3.5 w-3.5 animate-spin"
+                                    />
+                                  ) : (
+                                    <Trash2
+                                      aria-hidden="true"
+                                      className="h-3.5 w-3.5"
+                                    />
+                                  )}
+                                  Purge
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableScrollArea>
+                  </div>
+
+                  {/* Mobile cards */}
+                  <div className="md:hidden divide-y divide-border/30">
+                    {hosts.map((row) => (
+                      <div key={row.host} className="px-4 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <a
+                            href={ROUTES.HOST(row.host)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs font-mono text-primary hover:underline min-w-0 wrap-break-word"
+                          >
+                            {row.host}
+                          </a>
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-[10px] px-1.5 py-0 shrink-0",
+                              dangerBandClass(row.danger_score),
+                            )}
+                          >
+                            {row.danger_score}/10
+                          </Badge>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between gap-3">
+                          <span className="text-xs text-muted-foreground">
                             {new Date(row.last_scanned_at).toLocaleDateString(
                               "en-US",
                               {
@@ -383,34 +469,32 @@ export function ContentManager() {
                                 year: "numeric",
                               },
                             )}
-                          </TableCell>
-                          <TableCell className="px-4 py-2.5 text-right">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                              onClick={() => setPendingPurgeHost(row.host)}
-                              disabled={busyId === row.host}
-                            >
-                              {busyId === row.host ? (
-                                <Loader2
-                                  aria-hidden="true"
-                                  className="h-3.5 w-3.5 animate-spin"
-                                />
-                              ) : (
-                                <Trash2
-                                  aria-hidden="true"
-                                  className="h-3.5 w-3.5"
-                                />
-                              )}
-                              Purge
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableScrollArea>
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            onClick={() => setPendingPurgeHost(row.host)}
+                            disabled={busyId === row.host}
+                          >
+                            {busyId === row.host ? (
+                              <Loader2
+                                aria-hidden="true"
+                                className="h-3.5 w-3.5 animate-spin"
+                              />
+                            ) : (
+                              <Trash2
+                                aria-hidden="true"
+                                className="h-3.5 w-3.5"
+                              />
+                            )}
+                            Purge
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
               )
             ) : shares.length === 0 ? (
               <EmptyState
@@ -419,99 +503,171 @@ export function ContentManager() {
                 description="Nobody has created a share link yet."
               />
             ) : (
-              <TableScrollArea maxHeight="28rem">
-                <Table>
-                  <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
-                    <TableRow className="border-y border-border/50 hover:bg-transparent">
-                      <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                        URL
-                      </TableHead>
-                      <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                        Owner
-                      </TableHead>
-                      <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                        Listed
-                      </TableHead>
-                      <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {shares.map((row) => (
-                      <TableRow key={row.id} className="border-border/30">
-                        <TableCell className="px-4 py-2.5">
-                          <p
-                            className="text-xs font-mono text-foreground truncate max-w-[220px]"
-                            title={row.url}
-                          >
-                            {row.url}
-                          </p>
-                        </TableCell>
-                        <TableCell className="px-4 py-2.5">
-                          <p className="text-xs font-mono text-muted-foreground truncate max-w-[160px]">
-                            {row.user_email || "—"}
-                          </p>
-                        </TableCell>
-                        <TableCell className="px-4 py-2.5">
-                          {row.share_publicly_listed ? (
-                            <Badge
-                              variant="outline"
-                              className="text-[10px] px-1.5 py-0 border-primary/30 text-primary"
-                            >
-                              Listed
-                            </Badge>
-                          ) : (
-                            <Badge
-                              variant="outline"
-                              className="text-[10px] px-1.5 py-0 border-border/50 text-muted-foreground"
-                            >
-                              Unlisted
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell className="px-4 py-2.5">
-                          <div className="flex justify-end gap-1.5">
-                            {row.share_publicly_listed && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 gap-1.5 text-muted-foreground hover:text-foreground"
-                                onClick={() => handleUnlistShare(row)}
-                                disabled={busyId === row.id}
+              <>
+                <div className="hidden md:block">
+                  <TableScrollArea maxHeight="28rem">
+                    <Table>
+                      <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
+                        <TableRow className="border-y border-border/50 hover:bg-transparent">
+                          <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            URL
+                          </TableHead>
+                          <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            Owner
+                          </TableHead>
+                          <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            Listed
+                          </TableHead>
+                          <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground" />
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {shares.map((row) => (
+                          <TableRow key={row.id} className="border-border/30">
+                            <TableCell className="px-4 py-2.5">
+                              <p
+                                className="text-xs font-mono text-foreground truncate max-w-[220px]"
+                                title={row.url}
                               >
-                                {busyId === row.id ? (
-                                  <Loader2
-                                    aria-hidden="true"
-                                    className="h-3.5 w-3.5 animate-spin"
-                                  />
-                                ) : (
-                                  <EyeOff
+                                {row.url}
+                              </p>
+                            </TableCell>
+                            <TableCell className="px-4 py-2.5">
+                              <p className="text-xs font-mono text-muted-foreground truncate max-w-[160px]">
+                                {row.user_email || "Unknown owner"}
+                              </p>
+                            </TableCell>
+                            <TableCell className="px-4 py-2.5">
+                              {row.share_publicly_listed ? (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] px-1.5 py-0 border-primary/30 text-primary"
+                                >
+                                  Listed
+                                </Badge>
+                              ) : (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] px-1.5 py-0 border-border/50 text-muted-foreground"
+                                >
+                                  Unlisted
+                                </Badge>
+                              )}
+                            </TableCell>
+                            <TableCell className="px-4 py-2.5">
+                              <div className="flex justify-end gap-1.5">
+                                {row.share_publicly_listed && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 gap-1.5 text-muted-foreground hover:text-foreground"
+                                    onClick={() => handleUnlistShare(row)}
+                                    disabled={busyId === row.id}
+                                  >
+                                    {busyId === row.id ? (
+                                      <Loader2
+                                        aria-hidden="true"
+                                        className="h-3.5 w-3.5 animate-spin"
+                                      />
+                                    ) : (
+                                      <EyeOff
+                                        aria-hidden="true"
+                                        className="h-3.5 w-3.5"
+                                      />
+                                    )}
+                                    Unlist
+                                  </Button>
+                                )}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                  onClick={() => setPendingRevokeShare(row)}
+                                  disabled={busyId === row.id}
+                                >
+                                  <Trash2
                                     aria-hidden="true"
                                     className="h-3.5 w-3.5"
                                   />
-                                )}
-                                Unlist
-                              </Button>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                              onClick={() => setPendingRevokeShare(row)}
-                              disabled={busyId === row.id}
-                            >
-                              <Trash2
+                                  Revoke
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableScrollArea>
+                </div>
+
+                {/* Mobile cards */}
+                <div className="md:hidden divide-y divide-border/30">
+                  {shares.map((row) => (
+                    <div key={row.id} className="px-4 py-3">
+                      <p
+                        className="text-xs font-mono text-foreground wrap-break-word"
+                        title={row.url}
+                      >
+                        {row.url}
+                      </p>
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <p className="text-xs font-mono text-muted-foreground truncate min-w-0">
+                          {row.user_email || "Unknown owner"}
+                        </p>
+                        {row.share_publicly_listed ? (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] px-1.5 py-0 border-primary/30 text-primary shrink-0"
+                          >
+                            Listed
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] px-1.5 py-0 border-border/50 text-muted-foreground shrink-0"
+                          >
+                            Unlisted
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="mt-2 flex justify-end gap-1.5">
+                        {row.share_publicly_listed && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 gap-1.5 text-muted-foreground hover:text-foreground"
+                            onClick={() => handleUnlistShare(row)}
+                            disabled={busyId === row.id}
+                          >
+                            {busyId === row.id ? (
+                              <Loader2
+                                aria-hidden="true"
+                                className="h-3.5 w-3.5 animate-spin"
+                              />
+                            ) : (
+                              <EyeOff
                                 aria-hidden="true"
                                 className="h-3.5 w-3.5"
                               />
-                              Revoke
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableScrollArea>
+                            )}
+                            Unlist
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          onClick={() => setPendingRevokeShare(row)}
+                          disabled={busyId === row.id}
+                        >
+                          <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
+                          Revoke
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
 
             {!loading && total > 0 && (

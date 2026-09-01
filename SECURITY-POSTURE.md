@@ -128,7 +128,9 @@ Fussier, because it has to force the browser onto IPv4:
 
      # Only the echo endpoint, proxied to the SAME app as vulnradar.dev.
      location = /api/v3/whoami-ip {
-       proxy_pass http://45.58.120.60:25566;
+       # Example address only (RFC 5737 documentation range). Replace with your
+       # own origin. The real origin is not published in this repo.
+       proxy_pass http://203.0.113.10:3000;
        proxy_set_header Host $host;
        proxy_set_header X-Real-IP $remote_addr;
        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -160,7 +162,8 @@ Fussier, because it has to force the browser onto IPv4:
    Leave it unset to turn the feature off; nothing breaks, IPv6 users just show
    an IPv6 address on the security page.
 
-Both subdomains proxy to the same upstream (`45.58.120.60:25566`) on the same
+Both subdomains proxy to the same upstream (`203.0.113.10:3000`, an example
+address from the RFC 5737 documentation range, not the real origin) on the same
 nginx. It is one app on one port.
 
 ---

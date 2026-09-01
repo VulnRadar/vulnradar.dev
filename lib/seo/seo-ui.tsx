@@ -4,7 +4,7 @@ import { cn } from "@/lib/ui/utils";
 import { Button } from "@/components/ui/button";
 import { LandingNav } from "@/components/landing/landing-nav";
 import { Footer } from "@/components/scanner/footer";
-import { ROUTES } from "@/lib/config/constants";
+import { APP_REPO, ROUTES } from "@/lib/config/client-constants";
 import type { Severity } from "@/lib/scanner/types";
 
 /**
@@ -16,7 +16,11 @@ export function SeoPageShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <LandingNav />
-      <main className="flex-1">{children}</main>
+      {/* tabIndex={-1} so the root layout's skip link moves focus here, not
+          just the scroll position. */}
+      <main id="main-content" tabIndex={-1} className="flex-1">
+        {children}
+      </main>
       <Footer />
     </div>
   );
@@ -104,12 +108,61 @@ export function Breadcrumbs({
  * Closing call-to-action used across the SEO pages. Links to the live demo
  * scanner so a reader who came in on a long-tail query can act immediately.
  */
+/**
+ * The way in for someone who reads a check page and spots a gap.
+ *
+ * The check catalog is the one asset here that compounds without headcount,
+ * and every competing detection set is closed while this one is open and was
+ * advertised nowhere: grepping the /checks tree for "contribute" or the
+ * detector issue template returned nothing, so no reader of any of the ~750
+ * pages was ever told a check can be proposed. Deliberately a plain block
+ * rather than a card grid, and it links the prefilled template rather than a
+ * generic "open an issue".
+ */
+export function ContributeCheckCta({ className }: { className?: string }) {
+  return (
+    <section
+      className={cn("border-t border-border/50 pt-6", className)}
+      aria-labelledby="contribute"
+    >
+      <h2 id="contribute" className="text-sm font-semibold text-foreground">
+        Missing a check?
+      </h2>
+      <p className="mt-1.5 text-sm text-muted-foreground leading-relaxed max-w-2xl">
+        The detection set is open. If you know a misconfiguration this does not
+        catch, propose it: the issue template asks for the threat model, how to
+        detect it, the false-positive risk, and a test fixture, which is the
+        same thing a maintainer would have to work out anyway.
+      </p>
+      <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+        <a
+          href={`https://github.com/${APP_REPO}/issues/new?template=detector.md`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary hover:underline"
+        >
+          Propose a check
+        </a>
+        <Link href="/docs/developers" className="text-primary hover:underline">
+          How a check is built
+        </Link>
+      </p>
+    </section>
+  );
+}
+
 export function ScanCta({ heading, body }: { heading: string; body: string }) {
   return (
     <section className="border-t border-border/50">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
         <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 sm:p-10">
-          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight mb-3 text-balance">
+          {/* wrap-break-word, not just text-balance: this heading is built from
+              a check title, which is often one unbreakable identifier such as
+              UnhandledPromiseRejectionWarning. Line breaking never breaks around
+              a dot between letters, and text-balance cannot break a word, so on
+              a 295px card the tail was clipped away by the page-level
+              overflow-x: hidden rather than scrolling. */}
+          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight mb-3 text-balance wrap-break-word">
             {heading}
           </h2>
           <p className="text-muted-foreground leading-relaxed mb-6 max-w-2xl">

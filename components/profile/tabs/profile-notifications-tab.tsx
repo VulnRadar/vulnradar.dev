@@ -18,6 +18,9 @@ import {
   Download,
   Users,
   BarChart3,
+  ShieldAlert,
+  Sparkles,
+  GraduationCap,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -43,6 +46,8 @@ const DEFAULT_PREFS: NotificationPrefs = {
   email_account_deletion: true,
   email_team_invite: true,
   email_team_changes: true,
+  email_product_updates: true,
+  email_tips_guides: true,
 };
 
 export function ProfileNotificationsTab({
@@ -153,6 +158,21 @@ export function ProfileNotificationsTab({
         return rest;
       });
     }
+  };
+
+  // The posture digest is behind two independent gates and only one of them
+  // had a control. lib/notifications/posture-digest.ts selects recipients on
+  // users.digest_email_enabled (this toggle), then sends through
+  // sendNotificationEmail({ type: "posture_digest" }), which re-checks the
+  // notification_preferences column email_posture_digest. Nothing on this
+  // page ever wrote that column, so a user whose /unsubscribe click (or an
+  // unsubscribe_all) had cleared it saw this switch turn on and never
+  // received a digest. One switch, both columns, and the displayed state is
+  // the AND of the two so it can never claim to be on while a gate is shut.
+  const postureDigestOn = digestEmailEnabled && notifPrefs.email_posture_digest;
+  const handleTogglePostureDigest = (checked: boolean) => {
+    handleToggleDigestEmailEnabled(checked);
+    handleToggle("email_posture_digest", checked);
   };
 
   return (
@@ -270,9 +290,15 @@ export function ProfileNotificationsTab({
                   desc: "Alerts when vulnerability scans are finished.",
                 },
                 {
+                  key: "email_critical_findings" as const,
+                  icon: ShieldAlert,
+                  label: "Critical Findings",
+                  desc: "An immediate alert the moment a scan turns up a critical vulnerability.",
+                },
+                {
                   key: "email_regression_alert" as const,
                   icon: AlertCircle,
-                  label: "Critical Issues Found",
+                  label: "New Issues Since Last Scan",
                   desc: "Alerts when a scan finds a new critical or high severity issue that wasn't there last time.",
                 },
                 {
@@ -324,8 +350,8 @@ export function ProfileNotificationsTab({
                 </p>
               </div>
               <Switch
-                checked={digestEmailEnabled}
-                onCheckedChange={handleToggleDigestEmailEnabled}
+                checked={postureDigestOn}
+                onCheckedChange={handleTogglePostureDigest}
                 aria-label="Posture Digest"
               />
             </div>
@@ -437,6 +463,68 @@ export function ProfileNotificationsTab({
                   icon: Users,
                   label: "Team Changes",
                   desc: "Alerts about team membership changes, role updates, and team activity.",
+                },
+              ] as const
+            ).map(({ key, icon: Icon, label, desc }) => (
+              <div
+                key={key}
+                className="flex items-center justify-between gap-4 px-5 py-4"
+              >
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <Icon
+                      className="h-3.5 w-3.5 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                    <p className="text-sm font-medium text-foreground">
+                      {label}
+                    </p>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">{desc}</p>
+                </div>
+                <Switch
+                  checked={notifPrefs[key]}
+                  onCheckedChange={(checked) => handleToggle(key, checked)}
+                  aria-label={label}
+                />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* --- PRODUCT ---
+          These two columns exist in notification_preferences and are accepted
+          by PUT /api/v3/account/notifications, but the only place they could
+          be changed was the token-gated /unsubscribe page reached from an
+          email footer. So marketing email was manageable from an email link
+          and nowhere else, and a user who unsubscribed could not opt back in
+          from their own account. Mirrors app/unsubscribe/page.tsx's Product
+          group. */}
+      <section className="flex flex-col gap-4">
+        <div>
+          <h2 className="text-base font-semibold tracking-tight text-foreground">
+            Product
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Release notes and occasional guidance. Never sales email.
+          </p>
+        </div>
+        <Card className="border-border/50 bg-card/50">
+          <CardContent className="p-0 divide-y divide-border/60">
+            {(
+              [
+                {
+                  key: "email_product_updates" as const,
+                  icon: Sparkles,
+                  label: "Product Updates",
+                  desc: "New features, improvements, and release notes.",
+                },
+                {
+                  key: "email_tips_guides" as const,
+                  icon: GraduationCap,
+                  label: "Tips and Guides",
+                  desc: "Occasional tips on getting more out of VulnRadar.",
                 },
               ] as const
             ).map(({ key, icon: Icon, label, desc }) => (

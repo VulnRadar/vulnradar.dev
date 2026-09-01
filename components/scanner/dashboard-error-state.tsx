@@ -15,7 +15,7 @@ import {
   WifiOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { BILLING_ENABLED, SUPPORT_EMAIL } from "@/lib/config/constants";
+import { BILLING_ENABLED, SUPPORT_EMAIL } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
 import { copyToClipboard } from "@/lib/ui/clipboard";
 
@@ -24,7 +24,16 @@ interface DashboardErrorStateProps {
   details?: string;
   url?: string;
   status?: number;
+  /** Runs the same scan again, with the same URL, mode and options. */
   onRetry: () => void;
+  /**
+   * Clears the failure and returns to the empty scan form. Both buttons used
+   * to call onRetry, and onRetry was the reset: the primary button said
+   * "Try again" and did nothing of the kind, leaving the user to retype the
+   * URL and re-pick every option to retry a scan that had failed on a
+   * transient error.
+   */
+  onBack: () => void;
   /**
    * Skips the heuristic classifier below for cases the caller already knows
    * the exact kind of, such as a structured 422 from an authenticated scan.
@@ -155,6 +164,7 @@ export function DashboardErrorState({
   url,
   status,
   onRetry,
+  onBack,
   forcedKind,
 }: DashboardErrorStateProps) {
   const [copied, setCopied] = useState(false);
@@ -179,7 +189,7 @@ export function DashboardErrorState({
 
   return (
     <div className="pt-8">
-      <div className="relative overflow-hidden rounded-md border border-border bg-card">
+      <div className="relative overflow-hidden rounded-xl border border-border bg-card">
         <span
           aria-hidden
           className={cn("absolute inset-y-0 left-0 w-1", meta.rail)}
@@ -281,7 +291,7 @@ export function DashboardErrorState({
               Try again
             </Button>
             <Button
-              onClick={onRetry}
+              onClick={onBack}
               variant="outline"
               className="h-9 gap-2 border-border/60 bg-muted/40"
             >

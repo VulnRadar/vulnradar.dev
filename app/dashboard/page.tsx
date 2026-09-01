@@ -1,11 +1,10 @@
 "use client";
 
 import { useState, useCallback, useEffect, Suspense, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { ROUTES } from "@/lib/config/client-constants";
 import {
-  setQueryParam,
   setQueryParams,
   removeQueryParam,
   LOCATION_CHANGE_EVENT,
@@ -33,7 +32,17 @@ import {
   type AiSummary,
 } from "@/components/scanner/ai-choice-modal";
 import { CrawlUrlSelector } from "@/components/scanner/crawl-url-selector";
+import type { CrawlInfo } from "@/components/scanner/crawl-pages-info";
 import type { ScanTag } from "@/components/history";
+// The status poll loop and its types live in their own module so they can be
+// exercised by a test without mounting this whole page (AUDIT-014#scanui-09).
+import {
+  pollScanStatus,
+  PollAbortedError,
+  type ScanStatusResponse,
+  type ScanProgressState,
+} from "./poll-scan-status";
+import { buildScanRequest } from "./scan-request";
 
 const OnboardingTour = dynamic(
   () =>
@@ -47,7 +56,7 @@ import type {
   ScanStatus,
   Vulnerability,
 } from "@/lib/scanner/types";
-import { DEFAULT_SCAN_NOTE, SCANNING } from "@/lib/config/constants";
+import { DEFAULT_SCAN_NOTE } from "@/lib/config/client-constants";
 import { API } from "@/lib/config/client-constants";
 import { mapHistoryDetailResponse } from "@/lib/scanner/history-detail";
 import { useClientConfig } from "@/lib/hooks/use-client-config";
@@ -60,6 +69,12 @@ import { useAuth } from "@/components/providers/auth-provider";
 
 const CONTAINER = "w-full max-w-6xl mx-auto px-4 sm:px-6";
 
+/** Gap between retries of a bulk URL that was refused for concurrency, and the
+ *  ceiling on how long one URL is allowed to wait for a slot before it is
+ *  reported as refused. See handleBulkScan. */
+const BULK_CONCURRENCY_RETRY_MS = 3000;
+const BULK_CONCURRENCY_MAX_WAIT_MS = 120000;
+
 /**
  * ?scan= is overloaded on this page. A URL/host-looking value is a target to
  * kick off a scan for; anything else -- an opaque history public_id (hex) or a
@@ -71,98 +86,9 @@ function scanParamIsTarget(value: string): boolean {
   return /[./:]/.test(value);
 }
 
-import type { CrawlInfo } from "@/components/scanner/crawl-pages-info";
-
-/**
- * Scans now run as background jobs (see app/api/v3/scan/route.ts and
- * app/api/v3/scan/crawl/route.ts): the POST that kicks one off only
- * returns { scanId, status: "running" }, never the final result. The
- * real result has to be polled for from /api/v3/scan/status/[id] until
- * it reaches a terminal state. Shares its interval with the server's
- * admin-configurable CONFIG_SCAN_STATUS_POLL_INTERVAL_MS
- * (lib/config/config-values.ts) instead of a separate literal.
- */
-const SCAN_POLL_INTERVAL_MS = SCANNING.STATUS_POLL_INTERVAL_MS;
 /** A little above the server's own watchdogs (300s / 900s) so the client never gives up first. */
 const SCAN_MAX_WAIT_MS = 6 * 60 * 1000;
 const CRAWL_MAX_WAIT_MS = 16 * 60 * 1000;
-
-interface ScanStatusResult {
-  url: string;
-  findings?: Vulnerability[];
-  crawl?: CrawlInfo;
-  authReport?: ScanAuthReport;
-  scanHistoryId?: number;
-  /** Opaque id for the ?scan= URL, distinct from the numeric scanHistoryId. */
-  scanPublicId?: string | null;
-  tags?: ScanTag[];
-  [key: string]: unknown;
-}
-
-interface ScanStatusResponse {
-  status: "pending" | "running" | "completed" | "failed";
-  error?: string;
-  result?: ScanStatusResult;
-  currentCategory?: string | null;
-  categoriesCompleted?: number;
-  categoriesTotal?: number;
-}
-
-/** The real, server-measured progress of a running scan (see scan-jobs.ts). */
-interface ScanProgressState {
-  currentCategory: string | null;
-  categoriesCompleted: number;
-  categoriesTotal: number;
-}
-
-/**
- * A single failed status check (a dropped request, a brief 5xx, a proxy
- * hiccup) does not mean the scan itself failed -- it's an independent
- * background job that keeps running server-side regardless of whether this
- * particular poll landed. Only give up after several consecutive misses,
- * so a one-off network blip doesn't show "scan failed" for a scan that
- * finishes moments later in the background.
- */
-const MAX_CONSECUTIVE_POLL_FAILURES = 3;
-
-async function pollScanStatus(
-  scanId: number,
-  maxWaitMs: number,
-  onProgress?: (progress: ScanProgressState) => void,
-  // Caller (a component) resolves the live, admin-configurable value via
-  // useClientConfig() and passes it in -- this module-level function can't
-  // call a hook itself. Defaults to the compiled constant so any other
-  // caller keeps today's behavior.
-  pollIntervalMs: number = SCAN_POLL_INTERVAL_MS,
-): Promise<ScanStatusResponse> {
-  const startedAt = Date.now();
-  let consecutiveFailures = 0;
-  while (Date.now() - startedAt < maxWaitMs) {
-    try {
-      const res = await fetch(API.SCAN_STATUS(scanId));
-      if (!res.ok) throw new Error(`Status check failed (${res.status})`);
-      const data: ScanStatusResponse = await res.json();
-      consecutiveFailures = 0;
-      onProgress?.({
-        currentCategory: data.currentCategory ?? null,
-        categoriesCompleted: data.categoriesCompleted ?? 0,
-        categoriesTotal: data.categoriesTotal ?? 0,
-      });
-      if (data.status === "completed" || data.status === "failed") {
-        return data;
-      }
-    } catch {
-      consecutiveFailures++;
-      if (consecutiveFailures >= MAX_CONSECUTIVE_POLL_FAILURES) {
-        throw new Error("Lost track of the scan while it was running.");
-      }
-    }
-    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
-  }
-  throw new Error(
-    "This scan is taking longer than expected. Check your history in a few minutes, it may still finish.",
-  );
-}
 
 export default function DashboardPage() {
   return (
@@ -177,6 +103,7 @@ function DashboardLoading() {
 }
 
 function DashboardContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { me } = useAuth();
   const { scanStatusPollIntervalMs } = useClientConfig();
@@ -193,6 +120,8 @@ function DashboardContent() {
       ) => Promise<void>)
     | null
   >(null);
+  /** The last scan the user asked for, so a failure can be retried as-is. */
+  const lastScanPayloadRef = useRef<ScanFormPayload | null>(null);
   // Set by handleCancelScan, read once by runScan right after
   // pollScanStatus settles. Without this, a user-initiated cancel resets
   // the UI to idle immediately, but the poll loop's in-flight request is
@@ -201,6 +130,12 @@ function DashboardContent() {
   // handler) and would otherwise clobber the idle reset with a jarring
   // "scan failed" screen right after the user clicked away.
   const cancelledRef = useRef(false);
+  // Aborts the in-flight status-poll loop. Replaced per run, aborted on
+  // cancel and on unmount (the App Router keeps this module's JS context
+  // alive across a client navigation, so without the unmount abort the loop
+  // outlives the page).
+  const pollAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => pollAbortRef.current?.abort(), []);
   const [status, setStatus] = useState<ScanStatus>("idle");
   const [showLimitModal, setShowLimitModal] = useState(false);
   const [result, setResult] = useState<ScanResult | null>(null);
@@ -251,6 +186,24 @@ function DashboardContent() {
   // to scan (handleCrawlConfirm runs runScan after the selector closes).
   const [pendingScreenshot, setPendingScreenshot] = useState(false);
   const [pendingPortScan, setPendingPortScan] = useState(false);
+  // Same carry-across, for the check families and active probes the user
+  // picked. This was missing entirely, so handleCrawlConfirm passed undefined
+  // as the categoryFilter and every deep scan silently ran the full set:
+  // unticking a family or ticking an active probe had no effect at all, with
+  // nothing to say the configuration had been dropped. POST
+  // /api/v3/scan/crawl accepts `scanners` and the extension already sends it.
+  const [pendingScanners, setPendingScanners] = useState<string[] | undefined>(
+    undefined,
+  );
+  // Same carry-across, for the login supplied with a "deep" scan. Without it
+  // handleCrawlConfirm passed undefined as the auth argument and the confirmed
+  // crawl ran signed out, which is the second half of the bug fixed in
+  // handleScan below (AUDIT-011#drift-21). Login material lives in this state
+  // only for the seconds between submitting the form and confirming the page
+  // picker, and is cleared the moment either path finishes or is cancelled.
+  const [pendingAuth, setPendingAuth] = useState<InlineAuthValue | undefined>(
+    undefined,
+  );
   const [bulkStatus, setBulkStatus] = useState<"idle" | "scanning" | "done">(
     "idle",
   );
@@ -265,8 +218,14 @@ function DashboardContent() {
   } | null>(null);
   const aiAvailableRef = useRef(false);
   const [showAiModal, setShowAiModal] = useState(false);
+  // Separate from showAiModal on purpose. Completion used to open the modal
+  // itself, a fixed inset-0 backdrop-blur overlay over results that had just
+  // finished rendering, so the payoff of the scan was a blur the user had to
+  // dismiss before they could read anything. Completion now only offers the
+  // run, inline and above the results, and the modal opens when they ask.
   const [aiDeepLoading, setAiDeepLoading] = useState(false);
   const [aiSummary, setAiSummary] = useState<AiSummary | undefined>(undefined);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!me?.userId) return;
@@ -287,13 +246,24 @@ function DashboardContent() {
       // finished result reads as its own result link instead of the long
       // ?mode=...&screenshot=1&port_scan=1&active_probes=... URL it was
       // launched from -- which never looked like it had navigated to a result.
-      setQueryParams({
-        scan: String(id),
-        mode: null,
-        screenshot: null,
-        port_scan: null,
-        active_probes: null,
-      });
+      //
+      // replace, not push: finishing a scan is not a navigation the user
+      // made, and pushing here put a second entry on the stack for one
+      // action. Back then landed on the pre-completion URL, whose missing
+      // ?scan= told the sync effect below to throw the results away, and
+      // Forward returned to an id the effect bounced to History with a full
+      // document load. Replacing keeps the shareable result URL without
+      // making the back button destroy the result it is pointing at.
+      setQueryParams(
+        {
+          scan: String(id),
+          mode: null,
+          screenshot: null,
+          port_scan: null,
+          active_probes: null,
+        },
+        { replace: true },
+      );
     } else {
       removeQueryParam("scan", { replace: true });
     }
@@ -325,7 +295,11 @@ function DashboardContent() {
       // which resolves either shape.
       if (scanParamIsTarget(scan)) return;
       if (status === "idle") {
-        window.location.href = `${ROUTES.HISTORY}?scan=${encodeURIComponent(scan)}`;
+        // router.replace, not window.location.href: a full document reload
+        // for what is a move between two routes of the same app, and it
+        // pushed the dashboard URL it was leaving onto the stack, so Back
+        // bounced straight here again.
+        router.replace(`${ROUTES.HISTORY}?scan=${encodeURIComponent(scan)}`);
       }
     };
 
@@ -339,7 +313,7 @@ function DashboardContent() {
       window.removeEventListener(LOCATION_CHANGE_EVENT, syncFromUrl);
       window.removeEventListener("popstate", syncFromUrl);
     };
-  }, [status]);
+  }, [status, router]);
 
   const handleFindingsUpdated = useCallback((findings: Vulnerability[]) => {
     setResult((prev) => (prev ? { ...prev, findings } : prev));
@@ -372,58 +346,98 @@ function DashboardContent() {
     }
   }, [scanHistoryId]);
 
-  async function handleSaveNotes(notes: string) {
-    if (!scanHistoryId) return;
+  // Returns null on success, the message to show on failure. The catch used
+  // to swallow the failure outright, so the notes editor closed and the text
+  // was gone with nothing said about it.
+  async function handleSaveNotes(notes: string): Promise<string | null> {
+    if (!scanHistoryId) return "This scan is not saved yet.";
     try {
       const res = await fetch(`${API.HISTORY}/${scanHistoryId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notes }),
       });
-      if (res.ok) setScanNotes(notes);
+      if (res.ok) {
+        setScanNotes(notes);
+        return null;
+      }
+      const data = await res.json().catch(() => ({}));
+      return data.error || "Couldn't save these notes.";
     } catch {
-      /* ignore */
+      return "Couldn't reach the server to save these notes.";
     }
   }
 
-  const handleAddTag = async (scanId: string | number, tag: string) => {
-    if (!tag.trim()) return;
-    const res = await fetch(API.SCAN_TAGS, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scanId, tag: tag.trim() }),
-    });
-    if (res.ok) {
+  // Return null on success, the message to show on failure. Same silent-write
+  // problem the history page had: no !res.ok branch and no catch at all.
+  const handleAddTag = async (
+    scanId: string | number,
+    tag: string,
+  ): Promise<string | null> => {
+    if (!tag.trim()) return null;
+    try {
+      const res = await fetch(API.SCAN_TAGS, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scanId, tag: tag.trim() }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        return data.error || "Couldn't add that tag.";
+      }
       const data = await res.json();
       setScanTags(data.tags);
+      return null;
+    } catch {
+      return "Couldn't reach the server to add that tag.";
     }
   };
 
-  const handleRemoveTag = async (scanId: string | number, tag: string) => {
-    const res = await fetch(API.SCAN_TAGS, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scanId, tag, action: "remove" }),
-    });
-    if (res.ok) {
+  const handleRemoveTag = async (
+    scanId: string | number,
+    tag: string,
+  ): Promise<string | null> => {
+    try {
+      const res = await fetch(API.SCAN_TAGS, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scanId, tag, action: "remove" }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        return data.error || "Couldn't remove that tag.";
+      }
       const data = await res.json();
       setScanTags(data.tags);
+      return null;
+    } catch {
+      return "Couldn't reach the server to remove that tag.";
     }
   };
 
   const handleScan = useCallback(async (payload: ScanFormPayload) => {
+    // Kept so the failure screen's "Try again" can re-run the same scan
+    // rather than dumping the user back on an empty form to retype the URL
+    // and re-pick every option (see handleRetryScan below).
+    lastScanPayloadRef.current = payload;
     const { url, mode, scanners, auth, isPublic, captureScreenshot, portScan } =
       payload;
     setPendingIsPublic(isPublic);
     setPendingScreenshot(!!captureScreenshot);
     setPendingPortScan(!!portScan);
     setScanningMode(mode);
-    // Ephemeral authenticated scanning (POST /api/v3/scan/authenticated) is
-    // single-page only: it never crawls. A login was supplied, so this run
-    // skips crawl discovery even when "deep" was picked and goes straight
-    // at the one URL, authenticated, exactly like "quick" would.
-    if (mode === "deep" && !auth) {
+    // "Deep" always crawls, with or without a login. This used to read
+    // `mode === "deep" && !auth`, which sent every auth-carrying request to
+    // the single-page endpoint: asking for a crawl AND supplying credentials
+    // silently produced a one-page scan, with nothing on screen to say the
+    // crawl had been dropped. POST /api/v3/scan/crawl takes the same `auth`
+    // block as the single-page route (it establishes the session once and
+    // threads it through every page fetch), so the login is carried through
+    // discovery and into the crawl instead. AUDIT-011#drift-21.
+    if (mode === "deep") {
       setPendingCrawlUrl(url);
+      setPendingScanners(scanners);
+      setPendingAuth(auth);
       setShowCrawlSelector(true);
       setCrawlDiscovering(true);
       setCrawlDiscoveryUrls([url]);
@@ -432,7 +446,13 @@ function DashboardContent() {
         const res = await fetch(API.SCAN_CRAWL_DISCOVER, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: `https://${url}` }),
+          // Discovery signs in too when a login was supplied, otherwise the
+          // picker would only ever list the pages a signed-out visitor can
+          // reach and an "authenticated crawl" would cover the marketing site.
+          body: JSON.stringify({
+            url: `https://${url}`,
+            ...(auth ? { auth } : {}),
+          }),
         });
         const data = await res.json();
         if (res.ok && data.urls) {
@@ -492,46 +512,21 @@ function DashboardContent() {
       setShowAiModal(false);
       setAiSummary(undefined);
 
-      const scannerPayload =
-        categoryFilter && categoryFilter.length > 0
-          ? categoryFilter
-          : undefined;
       const isCrawl = !!crawlUrls;
-      // Authenticated scanning lives entirely behind its own request shape
-      // (POST /api/v3/scan/authenticated, ephemeral login material in the
-      // body, never crawls). Everything else keeps using the plain
-      // scan/crawl endpoints. Crawl URLs have no meaning to the
-      // authenticated endpoint's schema, so they are left out entirely
-      // rather than sent and silently dropped.
-      const endpoint = auth
-        ? API.SCAN_AUTHENTICATED
-        : isCrawl
-          ? API.SCAN_CRAWL
-          : API.SCAN;
-      // isPublic is only included when the caller actually made a choice
-      // (a real submit through the scan form always does). Omitted
-      // entirely otherwise, so the API falls back to the account's own
-      // "scans are private by default" setting instead of defaulting to
-      // public -- see lib/scanner/scan-privacy.ts.
-      const payload = auth
-        ? {
-            url,
-            ...(scannerPayload ? { scanners: scannerPayload } : {}),
-            auth,
-            ...(typeof isPublic === "boolean" ? { isPublic } : {}),
-          }
-        : {
-            ...(isCrawl ? { url, urls: crawlUrls } : { url }),
-            ...(scannerPayload ? { scanners: scannerPayload } : {}),
-            ...(typeof isPublic === "boolean" ? { isPublic } : {}),
-            // Opt-in page screenshot: only sent when true, so a normal scan
-            // never even mentions it. Not applicable to the authenticated
-            // endpoint (auth branch above), whose schema doesn't take it.
-            ...(captureScreenshot ? { captureScreenshot: true } : {}),
-            // Opt-in port sweep: only sent when true. The scan/crawl routes
-            // hold it to the same verified-domain gate as active probing.
-            ...(portScan ? { portScan: true } : {}),
-          };
+      // Endpoint + body live in ./scan-request so the routing decision can be
+      // tested without mounting this page. A crawl always goes to the crawl
+      // endpoint, with or without a login: this used to send ANY auth-carrying
+      // request to the single-page route, which silently dropped the crawl
+      // URLs and scanned one page. AUDIT-011#drift-21.
+      const { endpoint, payload, isInlineAuthScan } = buildScanRequest({
+        url,
+        crawlUrls,
+        scanners: categoryFilter,
+        auth,
+        isPublic,
+        captureScreenshot,
+        portScan,
+      });
 
       try {
         const response = await fetch(endpoint, {
@@ -578,11 +573,11 @@ function DashboardContent() {
         // POST /api/v3/scan and /api/v3/scan/crawl now run as background
         // jobs (see those route files): this response is only
         // { scanId, status: "running" }, not the final result, so it has
-        // to be polled from /api/v3/scan/status/[id]. The ephemeral
-        // authenticated endpoint (auth branch above) is unaffected and
-        // still replies synchronously with the finished scan.
+        // to be polled from /api/v3/scan/status/[id]. That includes an
+        // AUTHENTICATED crawl. Only the single-page ephemeral endpoint
+        // (isInlineAuthScan) replies synchronously with the finished scan.
         let finalData = data;
-        if (!auth) {
+        if (!isInlineAuthScan) {
           const scanId = data.scanId;
           if (!scanId) {
             setError("The scanner did not return a job to track.");
@@ -592,6 +587,9 @@ function DashboardContent() {
             return;
           }
           setRunningScanId(scanId);
+          pollAbortRef.current?.abort();
+          const pollAbort = new AbortController();
+          pollAbortRef.current = pollAbort;
           let statusData: ScanStatusResponse;
           try {
             statusData = await pollScanStatus(
@@ -599,6 +597,7 @@ function DashboardContent() {
               isCrawl ? CRAWL_MAX_WAIT_MS : SCAN_MAX_WAIT_MS,
               setScanProgress,
               scanStatusPollIntervalMs,
+              pollAbort.signal,
             );
           } catch (pollError) {
             // A user-initiated cancel already reset the UI to idle
@@ -609,6 +608,9 @@ function DashboardContent() {
               cancelledRef.current = false;
               return;
             }
+            // Aborted for any other reason (unmount, a newer run taking
+            // over): nothing left on screen to report to.
+            if (pollError instanceof PollAbortedError) return;
             setError(
               pollError instanceof Error
                 ? pollError.message
@@ -688,6 +690,10 @@ function DashboardContent() {
         }
 
         if (aiAvailableRef.current && historyId) {
+          // Opens on completion rather than offering an inline banner: the
+          // owner wants this as a modal. AUDIT-014#scan-08 argued the other
+          // way, that a modal at the end of a scan interrupts the read, and
+          // was overruled.
           setShowAiModal(true);
         }
       } catch {
@@ -715,18 +721,25 @@ function DashboardContent() {
       pendingCrawlUrl,
       selectedUrls,
       "deep",
-      undefined,
-      undefined,
+      pendingScanners,
+      // Was hardcoded undefined, so a crawl confirmed from the picker always
+      // ran signed out even once handleScan started carrying the login here.
+      pendingAuth,
       pendingIsPublic,
       pendingScreenshot,
       pendingPortScan,
     );
+    // runScan already has the value by argument, so the state copy is dropped
+    // immediately: login material never outlives the request it was typed for.
+    setPendingAuth(undefined);
   }
 
   function handleCrawlCancel() {
     setShowCrawlSelector(false);
     setCrawlDiscoveryUrls([]);
     setPendingCrawlUrl("");
+    setPendingScanners(undefined);
+    setPendingAuth(undefined);
     setCrawlDiscovering(false);
   }
 
@@ -743,33 +756,67 @@ function DashboardContent() {
       for (let i = 0; i < urls.length; i++) {
         setBulkProgress({ current: i + 1, total: urls.length });
 
-        try {
-          const res = await fetch(API.SCAN, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              url: urls[i],
-              source: "bulk",
-              ...(typeof isPublic === "boolean" ? { isPublic } : {}),
-            }),
-          });
-          const data = await res.json();
+        // POST /api/v3/scan reserves a concurrency slot and returns while the
+        // scan is still running (route.ts's `void executeScan`), so this loop
+        // fires the whole list in well under a second -- far faster than the
+        // scans themselves finish. Every plan caps concurrent scans (free
+        // is 1), so from the second URL onwards the response was a 429
+        // carrying statusCode CONCURRENT_SCAN_LIMIT, which the old code
+        // bucketed with the daily-quota 429 and reported as "skipped, you hit
+        // the scan limit" while opening the daily-limit upgrade modal. A
+        // 10-URL run on a free account queued one scan and told the user the
+        // other nine were over quota, when the daily quota was never involved.
+        // A concurrency 429 means "not yet", so wait for the running scan to
+        // release its slot and retry the same URL.
+        const deadline = Date.now() + BULK_CONCURRENCY_MAX_WAIT_MS;
+        let outcome: "queued" | "over-quota" | "refused" = "refused";
 
-          if (res.ok && !data.error) {
-            successful++;
-          } else if (
-            res.status === 429 ||
-            data.error?.toLowerCase().includes("daily scan limit") ||
-            data.error?.toLowerCase().includes("scan limit")
-          ) {
-            skipped++;
-            if (skipped === 1) {
-              setShowLimitModal(true);
+        while (true) {
+          try {
+            const res = await fetch(API.SCAN, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                url: urls[i],
+                source: "bulk",
+                ...(typeof isPublic === "boolean" ? { isPublic } : {}),
+              }),
+            });
+            const data = await res.json().catch(() => ({}));
+
+            if (res.ok && !data.error) {
+              outcome = "queued";
+              break;
             }
-          } else {
-            failed++;
+            if (
+              res.status === 429 &&
+              data.statusCode === "CONCURRENT_SCAN_LIMIT" &&
+              Date.now() < deadline
+            ) {
+              await new Promise((resolve) =>
+                setTimeout(resolve, BULK_CONCURRENCY_RETRY_MS),
+              );
+              continue;
+            }
+            // Everything else is a real refusal. Only the daily cap has an
+            // upgrade path, and it is the only 429 left once concurrency has
+            // been handled above.
+            outcome = res.status === 429 ? "over-quota" : "refused";
+            break;
+          } catch {
+            outcome = "refused";
+            break;
           }
-        } catch {
+        }
+
+        if (outcome === "queued") {
+          successful++;
+        } else if (outcome === "over-quota") {
+          skipped++;
+          if (skipped === 1) {
+            setShowLimitModal(true);
+          }
+        } else {
           failed++;
         }
       }
@@ -802,14 +849,22 @@ function DashboardContent() {
   function handleCancelScan() {
     if (!runningScanId) return;
     cancelledRef.current = true;
+    pollAbortRef.current?.abort();
     fetch(API.SCAN_STATUS(runningScanId), { method: "DELETE" }).catch(() => {});
     setRunningScanId(null);
     setStatus("idle");
   }
 
+  // Every non-success path here used to collapse to setShowAiModal(false),
+  // which is pixel-identical to clicking "Skip, show the raw findings". So
+  // "ran and found nothing", "you are out of AI credits" and "the provider is
+  // down" were indistinguishable, and the quota message (the product's own
+  // upgrade path) was thrown away. The modal now stays open and says which
+  // one happened.
   async function handleDeepScan() {
     if (!scanHistoryId) return;
     setAiDeepLoading(true);
+    setAiError(null);
     try {
       const res = await fetch(API.SCAN_VERIFY, {
         method: "POST",
@@ -831,13 +886,31 @@ function DashboardContent() {
             skipped: enriched.filter((f) => !f.aiVerdict).length,
           });
         } else {
-          setShowAiModal(false);
+          setAiError(
+            "The AI service returned nothing to apply. Your findings are unchanged.",
+          );
         }
       } else {
-        setShowAiModal(false);
+        const data = await res.json().catch(() => ({}));
+        const message =
+          data.error || "The AI service refused the request. Try again later.";
+        // A credits/quota 429 is the one case with a real remedy, so route it
+        // into the upgrade modal this page already mounts instead of leaving
+        // the user to work out what to do about it.
+        if (
+          res.status === 429 &&
+          /credit|quota|limit/i.test(String(data.error || ""))
+        ) {
+          setShowAiModal(false);
+          setShowLimitModal(true);
+          return;
+        }
+        setAiError(message);
       }
     } catch {
-      setShowAiModal(false);
+      setAiError(
+        "Couldn't reach the AI service. Check your connection and try again.",
+      );
     } finally {
       setAiDeepLoading(false);
     }
@@ -846,6 +919,7 @@ function DashboardContent() {
   function handleViewNow() {
     setShowAiModal(false);
     setAiSummary(undefined);
+    setAiError(null);
   }
 
   function handleReset() {
@@ -865,10 +939,31 @@ function DashboardContent() {
     setShowCrawlSelector(false);
     setCrawlDiscoveryUrls([]);
     setPendingCrawlUrl("");
+    setPendingScanners(undefined);
     setCrawlDiscovering(false);
     setShowAiModal(false);
     setAiSummary(undefined);
+    setAiError(null);
     updateUrlWithScan(null);
+  }
+
+  /**
+   * The failure screen's primary action. It used to be handleReset, so a
+   * button labelled "Try again" cleared the form and tried nothing: the user
+   * had to retype the URL and re-pick the mode, the check families, the
+   * screenshot and port-scan options to retry a scan that had failed on a
+   * timeout. Runs the same payload again, and only falls back to the reset
+   * when there is genuinely nothing to repeat (a scan started from a ?scan=
+   * URL on first load, before any form submission).
+   */
+  function handleRetryScan() {
+    const payload = lastScanPayloadRef.current;
+    if (!payload) {
+      handleReset();
+      return;
+    }
+    handleReset();
+    handleScan(payload);
   }
 
   return (
@@ -929,7 +1024,8 @@ function DashboardContent() {
             url={errorUrl ?? undefined}
             status={errorStatus ?? undefined}
             forcedKind={errorForcedKind}
-            onRetry={handleReset}
+            onRetry={handleRetryScan}
+            onBack={handleReset}
           />
         )}
 
@@ -981,6 +1077,7 @@ function DashboardContent() {
           findings={result.findings}
           loading={aiDeepLoading}
           aiSummary={aiSummary}
+          error={aiError}
           onDeepScan={handleDeepScan}
           onViewNow={handleViewNow}
         />

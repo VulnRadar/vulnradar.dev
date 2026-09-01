@@ -15,5 +15,6 @@
   "closedAt": "2026-06-28T16:30:00Z",
   "status": "shipped",
   "summary": "Closed 1 Critical (moderator email-change takeover), 1 High (profile email change leaves new email auto-verified), 7 Medium (audit-log regression, plaintext share/invite tokens, no device-trust clear on password reset, signup per-IP only, scan URL-length not enforced in bulk/crawl/discover, GH Actions pinned to mutable tags, postgres:16-alpine mutable tag), and 6 Low/Informational.",
-  "shipCommit": "5549439"
+  "shipCommit": "5549439",
+  "repairNote": "findings.json was unparseable from creation until 2026-08-29: a stray NUL byte (0x00) inside the character class of an email regex quoted in one finding summary, at byte offset 8200 (line 161). Removing that single byte restored the file; the regex now reads [a-zA-Z0-9.-]+ as intended. No finding content was otherwise altered. All 20 findings were absent from any cross-audit tooling for the ~2 months the file was broken."
 }

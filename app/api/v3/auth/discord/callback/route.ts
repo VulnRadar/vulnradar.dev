@@ -13,7 +13,11 @@ import {
   getUserTwoFAConfig,
 } from "@/lib/discord/discord-utils";
 import { DEVICE_TRUST_COOKIE_NAME } from "@/lib/config/constants";
-import { verifyDiscordState } from "@/lib/auth/discord-state";
+import {
+  verifyDiscordState,
+  DISCORD_NONCE_COOKIE,
+} from "@/lib/auth/discord-state";
+import { timingSafeEqual } from "node:crypto";
 import { findTrustedDevice } from "@/lib/auth/device-trust";
 import { signPendingToken } from "@/lib/auth/pending-2fa";
 import { encryptApiKey } from "@/lib/auth/crypto";
@@ -80,15 +84,48 @@ export async function GET(request: Request) {
   // as a different linked user.
   const verified = verifyDiscordState(state, session?.userId);
   if (!verified.ok) {
+    // verifyDiscordState returns four distinct reasons; the redirect only has
+    // two codes for them, and it used to hide that behind a ternary whose
+    // "user-mismatch" arm produced the same string as its else arm, so the
+    // test was dead and the distinction was invisible everywhere. The
+    // user-facing copy deliberately stays generic (telling a stranger WHICH
+    // way their forged state failed helps only them), but the real reason is
+    // logged: "user-mismatch" is the leaked-state replay this HMAC binding
+    // exists to catch, and it should not look like an ordinary bad state in
+    // the server logs.
+    console.error(
+      `[discord-oauth] state rejected (${verified.reason}); session user ${session?.userId ?? "none"}`,
+    );
     const reason =
       verified.reason === "expired"
         ? "discord_expired"
-        : verified.reason === "user-mismatch"
-          ? "discord_invalid_state"
-          : "discord_invalid_state";
+        : "discord_invalid_state";
     return NextResponse.redirect(`${baseUrl}/login?error=${reason}`);
   }
   const action = verified.payload.action || "connect";
+
+  // auth: sign-in must also be bound to the browser that STARTED the flow.
+  // The userId binding above is skipped whenever the state carries no userId,
+  // which is every logged-out sign-in, so without this an attacker could mint
+  // a state for their own Discord identity, capture the callback URL, and lure
+  // a victim to it: the login branch below would resolve the attacker's
+  // account and createSession would overwrite the victim's session cookie.
+  // The cookie is single-use, cleared whichever way this goes.
+  if (action !== "connect") {
+    const nonceStore = await cookies();
+    const nonceCookie = nonceStore.get(DISCORD_NONCE_COOKIE)?.value ?? "";
+    const stateNonce = verified.payload.nonce;
+    const nonceOk =
+      nonceCookie.length > 0 &&
+      nonceCookie.length === stateNonce.length &&
+      timingSafeEqual(Buffer.from(nonceCookie), Buffer.from(stateNonce));
+    nonceStore.delete(DISCORD_NONCE_COOKIE);
+    if (!nonceOk) {
+      return NextResponse.redirect(
+        `${baseUrl}/login?error=discord_invalid_state`,
+      );
+    }
+  }
 
   try {
     // Exchange code for tokens

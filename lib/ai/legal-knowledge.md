@@ -1,6 +1,6 @@
 # VulnRadar Legal Pages: AI Knowledge
 
-_Auto-compiled from `app/legal/*/page.tsx` on 2026-08-25._
+_Auto-compiled from `app/legal/*/page.tsx` on 2026-09-01._
 
 This file is consumed by the AI system prompt at runtime (via the
 /legal slash command) so the assistant can answer questions about
@@ -825,8 +825,10 @@ users navigate with keyboards.
 text where appropriate.
 - Responsive Design: Content is accessible across
 different screen sizes and zoom levels.
-- Form Labels: All form inputs have associated
-labels for clarity.
+- Form Labels: Form inputs carry associated labels
+or accessible names. A small number of inputs in the API
+playground are still labelled only by placeholder text; that is
+tracked as a bug.
 - Skip Links: Skip navigation links allow users to
 bypass repetitive content.
 
@@ -884,11 +886,15 @@ or Internet Explorer.
 ### 7. Assessment Approach
 VulnRadar assessed accessibility by:
 
-- Self-evaluation using automated accessibility testing tools
-- Manual testing with screen readers and keyboard navigation
-- Review against WCAG 2.1 success criteria
+- Self-evaluation by the maintainers, not by an external auditor
+- Manual keyboard-only navigation and screen reader passes over the main flows
+- Review of colour contrast and focus visibility against WCAG 2.1 AA
+
+We do not currently run an automated accessibility test suite in
+continuous integration. Adding one is on the roadmap, and this section
+will be updated when it lands rather than in advance of it.
 
 ### 8. Continuous Improvement
-We are committed to maintaining and improving accessibility. As we
-develop new features, we incorporate accessibility testing into our
-development process.
+We are committed to maintaining and improving accessibility. New
+features get the same manual keyboard and screen reader pass described
+above, and reported barriers are treated as bugs rather than requests.

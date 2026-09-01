@@ -2,20 +2,11 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, AlertTriangle } from "lucide-react";
+
 import { Header } from "@/components/scanner/header";
 import { Footer } from "@/components/scanner/footer";
 import { usePagination } from "@/components/ui/pagination-control";
-import { Button } from "@/components/ui/button";
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { API, TEAM_ROLES } from "@/lib/config/constants";
+import { API, TEAM_ROLES } from "@/lib/config/client-constants";
 import {
   type Team,
   type Member,
@@ -33,9 +24,67 @@ import {
 } from "@/components/teams";
 import { TeamsSkeleton } from "@/components/teams/teams-skeleton";
 import { copyToClipboard } from "@/lib/ui/clipboard";
+import { useQueryParam } from "@/lib/ui/url-state";
+import { InlineAlert } from "@/components/shared/inline-alert";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+// The members list needs to know which row is you, so it can hide the
+// "Change role" submenu on your own membership: a team owner demoting
+// themselves would leave the team with nobody who can promote anyone back.
+import { useAuth } from "@/components/providers/auth-provider";
+
+/** A destructive action awaiting confirmation, carrying what it will act on. */
+type Confirmation =
+  | { kind: "deleteTeam"; teamId: number; teamName: string }
+  | { kind: "removeMember"; userId: number; label: string }
+  | { kind: "leaveTeam"; teamName: string };
+
+const CONFIRM_COPY: Record<
+  Confirmation["kind"],
+  { title: string; confirmLabel: string }
+> = {
+  deleteTeam: { title: "Delete this team?", confirmLabel: "Delete team" },
+  removeMember: { title: "Remove this person?", confirmLabel: "Remove" },
+  leaveTeam: { title: "Leave this team?", confirmLabel: "Leave" },
+};
+
+function confirmDescription(confirmation: Confirmation): React.ReactNode {
+  switch (confirmation.kind) {
+    case "deleteTeam":
+      return (
+        <>
+          <span className="font-medium text-foreground">
+            {confirmation.teamName}
+          </span>{" "}
+          and its member list are deleted. Everyone loses access to the
+          team&apos;s shared reports. This cannot be undone.
+        </>
+      );
+    case "removeMember":
+      return (
+        <>
+          <span className="font-medium text-foreground">
+            {confirmation.label}
+          </span>{" "}
+          loses access to this team&apos;s reports right away. Their own scan
+          history is untouched, and you can invite them back later.
+        </>
+      );
+    case "leaveTeam":
+      return (
+        <>
+          You lose access to reports shared in{" "}
+          <span className="font-medium text-foreground">
+            {confirmation.teamName}
+          </span>
+          . An owner or admin has to invite you back.
+        </>
+      );
+  }
+}
 
 export default function TeamsPage() {
   const router = useRouter();
+  const { me } = useAuth();
 
   // List view state
   const [teams, setTeams] = useState<Team[]>([]);
@@ -44,6 +93,11 @@ export default function TeamsPage() {
     teamMembers: number;
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  // A failed teams request used to leave an empty list behind, which renders
+  // identically to genuinely having no teams. Kept separate from actionError
+  // (which is dismissable and belongs to a user-initiated action) because a
+  // load failure is a standing fact about the page, not a one-off event.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -52,12 +106,20 @@ export default function TeamsPage() {
   const [invitations, setInvitations] = useState<TeamInvitation[]>([]);
   const [inviteBusyId, setInviteBusyId] = useState<number | null>(null);
 
-  // Detail view state
+  // Detail view state.
+  //
+  // The open team is mirrored into ?team=<id>, the same way app/repos/page.tsx
+  // backs its own selection with ?repo. Opening a team used to mutate state in
+  // place with no history entry, so browser Back navigated off /teams entirely
+  // instead of returning to the team list, and "the acme team page" could not
+  // be linked or bookmarked: the only shareable URL was /teams itself.
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
+  const [teamParam, setTeamParam] = useQueryParam<string>("team", "");
   const [members, setMembers] = useState<Member[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
   const [currentRole, setCurrentRole] = useState("");
   const [membersLoading, setMembersLoading] = useState(false);
+  const [membersError, setMembersError] = useState<string | null>(null);
 
   // Rename state
   const [editingName, setEditingName] = useState(false);
@@ -78,10 +140,6 @@ export default function TeamsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   // Confirmation state. Each destructive action names its target before it runs.
-  type Confirmation =
-    | { kind: "deleteTeam"; teamId: number; teamName: string }
-    | { kind: "removeMember"; userId: number; label: string }
-    | { kind: "leaveTeam"; teamName: string };
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
 
@@ -89,6 +147,7 @@ export default function TeamsPage() {
   const [viewingMember, setViewingMember] = useState<Member | null>(null);
   const [memberScans, setMemberScans] = useState<MemberScan[]>([]);
   const [scansLoading, setScansLoading] = useState(false);
+  const [scansError, setScansError] = useState<string | null>(null);
   // Ticket for the member-scans fetch so a slower earlier request can't
   // overwrite a newer one (see handleViewMemberScans).
   const memberScansReqRef = useRef(0);
@@ -108,14 +167,27 @@ export default function TeamsPage() {
     try {
       const res = await fetch(API.TEAMS);
       if (!res.ok) {
-        router.push("/login");
+        // Only an actual auth failure means "you are signed out". A 500 or a
+        // gateway error used to bounce a perfectly good session to the login
+        // screen, which reads as having been logged out. Matches the gating on
+        // app/history/page.tsx and app/assets/page.tsx.
+        if (res.status === 401 || res.status === 403) {
+          router.push("/login");
+          return;
+        }
+        setLoadError(
+          "Your teams could not be loaded. You are still signed in, so this is a problem on our side.",
+        );
         return;
       }
       const data = await res.json();
       setTeams(data.teams || []);
       setLimits(data.limits ?? null);
+      setLoadError(null);
     } catch {
-      /* */
+      setLoadError(
+        "Could not reach the server to load your teams. Check your connection and try again.",
+      );
     } finally {
       setLoading(false);
     }
@@ -138,6 +210,27 @@ export default function TeamsPage() {
     fetchTeams();
     fetchInvitations();
   }, [fetchTeams, fetchInvitations]);
+
+  // Resolves ?team=<id> against the loaded list. This is what makes a deep
+  // link work (the param is read before `teams` has arrived, so it has to be
+  // resolved again once it has) and what makes browser Back return to the team
+  // list instead of leaving /teams: Back restores the previous ?team value and
+  // this opens or closes the detail view to match.
+  useEffect(() => {
+    if (loading) return;
+    if (!teamParam) {
+      if (selectedTeam) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- follows a browser history change (an external system), and the `if (selectedTeam)` guard makes it a no-op on the very next render
+        setSelectedTeam(null);
+        setViewingMember(null);
+      }
+      return;
+    }
+    if (selectedTeam && String(selectedTeam.id) === teamParam) return;
+    const match = teams.find((t) => String(t.id) === teamParam);
+    if (match) applyTeamSelection(match);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- applyTeamSelection is redeclared every render; including it would re-run this on every render
+  }, [teamParam, teams, loading, selectedTeam]);
 
   async function handleCreateTeam(name: string, invites: NewTeamInvite[]) {
     setCreating(true);
@@ -262,7 +355,7 @@ export default function TeamsPage() {
         );
         return;
       }
-      setSelectedTeam(null);
+      closeTeam();
       await fetchTeams();
     } catch {
       setActionError(
@@ -278,6 +371,7 @@ export default function TeamsPage() {
   // never renders (the only delivery path on a no-SMTP self-host).
   async function refreshMembers(team: Team) {
     setMembersLoading(true);
+    setMembersError(null);
     try {
       const res = await fetch(`${API.TEAMS_MEMBERS}?teamId=${team.id}`);
       if (res.ok) {
@@ -285,20 +379,46 @@ export default function TeamsPage() {
         setMembers(data.members || []);
         setInvites(data.invites || []);
         setCurrentRole(data.currentRole || "viewer");
+        setMembersError(null);
+        return;
       }
+      // Nothing is assigned on failure: members stays whatever it was, which
+      // on first open is []. A team always contains at least its owner, so
+      // "Members 0" over a blank list is a state real data cannot produce, and
+      // an empty currentRole silently strips every management control from the
+      // owner. Say the load failed instead of rendering a lie.
+      setMembersError(
+        "This team's members could not be loaded. Nothing has changed, try again.",
+      );
     } catch {
-      /* */
+      setMembersError(
+        "Could not reach the server to load this team's members. Nothing has changed, try again.",
+      );
     } finally {
       setMembersLoading(false);
     }
   }
 
-  async function openTeam(team: Team) {
+  /** Opens a team without writing to the URL. Used by the ?team= resolver
+   *  below, which must not push another history entry for the entry that just
+   *  brought it here (setQueryParam always pushes, it does not dedupe). */
+  async function applyTeamSelection(team: Team) {
     setSelectedTeam(team);
     setShowInvite(false);
     setInviteToken(null);
     setViewingMember(null);
     await refreshMembers(team);
+  }
+
+  async function openTeam(team: Team) {
+    setTeamParam(String(team.id));
+    await applyTeamSelection(team);
+  }
+
+  function closeTeam() {
+    setSelectedTeam(null);
+    setTeamParam(null);
+    setViewingMember(null);
   }
 
   async function handleInvite() {
@@ -361,6 +481,37 @@ export default function TeamsPage() {
     }
   }
 
+  // The role change the "Change role" submenu in TeamMembersList fires. That
+  // submenu already filters the offered roles through canAssignTeamRole in
+  // both directions (the caller may not appoint a role it does not hold, and
+  // may not act on a member who already holds one); PATCH /teams/members
+  // enforces the same ceiling server-side, so a hand-built request gains
+  // nothing. Not a destructive action, so unlike handleRemoveMember it does
+  // not route through the confirmation dialog.
+  async function handleChangeRole(userId: number, role: string) {
+    if (!selectedTeam) return;
+    setActionError(null);
+    try {
+      const res = await fetch(API.TEAMS_MEMBERS, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamId: selectedTeam.id, userId, role }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setActionError(
+          data.error || "We could not change that role. Try again.",
+        );
+        return;
+      }
+      await openTeam(selectedTeam);
+    } catch {
+      setActionError(
+        "We could not reach the server. Check your connection and try again.",
+      );
+    }
+  }
+
   async function handleCancelInvite(inviteId: number) {
     if (!selectedTeam) return;
     setActionError(null);
@@ -395,7 +546,7 @@ export default function TeamsPage() {
         body: JSON.stringify({ teamId: selectedTeam.id, userId: "self" }),
       });
       if (res.ok) {
-        setSelectedTeam(null);
+        closeTeam();
         await fetchTeams();
       } else {
         const data = await res.json().catch(() => ({}));
@@ -462,6 +613,12 @@ export default function TeamsPage() {
     // (a privacy-adjacent mislabel). Only the latest request applies its result.
     const reqId = ++memberScansReqRef.current;
     setViewingMember(member);
+    // The ticket above guarded response ordering but not the error path:
+    // memberScans was only ever assigned inside the res.ok branch and never
+    // cleared, so a failed load for member B left member A's scanned URLs on
+    // screen under B's name. Clear first, and say so when the load fails.
+    setMemberScans([]);
+    setScansError(null);
     setScanPage(1);
     setScansLoading(true);
     try {
@@ -472,9 +629,20 @@ export default function TeamsPage() {
       if (res.ok) {
         const data = await res.json();
         setMemberScans(data.scans || []);
+      } else {
+        const body = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        setScansError(
+          body?.error ||
+            "This member's scans could not be loaded. That is a problem on our side, not an empty history.",
+        );
       }
     } catch {
-      /* */
+      if (reqId !== memberScansReqRef.current) return;
+      setScansError(
+        "Could not reach the server, so this member's scans were not loaded.",
+      );
     } finally {
       if (reqId === memberScansReqRef.current) setScansLoading(false);
     }
@@ -512,24 +680,11 @@ export default function TeamsPage() {
         tabIndex={-1}
         className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col gap-6"
       >
+        {loadError && <InlineAlert tone="error">{loadError}</InlineAlert>}
         {actionError && (
-          <div
-            role="alert"
-            className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
-          >
-            <AlertTriangle
-              className="h-4 w-4 shrink-0 mt-0.5"
-              aria-hidden="true"
-            />
-            <span className="flex-1">{actionError}</span>
-            <button
-              type="button"
-              onClick={() => setActionError(null)}
-              className="text-xs font-medium underline underline-offset-4 opacity-80 hover:opacity-100 rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              Dismiss
-            </button>
-          </div>
+          <InlineAlert tone="error" onDismiss={() => setActionError(null)}>
+            {actionError}
+          </InlineAlert>
         )}
         {selectedTeam ? (
           <div className="flex flex-col gap-6">
@@ -540,7 +695,7 @@ export default function TeamsPage() {
               editingName={editingName}
               nameInput={nameInput}
               savingName={savingName}
-              onBack={() => setSelectedTeam(null)}
+              onBack={closeTeam}
               onEditName={() => {
                 setNameInput(selectedTeam.name);
                 setEditingName(true);
@@ -589,8 +744,11 @@ export default function TeamsPage() {
               members={members}
               invites={invites}
               loading={membersLoading}
+              loadError={membersError}
               currentRole={currentRole}
+              currentUserId={me?.userId}
               onViewScans={handleViewMemberScans}
+              onChangeRole={handleChangeRole}
               onRemoveMember={(userId) => {
                 const m = members.find((x) => x.user_id === userId);
                 setConfirmation({
@@ -607,6 +765,7 @@ export default function TeamsPage() {
                 member={viewingMember}
                 scans={memberScans}
                 loading={scansLoading}
+                loadError={scansError}
                 page={scanPage}
                 pageSize={scansPageSize}
                 totalPages={scanTotalPages}
@@ -644,78 +803,21 @@ export default function TeamsPage() {
         onCreate={handleCreateTeam}
       />
 
-      {/* Destructive actions confirm against the thing they will destroy. */}
-      <AlertDialog
-        open={confirmation !== null}
-        onOpenChange={(open) => {
-          if (!open && !confirmBusy) setConfirmation(null);
-        }}
-      >
-        <AlertDialogContent className="sm:max-w-md">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle
-                className="h-5 w-5 text-destructive shrink-0"
-                aria-hidden="true"
-              />
-              {confirmation?.kind === "deleteTeam" && "Delete this team?"}
-              {confirmation?.kind === "removeMember" && "Remove this person?"}
-              {confirmation?.kind === "leaveTeam" && "Leave this team?"}
-            </AlertDialogTitle>
-            <AlertDialogDescription className="text-left">
-              {confirmation?.kind === "deleteTeam" && (
-                <>
-                  <span className="font-medium text-foreground">
-                    {confirmation.teamName}
-                  </span>{" "}
-                  and its member list are deleted. Everyone loses access to the
-                  team&apos;s shared reports. This cannot be undone.
-                </>
-              )}
-              {confirmation?.kind === "removeMember" && (
-                <>
-                  <span className="font-medium text-foreground">
-                    {confirmation.label}
-                  </span>{" "}
-                  loses access to this team&apos;s reports right away. Their own
-                  scan history is untouched, and you can invite them back later.
-                </>
-              )}
-              {confirmation?.kind === "leaveTeam" && (
-                <>
-                  You lose access to reports shared in{" "}
-                  <span className="font-medium text-foreground">
-                    {confirmation.teamName}
-                  </span>
-                  . An owner or admin has to invite you back.
-                </>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="flex-col-reverse sm:flex-row gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setConfirmation(null)}
-              disabled={confirmBusy}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={runConfirmation}
-              disabled={confirmBusy}
-              className="gap-2"
-            >
-              {confirmBusy && (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              )}
-              {confirmation?.kind === "deleteTeam" && "Delete team"}
-              {confirmation?.kind === "removeMember" && "Remove"}
-              {confirmation?.kind === "leaveTeam" && "Leave"}
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Destructive actions confirm against the thing they will destroy. One
+          copy table per action rather than three ternaries inside the dialog,
+          the shape profile-developer-tab.tsx's getConfirmCopy already uses. */}
+      {confirmation && (
+        <ConfirmDialog
+          open
+          danger
+          busy={confirmBusy}
+          title={CONFIRM_COPY[confirmation.kind].title}
+          description={confirmDescription(confirmation)}
+          confirmLabel={CONFIRM_COPY[confirmation.kind].confirmLabel}
+          onCancel={() => setConfirmation(null)}
+          onConfirm={runConfirmation}
+        />
+      )}
 
       <Footer />
     </div>

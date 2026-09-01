@@ -44,9 +44,13 @@ export async function GET(request: NextRequest) {
       values.push(statusParam);
     }
 
-    const result = await pool.query(
-      `SELECT t.id, t.subject, t.category, t.status, t.created_at, t.last_message_at,
-              u.email AS owner_email, u.name AS owner_name,
+    // perf: the GROUP BY count reads every support_tickets row and does not
+    // depend on the listing, so it used to add a second full pass in series
+    // with the page query on every inbox load. Independent queries, one wait.
+    const [result, counts] = await Promise.all([
+      pool.query(
+        `SELECT t.id, t.subject, t.category, t.status, t.created_at, t.last_message_at,
+              u.id AS owner_id, u.email AS owner_email, u.name AS owner_name,
               (SELECT COUNT(*)::int FROM support_ticket_messages m WHERE m.ticket_id = t.id) AS message_count,
               (SELECT m2.body FROM support_ticket_messages m2 WHERE m2.ticket_id = t.id ORDER BY m2.created_at DESC LIMIT 1) AS last_message
        FROM support_tickets t
@@ -54,12 +58,12 @@ export async function GET(request: NextRequest) {
        ${whereClause}
        ORDER BY t.last_message_at DESC
        LIMIT 200`,
-      values,
-    );
-
-    const counts = await pool.query<{ status: TicketStatus; n: number }>(
-      `SELECT status, COUNT(*)::int AS n FROM support_tickets GROUP BY status`,
-    );
+        values,
+      ),
+      pool.query<{ status: TicketStatus; n: number }>(
+        `SELECT status, COUNT(*)::int AS n FROM support_tickets GROUP BY status`,
+      ),
+    ]);
 
     return NextResponse.json({
       tickets: result.rows,

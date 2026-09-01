@@ -48,7 +48,9 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-vulnradar}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-vulnradar}
       DATABASE_SSL: "false"
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
-      API_KEY_ENCRYPTION_KEY: ${API_KEY_ENCRYPTION_KEY:-}
+      # Required, same as production: an empty value crash-loops the container
+      # on the startup env validation instead of failing here with a name.
+      API_KEY_ENCRYPTION_KEY: ${API_KEY_ENCRYPTION_KEY:?Set API_KEY_ENCRYPTION_KEY in .env to 64 hex chars. Generate one with the node command at the top of docker-compose.yml.}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}
@@ -60,10 +62,12 @@ services:
       NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}
       TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
     volumes:
-      # See docker-compose.yml's avatar_data volume comment: this keeps
-      # uploaded profile pictures out of the (build-time-baked) public/
-      # dir and off the container's throwaway writable layer.
+      # Mirrors docker-compose.yml's avatar_data / backup_data volumes: keeps
+      # uploaded profile pictures and database backups out of the
+      # (build-time-baked) public/ dir and off the container's throwaway
+      # writable layer.
       - avatar_data_dev:/app/data/avatars
+      - backup_data_dev:/app/backups
     ports:
       - "${HOST_BIND:-127.0.0.1}:${APP_PORT:-3000}:3000"
     depends_on:
@@ -91,6 +95,8 @@ volumes:
   postgres_data_dev:
     driver: local
   avatar_data_dev:
+    driver: local
+  backup_data_dev:
     driver: local
 
 networks:

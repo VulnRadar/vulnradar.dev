@@ -7,6 +7,7 @@
  */
 
 import { getHeader, hasHeader, type EvidenceFn as DetectFn } from "../_helpers";
+import { tagsWith } from "./_tag-scan";
 import { extractRootDomain } from "../root-domain";
 
 // Shared by the two "confirmed redirect" detectors below. Deliberately
@@ -117,7 +118,7 @@ export const detectors: Record<string, DetectFn> = {
     const te = getHeader(headers, "transfer-encoding");
     const cl = getHeader(headers, "content-length");
     if (te && cl && /chunked/i.test(te)) {
-      return `Both Transfer-Encoding: ${te} and Content-Length: ${cl} present — potential HTTP request smuggling setup.`;
+      return `Both Transfer-Encoding: ${te} and Content-Length: ${cl} present: potential HTTP request smuggling setup.`;
     }
     return null;
   },
@@ -127,7 +128,7 @@ export const detectors: Record<string, DetectFn> = {
     if (!wwwAuth) return null;
     if (!/^basic\s/i.test(wwwAuth)) return null;
     if (url.startsWith("http://")) {
-      return "WWW-Authenticate: Basic on HTTP endpoint — credentials sent as plaintext Base64 over the wire.";
+      return "WWW-Authenticate: Basic on HTTP endpoint: credentials sent as plaintext Base64 over the wire.";
     }
     return null;
   },
@@ -161,7 +162,7 @@ export const detectors: Record<string, DetectFn> = {
     const xForwardedHost = getHeader(headers, "x-forwarded-host");
     const xOriginalUrl = getHeader(headers, "x-original-url");
     if (xCache && /HIT/i.test(xCache) && (xForwardedHost || xOriginalUrl)) {
-      return `Cached response (${xCache}) reflects routing headers (X-Forwarded-Host/X-Original-URL) — cache poisoning risk via unkeyed headers.`;
+      return `Cached response (${xCache}) reflects routing headers (X-Forwarded-Host/X-Original-URL): cache poisoning risk via unkeyed headers.`;
     }
     return null;
   },
@@ -186,18 +187,21 @@ export const detectors: Record<string, DetectFn> = {
     // apart from a 401/403 a properly access-controlled server returned for
     // the same URL shape. It is a passive URL-shape hint, not a confirmed
     // access-control finding -- see host-validation.json's severity for it.
-    const m =
-      /\/(?:api\/|v\d+\/)(?:user|profile)s?\/([1-9]\d{0,4})(?:\/|$|\?)/i.exec(
-        url,
-      ) ??
-      /\/(?:api\/)?(?:v\d+\/)?(?:account|invoice|order)s?\/([1-9]\d{0,4})(?:\/|$|\?)/i.exec(
-        url,
-      );
-    if (m) {
+    // Each pattern is judged on its own. This previously took the first
+    // pattern's match and, if that id failed the <10000 enumerability gate,
+    // returned null without ever trying the second: a nested REST path like
+    // /api/user/12345/orders/7 was cleared by the high user id and never
+    // reached the low order id, a silent false negative.
+    const patterns = [
+      /\/(?:api\/|v\d+\/)(?:user|profile)s?\/([1-9]\d{0,4})(?:\/|$|\?)/i,
+      /\/(?:api\/)?(?:v\d+\/)?(?:account|invoice|order)s?\/([1-9]\d{0,4})(?:\/|$|\?)/i,
+    ];
+    for (const pattern of patterns) {
+      const m = pattern.exec(url);
+      if (!m) continue;
       const id = parseInt(m[1], 10);
-      if (id < 10000) {
-        return `Sequential numeric ID (${id}) in resource URL: low integer IDs are trivially enumerable (IDOR risk).`;
-      }
+      if (id >= 10000) continue;
+      return `Sequential numeric ID (${id}) in resource URL: low integer IDs are trivially enumerable (IDOR risk).`;
     }
     return null;
   },
@@ -261,11 +265,20 @@ export const detectors: Record<string, DetectFn> = {
       return null;
     }
     if (isLinkSafetyRewriter(reqUrl.hostname)) return null;
-    const metaRe =
-      /<meta[^>]+http-equiv=["']refresh["'][^>]+content=["'][^"'>]*url=([^"'>\s]+)/gi;
-    let m: RegExpExecArray | null;
-    while ((m = metaRe.exec(body)) !== null) {
-      const idx = m.index;
+    // Anchored on the <meta> tag itself, then the attributes are read off
+    // that tag: the old single pattern spliced two bounded [^>] runs around
+    // the http-equiv match, which multiplies on a body of unterminated
+    // <meta> tags. ref: lib/scanner/checks/_tag-scan.ts
+    const urlRe = /content=["'][^"'>]*url=([^"'>\s]+)/i;
+    for (const tag of tagsWith(
+      body,
+      "meta",
+      /http-equiv=["']refresh["']/i,
+      urlRe,
+    )) {
+      const m = urlRe.exec(tag);
+      if (!m) continue;
+      const idx = body.indexOf(tag);
       const before = body.slice(Math.max(0, idx - 200), idx);
       if (/<code|<pre|```|example|documentation/i.test(before)) continue;
       let target: URL;
@@ -311,7 +324,7 @@ export const detectors: Record<string, DetectFn> = {
       candidates.push({ source: m[1], target: m[2], idx: m.index });
     }
 
-    const inputRe = /<input\b[^>]*>/gi;
+    const inputRe = /<input\b[^>]{0,2000}>/gi;
     while ((m = inputRe.exec(body)) !== null) {
       const tag = m[0];
       if (

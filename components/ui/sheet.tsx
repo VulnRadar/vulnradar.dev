@@ -21,7 +21,8 @@ const SheetOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Overlay
     className={cn(
-      "fixed inset-0 z-50 bg-black/80  data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      // Same scrim as DialogOverlay; see the comment there.
+      "fixed inset-0 z-50 bg-background/80 backdrop-blur-xs data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className,
     )}
     {...props}
@@ -31,7 +32,18 @@ const SheetOverlay = React.forwardRef<
 SheetOverlay.displayName = SheetPrimitive.Overlay.displayName;
 
 const sheetVariants = cva(
-  "fixed z-50 gap-4 bg-background p-6 shadow-lg transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
+  // bg-card for the same reason as DialogContent: the scrim is built from
+  // --background now, so the panel needs its own surface.
+  //
+  // The single edge border is left bare. It was briefly border-input on the
+  // theory that the Tailwind v4 compat shim at the top of app/globals.css
+  // (`border-color: var(--color-gray-200, currentcolor)`) would otherwise
+  // paint a near-white hairline. It does not: that shim and the
+  // `* { @apply border-border }` rule are both single-`*` selectors in
+  // @layer base, so source order decides, and border-border is emitted later
+  // and wins. A bare `border-b` here is --border, which is the right token
+  // for a panel edge. See DialogContent for why SC 1.4.11 does not reach it.
+  "fixed z-50 gap-4 bg-card p-6 shadow-lg transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
   {
     variants: {
       side: {
@@ -40,7 +52,7 @@ const sheetVariants = cva(
           "inset-x-0 bottom-0 border-t data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
         left: "inset-y-0 left-0 h-full w-3/4 border-r data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left sm:max-w-sm",
         right:
-          "inset-y-0 right-0 h-full w-3/4  border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-sm",
+          "inset-y-0 right-0 h-full w-3/4 border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-sm",
       },
     },
     defaultVariants: {
@@ -66,8 +78,11 @@ const SheetContent = React.forwardRef<
       onOpenAutoFocus={(e) => {
         // Same reasoning as components/ui/dialog.tsx's override -- don't
         // auto-focus the first link/button inside (e.g. the mobile nav's
-        // first item). No auto-focus at all.
+        // first item), but do move focus into the panel so the sheet is
+        // announced and Tab starts inside it rather than on the trigger
+        // Radix has just hidden behind the scrim.
         e.preventDefault();
+        (e.currentTarget as HTMLElement).focus();
       }}
       {...props}
     >

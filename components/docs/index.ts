@@ -6,6 +6,7 @@ export * from "./docs-endpoint-card";
 export * from "./docs-section";
 export * from "./docs-hero";
 export * from "./docs-callout";
+export * from "./docs-figure";
 export * from "./docs-steps";
 export * from "./docs-table";
 export * from "./docs-sidebar";

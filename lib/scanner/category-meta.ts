@@ -80,9 +80,17 @@ export const CATEGORY_META: Record<Category, { label: string; blurb: string }> =
       blurb:
         "Google Web Risk lookup for known malware, phishing, and unwanted-software listings.",
     },
+    // The last sentence is the ceiling, stated on purpose. All nine probes
+    // decide from the immediate response body or status, and there is no
+    // out-of-band interaction server anywhere in this codebase, so blind and
+    // time-based SQLi, blind SSRF, out-of-band command injection and stored
+    // XSS are undetectable here by construction. A security engineer who
+    // reads "active probing" as ZAP-equivalent coverage would otherwise
+    // conclude the scanner missed things it never claimed to look for.
+    // ref: AUDIT-014#comp-11
     "active-probes": {
       label: "Active probing",
       blurb:
-        "Opt-in only: submits real values through discovered forms and checks for reflected XSS, error-based SQL injection, and server-side template injection.",
+        "Opt-in only: submits real values through discovered forms and flags XSS, SQL and template injection, open redirects and CORS from the response itself. No blind or time-based detection.",
     },
   };

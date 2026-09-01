@@ -11,8 +11,11 @@ vi.mock("@/lib/auth/team-resource-access", () => ({
     mockGetAssignableTeamIds(...args),
 }));
 
-const { findVerifiedDomainForHost, isUrlOwnedByUser } =
-  await import("@/lib/domains/scope");
+const {
+  findVerifiedDomainForHost,
+  isUrlOwnedByUser,
+  coveringDomainCandidates,
+} = await import("@/lib/domains/scope");
 
 beforeEach(() => {
   mockQuery.mockReset();
@@ -39,15 +42,18 @@ describe("findVerifiedDomainForHost", () => {
     });
     const [sql, params] = mockQuery.mock.calls[0];
     expect(sql).toContain("status = 'verified'");
-    expect(sql).toContain("$1 = domain OR $1 LIKE '%.' || domain");
-    expect(params).toEqual(["example.com", 1, []]);
+    // AUDIT-012#perf-16: the match is an indexable equality test against the
+    // host's own suffix list, not a LIKE pattern built from the column.
+    expect(sql).toContain("domain = ANY($1::text[])");
+    expect(sql).not.toContain("LIKE");
+    expect(params).toEqual([["example.com", "com"], 1, []]);
   });
 
   it("lowercases the hostname before matching", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     await findVerifiedDomainForHost("Example.COM", 1);
     const [, params] = mockQuery.mock.calls[0];
-    expect(params[0]).toBe("example.com");
+    expect(params[0]).toEqual(["example.com", "com"]);
   });
 
   it("passes the caller's assignable team ids through for team-domain matching", async () => {
@@ -94,12 +100,44 @@ describe("isUrlOwnedByUser", () => {
   });
 
   it("never lets owning example.com cover a different registrable domain", async () => {
-    // example.net is not a subdomain of example.com, and the SQL match
-    // condition ($1 = domain OR $1 LIKE '%.' || domain) cannot match it --
-    // asserted here by confirming the mocked "no match" path is what's hit.
+    // example.net is not a subdomain of example.com, and the candidate list
+    // sent to the database never contains example.com, so no row for it can
+    // ever be returned.
     mockQuery.mockResolvedValueOnce({ rows: [] });
     expect(await isUrlOwnedByUser("https://example.net", 1)).toBe(false);
     const [, params] = mockQuery.mock.calls[0];
-    expect(params[0]).toBe("example.net");
+    expect(params[0]).toEqual(["example.net", "net"]);
+    expect(params[0]).not.toContain("example.com");
+  });
+});
+
+describe("coveringDomainCandidates", () => {
+  it("lists the host and every parent suffix, most specific first", () => {
+    expect(coveringDomainCandidates("a.b.example.com")).toEqual([
+      "a.b.example.com",
+      "b.example.com",
+      "example.com",
+      "com",
+    ]);
+  });
+
+  it("returns just the host for a single label", () => {
+    expect(coveringDomainCandidates("localhost")).toEqual(["localhost"]);
+  });
+
+  it("never produces a sibling domain", () => {
+    expect(coveringDomainCandidates("evil-example.com")).not.toContain(
+      "example.com",
+    );
+  });
+
+  // The old `$1 LIKE '%.' || domain` predicate read a stored underscore as a
+  // single-character wildcard, so a verified `a_b.com` matched `x.axb.com`.
+  it("cannot be widened by LIKE metacharacters in a stored domain", () => {
+    expect(coveringDomainCandidates("x.axb.com")).toEqual([
+      "x.axb.com",
+      "axb.com",
+      "com",
+    ]);
   });
 });

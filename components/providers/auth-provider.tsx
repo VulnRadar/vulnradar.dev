@@ -8,7 +8,7 @@ import {
   useMemo,
 } from "react";
 import useSWR, { mutate as swrMutate } from "swr";
-import { API } from "@/lib/config/constants";
+import { API } from "@/lib/config/client-constants";
 import {
   isStaffRole,
   hasStaffPermission,
@@ -24,6 +24,9 @@ export interface MeResponse {
   email: string;
   name: string | null;
   tosAcceptedAt: string | null;
+  /** Runtime-configurable TERMS_UPDATED_AT setting, echoed by /auth/me so the
+   *  ToS gate can compare it against tosAcceptedAt without a second request. */
+  termsUpdatedAt: string | null;
   /** True when this session is an active admin-impersonation session. */
   isImpersonating: boolean;
   totpEnabled: boolean;
@@ -83,11 +86,21 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
+/**
+ * How long SWR treats an /api/v3/auth/me response as fresh, so the ten-odd
+ * components reading useAuth() across one page load share a single request.
+ * Named because three separate places (refreshAuthCache below,
+ * clearAuthCache below it, and the login flow's comment) describe it in
+ * prose as "5 minutes"; as a bare 300000 in one file, changing it here left
+ * all three of those descriptions silently wrong.
+ */
+const AUTH_CACHE_DEDUPE_MS = 5 * 60 * 1000;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { data: me, isLoading } = useSWR<MeResponse>(API.AUTH.ME, fetcher, {
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
-    dedupingInterval: 300000,
+    dedupingInterval: AUTH_CACHE_DEDUPE_MS,
     keepPreviousData: true,
   });
 
@@ -150,8 +163,8 @@ export function useAuth() {
  * after a successful login so components reading useAuth() (the AI chat
  * widget, nav, etc.) see the signed-in state immediately instead of
  * whatever /api/v3/auth/me returned before login, cached for up to
- * dedupingInterval (5 minutes) since AuthProvider lives in the root layout
- * and survives the client-side navigation a login redirect performs.
+ * AUTH_CACHE_DEDUPE_MS since AuthProvider lives in the root layout and
+ * survives the client-side navigation a login redirect performs.
  */
 export function refreshAuthCache() {
   swrMutate(API.AUTH.ME);

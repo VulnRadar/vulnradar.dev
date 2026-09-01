@@ -1,6 +1,6 @@
 /**
- * VulnRadar — Shared orchestration for scripts/db-diagnose.mjs and
- * scripts/db-repair.mjs.
+ * VulnRadar — Shared orchestration for scripts/maintenance/db-diagnose.mjs and
+ * scripts/maintenance/db-repair.mjs.
  *
  * Builds the introspection context ONCE (columns, primary keys, FK
  * constraints, CHECK-constraint enums) and runs every check module

@@ -12,7 +12,7 @@ import { ChevronDown, Eye, EyeOff, KeyRound, Plus, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/ui/utils";
-import { SCAN_AUTH } from "@/lib/config/constants";
+import { SCAN_AUTH } from "@/lib/config/client-constants";
 import type { EphemeralAuthInput } from "@/lib/scanner/auth/types";
 
 /**
@@ -87,7 +87,9 @@ function RevealButton({
       onClick={onToggle}
       disabled={disabled}
       className={cn(
-        "absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50",
+        // The after: overlay widens the tap area to 44px without growing the
+        // 28px icon box, which has to stay inside an h-9 field.
+        "absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors after:absolute after:-inset-2 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50",
         FOCUS_RING,
       )}
       aria-label={shown ? `Hide ${label}` : `Show ${label}`}
@@ -291,10 +293,19 @@ export const InlineAuthForm = forwardRef<
       >
         <div id={`${idPrefix}-panel`} inert={!open} className="overflow-hidden">
           <div className="flex flex-col gap-3 border-t border-border/70 bg-muted/20 px-3 pb-4 pt-3">
+            {/* Both halves of the promise, because only the first half was
+                stated and the half people actually worry about is the server
+                one (AUDIT-014#comp-10). Accurate as written: see
+                lib/scanner/auth/types.ts and the two scan routes, which hold
+                login material in a request-scoped local and write only the
+                origin, method and outcome to the audit record. */}
             <p className="text-xs leading-relaxed text-muted-foreground">
               Used once, for this scan only. It is never saved: not to this
               page, not to a draft, not anywhere, once you collapse this section
-              or hit Scan.
+              or hit Scan. Nothing is stored on our side either. What you type
+              here travels with this one request, stays in memory while the scan
+              runs, and never reaches a database, a log line, or the saved
+              result.
             </p>
 
             <div className="flex flex-wrap gap-1.5">

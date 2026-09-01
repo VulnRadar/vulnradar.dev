@@ -37,8 +37,14 @@ export interface QueueStatusResponse {
   generatedAt: string;
 }
 
-/** "3m ago" -> "3m", "just now" stays as-is -- reads as a duration, not a timestamp. */
-export function formatAge(ageMs: number | null): string | null {
+/**
+ * "3m ago" -> "3m", "just now" stays as-is: reads as a duration, not a
+ * timestamp. Named formatAgeMs, not formatAge, because
+ * lib/ui/relative-time.ts already exports a formatAge that takes an ISO
+ * STRING. Two same-named helpers with different argument types were both
+ * live in components/, which is a mis-import waiting to happen.
+ */
+export function formatAgeMs(ageMs: number | null): string | null {
   if (ageMs === null) return null;
   return formatRelativeTime(new Date(Date.now() - ageMs)).replace(/ ago$/, "");
 }

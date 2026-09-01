@@ -17,18 +17,24 @@ export function DashboardBulkResult({
   onDismiss,
 }: DashboardBulkResultProps) {
   return (
-    <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md border border-border bg-card px-4 py-3">
+    <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-border bg-card px-4 py-3">
+      {/* "Scanned" was a lie. POST /api/v3/scan queues a background job and
+          returns immediately, so this count is scans accepted, not scans
+          finished: it hit its total the instant the last request was
+          acknowledged, while every scan was still running server-side, and
+          any that later failed was counted as a success. Say "queued", which
+          is what the number actually is. */}
       <p className="min-w-0 text-sm text-foreground">
-        Bulk run finished.{" "}
         <span className="font-semibold tabular-nums">{result.successful}</span>{" "}
-        of <span className="tabular-nums">{result.total}</span> scanned.
+        of <span className="tabular-nums">{result.total}</span> scans queued.
+        They appear in your history as each one finishes.
         {result.failed > 0 && (
           <>
             {" "}
             <span className="font-semibold tabular-nums text-destructive">
               {result.failed}
             </span>{" "}
-            <span className="text-muted-foreground">failed.</span>
+            <span className="text-muted-foreground">were refused.</span>
           </>
         )}
         {result.skipped > 0 && (
@@ -56,7 +62,7 @@ export function DashboardBulkResult({
         <button
           type="button"
           onClick={onDismiss}
-          className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+          className="inline-flex h-11 w-11 sm:h-7 sm:w-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           aria-label="Dismiss bulk scan summary"
         >
           <X aria-hidden className="h-4 w-4" />

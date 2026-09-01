@@ -37,7 +37,7 @@ import {
   APP_NAME,
   ROUTES,
   TOTAL_CHECKS_LABEL,
-} from "@/lib/config/constants";
+} from "@/lib/config/client-constants";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 import type { CrawlInfo } from "@/components/scanner/crawl-pages-info";
 import { copyToClipboard } from "@/lib/ui/clipboard";
@@ -248,7 +248,7 @@ export default function SharedScanPage() {
                             aria-label="Copy scanned URL"
                             className="group inline-flex min-w-0 items-center gap-2 rounded text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                           >
-                            <h1 className="truncate text-lg font-semibold text-foreground sm:text-xl">
+                            <h1 className="truncate text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
                               {result.url}
                             </h1>
                             {copied ? (
@@ -318,9 +318,9 @@ export default function SharedScanPage() {
                   panelFooter={
                     scanNotes ? (
                       <div className="rounded-md border border-border bg-card p-4">
-                        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                           Note from the person who shared this
-                        </h3>
+                        </h2>
                         <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
                           {scanNotes}
                         </p>

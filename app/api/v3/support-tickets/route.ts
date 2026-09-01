@@ -11,6 +11,9 @@ import {
   type TicketCategory,
 } from "@/lib/support/ticket-constants";
 
+/** Rows returned per request. Named so the response can report it. */
+const TICKET_LIST_LIMIT = 100;
+
 /**
  * GET  /api/v3/support-tickets  -> the signed-in user's own tickets (newest first)
  * POST /api/v3/support-tickets  -> open a new ticket (available to every plan)
@@ -39,13 +42,31 @@ export async function GET() {
      JOIN users ownu ON ownu.id = t.user_id
      WHERE t.user_id = $1
         OR t.id IN (
-          SELECT ticket_id FROM support_ticket_shares WHERE shared_with_user_id = $1
+          -- The teammate relationship is re-checked here, not just when the
+          -- share row was written. Nothing deletes the row when the membership
+          -- ends, so a bare shared_with_user_id lookup kept an ex-teammate's
+          -- stale ticket in their own list forever. Same guard as
+          -- resolveTicketAccess (lib/support/ticket-access.ts).
+          SELECT s.ticket_id FROM support_ticket_shares s
+           WHERE s.shared_with_user_id = $1
+             AND EXISTS (
+                   SELECT 1 FROM team_members a
+                   JOIN team_members b ON a.team_id = b.team_id
+                   WHERE a.user_id = t.user_id AND b.user_id = $1
+                 )
         )
      ORDER BY t.last_message_at DESC
-     LIMIT 100`,
-    [session.userId],
+     LIMIT $2`,
+    [session.userId, TICKET_LIST_LIMIT],
   );
-  return NextResponse.json({ tickets: result.rows });
+  // The cap is reported rather than silently applied, so a long-running
+  // account can be told its history is truncated instead of just seeing it
+  // stop (AUDIT-014#magic-20).
+  return NextResponse.json({
+    tickets: result.rows,
+    limit: TICKET_LIST_LIMIT,
+    truncated: result.rows.length === TICKET_LIST_LIMIT,
+  });
 }
 
 export async function POST(request: NextRequest) {

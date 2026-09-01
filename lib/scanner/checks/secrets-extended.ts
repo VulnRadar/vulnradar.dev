@@ -16,9 +16,9 @@ import {
  * Neutralize placeholder-credential idioms before the per-provider
  * detectors below run their format regexes.
  *
- * The "hardcoded-secrets" detector (below) filters its OWN matches against
- * this same term list, but the ~50 per-provider `secret-*` detectors that
- * follow it never did: none of them called stripExampleContent, and none
+ * code.ts's "hardcoded-secrets" detector filters its OWN matches against
+ * this same term list, but the ~50 per-provider `secret-*` detectors in this
+ * file never did: none of them called stripExampleContent, and none
  * filtered matched values at all. A `.env.example` file served raw (no HTML
  * to strip), or a README documenting a fake-but-correctly-shaped credential
  * ("STRIPE_SECRET_KEY=sk_live_YOUR_KEY_HERE", "AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"),
@@ -31,13 +31,84 @@ import {
  * the entire contiguous identifier/token run that contains one of these
  * markers removes the value before any provider-specific regex can match
  * it, without needing to touch each detector's own extraction logic.
+ *
+ * perf/security: this used to be a single regex whose greedy
+ * `[A-Za-z0-9_-]*` prefix wrapped the marker alternation. On a body with
+ * long runs of word characters and no marker, the engine retried the run
+ * from every offset, which is quadratic: measured 746ms at 20k characters,
+ * 3.3s at 40k, 16.2s at 80k, 35.8s at 120k, against a body cap in the
+ * megabytes. The wrapper below applies this per detector, so that cost was
+ * multiplied by 74. A single unauthenticated /api/v3/demo-scan against a
+ * host serving plain word characters pinned the event loop for minutes,
+ * and because every timeout in the scan path is a setTimeout, nothing
+ * could interrupt it.
+ *
+ * The scan is now linear: find each marker directly (no surrounding
+ * quantifier, so no backtracking), then walk outward to the identifier
+ * boundaries by hand. Same output, no catastrophic case.
  */
+const PLACEHOLDER_MARKERS = /example|your_|xxxx|0000|placeholder|test_|dummy/gi;
+
+function isIdentifierChar(code: number): boolean {
+  return (
+    (code >= 48 && code <= 57) || // 0-9
+    (code >= 65 && code <= 90) || // A-Z
+    (code >= 97 && code <= 122) || // a-z
+    code === 95 || // _
+    code === 45 // -
+  );
+}
+
+function maskPlaceholderSecretsUncached(body: string): string {
+  if (!body) return body;
+
+  PLACEHOLDER_MARKERS.lastIndex = 0;
+  let out = "";
+  let copiedUpTo = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = PLACEHOLDER_MARKERS.exec(body)) !== null) {
+    let start = match.index;
+    let end = start + match[0].length;
+
+    // Expand to the whole identifier run containing the marker.
+    while (start > 0 && isIdentifierChar(body.charCodeAt(start - 1))) start--;
+    while (end < body.length && isIdentifierChar(body.charCodeAt(end))) end++;
+
+    // Overlapping runs (two markers in one identifier) collapse naturally:
+    // the second match starts before copiedUpTo and contributes nothing.
+    if (start >= copiedUpTo) {
+      out += body.slice(copiedUpTo, start) + " ";
+      copiedUpTo = end;
+    } else if (end > copiedUpTo) {
+      copiedUpTo = end;
+    }
+
+    // exec advances by the marker, not the expanded run: jump past the run
+    // so a long identifier is not rescanned marker by marker.
+    if (end > PLACEHOLDER_MARKERS.lastIndex) {
+      PLACEHOLDER_MARKERS.lastIndex = end;
+    }
+  }
+
+  return copiedUpTo === 0 ? body : out + body.slice(copiedUpTo);
+}
+
+/**
+ * The wrapper below hands every one of the ~74 detectors the same body, so
+ * without this the identical transform ran ~74 times per scan. One entry is
+ * enough: the detectors run in sequence over one body, and holding a single
+ * pair avoids growing memory across scans.
+ */
+let maskCacheInput: string | null = null;
+let maskCacheOutput = "";
+
 function maskPlaceholderSecrets(body: string): string {
   if (!body) return body;
-  return body.replace(
-    /[A-Za-z0-9_-]*(?:example|your_|xxxx|0000|placeholder|test_|dummy)[A-Za-z0-9_-]*/gi,
-    " ",
-  );
+  if (body === maskCacheInput) return maskCacheOutput;
+  maskCacheInput = body;
+  maskCacheOutput = maskPlaceholderSecretsUncached(body);
+  return maskCacheOutput;
 }
 
 /**
@@ -50,6 +121,31 @@ function maskPlaceholderSecrets(body: string): string {
  * validation a real card would) are always Luhn-valid, so this alone
  * eliminates most non-card false positives without needing per-site tuning.
  */
+/**
+ * Email address in a page body.
+ *
+ * The previous form, `/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g`,
+ * backtracked catastrophically. `.` and `-` are in the local-part class, so on
+ * any long run of them the engine matched the entire run from EVERY starting
+ * offset before failing to find an `@`: quadratic. Measured on a run of
+ * `a.` pairs: 0.5s at 16k characters, 10.3s at 64k, against a body capped at
+ * a megabyte. One page of dotted text was enough to pin the event loop, and
+ * every timeout in the scan path is a setTimeout, so nothing could interrupt
+ * it. Same failure mode, and the same reasoning, as the placeholder-masking
+ * regex documented at the top of this file.
+ *
+ * Two changes fix it. The lookbehind means a match can only START where the
+ * previous character is not itself a local-part character, so a long run is
+ * attempted once instead of once per offset. And the domain is matched as
+ * explicit dot-separated labels rather than one `[a-zA-Z0-9.-]+` blob, so the
+ * label loop and the `\.` between labels cannot overlap. 24ms on a full 1MB
+ * body, against minutes before. It is also slightly stricter, in the right
+ * direction: a label now has to start and end alphanumeric, so `x@-foo.com`
+ * and `x@a..com` no longer count as addresses. ref: AUDIT-002#scanner-02
+ */
+const EMAIL_RE =
+  /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}/g;
+
 function passesLuhnCheck(digits: string): boolean {
   let sum = 0;
   let double = false;
@@ -134,9 +230,9 @@ const GENERIC_SECRET_ASSIGNMENT =
 
 /**
  * Value shapes already owned by a dedicated vendor-specific check in this
- * file: every distinctive prefix from the `hardcoded-secrets` `patterns`
- * list above, plus the prefixes the ~50 `secret-*` detectors below match
- * on. A generic entropy match whose captured value satisfies one of these
+ * file or in code.ts: every distinctive prefix from code.ts's
+ * `hardcoded-secrets` pattern list, plus the prefixes the ~50 `secret-*`
+ * detectors below match on. A generic entropy match whose value satisfies one
  * is skipped by `secret-generic-high-entropy-value` so the same leaked
  * value is never reported twice under two different check ids. Also
  * excludes the JWT shape, which `jwt-in-html`/`jwt-in-url` already cover.
@@ -232,8 +328,7 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 
   "email-exposure": (_url, _headers, body) => {
-    const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
-    const emails = body.match(emailRegex) || [];
+    const emails = body.match(EMAIL_RE) || [];
     const filtered = emails.filter((e) => {
       const lower = e.toLowerCase();
       const atIndex = lower.indexOf("@");
@@ -402,162 +497,16 @@ const rawDetectors: Record<string, DetectFn> = {
     return null;
   },
 
-  // ── Hardcoded credentials ──────────────────────────────────────────────
-
-  "hardcoded-secrets": (_url, _headers, body) => {
-    const stripped = stripExampleContent(body);
-
-    const patterns = [
-      { name: "AWS Access Key", pattern: /AKIA[0-9A-Z]{16}/g },
-      {
-        name: "Azure Storage Key",
-        pattern:
-          /DefaultEndpointsProtocol=https;AccountName=[^;]+;AccountKey=[A-Za-z0-9+/=]{86,88}/g,
-      },
-      {
-        name: "GCP Service Account",
-        pattern: /"type"\s*:\s*"service_account"/g,
-      },
-      { name: "Google API Key", pattern: /AIzaSy[0-9A-Za-z_-]{33}/g },
-      {
-        name: "Firebase Key",
-        pattern: /AAAA[A-Za-z0-9_-]{7}:[A-Za-z0-9_-]{140}/g,
-      },
-      { name: "Stripe Secret Key", pattern: /sk_live_[0-9a-zA-Z]{24,}/g },
-      { name: "Stripe Restricted Key", pattern: /rk_live_[0-9a-zA-Z]{24,}/g },
-      { name: "Stripe Webhook Secret", pattern: /whsec_[0-9a-zA-Z]{24,}/g },
-      { name: "Square Access Token", pattern: /sq0atp-[0-9A-Za-z_-]{22}/g },
-      { name: "Square OAuth Secret", pattern: /sq0csp-[0-9A-Za-z_-]{43}/g },
-      { name: "GitHub Token", pattern: /gh[pousr]_[0-9A-Za-z]{36,}/g },
-      { name: "GitHub OAuth", pattern: /gho_[0-9A-Za-z]{36,}/g },
-      { name: "GitLab Token", pattern: /glpat-[0-9A-Za-z_-]{20,}/g },
-      { name: "Bitbucket Token", pattern: /ATBB[0-9A-Za-z]{32,}/g },
-      {
-        name: "Slack Token",
-        pattern: /xox[bpras]-[0-9]{10,}-[0-9a-zA-Z-]+/g,
-      },
-      {
-        name: "Slack Webhook",
-        pattern:
-          /hooks\.slack\.com\/services\/T[0-9A-Z]{8,}\/B[0-9A-Z]{8,}\/[0-9A-Za-z]{24}/g,
-      },
-      {
-        name: "Discord Bot Token",
-        pattern: /[MN][A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{38,}/g,
-      },
-      {
-        name: "Discord Webhook",
-        pattern:
-          /discord(?:app)?\.com\/api\/webhooks\/\d{17,20}\/[\w-]{60,68}/g,
-      },
-      { name: "Twilio Account SID", pattern: /AC[0-9a-fA-F]{32}/g },
-      {
-        name: "SendGrid Key",
-        pattern: /SG\.[0-9A-Za-z_-]{22}\.[0-9A-Za-z_-]{43}/g,
-      },
-      { name: "Mailgun Key", pattern: /key-[0-9a-f]{32}/g },
-      {
-        name: "MongoDB URI",
-        pattern: /mongodb(?:\+srv)?:\/\/[^:]+:[^\s@"'<>]+@[^\s"'<>]{5,}/g,
-      },
-      {
-        name: "PostgreSQL URI",
-        pattern: /postgres(?:ql)?:\/\/[^:]+:[^\s@"'<>]+@[^\s"'<>]{5,}/g,
-      },
-      {
-        name: "MySQL URI",
-        pattern: /mysql:\/\/[^:]+:[^\s@"'<>]+@[^\s"'<>]{5,}/g,
-      },
-      {
-        name: "Redis URI",
-        pattern: /rediss?:\/\/[^:]+:[^\s@"'<>]+@[^\s"'<>]{5,}/g,
-      },
-      {
-        name: "Firebase URL",
-        pattern: /https:\/\/[a-z0-9-]+\.firebaseio\.com/g,
-      },
-      { name: "OAuth Token", pattern: /ya29\.[0-9A-Za-z_-]{68,}/g },
-      {
-        name: "OpenAI Key",
-        pattern: /sk-[A-Za-z0-9]{20,}T3BlbkFJ[A-Za-z0-9]{20,}/g,
-      },
-      { name: "OpenAI Project Key", pattern: /sk-proj-[A-Za-z0-9_-]{40,}/g },
-      { name: "Anthropic Key", pattern: /sk-ant-[A-Za-z0-9_-]{40,}/g },
-      { name: "HuggingFace Token", pattern: /hf_[A-Za-z0-9]{34,}/g },
-      { name: "Replicate Token", pattern: /r8_[A-Za-z0-9]{40}/g },
-      { name: "New Relic Key", pattern: /NRAK-[A-Z0-9]{27}/g },
-      {
-        name: "Sentry DSN",
-        pattern: /https:\/\/[0-9a-f]{32}@[a-z0-9.]+\.sentry\.io\/\d+/g,
-      },
-      {
-        name: "Mapbox Token",
-        pattern: /pk\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,
-      },
-      { name: "Facebook Token", pattern: /EAA[0-9A-Za-z]{100,}/g },
-      { name: "RSA Private Key", pattern: /-----BEGIN RSA PRIVATE KEY-----/g },
-      { name: "EC Private Key", pattern: /-----BEGIN EC PRIVATE KEY-----/g },
-      {
-        name: "PGP Private Key",
-        pattern: /-----BEGIN PGP PRIVATE KEY BLOCK-----/g,
-      },
-      {
-        name: "SSH Private Key",
-        pattern: /-----BEGIN (?:OPENSSH |DSA )?PRIVATE KEY-----/g,
-      },
-      {
-        name: "Generic Secret",
-        pattern:
-          /(?:api_secret|secret_key|private_key|client_secret|app_secret)\s*[:=]\s*["'][a-zA-Z0-9/+=_-]{20,}["']/gi,
-      },
-      {
-        name: "Connection String",
-        pattern:
-          /(?:connection_string|database_url|dsn)\s*[:=]\s*["'][^"']{20,}["']/gi,
-      },
-    ];
-    const found: string[] = [];
-    for (const { name, pattern } of patterns) {
-      const matches = stripped.match(pattern);
-      if (matches) {
-        const unique = [...new Set(matches)].filter((m) => {
-          const lower = m.toLowerCase();
-          if (
-            lower.includes("example") ||
-            lower.includes("your_") ||
-            lower.includes("xxxx") ||
-            lower.includes("0000")
-          )
-            return false;
-          if (
-            lower.includes("placeholder") ||
-            lower.includes("test_") ||
-            lower.includes("dummy")
-          )
-            return false;
-          if (/localhost|127\.0\.0\.1/.test(m)) return false;
-          return true;
-        });
-        if (unique.length === 0) continue;
-        for (const match of unique.slice(0, 3)) {
-          const len = match.length;
-          const redacted =
-            len <= 12
-              ? match.slice(0, 4) + "****"
-              : match.slice(0, 8) + "****" + match.slice(-4);
-          found.push(`${name}: ${redacted}`);
-        }
-        if (unique.length > 3) {
-          found.push(
-            `  ...and ${unique.length - 3} more ${name} occurrence(s)`,
-          );
-        }
-      }
-    }
-    return found.length > 0
-      ? `Potential secrets detected:\n${found.join("\n")}`
-      : null;
-  },
+  // "hardcoded-secrets" used to have a second, full implementation here, a
+  // copy of the one in code.ts. It was dead: the definition lives in
+  // checks-data/code.json with category "code", and registry.ts resolves a
+  // detector from the bundle that owns the definition's category, so code.ts's
+  // copy has always been the one that runs. Worse, this copy still carried the
+  // Google API Key pattern (AIzaSy*) that code.ts deliberately removed, because
+  // google-api-key-exposed and secret-google-maps-api-key already report the
+  // same evidence and the triple count was pushing an ordinary site to
+  // "critical". Every pattern it held is covered by code.ts's live list or by a
+  // secret-* detector below, so nothing was folded back in. ref: AUDIT-009#dup-06
 
   // ── Generic entropy-based secret detection ──────────────────────────────
   // Fallback for credential *shapes* that don't match any of the ~50
@@ -1186,7 +1135,9 @@ const rawDetectors: Record<string, DetectFn> = {
     // a bare 32/64-char hex string is otherwise indistinguishable from any
     // other identifier, so require both the endpoint and a labeled secret
     // key assignment nearby, mirroring secret-aws-secret-key's AKIA pairing.
-    const endpointRe = /[a-z0-9-]+\.r2\.cloudflarestorage\.com/i;
+    // Left-anchored: without it the leading class is retried from every
+    // offset of a long run, which is quadratic. ref: AUDIT-012#inj-03
+    const endpointRe = /(?<![a-z0-9-])[a-z0-9-]+\.r2\.cloudflarestorage\.com/i;
     const m = endpointRe.exec(body);
     if (m) {
       const idx = m.index;

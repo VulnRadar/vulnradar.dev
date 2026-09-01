@@ -7,6 +7,9 @@ import {
   normalizeDueAt,
 } from "@/lib/scanner/remediation";
 
+/** Rows returned per request. Named so the response can report it. */
+const REMEDIATION_LIST_LIMIT = 500;
+
 /**
  * Per-finding remediation status (the owner's own "what have I done about
  * it" tracking), keyed on (user_id, finding_id, finding_url) so it survives
@@ -162,10 +165,17 @@ export async function GET(req: NextRequest) {
           AND ($2::text IS NULL OR finding_url = $2)
           AND ($3::text IS NULL OR finding_id = $3)
         ORDER BY updated_at DESC
-        LIMIT 500`,
-      [session.userId, findingUrl, findingId],
+        LIMIT $4`,
+      [session.userId, findingUrl, findingId, REMEDIATION_LIST_LIMIT],
     );
-    return NextResponse.json({ remediation: rows.rows });
+    // Reported rather than silently applied (AUDIT-014#magic-20): triage
+    // state that stops at 500 rows with no indication reads as "there is
+    // nothing more", which is the opposite of what a truncation means.
+    return NextResponse.json({
+      remediation: rows.rows,
+      limit: REMEDIATION_LIST_LIMIT,
+      truncated: rows.rows.length === REMEDIATION_LIST_LIMIT,
+    });
   } catch (err: unknown) {
     const migrated = tableMissingResponse(err);
     if (migrated) return migrated;

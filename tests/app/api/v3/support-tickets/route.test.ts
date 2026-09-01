@@ -57,7 +57,12 @@ describe("GET /api/v3/support-tickets", () => {
     expect(body.tickets).toHaveLength(1);
     const [sql, params] = mockQuery.mock.calls[0];
     expect(sql).toContain("WHERE t.user_id = $1");
-    expect(params).toEqual([7]);
+    // The row cap is a bound parameter now, and the response reports it, so a
+    // truncated ticket history is visible instead of just stopping
+    // (AUDIT-014#magic-20).
+    expect(params).toEqual([7, 100]);
+    expect(body.limit).toBe(100);
+    expect(body.truncated).toBe(false);
   });
 });
 

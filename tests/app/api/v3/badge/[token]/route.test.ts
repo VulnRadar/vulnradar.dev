@@ -148,10 +148,10 @@ describe("GET /api/v3/badge/[token]", () => {
     expect(params).toEqual([expectedHash]);
 
     const body = await res.text();
-    expect(body).toContain("Unsafe -");
+    expect(body).toContain("F -");
   });
 
-  it("renders the Safe badge for findings with no exploitable issues", async () => {
+  it("renders an A+ grade on a green badge for a scan with no findings", async () => {
     const token = "d".repeat(64);
     mockQuery.mockResolvedValueOnce({
       rows: [
@@ -168,7 +168,11 @@ describe("GET /api/v3/badge/[token]", () => {
 
     expect(res.status).toBe(200);
     const body = await res.text();
-    expect(body).toContain("Safe -");
+    // The letter grade is now the label; the safe/caution/unsafe rating still
+    // picks the colour, so the badge's at-a-glance meaning is unchanged.
+    // ref: AUDIT-014#comp-03
+    expect(body).toContain("A+ -");
+    expect(body).toContain("#22c55e");
     expect(body).not.toContain("example.com");
   });
 
@@ -188,10 +192,10 @@ describe("GET /api/v3/badge/[token]", () => {
     const res = await callGet(token);
 
     const body = await res.text();
-    expect(body).toContain("Safe -");
+    expect(body).toContain("A+ -");
   });
 
-  it("renders the Caution badge for a single high-severity exploitable finding", async () => {
+  it("keeps the caution colour while grading a single high-severity exploitable finding D", async () => {
     const token = "e".repeat(64);
     mockQuery.mockResolvedValueOnce({
       rows: [
@@ -209,10 +213,11 @@ describe("GET /api/v3/badge/[token]", () => {
     const res = await callGet(token);
 
     const body = await res.text();
-    expect(body).toContain("Caution -");
+    expect(body).toContain("D -");
+    expect(body).toContain("#eab308");
   });
 
-  it("renders the Unsafe badge for a critical exploitable finding", async () => {
+  it("grades a critical exploitable finding F and keeps the unsafe colour", async () => {
     const token = "f".repeat(64);
     mockQuery.mockResolvedValueOnce({
       rows: [
@@ -230,7 +235,8 @@ describe("GET /api/v3/badge/[token]", () => {
     const res = await callGet(token);
 
     const body = await res.text();
-    expect(body).toContain("Unsafe -");
+    expect(body).toContain("F -");
+    expect(body).toContain("#ef4444");
     expect(res.headers.get("Cache-Control")).toBe(
       "public, max-age=3600, s-maxage=3600",
     );
@@ -254,6 +260,6 @@ describe("GET /api/v3/badge/[token]", () => {
     const res = await callGet(token);
 
     const body = await res.text();
-    expect(body).toContain("Unsafe -");
+    expect(body).toContain("F -");
   });
 });

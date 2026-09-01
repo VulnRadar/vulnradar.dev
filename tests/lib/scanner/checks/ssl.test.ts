@@ -83,6 +83,39 @@ const fixtures: DetectorFixtures = {
       body: '<html><body><form action="http://example.com/submit" method="post"></form></body></html>',
       expect: "skip",
     },
+    {
+      description:
+        "http:// stylesheet <link rel=stylesheet> is a real subresource load and counts",
+      url: "https://example.com/",
+      body: '<html><head><link rel="stylesheet" href="http://cdn.example.com/site.css"></head></html>',
+      expect: "fire",
+      evidenceIncludes: "mixed-content",
+    },
+    {
+      description:
+        "the identical tag shown first inside <pre><code> and then loaded for real further down the page must still fire: judging every copy at the first occurrence's offset silently cleared the page",
+      url: "https://example.com/",
+      body:
+        '<html><body><pre><code><script src="http://cdn.example.com/lib.js"></script></code></pre>' +
+        "<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>" +
+        '<script src="http://cdn.example.com/lib.js"></script></body></html>',
+      expect: "fire",
+      evidenceIncludes: "mixed-content",
+    },
+    {
+      description:
+        "a tag that only appears inside a <pre><code> documentation block is still not counted",
+      url: "https://example.com/",
+      body: '<html><body><pre><code><script src="http://cdn.example.com/lib.js"></script></code></pre></body></html>',
+      expect: "skip",
+    },
+    {
+      description:
+        "plain http:// page referencing other http:// subresources is not mixed content at all",
+      url: "http://example.com/",
+      body: '<html><body><script src="http://cdn.example.com/lib.js"></script></body></html>',
+      expect: "skip",
+    },
   ],
 
   // ── HSTS / Expect-CT ──────────────────────────────────────────────
@@ -146,6 +179,11 @@ const fixtures: DetectorFixtures = {
     {
       description: "http on 8080 (not https, not flagged here)",
       url: "http://example.com:8080/",
+      expect: "skip",
+    },
+    {
+      description: "unparseable URL: skipped rather than crashing the scan",
+      url: "not-a-valid-url",
       expect: "skip",
     },
   ],

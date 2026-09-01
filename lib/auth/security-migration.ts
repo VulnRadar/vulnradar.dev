@@ -22,33 +22,59 @@
  *
  * Safe to run repeatedly: if a row is already encrypted,
  * `decryptApiKey` succeeds and we leave it alone. Idempotent.
+ *
+ * Also safe across a key rotation: a value that is ciphertext-shaped but does
+ * not decrypt under the current key is classified `unreadable` and skipped
+ * rather than re-encrypted. See classifySecret below.
  */
 import pool from "@/lib/database/db";
 import { encryptApiKey, decryptApiKey } from "@/lib/auth/crypto";
 
 /**
- * Returns true if the input looks like a valid AES-256-GCM ciphertext
- * emitted by `encryptApiKey`. Used to discriminate plaintext from
- * ciphertext during the migration.
+ * Three states, not two. The original two-state `looksEncrypted` returned
+ * false both for "this is legacy plaintext" and for "this is ciphertext I
+ * cannot read", and the caller re-encrypts everything that comes back false.
+ * That made a key rotation destructive: rotate API_KEY_ENCRYPTION_KEY (or
+ * restore a backup taken under a different key, or copy an .env between
+ * environments) and the next boot re-encrypts every existing ciphertext as if
+ * it were plaintext, permanently losing the original TOTP seeds and Discord
+ * tokens while counting the rows as a successful migration. The failure mode
+ * is written up in scripts/_lib/_lib.2fa-crypto-mirror.mjs.
+ *
+ * "unreadable" is the fail-safe state: a value that is shaped like one of our
+ * ciphertexts but does not decrypt is left strictly alone and reported, so a
+ * mis-set key is a loud no-op instead of a silent one-way corruption.
  */
-function looksEncrypted(value: string): boolean {
-  if (!value || value.length < 28) return false;
-  // base64 alphabet only
-  if (!/^[A-Za-z0-9+/]+=*$/.test(value)) return false;
+type SecretState = "encrypted" | "plaintext" | "unreadable";
+
+// A plaintext TOTP seed is RFC 4648 base32 of 20 random bytes
+// (lib/auth/totp.ts generateSecret): 32 chars over A-Z and 2-7 only, so it can
+// never contain a lowercase letter, 0, 1, 8, 9, '+' or '/'. Matching this
+// first keeps a genuine seed out of the ciphertext-shape branch below, since
+// 32 base32 chars also happen to be decodable as base64.
+const BASE32_SEED = /^[A-Z2-7]{16,}=*$/;
+
+function classifySecret(value: string): SecretState {
+  if (!value) return "plaintext";
+  if (BASE32_SEED.test(value)) return "plaintext";
+  // Not the base64 alphabet at all (a Discord token carries '.', '-' or '_'),
+  // or too short to hold IV(12) + ciphertext(>=1) + tag(16).
+  if (value.length < 28) return "plaintext";
+  if (!/^[A-Za-z0-9+/]+=*$/.test(value)) return "plaintext";
   let buf: Buffer;
   try {
     buf = Buffer.from(value, "base64");
   } catch {
-    return false;
+    return "plaintext";
   }
-  // Encrypted layout: IV(12) + ciphertext(>=1) + tag(16) = at least 29 bytes.
-  if (buf.length < 29) return false;
-  // Decrypt must succeed.
+  if (buf.length < 29) return "plaintext";
+  // Ciphertext-shaped from here on: it either decrypts under the current key
+  // or it is something we must not touch.
   try {
     decryptApiKey(value);
-    return true;
+    return "encrypted";
   } catch {
-    return false;
+    return "unreadable";
   }
 }
 
@@ -89,8 +115,16 @@ export async function migratePlaintextSecretsToEncrypted(): Promise<MigrationSta
     for (const row of totpRows.rows) {
       const v = row.totp_secret;
       if (!v) continue;
-      if (looksEncrypted(v)) {
+      const state = classifySecret(v);
+      if (state === "encrypted") {
         stats.totpAlreadyEncrypted++;
+        continue;
+      }
+      if (state === "unreadable") {
+        stats.totpUnreadable++;
+        console.error(
+          `[security-migration] totp_secret for user ${row.id} is ciphertext that does not decrypt under the current API_KEY_ENCRYPTION_KEY. Leaving it untouched: re-encrypting it would destroy the seed. Check whether the key was rotated.`,
+        );
         continue;
       }
       try {
@@ -121,8 +155,21 @@ export async function migratePlaintextSecretsToEncrypted(): Promise<MigrationSta
     }>("SELECT user_id, access_token, refresh_token FROM discord_connections");
     stats.discordScanned = discordRows.rows.length;
     for (const row of discordRows.rows) {
-      let needsAccess = !looksEncrypted(row.access_token);
-      let needsRefresh = !looksEncrypted(row.refresh_token);
+      const accessState = classifySecret(row.access_token);
+      const refreshState = classifySecret(row.refresh_token);
+
+      // Same fail-safe as the TOTP loop: if either half is ciphertext we
+      // cannot read, skip the whole row rather than re-encrypt it.
+      if (accessState === "unreadable" || refreshState === "unreadable") {
+        stats.discordUnreadable++;
+        console.error(
+          `[security-migration] Discord tokens for user ${row.user_id} are ciphertext that does not decrypt under the current API_KEY_ENCRYPTION_KEY. Leaving them untouched. Check whether the key was rotated.`,
+        );
+        continue;
+      }
+
+      const needsAccess = accessState === "plaintext";
+      const needsRefresh = refreshState === "plaintext";
 
       if (!needsAccess && !needsRefresh) {
         stats.discordAlreadyEncrypted++;

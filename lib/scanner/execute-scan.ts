@@ -9,7 +9,7 @@
  * fire-and-forget, instead of racing a detached promise.
  */
 
-import { runSyncChecks } from "./engine";
+import { runSyncChecksYielding } from "./engine";
 import { runAsyncChecksDetailed, type AsyncCheckResult } from "./async-checks";
 import { classifyRedirect } from "./scan-target-classify";
 import { readSslGrade } from "./ssl-grade";
@@ -24,6 +24,7 @@ import {
   markScanRunning,
   ScanCancelledError,
   getCancelSignal,
+  clearCancel,
 } from "./scan-jobs";
 import pool from "@/lib/database/db";
 import type { Category, Severity, Vulnerability } from "./types";
@@ -44,6 +45,7 @@ import {
   buildSshFindings,
 } from "./protocol-findings";
 import { safeFetch } from "./safe-fetch";
+import { safeReadBody } from "./read-bounded-body";
 import { redactSensitiveResponseHeaders } from "./response-headers";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { scanCompleteEmail, criticalFindingsEmail } from "@/lib/email/email";
@@ -53,6 +55,7 @@ import {
   getSafetyRating,
   type SafetyRating,
 } from "./safety-rating";
+import { getSiteGrade } from "./site-grade";
 import { checkSourceMapSourcesExposed } from "./checks/content";
 import { getCheckDef, buildVulnerabilityFromEvidence } from "./registry";
 import { enrichFindingsWithExploitIntel } from "./cve-enrichment";
@@ -147,63 +150,6 @@ export function getProtocolType(url: string): ProtocolType {
   return "other";
 }
 
-/**
- * Safely read response body with a size limit and a hard timeout.
- *
- * safeFetch clears its internal abort controller as soon as headers arrive,
- * leaving body reads unprotected. A server that sends headers immediately but
- * streams the body forever (or never closes it) would otherwise hang the route
- * handler indefinitely. The timeout calls reader.cancel(), which causes the
- * pending reader.read() to reject with an AbortError caught below.
- */
-async function safeReadBody(
-  response: Response,
-  maxBytes: number,
-  timeoutMs = 10_000,
-): Promise<string> {
-  const reader = response.body?.getReader();
-  if (!reader) return "";
-
-  const decoder = new TextDecoder("utf-8", { fatal: false });
-  const chunks: string[] = [];
-  let totalBytes = 0;
-
-  const cancelTimer = setTimeout(() => {
-    reader.cancel().catch(() => {});
-  }, timeoutMs);
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      totalBytes += value.byteLength;
-      if (totalBytes > maxBytes) {
-        // Decode the partial chunk up to the limit
-        const overshoot = totalBytes - maxBytes;
-        const trimmed = value.slice(0, value.byteLength - overshoot);
-        if (trimmed.byteLength > 0) {
-          chunks.push(decoder.decode(trimmed, { stream: false }));
-        }
-        break;
-      }
-
-      chunks.push(decoder.decode(value, { stream: true }));
-    }
-  } catch {
-    // Stream error or reader.cancel() from the timeout: return what we have
-  } finally {
-    clearTimeout(cancelTimer);
-    try {
-      reader.cancel();
-    } catch {
-      /* ignore */
-    }
-  }
-
-  return chunks.join("");
-}
-
 export interface ExecuteScanParams {
   scanId: number;
   url: string;
@@ -278,16 +224,22 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
   const {
     SCAN_TIMEOUT_SECONDS: scanTimeoutSeconds,
     SCANNER_MAX_RESPONSE_BODY_BYTES: MAX_BODY_SIZE,
+    SCANNER_ASYNC_BRANCH_TIMEOUT_MS: asyncBranchTimeoutMs,
   } = await getSettings([
     "SCAN_TIMEOUT_SECONDS",
     "SCANNER_MAX_RESPONSE_BODY_BYTES",
+    "SCANNER_ASYNC_BRANCH_TIMEOUT_MS",
   ] as const);
   const watchdog = startWatchdog(
     scanId,
     scanTimeoutSeconds * 1000,
     `Scan exceeded the ${scanTimeoutSeconds}s time limit.`,
   );
-  const { onProgress, setTotal } = createProgressTracker(scanId);
+  const {
+    onProgress,
+    setTotal,
+    flush: flushProgress,
+  } = createProgressTracker(scanId);
   setTotal(categoriesTotal);
   const cancelSignal = getCancelSignal(scanId);
 
@@ -533,12 +485,13 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     const redactedHeaders = redactSensitiveResponseHeaders(capturedHeaders);
 
     // Automatic subdomain discovery: kicked off here so it runs concurrently
-    // with the rest of the scan, then awaited (bounded) just before
-    // result_meta is assembled. Best-effort and time-bounded inside
-    // autoDiscoverSubdomains, so it can never fail or stall the scan. Only for
-    // real web hosts -- raw IPs and non-HTTP protocols have no registrable
-    // domain to enumerate. Reuses the manual flow's per-domain cache, so a
-    // repeat scan of the same domain is an instant cache hit.
+    // with the rest of the scan. It resolves as soon as the per-domain cache
+    // lookup settles and never waits for a fresh sweep (see
+    // subdomain-auto.ts's DEFAULT_AUTO_TIMEOUT_MS), so it cannot fail, stall,
+    // or add wall clock to the scan. Only for real web hosts -- raw IPs and
+    // non-HTTP protocols have no registrable domain to enumerate. Reuses the
+    // manual flow's per-domain cache, so a repeat scan of the same domain is
+    // an instant cache hit that does render the panel.
     const autoSubdomainsPromise =
       protocolType === "http" && !isRawIpTarget
         ? autoDiscoverSubdomains(normalizedUrl, { signal: cancelSignal })
@@ -556,7 +509,7 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
       onProgress,
       cancelSignal,
     );
-    // Both onProgress and runSyncChecks below can throw synchronously
+    // Both onProgress and runSyncChecksYielding below can throw
     // (cancellation), which would abandon asyncPromise before the
     // Promise.race further down ever attaches a handler to it. A bare
     // catch here only prevents that from surfacing as an unhandled
@@ -611,9 +564,15 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
           findings: [] as Vulnerability[],
           checksRun: 0,
           checksSkipped: 0,
+          checksErrored: 0,
           deduped: 0,
         }
-      : runSyncChecks(
+      : // Yielding variant: this is ~63ms of uninterrupted synchronous work
+        // on a 50KB body and ~1.2s at the 1MB cap applied just above, all of
+        // it blocking every other scan and status poll sharing this process.
+        // Releasing the event loop between categories costs ~19 macrotask
+        // hops. ref: AUDIT-011#scan-06
+        await runSyncChecksYielding(
           normalizedUrl,
           headers,
           bodyForChecks,
@@ -628,12 +587,19 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     // has to run against the already-fetched body, unlike async-checks.ts's
     // independent DNS/TLS/live-fetch branches -- fired here, in parallel
     // with runSyncChecks/asyncPromise, rather than blocking on either.
-    // Bounded by its own internal 6s AbortSignal timeout and never rejects
-    // (catches every failure internally and resolves null), so a plain
-    // await below is already safe -- no extra outer race needed.
+    // Its internal 6s AbortSignal bounds the fetch and its bounded reader
+    // bounds the body, and it never rejects (catches every failure and
+    // resolves null). The comment here used to claim the AbortSignal alone
+    // made an unraced await safe; that was true for the headers and false for
+    // the body, so a .map endpoint that answered and then trickled held the
+    // whole scan open until the 300s watchdog. Both halves are now really
+    // bounded (see checkSourceMapSourcesExposed), and the race below is the
+    // outer guarantee that a future regression inside it cannot again put an
+    // unbounded await on the scan's critical path. ref: AUDIT-012#perf-02
     const sourceMapPromise = isRawIpTarget
       ? Promise.resolve(null)
       : checkSourceMapSourcesExposed(normalizedUrl, headers, bodyForChecks);
+    sourceMapPromise.catch(() => {});
 
     // Await async checks (already running in parallel with sync)
     let asyncResult: AsyncCheckResult = { findings: [], incomplete: [] };
@@ -648,8 +614,14 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     }
 
     let sourceMapFinding: Vulnerability | null = null;
+    let sourceMapTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
     try {
-      const evidence = await sourceMapPromise;
+      const evidence = await Promise.race<string | null>([
+        sourceMapPromise,
+        new Promise<null>((resolve) => {
+          sourceMapTimeoutHandle = setTimeout(() => resolve(null), 15000);
+        }),
+      ]);
       const def = evidence
         ? getCheckDef("sourcemap-sourcescontent-exposed")
         : null;
@@ -662,6 +634,10 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
       }
     } catch {
       /* non-fatal -- same fail-open posture as every other check here */
+    } finally {
+      // Same reason the async race clears its handle: a pending timer that
+      // fires after the race settled leaks the closure for no purpose.
+      if (sourceMapTimeoutHandle) clearTimeout(sourceMapTimeoutHandle);
     }
 
     // Curated port sweep result, captured concurrently above. scanPorts never
@@ -691,11 +667,29 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     // pass below, so they pick up CISA KEV / FIRST.org EPSS from their own
     // CVE-naming text for free; its full structured inventory goes to
     // result_meta.
+    //
+    // Raced against the same ceiling every async branch already uses. It is
+    // the only piece of the scan that reaches a third party (NVD/OSV) without
+    // being inside boundedBranch or the 15s async race, so before this its
+    // only bound was the 300s watchdog: a slow or rate-limiting NVD could
+    // keep a finished scan on the loading page for minutes. Losing the race
+    // costs the inventory panel, never the scan. ref: AUDIT-012#perf-01
     let softwareInventory: SoftwareInventoryResult | null = null;
+    let inventoryTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
     try {
-      softwareInventory = await softwareInventoryPromise;
+      softwareInventory = await Promise.race<SoftwareInventoryResult | null>([
+        softwareInventoryPromise,
+        new Promise<null>((resolve) => {
+          inventoryTimeoutHandle = setTimeout(
+            () => resolve(null),
+            asyncBranchTimeoutMs,
+          );
+        }),
+      ]);
     } catch {
       /* never: analyzeSoftwareInventory swallows its own errors */
+    } finally {
+      if (inventoryTimeoutHandle) clearTimeout(inventoryTimeoutHandle);
     }
 
     let findings = [
@@ -743,6 +737,12 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     };
 
     const dangerScore = getDangerScore(findings);
+    // Whole-site A+ to F letter, the vocabulary every free peer grades on.
+    // Stored rather than recomputed per render so the public host report and
+    // the badge agree with the scan record even if the mapping is ever
+    // retuned. A scan from before this existed simply has no siteGrade, and
+    // getSiteGrade(findings) reproduces it. ref: AUDIT-014#comp-03
+    const siteGrade = getSiteGrade(findings);
     const incomplete = asyncResult.incomplete;
     const engineConfidence = getEngineConfidence(
       findings,
@@ -785,10 +785,10 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
 
     // Auto-discovered subdomains, captured concurrently above and left in the
     // per-host side channel (lib/scanner/subdomain-auto.ts). autoDiscover
-    // never rejects, so this await is safe; it just ensures we read the
-    // channel after the bounded discovery has settled. Absent when discovery
-    // timed out or found nothing, so the panel simply does not render and the
-    // owner keeps the manual "Discover" button.
+    // never rejects, so this await is safe; it settles once the cache lookup
+    // is done, not once a fresh sweep is. Absent when this domain was not
+    // already cached or has no subdomains, so the panel simply does not
+    // render and the owner keeps the manual "Discover" button.
     try {
       await autoSubdomainsPromise;
     } catch {
@@ -832,7 +832,15 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
       responseHeaders: redactedHeaders,
       resultMeta: {
         checksRun: syncResult.checksRun,
+        // Only written when a detector actually threw. Its absence is the
+        // normal case; its presence is the operator-visible record that this
+        // scan ran with a broken check, which the console.error in engine.ts
+        // names. ref: AUDIT-012#obs-01
+        ...(syncResult.checksErrored > 0
+          ? { checksErrored: syncResult.checksErrored }
+          : {}),
         dangerScore,
+        siteGrade,
         engineConfidence,
         ...(sslGrade ? { sslGrade } : {}),
         ...(dnsRecords ? { dnsRecords } : {}),
@@ -1119,5 +1127,13 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     }
   } finally {
     clearTimeout(watchdog);
+    // Land any coalesced progress and stop the flush timer. ref: AUDIT-012#perf-12
+    flushProgress();
+    // The cancellation controller must outlive the work, not the row. The
+    // finalize helpers clear it too, but a path that returns without reaching
+    // one of them (e.g. the `!applied` early return above) would otherwise
+    // leave the entry in the module-level map forever.
+    // ref: AUDIT-012#abuse-06
+    clearCancel(scanId);
   }
 }

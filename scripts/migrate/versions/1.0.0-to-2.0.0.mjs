@@ -116,6 +116,19 @@ export const upgrade = {
     // app boot, but we include it here so a v1 DB migrated via the
     // script ends up on the current production schema.
     { table: "api_keys", column: "key_locator", definition: "VARCHAR(32)" },
+    // Per-row salt for the 6-digit email 2FA code (the code space is
+    // 10^6, small enough that an unsalted SHA-256 is rainbow-tableable
+    // from a database leak). Part of the v2 shape (it is inline in the
+    // frozen instrumentation-v2 snapshot) but no migration step ever
+    // added it, so a v1 database upgraded through this file was left
+    // without a column every email-2FA insert path writes. The DEFAULT
+    // makes this safe on a populated table; instrumentation.ts deletes
+    // the sentinel '0' rows on the next boot.
+    {
+      table: "email_2fa_codes",
+      column: "code_salt",
+      definition: "VARCHAR(64) NOT NULL DEFAULT '0'",
+    },
   ],
 
   addIndexes: [
@@ -133,42 +146,12 @@ export const upgrade = {
   ],
 };
 
-export const downgrade = {
-  description:
-    "Drop the 15 v2 tables and v2-only columns from users and api_keys. " +
-    "DELETES all billing, badge, broadcast, and admin data.",
-
-  dropTables: [
-    "system_settings",
-    "subdomain_cache",
-    "staff_activity",
-    "security_alerts",
-    "gifted_subscriptions",
-    "discord_connections",
-    "broadcast_recipients",
-    "broadcast_messages",
-    "billing_verification_codes",
-    "user_badges",
-    "badges",
-    "admin_user_notes",
-    "admin_notifications",
-    "access_rules",
-    "billing_history",
-  ],
-
-  dropColumns: [
-    { table: "users", column: "plan" },
-    { table: "users", column: "stripe_customer_id" },
-    { table: "users", column: "stripe_subscription_id" },
-    { table: "users", column: "subscription_status" },
-    { table: "users", column: "current_period_end" },
-    { table: "users", column: "cancel_at_period_end" },
-    { table: "users", column: "beta_access" },
-    { table: "users", column: "daily_scan_limit" },
-    { table: "users", column: "email_session_revoked" },
-    { table: "users", column: "discord_id" },
-    { table: "api_keys", column: "daily_limit" },
-    { table: "api_keys", column: "key_encrypted" },
-    { table: "api_keys", column: "key_locator" },
-  ],
-};
+// AUDIT-013 migrate-17: the v1 -> v2 `downgrade` plan used to be written
+// out again here, character for character, alongside the copy in
+// 2.0.0-to-1.0.0.mjs. findVersionFile tries the `<from>-to-<to>.mjs` name
+// first, so a { from: "2.0.0", to: "1.0.0" } step ALWAYS resolves to that
+// other file and this copy could never run: anyone fixing the drop list
+// had a 50 percent chance of editing the half that does nothing. There is
+// now one definition, re-exported here so both filenames still answer for
+// this transition.
+export { downgrade } from "./2.0.0-to-1.0.0.mjs";

@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Header } from "@/components/scanner/header";
-import { Footer } from "@/components/scanner/footer";
-import { API } from "@/lib/config/constants";
+import { PublicPageShell } from "@/components/shared/public-page-shell";
+import { API } from "@/lib/config/client-constants";
 import {
   BadgeScanList,
   BadgePreview,
@@ -90,46 +89,38 @@ export default function BadgePage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <Header />
-      <main
-        id="main-content"
-        tabIndex={-1}
-        className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10"
-      >
-        <header className="mb-8 max-w-xl">
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">
-            Badge
-          </h1>
-          <p className="text-muted-foreground mt-2 leading-relaxed">
-            Pick a scan and get an image that links back to the full report. The
-            badge is tied to that URL, not that one scan: every time you scan it
-            again, the badge updates on its own. Paste the embed code once and
-            forget it.
-          </p>
-        </header>
+    <PublicPageShell maxWidth="max-w-5xl" padding="py-8 sm:py-10">
+      <header className="mb-8 max-w-xl">
+        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
+          Badge
+        </h1>
+        <p className="text-muted-foreground mt-2 leading-relaxed">
+          Pick a scan and get an image that links back to the full report. The
+          badge is tied to that URL, not that one scan: every time you scan it
+          again, the badge updates on its own. Paste the embed code once and
+          forget it.
+        </p>
+      </header>
 
-        {scans.length === 0 ? (
-          <BadgeEmptyState />
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-start">
-            <BadgeScanList
-              scans={scans}
-              selected={selected}
-              searchQuery={searchQuery}
-              onSearchChange={setSearchQuery}
-              onSelect={handleSelect}
-            />
-            <BadgePreview
-              selected={selected}
-              token={selected?.site_badge_token ?? null}
-              generating={generating}
-              onScopeChange={handleScopeChange}
-            />
-          </div>
-        )}
-      </main>
-      <Footer />
-    </div>
+      {scans.length === 0 ? (
+        <BadgeEmptyState />
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-start">
+          <BadgeScanList
+            scans={scans}
+            selected={selected}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            onSelect={handleSelect}
+          />
+          <BadgePreview
+            selected={selected}
+            token={selected?.site_badge_token ?? null}
+            generating={generating}
+            onScopeChange={handleScopeChange}
+          />
+        </div>
+      )}
+    </PublicPageShell>
   );
 }

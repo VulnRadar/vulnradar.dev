@@ -51,6 +51,7 @@ import {
   nextSortDirection,
   DataTableSkeleton,
   StatBarSkeleton,
+  AdminPasswordConfirmDialog,
   type SortDirection,
 } from "@/components/admin/shared";
 import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
@@ -59,7 +60,7 @@ import {
   STAFF_ROLE_LABELS,
   ROLE_BADGE_STYLES,
   type StaffRole,
-} from "@/lib/config/constants";
+} from "@/lib/config/client-constants";
 import type { ActiveAdmin } from "@/components/admin/types";
 
 interface StaffListProps {
@@ -113,6 +114,11 @@ export function StaffList({
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState("");
   const [inviteSuccess, setInviteSuccess] = useState("");
+  // Sending an invite grants a staff role (admin is selectable) to an
+  // arbitrary email address. Granting the same role through the user detail
+  // panel has always required password re-auth; this path used to be one
+  // unconfirmed click, so it was the cheap way to the same privilege.
+  const [invitePasswordOpen, setInvitePasswordOpen] = useState(false);
 
   // Pending invites (GET /api/v3/admin/staff-invites): the outstanding
   // invites nobody has accepted yet, so a wrong address or wrong role can be
@@ -150,13 +156,21 @@ export function StaffList({
     setInviteSuccess("");
   }
 
-  async function handleSendInvite() {
+  function requestSendInvite() {
     setInviteError("");
     setInviteSuccess("");
     if (!inviteEmail.trim()) {
       setInviteError("Enter an email address.");
       return;
     }
+    setInvitePasswordOpen(true);
+  }
+
+  async function handleSendInvite(
+    currentAdminPassword: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    setInviteError("");
+    setInviteSuccess("");
     setInviting(true);
     try {
       const res = await fetch("/api/v3/admin/staff-invites", {
@@ -165,19 +179,21 @@ export function StaffList({
         body: JSON.stringify({
           email: inviteEmail.trim(),
           role: inviteRole,
+          currentAdminPassword,
         }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setInviteError(data.error || "Failed to send invite.");
-        return;
+        return { ok: false, error: data.error || "Failed to send invite." };
       }
       setInviteSuccess(`Invite sent to ${inviteEmail.trim()}.`);
       setInviteEmail("");
+      setInvitePasswordOpen(false);
       // Reflect the just-created invite in the pending list right away.
       fetchPendingInvites();
+      return { ok: true };
     } catch {
-      setInviteError("Something went wrong. Please try again.");
+      return { ok: false, error: "Something went wrong. Please try again." };
     } finally {
       setInviting(false);
     }
@@ -691,7 +707,7 @@ export function StaffList({
                   placeholder="teammate@example.com"
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSendInvite()}
+                  onKeyDown={(e) => e.key === "Enter" && requestSendInvite()}
                 />
               </div>
 
@@ -716,7 +732,7 @@ export function StaffList({
                   Close
                 </Button>
                 <Button
-                  onClick={handleSendInvite}
+                  onClick={requestSendInvite}
                   disabled={inviting || !inviteEmail.trim()}
                   className="gap-2"
                 >
@@ -997,10 +1013,22 @@ export function StaffList({
                           const displayName =
                             admin.name || admin.email.split("@")[0];
                           return (
+                            /* a11y (SC 2.1.1): row click was the only route to
+                               a staff member's detail panel and a <tr> is not
+                               keyboard reachable. See the note on the same
+                               fix in components/admin/users/users-tab.tsx. */
                             <TableRow
                               key={admin.id}
-                              className="border-border/40 cursor-pointer group"
+                              tabIndex={0}
+                              className="border-border/40 cursor-pointer group focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                               onClick={() => setSelectedAdmin(admin)}
+                              onKeyDown={(e) => {
+                                if (e.target !== e.currentTarget) return;
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  setSelectedAdmin(admin);
+                                }
+                              }}
                             >
                               <TableCell className="px-5 py-4">
                                 <div className="flex items-center gap-3">
@@ -1229,6 +1257,17 @@ export function StaffList({
           </CardContent>
         </Card>
       </div>
+
+      <AdminPasswordConfirmDialog
+        open={invitePasswordOpen}
+        onOpenChange={setInvitePasswordOpen}
+        title="Send staff invite"
+        description={`This emails ${inviteEmail.trim() || "this address"} a link that grants the ${
+          STAFF_ROLE_LABELS[inviteRole] || inviteRole
+        } role. Re-enter your password to confirm.`}
+        confirmLabel="Send invite"
+        onConfirm={handleSendInvite}
+      />
     </>
   );
 }

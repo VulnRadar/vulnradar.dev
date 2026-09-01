@@ -6,8 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Check, Eye, EyeOff, Loader2, X } from "lucide-react";
-import { API } from "@/lib/config/client-constants";
-import { PASSWORD_MIN_LENGTH } from "@/lib/config/constants";
+import { API, PASSWORD_MIN_LENGTH } from "@/lib/config/client-constants";
 import {
   analyzePassword,
   checkPasswordRequirements,

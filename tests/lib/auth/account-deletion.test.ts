@@ -16,7 +16,14 @@ describe("deleteUserAccountData", () => {
 
   beforeEach(() => {
     mockQuery.mockReset();
-    mockQuery.mockResolvedValue({ rows: [] });
+    // The sequence reads the account's email address (to purge email_logs,
+    // which has no user_id) just before deleting the users row, so the fake
+    // client has to answer that one query with a real row.
+    mockQuery.mockImplementation(async (sql: string) =>
+      String(sql).startsWith("SELECT email FROM users")
+        ? { rows: [{ email: "gone@example.com" }] }
+        : { rows: [] },
+    );
   });
 
   it("deletes the user row last, after every other statement", async () => {
@@ -53,6 +60,8 @@ describe("deleteUserAccountData", () => {
       "security_alerts",
       "staff_activity",
       "data_requests",
+      "scan_finding_feedback",
+      "email_logs",
       "user_badges",
       "admin_user_notes",
       "admin_audit_log",
@@ -131,7 +140,14 @@ describe("deleteUserAccountData", () => {
 
   it("scopes every statement to the given userId", async () => {
     await deleteUserAccountData(fakeClient, 42);
-    for (const [, params] of mockQuery.mock.calls) {
+    for (const [sql, params] of mockQuery.mock.calls) {
+      // email_logs is the one table with no user_id column at all, so its
+      // purge is keyed by the account's address instead. Everything else must
+      // be scoped by the id, or the sequence could delete someone else's data.
+      if (String(sql).includes("email_logs")) {
+        expect(params).toEqual(["gone@example.com"]);
+        continue;
+      }
       expect(params).toEqual([42]);
     }
   });
@@ -142,5 +158,63 @@ describe("deleteUserAccountData", () => {
     await expect(deleteUserAccountData(fakeClient, 11)).rejects.toThrow(
       "still connected",
     );
+  });
+});
+
+describe("deleteUserAccountData: tables with no cascading link to the account", () => {
+  const mockQuery = vi.fn();
+  const fakeClient = { query: mockQuery } as unknown as PoolClient;
+
+  beforeEach(() => {
+    mockQuery.mockReset();
+    mockQuery.mockImplementation(async (sql: string) =>
+      String(sql).startsWith("SELECT email FROM users")
+        ? { rows: [{ email: "gone@example.com" }] }
+        : { rows: [] },
+    );
+  });
+
+  it("deletes scan_finding_feedback, which is ON DELETE SET NULL and would otherwise keep the URL and notes", async () => {
+    await deleteUserAccountData(fakeClient, 11);
+    const call = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("DELETE FROM scan_finding_feedback"),
+    );
+    expect(call).toBeDefined();
+    expect(call![1]).toEqual([11]);
+  });
+
+  it("purges email_logs by recipient, the only link it has to the account", async () => {
+    // email_logs has no user_id and no FK, so nothing else in the deletion
+    // sequence reaches it and the address survived the erasure until an
+    // unrelated retention sweep.
+    await deleteUserAccountData(fakeClient, 11);
+    const call = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("DELETE FROM email_logs"),
+    );
+    expect(call).toBeDefined();
+    expect(call![1]).toEqual(["gone@example.com"]);
+  });
+
+  it("reads the address before the users row is deleted", async () => {
+    await deleteUserAccountData(fakeClient, 11);
+    const sqls = mockQuery.mock.calls.map(([sql]) => String(sql));
+    const readAt = sqls.findIndex((s) =>
+      s.startsWith("SELECT email FROM users"),
+    );
+    const deleteAt = sqls.findIndex(
+      (s) => s === "DELETE FROM users WHERE id = $1",
+    );
+    expect(readAt).toBeGreaterThanOrEqual(0);
+    expect(readAt).toBeLessThan(deleteAt);
+  });
+
+  it("skips the email_logs purge when the user row is already gone", async () => {
+    mockQuery.mockImplementation(async () => ({ rows: [] }));
+    await deleteUserAccountData(fakeClient, 11);
+    expect(
+      mockQuery.mock.calls.some(([sql]) =>
+        String(sql).includes("DELETE FROM email_logs"),
+      ),
+    ).toBe(false);
   });
 });

@@ -2,8 +2,8 @@
  * Per-detector tests for the content category.
  *
  * "sensitive-meta-tags", "service-worker-scope", "bearer-token-exposed",
- * "sensitive-form-no-csrf", "form-method-get-sensitive", and
- * "env-file-reference" have curated fixtures
+ * "sensitive-form-no-csrf", "form-method-get-sensitive", "open-form-action",
+ * and "env-file-reference" have curated fixtures
  * (each added alongside a real bug fix -- see lib/scanner/checks/content.ts).
  * The rest of this category's detectors still get smoke coverage only,
  * same as before this file existed.
@@ -70,6 +70,23 @@ const fixtures: DetectorFixtures = {
       expect: "skip",
     },
   ],
+  // Moved here from information-disclosure.test.ts: content.ts owns the
+  // "content"-category definition, so content.ts's detector is the one a real
+  // scan runs. The identical copies in information-disclosure.ts and code.ts
+  // were dead and have been deleted. ref: AUDIT-009#dup-07
+  "sourcemap-reference": [
+    {
+      description: "JS with sourceMappingURL",
+      body: '<html><body><script src="/app.js">//# sourceMappingURL=/app.js.map</script></body></html>',
+      expect: "fire",
+      evidenceIncludes: "source map",
+    },
+    {
+      description: "page with no sourceMappingURL comment does not fire",
+      body: '<html><body><script src="/app.js"></script></body></html>',
+      expect: "skip",
+    },
+  ],
   "env-file-reference": [
     {
       description: ".env file reference in href attribute",
@@ -124,6 +141,84 @@ const fixtures: DetectorFixtures = {
       body: "<code>Authorization: Bearer vr_live_xxxxxxxxxxxxxxxxxxxxxxxx</code>",
       expect: "skip",
     },
+    {
+      description:
+        "regression (false negative): a docs placeholder FIRST and a real token second still fires -- the old non-global body.match judged only the first 'Bearer ...' on the page, so the placeholder masked the real leak below it",
+      body:
+        "<pre>Authorization: Bearer YOUR_ACCESS_TOKEN_HERE</pre>" +
+        "<script>h.Authorization = 'Bearer aZ9x.k3Lp8qRstuVwXyz012345'</script>",
+      expect: "fire",
+      evidenceIncludes: "bearer token",
+    },
+  ],
+  "aws-credentials-exposed": [
+    {
+      description:
+        "AWS's own documentation example key (AKIAIOSFODNN7EXAMPLE) alone does not fire",
+      body: "<p>Example credentials: AKIAIOSFODNN7EXAMPLE</p>",
+      expect: "skip",
+    },
+    {
+      description:
+        "regression (false negative): the EXAMPLE key FIRST and a real access key ID second still fires -- the old non-global body.match judged only the first AKIA match",
+      body:
+        "<p>Example credentials: AKIAIOSFODNN7EXAMPLE</p>" +
+        '<script>var k = "AKIA3XZQ7NPLM2VKD9RT";</script>',
+      expect: "fire",
+      evidenceIncludes: "access key id",
+    },
+  ],
+  "github-token-exposed": [
+    {
+      description:
+        "a redacted docs placeholder (ghp_ followed by 36 literal x characters) alone does not fire",
+      body: `<pre>ghp_${"x".repeat(36)}</pre>`,
+      expect: "skip",
+    },
+    {
+      description:
+        "regression (false negative): the redacted placeholder FIRST and a real-looking PAT second still fires -- the old non-global body.match judged only the first ghp_ match",
+      body:
+        `<pre>ghp_${"x".repeat(36)}</pre>` +
+        '<script>const t = "ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8";</script>',
+      expect: "fire",
+      evidenceIncludes: "github pat",
+    },
+  ],
+  "database-connection-string": [
+    {
+      description:
+        "a getting-started placeholder connection string (user:password@) alone does not fire",
+      body: "<p>Set DATABASE_URL to postgresql://user:password@localhost:5432/mydb in your env file.</p>",
+      expect: "skip",
+    },
+    {
+      description:
+        "regression (false negative): the placeholder FIRST and a real connection string second still fires -- the old non-global html.match judged only the first match of each pattern",
+      body:
+        "<p>Set DATABASE_URL to postgresql://user:password@localhost:5432/mydb in your env file.</p>" +
+        "<p>Live value: postgres://appuser:S3cr3tP4ss@db.internal:5432/prod is used in staging.</p>",
+      expect: "fire",
+      evidenceIncludes: "connection string",
+    },
+  ],
+  "reflected-input": [
+    {
+      description:
+        "a dangerous pattern shown in a syntax-highlighted documentation block does not fire",
+      body: '<div class="syntax-highlight">jaVasCript:alert(1)</div>',
+      expect: "skip",
+    },
+    {
+      description:
+        "regression (false negative): the documentation occurrence FIRST and a real reflected one second still fires -- the old code judged only match[0] and skipped the whole pattern",
+      body:
+        '<div class="syntax-highlight">jaVasCript:alert(1)</div>' +
+        `<p>${"padding text here. ".repeat(20)}</p>` +
+        '<a href="jaVasCript:alert(2)">click</a>',
+      expect: "fire",
+      evidenceIncludes: "dangerous content",
+    },
   ],
   "oauth-state-missing": [
     {
@@ -164,6 +259,46 @@ const fixtures: DetectorFixtures = {
         'regression: stripping an unrelated <pre> code example out from between two distant mentions must not collapse them adjacent to each other -- stripExampleContent deletes matched regions to "", which briefly re-broke this exact case on VulnRadar\'s own /docs/setup after the first fix above',
       body: "<p>Configure PostgreSQL for the app.</p><pre>DATABASE_URL=postgresql://user:pass@host/db</pre><p>Error: ECONNREFUSED 127.0.0.1:5432</p>",
       expect: "skip",
+    },
+  ],
+  "postmessage-origin": [
+    {
+      description:
+        "disabled as a strict duplicate of client-side.ts's postmessage-no-origin-check (same evidence, same high severity, better per-handler origin scoping) -- never fires, so one unvalidated listener is no longer scored twice",
+      body: "<script>window.addEventListener('message', function(evt){ render(evt.data); });</script>",
+      expect: "skip",
+    },
+  ],
+  "open-form-action": [
+    {
+      description:
+        "regression: an absolute action URL back to the page's own site (www. subdomain) is not a third-party submission and does not fire",
+      url: "https://example.com/pricing",
+      body: '<form method="post" action="https://www.example.com/subscribe"><input name="email"></form>',
+      expect: "skip",
+    },
+    {
+      description:
+        "regression: a Mailchimp-hosted newsletter signup, whose published embed code requires the cross-origin action, does not fire",
+      url: "https://example.com/",
+      body: '<form method="post" action="https://example.us1.list-manage.com/subscribe/post?u=abc&id=def"><input name="EMAIL"></form>',
+      expect: "skip",
+    },
+    {
+      description:
+        "a form posting to an unrelated third-party domain still fires",
+      url: "https://example.com/",
+      body: '<form method="post" action="https://collector.unknown-vendor.tld/harvest"><input name="email"></form>',
+      expect: "fire",
+      evidenceIncludes: "third-party domain",
+    },
+    {
+      description:
+        "a same-site action over plain HTTP still fires -- cleartext submission is a finding regardless of whose host it targets",
+      url: "https://example.com/",
+      body: '<form method="post" action="http://example.com/login"><input type="password" name="pw"></form>',
+      expect: "fire",
+      evidenceIncludes: "plain HTTP",
     },
   ],
   "sensitive-form-no-csrf": [
@@ -304,6 +439,16 @@ const fixtures: DetectorFixtures = {
       body: "<script>document.addEventListener('copy', function(e){ e.clipboardData.setData('text/plain', document.getSelection() + '\\n\\nRead more at ' + location.href); e.preventDefault(); });</script>",
       expect: "skip",
     },
+    {
+      description:
+        "regression (false negative): a benign attribution listener FIRST and a hijacking one second still fires -- the old single exec() judged only the first copy listener on the page",
+      body:
+        "<script>document.addEventListener('copy', function(e){ e.clipboardData.setData('text/plain', document.getSelection() + ' Read more at ' + location.href); });</script>" +
+        `<p>${"spacer ".repeat(60)}</p>` +
+        "<script>document.addEventListener('copy', function(e){ e.clipboardData.setData('text/plain', 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh'); });</script>",
+      expect: "fire",
+      evidenceIncludes: "clipboard-hijacking",
+    },
   ],
   "source-code-comment": [
     {
@@ -432,6 +577,25 @@ runDetectorTests(detectors, fixtures);
 // follow-up HTTP fetch, which the synchronous detector map's contract
 // can't support, so it isn't covered by runDetectorTests above.
 describe("checkSourceMapSourcesExposed", () => {
+  // checkSourceMapSourcesExposed now reads the .map through the shared
+  // bounded reader (lib/scanner/read-bounded-body.ts) rather than
+  // res.text(), so a chunked .map can no longer be buffered without limit
+  // and a trickling one can no longer hold the scan open. That means the
+  // mocked Response has to expose a real body stream, not just text().
+  function mapResponse(payload: unknown) {
+    const bytes = new TextEncoder().encode(JSON.stringify(payload));
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(bytes);
+          controller.close();
+        },
+      }),
+    };
+  }
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
   });
@@ -451,19 +615,13 @@ describe("checkSourceMapSourcesExposed", () => {
   });
 
   it("fires when the referenced .map file is fetched and contains non-empty sourcesContent", async () => {
-    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: true,
-      status: 200,
-      headers: { get: () => null },
-      text: () =>
-        Promise.resolve(
-          JSON.stringify({
-            version: 3,
-            sources: ["webpack:///src/app.js"],
-            sourcesContent: ["export function secretLogic() { return 42; }"],
-          }),
-        ),
-    });
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mapResponse({
+        version: 3,
+        sources: ["webpack:///src/app.js"],
+        sourcesContent: ["export function secretLogic() { return 42; }"],
+      }),
+    );
     const body = "console.log(1);\n//# sourceMappingURL=app.js.map";
     const result = await checkSourceMapSourcesExposed(
       "https://example.com/static/app.js",
@@ -493,19 +651,13 @@ describe("checkSourceMapSourcesExposed", () => {
   });
 
   it("does not fire when the map is reachable but has no sourcesContent field", async () => {
-    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: true,
-      status: 200,
-      headers: { get: () => null },
-      text: () =>
-        Promise.resolve(
-          JSON.stringify({
-            version: 3,
-            sources: ["src/app.js"],
-            mappings: "AAAA",
-          }),
-        ),
-    });
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mapResponse({
+        version: 3,
+        sources: ["src/app.js"],
+        mappings: "AAAA",
+      }),
+    );
     const body = "console.log(1);\n//# sourceMappingURL=app.js.map";
     const result = await checkSourceMapSourcesExposed(
       "https://example.com/static/app.js",
@@ -516,19 +668,13 @@ describe("checkSourceMapSourcesExposed", () => {
   });
 
   it("does not fire when sourcesContent is present but every entry is empty/null", async () => {
-    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: true,
-      status: 200,
-      headers: { get: () => null },
-      text: () =>
-        Promise.resolve(
-          JSON.stringify({
-            version: 3,
-            sources: ["src/app.js"],
-            sourcesContent: [null, ""],
-          }),
-        ),
-    });
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mapResponse({
+        version: 3,
+        sources: ["src/app.js"],
+        sourcesContent: [null, ""],
+      }),
+    );
     const body = "console.log(1);\n//# sourceMappingURL=app.js.map";
     const result = await checkSourceMapSourcesExposed(
       "https://example.com/static/app.js",

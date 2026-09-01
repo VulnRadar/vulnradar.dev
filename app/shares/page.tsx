@@ -1,16 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { useToast } from "@/components/ui/use-toast";
+import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Header } from "@/components/scanner/header";
 import { Footer } from "@/components/scanner/footer";
 import {
@@ -18,7 +12,7 @@ import {
   usePagination,
 } from "@/components/ui/pagination-control";
 import { ShareModal } from "@/components/scanner/share-modal";
-import { API, APP_NAME } from "@/lib/config/constants";
+import { API, APP_NAME } from "@/lib/config/client-constants";
 import {
   getQueryParamInt,
   QUERY_CHANGE_EVENT,
@@ -34,8 +28,10 @@ import {
 import { SharesSkeleton } from "@/components/shares/shares-skeleton";
 
 export default function SharesPage() {
+  const { toast } = useToast();
   const [shares, setShares] = useState<Share[]>([]);
   const [loading, setLoading] = useState(true);
+  const [listError, setListError] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<number | null>(null);
   const [togglingPubliclyListed, setTogglingPubliclyListed] = useState<
     number | null
@@ -73,16 +69,24 @@ export default function SharesPage() {
     };
   }, []);
 
+  // A failed load used to fall through to SharesEmptyState, which says there
+  // are no share links. For a page whose whole subject is which of your scan
+  // reports are reachable by a URL you handed out, "you have none" is the
+  // most dangerous thing it could say when the truth is "we could not check".
   async function fetchShares() {
     setLoading(true);
     try {
       const res = await fetch(API.SHARES);
-      if (res.ok) {
-        const data = await res.json();
-        setShares(data.shares || []);
+      if (!res.ok) {
+        setListError("Couldn't load your share links.");
+        return;
       }
+      const data = await res.json();
+      setListError(null);
+      setShares(data.shares || []);
     } catch (err) {
       console.error("Failed to fetch shares:", err);
+      setListError("Couldn't reach the server to load your share links.");
     } finally {
       setLoading(false);
     }
@@ -112,11 +116,77 @@ export default function SharesPage() {
             s.id === share.id ? { ...s, publiclyListed: next } : s,
           ),
         );
+      } else {
+        // Same silent-failure shape as revokeShare: the toggle snapped back
+        // with no explanation, so a report the user believed they had just
+        // unlisted stayed publicly listed.
+        const data = await res.json().catch(() => ({}));
+        toast({
+          title: next
+            ? "Could not list that report publicly"
+            : "Could not unlist that report",
+          description: data.error || "The report's visibility is unchanged.",
+          variant: "destructive",
+        });
       }
     } catch (err) {
       console.error("Failed to update public listing:", err);
+      toast({
+        title: "Could not change that report's visibility",
+        description: "The report's visibility is unchanged.",
+        variant: "destructive",
+      });
     } finally {
       setTogglingPubliclyListed(null);
+    }
+  }
+
+  // Expiry is written through the same POST the Share action uses: it is
+  // idempotent for a scan that already has a live token, so this updates the
+  // expiry without minting a new link. `days` is null for "never expires",
+  // which the route writes explicitly rather than treating as absent.
+  const [updatingExpiry, setUpdatingExpiry] = useState(false);
+
+  async function changeShareExpiry(share: Share, days: number | null) {
+    setUpdatingExpiry(true);
+    try {
+      const res = await fetch(`${API.HISTORY}/${share.id}/share`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expiresInDays: days }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast({
+          title: "Could not change when this link expires",
+          description:
+            data.error || "The expiry is unchanged. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+      // Read the expiry back rather than computing it here: the server owns
+      // the resolution from a day count to a timestamp.
+      const nextExpiresAt = (data.expiresAt ?? null) as string | null;
+      setShares((prev) =>
+        prev.map((s) =>
+          s.id === share.id ? { ...s, expiresAt: nextExpiresAt } : s,
+        ),
+      );
+      setSelectedShare((prev) =>
+        prev && prev.id === share.id
+          ? { ...prev, expiresAt: nextExpiresAt }
+          : prev,
+      );
+    } catch (err) {
+      console.error("Failed to change share expiry:", err);
+      toast({
+        title: "Could not change when this link expires",
+        description: "Check your connection and try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdatingExpiry(false);
     }
   }
 
@@ -135,9 +205,27 @@ export default function SharesPage() {
         // which would double-fire handlePageChange's history.replaceState + event).
         const newTotalPages = Math.max(1, Math.ceil(updated.length / pageSize));
         if (currentPage > newTotalPages) handlePageChange(newTotalPages);
+      } else {
+        // A non-ok response used to fall out of this `if` and do nothing at
+        // all: the spinner stopped, the row stayed, and the user had no way
+        // to tell a failed revoke from a successful one. On a control whose
+        // whole purpose is withdrawing access to a security report, "looks
+        // like it worked" is the worst possible outcome.
+        const data = await res.json().catch(() => ({}));
+        toast({
+          title: "Could not revoke that share link",
+          description:
+            data.error || "The link is still active. Please try again.",
+          variant: "destructive",
+        });
       }
     } catch (err) {
       console.error("Failed to revoke share:", err);
+      toast({
+        title: "Could not revoke that share link",
+        description: "The link is still active. Check your connection.",
+        variant: "destructive",
+      });
     } finally {
       setRevoking(null);
     }
@@ -168,7 +256,29 @@ export default function SharesPage() {
 
           {shares.length > 0 && <SharesStats shares={shares} />}
 
-          {shares.length === 0 ? (
+          {listError ? (
+            <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-destructive/30 bg-destructive/5 px-4 py-14 text-center">
+              <AlertTriangle
+                className="h-6 w-6 text-destructive/70"
+                aria-hidden="true"
+              />
+              <p className="text-sm font-semibold text-foreground">
+                {listError}
+              </p>
+              <p className="max-w-xs text-xs text-muted-foreground">
+                Any links you created are still live. This page just could not
+                read the list.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="bg-transparent"
+                onClick={fetchShares}
+              >
+                Retry
+              </Button>
+            </div>
+          ) : shares.length === 0 ? (
             <SharesEmptyState />
           ) : (
             <SharesTable
@@ -200,52 +310,27 @@ export default function SharesPage() {
         </div>
       </main>
 
-      <AlertDialog
+      <ConfirmDialog
         open={confirmRevoke !== null}
-        onOpenChange={(open) => {
-          if (!open && revoking === null) setConfirmRevoke(null);
+        danger
+        busy={revoking !== null}
+        title="Revoke this shared link?"
+        description={
+          <>
+            The link for{" "}
+            <span className="font-medium text-foreground">
+              {confirmRevoke?.url}
+            </span>{" "}
+            stops working immediately. Anyone who already has it, including
+            people you sent it to, loses access.
+          </>
+        }
+        confirmLabel="Revoke"
+        onCancel={() => setConfirmRevoke(null)}
+        onConfirm={async () => {
+          if (confirmRevoke) await revokeShare(confirmRevoke.id);
         }}
-      >
-        <AlertDialogContent className="sm:max-w-md">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle
-                className="h-5 w-5 text-destructive shrink-0"
-                aria-hidden="true"
-              />
-              Revoke this shared link?
-            </AlertDialogTitle>
-            <AlertDialogDescription className="text-left">
-              The link for{" "}
-              <span className="font-medium text-foreground">
-                {confirmRevoke?.url}
-              </span>{" "}
-              stops working immediately. Anyone who already has it, including
-              people you sent it to, loses access.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="flex-col-reverse sm:flex-row gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setConfirmRevoke(null)}
-              disabled={revoking !== null}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => confirmRevoke && revokeShare(confirmRevoke.id)}
-              disabled={revoking !== null}
-              className="gap-2"
-            >
-              {revoking !== null && (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              )}
-              Revoke
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      />
 
       <Footer />
 
@@ -255,6 +340,12 @@ export default function SharesPage() {
           onOpenChange={setShareModalOpen}
           shareUrl={getShareUrl(selectedShare.token)}
           title={`${APP_NAME} Scan: ${selectedShare.url}`}
+          expiresAt={selectedShare.expiresAt ?? null}
+          onExpiryChange={(days) => changeShareExpiry(selectedShare, days)}
+          updatingExpiry={updatingExpiry}
+          publiclyListed={selectedShare.publiclyListed}
+          onPubliclyListedChange={() => togglePubliclyListed(selectedShare)}
+          togglingPubliclyListed={togglingPubliclyListed === selectedShare.id}
         />
       )}
     </div>

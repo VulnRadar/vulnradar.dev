@@ -115,11 +115,14 @@ export function SharesRow({
       </div>
 
       {/* Actions */}
-      <div className="flex items-center justify-end gap-1 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+      {/* 32px buttons 4px apart are under the touch minimum and too close to
+          hit reliably, and the overflow menu is the only route to Revoke
+          Access. Both get a 44px target and more separation below sm. */}
+      <div className="flex items-center justify-end gap-2 sm:gap-1 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8"
+          className="h-11 w-11 sm:h-8 sm:w-8"
           onClick={handleCopy}
           title="Copy link"
           aria-label="Copy share link"
@@ -136,7 +139,7 @@ export function SharesRow({
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="h-11 w-11 sm:h-8 sm:w-8"
               aria-label="Open share actions menu"
             >
               <MoreHorizontal className="h-4 w-4" />

@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { markTeamInviteNotificationsHandled } from "@/lib/notifications/user-notifications";
+import { teamsDisabledResponse } from "@/lib/teams/feature-gate";
 
 /**
  * The current user's OWN pending team invitations, matched by their email, so
@@ -18,6 +19,9 @@ export async function GET() {
       { error: ERROR_MESSAGES.UNAUTHORIZED },
       { status: 401 },
     );
+
+  const gate = await teamsDisabledResponse();
+  if (gate) return gate;
 
   const userRes = await pool.query("SELECT email FROM users WHERE id = $1", [
     session.userId,
@@ -48,6 +52,9 @@ export async function DELETE(request: Request) {
       { error: ERROR_MESSAGES.UNAUTHORIZED },
       { status: 401 },
     );
+
+  const gate = await teamsDisabledResponse();
+  if (gate) return gate;
 
   const { inviteId } = await request.json();
   if (!inviteId)

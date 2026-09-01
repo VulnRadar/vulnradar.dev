@@ -38,7 +38,11 @@
       <circle cx="12" cy="18" r="1" fill="#fbbf24" stroke="none"/>
     </g>
   </g>
-  <text x="196" y="184"
+  <!-- data-og markers: scripts/build-og-image.mjs substitutes CONFIG_APP_NAME
+       and the CONFIG_APP_URL hostname into these two nodes when it rasterizes
+       the card, so a renamed fork does not unfurl someone else's brand. Keep
+       the attributes if you edit these lines. -->
+  <text data-og="app-name" x="196" y="184"
         font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
         font-size="70" font-weight="800" letter-spacing="-2" fill="url(#wordmark)">VulnRadar</text>
 
@@ -53,7 +57,7 @@
         font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
         font-size="30" font-weight="600" letter-spacing="-0.2" fill="#dbe4f2">issues in seconds. Just a URL.</text>
 
-  <text x="90" y="452"
+  <text data-og="app-host" x="90" y="452"
         font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
         font-size="24" font-weight="700" fill="#60a5fa">vulnradar.dev</text>
 

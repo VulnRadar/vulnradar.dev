@@ -27,6 +27,25 @@ vi.mock("@/lib/notifications/user-notifications", () => ({
     mockMarkHandled(...args),
 }));
 
+// FEATURE_TEAMS is the deployment-wide kill switch every /api/v3/teams
+// handler now checks (lib/teams/feature-gate.ts). Mocked at the settings
+// resolver so it doesn't consume an entry from this suite's ordered
+// pool.query queue.
+const mockFeatureTeams = vi.fn();
+vi.mock("@/lib/config/runtime-config", () => ({
+  getSetting: async (key: string) =>
+    key === "FEATURE_TEAMS" ? mockFeatureTeams() : undefined,
+}));
+
+// The accept path is rate limited (AUDIT-002#secrets-02). Mocked here so the
+// limiter's own two pool.query calls don't consume entries from this suite's
+// ordered queue; the limit itself is asserted in its own test below.
+const mockCheckRateLimit = vi.fn();
+vi.mock("@/lib/rate-limiting/rate-limit", () => ({
+  checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
+  RATE_LIMITS: { teamInvite: { limit: "teamInvite" } },
+}));
+
 const { POST } = await import("@/app/api/v3/teams/accept-invite/route");
 
 const FUTURE = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
@@ -57,6 +76,14 @@ beforeEach(() => {
   mockMarkHandled.mockReset();
   mockMarkHandled.mockResolvedValue(undefined);
   mockGetSession.mockResolvedValue({ userId: 42 });
+  mockFeatureTeams.mockReset();
+  mockFeatureTeams.mockResolvedValue(true);
+  mockCheckRateLimit.mockReset();
+  mockCheckRateLimit.mockResolvedValue({
+    allowed: true,
+    remaining: 19,
+    retryAfterSeconds: 0,
+  });
 });
 
 describe("POST /api/v3/teams/accept-invite", () => {
@@ -64,6 +91,37 @@ describe("POST /api/v3/teams/accept-invite", () => {
     mockGetSession.mockResolvedValue(null);
     const res = await POST(postRequest({ token: "abc" }));
     expect(res.status).toBe(401);
+  });
+
+  it("returns 403 and touches no data when FEATURE_TEAMS is off", async () => {
+    mockFeatureTeams.mockResolvedValue(false);
+    const res = await POST(postRequest({ token: "abc" }));
+    expect(res.status).toBe(403);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  // AUDIT-002#secrets-02: sending invites was capped and accepting them was
+  // not, so the small sequential inviteId could be walked to learn which
+  // invites exist and which are still open (the two failure messages
+  // differ).
+  it("rejects with 429 and touches no invite data once the accept limiter trips", async () => {
+    mockCheckRateLimit.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 600,
+    });
+    const res = await POST(postRequest({ inviteId: 7 }));
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("600");
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("keys the accept limiter on the caller, not on the invite", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    await POST(postRequest({ inviteId: 7 }));
+    expect(mockCheckRateLimit).toHaveBeenCalledWith(
+      expect.objectContaining({ key: "team-accept-invite:42" }),
+    );
   });
 
   it("requires a token or an inviteId", async () => {

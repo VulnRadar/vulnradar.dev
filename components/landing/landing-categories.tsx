@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getCategoryCounts } from "@/lib/scanner/registry";
 import { CATEGORY_META } from "@/lib/scanner/category-meta";
 import type { Category } from "@/lib/scanner/types";
@@ -31,25 +32,38 @@ export function LandingCategories() {
               site is not marked down for missing an API rate-limit header.
             </p>
           </div>
-          <p className="text-sm text-muted-foreground shrink-0 tabular-nums">
-            <span className="font-mono font-semibold text-foreground">
-              {total.toLocaleString()}
-            </span>{" "}
-            checks in {keys.length} categories
-          </p>
+          <div className="shrink-0 sm:text-right">
+            <p className="text-sm text-muted-foreground tabular-nums">
+              <span className="font-mono font-semibold text-foreground">
+                {total.toLocaleString()}
+              </span>{" "}
+              checks in {keys.length} categories
+            </p>
+            {/* This table describes roughly 750 pages under /checks and used to
+                link to none of them, so the site's strongest page sent no
+                traffic into the surface it was describing. Every row is a link
+                now, and this is the index. */}
+            <Link
+              href="/checks"
+              className="mt-1 inline-block text-sm text-primary hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+            >
+              See all {total.toLocaleString()} checks
+            </Link>
+          </div>
         </div>
 
         <div className="sm:hidden space-y-2.5">
           {keys.map((key) => {
             const isFlagship = key === FLAGSHIP_CATEGORY;
             return (
-              <div
+              <Link
                 key={key}
+                href={`/checks/category/${key}`}
                 className={cn(
-                  "rounded-lg border p-4",
+                  "block rounded-lg border p-4 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
                   isFlagship
-                    ? "border-primary/25 bg-primary/5"
-                    : "border-border/60 bg-card",
+                    ? "border-primary/25 bg-primary/5 hover:bg-primary/10"
+                    : "border-border/60 bg-card hover:bg-muted/40",
                 )}
               >
                 <div className="flex items-baseline justify-between gap-3 mb-1.5">
@@ -73,7 +87,7 @@ export function LandingCategories() {
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   {CATEGORY_META[key].blurb}
                 </p>
-              </div>
+              </Link>
             );
           })}
         </div>
@@ -125,7 +139,12 @@ export function LandingCategories() {
                         isFlagship ? "text-primary" : "text-foreground",
                       )}
                     >
-                      {CATEGORY_META[key].label}
+                      <Link
+                        href={`/checks/category/${key}`}
+                        className="hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                      >
+                        {CATEGORY_META[key].label}
+                      </Link>
                     </th>
                     <td className="px-4 sm:px-5 py-3 text-muted-foreground leading-relaxed align-top">
                       {CATEGORY_META[key].blurb}

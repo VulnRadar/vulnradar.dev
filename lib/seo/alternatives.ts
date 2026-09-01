@@ -1,3 +1,5 @@
+import { APP_NAME } from "@/lib/config/constants";
+
 // Honest, factual comparison data for the /alternatives pages.
 //
 // Ground rules, because a comparison page that overreaches gets ignored (or
@@ -11,6 +13,18 @@
 //   - Descriptions are neutral. We say what each tool is good at, then say
 //     what VulnRadar does differently. No disparagement, no unverifiable
 //     claims.
+//   - An entry that cannot state real facts about the competitor does not
+//     ship. The "intelliradar" entry was removed for exactly this: three of
+//     its five rows read "Varies by product.", its summary described the
+//     category rather than the product, and a page whose whole competitor
+//     column is a shrug is a doorway page that drags down the four beside it
+//     (AUDIT-014#seo-17). Deleting the entry also removes its sitemap entry,
+//     its static param and its llms.txt line, since all three derive from
+//     getAllAlternatives(). Higher-value additions, when someone has the
+//     facts to hand: OWASP ZAP and Nuclei (the open-source self-hostable
+//     comparisons) and Mozilla Observatory, Security Headers and SSL Labs
+//     (the single-URL free scanners this product is genuinely searched
+//     against).
 
 export interface ComparisonRow {
   /** What is being compared, e.g. "Licensing". */
@@ -48,70 +62,55 @@ const VR = {
     "Free tier, then $5, $10, or $20 a month. Same engine on every tier.",
   onboarding: "Paste a URL. No agent, no appliance, no sales call.",
   engine: "One detection engine, identical on free and paid down to check IDs.",
+  // Both of these ship today and neither was stated anywhere on the site:
+  // lib/reports/sarif-report.ts emits SARIF 2.1.0 and
+  // lib/reports/compliance-mappings.ts maps findings to six frameworks, and
+  // GET /api/v3/history/[id]/report gates neither behind a plan.
+  reports:
+    "SARIF 2.1.0, PDF, Markdown, and a PCI DSS, SOC 2, ISO 27001, ASVS, HIPAA and GDPR crosswalk. Included on the free tier.",
+  ci: "SARIF straight into GitHub code scanning, plus webhooks and a REST API on every tier.",
+  // Stated exactly as the code works, no further. lib/scanner/auth/types.ts is
+  // the design note; app/api/v3/scan/authenticated/route.ts and
+  // app/api/v3/scan/crawl/route.ts are the enforcement (login material is a
+  // local in the handler, and the audit record they write names the origin,
+  // the method and the outcome, never the material). There is no credential
+  // table and no vault: an authenticated scan is re-supplied every time.
+  credentials:
+    "No credential store. A login is supplied with the scan request, held in memory for that one scan, and never written to a database, a log, or the saved result. The trade-off is real: with nothing saved, an authenticated scan is run on demand rather than on a schedule.",
 };
 
-export const ALTERNATIVES: Alternative[] = [
-  {
-    slug: "intelliradar",
-    name: "IntelliRadar",
-    category: "Vulnerability scanning tool",
-    summary:
-      "IntelliRadar is a security scanning tool in the same broad space as VulnRadar: point it at a target and get back a list of findings. Products in this category differ mostly in what they inspect, how they price, and whether you can run them yourself.",
-    positioning:
-      "If you found VulnRadar while searching for IntelliRadar, the practical difference to check is openness and price. VulnRadar is open-source under GPL-3.0, runs as a hosted scan or a self-hosted instance you control, and publishes its entire check set as browsable pages so you can see exactly what it looks for before you run anything.",
-    rows: [
-      {
-        feature: "Licensing",
-        vulnradar: VR.licensing,
-        them: "Check the vendor's site; openness varies by product.",
-      },
-      {
-        feature: "Self-hosting",
-        vulnradar: VR.hosting,
-        them: "Varies by product.",
-      },
-      {
-        feature: "Pricing model",
-        vulnradar: VR.pricing,
-        them: "See the vendor's current pricing.",
-      },
-      {
-        feature: "Getting started",
-        vulnradar: VR.onboarding,
-        them: "Varies by product.",
-      },
-      {
-        feature: "Check transparency",
-        vulnradar: "Every check is a public page with fix steps and code.",
-        them: "Varies by product.",
-      },
-    ],
-    differentiators: [
-      "The whole engine is open source, so nothing about a finding is a black box.",
-      "Run it hosted or self-host it with no daily scan ceiling.",
-      "Every check the engine runs has a public page explaining the risk and the fix.",
-    ],
-    faq: [
-      {
-        question: "Is VulnRadar a free IntelliRadar alternative?",
-        answer:
-          "VulnRadar has a free tier that needs no card and is open source under GPL-3.0, so you can also self-host it at no cost. Paid tiers start at $5 a month and only raise scan quotas.",
-      },
-      {
-        question: "Can I self-host VulnRadar?",
-        answer:
-          "Yes. The detection engine is in the public repo and a self-hosted instance has no plan limits at all.",
-      },
-    ],
-  },
+/**
+ * Reports row, added to every table. `them` stays model-level per the ground
+ * rules at the top of this file: export formats and compliance views change
+ * often enough that naming a competitor's current set would go stale.
+ */
+function reportsRow(them: string): ComparisonRow {
+  return { feature: "Reports & compliance", vulnradar: VR.reports, them };
+}
+
+/**
+ * Credential handling, added to every table. This is the row a prospect
+ * evaluating authenticated scanning actually cares about ("do I have to give a
+ * third party a working login to my staging environment"), and until now the
+ * answer lived only in a source-file comment (AUDIT-014#comp-10).
+ *
+ * `them` stays model-level per the ground rules at the top of this file: every
+ * one of these vendors configures authenticated scanning inside the product, so
+ * a login of some form is held in the vendor's platform, but the specifics of
+ * how each stores and protects it are theirs to state, not ours to characterize.
+ */
+function credentialsRow(them: string): ComparisonRow {
+  return { feature: "Login credentials", vulnradar: VR.credentials, them };
+}
+
+const COMPETITORS: Alternative[] = [
   {
     slug: "detectify",
     name: "Detectify",
     category: "External attack surface management",
     summary:
       "Detectify is a commercial external attack surface management and web application scanning platform, known for crowdsourced vulnerability research feeding its detection and for continuous monitoring of large, changing asset inventories. It is aimed primarily at security teams managing many domains.",
-    positioning:
-      "Detectify is a strong fit for an established security team that wants continuous, managed EASM across a large estate. VulnRadar is lighter and more developer-first: a fast single-URL or bulk scan you can run yourself, read the source of, and self-host, without an enterprise commitment.",
+    positioning: `Detectify is a strong fit for an established security team that wants continuous, managed EASM across a large estate. ${APP_NAME} is lighter and more developer-first: a fast single-URL or bulk scan you can run yourself, read the source of, and self-host, without an enterprise commitment.`,
     rows: [
       {
         feature: "Licensing",
@@ -138,6 +137,12 @@ export const ALTERNATIVES: Alternative[] = [
         vulnradar: VR.onboarding,
         them: "Account setup and domain verification.",
       },
+      credentialsRow(
+        "Authenticated scanning is configured inside the product, so a login for your target is held vendor-side. See their documentation for how it is stored and protected.",
+      ),
+      reportsRow(
+        "See the vendor for current export formats and compliance views.",
+      ),
     ],
     differentiators: [
       "Open source and self-hostable, not a closed SaaS.",
@@ -147,12 +152,11 @@ export const ALTERNATIVES: Alternative[] = [
     ],
     faq: [
       {
-        question: "Is VulnRadar a cheaper Detectify alternative?",
-        answer:
-          "VulnRadar is open source with a free tier and paid plans from $5 a month, so for an individual or small team it is dramatically cheaper than an enterprise EASM subscription. It targets a different job: fast, transparent scanning you can self-host, rather than managed attack-surface monitoring at scale.",
+        question: `Is ${APP_NAME} a cheaper Detectify alternative?`,
+        answer: `${APP_NAME} is open source with a free tier and paid plans from $5 a month, so for an individual or small team it is dramatically cheaper than an enterprise EASM subscription. It targets a different job: fast, transparent scanning you can self-host, rather than managed attack-surface monitoring at scale.`,
       },
       {
-        question: "Does VulnRadar do continuous monitoring?",
+        question: `Does ${APP_NAME} do continuous monitoring?`,
         answer:
           "It supports scheduled and bulk scans and webhook alerts, which covers recurring checks on the sites you care about. It is not a full EASM asset-discovery platform.",
       },
@@ -164,8 +168,7 @@ export const ALTERNATIVES: Alternative[] = [
     category: "Continuous vulnerability scanner",
     summary:
       "Intruder (intruder.io) is a commercial continuous vulnerability management service that scans external and internal infrastructure and web apps, prioritises issues, and alerts on new exposures. It packages well-known scanning engines with a clean workflow aimed at teams without a dedicated security function.",
-    positioning:
-      "Intruder is a good hands-off managed scanner for infrastructure and network exposure. VulnRadar focuses on the web and application layer of a target, is open source and self-hostable, and shows you exactly which checks run and how to fix each finding.",
+    positioning: `Intruder is a good hands-off managed scanner for infrastructure and network exposure. ${APP_NAME} focuses on the web and application layer of a target, is open source and self-hostable, and shows you exactly which checks run and how to fix each finding.`,
     rows: [
       {
         feature: "Licensing",
@@ -192,6 +195,12 @@ export const ALTERNATIVES: Alternative[] = [
         vulnradar: VR.onboarding,
         them: "Account setup and target configuration.",
       },
+      credentialsRow(
+        "Authenticated scanning is configured inside the product, so a login for your target is held vendor-side. See their documentation for how it is stored and protected.",
+      ),
+      reportsRow(
+        "See the vendor for current export formats and compliance views.",
+      ),
     ],
     differentiators: [
       "Open source engine you can audit and self-host, not a managed black box.",
@@ -200,25 +209,32 @@ export const ALTERNATIVES: Alternative[] = [
     ],
     faq: [
       {
-        question: "Is VulnRadar an open-source Intruder alternative?",
-        answer:
-          "Yes. VulnRadar is GPL-3.0, self-hostable, and free to start. It concentrates on web and application-layer checks rather than broad infrastructure scanning, and it does not charge per target.",
+        question: `Is ${APP_NAME} an open-source Intruder alternative?`,
+        answer: `Yes. ${APP_NAME} is GPL-3.0, self-hostable, and free to start. It concentrates on web and application-layer checks rather than broad infrastructure scanning, and it does not charge per target.`,
       },
       {
-        question: "Does VulnRadar price per asset like Intruder?",
+        question: `Does ${APP_NAME} price per asset like Intruder?`,
         answer:
           "No. Plans are metered by scans per day, not by how many targets you have under license, and a self-hosted instance has no limit at all.",
       },
     ],
   },
   {
+    // Kept on the /alternatives/probely slug so the URL, the sitemap entry
+    // and the search term people actually type all still work, but the copy
+    // no longer describes Probely in the present tense as an independent
+    // vendor: it was acquired by Snyk in November 2024 and now sells as Snyk
+    // API and Web. Saying otherwise is exactly the kind of staleness the
+    // ground rules at the top of this file exist to prevent.
     slug: "probely",
+    // `name` stays short: it is the H1, the comparison table's column header,
+    // the breadcrumb and the keyword set. The acquisition goes in `category`,
+    // the pill above the H1, and in the summary and FAQ below.
     name: "Probely",
-    category: "Web application & API scanner",
+    category: "Web & API scanner, now Snyk API and Web",
     summary:
-      "Probely is a commercial web application and API vulnerability scanner built for developers and security teams, with a strong API, CI/CD integrations, and DAST coverage that maps findings to standards like OWASP. It is designed to slot scanning into a development pipeline.",
-    positioning:
-      "Probely and VulnRadar overlap on developer-first web and API scanning. The difference is openness and cost: VulnRadar is GPL-3.0 and self-hostable with a free tier, and publishes its full check catalog, while keeping a REST API and webhooks for the same CI use case.",
+      "Probely was a commercial web application and API vulnerability scanner built for developers and security teams, with a strong API, CI/CD integrations, and DAST coverage that maps findings to standards like OWASP. Snyk acquired it in November 2024 and it now sells as Snyk API and Web, so a search for Probely lands on Snyk's product line rather than a standalone one.",
+    positioning: `Probely and ${APP_NAME} overlap on developer-first web and API scanning. Two differences matter now. Openness and cost: ${APP_NAME} is GPL-3.0 and self-hostable with a free tier, and publishes its full check catalog, while keeping a REST API and webhooks for the same CI use case. And continuity: the product you would be comparing against is inside a larger platform with its own tiering, whereas ${APP_NAME}'s engine is identical on every tier and readable in the repo.`,
     rows: [
       {
         feature: "Licensing",
@@ -237,7 +253,7 @@ export const ALTERNATIVES: Alternative[] = [
       },
       {
         feature: "API & CI",
-        vulnradar: "REST API, webhooks, and CI-friendly scans on every tier.",
+        vulnradar: VR.ci,
         them: "REST API and CI/CD integrations.",
       },
       {
@@ -245,6 +261,12 @@ export const ALTERNATIVES: Alternative[] = [
         vulnradar: VR.onboarding,
         them: "Account setup and target verification.",
       },
+      credentialsRow(
+        "Authenticated scanning is configured inside the product, so a login for your target is held vendor-side. See their documentation for how it is stored and protected.",
+      ),
+      reportsRow(
+        "See the vendor for current export formats and compliance views.",
+      ),
     ],
     differentiators: [
       "Open source and self-hostable, so scanning can stay entirely inside your own infrastructure.",
@@ -253,12 +275,16 @@ export const ALTERNATIVES: Alternative[] = [
     ],
     faq: [
       {
-        question: "Is VulnRadar a good Probely alternative for CI?",
+        question: "Is Probely still available?",
         answer:
-          "Yes. VulnRadar ships a REST API and webhooks on every tier, so you can trigger a scan and read findings from a pipeline the same way. It is also open source and self-hostable if you need scanning to run inside your own network.",
+          "Not under that name as a standalone product. Snyk acquired Probely in November 2024 and it is now sold as Snyk API and Web, inside Snyk's platform and tiering. If you were comparing against Probely specifically, that is the product you are now comparing against.",
       },
       {
-        question: "Does VulnRadar scan APIs?",
+        question: `Is ${APP_NAME} a good Probely alternative for CI?`,
+        answer: `Yes. ${APP_NAME} ships a REST API and webhooks on every tier, so you can trigger a scan and read findings from a pipeline the same way, and it exports SARIF straight into GitHub code scanning. It is also open source and self-hostable if you need scanning to run inside your own network.`,
+      },
+      {
+        question: `Does ${APP_NAME} scan APIs?`,
         answer:
           "Yes. It has a dedicated API category covering CORS policy, rate-limit headers, GraphQL introspection, and exposed OpenAPI documents, and you can scan an API URL directly online.",
       },
@@ -270,8 +296,7 @@ export const ALTERNATIVES: Alternative[] = [
     category: "Enterprise vulnerability management",
     summary:
       "Qualys is a long-established enterprise vulnerability management and compliance platform covering network, host, cloud, and web application scanning at very large scale, with agents, appliances, and deep compliance reporting. It is built for large organisations with dedicated security operations.",
-    positioning:
-      "Qualys is enterprise infrastructure: broad, deep, and heavy to operate. VulnRadar is the opposite end of the spectrum on purpose: a fast, open-source, self-hostable web scanner you can run from a pasted URL, priced for individuals and small teams rather than enterprise contracts.",
+    positioning: `Qualys is enterprise infrastructure: broad, deep, and heavy to operate. ${APP_NAME} is the opposite end of the spectrum on purpose: a fast, open-source, self-hostable web scanner you can run from a pasted URL, priced for individuals and small teams rather than enterprise contracts.`,
     rows: [
       {
         feature: "Licensing",
@@ -298,6 +323,12 @@ export const ALTERNATIVES: Alternative[] = [
         vulnradar: "Developers and small teams.",
         them: "Large enterprise security operations.",
       },
+      credentialsRow(
+        "Authenticated scanning is configured inside the platform, so a login for your target is held vendor-side. See their documentation for how it is stored and protected.",
+      ),
+      reportsRow(
+        "Compliance reporting is a core product area at enterprise scale.",
+      ),
     ],
     differentiators: [
       "No agents or appliances: a scan starts from a URL in the browser.",
@@ -307,18 +338,39 @@ export const ALTERNATIVES: Alternative[] = [
     ],
     faq: [
       {
-        question: "Is VulnRadar a lightweight Qualys alternative?",
-        answer:
-          "For web and application-layer scanning, yes. VulnRadar needs no agents or appliances, runs from a pasted URL, and is open source with a free tier. It does not try to replace Qualys for enterprise-wide network, host, and compliance management.",
+        question: `Is ${APP_NAME} a lightweight Qualys alternative?`,
+        answer: `For web and application-layer scanning, yes. ${APP_NAME} needs no agents or appliances, runs from a pasted URL, and is open source with a free tier. It does not try to replace Qualys for enterprise-wide network, host, and compliance management.`,
       },
       {
-        question: "Can VulnRadar run inside my own environment?",
+        question: `Can ${APP_NAME} run inside my own environment?`,
         answer:
           "Yes. It is GPL-3.0 and self-hostable, so you can run the scanner entirely on your own infrastructure with no plan limits.",
       },
     ],
   },
 ];
+
+/**
+ * Every vendor on these pages shipped an agentic AI pentest product in 2026,
+ * priced far under a human engagement, so "why not just buy one of those" is
+ * now a live objection on each of these comparisons and the site answered it
+ * nowhere (AUDIT-014#comp-17). The position is deliberate rather than a gap:
+ * an agentic pentest needs unattended exploitation of a live target, which
+ * this product structurally refuses (active probes are opt-in and gated on
+ * verified domain ownership), and a model in the detection path would cost
+ * the reproducibility that makes the CI gate and the scan-to-scan diff mean
+ * anything. Determinism only differentiates if you say what it is against,
+ * so this is stated once and appended to every comparison page.
+ */
+const AGENTIC_PENTEST_FAQ = {
+  question: `Does ${APP_NAME} do AI pentesting?`,
+  answer: `No, on purpose. The detection engine is deterministic: the same URL produces the same finding IDs every run, which is what lets you fail a build on a specific ID and diff Tuesday's scan against Friday's. A model is used to triage and explain findings, never to decide whether one exists. Active probing, where ${APP_NAME} does send real payloads, is opt-in and only runs against domains you have proven you own. If you want an agent that autonomously exploits a live target and writes the report, that is a different product and this is not trying to be it.`,
+};
+
+const ALTERNATIVES: Alternative[] = COMPETITORS.map((alt) => ({
+  ...alt,
+  faq: [...alt.faq, AGENTIC_PENTEST_FAQ],
+}));
 
 const BY_SLUG = new Map(ALTERNATIVES.map((a) => [a.slug, a]));
 

@@ -51,6 +51,10 @@ describe("PLANS", () => {
       webhooks: 1,
       scheduledScans: 3,
       bulkScanUrls: 5,
+      // Also a real allowance, not an exclusion: enforced since crawl
+      // shipped, and now advertised on /pricing rather than met as a 403
+      // mid-crawl (AUDIT-011#drift-23).
+      crawlPages: 25,
       aiTokensPerWindow: 80_000,
       // Not excluded like the two above -- a real, if minimal, allowance
       // (1 scan running at a time), same reasoning as dailyScans/apiKeys.

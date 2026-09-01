@@ -4,7 +4,7 @@
  * Covers every column in ENCRYPTED_COLUMNS (see
  * _lib.encrypted-columns.mjs for how that list was built and why
  * users.totp_secret is deliberately excluded -- that one is already
- * owned by scripts/db-diagnose-2fa.mjs / scripts/db-repair-2fa.mjs).
+ * owned by scripts/maintenance/db-diagnose-2fa.mjs / scripts/maintenance/db-repair-2fa.mjs).
  *
  * For each row with a non-null value in an encrypted column:
  *   1. Decrypt fails outright -> repair-eligible per the column's

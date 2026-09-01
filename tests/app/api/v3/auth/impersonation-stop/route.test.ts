@@ -86,17 +86,21 @@ vi.mock("@/lib/api/request-utils", () => ({
 }));
 
 const { AUTH_SESSION_COOKIE_NAME } = await import("@/lib/config/constants");
+const { hashSessionId } = await import("@/lib/auth/auth");
 const { POST } = await import("@/app/api/v3/auth/impersonation-stop/route");
 
+// Cookies hold the raw bearer token; sessions.id holds its digest
+// (AUDIT-012#auth-07), so the fixture keys rows by the digest while the
+// cookie jar keeps the token.
 function seedImpersonationSession() {
-  sessionsById["admin-sess"] = {
-    id: "admin-sess",
+  sessionsById[hashSessionId("admin-sess")] = {
+    id: hashSessionId("admin-sess"),
     user_id: 1,
     expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
     impersonated_by: null,
   };
-  sessionsById["imp-sess"] = {
-    id: "imp-sess",
+  sessionsById[hashSessionId("imp-sess")] = {
+    id: hashSessionId("imp-sess"),
     user_id: 2,
     expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
     impersonated_by: 1,
@@ -123,8 +127,8 @@ describe("POST /api/v3/auth/impersonation-stop", () => {
   });
 
   it("400s when the current session is not an impersonation session", async () => {
-    sessionsById["plain-sess"] = {
-      id: "plain-sess",
+    sessionsById[hashSessionId("plain-sess")] = {
+      id: hashSessionId("plain-sess"),
       user_id: 2,
       expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
       impersonated_by: null,
@@ -141,7 +145,7 @@ describe("POST /api/v3/auth/impersonation-stop", () => {
     const res = await POST();
     expect(res.status).toBe(200);
     expect(cookieState.get(AUTH_SESSION_COOKIE_NAME)).toBe("admin-sess");
-    expect(sessionsById["imp-sess"]).toBeUndefined();
+    expect(sessionsById[hashSessionId("imp-sess")]).toBeUndefined();
 
     expect(auditInserts).toHaveLength(1);
     const [adminId, targetUserId, action, details] = auditInserts[0];

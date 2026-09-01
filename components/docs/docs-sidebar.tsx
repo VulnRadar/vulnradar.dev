@@ -7,7 +7,7 @@ import {
   API_CURRENT_VERSION,
   ENGINE_VERSION,
   TOTAL_CHECKS_LABEL,
-} from "@/lib/config/constants";
+} from "@/lib/config/client-constants";
 import { DOCS_NAV, DOCS_PAGES, isNavItemActive } from "./docs-nav";
 
 /**

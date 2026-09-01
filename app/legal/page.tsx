@@ -54,7 +54,7 @@ export default async function LegalIndexPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="mb-2 text-2xl font-semibold tracking-tight text-foreground">
+        <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight mb-5 text-balance text-foreground">
           Legal
         </h1>
         <p className="max-w-prose text-sm text-muted-foreground">

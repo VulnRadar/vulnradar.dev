@@ -19,7 +19,7 @@ import {
   DEFAULT_NEW_KEY_SCOPES,
   ROUTES,
   type ApiKeyScope,
-} from "@/lib/config/constants";
+} from "@/lib/config/client-constants";
 import { useQueryParam } from "@/lib/ui/url-state";
 import { useAuth } from "@/components/providers/auth-provider";
 import { getPlanById } from "@/lib/billing/catalog";
@@ -79,8 +79,14 @@ const DEVELOPER_SECTIONS: Array<{
   { id: "api-keys", label: "API Keys", icon: Key },
   { id: "webhooks", label: "Webhooks", icon: Webhook },
   { id: "schedules", label: "Scheduled Scans", icon: CalendarClock },
-  { id: "domains", label: "Domains", icon: ShieldCheck },
 ];
+
+// "domains" is deliberately not in the strip above. Verified domains moved to
+// /attack-surface, and a sub-tab that looks like the three real ones but only
+// ever renders a "this moved" card costs a click and teaches nothing. The
+// section itself is still reachable, so an existing ?dtab=domains bookmark or
+// link lands on the pointer instead of silently falling back to API Keys.
+const REDIRECTED_SECTIONS = ["domains"] as const;
 
 function getConfirmCopy(action: ConfirmAction) {
   switch (action.kind) {
@@ -132,7 +138,10 @@ function scheduleTimestamp(
 }
 
 function isDeveloperSection(value: string): value is DeveloperSection {
-  return DEVELOPER_SECTIONS.some((s) => s.id === value);
+  return (
+    DEVELOPER_SECTIONS.some((s) => s.id === value) ||
+    (REDIRECTED_SECTIONS as readonly string[]).includes(value)
+  );
 }
 
 export function ProfileDeveloperTab({

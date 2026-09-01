@@ -25,7 +25,13 @@ export function Toast({ toast, onClose, duration = 5000 }: ToastProps) {
       role="status"
       aria-live="polite"
       className={cn(
-        "fixed bottom-4 right-4 z-50 flex items-center gap-2.5 rounded-lg border px-4 py-3 shadow-lg animate-in slide-in-from-bottom-2",
+        // max-w keeps a long server error message on screen: without it the
+        // part an admin needs to read ran off the right edge on a phone.
+        // bottom offsets by --vr-cookie-h (components/shared/cookie-notice.tsx)
+        // so a toast is not published underneath the z-60 cookie bar, which is
+        // roughly 125px tall on a phone.
+        "fixed bottom-[calc(1rem+var(--vr-cookie-h,0px))] right-4 z-50 flex items-center gap-2.5 rounded-lg border px-4 py-3 shadow-lg animate-in slide-in-from-bottom-2",
+        "max-w-[calc(100vw-2rem)] sm:max-w-sm",
         toast.type === "success"
           ? "bg-[hsl(var(--success))]/10 border-[hsl(var(--success))]/30 text-[hsl(var(--success))]"
           : "bg-destructive/10 border-destructive/30 text-destructive",
@@ -36,7 +42,9 @@ export function Toast({ toast, onClose, duration = 5000 }: ToastProps) {
       ) : (
         <XCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
       )}
-      <span className="text-sm font-medium">{toast.message}</span>
+      <span className="text-sm font-medium min-w-0 wrap-break-word">
+        {toast.message}
+      </span>
       <button
         onClick={onClose}
         aria-label="Dismiss notification"

@@ -217,18 +217,14 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
     .filter(([, enabled]) => enabled)
     .map(([id]) => id);
 
-  const probes = (
-    Object.entries(input.settings.probes) as Array<
-      [string, { enabled: boolean; port: number }]
-    >
-  )
-    .filter(([, cfg]) => cfg.enabled)
-    .map(([id, cfg]) => `${id}:${cfg.port}`);
-
+  // `portScan` is the field the API reads. This used to serialise the
+  // settings panel per-service list as `probes: ["ssh:22", ...]`, which no
+  // handler had read since the server replaced that array with this flag: an
+  // extension user configured probes, saved, scanned, and nothing happened.
   const body: ScanRequest = {
     url,
     ...(families.length > 0 ? { scanners: families } : {}),
-    ...(probes.length > 0 ? { probes } : {}),
+    ...(input.settings.portScan ? { portScan: true } : {}),
   };
 
   const fetchResult = await withScanKeepAlive(async () => {
@@ -320,17 +316,29 @@ export async function getHistory(): Promise<readonly ScanHistoryRow[]> {
   return (await get("historyCache")) ?? [];
 }
 
-export async function refreshHistoryFromServer(): Promise<
-  readonly ScanHistoryRow[]
-> {
+/**
+ * Same fetch, but says whether it worked. An empty array on its own can't
+ * tell "you haven't scanned anything yet" from "the history request failed",
+ * and the popup renders very different copy for the two.
+ */
+export async function fetchHistoryFromServer(): Promise<{
+  readonly ok: boolean;
+  readonly rows: readonly ScanHistoryRow[];
+}> {
   const apiKey = await getApiKey();
-  if (!apiKey || !looksLikeApiKey(apiKey)) return [];
+  if (!apiKey || !looksLikeApiKey(apiKey)) return { ok: false, rows: [] };
   try {
     const res = await api.history(apiKey);
     const rows = res.body.scans.slice(0, VULNRADAR.historyCacheSize);
     await set("historyCache", rows);
-    return rows;
+    return { ok: true, rows };
   } catch {
-    return [];
+    return { ok: false, rows: [] };
   }
+}
+
+export async function refreshHistoryFromServer(): Promise<
+  readonly ScanHistoryRow[]
+> {
+  return (await fetchHistoryFromServer()).rows;
 }

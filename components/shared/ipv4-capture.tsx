@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useAuth } from "@/components/providers/auth-provider";
-import { API } from "@/lib/config/constants";
+import { API } from "@/lib/config/client-constants";
 
 /**
  * Opt-in IPv4 capture. Does nothing unless NEXT_PUBLIC_IPV4_ECHO_URL points at

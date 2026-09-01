@@ -123,12 +123,28 @@ describe("POST /api/v3/billing/subscription/cancel", () => {
     // pro_supporter, their granted floor, instead of free) -- see the
     // matching staff test below.
     const [sql, params] = mockQuery.mock.calls[1];
-    expect(sql).toContain(
-      "CASE WHEN role IN ('admin', 'moderator', 'support') THEN 'pro_supporter' ELSE 'free' END",
-    );
+    // The staff floor is derived from lib/billing/staff-plan.ts's own
+    // constants, not a hand-written role triple: the old inline CASE listed
+    // three of the seven staff roles and omitted super_admin entirely, so
+    // four staff roles dropped to free and super_admin lost its
+    // elite_supporter floor.
+    expect(sql).toContain("WHEN role = 'super_admin' THEN 'elite_supporter'");
+    expect(sql).toContain("WHEN role = ANY($2::text[]) THEN 'pro_supporter'");
+    expect(sql).toContain("ELSE 'free' END");
     expect(sql).toContain("subscription_status = 'canceled'");
     expect(sql).toContain("stripe_subscription_id = NULL");
-    expect(params).toEqual([42]);
+    expect(params[0]).toBe(42);
+    expect(params[1]).toEqual(
+      expect.arrayContaining([
+        "admin",
+        "moderator",
+        "support",
+        "billing",
+        "security_analyst",
+        "content_manager",
+        "ops",
+      ]),
+    );
 
     expect(res.status).toBe(200);
     const json = await res.json();

@@ -4,6 +4,7 @@ import { Plus, Search, Users, Eye, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/shared/empty-state";
 import { cn } from "@/lib/ui/utils";
 import { type Team, ROLE_ICONS, ROLE_COLORS } from "./teams-types";
 
@@ -53,41 +54,34 @@ export function TeamsList({
       </div>
 
       {filtered.length === 0 && !searchQuery ? (
-        <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border bg-card/50 px-4 py-14 text-center">
-          <Users aria-hidden className="h-6 w-6 text-muted-foreground/60" />
-          <div className="flex flex-col gap-1">
-            <p className="text-sm font-semibold text-foreground">
-              No teams yet
-            </p>
-            <p className="max-w-xs text-xs text-muted-foreground">
-              Create a team to collaborate on security scans with others.
-            </p>
-          </div>
-          <Button size="sm" onClick={onShowCreate} className="mt-1 gap-1.5">
-            <Plus className="h-3.5 w-3.5" />
-            Create your first team
-          </Button>
-        </div>
+        <EmptyState
+          icon={Users}
+          title="No teams yet"
+          description="Create a team to collaborate on security scans with others."
+          action={
+            <Button size="sm" onClick={onShowCreate} className="gap-1.5">
+              <Plus className="h-3.5 w-3.5" />
+              Create your first team
+            </Button>
+          }
+        />
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border bg-card/50 px-4 py-12 text-center">
-          <Search aria-hidden className="h-5 w-5 text-muted-foreground/50" />
-          <div className="flex flex-col gap-0.5">
-            <p className="text-sm font-medium text-foreground">
-              No teams match &quot;{searchQuery}&quot;
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Try a different name.
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onSearchChange("")}
-            className="mt-1 bg-transparent"
-          >
-            Clear search
-          </Button>
-        </div>
+        <EmptyState
+          icon={Search}
+          size="sm"
+          title={`No teams match "${searchQuery}"`}
+          description="Try a different name."
+          action={
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onSearchChange("")}
+              className="bg-transparent"
+            >
+              Clear search
+            </Button>
+          }
+        />
       ) : (
         <Card className="bg-card border-border/50">
           <CardContent className="p-0">

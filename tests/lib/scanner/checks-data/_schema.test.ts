@@ -74,23 +74,36 @@ describe("checks-data JSON contract", () => {
         expect(entries.length).toBeGreaterThan(0);
       });
 
-      it("every entry has required fields", () => {
-        const required: (keyof CheckDef)[] = [
+      it("every entry has required fields, and none of them is empty", () => {
+        // This used to assert only `toBeDefined()`, which meant an entry
+        // shipped with `description: ""`, `fixSteps: []` or
+        // `codeExamples: []` passed the only required-fields guard the
+        // 750-plus check catalogue has, and the /checks page for it
+        // rendered a heading with nothing under it. Presence is not the
+        // contract here; content is.
+        const requiredStrings: (keyof CheckDef)[] = [
           "id",
           "title",
           "category",
           "severity",
           "description",
           "evidence",
-          "fixSteps",
-          "codeExamples",
         ];
+        const requiredArrays: (keyof CheckDef)[] = ["fixSteps", "codeExamples"];
         for (const entry of entries) {
-          for (const field of required) {
+          for (const field of requiredStrings) {
+            const value = entry[field];
             expect(
-              entry[field],
-              `${category}.json: entry missing field "${field}" (id=${entry.id ?? "?"})`,
-            ).toBeDefined();
+              typeof value === "string" && value.trim().length > 0,
+              `${category}.json: "${field}" must be a non-empty string (id=${entry.id ?? "?"}, got ${JSON.stringify(value)})`,
+            ).toBe(true);
+          }
+          for (const field of requiredArrays) {
+            const value = entry[field];
+            expect(
+              Array.isArray(value) && value.length > 0,
+              `${category}.json: "${field}" must be a non-empty array (id=${entry.id ?? "?"}, got ${JSON.stringify(value)})`,
+            ).toBe(true);
           }
         }
       });

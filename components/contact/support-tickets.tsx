@@ -1,14 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ArrowLeft,
+  ChevronRight,
+  LifeBuoy,
+  Loader2,
+  Plus,
+  Send,
+  Users,
+} from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/shared/empty-state";
 import { cn } from "@/lib/ui/utils";
+import { formatRelativeTime } from "@/lib/ui/relative-time";
 import { getQueryParamInt } from "@/lib/ui/url-state";
-import { API, ROUTES, TURNSTILE_ENABLED } from "@/lib/config/constants";
+import { API, ROUTES, TURNSTILE_ENABLED } from "@/lib/config/client-constants";
 import { TurnstileWidget } from "@/components/shared/turnstile-widget";
 import {
   TICKET_CATEGORIES,
@@ -20,6 +32,7 @@ import {
   type TicketCategory,
   type TicketStatus,
 } from "@/lib/support/ticket-constants";
+import { InlineAlert } from "@/components/shared/inline-alert";
 
 interface TicketListItem {
   id: number;
@@ -50,6 +63,7 @@ interface Thread {
     subject: string;
     category: TicketCategory;
     status: TicketStatus;
+    createdAt?: string;
   };
   messages: ThreadMessage[];
   viewerIsStaff: boolean;
@@ -62,19 +76,12 @@ interface ShareEntry {
   name: string | null;
 }
 
-function timeAgo(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return "";
-  const secs = Math.max(0, Math.round((Date.now() - then) / 1000));
-  if (secs < 60) return "just now";
-  const mins = Math.round(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.round(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.round(hrs / 24);
-  if (days < 30) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString();
-}
+// This file used to carry its own timeAgo, whose date fallback rendered
+// "8/12/2026" -- verbatim one of the two defects lib/ui/relative-time.ts says
+// it was written to remove. The staff view of the same ticket
+// (components/admin/features/support-inbox.tsx) carried the other one, so a
+// single ticket's last activity read differently to the user and to the staff
+// member answering it.
 
 const STATUS_STYLES: Record<TicketStatus, string> = {
   open: "bg-primary/10 text-primary border-primary/20",
@@ -86,11 +93,57 @@ const STATUS_STYLES: Record<TicketStatus, string> = {
   closed: "bg-muted text-muted-foreground border-border",
 };
 
+const STATUS_DOTS: Record<TicketStatus, string> = {
+  open: "bg-primary",
+  awaiting_staff: "bg-primary",
+  awaiting_user: "bg-[hsl(var(--warning))]",
+  resolved: "bg-[hsl(var(--success))]",
+  closed: "bg-muted-foreground/40",
+};
+
+/**
+ * A status badge says what state a ticket is in; it does not say what happens
+ * next, which is the only thing the person who opened it actually wants to
+ * know. One sentence per state, shown above the conversation alongside the
+ * button that changes that state.
+ */
+const STATUS_NEXT: Record<TicketStatus, string> = {
+  open: "We have your ticket. A reply comes back here, by email and in your notifications.",
+  awaiting_staff:
+    "Your reply is with our team. The answer comes back here, by email and in your notifications.",
+  awaiting_user: "Support has replied and is waiting on you.",
+  resolved: "Marked resolved. Reopen it if the problem is still there.",
+  closed: "This ticket is closed. Open a new one to carry on.",
+};
+
+// Box and copy are tinted separately: the tone belongs on the sentence, not
+// on the container, or it would also repaint the buttons sitting next to it
+// (the outline and ghost variants both inherit their text colour).
+const STATUS_STRIP: Record<TicketStatus, { box: string; text: string }> = {
+  open: { box: "border-border/60 bg-muted/30", text: "text-muted-foreground" },
+  awaiting_staff: {
+    box: "border-border/60 bg-muted/30",
+    text: "text-muted-foreground",
+  },
+  awaiting_user: {
+    box: "border-[hsl(var(--warning))]/25 bg-[hsl(var(--warning))]/10",
+    text: "text-[hsl(var(--warning))]",
+  },
+  resolved: {
+    box: "border-[hsl(var(--success))]/25 bg-[hsl(var(--success))]/10",
+    text: "text-[hsl(var(--success))]",
+  },
+  closed: {
+    box: "border-border/60 bg-muted/30",
+    text: "text-muted-foreground",
+  },
+};
+
 function StatusBadge({ status }: { status: TicketStatus }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium",
+        "inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[11px] font-medium",
         STATUS_STYLES[status],
       )}
     >
@@ -124,6 +177,11 @@ export function SupportTickets() {
   const [shares, setShares] = useState<ShareEntry[]>([]);
   const [eligible, setEligible] = useState<ShareEntry[]>([]);
   const [sharesLoading, setSharesLoading] = useState(false);
+
+  // The history scrolls inside its own box, so the newest message is at the
+  // bottom of that box. Without this a long thread opens on the message the
+  // user sent weeks ago instead of the reply they came here to read.
+  const messagesRef = useRef<HTMLDivElement>(null);
 
   const loadTickets = useCallback(async () => {
     try {
@@ -159,6 +217,11 @@ export function SupportTickets() {
     if (me) void loadTickets();
   }, [me, loadTickets]);
 
+  useEffect(() => {
+    const el = messagesRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [thread]);
+
   // Deep link from the notification email / bell (?ticket=N). Read from the URL
   // on mount (window-based, like the rest of the contact page) rather than via
   // useSearchParams, which would force a Suspense boundary at build time.
@@ -171,10 +234,25 @@ export function SupportTickets() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me]);
 
-  if (isLoading) return null;
+  // Returning null here left the first and most prominent category on /contact
+  // as a gap in the page, so the whole ticketing feature read as missing while
+  // the auth check was in flight. Reserve the space instead.
+  if (isLoading) {
+    return (
+      <div
+        className="rounded-xl border border-border/60 bg-muted/20 p-4"
+        role="status"
+        aria-label="Loading support tickets"
+      >
+        <Skeleton className="h-4 w-48" />
+        <Skeleton className="h-3 w-full max-w-md mt-2.5" />
+        <Skeleton className="h-3 w-2/3 max-w-sm mt-1.5" />
+      </div>
+    );
+  }
   if (!me) {
     return (
-      <div className="rounded-lg border border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground">
+      <div className="rounded-xl border border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground">
         <a href={ROUTES.LOGIN} className="text-primary hover:underline">
           Sign in
         </a>{" "}
@@ -320,7 +398,7 @@ export function SupportTickets() {
 
   return (
     <section className="mt-10 border-t border-border/50 pt-8">
-      <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-foreground">
             Your support tickets
@@ -333,181 +411,298 @@ export function SupportTickets() {
         {view !== "new" && (
           <Button
             size="sm"
+            className="h-9 shrink-0 gap-1.5 px-3"
             onClick={() => {
               setView("new");
               setError(null);
             }}
           >
+            <Plus className="h-4 w-4" aria-hidden="true" />
             New ticket
           </Button>
         )}
       </div>
 
       {error && (
-        <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <InlineAlert tone="error" className="mb-4">
           {error}
-        </div>
+        </InlineAlert>
       )}
 
       {view === "new" && (
         <form
           onSubmit={submitNew}
-          className="space-y-4 rounded-lg border border-border/60 bg-card p-4 sm:p-5"
+          className="overflow-hidden rounded-xl border border-border/60 bg-card"
         >
-          <div className="space-y-1.5">
-            <Label htmlFor="ticket-subject">Subject</Label>
-            <Input
-              id="ticket-subject"
-              value={subject}
-              maxLength={TICKET_SUBJECT_MAX}
-              onChange={(e) => setSubject(e.target.value)}
-              placeholder="Short summary of the issue"
-              required
-            />
+          <div className="border-b border-border/60 bg-muted/20 px-4 py-2.5 sm:px-5">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              New ticket
+            </p>
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="ticket-category">Category</Label>
-            <select
-              id="ticket-category"
-              value={category}
-              onChange={(e) => setCategory(e.target.value as TicketCategory)}
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              {TICKET_CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {TICKET_CATEGORY_LABELS[c]}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="ticket-message">Message</Label>
-            <Textarea
-              id="ticket-message"
-              value={message}
-              maxLength={TICKET_MESSAGE_MAX}
-              onChange={(e) => setMessage(e.target.value)}
-              placeholder="Tell us what's going on. Include the URL you scanned or the invoice, if relevant."
-              rows={5}
-              required
-            />
-          </div>
-          <div className="flex justify-center sm:justify-start">
-            <TurnstileWidget
-              onVerify={setTurnstileToken}
-              onExpire={() => setTurnstileToken(null)}
-              className="cf-turnstile"
-            />
-          </div>
+          <div className="space-y-4 p-4 sm:p-5">
+            <div className="space-y-1.5">
+              <Label htmlFor="ticket-subject">Subject</Label>
+              <Input
+                id="ticket-subject"
+                value={subject}
+                maxLength={TICKET_SUBJECT_MAX}
+                onChange={(e) => setSubject(e.target.value)}
+                placeholder="Short summary of the issue"
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ticket-category">Category</Label>
+              <select
+                id="ticket-category"
+                value={category}
+                onChange={(e) => setCategory(e.target.value as TicketCategory)}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {TICKET_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {TICKET_CATEGORY_LABELS[c]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ticket-message">Message</Label>
+              <Textarea
+                id="ticket-message"
+                value={message}
+                maxLength={TICKET_MESSAGE_MAX}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder="Tell us what's going on. Include the URL you scanned or the invoice, if relevant."
+                rows={5}
+                required
+              />
+            </div>
+            <div className="flex justify-center sm:justify-start">
+              <TurnstileWidget
+                onVerify={setTurnstileToken}
+                onExpire={() => setTurnstileToken(null)}
+                className="cf-turnstile"
+              />
+            </div>
 
-          <div className="flex items-center gap-2">
-            <Button
-              type="submit"
-              disabled={submitting || (TURNSTILE_ENABLED && !turnstileToken)}
-            >
-              {submitting ? "Opening..." : "Open ticket"}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => {
-                setView("list");
-                setError(null);
-                setTurnstileToken(null);
-              }}
-            >
-              Cancel
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="submit"
+                disabled={submitting || (TURNSTILE_ENABLED && !turnstileToken)}
+              >
+                {submitting ? "Opening..." : "Open ticket"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setView("list");
+                  setError(null);
+                  setTurnstileToken(null);
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
           </div>
         </form>
       )}
 
       {view === "list" && (
-        <div className="space-y-2">
+        <div>
           {tickets === null ? (
-            <p className="text-sm text-muted-foreground">
-              Loading your tickets...
-            </p>
-          ) : tickets.length === 0 ? (
-            <p className="rounded-lg border border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground">
-              You have no tickets yet. Open one and we'll get back to you.
-            </p>
-          ) : (
-            tickets.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => openThread(t.id)}
-                className="flex w-full items-center gap-3 rounded-lg border border-border/60 bg-card p-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="truncate text-sm font-medium text-foreground">
-                      {t.subject}
-                    </span>
-                    <StatusBadge status={t.status} />
-                    {t.shared && (
-                      <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                        Shared with you
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-0.5 text-xs text-muted-foreground">
-                    {t.shared && t.shared_owner_name
-                      ? `From ${t.shared_owner_name} · `
-                      : ""}
-                    {TICKET_CATEGORY_LABELS[t.category]} &middot;{" "}
-                    {t.message_count}{" "}
-                    {t.message_count === 1 ? "message" : "messages"} &middot;{" "}
-                    {timeAgo(t.last_message_at)}
+            <div
+              className="divide-y divide-border/40 overflow-hidden rounded-xl border border-border/60 bg-card"
+              role="status"
+              aria-label="Loading your tickets"
+            >
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="flex items-start gap-3 px-3 py-3 sm:px-4"
+                >
+                  <Skeleton className="mt-1.5 h-2 w-2 shrink-0 rounded-full" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <Skeleton className="h-3.5 w-2/3" />
+                    <Skeleton className="h-3 w-1/2" />
                   </div>
                 </div>
-              </button>
-            ))
+              ))}
+            </div>
+          ) : tickets.length === 0 ? (
+            <EmptyState
+              icon={LifeBuoy}
+              title="No tickets yet"
+              description="Open one and a person on our team picks it up. You get the reply by email and in your notifications."
+              action={
+                <Button
+                  size="sm"
+                  className="h-9 gap-1.5 px-3"
+                  onClick={() => {
+                    setView("new");
+                    setError(null);
+                  }}
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  New ticket
+                </Button>
+              }
+            />
+          ) : (
+            // A divided list, not a stack of separate cards: these rows are one
+            // column of the same thing, and floating each one made the list
+            // read as several unrelated panels.
+            <div className="divide-y divide-border/40 overflow-hidden rounded-xl border border-border/60 bg-card">
+              {tickets.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => openThread(t.id)}
+                  className="flex w-full items-start gap-3 px-3 py-3 text-left transition-colors duration-200 ease-out hover:bg-muted/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:px-4"
+                >
+                  <span
+                    className={cn(
+                      "mt-1.5 h-2 w-2 shrink-0 rounded-full",
+                      STATUS_DOTS[t.status],
+                    )}
+                    aria-hidden="true"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="truncate text-sm font-medium text-foreground">
+                        {t.subject}
+                      </span>
+                      <StatusBadge status={t.status} />
+                      {t.shared && (
+                        <span className="inline-flex shrink-0 items-center rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                          Shared with you
+                        </span>
+                      )}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      {t.shared && t.shared_owner_name
+                        ? `From ${t.shared_owner_name} · `
+                        : ""}
+                      {TICKET_CATEGORY_LABELS[t.category]} &middot;{" "}
+                      {t.message_count}{" "}
+                      {t.message_count === 1 ? "message" : "messages"} &middot;{" "}
+                      {formatRelativeTime(t.last_message_at)}
+                    </span>
+                  </span>
+                  <ChevronRight
+                    className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/60"
+                    aria-hidden="true"
+                  />
+                </button>
+              ))}
+            </div>
           )}
         </div>
       )}
 
       {view === "thread" && (
-        <div className="rounded-lg border border-border/60 bg-card">
-          <div className="flex items-center justify-between gap-3 border-b border-border/60 p-3 sm:p-4">
-            <div className="min-w-0">
-              <button
-                onClick={() => {
-                  setView("list");
-                  setThread(null);
-                }}
-                className="text-xs text-primary hover:underline"
+        <div className="overflow-hidden rounded-xl border border-border/60 bg-card">
+          <div className="flex items-center justify-between gap-2 border-b border-border/60 bg-muted/20 px-2 py-1.5 sm:px-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                setView("list");
+                setThread(null);
+              }}
+            >
+              <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+              All tickets
+            </Button>
+            {thread?.viewerIsOwner && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+                onClick={toggleShare}
+                aria-expanded={showShare}
               >
-                &larr; All tickets
-              </button>
-              {thread && (
-                <div className="mt-1 flex items-center gap-2">
-                  <span className="truncate text-sm font-semibold text-foreground">
-                    {thread.ticket.subject}
-                  </span>
-                  <StatusBadge status={thread.ticket.status} />
-                </div>
-              )}
-            </div>
-            {thread && (
-              <div className="flex shrink-0 items-center gap-1.5">
-                {thread.viewerIsOwner && (
-                  <Button size="sm" variant="ghost" onClick={toggleShare}>
-                    {showShare ? "Done" : "Share"}
-                  </Button>
-                )}
-                {OPEN_TICKET_STATUSES.includes(thread.ticket.status) && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setStatus("resolved")}
-                  >
-                    Mark resolved
-                  </Button>
-                )}
-              </div>
+                <Users className="h-3.5 w-3.5" aria-hidden="true" />
+                {showShare ? "Done sharing" : "Share"}
+              </Button>
             )}
           </div>
+
+          {thread && (
+            // Subject, state, and what happens next, with the buttons that
+            // change that state. All of it above the conversation: these used
+            // to be a row of three small buttons in the header, and on a phone
+            // they wrapped into the subject line.
+            <div className="border-b border-border/60 px-3 py-3.5 sm:px-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-base font-semibold text-foreground">
+                  {thread.ticket.subject}
+                </h3>
+                <StatusBadge status={thread.ticket.status} />
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {TICKET_CATEGORY_LABELS[thread.ticket.category]}
+                {thread.ticket.createdAt
+                  ? ` · opened ${formatRelativeTime(thread.ticket.createdAt)}`
+                  : ""}
+              </p>
+              <div
+                className={cn(
+                  "mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2",
+                  STATUS_STRIP[thread.ticket.status].box,
+                )}
+              >
+                <p
+                  className={cn(
+                    "text-xs leading-relaxed",
+                    STATUS_STRIP[thread.ticket.status].text,
+                  )}
+                >
+                  {STATUS_NEXT[thread.ticket.status]}
+                </p>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  {OPEN_TICKET_STATUSES.includes(thread.ticket.status) && (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 px-2.5 text-xs"
+                        onClick={() => setStatus("resolved")}
+                      >
+                        Mark resolved
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+                        onClick={() => setStatus("closed")}
+                      >
+                        Close ticket
+                      </Button>
+                    </>
+                  )}
+                  {/* Saying "this is not fixed" used to require writing another
+                      message: replying to a resolved ticket is what put it back
+                      in the support queue, and there was no button for the case
+                      where there is nothing more to add (AUDIT-011#drift-21).
+                      Owner only, and resolved only: `closed` stays terminal. */}
+                  {thread.viewerIsOwner &&
+                    thread.ticket.status === "resolved" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 px-2.5 text-xs"
+                        onClick={() => setStatus("awaiting_staff")}
+                      >
+                        Reopen
+                      </Button>
+                    )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {thread && thread.viewerIsOwner && showShare && (
             <div className="border-b border-border/60 bg-muted/20 p-3 sm:p-4">
@@ -530,7 +725,7 @@ export function SupportTickets() {
                           </span>
                           <button
                             onClick={() => removeShare(s.userId)}
-                            className="shrink-0 text-xs text-destructive hover:underline"
+                            className="shrink-0 rounded-sm text-xs text-destructive hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                           >
                             Remove
                           </button>
@@ -544,7 +739,7 @@ export function SupportTickets() {
                         <button
                           key={u.userId}
                           onClick={() => addShare(u.userId)}
-                          className="rounded-full border border-border px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                          className="rounded-full border border-border px-2.5 py-1 text-xs text-foreground transition-colors duration-200 ease-out hover:bg-primary/10 hover:text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           + {u.name ?? u.email}
                         </button>
@@ -563,10 +758,16 @@ export function SupportTickets() {
           )}
 
           {threadLoading ? (
-            <p className="p-4 text-sm text-muted-foreground">Loading...</p>
+            <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              Loading conversation...
+            </div>
           ) : thread ? (
             <>
-              <div className="max-h-[26rem] space-y-3 overflow-y-auto p-3 sm:p-4">
+              <div
+                ref={messagesRef}
+                className="max-h-[26rem] space-y-4 overflow-y-auto px-3 py-4 sm:px-4"
+              >
                 {thread.messages.map((m) => (
                   <div
                     key={m.id}
@@ -575,59 +776,66 @@ export function SupportTickets() {
                       m.mine ? "items-end" : "items-start",
                     )}
                   >
-                    <div
-                      className={cn(
-                        "max-w-[85%] rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap break-words",
-                        m.mine
-                          ? "rounded-tr-sm bg-primary text-primary-foreground"
-                          : "rounded-tl-sm bg-muted text-foreground",
-                      )}
-                    >
-                      {m.body}
-                    </div>
                     <span className="px-1 text-[11px] text-muted-foreground">
                       {m.mine
                         ? "You"
                         : m.isStaff
                           ? (m.authorName ?? "Support")
                           : (m.authorName ?? "Teammate")}{" "}
-                      &middot; {timeAgo(m.createdAt)}
+                      &middot; {formatRelativeTime(m.createdAt)}
                     </span>
+                    {/* Tinted rather than a solid primary block: a saturated
+                        fill behind a long message is hard to read, and the
+                        alignment plus the author line already say who wrote
+                        it. Matches the staff view of the same thread. */}
+                    <div
+                      className={cn(
+                        "max-w-[85%] rounded-lg border px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words",
+                        m.mine
+                          ? "rounded-tr-sm border-primary/25 bg-primary/10 text-foreground"
+                          : "rounded-tl-sm border-border/60 bg-muted/40 text-foreground",
+                      )}
+                    >
+                      {m.body}
+                    </div>
                   </div>
                 ))}
               </div>
 
               {thread.ticket.status === "closed" ? (
-                <p className="border-t border-border/60 p-4 text-sm text-muted-foreground">
+                <p className="border-t border-border/60 bg-muted/20 px-3 py-3 text-sm text-muted-foreground sm:px-4">
                   This ticket is closed. Open a new ticket to continue.
                 </p>
               ) : (
                 <form
                   onSubmit={sendReply}
-                  className="space-y-2 border-t border-border/60 p-3 sm:p-4"
+                  className="border-t border-border/60 bg-muted/10 p-3 sm:p-4"
                 >
                   <Textarea
                     value={reply}
                     maxLength={TICKET_MESSAGE_MAX}
                     onChange={(e) => setReply(e.target.value)}
                     placeholder="Write a reply..."
+                    aria-label="Reply"
                     rows={3}
                     required
+                    className="resize-none bg-background"
                   />
-                  <div className="flex items-center gap-2">
-                    <Button type="submit" size="sm" disabled={replying}>
+                  <div className="mt-2 flex items-center gap-2">
+                    <Button
+                      type="submit"
+                      size="sm"
+                      className="h-8 gap-1.5"
+                      disabled={replying || reply.trim().length === 0}
+                    >
+                      <Send className="h-3.5 w-3.5" aria-hidden="true" />
                       {replying ? "Sending..." : "Send reply"}
                     </Button>
-                    {thread.ticket.status !== "resolved" && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setStatus("closed")}
-                      >
-                        Close ticket
-                      </Button>
-                    )}
+                    <span className="ml-auto font-mono text-[11px] tabular-nums text-muted-foreground">
+                      {reply.length > 0
+                        ? `${reply.length}/${TICKET_MESSAGE_MAX}`
+                        : ""}
+                    </span>
                   </div>
                 </form>
               )}

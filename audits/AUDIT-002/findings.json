@@ -158,7 +158,7 @@
       "severity": "low",
       "scope": "scanner",
       "title": "Email regex duplicated with character-class overlap",
-      "summary": "The same email regex appears in content.ts, information-disclosure.ts, secrets-extended.ts (3x). [a-zA-Z0 -9.-]+ is greedy and overlaps with the trailing \\.[a-zA-Z]{2,}.",
+      "summary": "The same email regex appears in content.ts, information-disclosure.ts, secrets-extended.ts (3x). [a-zA-Z0-9.-]+ is greedy and overlaps with the trailing \\.[a-zA-Z]{2,}.",
       "files": [
         "lib/scanner/checks/content.ts",
         "lib/scanner/checks/information-disclosure.ts",

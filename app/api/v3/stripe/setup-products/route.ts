@@ -3,8 +3,8 @@ import type Stripe from "stripe";
 import { getStripe } from "@/lib/billing/stripe";
 import { PRODUCTS } from "@/lib/billing/products";
 import { getSetting } from "@/lib/config/runtime-config";
-import { getSession } from "@/lib/auth";
-import { STAFF_ROLES, ERROR_MESSAGES } from "@/lib/config/constants";
+import { requireAdmin } from "@/lib/auth/authorization";
+import { ERROR_MESSAGES } from "@/lib/config/constants";
 
 /**
  * GET /api/v3/stripe/setup-products
@@ -18,17 +18,15 @@ import { STAFF_ROLES, ERROR_MESSAGES } from "@/lib/config/constants";
  * 3. Returns the created product/price IDs
  */
 export async function GET() {
-  // Setup endpoints must be admin-only — they write to the live Stripe
-  // catalog. Before this guard any anonymous caller could pollute the
-  // catalog (or grief-pricing a real product).
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json(
-      { error: ERROR_MESSAGES.UNAUTHORIZED },
-      { status: 401 },
-    );
-  }
-  if (session.role !== STAFF_ROLES.ADMIN) {
+  // Setup endpoints must be admin-only: they write to the live Stripe
+  // catalog. This used to be a hand-rolled `session.role !== "admin"`, which
+  // had two holes. It skipped requireAdmin's ENFORCE_STAFF_2FA check, so an
+  // admin without 2FA who is refused everywhere else in the admin surface
+  // could still create live Stripe products and prices here; and an exact
+  // string comparison excludes super_admin, which every other admin route
+  // accepts through the role hierarchy.
+  const admin = await requireAdmin();
+  if (!admin) {
     return NextResponse.json(
       { error: ERROR_MESSAGES.FORBIDDEN },
       { status: 403 },

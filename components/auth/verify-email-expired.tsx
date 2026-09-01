@@ -6,8 +6,10 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { EMAIL_VERIFICATION_TOKEN_LIFETIME } from "@/lib/config/constants";
-import { API } from "@/lib/config/client-constants";
+import {
+  API,
+  EMAIL_VERIFICATION_TOKEN_LIFETIME,
+} from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
 import {
   AuthAlert,

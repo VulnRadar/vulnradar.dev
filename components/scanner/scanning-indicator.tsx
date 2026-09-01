@@ -5,6 +5,7 @@ import { Check, Globe2, ListChecks, X, Zap } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import type { Category } from "@/lib/scanner/types";
 import { ALL_CATEGORIES } from "@/lib/scanner/types";
+import { CATEGORY_META } from "@/lib/scanner/category-meta";
 import {
   ACTIVE_PROBES_CATEGORY,
   isActiveProbeSelector,
@@ -32,7 +33,7 @@ const FAMILY_STEP: Record<Category, string> = {
   "supply-chain": "Checking supply chain artifacts",
   "host-validation": "Validating host and origin handling",
   reputation: "Checking threat-intelligence reputation",
-  "active-probes": "Probing forms & endpoints for XSS, SQLi, SSTI & more",
+  "active-probes": "Probing forms and endpoints for XSS, SQLi, SSTI and more",
 };
 
 const OPENING_STEP = "Connecting to the target";
@@ -74,12 +75,6 @@ const MODE_CONFIG = {
   bulk: { label: "Bulk scan", icon: ListChecks },
 } as const;
 
-function formatElapsed(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
-}
-
 function getHostname(url: string): string {
   try {
     return new URL(url).hostname;
@@ -118,7 +113,7 @@ export function ScanningIndicator({
   const [startedAt] = useState(() => Date.now());
   const [elapsed, setElapsed] = useState(0);
 
-  const { families, steps } = useMemo(() => {
+  const { families, steps, shortSteps } = useMemo(() => {
     const raw =
       categories && categories.length > 0 ? categories : ALL_CATEGORIES;
     // Every selected active probe (an `active-probes:<id>` selector) collapses
@@ -142,15 +137,36 @@ export function ScanningIndicator({
       ...families.map((c) => FAMILY_STEP[c] ?? c),
       CLOSING_STEP,
     ];
-    return { families, steps };
+    // The checklist used to render the FAMILY_STEP sentences, which run to 55
+    // characters. In a one-column grid at 375px the row has roughly 289px of
+    // text width, so the three longest strings clipped with no wrap, no title
+    // and no tooltip: on a phone you could not read what was currently
+    // running. CATEGORY_META labels are 15 characters at most and say the same
+    // thing in the checklist's context, so nothing clips. The full sentence
+    // still gets a whole row of its own, above the bar.
+    const shortSteps = [
+      "Connecting",
+      ...families.map((c) => CATEGORY_META[c]?.label ?? c),
+      "Scoring",
+    ];
+    return { families, steps, shortSteps };
   }, [categories]);
 
+  const hasRealProgress = categoriesTotal > 0;
+
+  // The elapsed clock now exists only to drive the simulated fallback during
+  // the brief window before the first status poll lands. It used to also feed
+  // a visible seconds readout, which is removed: showing a wall-clock number
+  // beside a scan invited the reader to judge the engine by it, and the number
+  // was dominated by work the engine was waiting on rather than the scanning
+  // itself. Once the server reports real progress there is nothing left for
+  // the timer to drive, so the interval stops instead of re-rendering this
+  // component every 500ms for the rest of the scan.
   useEffect(() => {
+    if (hasRealProgress) return;
     const tick = setInterval(() => setElapsed(Date.now() - startedAt), 500);
     return () => clearInterval(tick);
-  }, [startedAt]);
-
-  const hasRealProgress = categoriesTotal > 0;
+  }, [startedAt, hasRealProgress]);
 
   // Timer-based fallback for the brief window before the first status poll
   // lands (or for callers that never pass real progress at all).
@@ -227,6 +243,16 @@ export function ScanningIndicator({
   useEffect(() => {
     if (!displaySettling) return;
     const from = settlePercent ?? displayBarPercent;
+    // globals.css caps CSS animation and transition durations under
+    // prefers-reduced-motion, but this ramp writes style.width from JS on
+    // every frame, so the global reset could not reach it: the one piece of
+    // motion in the product that ignored the user's setting. Jump to the end
+    // instead of animating there.
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reads a media query (an external system, unavailable during SSR) and writes the end state once, in place of the animation this effect otherwise starts
+      setSettlePercent(100);
+      return;
+    }
     const animStartedAt = performance.now();
     function tick(now: number) {
       const t = Math.min(1, (now - animStartedAt) / SETTLE_ANIMATION_MS);
@@ -255,11 +281,34 @@ export function ScanningIndicator({
   const ModeIcon = MODE_CONFIG[mode].icon;
 
   return (
-    <div className="w-full max-w-3xl">
-      <div className="overflow-hidden rounded-md border border-border bg-card">
+    <div className="w-full max-w-3xl" aria-busy="true">
+      {/* The scanning state replaces ScanHero, which owns the page's only
+          h1, so while a scan runs the document had no heading at all: a
+          screen reader jumping by heading found nothing, and the page
+          outline went from "VulnRadar" to empty and back. Visually hidden
+          rather than drawn, because the card below already says all of this
+          to anyone who can see it. */}
+      <h1 className="sr-only">
+        Scanning {url ? getHostname(url) : "your target"}
+      </h1>
+      {/* One status region for the whole card. The per-step paragraph below
+          used to carry aria-live itself, so every one of the twenty check
+          families interrupted the reader with its own announcement as the
+          bar moved. This says the same thing once per completed family, in
+          a form that makes sense out of context. */}
+      <p className="sr-only" role="status">
+        {hasRealProgress
+          ? `${Math.min(categoriesCompleted, categoriesTotal)} of ${categoriesTotal} check families complete.`
+          : "Scan starting."}
+      </p>
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
         {/* Target line */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3 sm:px-5">
-          <span className="inline-flex items-center gap-1.5 rounded border border-primary/20 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border/60 px-4 py-3 sm:px-5">
+          {/* The house pill is rounded-full at text-[10px] with uppercase
+              tracking and a /25-to-/30 border. This was a third pill grammar
+              (square-ish `rounded`, text-xs, /20 border) on the product's
+              highest-traffic transient surface. */}
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-primary">
             <ModeIcon aria-hidden className="h-3 w-3" />
             {MODE_CONFIG[mode].label}
           </span>
@@ -268,17 +317,29 @@ export function ScanningIndicator({
               {getHostname(url)}
             </span>
           )}
-          <span className="ml-auto font-mono text-xs tabular-nums text-muted-foreground">
-            {formatElapsed(elapsed)}
-          </span>
+          {/* Replaces the elapsed-seconds clock that used to sit here. A
+              count of real work done says more than a wall-clock number, and
+              it cannot undersell the engine by counting time the engine spent
+              waiting on something else. Falls back to nothing at all rather
+              than a guess, for the short window before the first poll. */}
+          {hasRealProgress && (
+            <span className="ml-auto font-mono text-xs tabular-nums text-muted-foreground">
+              {Math.min(categoriesCompleted, categoriesTotal)} of{" "}
+              {categoriesTotal} checks
+            </span>
+          )}
         </div>
 
         {/* Progress */}
         <div className="flex flex-col gap-2 px-4 py-4 sm:px-5">
           <div className="flex items-baseline justify-between gap-3">
+            {/* aria-hidden, not aria-live: the sr-only status region at the
+                top of the card is the one that speaks. */}
+            {/* text-pretty rather than truncate: this is the one place the
+                full FAMILY_STEP sentence is shown, and it has a whole row. */}
             <p
-              className="min-w-0 truncate text-sm font-medium text-foreground"
-              aria-live="polite"
+              aria-hidden="true"
+              className="min-w-0 text-pretty text-sm font-medium text-foreground"
             >
               {displaySettling
                 ? "Waiting on the slowest checks"
@@ -292,8 +353,13 @@ export function ScanningIndicator({
             className="h-1 w-full overflow-hidden rounded-full bg-muted"
             role="progressbar"
             aria-valuemin={0}
-            aria-valuemax={steps.length}
-            aria-valuenow={displayStep + 1}
+            // The bar's width is driven by displayPercent, and the value
+            // announced used to be a step index against a step count, so the
+            // number a screen reader heard and the fill a sighted user saw
+            // could be a long way apart during the settle ramp. Both read
+            // the same source now.
+            aria-valuemax={100}
+            aria-valuenow={Math.round(displayPercent)}
             aria-label="Scan progress"
           >
             <div
@@ -304,8 +370,8 @@ export function ScanningIndicator({
         </div>
 
         {/* Per-family checklist. Two columns from sm, one at 375px. */}
-        <ul className="grid grid-cols-1 gap-x-6 border-t border-border px-4 py-3 sm:grid-cols-2 sm:px-5">
-          {steps.map((step, i) => {
+        <ul className="grid grid-cols-1 gap-x-6 border-t border-border/60 px-4 py-3 sm:grid-cols-2 sm:px-5">
+          {shortSteps.map((step, i) => {
             const done = i < displayStep || displaySettling;
             const running = i === displayStep && !displaySettling;
             return (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
 import { safeHref } from "@/lib/ui/utils";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -22,10 +23,22 @@ import { ScanResultDetail } from "@/components/scanner/scan-result-detail";
 import { SubdomainDiscovery } from "@/components/scanner/subdomain-discovery";
 import { SharedScanSkeleton } from "@/components/scanner/shared-scan-skeleton";
 import { ScanTags } from "@/components/history/scan-tags";
-import { DangerScoreTrend } from "@/components/host/danger-score-trend";
-import { API, APP_NAME, ROUTES } from "@/lib/config/constants";
+// Statically imported, this one component pulled recharts (about 378 KB raw,
+// 112 KB gzipped, a quarter of this route's JavaScript) into the initial
+// bundle of a public page, for a chart that only renders when the host has
+// two or more public scans on record. Loaded on demand instead: the
+// component's own loading state reserves the space, so nothing jumps.
+const DangerScoreTrend = dynamic(
+  () =>
+    import("@/components/host/danger-score-trend").then((m) => ({
+      default: m.DangerScoreTrend,
+    })),
+  { ssr: false },
+);
+import { API, APP_NAME, ROUTES } from "@/lib/config/client-constants";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 import type { HostReportData } from "@/app/api/v3/host/[hostname]/route";
+import type { HostScoreTrendPoint } from "@/app/api/v3/host/[hostname]/trend/route";
 import { copyToClipboard } from "@/lib/ui/clipboard";
 
 export default function HostReportPage() {
@@ -33,6 +46,11 @@ export default function HostReportPage() {
   const hostname = params.hostname as string;
 
   const [data, setData] = useState<HostReportData | null>(null);
+  // undefined until the pair below resolves, then an array on success or null
+  // on failure -- exactly the contract DangerScoreTrend's `points` prop takes.
+  const [trendPoints, setTrendPoints] = useState<
+    HostScoreTrendPoint[] | null | undefined
+  >(undefined);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(
@@ -64,19 +82,35 @@ export default function HostReportPage() {
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      try {
-        const res = await fetch(API.HOST(hostname));
-        if (!res.ok) {
-          if (!cancelled) setError("Could not load this host's report.");
-          return;
-        }
-        const body: HostReportData = await res.json();
-        if (!cancelled) setData(body);
-      } catch {
-        if (!cancelled) setError("Could not load this host's report.");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+      // The trend endpoint keys only off the hostname in the URL, so it
+      // shares nothing with the host report but the hostname. It used to be
+      // issued by DangerScoreTrend, which is mounted inside the `result &&`
+      // gate below, so it could not start until this request had already
+      // resolved: two serialized round trips on an indexable public page.
+      // Both start together now and the chart is handed what it needs.
+      const [report, trend] = await Promise.all([
+        fetch(API.HOST(hostname))
+          .then(async (res) =>
+            res.ok ? ((await res.json()) as HostReportData) : null,
+          )
+          .catch(() => null),
+        // null means "the request failed", which is what DangerScoreTrend
+        // renders its own "could not be loaded" copy for. An empty array is
+        // a successful answer of "no scans on record".
+        fetch(API.HOST_TREND(hostname))
+          .then(async (res) =>
+            res.ok
+              ? (((await res.json()) as { points?: HostScoreTrendPoint[] })
+                  .points ?? [])
+              : null,
+          )
+          .catch(() => null),
+      ]);
+      if (cancelled) return;
+      if (report) setData(report);
+      else setError("Could not load this host's report.");
+      setTrendPoints(trend);
+      setLoading(false);
     }
     load();
     return () => {
@@ -168,7 +202,13 @@ export default function HostReportPage() {
               </p>
             </div>
             <Button asChild size="lg" className="h-11 gap-2 px-6">
-              <Link href={ROUTES.DEMO}>
+              {/* /demo used to ignore the host entirely: its only action
+                  hardcoded window.location.origin, so a button reading
+                  "Scan example.com now" scanned this deployment. ?url= hands
+                  it the real target. */}
+              <Link
+                href={`${ROUTES.DEMO}?url=${encodeURIComponent(data.host)}`}
+              >
                 Scan {data.host} now
                 <ArrowRight aria-hidden className="h-4 w-4" />
               </Link>
@@ -215,7 +255,7 @@ export default function HostReportPage() {
                             aria-label="Copy hostname"
                             className="group inline-flex min-w-0 items-center gap-2 rounded text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                           >
-                            <h1 className="truncate text-lg font-semibold text-foreground sm:text-xl">
+                            <h1 className="truncate text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
                               {data?.host}
                             </h1>
                             {copied ? (
@@ -274,7 +314,10 @@ export default function HostReportPage() {
                   onSelectIssue={setSelectedIssue}
                   hideDuration
                   afterSummary={
-                    <DangerScoreTrend hostname={data?.host || hostname} />
+                    <DangerScoreTrend
+                      hostname={data?.host || hostname}
+                      points={trendPoints}
+                    />
                   }
                   subdomain={
                     result.subdomains ? (

@@ -11,6 +11,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { decryptApiKey } from "@/lib/auth/crypto";
 
 const mockQuery = vi.fn();
 vi.mock("@/lib/database/db", () => ({
@@ -128,7 +129,10 @@ describe("GET /api/v3/webhooks", () => {
     const res = await GET();
     const json = await res.json();
 
-    expect(json).toHaveLength(2);
+    // Named-key envelope, not the bare array this used to return, matching
+    // every other collection endpoint. AUDIT-013#dup-08.
+    expect(Object.keys(json)).toEqual(["webhooks"]);
+    expect(json.webhooks).toHaveLength(2);
     const [sql, params] = mockQuery.mock.calls[0];
     expect(sql).toContain("user_id = $1");
     expect(sql).toContain("team_id IN (SELECT team_id FROM team_members");
@@ -271,7 +275,6 @@ describe("POST /api/v3/webhooks: secret", () => {
           type: "generic",
           active: true,
           created_at: new Date().toISOString(),
-          secret: "will-be-overwritten-by-insertParams-check",
         },
       ],
     }); // INSERT
@@ -282,13 +285,44 @@ describe("POST /api/v3/webhooks: secret", () => {
     const json = await res.json();
 
     expect(res.status).toBe(201);
-    expect(typeof json.secret).toBe("string");
+    expect(json.secret).toMatch(/^[0-9a-f]{64}$/);
 
     const insertCall = mockQuery.mock.calls[1];
     expect(insertCall[0]).toContain("INSERT INTO webhooks");
     expect(insertCall[0]).toContain("secret");
+    // No RETURNING secret: the column holds ciphertext now
+    // (AUDIT-009#webhook-01), so reading it back would hand the caller the
+    // ciphertext instead of the secret they have to configure.
+    expect(insertCall[0]).not.toContain(
+      "RETURNING id, url, name, type, active, created_at, secret",
+    );
     const insertedSecret = insertCall[1][4];
     expect(insertedSecret).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("stores the secret encrypted, not in plaintext, when an encryption key is configured", async () => {
+    // AUDIT-009#webhook-01: webhooks.secret was the only long-lived
+    // reversible secret still written to the database as plain text.
+    const previous = process.env.API_KEY_ENCRYPTION_KEY;
+    process.env.API_KEY_ENCRYPTION_KEY = "a".repeat(64);
+    try {
+      mockQuery.mockResolvedValueOnce({ rows: [{ count: 0 }] }); // count
+      mockQuery.mockResolvedValueOnce({ rows: [{ id: 1 }] }); // INSERT
+
+      const res = await POST(
+        postRequest({ url: "https://example.com/hook", type: "auto" }),
+      );
+      const json = await res.json();
+
+      const stored = mockQuery.mock.calls[1][1][4] as string;
+      expect(stored).not.toBe(json.secret);
+      expect(stored).not.toMatch(/^[0-9a-f]{64}$/);
+      // Reversible, not a hash: signing needs the raw secret back.
+      expect(decryptApiKey(stored)).toBe(json.secret);
+    } finally {
+      if (previous === undefined) delete process.env.API_KEY_ENCRYPTION_KEY;
+      else process.env.API_KEY_ENCRYPTION_KEY = previous;
+    }
   });
 
   it("generates a different secret for every webhook", async () => {

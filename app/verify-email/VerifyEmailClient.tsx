@@ -54,6 +54,10 @@ export default function VerifyEmailClient() {
           return;
         }
 
+        // The route does not set an `expired` flag today: expiry comes back as
+        // a plain 400 and the message is the only thing that separates it from
+        // a bogus token. The flag is still honoured first in case the route
+        // ever starts sending one.
         if (data.expired) {
           setStatus("expired");
           setMessage(data.error);
@@ -61,9 +65,21 @@ export default function VerifyEmailClient() {
         }
 
         if (!res.ok) {
+          const errorText: string =
+            typeof data.error === "string" ? data.error : "";
+          // Without this, every expired link fell through to the generic
+          // "that link did not verify anything" error screen, and the resend
+          // form on VerifyEmailExpired was unreachable dead code: the user was
+          // told their link was invalid rather than merely stale, with no way
+          // to ask for a new one.
+          if (/link has expired/i.test(errorText)) {
+            setStatus("expired");
+            setMessage(errorText);
+            return;
+          }
           setStatus("error");
           setMessage(
-            data.error ||
+            errorText ||
               "The token on this link is not one we recognise. It may already have been used.",
           );
           return;

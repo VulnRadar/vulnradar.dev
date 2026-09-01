@@ -19,16 +19,20 @@ import { STAFF_INVITE_EXPIRY_DAYS } from "@/lib/config/constants";
  * emailed-token table in this codebase (password_reset_tokens,
  * email_verification_tokens, team_invites).
  *
- * This function is intentionally NOT called from instrumentation.ts
- * directly (that file is a shared monolith other work touches
- * concurrently). Whoever wires this batch's schema changes into
- * instrumentation.ts should add:
+ * This is the schema owner for staff_invites. instrumentation.ts calls it
+ * once at boot (see its STAFF INVITES + ADMIN AUDIT LOG ARCHIVE block) and
+ * scripts/_lib/_lib.schema-parity.mjs parses the DDL below out of this file
+ * as part of the canonical schema, so the table is covered by the
+ * boot/migration parity guard exactly like an inline CREATE TABLE would be.
+ * Nothing on a request path calls it: the table exists before the first
+ * request, so re-running DDL per request would be pure catalog churn
+ * (AUDIT-013 schema-02).
  *
- *   const { ensureStaffInvitesTable } = await import("./lib/admin/staff-invites");
- *   await ensureStaffInvitesTable();
- *
- * right after the TEAMS block (which creates team_invites) so the two
- * sibling invite tables sit next to each other.
+ * No separate index on `token`: the UNIQUE constraint above already is a
+ * unique b-tree on that column, so a CREATE INDEX on it would be a second
+ * copy of an index the database maintains anyway (AUDIT-013 schema-05).
+ * The name is in instrumentation.ts's REDUNDANT_INDEXES so databases that
+ * grew it before this shed it on the next boot.
  */
 export async function ensureStaffInvitesTable(): Promise<void> {
   await pool.query(`
@@ -42,7 +46,6 @@ export async function ensureStaffInvitesTable(): Promise<void> {
       accepted_at TIMESTAMP WITH TIME ZONE,
       created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     );
-    CREATE INDEX IF NOT EXISTS idx_staff_invites_token ON staff_invites(token);
     CREATE INDEX IF NOT EXISTS idx_staff_invites_email ON staff_invites(email);
   `);
 }

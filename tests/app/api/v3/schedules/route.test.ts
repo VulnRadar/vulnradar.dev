@@ -165,7 +165,12 @@ describe("GET /api/v3/schedules", () => {
     const json = await res.json();
 
     expect(res.status).toBe(200);
-    expect(json).toEqual([{ id: 1, url: "https://example.com" }]);
+    // Named-key envelope, not the bare array this used to return: a bare
+    // array can never gain a sibling field (a count, a truncation flag)
+    // without breaking every caller. AUDIT-013#dup-08.
+    expect(json).toEqual({
+      schedules: [{ id: 1, url: "https://example.com" }],
+    });
     const [sql, params] = mockQuery.mock.calls[0];
     expect(sql).toContain("FROM scheduled_scans");
     expect(sql).toContain("user_id = $1");
@@ -378,8 +383,11 @@ describe("POST /api/v3/schedules", () => {
       }),
     );
 
-    const [, insertParams] = mockQuery.mock.calls[1];
-    expect(insertParams).toEqual([
+    const [insertSql, insertParams] = mockQuery.mock.calls[1];
+    // $7 is the plan cap the INSERT re-checks in its own WHERE, so the
+    // count-then-insert above can no longer be raced past.
+    expect(insertSql).toContain("$7::int IS NULL");
+    expect(insertParams.slice(0, 6)).toEqual([
       42,
       "https://example.com",
       "monthly",
@@ -387,6 +395,20 @@ describe("POST /api/v3/schedules", () => {
       3,
       15,
     ]);
+  });
+
+  it("refuses when the guarded INSERT itself finds the plan cap already full", async () => {
+    // The count above passed, but a concurrent request took the last slot
+    // before this statement ran, so the INSERT's own WHERE matched nothing.
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: 0 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await POST(
+      postRequest({ url: "https://example.com", frequency: "weekly" }),
+    );
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/plan/i);
   });
 
   it("clamps an out-of-range preferredHourUtc/DayOfMonth back to the 'now' default instead of persisting garbage", async () => {

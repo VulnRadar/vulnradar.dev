@@ -15,8 +15,24 @@ We cannot override these on the consumer side. The fix is to switch Node to 22, 
 
 Before opening a bug report:
 
-1. Confirm `node --version` is **v22.x.x** (use `nvm use` in the repo root, `.nvmrc` is pinned to 22).
-2. Delete `node_modules` and `package-lock.json`, then `npm install` from scratch.
+1. Confirm `node --version` is **v22.11.0** (use `nvm use` in the repo root;
+   `.nvmrc` and `.node-version` are pinned to the exact patch the Dockerfile
+   builds on and every CI job runs, so a local reproduction is on the same
+   runtime as the published image). Any 22.x satisfies `engines`; the pin is
+   what makes "works on my machine" mean something.
+2. Reinstall dependencies with `rm -rf node_modules && npm ci`.
+
+   > **Do not delete `package-lock.json`, and do not use `npm install` to
+   > "fix" a broken install.** Regenerating the lockfile resolves it for
+   > whatever machine you are on, which drops the platform-specific native
+   > binaries (`@next/swc-*`, `lightningcss-*`, `sharp`) that Linux CI and the
+   > Docker build need. The result is a green local run and a broken build for
+   > everyone else. `npm ci` installs exactly what the committed lockfile
+   > says and never rewrites it, which is what you want here.
+   >
+   > Use `pnpm` or `yarn` in this repo and you will get the same class of
+   > breakage. Stick to npm.
+
 3. Run `npm run typecheck && npm run lint && npm test && npm run build` and confirm all four pass.
 4. Search the existing issues for the same symptom.
 

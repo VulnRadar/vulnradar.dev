@@ -43,6 +43,8 @@ const {
   schedulePeriodicPostureDigest,
   stopPeriodicPostureDigest,
 } = await import("@/lib/notifications/posture-digest");
+const { CONFIG_POSTURE_DIGEST_POLL_INTERVAL_MS } =
+  await import("@/lib/config/config-values");
 
 function finding(overrides: Partial<Vulnerability> = {}): Vulnerability {
   return {
@@ -328,15 +330,52 @@ describe("sendWeeklyDigests", () => {
 });
 
 describe("schedulePeriodicPostureDigest / stopPeriodicPostureDigest", () => {
-  it("registers a timer and cleanly cancels it", () => {
+  // Was `expect(timer).toBeDefined()`, which is true of any timer at any
+  // interval, including a 0 ms one that would try to send the weekly digest
+  // on every tick of the event loop. Assert the registration and the
+  // release of the same handle instead.
+  it("registers the interval it was given and clears that exact handle on stop", () => {
     vi.useFakeTimers();
+    const setSpy = vi.spyOn(globalThis, "setInterval");
+    const clearSpy = vi.spyOn(globalThis, "clearInterval");
     try {
       const timer = schedulePeriodicPostureDigest(60_000);
-      expect(timer).toBeDefined();
+
+      expect(setSpy).toHaveBeenCalledTimes(1);
+      expect(setSpy.mock.calls[0][1]).toBe(60_000);
+      expect(setSpy.mock.results[0].value).toBe(timer);
+
       stopPeriodicPostureDigest();
-      // Calling stop twice must not throw.
+      expect(clearSpy).toHaveBeenCalledTimes(1);
+      expect(clearSpy).toHaveBeenCalledWith(timer);
+
+      // Idempotent, not merely non-throwing.
       stopPeriodicPostureDigest();
+      expect(clearSpy).toHaveBeenCalledTimes(1);
     } finally {
+      setSpy.mockRestore();
+      clearSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("falls back to the shipped interval instead of registering a 0 ms timer", () => {
+    vi.useFakeTimers();
+    const setSpy = vi.spyOn(globalThis, "setInterval");
+    try {
+      schedulePeriodicPostureDigest(0);
+      expect(setSpy.mock.calls[0][1]).toBe(
+        CONFIG_POSTURE_DIGEST_POLL_INTERVAL_MS,
+      );
+
+      setSpy.mockClear();
+      schedulePeriodicPostureDigest(Number.NaN);
+      expect(setSpy.mock.calls[0][1]).toBe(
+        CONFIG_POSTURE_DIGEST_POLL_INTERVAL_MS,
+      );
+    } finally {
+      stopPeriodicPostureDigest();
+      setSpy.mockRestore();
       vi.useRealTimers();
     }
   });

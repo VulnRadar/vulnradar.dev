@@ -8,7 +8,7 @@
 // components/. Re-check against the main app's source whenever a category
 // changes there.
 
-import type { ScannerCategory, Severity } from "./types";
+import type { ScannerCategory } from "./types";
 
 export interface CategoryMeta {
   readonly id: ScannerCategory;
@@ -154,74 +154,3 @@ export const CATEGORIES_BY_ID: Readonly<Record<ScannerCategory, CategoryMeta>> =
     },
     {} as Record<ScannerCategory, CategoryMeta>,
   );
-
-export interface ProbeMeta {
-  readonly id: import("./types").ServiceProbeId;
-  readonly label: string;
-  readonly defaultPort: number;
-  readonly description: string;
-}
-
-export const PROBES: readonly ProbeMeta[] = [
-  {
-    id: "ssh",
-    label: "SSH",
-    defaultPort: 22,
-    description: "Banner grab + version disclosure on TCP/22.",
-  },
-  {
-    id: "smtp",
-    label: "SMTP",
-    defaultPort: 587,
-    description: "Banner grab + STARTTLS check on TCP/587 (or 25).",
-  },
-  {
-    id: "imap",
-    label: "IMAP",
-    defaultPort: 143,
-    description: "Banner grab on TCP/143 (or 993 for IMAPS).",
-  },
-  {
-    id: "pop3",
-    label: "POP3",
-    defaultPort: 110,
-    description: "Banner grab on TCP/110 (or 995 for POP3S).",
-  },
-  {
-    id: "ftp",
-    label: "FTP",
-    defaultPort: 21,
-    description: "Banner grab + cleartext check on TCP/21 (or 990 for FTPS).",
-  },
-  {
-    id: "mongodb",
-    label: "MongoDB",
-    defaultPort: 27017,
-    description: "Banner + version disclosure check on TCP/27017.",
-  },
-] as const;
-
-export const PROBES_BY_ID: Readonly<
-  Record<import("./types").ServiceProbeId, ProbeMeta>
-> = PROBES.reduce(
-  (acc, p) => {
-    acc[p.id] = p;
-    return acc;
-  },
-  {} as Record<import("./types").ServiceProbeId, ProbeMeta>,
-);
-
-export function severityLabel(s: Severity): string {
-  switch (s) {
-    case "critical":
-      return "Critical";
-    case "high":
-      return "High";
-    case "medium":
-      return "Medium";
-    case "low":
-      return "Low";
-    case "info":
-      return "Info";
-  }
-}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId } from "react";
 import {
   Key,
   ShieldCheck,
@@ -64,7 +64,7 @@ import {
   ROLE_BADGE_STYLES,
   STAFF_ROLE_HIERARCHY,
   ROUTES,
-} from "@/lib/config/constants";
+} from "@/lib/config/client-constants";
 import { PLANS, getPlanById } from "@/lib/billing/catalog";
 import {
   hasStaffPermission,
@@ -100,6 +100,7 @@ interface UserDetailPanelProps {
     userId: number,
     action: string,
     extra?: Record<string, unknown>,
+    options?: { toast?: string | false },
   ) => Promise<{
     ok: boolean;
     error?: string;
@@ -109,6 +110,22 @@ interface UserDetailPanelProps {
   allBadges: BadgeDef[];
   onBadgesChanged: (awardedIds: number[], revokedIds: number[]) => void;
 }
+
+/**
+ * Support actions that run without a confirmation dialog. The rule this
+ * panel now follows: confirm on irreversible, nothing on a grant. Every
+ * entry here only restores capacity to the user (a reset quota window, a
+ * cleared rate-limit counter), so there is nothing to undo and nothing lost
+ * by running it twice. They previously opened the same change-diff modal as
+ * Delete Account, which is how a confirmation dialog stops meaning anything.
+ */
+const UNCONFIRMED_SUPPORT_ACTIONS = new Set([
+  "clear_rate_limits",
+  "reset_daily_limit",
+  "reset_ai_usage",
+  "reset_github_review_usage",
+  "reset_free_github_trial",
+]);
 
 export function UserDetailPanel({
   detail,
@@ -182,6 +199,14 @@ export function UserDetailPanel({
   const [showSupportPasswordDialog, setShowSupportPasswordDialog] =
     useState(false);
   const [supportNotify, setSupportNotify] = useState(true);
+
+  // Stable ids so each <label htmlFor> names its control. These were plain
+  // labels above unlabelled inputs, so a screen reader announced them as
+  // unnamed edit fields.
+  const badgeIdFieldId = useId();
+  const badgeDisplayFieldId = useId();
+  const notifTitleId = useId();
+  const notifMessageId = useId();
 
   // Support action confirmation state
   const [pendingSupportAction, setPendingSupportAction] = useState<{
@@ -333,6 +358,15 @@ export function UserDetailPanel({
     variant?: "default" | "destructive",
     extraPayload?: Record<string, unknown>,
   ) => {
+    // Purely additive: each of these only hands the user back capacity they
+    // already had, destroys nothing, and is safe to repeat. They used to open
+    // the full change-diff modal, which taught operators that every action
+    // opens a dialog, so the dialog stopped carrying information. Run them
+    // straight away; the success toast is the feedback.
+    if (UNCONFIRMED_SUPPORT_ACTIONS.has(action)) {
+      void onAction(u.id, action, { ...extraPayload, notifyUser: true });
+      return;
+    }
     setPendingSupportAction({
       action,
       label,
@@ -340,7 +374,11 @@ export function UserDetailPanel({
       variant,
       extraPayload,
     });
-    if (PASSWORD_GATED_ACTIONS.has(action)) {
+    // Mirrors the server's directional gate for toggle_ai_ban (see
+    // app/api/v3/admin/route.ts): only the ban direction needs re-auth, so
+    // un-banning no longer prompts for a password it would not be asked for.
+    const unbanning = action === "toggle_ai_ban" && u.ai_chat_banned === true;
+    if (PASSWORD_GATED_ACTIONS.has(action) && !unbanning) {
       setSupportNotify(true);
       setShowSupportPasswordDialog(true);
     }
@@ -434,18 +472,49 @@ export function UserDetailPanel({
       const awardedThisSave = [...pendingBadgeAwards];
       const revokedThisSave = [...pendingBadgeRevokes];
       if (awardedThisSave.length > 0 || revokedThisSave.length > 0) {
+        // One summary toast for the whole batch, not one per badge. Each
+        // PATCH used to raise its own "Badge awarded." / "Badge removed.",
+        // so saving a five-badge diff stacked five toasts that between them
+        // never said what the batch did. The first call carries the summary
+        // and the rest stay silent.
+        //
+        // The badge writes below are N independent PATCHes, not one
+        // transaction, so a partial failure leaves a partial diff applied.
+        // That is accepted deliberately rather than overlooked: badges are
+        // cosmetic profile decoration, the panel refetches the real awarded
+        // list from the server after the save, and the alternative (a
+        // batch endpoint plus a rollback path) is more machinery than a
+        // cosmetic field is worth.
+        const parts: string[] = [];
+        if (awardedThisSave.length > 0)
+          parts.push(`${awardedThisSave.length} awarded`);
+        if (revokedThisSave.length > 0)
+          parts.push(`${revokedThisSave.length} removed`);
+        const badgeSummary = `Badges updated: ${parts.join(", ")}.`;
+        let isFirstBadgeCall = true;
+        const badgeToast = (): { toast: string | false } => {
+          if (isFirstBadgeCall) {
+            isFirstBadgeCall = false;
+            return { toast: badgeSummary };
+          }
+          return { toast: false };
+        };
         const badgeResults = await Promise.all([
           ...awardedThisSave.map((id) =>
-            onAction(u.id, "award_badge", {
-              badgeId: String(id),
-              notifyUser: false,
-            }),
+            onAction(
+              u.id,
+              "award_badge",
+              { badgeId: String(id), notifyUser: false },
+              badgeToast(),
+            ),
           ),
           ...revokedThisSave.map((id) =>
-            onAction(u.id, "revoke_badge", {
-              badgeId: String(id),
-              notifyUser: false,
-            }),
+            onAction(
+              u.id,
+              "revoke_badge",
+              { badgeId: String(id), notifyUser: false },
+              badgeToast(),
+            ),
           ),
         ]);
         for (const r of badgeResults)
@@ -503,7 +572,7 @@ export function UserDetailPanel({
     ...(perms.canBanUsers
       ? [{ id: "account-management", label: "Account Management" }]
       : []),
-    ...(perms.canDeleteUsers
+    ...(perms.canManageStaff || perms.canManageBadges
       ? [{ id: "roles-badges", label: "Staff Role & Badges" }]
       : []),
     { id: "admin-notes", label: "Admin Notes" },
@@ -960,6 +1029,12 @@ export function UserDetailPanel({
                         );
                       }}
                       placeholder="Enter name"
+                      // a11y (SC 1.3.1): the visible caption above each of these
+                      // fields is a plain <span>, so none of them was
+                      // programmatically labelled. aria-label rather than a
+                      // Label/htmlFor pair, which would need an id per field
+                      // and a change to the caption markup.
+                      aria-label="Display name"
                       className="h-8 text-xs"
                     />
                   </div>
@@ -1000,6 +1075,11 @@ export function UserDetailPanel({
                           );
                         }}
                         placeholder="Email address"
+                        aria-label="Email address"
+                        aria-invalid={hasEmailError}
+                        aria-describedby={
+                          hasEmailError ? "admin-user-email-error" : undefined
+                        }
                         className={cn(
                           "h-8 text-xs",
                           hasEmailError &&
@@ -1007,8 +1087,15 @@ export function UserDetailPanel({
                         )}
                         required
                       />
+                      {/* a11y (SC 1.3.1 / 3.3.1): the field above carries
+                          aria-invalid now; this is the message it points at,
+                          announced when it appears. */}
                       {hasEmailError && (
-                        <p className="text-[10px] text-destructive">
+                        <p
+                          id="admin-user-email-error"
+                          role="alert"
+                          className="text-[10px] text-destructive"
+                        >
                           Email is required
                         </p>
                       )}
@@ -1062,6 +1149,7 @@ export function UserDetailPanel({
                         </div>
                       ) : (
                         <select
+                          aria-label="Plan"
                           value={editPlan}
                           onChange={(e) => {
                             setEditPlan(e.target.value);
@@ -1102,603 +1190,649 @@ export function UserDetailPanel({
         </Card>
       )}
 
-      {/* Role + Badge management - admin only */}
-      {!detailLoading && perms.canDeleteUsers && (
+      {/* Role + Badge management. Gated on the permissions these controls
+          actually exercise (EDIT_USER_ROLE for the role dropdown,
+          CREATE_BADGE for the badge picker), not on DELETE_USER, which is
+          what it used to check: a permission label that does not describe
+          what the control does hides it from roles that hold the right and
+          shows it to roles that do not. */}
+      {!detailLoading && (perms.canManageStaff || perms.canManageBadges) && (
         <div
           id="roles-badges"
           className="grid grid-cols-1 lg:grid-cols-2 gap-4"
         >
           {/* Staff Role - dropdown */}
-          <Card
-            className={cn(
-              "border-border/50 bg-card/50 transition-colors",
-              pendingChanges.role && "border-primary/30",
-            )}
-          >
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-2">
-                <Shield className="h-4 w-4 text-primary" aria-hidden="true" />
-                <p className="text-sm font-medium">Staff Role</p>
-                {pendingChanges.role && (
-                  <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">
-                    Modified
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {hasGodMode(u.role)
-                  ? "The super admin's role can't be changed."
-                  : "Select a permission level for this user."}
-              </p>
-            </CardHeader>
-            <CardContent className="p-4 pt-0">
-              <select
-                value={editRole}
-                disabled={hasGodMode(u.role)}
-                onChange={(e) => {
-                  setEditRole(e.target.value);
-                  addPendingChange("role", e.target.value, u.role || "user");
-                }}
-                className="w-full h-10 rounded-lg border border-border/40 bg-card/30 px-3 py-2 text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {Object.values(STAFF_ROLES)
-                  .filter(
-                    (role) =>
-                      role !== STAFF_ROLES.SUPER_ADMIN || hasGodMode(u.role),
-                  )
-                  .map((role) => {
-                    const isOriginal = (u.role || "user") === role;
-                    return (
-                      <option key={role} value={role}>
-                        {STAFF_ROLE_LABELS[role] || role}
-                        {isOriginal ? " (current)" : ""}
-                      </option>
-                    );
-                  })}
-              </select>
-            </CardContent>
-          </Card>
+          {perms.canManageStaff && (
+            <Card
+              className={cn(
+                "border-border/50 bg-card/50 transition-colors",
+                pendingChanges.role && "border-primary/30",
+              )}
+            >
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-2">
+                  <Shield className="h-4 w-4 text-primary" aria-hidden="true" />
+                  <p className="text-sm font-medium">Staff Role</p>
+                  {pendingChanges.role && (
+                    <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">
+                      Modified
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {hasGodMode(u.role)
+                    ? "The super admin's role can't be changed."
+                    : "Select a permission level for this user."}
+                </p>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                <select
+                  aria-label="Staff role"
+                  value={editRole}
+                  disabled={hasGodMode(u.role)}
+                  onChange={(e) => {
+                    setEditRole(e.target.value);
+                    addPendingChange("role", e.target.value, u.role || "user");
+                  }}
+                  className="w-full h-10 rounded-lg border border-border/40 bg-card/30 px-3 py-2 text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {Object.values(STAFF_ROLES)
+                    .filter(
+                      (role) =>
+                        role !== STAFF_ROLES.SUPER_ADMIN || hasGodMode(u.role),
+                    )
+                    .map((role) => {
+                      const isOriginal = (u.role || "user") === role;
+                      return (
+                        <option key={role} value={role}>
+                          {STAFF_ROLE_LABELS[role] || role}
+                          {isOriginal ? " (current)" : ""}
+                        </option>
+                      );
+                    })}
+                </select>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Badges - multi select */}
-          <Card className="border-border/50 bg-card/50">
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-2">
-                <Award className="h-4 w-4 text-primary" aria-hidden="true" />
-                <p className="text-sm font-medium">Badges</p>
-                <Badge variant="secondary" className="text-[10px] h-5 ml-auto">
-                  {detail.badges.length} awarded
-                </Badge>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Cosmetic badges shown on the user&apos;s profile.
-              </p>
-            </CardHeader>
-            <CardContent className="p-4 pt-0 flex flex-col gap-3">
-              {/* Awarded badges */}
-              {detail.badges.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {detail.badges.map((badge) => {
-                    const isPendingRevoke = pendingBadgeRevokes.includes(
-                      badge.id,
-                    );
-                    return (
-                      <button
-                        key={badge.id}
-                        onClick={() => {
-                          if (isPendingRevoke) {
-                            setPendingBadgeRevokes((p) =>
-                              p.filter((id) => id !== badge.id),
-                            );
-                          } else {
-                            setPendingBadgeRevokes((p) => [...p, badge.id]);
-                          }
-                        }}
-                        title={
-                          isPendingRevoke
-                            ? "Click to undo remove"
-                            : "Click to remove badge"
-                        }
-                        className={cn(
-                          "flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all cursor-pointer hover:scale-105",
-                          isPendingRevoke && "opacity-50 line-through",
-                        )}
-                        style={{
-                          borderColor: `${badge.color}40`,
-                          backgroundColor: `${badge.color}15`,
-                          color: badge.color || undefined,
-                        }}
-                      >
-                        <Tag className="h-3 w-3 shrink-0" aria-hidden="true" />
-                        {badge.display_name}
-                        {isPendingRevoke && (
-                          <RefreshCw
-                            className="h-3 w-3 ml-0.5"
-                            aria-hidden="true"
-                          />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  No badges awarded yet.
-                </p>
-              )}
-              {pendingBadgeRevokes.length > 0 && (
-                <p className="text-[10px] text-destructive">
-                  {pendingBadgeRevokes.length} badge(s) will be removed on save
-                </p>
-              )}
-
-              {/* Action buttons */}
-              <div className="flex items-center gap-2 mt-1 flex-wrap">
-                {unawardedBadges.length > 0 && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 text-xs gap-1 bg-transparent flex-1"
-                    onClick={() => setShowBadgePicker(true)}
+          {perms.canManageBadges && (
+            <Card className="border-border/50 bg-card/50">
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-2">
+                  <Award className="h-4 w-4 text-primary" aria-hidden="true" />
+                  <p className="text-sm font-medium">Badges</p>
+                  <Badge
+                    variant="secondary"
+                    className="text-[10px] h-5 ml-auto"
                   >
-                    <Award className="h-3.5 w-3.5" aria-hidden="true" /> Award
-                    Badge
-                  </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs gap-1 bg-transparent flex-1"
-                  onClick={() => setShowCreateBadge(true)}
-                >
-                  <Plus className="h-3.5 w-3.5" aria-hidden="true" /> Create
-                  Badge
-                </Button>
-                {hasStaffPermission(
-                  callerRole,
-                  STAFF_PERMISSIONS.DELETE_BADGE,
-                ) &&
-                  allBadges.length > 0 && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-xs gap-1 bg-transparent text-destructive border-destructive/30 hover:bg-destructive/10 flex-1"
-                      onClick={() => setShowManageBadges(true)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />{" "}
-                      Manage Badges
-                    </Button>
-                  )}
-              </div>
-
-              {/* Award Badge Modal */}
-              <Dialog open={showBadgePicker} onOpenChange={setShowBadgePicker}>
-                <DialogContent className="max-w-md">
-                  <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2 text-base">
-                      <Award
-                        className="h-4 w-4 text-primary"
-                        aria-hidden="true"
-                      />{" "}
-                      Award Badge
-                    </DialogTitle>
-                  </DialogHeader>
-                  <div className="flex flex-col gap-3">
-                    <p className="text-xs text-muted-foreground">
-                      Select badges to award. Changes will apply when you save.
-                    </p>
-                    {unawardedBadges.length > 0 ? (
-                      <div className="flex flex-wrap gap-2">
-                        {unawardedBadges.map((badge) => {
-                          const isPending = pendingBadgeAwards.includes(
-                            badge.id,
-                          );
-                          return (
-                            <button
-                              key={badge.id}
-                              onClick={() => {
-                                if (isPending) {
-                                  setPendingBadgeAwards((p) =>
-                                    p.filter((id) => id !== badge.id),
-                                  );
-                                } else {
-                                  setPendingBadgeAwards((p) => [
-                                    ...p,
-                                    badge.id,
-                                  ]);
-                                }
-                              }}
-                              className={cn(
-                                "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs font-medium transition-all",
-                                isPending
-                                  ? "ring-2 ring-primary scale-105"
-                                  : "hover:scale-105 hover:opacity-80",
-                              )}
-                              style={{
-                                borderColor: `${badge.color}40`,
-                                backgroundColor: `${badge.color}15`,
-                                color: badge.color || undefined,
-                              }}
-                            >
-                              <Tag
-                                className="h-3 w-3 shrink-0"
-                                aria-hidden="true"
-                              />
-                              {badge.display_name}
-                              {isPending && (
-                                <CheckCircle2
-                                  className="h-3 w-3 ml-0.5"
-                                  aria-hidden="true"
-                                />
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground py-4 text-center">
-                        All badges have already been awarded.
-                      </p>
-                    )}
-                    {pendingBadgeAwards.length > 0 && (
-                      <p className="text-[10px] text-primary">
-                        {pendingBadgeAwards.length} badge(s) queued to award on
-                        save
-                      </p>
-                    )}
-                  </div>
-                  <DialogFooter>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowBadgePicker(false)}
-                    >
-                      Done
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-
-              {/* Create Badge Modal */}
-              <Dialog
-                open={showCreateBadge}
-                onOpenChange={(open) => {
-                  setShowCreateBadge(open);
-                  if (!open) {
-                    setNewBadgeName("");
-                    setNewBadgeDisplay("");
-                    setNewBadgeColor("#6366f1");
-                  }
-                }}
-              >
-                <DialogContent className="max-w-md">
-                  <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2 text-base">
-                      <Plus
-                        className="h-4 w-4 text-primary"
-                        aria-hidden="true"
-                      />{" "}
-                      Create New Badge
-                    </DialogTitle>
-                  </DialogHeader>
-                  <div className="flex flex-col gap-4">
-                    {/* Preview */}
-                    {(newBadgeName || newBadgeDisplay) && (
-                      <div className="flex items-center gap-2">
-                        <p className="text-xs text-muted-foreground">
-                          Preview:
-                        </p>
-                        <div
-                          className="flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-medium"
+                    {detail.badges.length} awarded
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Cosmetic badges shown on the user&apos;s profile.
+                </p>
+              </CardHeader>
+              <CardContent className="p-4 pt-0 flex flex-col gap-3">
+                {/* Awarded badges */}
+                {detail.badges.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {detail.badges.map((badge) => {
+                      const isPendingRevoke = pendingBadgeRevokes.includes(
+                        badge.id,
+                      );
+                      return (
+                        <button
+                          key={badge.id}
+                          type="button"
+                          // Staged removal was conveyed by opacity, a
+                          // line-through and a title attribute only, none of
+                          // which a screen reader reports as a toggle state.
+                          aria-pressed={isPendingRevoke}
+                          aria-label={`${isPendingRevoke ? "Queued to remove" : "Remove"} badge ${badge.display_name}`}
+                          onClick={() => {
+                            if (isPendingRevoke) {
+                              setPendingBadgeRevokes((p) =>
+                                p.filter((id) => id !== badge.id),
+                              );
+                            } else {
+                              setPendingBadgeRevokes((p) => [...p, badge.id]);
+                            }
+                          }}
+                          title={
+                            isPendingRevoke
+                              ? "Click to undo remove"
+                              : "Click to remove badge"
+                          }
+                          className={cn(
+                            "flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all cursor-pointer hover:scale-105",
+                            isPendingRevoke && "opacity-50 line-through",
+                          )}
                           style={{
-                            borderColor: `${newBadgeColor}40`,
-                            backgroundColor: `${newBadgeColor}15`,
-                            color: newBadgeColor,
+                            borderColor: `${badge.color}40`,
+                            backgroundColor: `${badge.color}15`,
+                            color: badge.color || undefined,
                           }}
                         >
                           <Tag
                             className="h-3 w-3 shrink-0"
                             aria-hidden="true"
                           />
-                          {newBadgeDisplay || newBadgeName}
-                        </div>
-                      </div>
-                    )}
-                    <div className="flex flex-col gap-2">
-                      <label className="text-xs font-medium">
-                        Badge ID{" "}
-                        <span className="text-muted-foreground">
-                          (internal name)
-                        </span>
-                      </label>
-                      <Input
-                        placeholder="e.g. power_user"
-                        value={newBadgeName}
-                        onChange={(e) =>
-                          setNewBadgeName(
-                            e.target.value.toLowerCase().replace(/\s+/g, "_"),
-                          )
-                        }
-                        className="h-9 border-border/40"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <label className="text-xs font-medium">
-                        Display Name
-                      </label>
-                      <Input
-                        placeholder="e.g. Power User"
-                        value={newBadgeDisplay}
-                        onChange={(e) => setNewBadgeDisplay(e.target.value)}
-                        className="h-9 border-border/40"
-                      />
-                    </div>
-                    {/* Color picker */}
-                    <div className="flex flex-col gap-2">
-                      <label className="text-xs font-medium">Color</label>
-                      <div className="flex flex-wrap gap-2">
-                        {[
-                          { color: "#ef4444", name: "Red" },
-                          { color: "#f97316", name: "Orange" },
-                          { color: "#eab308", name: "Yellow" },
-                          { color: "#22c55e", name: "Green" },
-                          { color: "#10b981", name: "Emerald" },
-                          { color: "#14b8a6", name: "Teal" },
-                          { color: "#06b6d4", name: "Cyan" },
-                          { color: "#3b82f6", name: "Blue" },
-                          { color: "#6366f1", name: "Indigo" },
-                          { color: "#8b5cf6", name: "Violet" },
-                          { color: "#a855f7", name: "Purple" },
-                          { color: "#ec4899", name: "Pink" },
-                          { color: "#f43f5e", name: "Rose" },
-                          { color: "#64748b", name: "Slate" },
-                        ].map((c) => (
-                          <button
-                            key={c.color}
-                            type="button"
-                            onClick={() => setNewBadgeColor(c.color)}
-                            className={cn(
-                              "w-7 h-7 rounded-full transition-all border-2",
-                              newBadgeColor === c.color
-                                ? "border-foreground scale-110 shadow-xs"
-                                : "border-transparent hover:scale-105",
-                            )}
-                            style={{ backgroundColor: c.color }}
-                            title={c.name}
-                            aria-label={`Set badge color to ${c.name}`}
-                          />
-                        ))}
-                      </div>
-                      <div className="flex items-center gap-2 mt-1">
-                        {/* Native color picker: full color spectrum */}
-                        <label
-                          className="relative cursor-pointer"
-                          title="Open color picker"
-                        >
-                          <div
-                            className="w-7 h-7 rounded-full border-2 border-border/50 shrink-0 transition-all hover:scale-110 hover:border-border"
-                            style={{ backgroundColor: newBadgeColor }}
-                            aria-hidden="true"
-                          />
-                          <input
-                            type="color"
-                            value={newBadgeColor}
-                            onChange={(e) => setNewBadgeColor(e.target.value)}
-                            className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-                            aria-label="Open full color picker"
-                          />
-                        </label>
-                        <Input
-                          value={newBadgeColor}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            setNewBadgeColor(v.startsWith("#") ? v : `#${v}`);
-                          }}
-                          placeholder="#6366f1"
-                          className="h-8 text-xs font-mono w-32 border-border/40"
-                          maxLength={7}
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          Click swatch for full picker
-                        </p>
-                      </div>
-                    </div>
+                          {badge.display_name}
+                          {isPendingRevoke && (
+                            <RefreshCw
+                              className="h-3 w-3 ml-0.5"
+                              aria-hidden="true"
+                            />
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
-                  <DialogFooter>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setShowCreateBadge(false);
-                        setNewBadgeName("");
-                        setNewBadgeDisplay("");
-                        setNewBadgeColor("#6366f1");
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      size="sm"
-                      disabled={
-                        !newBadgeName.trim() ||
-                        !newBadgeDisplay.trim() ||
-                        isLoading("create_badge")
-                      }
-                      onClick={async () => {
-                        const result = await onAction(u.id, "create_badge", {
-                          name: newBadgeName.trim(),
-                          displayName: newBadgeDisplay.trim(),
-                          color: newBadgeColor,
-                        });
-                        if (result.ok) {
-                          setShowCreateBadge(false);
-                          setNewBadgeName("");
-                          setNewBadgeDisplay("");
-                          setNewBadgeColor("#6366f1");
-                        }
-                      }}
-                    >
-                      {isLoading("create_badge") && (
-                        <Loader2
-                          className="h-3.5 w-3.5 mr-1.5 animate-spin"
-                          aria-hidden="true"
-                        />
-                      )}
-                      Create &amp; Award
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    No badges awarded yet.
+                  </p>
+                )}
+                {pendingBadgeRevokes.length > 0 && (
+                  <p className="text-[10px] text-destructive">
+                    {pendingBadgeRevokes.length} badge(s) will be removed on
+                    save
+                  </p>
+                )}
 
-              {/* Manage/Delete Badges Modal */}
-              {hasStaffPermission(
-                callerRole,
-                STAFF_PERMISSIONS.DELETE_BADGE,
-              ) && (
+                {/* Action buttons */}
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  {unawardedBadges.length > 0 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs gap-1 bg-transparent flex-1"
+                      onClick={() => setShowBadgePicker(true)}
+                    >
+                      <Award className="h-3.5 w-3.5" aria-hidden="true" /> Award
+                      Badge
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs gap-1 bg-transparent flex-1"
+                    onClick={() => setShowCreateBadge(true)}
+                  >
+                    <Plus className="h-3.5 w-3.5" aria-hidden="true" /> Create
+                    Badge
+                  </Button>
+                  {hasStaffPermission(
+                    callerRole,
+                    STAFF_PERMISSIONS.DELETE_BADGE,
+                  ) &&
+                    allBadges.length > 0 && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs gap-1 bg-transparent text-destructive border-destructive/30 hover:bg-destructive/10 flex-1"
+                        onClick={() => setShowManageBadges(true)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />{" "}
+                        Manage Badges
+                      </Button>
+                    )}
+                </div>
+
+                {/* Award Badge Modal */}
                 <Dialog
-                  open={showManageBadges}
-                  onOpenChange={(open) => {
-                    setShowManageBadges(open);
-                    if (!open) setPendingDeleteBadge(null);
-                  }}
+                  open={showBadgePicker}
+                  onOpenChange={setShowBadgePicker}
                 >
                   <DialogContent className="max-w-md">
                     <DialogHeader>
                       <DialogTitle className="flex items-center gap-2 text-base">
-                        <Trash2
-                          className="h-4 w-4 text-destructive"
+                        <Award
+                          className="h-4 w-4 text-primary"
                           aria-hidden="true"
                         />{" "}
-                        Manage All Badges
+                        Award Badge
                       </DialogTitle>
                     </DialogHeader>
                     <div className="flex flex-col gap-3">
-                      {/* Inline delete confirmation */}
-                      {pendingDeleteBadge ? (
-                        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 flex flex-col gap-3">
-                          <div className="flex items-start gap-3">
-                            <AlertTriangle
-                              className="h-4 w-4 text-destructive shrink-0 mt-0.5"
-                              aria-hidden="true"
-                            />
-                            <div>
-                              <p className="text-sm font-medium text-foreground">
-                                Delete &quot;{pendingDeleteBadge.display_name}
-                                &quot;?
-                              </p>
-                              <p className="text-xs text-muted-foreground mt-1">
-                                This will permanently remove the badge from the
-                                system and revoke it from all users who
-                                currently hold it.
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex gap-2 justify-end">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setPendingDeleteBadge(null)}
-                            >
-                              Cancel
-                            </Button>
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              disabled={isLoading("delete_badge")}
-                              onClick={async () => {
-                                const result = await onAction(
-                                  u.id,
-                                  "delete_badge",
-                                  { badgeId: String(pendingDeleteBadge.id) },
-                                );
-                                if (result.ok) {
-                                  setPendingDeleteBadge(null);
-                                  setShowManageBadges(false);
-                                }
-                              }}
-                            >
-                              {isLoading("delete_badge") ? (
-                                <Loader2
-                                  className="h-3.5 w-3.5 mr-1.5 animate-spin"
+                      <p className="text-xs text-muted-foreground">
+                        Select badges to award. Changes will apply when you
+                        save.
+                      </p>
+                      {unawardedBadges.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {unawardedBadges.map((badge) => {
+                            const isPending = pendingBadgeAwards.includes(
+                              badge.id,
+                            );
+                            return (
+                              <button
+                                key={badge.id}
+                                type="button"
+                                // Staged state was conveyed by ring-2, scale
+                                // and a check icon only, so a screen-reader
+                                // user could not tell which badges were queued
+                                // for the save. aria-pressed makes the toggle
+                                // announce its own state.
+                                aria-pressed={isPending}
+                                aria-label={`${isPending ? "Queued to award" : "Award"} badge ${badge.display_name}`}
+                                onClick={() => {
+                                  if (isPending) {
+                                    setPendingBadgeAwards((p) =>
+                                      p.filter((id) => id !== badge.id),
+                                    );
+                                  } else {
+                                    setPendingBadgeAwards((p) => [
+                                      ...p,
+                                      badge.id,
+                                    ]);
+                                  }
+                                }}
+                                className={cn(
+                                  "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs font-medium transition-all",
+                                  isPending
+                                    ? "ring-2 ring-primary scale-105"
+                                    : "hover:scale-105 hover:opacity-80",
+                                )}
+                                style={{
+                                  borderColor: `${badge.color}40`,
+                                  backgroundColor: `${badge.color}15`,
+                                  color: badge.color || undefined,
+                                }}
+                              >
+                                <Tag
+                                  className="h-3 w-3 shrink-0"
                                   aria-hidden="true"
                                 />
-                              ) : (
-                                <Trash2
-                                  className="h-3.5 w-3.5 mr-1.5"
-                                  aria-hidden="true"
-                                />
-                              )}
-                              Delete Permanently
-                            </Button>
-                          </div>
+                                {badge.display_name}
+                                {isPending && (
+                                  <CheckCircle2
+                                    className="h-3 w-3 ml-0.5"
+                                    aria-hidden="true"
+                                  />
+                                )}
+                              </button>
+                            );
+                          })}
                         </div>
                       ) : (
-                        <>
-                          <p className="text-xs text-muted-foreground">
-                            Click the trash icon to permanently delete a badge
-                            from the system.
-                          </p>
-                          {allBadges.length > 0 ? (
-                            <div className="flex flex-col gap-2 max-h-72 overflow-y-auto">
-                              {allBadges.map((badge) => (
-                                <div
-                                  key={badge.id}
-                                  className="flex items-center justify-between p-2.5 rounded-lg border border-border/40 bg-card/30 hover:bg-muted/40 transition-colors"
-                                >
-                                  <div
-                                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium"
-                                    style={{
-                                      borderColor: `${badge.color}40`,
-                                      backgroundColor: `${badge.color}15`,
-                                      color: badge.color || undefined,
-                                    }}
-                                  >
-                                    <Tag
-                                      className="h-3 w-3 shrink-0"
-                                      aria-hidden="true"
-                                    />
-                                    {badge.display_name}
-                                  </div>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                    onClick={() => setPendingDeleteBadge(badge)}
-                                    title={`Delete "${badge.display_name}" permanently`}
-                                    aria-label={`Delete ${badge.display_name} badge permanently`}
-                                  >
-                                    <Trash2
-                                      className="h-3.5 w-3.5"
-                                      aria-hidden="true"
-                                    />
-                                  </Button>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="text-xs text-muted-foreground text-center py-4">
-                              No badges exist yet.
-                            </p>
-                          )}
-                        </>
+                        <p className="text-xs text-muted-foreground py-4 text-center">
+                          All badges have already been awarded.
+                        </p>
+                      )}
+                      {pendingBadgeAwards.length > 0 && (
+                        <p className="text-[10px] text-primary">
+                          {pendingBadgeAwards.length} badge(s) queued to award
+                          on save
+                        </p>
                       )}
                     </div>
                     <DialogFooter>
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => {
-                          setShowManageBadges(false);
-                          setPendingDeleteBadge(null);
-                        }}
+                        onClick={() => setShowBadgePicker(false)}
                       >
-                        Close
+                        Done
                       </Button>
                     </DialogFooter>
                   </DialogContent>
                 </Dialog>
-              )}
-            </CardContent>
-          </Card>
+
+                {/* Create Badge Modal */}
+                <Dialog
+                  open={showCreateBadge}
+                  onOpenChange={(open) => {
+                    setShowCreateBadge(open);
+                    if (!open) {
+                      setNewBadgeName("");
+                      setNewBadgeDisplay("");
+                      setNewBadgeColor("#6366f1");
+                    }
+                  }}
+                >
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center gap-2 text-base">
+                        <Plus
+                          className="h-4 w-4 text-primary"
+                          aria-hidden="true"
+                        />{" "}
+                        Create New Badge
+                      </DialogTitle>
+                    </DialogHeader>
+                    <div className="flex flex-col gap-4">
+                      {/* Preview */}
+                      {(newBadgeName || newBadgeDisplay) && (
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs text-muted-foreground">
+                            Preview:
+                          </p>
+                          <div
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-medium"
+                            style={{
+                              borderColor: `${newBadgeColor}40`,
+                              backgroundColor: `${newBadgeColor}15`,
+                              color: newBadgeColor,
+                            }}
+                          >
+                            <Tag
+                              className="h-3 w-3 shrink-0"
+                              aria-hidden="true"
+                            />
+                            {newBadgeDisplay || newBadgeName}
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex flex-col gap-2">
+                        <label
+                          htmlFor={badgeIdFieldId}
+                          className="text-xs font-medium"
+                        >
+                          Badge ID{" "}
+                          <span className="text-muted-foreground">
+                            (internal name)
+                          </span>
+                        </label>
+                        <Input
+                          id={badgeIdFieldId}
+                          placeholder="e.g. power_user"
+                          value={newBadgeName}
+                          onChange={(e) =>
+                            setNewBadgeName(
+                              e.target.value.toLowerCase().replace(/\s+/g, "_"),
+                            )
+                          }
+                          className="h-9 border-border/40"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <label
+                          htmlFor={badgeDisplayFieldId}
+                          className="text-xs font-medium"
+                        >
+                          Display Name
+                        </label>
+                        <Input
+                          id={badgeDisplayFieldId}
+                          placeholder="e.g. Power User"
+                          value={newBadgeDisplay}
+                          onChange={(e) => setNewBadgeDisplay(e.target.value)}
+                          className="h-9 border-border/40"
+                        />
+                      </div>
+                      {/* Color picker */}
+                      <div className="flex flex-col gap-2">
+                        <label className="text-xs font-medium">Color</label>
+                        <div className="flex flex-wrap gap-2">
+                          {[
+                            { color: "#ef4444", name: "Red" },
+                            { color: "#f97316", name: "Orange" },
+                            { color: "#eab308", name: "Yellow" },
+                            { color: "#22c55e", name: "Green" },
+                            { color: "#10b981", name: "Emerald" },
+                            { color: "#14b8a6", name: "Teal" },
+                            { color: "#06b6d4", name: "Cyan" },
+                            { color: "#3b82f6", name: "Blue" },
+                            { color: "#6366f1", name: "Indigo" },
+                            { color: "#8b5cf6", name: "Violet" },
+                            { color: "#a855f7", name: "Purple" },
+                            { color: "#ec4899", name: "Pink" },
+                            { color: "#f43f5e", name: "Rose" },
+                            { color: "#64748b", name: "Slate" },
+                          ].map((c) => (
+                            <button
+                              key={c.color}
+                              type="button"
+                              onClick={() => setNewBadgeColor(c.color)}
+                              className={cn(
+                                "w-7 h-7 rounded-full transition-all border-2",
+                                newBadgeColor === c.color
+                                  ? "border-foreground scale-110 shadow-xs"
+                                  : "border-transparent hover:scale-105",
+                              )}
+                              style={{ backgroundColor: c.color }}
+                              title={c.name}
+                              aria-label={`Set badge color to ${c.name}`}
+                            />
+                          ))}
+                        </div>
+                        <div className="flex items-center gap-2 mt-1">
+                          {/* Native color picker: full color spectrum */}
+                          <label
+                            className="relative cursor-pointer"
+                            title="Open color picker"
+                          >
+                            <div
+                              className="w-7 h-7 rounded-full border-2 border-border/50 shrink-0 transition-all hover:scale-110 hover:border-border"
+                              style={{ backgroundColor: newBadgeColor }}
+                              aria-hidden="true"
+                            />
+                            <input
+                              type="color"
+                              value={newBadgeColor}
+                              onChange={(e) => setNewBadgeColor(e.target.value)}
+                              className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                              aria-label="Open full color picker"
+                            />
+                          </label>
+                          <Input
+                            value={newBadgeColor}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setNewBadgeColor(v.startsWith("#") ? v : `#${v}`);
+                            }}
+                            placeholder="#6366f1"
+                            aria-label="Badge colour hex value"
+                            className="h-8 text-xs font-mono w-32 border-border/40"
+                            maxLength={7}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Click swatch for full picker
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setShowCreateBadge(false);
+                          setNewBadgeName("");
+                          setNewBadgeDisplay("");
+                          setNewBadgeColor("#6366f1");
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        disabled={
+                          !newBadgeName.trim() ||
+                          !newBadgeDisplay.trim() ||
+                          isLoading("create_badge")
+                        }
+                        onClick={async () => {
+                          const result = await onAction(u.id, "create_badge", {
+                            name: newBadgeName.trim(),
+                            displayName: newBadgeDisplay.trim(),
+                            color: newBadgeColor,
+                          });
+                          if (result.ok) {
+                            setShowCreateBadge(false);
+                            setNewBadgeName("");
+                            setNewBadgeDisplay("");
+                            setNewBadgeColor("#6366f1");
+                          }
+                        }}
+                      >
+                        {isLoading("create_badge") && (
+                          <Loader2
+                            className="h-3.5 w-3.5 mr-1.5 animate-spin"
+                            aria-hidden="true"
+                          />
+                        )}
+                        Create &amp; Award
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
+                {/* Manage/Delete Badges Modal */}
+                {hasStaffPermission(
+                  callerRole,
+                  STAFF_PERMISSIONS.DELETE_BADGE,
+                ) && (
+                  <Dialog
+                    open={showManageBadges}
+                    onOpenChange={(open) => {
+                      setShowManageBadges(open);
+                      if (!open) setPendingDeleteBadge(null);
+                    }}
+                  >
+                    <DialogContent className="max-w-md">
+                      <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-base">
+                          <Trash2
+                            className="h-4 w-4 text-destructive"
+                            aria-hidden="true"
+                          />{" "}
+                          Manage All Badges
+                        </DialogTitle>
+                      </DialogHeader>
+                      <div className="flex flex-col gap-3">
+                        {/* Inline delete confirmation */}
+                        {pendingDeleteBadge ? (
+                          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 flex flex-col gap-3">
+                            <div className="flex items-start gap-3">
+                              <AlertTriangle
+                                className="h-4 w-4 text-destructive shrink-0 mt-0.5"
+                                aria-hidden="true"
+                              />
+                              <div>
+                                <p className="text-sm font-medium text-foreground">
+                                  Delete &quot;{pendingDeleteBadge.display_name}
+                                  &quot;?
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  This will permanently remove the badge from
+                                  the system and revoke it from all users who
+                                  currently hold it.
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex gap-2 justify-end">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setPendingDeleteBadge(null)}
+                              >
+                                Cancel
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                disabled={isLoading("delete_badge")}
+                                onClick={async () => {
+                                  const result = await onAction(
+                                    u.id,
+                                    "delete_badge",
+                                    { badgeId: String(pendingDeleteBadge.id) },
+                                  );
+                                  if (result.ok) {
+                                    setPendingDeleteBadge(null);
+                                    setShowManageBadges(false);
+                                  }
+                                }}
+                              >
+                                {isLoading("delete_badge") ? (
+                                  <Loader2
+                                    className="h-3.5 w-3.5 mr-1.5 animate-spin"
+                                    aria-hidden="true"
+                                  />
+                                ) : (
+                                  <Trash2
+                                    className="h-3.5 w-3.5 mr-1.5"
+                                    aria-hidden="true"
+                                  />
+                                )}
+                                Delete Permanently
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <p className="text-xs text-muted-foreground">
+                              Click the trash icon to permanently delete a badge
+                              from the system.
+                            </p>
+                            {allBadges.length > 0 ? (
+                              <div className="flex flex-col gap-2 max-h-72 overflow-y-auto">
+                                {allBadges.map((badge) => (
+                                  <div
+                                    key={badge.id}
+                                    className="flex items-center justify-between p-2.5 rounded-lg border border-border/40 bg-card/30 hover:bg-muted/40 transition-colors"
+                                  >
+                                    <div
+                                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium"
+                                      style={{
+                                        borderColor: `${badge.color}40`,
+                                        backgroundColor: `${badge.color}15`,
+                                        color: badge.color || undefined,
+                                      }}
+                                    >
+                                      <Tag
+                                        className="h-3 w-3 shrink-0"
+                                        aria-hidden="true"
+                                      />
+                                      {badge.display_name}
+                                    </div>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                      onClick={() =>
+                                        setPendingDeleteBadge(badge)
+                                      }
+                                      title={`Delete "${badge.display_name}" permanently`}
+                                      aria-label={`Delete ${badge.display_name} badge permanently`}
+                                    >
+                                      <Trash2
+                                        className="h-3.5 w-3.5"
+                                        aria-hidden="true"
+                                      />
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-xs text-muted-foreground text-center py-4">
+                                No badges exist yet.
+                              </p>
+                            )}
+                          </>
+                        )}
+                      </div>
+                      <DialogFooter>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setShowManageBadges(false);
+                            setPendingDeleteBadge(null);
+                          }}
+                        >
+                          Close
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 
@@ -1723,6 +1857,7 @@ export function UserDetailPanel({
             <div className="flex gap-2">
               <Input
                 placeholder="Add a note about this user..."
+                aria-label="New admin note"
                 value={newNote}
                 onChange={(e) => setNewNote(e.target.value)}
                 className="h-9 text-sm flex-1"
@@ -1778,6 +1913,7 @@ export function UserDetailPanel({
                       {editingNote?.id === note.id ? (
                         <div className="flex gap-2 mt-1">
                           <Input
+                            aria-label="Edit note text"
                             value={editingNote.text}
                             onChange={(e) =>
                               setEditingNote({
@@ -1830,8 +1966,12 @@ export function UserDetailPanel({
                         </p>
                       )}
                     </div>
+                    {/* md: prefix on the fade below: touch devices have no
+                        hover, so an unprefixed opacity-0 left these note
+                        actions permanently invisible while still
+                        hit-testable. Below md they are always shown. */}
                     {editingNote?.id !== note.id && (
-                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                      <div className="flex items-center gap-0.5 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity shrink-0">
                         <button
                           onClick={() =>
                             setEditingNote({ id: note.id, text: note.note })
@@ -2101,10 +2241,14 @@ export function UserDetailPanel({
                   </div>
                 </div>
 
-                {/* Account Management */}
+                {/* Account State. Deliberately NOT "Account Management":
+                    that is the name of a different card higher up the page
+                    (id="account-management"), and the jump list at tocItems
+                    offers it as a destination, so two groups with the same
+                    heading sent the reader to the wrong one. */}
                 <div>
                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">
-                    Account Management
+                    Account State
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                     <ActionCard
@@ -2183,8 +2327,14 @@ export function UserDetailPanel({
                       </DialogHeader>
                       <div className="flex flex-col gap-3 py-2">
                         <div className="flex flex-col gap-1.5">
-                          <label className="text-sm font-medium">Title</label>
+                          <label
+                            htmlFor={notifTitleId}
+                            className="text-sm font-medium"
+                          >
+                            Title
+                          </label>
                           <Input
+                            id={notifTitleId}
                             placeholder="e.g. Account Update"
                             value={notifTitle}
                             onChange={(e) => setNotifTitle(e.target.value)}
@@ -2192,8 +2342,14 @@ export function UserDetailPanel({
                           />
                         </div>
                         <div className="flex flex-col gap-1.5">
-                          <label className="text-sm font-medium">Message</label>
+                          <label
+                            htmlFor={notifMessageId}
+                            className="text-sm font-medium"
+                          >
+                            Message
+                          </label>
                           <textarea
+                            id={notifMessageId}
                             placeholder="Message to send to the user..."
                             value={notifMessage}
                             onChange={(e) => setNotifMessage(e.target.value)}
@@ -2501,116 +2657,145 @@ export function UserDetailPanel({
         </Card>
       )}
 
-      {/* Info section - Recent Scans, API Keys, Webhooks, Active Sessions */}
+      {/* Info section - Recent Scans, API Keys, Webhooks, Active Sessions.
+          Three of the four ride on their own grant rather than on VIEW_USERS:
+          scan rows are the target's browsing history, key rows name live
+          credentials, and session rows carry their last-known IPs. The route
+          (app/api/v3/admin/route.ts, section=user-detail) returns an empty
+          array for each one the caller isn't granted, so without these gates
+          a role like billing saw a confident "No API keys" instead of nothing
+          at all. Hide the card, don't render an empty state that reads as a
+          fact about the user. */}
       {!detailLoading && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Recent Scans */}
-          <Card className="border-border/50 bg-card/50">
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-2">
-                <Activity className="h-4 w-4 text-primary" aria-hidden="true" />
-                <p className="text-sm font-medium">Recent Scans</p>
-                <Badge variant="secondary" className="text-[10px] h-5 ml-auto">
-                  {detail.recentScans?.length || 0}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="p-4 pt-0">
-              {detail.recentScans && detail.recentScans.length > 0 ? (
-                <div className="flex flex-col max-h-64 overflow-y-auto">
-                  {detail.recentScans.map((scan) => (
-                    <div
-                      key={scan.id}
-                      className="flex items-center gap-3 py-3 px-2 border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors rounded-md"
-                    >
-                      <Globe
-                        className="h-3.5 w-3.5 text-muted-foreground shrink-0"
-                        aria-hidden="true"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium font-mono truncate">
-                          {scan.url}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground">
-                          {scan.findings_count} findings via {scan.source}
-                        </p>
-                      </div>
-                      <span className="text-[10px] text-muted-foreground shrink-0">
-                        {new Date(scan.scanned_at).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                        })}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-8">
+          {hasStaffPermission(callerRole, STAFF_PERMISSIONS.VIEW_ALL_SCANS) && (
+            <Card className="border-border/50 bg-card/50">
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-2">
                   <Activity
-                    className="h-8 w-8 text-muted-foreground/30 mb-2"
+                    className="h-4 w-4 text-primary"
                     aria-hidden="true"
                   />
-                  <p className="text-xs text-muted-foreground">
-                    No recent scans.
-                  </p>
+                  <p className="text-sm font-medium">Recent Scans</p>
+                  <Badge
+                    variant="secondary"
+                    className="text-[10px] h-5 ml-auto"
+                  >
+                    {detail.recentScans?.length || 0}
+                  </Badge>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* API Keys */}
-          <Card className="border-border/50 bg-card/50">
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-2">
-                <Key className="h-4 w-4 text-primary" aria-hidden="true" />
-                <p className="text-sm font-medium">API Keys</p>
-                <Badge variant="secondary" className="text-[10px] h-5 ml-auto">
-                  {detail.apiKeys?.filter((k) => !k.revoked_at)?.length || 0}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="p-4 pt-0">
-              {detail.apiKeys &&
-              detail.apiKeys.filter((k) => !k.revoked_at).length > 0 ? (
-                <div className="flex flex-col max-h-64 overflow-y-auto">
-                  {detail.apiKeys
-                    .filter((k) => !k.revoked_at)
-                    .map((key) => (
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                {detail.recentScans && detail.recentScans.length > 0 ? (
+                  <div className="flex flex-col max-h-64 overflow-y-auto">
+                    {detail.recentScans.map((scan) => (
                       <div
-                        key={key.id}
+                        key={scan.id}
                         className="flex items-center gap-3 py-3 px-2 border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors rounded-md"
                       >
-                        <Key
+                        <Globe
                           className="h-3.5 w-3.5 text-muted-foreground shrink-0"
                           aria-hidden="true"
                         />
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium">
-                            {key.name || "Unnamed Key"}
+                          <p className="text-xs font-medium font-mono truncate">
+                            {scan.url}
                           </p>
-                          <p className="text-[10px] text-muted-foreground font-mono">
-                            {key.key_prefix}...
+                          <p className="text-[10px] text-muted-foreground">
+                            {scan.findings_count} findings via {scan.source}
                           </p>
                         </div>
                         <span className="text-[10px] text-muted-foreground shrink-0">
-                          {key.last_used_at
-                            ? formatRelativeTime(new Date(key.last_used_at))
-                            : "Never used"}
+                          {new Date(scan.scanned_at).toLocaleDateString(
+                            "en-US",
+                            {
+                              month: "short",
+                              day: "numeric",
+                            },
+                          )}
                         </span>
                       </div>
                     ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-8">
+                    <Activity
+                      className="h-8 w-8 text-muted-foreground/30 mb-2"
+                      aria-hidden="true"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      No recent scans.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* API Keys */}
+          {hasStaffPermission(
+            callerRole,
+            STAFF_PERMISSIONS.VIEW_USER_API_KEYS,
+          ) && (
+            <Card className="border-border/50 bg-card/50">
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-2">
+                  <Key className="h-4 w-4 text-primary" aria-hidden="true" />
+                  <p className="text-sm font-medium">API Keys</p>
+                  <Badge
+                    variant="secondary"
+                    className="text-[10px] h-5 ml-auto"
+                  >
+                    {detail.apiKeys?.filter((k) => !k.revoked_at)?.length || 0}
+                  </Badge>
                 </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-8">
-                  <Key
-                    className="h-8 w-8 text-muted-foreground/30 mb-2"
-                    aria-hidden="true"
-                  />
-                  <p className="text-xs text-muted-foreground">No API keys.</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                {detail.apiKeys &&
+                detail.apiKeys.filter((k) => !k.revoked_at).length > 0 ? (
+                  <div className="flex flex-col max-h-64 overflow-y-auto">
+                    {detail.apiKeys
+                      .filter((k) => !k.revoked_at)
+                      .map((key) => (
+                        <div
+                          key={key.id}
+                          className="flex items-center gap-3 py-3 px-2 border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors rounded-md"
+                        >
+                          <Key
+                            className="h-3.5 w-3.5 text-muted-foreground shrink-0"
+                            aria-hidden="true"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium">
+                              {key.name || "Unnamed Key"}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground font-mono">
+                              {key.key_prefix}...
+                            </p>
+                          </div>
+                          <span className="text-[10px] text-muted-foreground shrink-0">
+                            {key.last_used_at
+                              ? formatRelativeTime(new Date(key.last_used_at))
+                              : "Never used"}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-8">
+                    <Key
+                      className="h-8 w-8 text-muted-foreground/30 mb-2"
+                      aria-hidden="true"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      No API keys.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Webhooks */}
           <Card className="border-border/50 bg-card/50">
@@ -2665,70 +2850,80 @@ export function UserDetailPanel({
           </Card>
 
           {/* Active Sessions */}
-          <Card className="border-border/50 bg-card/50">
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-2">
-                <Globe className="h-4 w-4 text-primary" aria-hidden="true" />
-                <p className="text-sm font-medium">Active Sessions</p>
-                <Badge variant="secondary" className="text-[10px] h-5 ml-auto">
-                  {detail.activeSessions?.length || 0}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="p-4 pt-0">
-              {detail.activeSessions && detail.activeSessions.length > 0 ? (
-                <div className="flex flex-col max-h-64 overflow-y-auto">
-                  {detail.activeSessions.map((session) => (
-                    <div
-                      key={session.id}
-                      className="flex items-center gap-3 py-3 px-2 border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors rounded-md"
-                    >
-                      <Globe
-                        className="h-3.5 w-3.5 text-muted-foreground shrink-0"
-                        aria-hidden="true"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium font-mono">
-                          {session.id.slice(0, 12)}...
-                        </p>
-                        <p className="text-[10px] text-muted-foreground truncate">
-                          <span className="font-mono">
-                            {session.ip_address || "Unknown IP"}
-                          </span>{" "}
-                          &middot;{" "}
-                          {session.user_agent?.slice(0, 40) || "Unknown device"}
-                          ...
-                        </p>
+          {hasStaffPermission(
+            callerRole,
+            STAFF_PERMISSIONS.VIEW_USER_SESSIONS,
+          ) && (
+            <Card className="border-border/50 bg-card/50">
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-2">
+                  <Globe className="h-4 w-4 text-primary" aria-hidden="true" />
+                  <p className="text-sm font-medium">Active Sessions</p>
+                  <Badge
+                    variant="secondary"
+                    className="text-[10px] h-5 ml-auto"
+                  >
+                    {detail.activeSessions?.length || 0}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                {detail.activeSessions && detail.activeSessions.length > 0 ? (
+                  <div className="flex flex-col max-h-64 overflow-y-auto">
+                    {detail.activeSessions.map((session) => (
+                      <div
+                        key={session.id}
+                        className="flex items-center gap-3 py-3 px-2 border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors rounded-md"
+                      >
+                        <Globe
+                          className="h-3.5 w-3.5 text-muted-foreground shrink-0"
+                          aria-hidden="true"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium font-mono">
+                            {session.id.slice(0, 12)}...
+                          </p>
+                          <p className="text-[10px] text-muted-foreground truncate">
+                            <span className="font-mono">
+                              {session.ip_address || "Unknown IP"}
+                            </span>{" "}
+                            &middot;{" "}
+                            {session.user_agent?.slice(0, 40) ||
+                              "Unknown device"}
+                            ...
+                          </p>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground shrink-0">
+                          expires{" "}
+                          {new Date(session.expires_at).toLocaleDateString(
+                            "en-US",
+                            { month: "short", day: "numeric" },
+                          )}
+                        </span>
                       </div>
-                      <span className="text-[10px] text-muted-foreground shrink-0">
-                        expires{" "}
-                        {new Date(session.expires_at).toLocaleDateString(
-                          "en-US",
-                          { month: "short", day: "numeric" },
-                        )}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-8">
-                  <Globe
-                    className="h-8 w-8 text-muted-foreground/30 mb-2"
-                    aria-hidden="true"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    No active sessions.
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-8">
+                    <Globe
+                      className="h-8 w-8 text-muted-foreground/30 mb-2"
+                      aria-hidden="true"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      No active sessions.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 
-      {/* Floating save bar */}
+      {/* Floating save bar. bottom offsets by --vr-cookie-h so the z-60
+          cookie notice does not cover it, same as /profile's save bar. */}
       {hasChanges && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pointer-events-none">
+        <div className="fixed bottom-(--vr-cookie-h,0px) left-0 right-0 z-50 p-4 pointer-events-none transition-[bottom] duration-300">
           <div className="max-w-lg mx-auto pointer-events-auto">
             <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl bg-card/95 border border-border/50 shadow-xl backdrop-blur-xs">
               <div className="flex items-center gap-3">
@@ -2744,7 +2939,7 @@ export function UserDetailPanel({
                     {modalChanges.length !== 1 ? "s" : ""}
                   </p>
                   {hasEmailError && (
-                    <p className="text-[10px] text-destructive">
+                    <p role="alert" className="text-[10px] text-destructive">
                       Email address is required
                     </p>
                   )}
@@ -2911,6 +3106,7 @@ export function UserDetailPanel({
           <AdminMobileTocTrigger
             isOpen={tocOpen}
             onToggle={() => setTocOpen((o) => !o)}
+            raised={hasChanges}
           />
           <AdminMobileToc
             title={u.name || u.email}

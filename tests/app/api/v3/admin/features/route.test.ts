@@ -661,6 +661,129 @@ describe("POST /api/v3/admin/features — broadcast", () => {
     }
   });
 
+  // AUDIT-013 schema-08: delivery used to guard duplicates with a SELECT,
+  // then sendEmail, then INSERT -- with the whole SMTP round trip inside the
+  // window, so a double-clicked send or a resend racing a first send mailed
+  // the same person twice. The claim is now the INSERT itself, made atomic by
+  // the unique index on (message_id, user_id). These two tests are what stops
+  // that regressing.
+  describe("delivery claims recipients before sending", () => {
+    /** Dispatch on SQL text: delivery interleaves several query shapes and
+     *  runs inside a background timer, so a fixed mockResolvedValueOnce
+     *  sequence would pin the test to today's exact call order. */
+    function stubDelivery(opts: { claimed: number[] }) {
+      let pageServed = false;
+      mockQuery.mockImplementation((sql: string) => {
+        if (sql.includes("segment_filter FROM broadcast_messages")) {
+          return Promise.resolve({
+            rows: [
+              {
+                id: 5,
+                title: "Go live",
+                content: "<p>hi</p>",
+                segment_filter: null,
+              },
+            ],
+          });
+        }
+        if (sql.includes("SELECT id FROM broadcast_messages")) {
+          return Promise.resolve({ rows: [{ id: 5 }] });
+        }
+        if (sql.includes("SELECT title FROM broadcast_messages")) {
+          return Promise.resolve({ rows: [{ title: "Go live" }] });
+        }
+        if (sql.includes("FROM users u")) {
+          // One page, then the empty page that ends the keyset walk.
+          if (pageServed) return Promise.resolve({ rows: [] });
+          pageServed = true;
+          return Promise.resolve({
+            rows: [
+              { id: 11, email: "a@example.com" },
+              { id: 12, email: "b@example.com" },
+            ],
+          });
+        }
+        if (sql.includes("INSERT INTO broadcast_recipients")) {
+          return Promise.resolve({
+            rows: opts.claimed.map((user_id) => ({ user_id })),
+          });
+        }
+        return Promise.resolve({ rows: [] });
+      });
+    }
+
+    function sqlCalls(): string[] {
+      return mockQuery.mock.calls.map((c) => String(c[0]));
+    }
+
+    it("only emails the recipients its INSERT actually claimed", async () => {
+      vi.useFakeTimers();
+      try {
+        queueRole("admin");
+        // User 12 is already claimed by a concurrent send, so the ON CONFLICT
+        // returns only user 11.
+        stubDelivery({ claimed: [11] });
+
+        const res = await POST(
+          postRequest({ section: "broadcast", action: "send", id: 5 }),
+        );
+        expect(res.status).toBe(200);
+        await vi.advanceTimersByTimeAsync(200);
+
+        const claim = sqlCalls().find((s) =>
+          s.includes("INSERT INTO broadcast_recipients"),
+        );
+        expect(claim).toContain("ON CONFLICT (message_id, user_id)");
+        expect(claim).toContain("RETURNING user_id");
+
+        expect(mockSendEmail).toHaveBeenCalledTimes(1);
+        expect(mockSendEmail).toHaveBeenCalledWith(
+          expect.objectContaining({ to: "a@example.com" }),
+        );
+
+        // The delivered row is UPDATEd, never INSERTed a second time.
+        const sent = mockQuery.mock.calls.find(
+          (c) =>
+            String(c[0]).includes("UPDATE broadcast_recipients") &&
+            String(c[0]).includes("'sent'"),
+        );
+        expect(sent?.[1]).toEqual([5, 11]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("releases the claim to 'failed' when the send throws, so a resend retries", async () => {
+      vi.useFakeTimers();
+      try {
+        queueRole("admin");
+        stubDelivery({ claimed: [11, 12] });
+        mockSendEmail.mockRejectedValue(new Error("smtp down"));
+        const consoleError = vi
+          .spyOn(console, "error")
+          .mockImplementation(() => {});
+
+        await POST(
+          postRequest({ section: "broadcast", action: "send", id: 5 }),
+        );
+        await vi.advanceTimersByTimeAsync(200);
+
+        const released = mockQuery.mock.calls.filter(
+          (c) =>
+            String(c[0]).includes("UPDATE broadcast_recipients") &&
+            String(c[0]).includes("'failed'"),
+        );
+        expect(released.map((c) => c[1])).toEqual([
+          [5, 11],
+          [5, 12],
+        ]);
+        consoleError.mockRestore();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
   it("rejects resending a broadcast that was never sent", async () => {
     queueRole("admin");
     mockQuery.mockResolvedValueOnce({ rows: [] }); // check: not status='sent'

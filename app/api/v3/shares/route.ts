@@ -12,6 +12,16 @@ export async function GET(_request: NextRequest) {
   // and, if it has an expiry, that expiry hasn't passed -- an expired link
   // is excluded the same way GET /api/v3/shared/[token] excludes it from a
   // viewer's lookup, so this list only ever shows links that still work).
+  // perf: this used to SELECT the whole findings JSONB -- every finding
+  // object with its description, explanation, fixSteps and codeExamples --
+  // for an UNBOUNDED number of the user's shares, purely so the page could
+  // call getSafetyRating() and take an array length. That reads and
+  // detoasts tens of MB for a list of one-line rows. getSafetyRating only
+  // looks at title, severity, aiVerdict and aiConfidence, so project exactly
+  // those four in SQL and leave the rest on disk, the same shape
+  // app/api/v3/public-scans/route.ts already uses. The count comes from the
+  // findings_count column rather than the array length, so it no longer
+  // depends on having loaded the array at all.
   const result = await pool.query(
     `SELECT
        id,
@@ -21,7 +31,13 @@ export async function GET(_request: NextRequest) {
        share_expires_at,
        share_publicly_listed,
        summary,
-       findings
+       findings_count,
+       (SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                 'title', e->>'title',
+                 'severity', e->>'severity',
+                 'aiVerdict', e->'aiVerdict',
+                 'aiConfidence', e->'aiConfidence')), '[]'::jsonb)
+          FROM jsonb_array_elements(COALESCE(findings, '[]'::jsonb)) e) AS findings
      FROM scan_history
      WHERE user_id = $1 AND share_token IS NOT NULL
        AND (share_expires_at IS NULL OR share_expires_at > NOW())
@@ -47,7 +63,7 @@ export async function GET(_request: NextRequest) {
       publiclyListed: row.share_publicly_listed !== false,
       summary,
       findings,
-      findingsCount: findings.length,
+      findingsCount: Number(row.findings_count) || findings.length,
     };
   });
 

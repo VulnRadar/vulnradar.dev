@@ -170,11 +170,16 @@ describe("DELETE /api/v3/auth/sessions/[id]", () => {
   });
 
   it("rejects revoking the CURRENT session through this endpoint", async () => {
-    cookieState.set(AUTH_SESSION_COOKIE_NAME, "raw-session-current");
+    // The cookie holds the bearer token and sessions.id holds its digest
+    // (AUDIT-012#auth-07), so "is this my current session" is a comparison
+    // between the stored id and hashSessionId(cookie), and the public id the
+    // client sends back is one hash further out again.
+    cookieState.set(AUTH_SESSION_COOKIE_NAME, "raw-token-current");
+    const storedCurrentId = hashSessionId("raw-token-current");
     sessionRow = defaultSessionRow({ user_id: 33 });
     userSessionsRows = [
       {
-        id: "raw-session-current",
+        id: storedCurrentId,
         ip_address: null,
         user_agent: null,
         created_at: "2026-01-01T00:00:00.000Z",
@@ -184,7 +189,7 @@ describe("DELETE /api/v3/auth/sessions/[id]", () => {
 
     const res = await DELETE(
       deleteRequest(),
-      params(hashSessionId("raw-session-current")),
+      params(hashSessionId(storedCurrentId)),
     );
     const json = await res.json();
 

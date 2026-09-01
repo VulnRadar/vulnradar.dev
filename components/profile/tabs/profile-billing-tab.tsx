@@ -26,7 +26,12 @@ import {
 } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
 import { cn } from "@/lib/ui/utils";
-import { API, ROUTES, BILLING_ENABLED, APP_NAME } from "@/lib/config/constants";
+import {
+  API,
+  ROUTES,
+  BILLING_ENABLED,
+  APP_NAME,
+} from "@/lib/config/client-constants";
 import { refreshAuthCache } from "@/components/providers/auth-provider";
 import { getPaidPlans } from "@/lib/billing/plans";
 import { getPlanById } from "@/lib/billing/catalog";
@@ -120,7 +125,8 @@ export function ProfileBillingTab({
         // plan and subscriptionStatus are both part of MeResponse -- the
         // app-wide useAuth() cache needs telling too, not just this tab's
         // own billingInfo state, or a just-canceled plan stays visible
-        // elsewhere (paywalls, nav, dashboard) for up to 5 minutes.
+        // elsewhere (paywalls, nav, dashboard) for a whole
+        // AUTH_CACHE_DEDUPE_MS window (auth-provider.tsx).
         refreshAuthCache();
         setShowCancelDialog(false);
       } else {
@@ -138,9 +144,16 @@ export function ProfileBillingTab({
     try {
       const { url } = await createBillingPortalSession();
       window.location.href = url;
-    } catch (err) {
+    } catch {
+      // Deliberately does NOT render err.message. createBillingPortalSession
+      // is a "use server" action, and Next redacts a thrown server-action
+      // error in a production build, so err.message on the client is the
+      // framework's own paragraph about the message being omitted and a
+      // digest being included. Showing that to someone whose billing action
+      // just failed reads as the product being broken with their money in
+      // it. The real message is in the server logs under that digest.
       setError(
-        err instanceof Error ? err.message : "Failed to open billing portal.",
+        "Couldn't open the billing portal. Try again in a moment, or contact support if it keeps failing.",
       );
       setOpeningPortal(false);
     }
@@ -214,7 +227,7 @@ export function ProfileBillingTab({
             {billingInfo ? (
               <>
                 {billingInfo.usage.unlimited ? (
-                  <div className="flex items-center gap-3 p-4 rounded-lg bg-[hsl(var(--success)/0.1)] border border-[hsl(var(--success)/0.25)]">
+                  <div className="flex items-center gap-3 p-4 rounded-lg bg-[hsl(var(--success))]/10 border border-[hsl(var(--success))]/25">
                     <Zap
                       className="h-5 w-5 text-[hsl(var(--success))]"
                       aria-hidden="true"
@@ -271,7 +284,7 @@ export function ProfileBillingTab({
                     )}
                     {billingInfo.usage.remaining > 0 &&
                       billingInfo.usage.remaining <= 10 && (
-                        <div className="flex items-center gap-2 p-3 rounded-lg bg-[hsl(var(--warning)/0.1)] border border-[hsl(var(--warning)/0.25)]">
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-[hsl(var(--warning))]/10 border border-[hsl(var(--warning))]/25">
                           <AlertTriangle
                             className="h-4 w-4 text-[hsl(var(--warning))]"
                             aria-hidden="true"
@@ -338,7 +351,7 @@ export function ProfileBillingTab({
             {billingInfo ? (
               <>
                 {billingInfo.aiUsage.unlimited ? (
-                  <div className="flex items-center gap-3 p-4 rounded-lg bg-[hsl(var(--success)/0.1)] border border-[hsl(var(--success)/0.25)]">
+                  <div className="flex items-center gap-3 p-4 rounded-lg bg-[hsl(var(--success))]/10 border border-[hsl(var(--success))]/25">
                     <Sparkles
                       className="h-5 w-5 text-[hsl(var(--success))]"
                       aria-hidden="true"
@@ -507,7 +520,7 @@ export function ProfileBillingTab({
             {billingInfo ? (
               <>
                 {billingInfo.githubReviewUsage.unlimited ? (
-                  <div className="flex items-center gap-3 p-4 rounded-lg bg-[hsl(var(--success)/0.1)] border border-[hsl(var(--success)/0.25)]">
+                  <div className="flex items-center gap-3 p-4 rounded-lg bg-[hsl(var(--success))]/10 border border-[hsl(var(--success))]/25">
                     <FaGithub
                       className="h-5 w-5 text-[hsl(var(--success))]"
                       aria-hidden="true"
@@ -697,7 +710,7 @@ export function ProfileBillingTab({
             {billingInfo ? (
               <>
                 {billingInfo.browserbaseUsage.unlimited ? (
-                  <div className="flex items-center gap-3 p-4 rounded-lg bg-[hsl(var(--success)/0.1)] border border-[hsl(var(--success)/0.25)]">
+                  <div className="flex items-center gap-3 p-4 rounded-lg bg-[hsl(var(--success))]/10 border border-[hsl(var(--success))]/25">
                     <Monitor
                       className="h-5 w-5 text-[hsl(var(--success))]"
                       aria-hidden="true"
@@ -920,9 +933,9 @@ export function ProfileBillingTab({
                       className={cn(
                         "shrink-0",
                         billingInfo.subscription.cancelAtPeriodEnd
-                          ? "bg-[hsl(var(--warning)/0.1)] text-[hsl(var(--warning))] border-[hsl(var(--warning)/0.25)]"
+                          ? "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/25"
                           : billingInfo.subscription.status === "active"
-                            ? "bg-[hsl(var(--success)/0.1)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.25)]"
+                            ? "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/25"
                             : "bg-muted text-muted-foreground",
                       )}
                     >
@@ -1002,7 +1015,7 @@ export function ProfileBillingTab({
                             ).toLocaleDateString()}
                             {billingInfo.subscription.lastPaymentStatus ===
                               "paid" && (
-                              <Badge className="ml-2 bg-[hsl(var(--success)/0.1)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.25)] text-xs">
+                              <Badge className="ml-2 bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/25 text-xs">
                                 Paid
                               </Badge>
                             )}
@@ -1011,7 +1024,7 @@ export function ProfileBillingTab({
                       )}
 
                       {billingInfo.subscription.cancelAtPeriodEnd && (
-                        <div className="flex items-center gap-2 p-3 rounded-lg bg-[hsl(var(--warning)/0.1)] border border-[hsl(var(--warning)/0.25)] mt-2">
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-[hsl(var(--warning))]/10 border border-[hsl(var(--warning))]/25 mt-2">
                           <Calendar
                             className="h-4 w-4 text-[hsl(var(--warning))] shrink-0"
                             aria-hidden="true"
@@ -1073,9 +1086,9 @@ export function ProfileBillingTab({
                           {/* Payment Method Section */}
                           {sensitiveData.paymentMethod && (
                             <div className="space-y-2">
-                              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                                 Payment Method
-                              </h4>
+                              </h3>
                               <div className="bg-muted/30 rounded-lg p-3 space-y-2">
                                 <div className="flex items-center justify-between text-sm">
                                   <span className="text-muted-foreground">
@@ -1133,9 +1146,9 @@ export function ProfileBillingTab({
 
                           {/* Subscription Details Section */}
                           <div className="space-y-2">
-                            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                               Subscription Info
-                            </h4>
+                            </h3>
                             <div className="bg-muted/30 rounded-lg p-3 space-y-2">
                               {sensitiveData.created && (
                                 <div className="flex items-center justify-between text-sm">
@@ -1192,9 +1205,9 @@ export function ProfileBillingTab({
                           {/* Latest Invoice Section */}
                           {sensitiveData.invoice && (
                             <div className="space-y-2">
-                              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                                 Latest Invoice
-                              </h4>
+                              </h3>
                               <div className="bg-muted/30 rounded-lg p-3 space-y-2">
                                 {sensitiveData.invoice.number && (
                                   <div className="flex items-center justify-between gap-2 text-sm">
@@ -1236,7 +1249,7 @@ export function ProfileBillingTab({
                                     <Badge
                                       className={cn(
                                         sensitiveData.invoice.status === "paid"
-                                          ? "bg-[hsl(var(--success)/0.1)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.25)]"
+                                          ? "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/25"
                                           : "bg-muted text-muted-foreground",
                                       )}
                                     >
@@ -1275,9 +1288,9 @@ export function ProfileBillingTab({
 
                           {/* Subscription IDs Section */}
                           <div className="space-y-2">
-                            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                               Reference IDs & Metadata
-                            </h4>
+                            </h3>
                             <div className="bg-muted/30 rounded-lg p-3 space-y-2">
                               <div className="flex items-center justify-between gap-2 text-sm">
                                 <span className="text-muted-foreground shrink-0">
@@ -1324,7 +1337,7 @@ export function ProfileBillingTab({
                                     className={
                                       sensitiveData.liveMode
                                         ? "bg-destructive/10 text-destructive border-destructive/20"
-                                        : "bg-[hsl(var(--warning)/0.1)] text-[hsl(var(--warning))] border-[hsl(var(--warning)/0.25)]"
+                                        : "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/25"
                                     }
                                   >
                                     {sensitiveData.liveMode ? "Live" : "Test"}
@@ -1535,7 +1548,10 @@ export function ProfileBillingTab({
           onClick={() => setShowCancelDialog(false)}
         >
           <div
-            className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md p-6 mx-4"
+            // max-h + a y scroll: two option cards plus a two-button footer
+            // in an unclamped box, inside a centring flex container that does
+            // not scroll, put Keep/Cancel out of reach on a short viewport.
+            className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain p-6 mx-4"
             onClick={(e) => e.stopPropagation()}
             {...cancelDialogProps}
           >

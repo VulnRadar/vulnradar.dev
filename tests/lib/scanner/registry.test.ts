@@ -20,6 +20,7 @@ import {
   allChecks,
   getChecksByCategory,
   getCategoryCounts,
+  detectorHomes,
 } from "@/lib/scanner/registry";
 import { ALL_CATEGORIES } from "@/lib/scanner/types";
 import type { Category } from "@/lib/scanner/types";
@@ -122,7 +123,13 @@ describe("detection registry", () => {
     const fired = checks
       .map((fn) => fn("https://example.com/", headers, ""))
       .find((r) => r?.id.startsWith("etag-inode--"));
+    // toBeDefined() alone said only "something fired", which is exactly what
+    // configuration.ts's disabled stub would also produce if it ever started
+    // returning a finding. Assert the finding's identity, the way the two
+    // sibling collision tests either side of this one do.
     expect(fired).toBeDefined();
+    expect(fired?.id.split("--")[0]).toBe("etag-inode");
+    expect(fired?.category).toBe("headers");
   });
 
   it("server-timing-exposure (owned by headers.json) only fires on sensitive metric names, not any dur= value", () => {
@@ -326,5 +333,104 @@ describe("detection coverage (no silent no-ops)", () => {
     }
     // Reference PLACEHOLDER_RETURN_NULL to avoid the linter complaining.
     void PLACEHOLDER_RETURN_NULL;
+  });
+});
+
+/**
+ * Eleven secret/PII checks are defined in checks-data/content.json but
+ * implemented in checks/secrets-extended.ts. Before registry.ts's explicit
+ * DETECTOR_HOME map they resolved through a declaration-order fallback, which
+ * would have silently switched implementation the moment any earlier-declared
+ * bundle gained a same-named detector. These guard against the map going
+ * stale in the other direction: a renamed or deleted detector would make the
+ * entry a no-op and quietly put the fallback back in charge.
+ * ref: AUDIT-009#dup-11
+ */
+describe("explicit detector homes", () => {
+  const DETECTORS_BY_CATEGORY: Record<
+    string,
+    Record<
+      string,
+      (url: string, headers: Headers, body: string) => string | null
+    >
+  > = {
+    headers: headerDetectors,
+    ssl: sslDetectors,
+    content: contentDetectors,
+    cookies: cookiesDetectors,
+    configuration: configurationDetectors,
+    "information-disclosure": informationDisclosureDetectors,
+    api: apiDetectors,
+    code: codeDetectors,
+    "secrets-extended": secretsExtendedDetectors,
+    "vibe-code": vibeCodeDetectors,
+    "client-side": clientSideDetectors,
+    "supply-chain": supplyChainDetectors,
+    "host-validation": hostValidationDetectors,
+  };
+
+  it("names a bundle that really implements each id", () => {
+    for (const [id, category] of Object.entries(detectorHomes)) {
+      const bundle = DETECTORS_BY_CATEGORY[category];
+      expect(
+        bundle,
+        `unknown home category "${category}" for ${id}`,
+      ).toBeDefined();
+      expect(typeof bundle[id], `${id} is not implemented in ${category}`).toBe(
+        "function",
+      );
+    }
+  });
+
+  it("only lists ids that a JSON definition actually declares", () => {
+    const definedIds = new Set(allCheckDefs.map((d) => d.id));
+    for (const id of Object.keys(detectorHomes)) {
+      expect(definedIds.has(id), `${id} has no JSON definition`).toBe(true);
+    }
+  });
+
+  it("only lists ids whose definition sits in a different category", () => {
+    // An entry whose home equals its own category is redundant: the normal
+    // owner lookup already handles it, and keeping it here hides that.
+    for (const def of allCheckDefs) {
+      const home = detectorHomes[def.id];
+      if (home) expect(home).not.toBe(def.category);
+    }
+  });
+
+  // The invariant that makes the remaining duplication safe. About 75 check
+  // ids are still implemented in two or three category files at once (copy-
+  // pasted years ago, then one copy tightened). That is tolerable ONLY while
+  // every one of them is also implemented in the file its definition's
+  // category names, because resolveDetector prefers that bundle: the extra
+  // copies are provably unreachable rather than "unreachable today". The
+  // moment an id resolves through the declaration-order fallback instead,
+  // which implementation runs depends on the order of the BUNDLES array, and
+  // adding an unrelated copy-pasted detector to an earlier bundle silently
+  // changes detection behaviour. Anything that genuinely lives outside its
+  // category belongs in DETECTOR_HOME, not in the fallback.
+  // ref: AUDIT-009#misc-01
+  it("no check resolves through the declaration-order fallback", () => {
+    const stragglers: string[] = [];
+    for (const def of allCheckDefs) {
+      if (detectorHomes[def.id]) continue;
+      const own = DETECTORS_BY_CATEGORY[def.category];
+      // Categories with no inline detectors at all (tls/dns/email/reputation/
+      // active-probes) and PageCheck-based ids are covered by the async
+      // dispatch test above, not here.
+      if (!own) continue;
+      const implementedElsewhere = Object.entries(DETECTORS_BY_CATEGORY).some(
+        ([cat, map]) =>
+          cat !== def.category && typeof map[def.id] === "function",
+      );
+      if (typeof own[def.id] !== "function" && implementedElsewhere) {
+        stragglers.push(def.id);
+      }
+    }
+    expect(
+      stragglers,
+      `these ids resolve by BUNDLES order, not by ownership: ${stragglers.join(", ")}. ` +
+        "Either implement them in their own category file or add an explicit DETECTOR_HOME entry.",
+    ).toEqual([]);
   });
 });

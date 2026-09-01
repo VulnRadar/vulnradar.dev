@@ -1,4 +1,10 @@
-import { SEVERITY_LEVELS } from "@/lib/config/constants";
+import {
+  CONFIG_SAFETY_UNSAFE_CRITICAL_EXPLOIT_WEIGHT,
+  CONFIG_SAFETY_UNSAFE_HIGH_EXPLOIT_WEIGHT,
+  CONFIG_SAFETY_CAUTION_MEDIUM_EXPLOIT_WEIGHT,
+  CONFIG_SAFETY_CAUTION_HIGH_HARDENING_WEIGHT,
+} from "@/lib/config/config-values";
+import { SEVERITY_LEVELS } from "@/lib/config/client-constants";
 import type { Vulnerability } from "@/lib/scanner/types";
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -253,15 +259,24 @@ export function getSafetyRating(findings: Finding[]): SafetyRating {
   // verdict at real confidence) can no longer alone dictate the scan's
   // headline verdict -- while several AI-discounted criticals can still add
   // up to the same signal as one full-weight one.
+  //
+  // The four comparison thresholds below are the operator-facing bar of the
+  // whole engine and used to be bare literals here (AUDIT-014#magic-07). They
+  // now live in lib/config/config-values.ts, which is the documented
+  // self-hoster edit point; see the NEVER_CONFIGURABLE entries in
+  // lib/config/registry.ts for why they are build-tier rather than
+  // admin-editable. Values are unchanged.
   const criticalExploitWeight = weightedSum(
     exploitable,
     SEVERITY_LEVELS.CRITICAL,
   );
-  if (criticalExploitWeight >= 1) return "unsafe";
+  if (criticalExploitWeight >= CONFIG_SAFETY_UNSAFE_CRITICAL_EXPLOIT_WEIGHT)
+    return "unsafe";
 
   // Multiple HIGH exploitable (2+, weighted) = UNSAFE
   const highExploitWeight = weightedSum(exploitable, SEVERITY_LEVELS.HIGH);
-  if (highExploitWeight >= 2) return "unsafe";
+  if (highExploitWeight >= CONFIG_SAFETY_UNSAFE_HIGH_EXPLOIT_WEIGHT)
+    return "unsafe";
 
   // A critical exploitable finding exists but AI verification discounted it
   // below the "unsafe on its own" bar. Don't let it disappear entirely --
@@ -273,13 +288,16 @@ export function getSafetyRating(findings: Finding[]): SafetyRating {
 
   // Medium exploitable (3+, weighted) = CAUTION
   const mediumExploitWeight = weightedSum(exploitable, SEVERITY_LEVELS.MEDIUM);
-  if (mediumExploitWeight >= 3) return "caution";
+  if (mediumExploitWeight >= CONFIG_SAFETY_CAUTION_MEDIUM_EXPLOIT_WEIGHT)
+    return "caution";
 
-  // Many high hardening issues (weighted) = CAUTION at most
+  // Many high hardening issues (weighted) = CAUTION at most. This is the
+  // threshold to raise on a fleet where a few missing headers are normal.
   const highHardeningWeight =
     weightedSum(hardening, SEVERITY_LEVELS.HIGH) +
     weightedSum(hardening, SEVERITY_LEVELS.CRITICAL);
-  if (highHardeningWeight >= 5) return "caution";
+  if (highHardeningWeight >= CONFIG_SAFETY_CAUTION_HIGH_HARDENING_WEIGHT)
+    return "caution";
 
   return "safe";
 }

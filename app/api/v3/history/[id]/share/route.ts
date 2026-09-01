@@ -5,7 +5,7 @@ import crypto from "crypto";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { resolveSharePubliclyListed } from "@/lib/scanner/share-privacy";
 import { resolveScanRow } from "@/lib/history/resolve-scan";
-import { getTeamResourceAccess } from "@/lib/auth/team-resource-access";
+import { getScanResourceAccess } from "@/lib/teams/scan-teams";
 
 /** Share links may expire in 7, 30, or 90 days, or never (the default,
  *  unchanged from before this field existed). */
@@ -83,17 +83,14 @@ export async function POST(
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }
 
-  // Publishing a share link is a write/management action, scoped to the scan's
-  // OWN team_id. For a private personal scan (team_id null) only the owner may
-  // share it -- getTeamResourceAccess returns canWrite:false for a non-owner.
-  // The prior "any shared team where caller is owner/admin" check let a team
-  // admin publish a teammate's private personal scan to the internet.
+  // Publishing a share link is a write/management action, scoped to the teams
+  // the scan is actually shared with. For a private personal scan (no teams)
+  // only the owner may share it -- getScanResourceAccess returns
+  // canWrite:false for a non-owner. The prior "any shared team where caller is
+  // owner/admin" check let a team admin publish a teammate's private personal
+  // scan to the internet.
   if (scan.user_id !== session.userId) {
-    const access = await getTeamResourceAccess(
-      session.userId,
-      scan.user_id,
-      scan.team_id,
-    );
+    const access = await getScanResourceAccess(session.userId, scan);
     if (!access.canWrite) {
       return NextResponse.json({ error: "Scan not found" }, { status: 404 });
     }
@@ -107,17 +104,39 @@ export async function POST(
   // expiry may need updating, and only when the caller actually asked to
   // change it.
   if (scan.share_token && !isExpired) {
+    // publiclyListed used to be validated at the top of this handler and then
+    // silently dropped here, applied only when creating a genuinely new share.
+    // Apply it, so a caller that sends it on an existing live share gets what
+    // it asked for instead of a success response reporting the old value.
+    //
+    // Only an explicit boolean counts. An omitted field must NOT be re-resolved
+    // through the account default the way a brand-new share is below: that
+    // would clobber a per-share choice the owner made through
+    // PUT .../share/publicly-listed just by pressing Share again.
+    const nextPubliclyListed =
+      typeof requestedPubliclyListed === "boolean"
+        ? requestedPubliclyListed
+        : scan.share_publicly_listed;
+    // expiresAt: undefined means "not sent, leave it alone"; null means
+    // "explicitly never expires" and must actually be written. Two statements
+    // rather than one COALESCE, which would swallow the explicit null.
     if (expiresAt !== undefined) {
       await pool.query(
         "UPDATE scan_history SET share_expires_at = $1 WHERE id = $2",
         [expiresAt, scan.id],
       );
     }
+    if (nextPubliclyListed !== scan.share_publicly_listed) {
+      await pool.query(
+        "UPDATE scan_history SET share_publicly_listed = $1 WHERE id = $2",
+        [nextPubliclyListed, scan.id],
+      );
+    }
     return NextResponse.json({
       token: scan.share_token,
       expiresAt:
         expiresAt !== undefined ? expiresAt : (scan.share_expires_at ?? null),
-      publiclyListed: scan.share_publicly_listed,
+      publiclyListed: nextPubliclyListed,
     });
   }
 
@@ -172,14 +191,10 @@ export async function DELETE(
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }
 
-  // Revoking a share link is a write action, scoped to the scan's own team_id
-  // (owner-only for a personal scan). See the POST handler above.
+  // Revoking a share link is a write action, scoped to the teams the scan is
+  // shared with (owner-only for a personal scan). See the POST handler above.
   if (scan.user_id !== session.userId) {
-    const access = await getTeamResourceAccess(
-      session.userId,
-      scan.user_id,
-      scan.team_id,
-    );
+    const access = await getScanResourceAccess(session.userId, scan);
     if (!access.canWrite) {
       return NextResponse.json({ error: "Scan not found" }, { status: 404 });
     }

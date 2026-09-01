@@ -13,8 +13,11 @@ vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
 }));
 
-const { normalizeHostForReputation, upsertHostReputation } =
-  await import("@/lib/scanner/host-reputation");
+const {
+  normalizeHostForReputation,
+  upsertHostReputation,
+  getExactUrlReputation,
+} = await import("@/lib/scanner/host-reputation");
 
 beforeEach(() => {
   mockQuery.mockReset();
@@ -196,5 +199,140 @@ describe("upsertHostReputation", () => {
 
     const [, params] = mockQuery.mock.calls[0];
     expect(JSON.parse(params[params.length - 1])).toEqual(["Clean"]);
+  });
+});
+
+// AUDIT-013#cov-18: getExactUrlReputation was the whole uncovered half of this
+// module. It is the first thing GET /api/v3/scan/reputation tries, and it is
+// the path that decides whether a private scan can leak through a public
+// lookup, so "no test would fail" was not an acceptable state for it.
+describe("getExactUrlReputation", () => {
+  const scannedAt = new Date("2026-01-01T00:00:00.000Z");
+
+  function rowFor(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 42,
+      url: "https://example.com/",
+      findings: [],
+      summary: { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
+      scanned_at: scannedAt,
+      ...overrides,
+    };
+  }
+
+  it("only ever reads public, completed scans", async () => {
+    mockQuery.mockResolvedValue({ rows: [rowFor()], rowCount: 1 });
+
+    await getExactUrlReputation("https://example.com/");
+
+    const [sql] = mockQuery.mock.calls[0];
+    expect(sql).toContain("is_public = true");
+    expect(sql).toContain("status = 'completed'");
+  });
+
+  it("returns the most recent matching scan as a reputation result", async () => {
+    mockQuery.mockResolvedValue({
+      rows: [
+        rowFor({
+          summary: { critical: 1, high: 2, medium: 0, low: 3, info: 0 },
+        }),
+      ],
+      rowCount: 1,
+    });
+
+    const result = await getExactUrlReputation("https://example.com/");
+
+    expect(result).toMatchObject({
+      url: "https://example.com/",
+      scanId: 42,
+      lastScannedAt: "2026-01-01T00:00:00.000Z",
+      severityCounts: { critical: 1, high: 2, medium: 0, low: 3, info: 0 },
+    });
+    const [sql] = mockQuery.mock.calls[0];
+    expect(sql).toContain("ORDER BY scanned_at DESC");
+  });
+
+  it("normalizes the lookup URL the same way a stored scan URL was normalized", async () => {
+    mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+
+    // No scheme: prepended. Fragment: dropped, since it never reaches the
+    // server and so never reaches scan_history.url either.
+    await getExactUrlReputation("  example.com/page#section  ");
+
+    const [, params] = mockQuery.mock.calls[0];
+    expect(params[0]).toBe("https://example.com/page");
+  });
+
+  it("returns null without querying for an unusable URL", async () => {
+    expect(await getExactUrlReputation("   ")).toBeNull();
+    expect(await getExactUrlReputation("http://")).toBeNull();
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("returns null when no public scan of that exact URL exists", async () => {
+    mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+    expect(await getExactUrlReputation("https://example.com/")).toBeNull();
+  });
+
+  it("parses findings stored as a JSON string, not just as an array", async () => {
+    // The column is jsonb, but a driver/serialization path can hand this back
+    // as a string; a silently-empty findings array would produce a "safe"
+    // verdict for a host with a critical finding.
+    mockQuery.mockResolvedValue({
+      rows: [
+        rowFor({
+          findings: JSON.stringify([
+            {
+              severity: "critical",
+              title: "SQL Injection",
+              cwe: "CWE-89",
+            } as Vulnerability,
+          ]),
+          summary: { critical: 1, high: 0, medium: 0, low: 0, info: 0 },
+        }),
+      ],
+      rowCount: 1,
+    });
+
+    const result = await getExactUrlReputation("https://example.com/");
+    expect(result?.dangerScore).toBeGreaterThan(0);
+    expect(result?.verdict).toBeDefined();
+  });
+
+  it("treats a non-array findings value as no findings rather than throwing", async () => {
+    mockQuery.mockResolvedValue({
+      rows: [rowFor({ findings: null, summary: null })],
+      rowCount: 1,
+    });
+
+    const result = await getExactUrlReputation("https://example.com/");
+    expect(result?.severityCounts).toEqual({
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      info: 0,
+    });
+  });
+
+  it("accepts scanned_at as a string as well as a Date", async () => {
+    mockQuery.mockResolvedValue({
+      rows: [rowFor({ scanned_at: "2026-01-01T00:00:00.000Z" })],
+      rowCount: 1,
+    });
+
+    const result = await getExactUrlReputation("https://example.com/");
+    expect(result?.lastScannedAt).toBe("2026-01-01T00:00:00.000Z");
+  });
+
+  it("returns null instead of throwing when the query fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      mockQuery.mockRejectedValue(new Error("db down"));
+      expect(await getExactUrlReputation("https://example.com/")).toBeNull();
+      expect(errorSpy).toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 });

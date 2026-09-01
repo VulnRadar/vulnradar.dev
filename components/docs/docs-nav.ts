@@ -1,3 +1,5 @@
+import { APP_NAME } from "@/lib/config/client-constants";
+
 import type { NavItem, NavSection } from "./docs-types";
 
 /**
@@ -33,7 +35,7 @@ export const DOCS_NAV: NavSection[] = [
     ],
   },
   {
-    title: "Using VulnRadar",
+    title: `Using ${APP_NAME}`,
     items: [
       {
         href: "/docs/scheduled-scans",
@@ -59,6 +61,16 @@ export const DOCS_NAV: NavSection[] = [
         href: "/docs/account-security",
         label: "Account Security",
         summary: "2FA, sessions, social logins, and your data",
+      },
+      {
+        href: "/docs/billing",
+        label: "Plans and Billing",
+        summary: "Plan limits, credits, upgrading, and cancelling",
+      },
+      {
+        href: "/docs/troubleshooting",
+        label: "Troubleshooting Scans",
+        summary: "Failures, timeouts, blocked targets, and empty results",
       },
     ],
   },
@@ -86,9 +98,18 @@ export const DOCS_NAV: NavSection[] = [
         summary: "docker-compose, TLS, backups, upgrades",
       },
       {
+        href: "/docs/administration",
+        label: "Administration",
+        summary: "The admin panel, staff roles, backups, and retention",
+      },
+      {
         href: "/docs/config",
         label: "Configuration",
-        summary: "Every CONFIG_* value and every environment variable",
+        // Was "Every CONFIG_* value and every environment variable", which the
+        // page does not deliver: it names 76 of the 308 CONFIG_* constants and
+        // 61 of the 267 runtime settings keys. Promising completeness makes a
+        // reader stop looking after not finding their value.
+        summary: "How configuration resolves, and the values you will change",
       },
     ],
   },
@@ -150,7 +171,14 @@ export const DOCS_PAGES: NavItem[] = DOCS_NAV.flatMap(
 );
 
 export function isNavItemActive(item: NavItem, pathname: string) {
-  return item.exact ? pathname === item.href : pathname === item.href;
+  // Both branches of this ternary used to be `pathname === item.href`, so
+  // `exact` did nothing and a sub-page lit no nav entry at all: on
+  // /docs/api/playground the sidebar highlighted nothing, which reads as
+  // having navigated out of the docs. `exact` exists for /docs itself, which
+  // is a prefix of every other docs URL and would otherwise stay lit
+  // everywhere; everything else matches its own path or anything under it.
+  if (item.exact) return pathname === item.href;
+  return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
 /** The entry for the current path, plus what sits either side of it. */

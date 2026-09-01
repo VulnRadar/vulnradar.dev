@@ -25,6 +25,7 @@ import {
 } from "./verify-findings";
 import { recordGithubReviewTokens } from "@/lib/billing/github-review-usage";
 import { getSettings } from "@/lib/config/runtime-config";
+import { APP_NAME, APP_URL } from "@/lib/config/constants";
 
 const REVIEW_SYSTEM_PROMPT_BASE = `You are a security code reviewer for VulnRadar, a vulnerability scanner. You are given source files from a user's GitHub repository. This repository can be ANY kind of software project: a web app, a CLI tool, a Discord/Slack bot, a game, a library, a build/infra script, anything. Do not assume it's a website. Do not report missing HTTP security headers, cookie flags, or other issues that only make sense for a live web server's response. Review the code itself.
 
@@ -200,9 +201,11 @@ async function callReviewModel(
   try {
     const host = new URL(endpoint.baseUrl).hostname.toLowerCase();
     if (host === "openrouter.ai") {
-      headers["HTTP-Referer"] =
-        process.env.NEXT_PUBLIC_APP_URL ?? "https://vulnradar.dev";
-      headers["X-Title"] = "VulnRadar";
+      // Identify THIS deployment to OpenRouter, not the SaaS: APP_URL already
+      // resolves NEXT_PUBLIC_APP_URL first, so a self-hoster's AI spend is no
+      // longer attributed to vulnradar.dev by a hardcoded fallback.
+      headers["HTTP-Referer"] = APP_URL;
+      headers["X-Title"] = APP_NAME;
     }
   } catch {
     /* ignore */

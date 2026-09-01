@@ -1,5 +1,27 @@
 name: CI
 
+# NOTE ON ENFORCEMENT: none of the jobs below gate anything on their own.
+# A GitHub check only blocks a merge once it is named as a REQUIRED status
+# check in a branch ruleset or classic branch protection on `main`, and that
+# lives in the repository settings, not in this file. `main` currently has
+# no protection and no ruleset, so a red run here is advisory: the merge
+# button stays green, direct pushes are unrestricted, and .github/CODEOWNERS
+# requests reviewers without requiring their review. The comments below say
+# what each step FAILS on, not what it blocks, deliberately: they used to
+# claim they blocked merges, which was never true.
+#
+# To make them real, add a ruleset on `main` requiring the Lint, Typecheck,
+# Test, Extension, Build and Self-host smoke test check names, plus a code-owner
+# review, and blocking force pushes. .github/rulesets/main.json is that
+# ruleset, ready to import under Settings > Rules > Rulesets > New ruleset >
+# Import a ruleset; it lives in the repository so the configuration is
+# reviewable here rather than only in the web UI.
+#
+# .github/workflows/dependabot-auto-merge.yml no longer relies on that: it
+# used to call `gh pr merge --auto`, which waits only for branch protection,
+# so with none configured a patch bump merged the moment it opened. It now
+# waits for the jobs below to report green before merging.
+
 on:
   push:
     branches: [main]
@@ -27,11 +49,50 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
-          # Pin to Node 22 LTS — see .nvmrc and package.json#engines. The
-          # Node 20 line works too, but we standardise on 22 for parity
-          # with what the team runs locally and on Pterodactyl.
-          node-version: "22"
+          # Pinned to the EXACT patch the Dockerfile builds on, not the
+          # floating "22" this used to be. A floating major resolves to
+          # whatever 22.x the runner happens to carry that day, so CI could
+          # go green on a language or runtime feature the published image
+          # does not have. The "Assert CI Node matches the published image"
+          # step in the typecheck job fails the build if these two drift
+          # apart again, so bump this, release.yml and the Dockerfile
+          # together.
+          node-version: "22.11.0"
           cache: "npm"
+
+      - name: Guard the lockfile
+        # Two failures have hit this repo repeatedly and both are one wrong
+        # command away, so they are checked mechanically rather than left to
+        # a line in CONTRIBUTING.md.
+        #
+        # 1. A pnpm or yarn install rewrites node_modules in a shape npm
+        #    cannot use and drops type packages on the floor.
+        # 2. A package-lock.json regenerated on Windows resolves only the
+        #    win32 optional binaries and strips every Linux one
+        #    (@next/swc-linux-*, @img/sharp-linux-*, @tailwindcss/oxide-linux-*,
+        #    lightningcss-linux-*). `npm ci` then succeeds here and the app
+        #    dies at next/font with "Cannot find native binding", breaking
+        #    CI and the Docker build at once. The lockfile has to be
+        #    repaired by grafting the entries back, not re-resolved, so
+        #    catching it at the PR is worth a lot more than catching it at
+        #    deploy.
+        run: |
+          set -euo pipefail
+          for f in pnpm-lock.yaml yarn.lock; do
+            if [ -e "$f" ]; then
+              echo "::error::$f is present. This project is npm-only; delete it and reinstall with npm."
+              exit 1
+            fi
+          done
+          missing=""
+          for pkg in @next/swc-linux-x64-gnu @img/sharp-linux-x64 @tailwindcss/oxide-linux-x64-gnu lightningcss-linux-x64-gnu; do
+            grep -q "\"node_modules/${pkg}\"" package-lock.json || missing="${missing} ${pkg}"
+          done
+          if [ -n "${missing}" ]; then
+            echo "::error::package-lock.json is missing Linux native bindings:${missing}. It was almost certainly regenerated on Windows. Graft the entries back rather than re-resolving."
+            exit 1
+          fi
+          echo "Lockfile carries the Linux native bindings."
 
       - name: Install dependencies
         run: npm ci
@@ -40,7 +101,8 @@ jobs:
         run: npm run lint
 
       - name: Check Prettier formatting
-        # Phase 8D Commit 8: format drift should block merges.
+        # Fails this job on any formatting drift. See the enforcement note
+        # at the top of this file for what that does and does not gate.
         run: npm run format:check
 
   typecheck:
@@ -55,19 +117,37 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
-          node-version: "22"
+          node-version: "22.11.0"
           cache: "npm"
 
       - name: Install dependencies
         run: npm ci
 
+      - name: Assert CI Node matches the published image
+        # The Dockerfile pins an exact patch and the workflows pin the same
+        # one. Nothing reconciled the two before, so the moment either side
+        # moved, CI was testing a runtime the shipped image was not. This
+        # reads the pin straight out of the Dockerfile and fails on any
+        # difference, which is what makes the two pins stay one number.
+        run: |
+          set -euo pipefail
+          IMAGE_NODE=$(grep -m1 -oE 'node:[0-9]+\.[0-9]+\.[0-9]+-alpine' Dockerfile | sed 's/node://; s/-alpine//')
+          CI_NODE=$(node -p "process.versions.node")
+          echo "Dockerfile pins Node ${IMAGE_NODE}; this runner has ${CI_NODE}"
+          if [ "${IMAGE_NODE}" != "${CI_NODE}" ]; then
+            echo "::error::CI runs Node ${CI_NODE} but the published image is built on Node ${IMAGE_NODE}. Bump node-version in ci.yml and release.yml alongside the Dockerfile pin."
+            exit 1
+          fi
+
       - name: Run TypeScript typecheck
-        # Phase 8 Commit 1: removed `continue-on-error: true`. Typecheck must
-        # block merges; any type error is a bug.
+        # `continue-on-error: true` was removed here: any type error is a bug
+        # and fails this job outright. See the enforcement note at the top.
         run: npx tsc --noEmit
 
       - name: Audit production dependencies
-        # Phase 8 Commit 1: block merges on high/critical CVEs in runtime deps.
+        # Fails this job on a high or critical advisory in a runtime
+        # dependency. Only catches advisories that already exist, so it is not
+        # a defence against a freshly published malicious release.
         run: npm audit --audit-level=high --omit=dev
 
       - name: Check generated AI-knowledge files are up to date
@@ -94,23 +174,107 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
-          node-version: "22"
+          node-version: "22.11.0"
           cache: "npm"
 
       - name: Install dependencies
         run: npm ci
 
-      # Phase 8C Commit 1 (C-4): first test job. Runs the security-critical
-      # unit suite added in this commit. Coverage is informational only
-      # for now; thresholds are enforced locally via `npm run test:coverage`.
-      - name: Run unit tests
-        run: npm run test
+      # Runs the whole vitest suite WITH coverage, so the per-file thresholds
+      # in vitest.config.ts are actually enforced. This used to be `npm run
+      # test` (no coverage), which meant the threshold map was checked
+      # nowhere: the only command that read it was `npm run test:coverage`,
+      # nothing ran it, and it had drifted red on files nobody had touched,
+      # so anyone who did run it learned to ignore the output.
+      # tests/README.md tells contributors a coverage regression fails the
+      # build; this is the job that makes that true.
+      - name: Run unit tests with coverage
+        run: npm run test:coverage
 
       # The CLI (cli/) is a standalone, dependency-free Node package excluded
       # from the app's tsc/eslint/vitest, so its node:test suite runs here.
-      - name: Run CLI unit tests
-        run: node --test
+      # `npm test` rather than a bare `node --test` so the package's own
+      # script (which turns on --experimental-test-coverage) is what runs:
+      # the CLI's tested fraction used to be simply unknown.
+      - name: Run CLI tests
+        run: npm test
         working-directory: cli
+
+  # The only job that executes real SQL. tests/integration/ is excluded from
+  # the root vitest config so `npm test` stays green without a database, which
+  # means this job is the ONLY thing that runs it: nothing else in the repo
+  # proves that a query parses, that the columns it names exist, or that a
+  # constraint behaves the way the code assumes. See tests/README.md.
+  #
+  # Deliberately standalone rather than part of the Test job. It needs a
+  # services: container the other jobs do not, it takes a different amount of
+  # time, and a database that fails to come up must not be able to take the
+  # unit suite down with it. ref: AUDIT-013#cov-16
+  integration:
+    name: Integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        # Same image as the Self-host smoke test job and docker-compose.yml,
+        # so all three prove things about one PostgreSQL version.
+        image: postgres:16.4-alpine
+        env:
+          POSTGRES_USER: vulnradar
+          POSTGRES_PASSWORD: ci_integration_password
+          POSTGRES_DB: vulnradar_integration
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version: "22.11.0"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # DATABASE_URL is deliberately NOT set here. The bootstrap refuses to run
+      # when the two point at the same database, since it drops and rebuilds
+      # the public schema; leaving it unset makes that impossible to get wrong.
+      # The remaining env (API_KEY_ENCRYPTION_KEY, NEXT_PUBLIC_APP_URL) is
+      # defaulted in tests/integration/_setup.ts so a local run and this one
+      # are configured identically.
+      - name: Run the integration suite against a real PostgreSQL
+        run: >-
+          npx vitest run --config tests/integration/vitest.config.ts
+          --reporter=default --reporter=json
+          --outputFile.json=${{ runner.temp }}/integration-results.json
+        env:
+          INTEGRATION_DATABASE_URL: postgresql://vulnradar:ci_integration_password@127.0.0.1:5432/vulnradar_integration
+
+      # The suite skips itself cleanly when INTEGRATION_DATABASE_URL is absent,
+      # which is right for a developer and wrong for CI: a job that skipped
+      # every test exits 0 and looks identical to one that passed. Read the
+      # counts back and fail on a run that proved nothing.
+      - name: Assert the suite actually ran
+        run: |
+          node -e "
+            const r = require('${{ runner.temp }}/integration-results.json');
+            const passed = r.numPassedTests ?? 0;
+            const skipped = r.numPendingTests ?? 0;
+            console.log('passed=' + passed + ' skipped=' + skipped);
+            if (skipped > 0 || passed === 0) {
+              console.log('::error::the integration suite did not really run (' + passed + ' passed, ' + skipped + ' skipped). INTEGRATION_DATABASE_URL is unset, or the database was unreachable.');
+              process.exit(1);
+            }
+          "
 
   extension:
     name: Extension
@@ -124,7 +288,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
-          node-version: "22"
+          node-version: "22.11.0"
           cache: "npm"
           cache-dependency-path: extension/package-lock.json
 
@@ -135,6 +299,17 @@ jobs:
       # both the Chrome and Firefox targets.
       - name: Install extension dependencies
         run: npm ci
+        working-directory: extension
+
+      - name: Audit extension dependencies
+        # No `--omit=dev` here, unlike the root audit in the typecheck job.
+        # The extension has 2 runtime dependencies and 191 dev ones, and the
+        # dev tree (vite, rollup, esbuild, sharp, archiver) is what emits
+        # content.js, the script injected into every page the user visits.
+        # A compromised build dependency writes straight into a
+        # browser-privileged artifact shipped through the Chrome Web Store
+        # and AMO, so for this package the dev tree IS the shipped tree.
+        run: npm audit --audit-level=high
         working-directory: extension
 
       - name: Typecheck extension
@@ -186,7 +361,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
-          node-version: "22"
+          node-version: "22.11.0"
           cache: "npm"
 
       - name: Install dependencies
@@ -194,3 +369,94 @@ jobs:
 
       - name: Build Next.js app
         run: npm run build
+
+  # Builds the real image and boots it against an EMPTY Postgres, which is
+  # exactly what a self-hoster does on first run. Nothing in CI did this
+  # before, which is how three separate self-host-breaking defects shipped
+  # at once in 3.7.x: an image tag that was never published, a boot path
+  # that exited before creating any table on a blank database, and a
+  # runtime stage missing scripts/ so the documented recovery command was
+  # not in the container. See audits/AUDIT-014 (ci-01, host-01, host-02).
+  selfhost:
+    name: Self-host smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16.4-alpine
+        env:
+          POSTGRES_USER: vulnradar
+          POSTGRES_PASSWORD: ci_smoke_test_password
+          POSTGRES_DB: vulnradar
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Build the production image
+        run: docker build -t vulnradar:ci .
+
+      - name: Assert the runtime image carries what the docs tell operators to run
+        # A published image that cannot run its own documented recovery
+        # command is the defect this step exists to catch.
+        run: |
+          set -euo pipefail
+          for path in scripts/migrate/migrate.mjs \
+                      scripts/create-fresh-db/create-fresh-db.mjs \
+                      scripts/backup-db.mjs \
+                      lib/database/schema/index.mjs \
+                      lib/ai/docs-knowledge.md; do
+            echo "checking for $path"
+            docker run --rm --entrypoint sh vulnradar:ci -c "test -f '$path'" \
+              || { echo "MISSING from runtime image: $path"; exit 1; }
+          done
+
+      - name: Boot against an empty database and wait for health
+        run: |
+          set -euo pipefail
+          docker run -d --name vr-smoke --network host \
+            -e NODE_ENV=production \
+            -e DATABASE_URL='postgresql://vulnradar:ci_smoke_test_password@localhost:5432/vulnradar' \
+            -e DATABASE_SSL=false \
+            -e NEXT_PUBLIC_APP_URL=http://localhost:3000 \
+            -e API_KEY_ENCRYPTION_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff \
+            vulnradar:ci
+
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/api/v3/health > /dev/null 2>&1; then
+              echo "healthy after ${i}0s"
+              exit 0
+            fi
+            if [ "$(docker inspect -f '{{.State.Running}}' vr-smoke)" != "true" ]; then
+              echo "container exited before becoming healthy:"
+              docker logs vr-smoke
+              exit 1
+            fi
+            sleep 10
+          done
+
+          echo "never became healthy within 10 minutes:"
+          docker logs vr-smoke
+          exit 1
+
+      - name: Assert the schema was actually created
+        run: |
+          set -euo pipefail
+          count=$(docker exec "$(docker ps -qf name=postgres)" \
+            psql -U vulnradar -d vulnradar -tAc \
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'" \
+            2>/dev/null || echo 0)
+          echo "tables created: $count"
+          test "$count" -gt 40 || { echo "expected the full schema, got $count tables"; exit 1; }
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs vr-smoke || true

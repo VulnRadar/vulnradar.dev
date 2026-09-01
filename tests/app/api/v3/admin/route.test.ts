@@ -345,13 +345,157 @@ describe("GET /api/v3/admin", () => {
     expect(sqlCalls.some((sql) => sql.includes("'super_admin'"))).toBe(true);
   });
 
-  it("never calls logAction — a mutating/audited action cannot be reached via GET", async () => {
+  it("the default stats + user-list view writes no audit row — a mutating/audited action cannot be reached via GET", async () => {
     queueRole("admin");
     mockQuery.mockResolvedValueOnce({ rows: [{ total_users: 1 }] });
     mockQuery.mockResolvedValueOnce({ rows: [] });
     mockQuery.mockResolvedValueOnce({ rows: [{ count: "0" }] });
     await GET(getRequest());
     expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  // Reads used to leave no trail at all, so a compromised or insider staff
+  // account could page through every account's PII with nothing to
+  // reconstruct afterwards. Only the full-record read is logged: the paged
+  // list above deliberately is not, or the search box would write a row per
+  // keystroke.
+  it("section=user-detail writes a view_user_detail audit row naming the target", async () => {
+    queueRole("support");
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 9, email: "u@example.com" }],
+    }); // userRes
+    for (let i = 0; i < 7; i++) mockQuery.mockResolvedValueOnce({ rows: [] });
+    await GET(
+      getRequest("http://localhost/api/v3/admin?section=user-detail&userId=9"),
+    );
+    expect(mockLogAction).toHaveBeenCalledWith(
+      expect.any(Number),
+      9,
+      "view_user_detail",
+      expect.stringContaining("#9"),
+      expect.anything(),
+    );
+  });
+
+  // The specialist roles (ops/billing/security_analyst/content_manager) sit
+  // at the same hierarchy tier as each other and pass requireStaff(), so
+  // before VIEW_USERS was checked here an ops account could read any user's
+  // email, billing identifiers and session IPs from one URL.
+  it("section=user-detail rejects a role without VIEW_USERS (ops)", async () => {
+    queueRole("ops");
+    const res = await GET(
+      getRequest("http://localhost/api/v3/admin?section=user-detail&userId=9"),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  // Session rows carry last-known IPs, so they ride on the narrower
+  // VIEW_USER_SESSIONS grant. billing holds VIEW_USERS but not that one.
+  it("section=user-detail omits activeSessions for a role without VIEW_USER_SESSIONS (billing)", async () => {
+    queueRole("billing");
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 9, email: "u@example.com" }],
+    }); // userRes
+    for (let i = 0; i < 7; i++) mockQuery.mockResolvedValueOnce({ rows: [] });
+    const res = await GET(
+      getRequest("http://localhost/api/v3/admin?section=user-detail&userId=9"),
+    );
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json.activeSessions).toEqual([]);
+    const sqlCalls = mockQuery.mock.calls.map((c) => c[0] as string);
+    expect(sqlCalls.some((sql) => sql.includes("ip_address"))).toBe(false);
+  });
+
+  // AUDIT-011#drift-18: VIEW_ALL_SCANS and VIEW_USER_API_KEYS existed but
+  // gated nothing, so the scan history and the API-key list rode on VIEW_USERS
+  // alone. Scan rows are the target's browsing history and key rows name live
+  // credentials, so both are narrower than "may look at accounts".
+  const SCAN_DETAIL_SELECT = "SELECT id, url, findings_count";
+  const API_KEY_DETAIL_SELECT = "SELECT id, key_prefix, name, daily_limit";
+
+  it("section=user-detail omits recentScans and apiKeys for a role holding neither grant (billing)", async () => {
+    queueRole("billing");
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 9, email: "u@example.com" }],
+    }); // userRes
+    for (let i = 0; i < 7; i++) mockQuery.mockResolvedValueOnce({ rows: [] });
+    const res = await GET(
+      getRequest("http://localhost/api/v3/admin?section=user-detail&userId=9"),
+    );
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json.recentScans).toEqual([]);
+    expect(json.apiKeys).toEqual([]);
+    // Matched on each detail query's own SELECT list, not on the table name:
+    // the main user row carries `(SELECT COUNT(*) FROM scan_history ...)` and
+    // the same for api_keys as aggregate counters, so a bare "FROM x" test
+    // would pass whether or not the row-level query ran.
+    const sqlCalls = mockQuery.mock.calls.map((c) => c[0] as string);
+    expect(sqlCalls.some((sql) => sql.includes(SCAN_DETAIL_SELECT))).toBe(
+      false,
+    );
+    expect(sqlCalls.some((sql) => sql.includes(API_KEY_DETAIL_SELECT))).toBe(
+      false,
+    );
+  });
+
+  // support holds VIEW_ALL_SCANS but not VIEW_USER_API_KEYS, which pairs with
+  // the admin-only REVOKE_USER_API_KEYS. The two gates are independent.
+  it("section=user-detail returns recentScans but not apiKeys for support", async () => {
+    queueRole("support");
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 9, email: "u@example.com" }],
+    }); // userRes
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 1, url: "https://a.test" }],
+    }); // scans
+    for (let i = 0; i < 7; i++) mockQuery.mockResolvedValueOnce({ rows: [] });
+    const res = await GET(
+      getRequest("http://localhost/api/v3/admin?section=user-detail&userId=9"),
+    );
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json.recentScans).toHaveLength(1);
+    expect(json.apiKeys).toEqual([]);
+    const sqlCalls = mockQuery.mock.calls.map((c) => c[0] as string);
+    expect(sqlCalls.some((sql) => sql.includes(SCAN_DETAIL_SELECT))).toBe(true);
+    expect(sqlCalls.some((sql) => sql.includes(API_KEY_DETAIL_SELECT))).toBe(
+      false,
+    );
+  });
+
+  it("section=user-detail returns both for an admin, who holds every grant", async () => {
+    queueRole("admin");
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 9, email: "u@example.com" }],
+    }); // userRes
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 1, url: "https://a.test" }],
+    }); // scans
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 2, key_prefix: "vr_ab" }] }); // keys
+    for (let i = 0; i < 7; i++) mockQuery.mockResolvedValueOnce({ rows: [] });
+    const res = await GET(
+      getRequest("http://localhost/api/v3/admin?section=user-detail&userId=9"),
+    );
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json.recentScans).toHaveLength(1);
+    expect(json.apiKeys).toHaveLength(1);
+  });
+
+  // The default branch is fetched on mount by every staff member and the
+  // client reads a 403 as "no admin access at all", so a role without
+  // VIEW_USERS keeps the aggregate stats and gets an empty list instead.
+  it("the default view returns stats but no user rows for a role without VIEW_USERS (ops)", async () => {
+    queueRole("ops");
+    mockQuery.mockResolvedValueOnce({ rows: [{ total_users: 1 }] });
+    const res = await GET(getRequest());
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json.stats).toEqual({ total_users: 1 });
+    expect(json.users).toEqual([]);
+    expect(json.total).toBe(0);
   });
 });
 
@@ -534,10 +678,32 @@ describe("PATCH /api/v3/admin — GATED_ACTIONS re-auth (real scrypt)", () => {
       role: "user",
       unsubscribe_token: null,
     });
+    // The gate now runs through lib/auth/reauth.ts's verifyReauthPassword,
+    // which loads the acting admin's hash BEFORE inspecting what was
+    // supplied (it has to: an account with no hash at all is the OAuth case
+    // and skips the check). So the hash lookup is queued even on the
+    // "nothing supplied" path.
+    queueAdminPassword(adminHash);
     const res = await PATCH(patchRequest({ action: "disable", userId: 5 }));
     const json = await res.json();
     expect(res.status).toBe(403);
     expect(json.error).toMatch(/Re-enter your password/);
+  });
+
+  it("lets an OAuth-created admin through: no password on the account means the session is the re-auth signal", async () => {
+    // createOAuthUser leaves password_hash NULL. The inline check this gate
+    // replaced treated that as a wrong password, so a Google/GitHub/Discord
+    // staff account could not perform ANY password-gated admin action and
+    // was told its password was incorrect.
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ password_hash: null }] });
+    const res = await PATCH(patchRequest({ action: "make_admin", userId: 5 }));
+    expect(res.status).toBe(200);
   });
 
   it("rejects a gated action with the wrong currentAdminPassword", async () => {
@@ -584,6 +750,66 @@ describe("PATCH /api/v3/admin — GATED_ACTIONS re-auth (real scrypt)", () => {
       expect.any(String),
       "127.0.0.1",
     );
+  }, 20000);
+});
+
+describe("PATCH /api/v3/admin — update_email is admin-only (AUDIT-002#auth-01)", () => {
+  // A moderator cannot reset a password, set one, or impersonate. Leaving
+  // update_email in modActions handed them the one primitive that got round
+  // all three: repoint a user's address at one you control, run
+  // forgot-password, collect the reset link. ROLE_PERMISSION_MAP never
+  // granted a moderator EDIT_USER_EMAIL, so the UI already hid the control
+  // and only the route's hand-maintained allow-list disagreed.
+  it("rejects a moderator changing a regular user's email", async () => {
+    queueRole("moderator");
+    queueTarget({
+      email: "victim@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    const res = await PATCH(
+      patchRequest({
+        action: "update_email",
+        userId: 5,
+        email: "attacker@evil.example",
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+    const json = await res.json();
+    expect(res.status).toBe(403);
+    expect(json.error).toMatch(/permission/i);
+    expect(mockLogAction).not.toHaveBeenCalled();
+    // Nothing was written: the deny happens before the action switch.
+    expect(
+      mockQuery.mock.calls.some((c) =>
+        String(c[0]).includes("UPDATE users SET email"),
+      ),
+    ).toBe(false);
+  });
+
+  it("still lets an admin change a user's email, and clears email_verified_at when it does", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "old@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    queueAdminPassword(adminHash);
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // duplicate-email check
+    const res = await PATCH(
+      patchRequest({
+        action: "update_email",
+        userId: 5,
+        email: "New@Example.com",
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+    expect(res.status).toBe(200);
+    const update = mockQuery.mock.calls.find((c) =>
+      String(c[0]).includes("UPDATE users SET email"),
+    );
+    expect(String(update?.[0])).toContain("email_verified_at = NULL");
+    expect(update?.[1]).toEqual(["new@example.com", 5]);
   }, 20000);
 });
 
@@ -1460,6 +1686,9 @@ describe("PATCH /api/v3/admin, super_admin caller passes every check an admin pa
       role: "user",
       unsubscribe_token: null,
     });
+    // verifyReauthPassword loads the acting admin's hash before inspecting
+    // what was supplied, so the lookup is queued even on this path.
+    queueAdminPassword(adminHash);
 
     const res = await PATCH(patchRequest({ action: "impersonate", userId: 5 }));
     const json = await res.json();

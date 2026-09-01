@@ -79,9 +79,25 @@ export async function getDiscoveryDocument(
     );
   }
   const doc = (await res.json()) as Partial<DiscoveryDocument>;
-  if (!doc.authorization_endpoint || !doc.token_endpoint || !doc.jwks_uri) {
+  if (
+    !doc.issuer ||
+    !doc.authorization_endpoint ||
+    !doc.token_endpoint ||
+    !doc.jwks_uri
+  ) {
     throw new Error(
-      "OIDC discovery document is missing required fields (authorization_endpoint/token_endpoint/jwks_uri)",
+      "OIDC discovery document is missing required fields (issuer/authorization_endpoint/token_endpoint/jwks_uri)",
+    );
+  }
+  // OIDC Discovery 1.0 section 4.3: the returned `issuer` MUST exactly match
+  // the issuer used to build the discovery URL. verifyStaffOidcIdToken passes
+  // doc.issuer straight to jwtVerify, so without this check the trust anchor
+  // is self-asserted: a discovery document could name any issuer it liked and
+  // point jwks_uri at that issuer's keys, and the ID token would verify
+  // against it (AUDIT-012#auth-13).
+  if (doc.issuer.replace(/\/+$/, "") !== base) {
+    throw new Error(
+      `OIDC discovery document issuer mismatch: configured ${base}, document declares ${doc.issuer}`,
     );
   }
   const resolved = doc as DiscoveryDocument;

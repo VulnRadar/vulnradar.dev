@@ -1,4 +1,5 @@
 import type { ScanResult, Severity, Vulnerability } from "@/lib/scanner/types";
+import { severityCounts } from "./severity-counts";
 import { mdText } from "./md-escape";
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
 import {
@@ -44,20 +45,6 @@ const SEVERITY_RANK: Record<Severity, number> = {
 
 function severityRank(severity: Severity): number {
   return SEVERITY_RANK[severity] ?? 0;
-}
-
-function severityCounts(findings: Vulnerability[]): Record<Severity, number> {
-  const counts: Record<Severity, number> = {
-    critical: 0,
-    high: 0,
-    medium: 0,
-    low: 0,
-    info: 0,
-  };
-  for (const finding of findings) {
-    if (counts[finding.severity] !== undefined) counts[finding.severity] += 1;
-  }
-  return counts;
 }
 
 function formatScannedAt(scannedAt: string | undefined): string {

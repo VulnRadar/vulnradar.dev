@@ -45,7 +45,11 @@ export default async function SecurityPage() {
           <p className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-primary/70">
             Security · Responsible disclosure
           </p>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">
+          {/* Tier A page H1, the scale every marketing, docs, SEO and legal
+              page uses (app/pricing/page.tsx is the reference). In-app working
+              pages use the smaller Tier B scale instead. font-bold appears in
+              no heading in this product; this one used to. */}
+          <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight mb-5 text-balance text-foreground">
             Report a security issue
           </h1>
           <p className="mt-3 max-w-prose text-sm leading-relaxed text-muted-foreground">

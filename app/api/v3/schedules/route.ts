@@ -57,7 +57,12 @@ export async function GET() {
      ORDER BY created_at DESC`,
     [session.userId],
   );
-  return NextResponse.json(result.rows);
+  // Named-key envelope, matching every other collection endpoint
+  // ({ shares }, { teams }, { tickets }, ...). This used to return the bare
+  // array, which is the one shape that can never gain a sibling field: no
+  // total, no truncation flag, no pagination, without breaking every caller.
+  // app/profile/page.tsx already reads either shape.
+  return NextResponse.json({ schedules: result.rows });
 }
 
 export async function POST(request: NextRequest) {
@@ -164,13 +169,48 @@ export async function POST(request: NextRequest) {
   // next_run_at and apply it in a second write. next_run_at starts at NOW()
   // as a placeholder so the row is never left with a NULL value between the
   // two statements.
+  //
+  // The plan cap is re-checked INSIDE the INSERT, not just by the count
+  // above. The count-then-insert on its own is check-then-act: two requests
+  // that both read the same count before either inserts both pass the gate
+  // and the account ends up over its plan's scheduledScans cap. The guarded
+  // form is the same shape lib/rate-limiting/daily-limits.ts uses to close
+  // this race for the scan counter. `null` for the limit means unlimited
+  // (billing off, or the plan's own -1), and the WHERE then always holds.
+  const scheduleCap =
+    planLimits && planLimits.scheduledScans !== -1
+      ? planLimits.scheduledScans
+      : null;
   const insertRes = await pool.query<{ id: number }>(
     `INSERT INTO scheduled_scans
        (user_id, url, frequency, preferred_hour_utc, preferred_day_of_week, preferred_day_of_month, next_run_at)
-     VALUES ($1, $2, $3, $4, $5, $6, NOW())
+     SELECT $1, $2, $3, $4, $5, $6, NOW()
+     WHERE $7::int IS NULL
+        OR (SELECT COUNT(*) FROM scheduled_scans WHERE user_id = $1) < $7::int
      RETURNING id`,
-    [session.userId, url, freq, hourUtc, dayOfWeekUtc, dayOfMonthUtc],
+    [
+      session.userId,
+      url,
+      freq,
+      hourUtc,
+      dayOfWeekUtc,
+      dayOfMonthUtc,
+      scheduleCap,
+    ],
   );
+  if (insertRes.rows.length === 0) {
+    // The guard refused: another request took the last slot between the
+    // count above and this statement.
+    return NextResponse.json(
+      {
+        error: planLimitMessage(
+          "Scheduled scans",
+          planLimits?.scheduledScans ?? 0,
+        ),
+      },
+      { status: 400 },
+    );
+  }
   const scheduleId = insertRes.rows[0].id;
 
   const nextRunAt = computeNextRunAt(

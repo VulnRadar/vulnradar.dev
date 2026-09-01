@@ -22,6 +22,11 @@ import type { PoolClient } from "pg";
  * back). This function itself only ever runs SQL, ending with the
  * `users` row itself so every FK above it is already gone or nulled.
  *
+ * Two tables need explicit handling because nothing links them to the account
+ * by a cascading FK: scan_finding_feedback (ON DELETE SET NULL, so the URL and
+ * free-text notes would outlive the account with only user_id nulled) and
+ * email_logs (no user_id at all, keyed only by the recipient address).
+ *
  * Two known non-cascading FK columns (both nullable, no ON DELETE clause)
  * are nulled out here rather than relying on a schema-level ON DELETE
  * SET NULL, since nulling a handful of rows inline is simpler than a
@@ -123,6 +128,18 @@ export async function deleteUserAccountData(
     userId,
   ]);
 
+  // Scan-finding feedback. Same shape as ai_conversations above: the FK is
+  // ON DELETE SET NULL, so without this the row survives with only user_id
+  // nulled while still carrying finding_url (the exact URL the user scanned,
+  // frequently their own domain) and notes (free text they typed into the
+  // feedback dialog). It would then sit there until the unrelated
+  // CLEANUP_SCAN_FINDING_FEEDBACK_RETENTION_DAYS sweep counted from the
+  // feedback's own created_at, not from the deletion. A GDPR erasure must
+  // remove it now.
+  await client.query("DELETE FROM scan_finding_feedback WHERE user_id = $1", [
+    userId,
+  ]);
+
   // Badges
   await client.query("DELETE FROM user_badges WHERE user_id = $1", [userId]);
 
@@ -174,6 +191,21 @@ export async function deleteUserAccountData(
     "UPDATE sessions SET impersonated_by = NULL WHERE impersonated_by = $1",
     [userId],
   );
+
+  // email_logs stores every recipient address in clear and has no user_id and
+  // no FK, so nothing here reached it and nothing purged it: the deleted
+  // account's address survived for CLEANUP_EMAIL_LOG_RETENTION_DAYS after the
+  // erasure. Read the address off the users row (still present at this point,
+  // deleted immediately below) so both delete paths get this without a
+  // signature change, and purge by recipient.
+  const emailRow = await client.query<{ email: string | null }>(
+    "SELECT email FROM users WHERE id = $1",
+    [userId],
+  );
+  const email = emailRow.rows[0]?.email;
+  if (email) {
+    await client.query("DELETE FROM email_logs WHERE recipient = $1", [email]);
+  }
 
   // Finally, the user row itself. Every FK above either points at a row
   // already deleted, or has already been nulled/SET-NULL-on-delete.

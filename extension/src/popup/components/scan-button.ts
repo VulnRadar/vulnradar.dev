@@ -54,39 +54,58 @@ export function ScanButton(props: ScanButtonProps): TemplateResult {
   return html`
     <div class="scan-section">
       <div class="url-pill" title=${props.url}>
-        <span class="icon">&rarr;</span>
+        <span class="icon" aria-hidden="true">&rarr;</span>
         <span class="text">${truncateUrl(props.url, 52)}</span>
-        <button class="copy" @click=${props.onCopyUrl} title="Copy URL">
+        <button
+          class="copy"
+          @click=${props.onCopyUrl}
+          title="Copy URL"
+          aria-label="Copy the page URL"
+        >
           Copy
         </button>
       </div>
       <div class="scan-controls-row">
-        <div class="mode-toggle" role="tablist" aria-label="Scan mode">
+        <!-- a11y (SC 4.1.2): this was role="tablist" / role="tab" /
+             aria-selected, and there is no role="tabpanel" anywhere in the
+             extension and no aria-controls, so the tab contract was announced
+             and never honoured: assistive tech offered tab navigation into
+             panels that do not exist, and the arrow-key movement a tablist
+             promises was never implemented either. Quick and Deep are two
+             toggle buttons that set one field on the next scan, so they are
+             described as that. Same resolution, for the same reason, as the
+             API playground's language picker in the main app. -->
+        <div class="mode-toggle" role="group" aria-label="Scan mode">
           <button
-            role="tab"
+            type="button"
             class=${props.mode === "quick" ? "active" : ""}
-            aria-selected=${props.mode === "quick"}
+            aria-pressed=${props.mode === "quick"}
             @click=${() => props.onModeChange("quick")}
             ?disabled=${props.isScanning}
           >
             Quick
           </button>
           <button
-            role="tab"
+            type="button"
             class=${props.mode === "deep" ? "active" : ""}
-            aria-selected=${props.mode === "deep"}
+            aria-pressed=${props.mode === "deep"}
             @click=${() => props.onModeChange("deep")}
             ?disabled=${props.isScanning}
           >
             Deep
           </button>
         </div>
-        <div class="families-chip" title="Enabled check families">
-          ${enabledCount}/${totalCount} families
+        <!-- The tooltip this used to carry ("Enabled check families") was
+             unreachable: a title on a non-focusable <div> never opens by
+             keyboard and gives it no accessible name either. The word it was
+             explaining is now in the text. -->
+        <div class="families-chip">
+          ${enabledCount}/${totalCount} check families
         </div>
       </div>
       <button
         class="scan-button-full"
+        type="button"
         @click=${props.onScan}
         ?disabled=${props.isScanning || !props.isAuthed}
         title=${props.isAuthed ? "Scan this page" : "Connect an API key first"}

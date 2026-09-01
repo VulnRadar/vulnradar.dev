@@ -108,15 +108,31 @@ export default async function AlternativePage({
           </h2>
           <div className="overflow-x-auto rounded-lg border border-border/60">
             <table className="w-full text-sm border-collapse min-w-136">
+              {/* Without a caption and scope="col", a screen reader reading
+                  cell by cell announces the value but not which product it
+                  belongs to, which is the entire content of a comparison
+                  table. The row headers already carry scope="row" below. */}
+              <caption className="sr-only">
+                {APP_NAME} compared with {alt.name}, feature by feature
+              </caption>
               <thead>
                 <tr className="bg-muted/40 text-left">
-                  <th className="px-4 py-3 font-medium text-muted-foreground w-1/4">
-                    &nbsp;
+                  <th
+                    scope="col"
+                    className="px-4 py-3 font-medium text-muted-foreground w-1/4"
+                  >
+                    <span className="sr-only">Feature</span>
                   </th>
-                  <th className="px-4 py-3 font-semibold text-primary">
+                  <th
+                    scope="col"
+                    className="px-4 py-3 font-semibold text-primary"
+                  >
                     {APP_NAME}
                   </th>
-                  <th className="px-4 py-3 font-semibold text-foreground">
+                  <th
+                    scope="col"
+                    className="px-4 py-3 font-semibold text-foreground"
+                  >
                     {alt.name}
                   </th>
                 </tr>

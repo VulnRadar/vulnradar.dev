@@ -8,7 +8,9 @@ import {
   apiKeyScopeErrorMessage,
   API_KEY_SCOPES,
 } from "@/lib/api/api-key-scopes";
-import { getTeamResourceAccess } from "@/lib/auth/team-resource-access";
+import { getScanResourceAccess } from "@/lib/teams/scan-teams";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import { getSetting } from "@/lib/config/runtime-config";
 import { resolveScanRow } from "@/lib/history/resolve-scan";
 import { attachRemediation } from "@/lib/scanner/remediation-store";
 import {
@@ -69,6 +71,17 @@ export async function GET(
     );
   }
 
+  // FEATURE_PDF_REPORTS used to gate only the menu item in the browser, so
+  // an operator who turned PDF export off still served it to anyone who
+  // asked for ?format=pdf directly. Checked here rather than in the switch
+  // below so a disabled format costs no scan lookup or report build.
+  if (format === "pdf" && !(await getSetting("FEATURE_PDF_REPORTS"))) {
+    return NextResponse.json(
+      { error: "PDF reports are disabled on this deployment." },
+      { status: 403 },
+    );
+  }
+
   // Auth: Bearer API key (scan:read) first, then session cookie -- mirrors
   // GET /api/v3/history/[id].
   const authHeader = request.headers.get("authorization");
@@ -116,6 +129,29 @@ export async function GET(
       );
     }
     authedUserId = session.userId;
+
+    // abuse: the API-key branch above is metered, the session branch was not.
+    // Every format on this route builds its report SYNCHRONOUSLY over the
+    // whole findings array (generatePdfReport in particular does nested
+    // word-wrap loops per finding, per code example, per line), so a signed-in
+    // user could loop the export of their largest scan and pin the single Node
+    // process's event loop, stalling every other request and every in-flight
+    // scan's progress writes.
+    const rl = await checkRateLimit({
+      key: `report-export:${session.userId}`,
+      ...RATE_LIMITS.api,
+    });
+    if (!rl.allowed) {
+      return NextResponse.json(
+        {
+          error: `Too many report exports. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).`,
+        },
+        {
+          status: 429,
+          headers: { "Retry-After": String(rl.retryAfterSeconds) },
+        },
+      );
+    }
   }
 
   if (!authedUserId) {
@@ -133,11 +169,7 @@ export async function GET(
 
   const isOwner = scan.user_id === authedUserId;
   if (!isOwner) {
-    const access = await getTeamResourceAccess(
-      authedUserId,
-      scan.user_id,
-      scan.team_id,
-    );
+    const access = await getScanResourceAccess(authedUserId, scan);
     if (!access.canRead) {
       return NextResponse.json({ error: "Scan not found" }, { status: 404 });
     }

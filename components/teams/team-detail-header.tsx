@@ -20,7 +20,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { hasTeamPermission } from "@/lib/config/constants";
+import { hasTeamPermission } from "@/lib/config/client-constants";
 import { type Team } from "./teams-types";
 
 interface TeamDetailHeaderProps {
@@ -79,6 +79,7 @@ export function TeamDetailHeader({
                   <Input
                     value={nameInput}
                     onChange={(e) => onNameInputChange(e.target.value)}
+                    aria-label="Team name"
                     onKeyDown={(e) => {
                       if (e.key === "Enter") onSaveName();
                       if (e.key === "Escape") onCancelEdit();
@@ -89,7 +90,7 @@ export function TeamDetailHeader({
                   />
                   <Button
                     size="sm"
-                    className="h-9 w-9 p-0"
+                    className="h-11 w-11 sm:h-9 sm:w-9 p-0"
                     onClick={onSaveName}
                     disabled={savingName}
                     aria-label="Save team name"
@@ -103,7 +104,7 @@ export function TeamDetailHeader({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-9 w-9 p-0"
+                    className="h-11 w-11 sm:h-9 sm:w-9 p-0"
                     onClick={onCancelEdit}
                     aria-label="Cancel renaming"
                   >
@@ -127,10 +128,17 @@ export function TeamDetailHeader({
                   )}
                 </div>
               )}
-              <p className="text-sm text-muted-foreground mt-1">
-                {memberCount} member{memberCount !== 1 && "s"} · Your role:{" "}
-                <span className="capitalize">{currentRole}</span>
-              </p>
+              {/* currentRole is "" until the members request resolves, and
+                  stays "" if it fails. Printing "0 members · Your role: " with
+                  a blank role states two things as fact that are not known
+                  yet, so the line waits for the real values instead. The card
+                  below is what reports loading or failure. */}
+              {currentRole && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  {memberCount} member{memberCount !== 1 && "s"} · Your role:{" "}
+                  <span className="capitalize">{currentRole}</span>
+                </p>
+              )}
             </div>
 
             <div className="flex items-center gap-2 self-start sm:self-auto">
@@ -150,7 +158,7 @@ export function TeamDetailHeader({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-9 w-9 p-0"
+                    className="h-11 w-11 sm:h-9 sm:w-9 p-0"
                     aria-label="Team actions"
                   >
                     <MoreHorizontal className="h-4 w-4" />

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { resolveScanRow } from "@/lib/history/resolve-scan";
-import { getTeamResourceAccess } from "@/lib/auth/team-resource-access";
+import { resolveScanRow, scanNumericId } from "@/lib/history/resolve-scan";
+import { getScanResourceAccess } from "@/lib/teams/scan-teams";
 import { readScanScreenshot } from "@/lib/scanner/page-screenshot";
 
 /**
@@ -35,15 +35,24 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  const session = await getSession();
+
+  // The anonymous branch is deliberate (a public scan's screenshot backs the
+  // public /host/[hostname] report), but it must not be reachable by walking
+  // an id space. resolveScanRow still accepts a legacy numeric primary key
+  // alongside the opaque public_id, and those ids are sequential 1..N, so
+  // without this a caller with no identity at all could enumerate every
+  // public scan's screenshot by counting. A signed-in caller keeps the legacy
+  // id (their own old links still resolve); a stranger has to present the
+  // non-guessable public_id, exactly as they would to see the findings.
+  if (!session && scanNumericId(id) !== null) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   let authorized = scan.is_public === true;
   if (!authorized) {
-    const session = await getSession();
     if (session) {
-      const access = await getTeamResourceAccess(
-        session.userId,
-        scan.user_id,
-        scan.team_id,
-      );
+      const access = await getScanResourceAccess(session.userId, scan);
       authorized = access.canRead;
     }
   }

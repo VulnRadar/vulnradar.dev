@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/shared/empty-state";
 import {
   ArrowLeft,
   ChevronRight,
@@ -11,7 +12,7 @@ import {
   RefreshCw,
   ShieldAlert,
 } from "lucide-react";
-import { API } from "@/lib/config/constants";
+import { API } from "@/lib/config/client-constants";
 import { ScanSummary } from "@/components/scanner/scan-summary";
 import { ResultsList } from "@/components/scanner/results-list";
 import { IssueDetail } from "@/components/scanner/issue-detail";
@@ -97,8 +98,13 @@ export function RepoDetail({
       setScans(data.scans);
     } catch {
       setLoadError("Failed to load scan history.");
+    } finally {
+      // Was a bare call after the try block, which the `return` in the
+      // non-ok branch above skipped entirely: an API error left the skeleton
+      // spinning forever and the error state this component already renders
+      // was unreachable. `finally` runs on every exit path.
+      setLoadingScans(false);
     }
-    setLoadingScans(false);
   };
 
   useEffect(() => {
@@ -124,8 +130,11 @@ export function RepoDetail({
       setScanDetail(mapHistoryDetailResponse(data));
     } catch {
       setScanDetail(null);
+    } finally {
+      // Same defect as loadScans above: the non-ok branch returned past this,
+      // leaving the detail pane loading indefinitely.
+      setDetailLoading(false);
     }
-    setDetailLoading(false);
   };
 
   const handleScanClick = async () => {
@@ -225,11 +234,11 @@ export function RepoDetail({
                     onSelectIssue={setSelectedIssue}
                   />
                 ) : (
-                  <div className="rounded-md border border-dashed border-border bg-card/50 px-4 py-10 text-center">
-                    <p className="text-sm font-semibold text-[hsl(var(--success))]">
-                      Nothing found on this scan
-                    </p>
-                  </div>
+                  <EmptyState
+                    tone="success"
+                    size="sm"
+                    title="Nothing found on this scan"
+                  />
                 )}
               </>
             ))}
@@ -248,11 +257,11 @@ export function RepoDetail({
       ) : loadError ? (
         <p className="text-sm text-destructive py-6 text-center">{loadError}</p>
       ) : !scans || scans.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border px-4 py-10 text-center">
-          <p className="text-sm text-muted-foreground">
-            No scans yet. Run one to see findings here.
-          </p>
-        </div>
+        <EmptyState
+          size="sm"
+          title="No scans yet"
+          description="Run one to see findings here."
+        />
       ) : (
         <div className="rounded-lg border border-border divide-y divide-border/60 overflow-hidden">
           {scans.map((scan) => (

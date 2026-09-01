@@ -17,9 +17,17 @@ vi.mock("@/lib/config/runtime-config", () => ({
 }));
 
 const mockCheckRateLimit = vi.fn();
-vi.mock("@/lib/rate-limiting/rate-limit", () => ({
-  checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
-}));
+// RATE_LIMITS comes from the real module, not a stub: the route has to name
+// its limit for checkRateLimit to resolve the live admin value, and a stubbed
+// table would let a regression back to inline numbers pass unnoticed.
+vi.mock("@/lib/rate-limiting/rate-limit", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/rate-limiting/rate-limit")>();
+  return {
+    ...actual,
+    checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
+  };
+});
 
 const mockGetTeamResourceAccess = vi.fn();
 vi.mock("@/lib/auth/team-resource-access", () => ({
@@ -95,6 +103,26 @@ describe("POST /api/v3/domains/[id]/verify", () => {
     const res = await POST(verifyRequest(), params("1"));
     expect(res.status).toBe(429);
     expect(mockCheckDnsVerification).not.toHaveBeenCalled();
+  });
+
+  // AUDIT-014#magic-08: the cap used to be two inline numbers, which meant the
+  // number the API docs quote could not be edited from the admin panel.
+  it("names its rate limit so checkRateLimit resolves the admin-configured cap", async () => {
+    // Denied, so the route returns before the DNS path this test does not care
+    // about; the assertion is on what it asked the limiter for.
+    mockCheckRateLimit.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 60,
+    });
+    await POST(verifyRequest(), params("1"));
+
+    expect(mockCheckRateLimit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: "domain-verify:42",
+        limit: "domainVerify",
+      }),
+    );
   });
 
   it("404s when the domain doesn't exist", async () => {

@@ -1,7 +1,6 @@
 import React from "react";
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
-import { Inter, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { TosGate } from "@/components/auth/tos-gate";
 import { BackupCodesModal } from "@/components/shared/notification-center";
@@ -14,6 +13,8 @@ import { ImpersonationBanner } from "@/components/admin/impersonation-banner";
 import { SiteNotificationsWrapper } from "@/components/shared/site-notifications";
 import { CookieNotice } from "@/components/shared/cookie-notice";
 import { Ipv4Capture } from "@/components/shared/ipv4-capture";
+import { OfflineBanner } from "@/components/shared/offline-banner";
+import { CommandPalette } from "@/components/shared/command-palette";
 import {
   APP_NAME,
   APP_DESCRIPTION,
@@ -32,15 +33,20 @@ import {
   BRANDING_PRIMARY_COLOR,
 } from "@/lib/config/constants";
 import { SiteStructuredData } from "@/components/seo/structured-data";
-import { ChatWidget } from "@/components/ai-chat/chat-widget";
+import { ChatWidgetMount } from "@/components/shared/chat-widget-mount";
 
 import "./globals.css";
 
-const _inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
-const _jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-jetbrains-mono",
-});
+// next/font used to load Inter and JetBrains Mono here into `--font-inter`
+// and `--font-jetbrains-mono`, and nothing ever consumed either variable:
+// <body> is `font-sans` and tailwind.config.mjs has no fontFamily extension,
+// so every surface in this app has always rendered in Tailwind's default
+// ui-sans-serif / ui-monospace system stack. The half-wired loaders still
+// made the build emit 13 woff2 files, a 4 KB stylesheet with 15 @font-face
+// rules linked from every page, and preload Link headers for two of the
+// woff2s, all for glyphs no element asked for. Removed rather than wired up,
+// because wiring them up would restyle every page in the product, which is a
+// design decision and not a cleanup.
 
 const SITE_TITLE = `${APP_NAME} - ${SEO_TAGLINE}`;
 
@@ -55,9 +61,14 @@ export const metadata: Metadata = {
   authors: [{ name: APP_NAME, url: APP_URL }],
   creator: APP_NAME,
   publisher: APP_NAME,
-  // Pages without their own canonical fall back to the site root rather than
-  // competing with each other under multiple URLs.
-  alternates: { canonical: "/" },
+  // Pages without their own canonical fall back to the declared homepage
+  // rather than competing with each other under multiple URLs. That is
+  // "/landing", not "/": "/" always redirects (middleware.ts sends a signed-out
+  // visitor to /landing and a signed-in one to /dashboard), so a canonical
+  // pointing at it named a URL that never returns 200. Latent today because
+  // every page sets its own canonical, but the next page added without a
+  // pageMetadata() call would have inherited it.
+  alternates: { canonical: "/landing" },
   icons: {
     icon: [
       { url: "/favicon.svg", type: "image/svg+xml", sizes: "any" },
@@ -190,8 +201,10 @@ export default async function RootLayout({
             <BackupCodesModal />
             <DiscordProfileModalWrapper />
             <GithubProfileModalWrapper />
-            <ChatWidget />
+            <ChatWidgetMount />
             <CookieNotice />
+            <OfflineBanner />
+            <CommandPalette />
             <Toaster />
           </AuthProvider>
         </ThemeProvider>

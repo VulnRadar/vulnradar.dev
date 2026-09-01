@@ -34,19 +34,25 @@ function detectMixedContent(url: string, _headers: Headers, body: string) {
   // navigation, never fetched as a subresource -- it must not count here.
   // <form action=...> is covered separately by form-action-http. Mirrors
   // headers.ts's `mixed-content` detector, which scopes the same way.
-  const srcRefs =
-    body.match(
-      /<(?:script|img|iframe|video|audio|source|object|embed)\b[^>]*\ssrc=["']http:\/\/[^"']+["']/gi,
-    ) || [];
-  const stylesheetRefs = (body.match(/<link\b[^>]*>/gi) || []).filter(
-    (t) =>
-      /\brel=["']?stylesheet["']?/i.test(t) &&
-      /\shref=["']http:\/\/[^"']+["']/i.test(t),
-  );
-  const httpRefs = [...srcRefs, ...stylesheetRefs];
+  //
+  // Each hit is judged at ITS OWN offset. This previously collected the
+  // matched tag TEXT and re-found it with body.indexOf(ref), which always
+  // returns the FIRST occurrence of that string: a page that showed a tag
+  // inside <pre><code> and then loaded the identical tag for real further
+  // down had every copy judged at the documentation offset, so the whole
+  // page was reported clean. A silent false negative, the worse direction.
+  const srcRe =
+    /<(?:script|img|iframe|video|audio|source|object|embed)\b[^>]*\ssrc=["']http:\/\/[^"']+["']/gi;
+  const linkRe = /<link\b[^>]{0,2000}>/gi;
+  const offsets: number[] = [];
+  for (const m of body.matchAll(srcRe)) offsets.push(m.index);
+  for (const m of body.matchAll(linkRe)) {
+    if (!/\brel=["']?stylesheet["']?/i.test(m[0])) continue;
+    if (!/\shref=["']http:\/\/[^"']+["']/i.test(m[0])) continue;
+    offsets.push(m.index);
+  }
   let count = 0;
-  for (const ref of httpRefs) {
-    const idx = body.indexOf(ref);
+  for (const idx of offsets) {
     const before = body.slice(Math.max(0, idx - 200), idx).toLowerCase();
     if (/<code|<pre|```|example|documentation/i.test(before)) continue;
     count++;

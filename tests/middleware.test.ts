@@ -8,8 +8,23 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 const { middleware } = await import("@/middleware");
+
+// app/layout.tsx read as text, not imported: it pulls in the whole provider
+// tree and through it @/lib/database/db, which throws "DATABASE_URL
+// environment variable is not set" at import time in this node environment.
+// The one value asserted from it is a string literal, so reading it is
+// enough and it still fails if someone edits the canonical back.
+const rootLayoutSource = readFileSync(
+  fileURLToPath(new URL("../app/layout.tsx", import.meta.url)),
+  "utf8",
+);
+const fallbackCanonical = rootLayoutSource.match(
+  /alternates:\s*\{\s*canonical:\s*"([^"]+)"/,
+)?.[1];
 
 function makeRequest(
   path: string,
@@ -159,6 +174,28 @@ describe("middleware: public path / auth redirects", () => {
   it("redirects a logged-out visitor on / to /landing", () => {
     const res = middleware(makeRequest("/"));
     expect(res.headers.get("location")).toContain("/landing");
+  });
+
+  // NextResponse.redirect defaults to 307, which tells a crawler the
+  // arrangement is temporary and to keep evaluating "/" as its own URL. The
+  // signed-out root has always resolved to /landing, so it is a 308 and the
+  // link equity consolidates. Nothing asserted the code, so the default
+  // could have come back on any edit to this branch.
+  it("makes the anonymous / redirect permanent (308), not the NextResponse default 307", () => {
+    const res = middleware(makeRequest("/"));
+    expect(res.status).toBe(308);
+  });
+
+  // The other half of the same decision. app/layout.tsx's site-wide fallback
+  // canonical used to be "/", the one path this middleware ALWAYS redirects,
+  // so any page added without its own pageMetadata() call inherited a
+  // canonical naming a URL that never returns 200. It is "/landing" now, and
+  // the invariant worth guarding is not the literal string but that the
+  // fallback names a path the middleware serves directly.
+  it("serves the root layout's fallback canonical without a redirect, so it names a URL that can return 200", () => {
+    expect(fallbackCanonical).toBe("/landing");
+    const res = middleware(makeRequest(fallbackCanonical!));
+    expect(res.headers.get("location")).toBeNull();
   });
 
   it("redirects a protected route to /login when there is no session cookie", () => {
@@ -361,5 +398,203 @@ describe("middleware: CSRF enforcement on /api/v3/**", () => {
       }),
     );
     expect(res.status).not.toBe(403);
+  });
+});
+
+/**
+ * AUDIT-013#dup-04: the documented 1 MiB body cap lived only inside
+ * parseBody, which 54 of the 73 body-reading routes never call, so for those
+ * routes there was no cap at all and no backstop under them (the App Router
+ * has no default body limit). Enforcing it here makes it a property of the
+ * API rather than of one helper.
+ */
+describe("middleware: request body size cap", () => {
+  const overLimit = String(1 * 1024 * 1024 + 1);
+
+  it("rejects an oversized POST body with 413 before the CSRF check runs", () => {
+    // No Origin header, so this request would otherwise be a 403: proving it
+    // is a 413 proves the cap runs first and applies to every API route
+    // regardless of how it authenticates.
+    const res = middleware(
+      makeRequest("/api/v3/scan", {
+        method: "POST",
+        cookie: "vulnradar_session=abc123",
+        headers: { "content-length": overLimit },
+      }),
+    );
+    expect(res.status).toBe(413);
+  });
+
+  it("rejects an oversized body on a route that never calls parseBody", () => {
+    const res = middleware(
+      makeRequest("/api/v3/account/unsubscribe", {
+        method: "POST",
+        headers: {
+          "content-length": overLimit,
+          origin: "https://vulnradar.dev",
+        },
+      }),
+    );
+    expect(res.status).toBe(413);
+  });
+
+  it("applies to PUT, PATCH and DELETE as well as POST", () => {
+    for (const method of ["PUT", "PATCH", "DELETE"]) {
+      const res = middleware(
+        makeRequest("/api/v3/history", {
+          method,
+          cookie: "vulnradar_session=abc123",
+          headers: {
+            "content-length": overLimit,
+            origin: "https://vulnradar.dev",
+          },
+        }),
+      );
+      expect(res.status).toBe(413);
+    }
+  });
+
+  it("still carries the security headers on the 413", () => {
+    const res = middleware(
+      makeRequest("/api/v3/scan", {
+        method: "POST",
+        headers: { "content-length": overLimit },
+      }),
+    );
+    expect(res.headers.get("Content-Security-Policy")).toContain(
+      "default-src 'self'",
+    );
+    expect(res.headers.get("X-Frame-Options")).toBe("DENY");
+  });
+
+  it("lets a body at exactly the limit through", () => {
+    const res = middleware(
+      makeRequest("/api/v3/history", {
+        method: "POST",
+        cookie: "vulnradar_session=abc123",
+        headers: {
+          "content-length": String(1 * 1024 * 1024),
+          origin: "https://vulnradar.dev",
+        },
+      }),
+    );
+    expect(res.status).not.toBe(413);
+  });
+
+  it("does not apply to GET, which carries no body", () => {
+    const res = middleware(
+      makeRequest("/api/v3/history", {
+        method: "GET",
+        cookie: "vulnradar_session=abc123",
+        headers: { "content-length": overLimit },
+      }),
+    );
+    expect(res.status).not.toBe(413);
+  });
+
+  it("does not apply outside /api/", () => {
+    const res = middleware(
+      makeRequest("/dashboard", {
+        method: "POST",
+        cookie: "vulnradar_session=abc123",
+        headers: { "content-length": overLimit },
+      }),
+    );
+    expect(res.status).not.toBe(413);
+  });
+});
+
+/**
+ * AUDIT-012#obs-07: the per-request correlation id. Middleware is the only
+ * place that sees every request, so it is where the id is minted; it then
+ * has to cross into the Node runtime as a request header, because a
+ * middleware AsyncLocalStorage is invisible to a route handler (different
+ * runtime, different module instance). See lib/database/request-context.ts.
+ */
+describe("middleware: request correlation id", () => {
+  /**
+   * NextResponse.next({ request: { headers } }) does not mutate the incoming
+   * Request. Next encodes the overridden request headers onto the response
+   * as `x-middleware-request-<name>`, which the server then replays for the
+   * route handler, so that is what proves the id was actually forwarded
+   * rather than only echoed.
+   */
+  const forwarded = (res: Response) =>
+    res.headers.get("x-middleware-request-x-request-id");
+
+  it("echoes an x-request-id on the response", () => {
+    const res = middleware(makeRequest("/landing"));
+    expect(res.headers.get("x-request-id")).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
+  });
+
+  it("forwards the same id to the route handler as a request header", () => {
+    // A path that falls through to NextResponse.next rather than a redirect,
+    // since only that carries forwarded request headers at all.
+    const res = middleware(makeRequest("/landing"));
+    expect(forwarded(res)).toBe(res.headers.get("x-request-id"));
+  });
+
+  it("generates a different id on every request", () => {
+    const a = middleware(makeRequest("/landing")).headers.get("x-request-id");
+    const b = middleware(makeRequest("/landing")).headers.get("x-request-id");
+    expect(a).toBeTruthy();
+    expect(a).not.toBe(b);
+  });
+
+  it("overwrites a client-supplied x-request-id instead of trusting it", () => {
+    // The value is written verbatim into system_error_logs, an admin-facing
+    // table. A caller that could choose it could plant arbitrary text there
+    // or deliberately collide its request with somebody else's.
+    const res = middleware(
+      makeRequest("/landing", {
+        headers: { "x-request-id": "attacker-chosen-value" },
+      }),
+    );
+    expect(res.headers.get("x-request-id")).not.toBe("attacker-chosen-value");
+    // The forwarded copy is the one a route handler reads, so it is the one
+    // that has to be overwritten, not just the echoed response header.
+    expect(forwarded(res)).toBe(res.headers.get("x-request-id"));
+    expect(forwarded(res)).not.toBe("attacker-chosen-value");
+  });
+
+  it("carries the id on a redirect, which never reaches a route handler", () => {
+    const res = middleware(makeRequest("/dashboard"));
+    expect(res.status).toBe(307);
+    expect(res.headers.get("x-request-id")).toBeTruthy();
+  });
+
+  it("carries the id on the 413 an oversized body is rejected with", () => {
+    const res = middleware(
+      makeRequest("/api/v3/scan", {
+        method: "POST",
+        headers: { "content-length": String(64 * 1024 * 1024) },
+      }),
+    );
+    expect(res.status).toBe(413);
+    expect(res.headers.get("x-request-id")).toBeTruthy();
+  });
+
+  it("carries the id on a CSRF rejection", () => {
+    const res = middleware(
+      makeRequest("/api/v3/history", {
+        method: "POST",
+        cookie: "vulnradar_session=abc123",
+        headers: { origin: "https://evil.example" },
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect(res.headers.get("x-request-id")).toBeTruthy();
+  });
+
+  it("still carries the id when DISABLE_CSP strips the security headers", () => {
+    // A correlation id is not a security header. Turning CSP off to debug a
+    // third-party embed must not also take away the thing that makes the
+    // resulting errors findable.
+    vi.stubEnv("DISABLE_CSP", "1");
+    const res = middleware(makeRequest("/landing"));
+    expect(res.headers.get("Content-Security-Policy")).toBeNull();
+    expect(res.headers.get("x-request-id")).toBeTruthy();
   });
 });

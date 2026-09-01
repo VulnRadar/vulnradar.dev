@@ -25,7 +25,6 @@ import {
   CONFIG_SUPPORT_EMAIL,
   CONFIG_LEGAL_EMAIL,
   CONFIG_SECURITY_EMAIL,
-  CONFIG_ENTERPRISE_EMAIL,
   CONFIG_NOREPLY_EMAIL,
   CONFIG_TERMS_UPDATED_AT,
   CONFIG_TERMS_CHANGE_SUMMARY,
@@ -51,7 +50,6 @@ import {
   CONFIG_VERSION_COOKIE_MAX_AGE_DAYS,
   CONFIG_NOTIFICATION_POLL_INTERVAL_MS,
   CONFIG_NOTIFICATION_DEFAULT_DISMISS_DAYS,
-  CONFIG_SITE_NOTIFICATION_DEFAULT_DISMISS_DAYS,
   CONFIG_DEVICE_TRUST_MAX_AGE_DAYS,
   CONFIG_2FA_PENDING_MAX_AGE_SECONDS,
   CONFIG_EMAIL_2FA_CODE_EXPIRY_MINUTES,
@@ -74,6 +72,14 @@ import {
   CONFIG_RATE_LIMIT_SIGNUP_WINDOW_MINUTES,
   CONFIG_RATE_LIMIT_FORGOT_PASSWORD_ATTEMPTS,
   CONFIG_RATE_LIMIT_FORGOT_PASSWORD_WINDOW_MINUTES,
+  CONFIG_RATE_LIMIT_SIGNUP_EMAIL_ATTEMPTS,
+  CONFIG_RATE_LIMIT_SIGNUP_EMAIL_WINDOW_MINUTES,
+  CONFIG_RATE_LIMIT_FORGOT_PASSWORD_EMAIL_ATTEMPTS,
+  CONFIG_RATE_LIMIT_FORGOT_PASSWORD_EMAIL_WINDOW_MINUTES,
+  CONFIG_RATE_LIMIT_DOMAIN_ADD_ATTEMPTS,
+  CONFIG_RATE_LIMIT_DOMAIN_ADD_WINDOW_MINUTES,
+  CONFIG_RATE_LIMIT_DOMAIN_VERIFY_ATTEMPTS,
+  CONFIG_RATE_LIMIT_DOMAIN_VERIFY_WINDOW_MINUTES,
   CONFIG_RATE_LIMIT_API_REQUESTS,
   CONFIG_RATE_LIMIT_API_WINDOW_MINUTES,
   CONFIG_RATE_LIMIT_SCAN_REQUESTS,
@@ -112,6 +118,11 @@ import {
   CONFIG_SCAN_RESPONSE_BODY_MAX_BYTES,
   CONFIG_SUBDOMAIN_CACHE_TTL_HOURS,
   CONFIG_SUBDOMAIN_DISCOVERY_HTTP_CONCURRENCY,
+  CONFIG_PORT_SCAN_CONCURRENCY,
+  CONFIG_PORT_SCAN_CONNECT_TIMEOUT_MS,
+  CONFIG_PORT_SCAN_BANNER_READ_WINDOW_MS,
+  CONFIG_PORT_SCAN_OVERALL_DEADLINE_MS,
+  CONFIG_PORT_SCAN_MAX_BANNER_BYTES,
   CONFIG_CRAWL_DISCOVER_MAX_PAGES,
   CONFIG_CRAWL_DISCOVER_FETCH_TIMEOUT_MS,
   CONFIG_CRAWL_DISCOVER_BODY_MAX_BYTES,
@@ -171,7 +182,6 @@ import {
   CONFIG_BROWSERBASE_QUEUE_MAX_WAIT_MS,
   CONFIG_DEMO_SCAN_LIMIT,
   CONFIG_DEMO_WINDOW_HOURS,
-  CONFIG_MAX_EMAIL_LENGTH,
   CONFIG_MAX_NAME_LENGTH,
   CONFIG_MAX_DESCRIPTION_LENGTH,
   CONFIG_MAX_TEAM_NAME_LENGTH,
@@ -182,7 +192,6 @@ import {
   CONFIG_ENGINE_FEEDBACK_MIN_SAMPLE_SIZE,
   CONFIG_ADAPTIVE_CONFIDENCE_ENABLED,
   CONFIG_PAGINATION_DEFAULT_PAGE_SIZE,
-  CONFIG_PAGINATION_MAX_PAGE_SIZE,
   CONFIG_BADGE_CACHE_MAX_AGE_SECONDS,
   CONFIG_ADMIN_ALERT_WEBHOOK_URL,
   CONFIG_ADMIN_ALERT_WEBHOOK_SECRET,
@@ -217,11 +226,9 @@ import {
   CONFIG_FEATURE_EMAIL_NOTIFICATIONS,
   CONFIG_FEATURE_DOMAIN_VERIFICATION,
   CONFIG_DOMAIN_REVERIFY_ENABLED,
-  CONFIG_DOMAIN_REVERIFY_TICK_INTERVAL_MS,
   CONFIG_DOMAIN_REVERIFY_INTERVAL_DAYS,
   CONFIG_DOMAIN_REVERIFY_BATCH_SIZE,
   CONFIG_POSTURE_DIGEST_ENABLED,
-  CONFIG_POSTURE_DIGEST_MAX_FINDINGS_LISTED,
   CONFIG_SCHEDULED_BACKUP_ENABLED,
   CONFIG_BILLING_ENABLED,
   CONFIG_BILLING_FREE_LIMIT,
@@ -234,7 +241,6 @@ import {
   CONFIG_BILLING_ELITE_SUPPORTER_RETENTION,
   CONFIG_BILLING_UNLIMITED_MODE_LIMIT,
   CONFIG_BILLING_VERIFY_CODE_EXPIRY_MINUTES,
-  CONFIG_BILLING_HISTORY_PAGE_SIZE,
   CONFIG_GITHUB_REVIEW_FREE_TRIAL_WINDOW_HOURS,
   CONFIG_BILLING_STRIPE_WEBHOOK_LOOKUP_LIMIT,
   CONFIG_BILLING_FREE_API_KEYS,
@@ -265,6 +271,10 @@ import {
   CONFIG_BILLING_CORE_SUPPORTER_BULK_SCAN_URLS,
   CONFIG_BILLING_PRO_SUPPORTER_BULK_SCAN_URLS,
   CONFIG_BILLING_ELITE_SUPPORTER_BULK_SCAN_URLS,
+  CONFIG_BILLING_FREE_CRAWL_PAGES,
+  CONFIG_BILLING_CORE_SUPPORTER_CRAWL_PAGES,
+  CONFIG_BILLING_PRO_SUPPORTER_CRAWL_PAGES,
+  CONFIG_BILLING_ELITE_SUPPORTER_CRAWL_PAGES,
   CONFIG_BILLING_FREE_GITHUB_REVIEW_TOKENS_PER_WINDOW,
   CONFIG_BILLING_CORE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW,
   CONFIG_BILLING_PRO_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW,
@@ -284,9 +294,27 @@ import {
 } from "./config-values";
 
 /**
- * "runtime" takes effect within the resolver cache TTL with no deploy.
- * "build" is baked into statically generated HTML, so an edit applies on the
- * next build. Both are editable by an admin; only the propagation differs.
+ * "runtime" takes effect within the resolver cache TTL with no deploy: the
+ * value is read through getSetting()/getSettings(), which query
+ * system_settings.
+ *
+ * "build" does NOT mean "applies on the next build". Nothing reads
+ * system_settings at build time: `prebuild` only compiles the knowledge
+ * files and `next build` compiles the config-values.ts literals, so a
+ * rebuild picks up the source constant, never the saved row. A build-tier
+ * entry is a *reference* record of a compiled value: it documents the
+ * constant, validates what an admin types, and stores it, but the running
+ * app keeps using the compiled default (or, for a few keys, an env
+ * override) until someone edits lib/config/config-values.ts and rebuilds.
+ * Each build-tier entry's `help` says so, and says which constant or env
+ * var to change. APP_URL is the one exception: resolveAppUrl() in
+ * lib/config/runtime-config.ts reads the saved row live for OAuth
+ * redirect_uri building, so an edit there does take effect for that one
+ * use.
+ *
+ * Do not add a build-tier entry expecting an admin edit to reach the app.
+ * If a value must be admin-editable, give it a getSetting() reader and mark
+ * it "runtime".
  */
 export type SettingTier = "runtime" | "build";
 
@@ -334,7 +362,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_APP_NAME,
     group: "General",
     label: "Application name",
-    help: "Shown in page titles, emails, and the TOTP issuer. Client bundles inline it, so it applies on the next build.",
+    help: "Shown in page titles, emails, and the TOTP issuer. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_APP_NAME in lib/config/config-values.ts and rebuild instead.",
     min: 1,
     max: 64,
   },
@@ -344,7 +372,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_APP_SLUG,
     group: "General",
     label: "Application slug",
-    help: "Lowercase identifier used in generated filenames and machine-readable output.",
+    help: "Lowercase identifier used in generated filenames and machine-readable output. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_APP_SLUG in lib/config/config-values.ts and rebuild instead.",
     min: 1,
     max: 64,
   },
@@ -354,7 +382,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_APP_DESCRIPTION,
     group: "General",
     label: "Application description",
-    help: "Default meta description for pages that do not set their own.",
+    help: "Default meta description for pages that do not set their own. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_APP_DESCRIPTION in lib/config/config-values.ts and rebuild instead.",
     min: 1,
     max: 500,
   },
@@ -364,7 +392,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_TOTAL_CHECKS_LABEL,
     group: "General",
     label: "Total checks label",
-    help: 'Marketing count of scanner checks, for example "750+".',
+    help: 'Marketing count of scanner checks, for example "750+". Reference only: nothing reads the saved value. The shipped label is regenerated from the real check count by scripts/knowledge/compile-checks-knowledge.mjs on every build, so it cannot drift.',
     min: 1,
     max: 32,
   },
@@ -374,7 +402,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_APP_URL,
     group: "General",
     label: "Public application URL",
-    help: "Origin used for canonical URLs, social cards, and email links; those are baked into built pages, so they only pick up a change here on the next build and deploy. The GitHub/Google/Discord sign-in redirect is the one exception: it reads this value live, no rebuild needed. No trailing slash.",
+    help: "Origin used for canonical URLs, social cards, and email links. Those read NEXT_PUBLIC_APP_URL (or the compiled CONFIG_APP_URL), not the value saved here, so set that env var and rebuild to change them. The GitHub/Google/Discord sign-in redirect is the exception: it reads this saved value live, no rebuild needed. No trailing slash.",
   },
   APP_REPO: {
     tier: "build",
@@ -382,7 +410,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_APP_REPO,
     group: "General",
     label: "Source repository",
-    help: 'GitHub "owner/name" used for the releases feed and the version check.',
+    help: 'GitHub "owner/name" used for the releases feed and the version check. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_APP_REPO in lib/config/config-values.ts and rebuild instead.',
     min: 3,
     max: 128,
   },
@@ -392,7 +420,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_DISCORD_INVITE_URL,
     group: "General",
     label: "Discord invite URL",
-    help: "Community link shown in the footer and support pages.",
+    help: "Community link shown in the footer and support pages. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set NEXT_PUBLIC_DISCORD_INVITE_URL in the environment, or CONFIG_DISCORD_INVITE_URL in lib/config/config-values.ts, and rebuild instead.",
   },
   CHROME_WEB_STORE_URL: {
     tier: "build",
@@ -400,7 +428,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_CHROME_WEB_STORE_URL,
     group: "General",
     label: "Chrome Web Store listing URL",
-    help: "Shown as the install link on the extension docs page once the listing is live. Leave empty to fall back to a packaged-release download.",
+    help: "Shown as the install link on the extension docs page once the listing is live. Leave empty to fall back to a packaged-release download. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set NEXT_PUBLIC_CHROME_WEB_STORE_URL in the environment, or CONFIG_CHROME_WEB_STORE_URL in lib/config/config-values.ts, and rebuild instead.",
   },
   FIREFOX_ADDON_URL: {
     tier: "build",
@@ -408,7 +436,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_FIREFOX_ADDON_URL,
     group: "General",
     label: "Firefox Add-ons listing URL",
-    help: "Shown as the install link on the extension docs page once the listing is live. Leave empty to fall back to a packaged-release download.",
+    help: "Shown as the install link on the extension docs page once the listing is live. Leave empty to fall back to a packaged-release download. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set NEXT_PUBLIC_FIREFOX_ADDON_URL in the environment, or CONFIG_FIREFOX_ADDON_URL in lib/config/config-values.ts, and rebuild instead.",
   },
   TERMS_UPDATED_AT: {
     tier: "runtime",
@@ -453,14 +481,6 @@ export const SETTINGS_REGISTRY = {
     label: "Security email",
     help: "Address published in security.txt for vulnerability reports.",
   },
-  ENTERPRISE_EMAIL: {
-    tier: "runtime",
-    type: "email",
-    default: CONFIG_ENTERPRISE_EMAIL,
-    group: "General",
-    label: "Enterprise email",
-    help: "Sales contact for enterprise enquiries.",
-  },
   NOREPLY_EMAIL: {
     tier: "runtime",
     type: "email",
@@ -478,7 +498,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_LOGO_URL,
     group: "Branding",
     label: "Logo URL",
-    help: "Absolute URL or a path relative to the app root. Used in emails and structured data.",
+    help: "Absolute URL or a path relative to the app root. Used in emails and structured data. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set LOGO_URL in the environment, or CONFIG_LOGO_URL in lib/config/config-values.ts, and rebuild instead.",
     min: 1,
     max: 512,
   },
@@ -488,7 +508,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_PRIMARY_COLOR,
     group: "Branding",
     label: "Primary colour",
-    help: "Hex colour for the PWA theme and browser UI tint. Keep it in sync with --primary in globals.css.",
+    help: "Hex colour for the PWA theme and browser UI tint. Keep it in sync with --primary in globals.css. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_PRIMARY_COLOR in lib/config/config-values.ts and rebuild instead.",
     min: 4,
     max: 9,
   },
@@ -498,7 +518,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_BACKGROUND_COLOR_DARK,
     group: "Branding",
     label: "Dark background colour",
-    help: "Hex colour reported to the browser for dark mode.",
+    help: "Hex colour reported to the browser for dark mode. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_BACKGROUND_COLOR_DARK in lib/config/config-values.ts and rebuild instead.",
     min: 4,
     max: 9,
   },
@@ -508,7 +528,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_BACKGROUND_COLOR_LIGHT,
     group: "Branding",
     label: "Light background colour",
-    help: "Hex colour reported to the browser for light mode.",
+    help: "Hex colour reported to the browser for light mode. Reference only: no code reads this value anywhere, here or from the compiled config, so editing it changes nothing.",
     min: 4,
     max: 9,
   },
@@ -518,7 +538,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_FOOTER_TEXT,
     group: "Branding",
     label: "Footer text",
-    help: "Short line rendered in the site footer.",
+    help: "Short line rendered in the site footer. Reference only: no code reads this value anywhere, here or from the compiled config, so editing it changes nothing.",
     min: 1,
     max: 200,
   },
@@ -531,7 +551,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SEO_TAGLINE,
     group: "SEO",
     label: "Tagline",
-    help: "Short pitch used as the default meta description and OpenGraph description.",
+    help: "Short pitch used as the default meta description and OpenGraph description. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_SEO_TAGLINE in lib/config/config-values.ts and rebuild instead.",
     min: 1,
     max: 200,
   },
@@ -543,7 +563,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SEO_KEYWORDS.join(", "),
     group: "SEO",
     label: "Keywords",
-    help: "Comma-separated terms to rank for. Keep them honest: stuffing unrelated terms is penalised.",
+    help: "Comma-separated terms to rank for. Keep them honest: stuffing unrelated terms is penalised. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_SEO_KEYWORDS in lib/config/config-values.ts and rebuild instead.",
     max: 1000,
   },
   SEO_OG_IMAGE: {
@@ -552,7 +572,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SEO_OG_IMAGE,
     group: "SEO",
     label: "Social card image",
-    help: "Path relative to the app root. 1200x630 renders without cropping on every major network.",
+    help: "Path relative to the app root. 1200x630 renders without cropping on every major network. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_SEO_OG_IMAGE in lib/config/config-values.ts and rebuild instead.",
     min: 1,
     max: 512,
   },
@@ -562,7 +582,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SEO_OG_IMAGE_WIDTH,
     group: "SEO",
     label: "Social card width",
-    help: "Pixel width declared to social networks. Must match the real image.",
+    help: "Pixel width declared to social networks. Must match the real image. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_SEO_OG_IMAGE_WIDTH in lib/config/config-values.ts and rebuild instead.",
     min: 200,
     max: 4096,
   },
@@ -572,7 +592,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SEO_OG_IMAGE_HEIGHT,
     group: "SEO",
     label: "Social card height",
-    help: "Pixel height declared to social networks. Must match the real image.",
+    help: "Pixel height declared to social networks. Must match the real image. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_SEO_OG_IMAGE_HEIGHT in lib/config/config-values.ts and rebuild instead.",
     min: 200,
     max: 4096,
   },
@@ -582,7 +602,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SEO_TWITTER_HANDLE,
     group: "SEO",
     label: "Twitter handle",
-    help: "Leave empty to omit the Twitter card attribution tags entirely.",
+    help: "Leave empty to omit the Twitter card attribution tags entirely. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set NEXT_PUBLIC_SEO_TWITTER_HANDLE in the environment, or CONFIG_SEO_TWITTER_HANDLE in lib/config/config-values.ts, and rebuild instead.",
     max: 64,
   },
   SEO_GITHUB_URL: {
@@ -591,7 +611,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SEO_GITHUB_URL,
     group: "SEO",
     label: "GitHub URL",
-    help: "Repository link used in structured data and the footer.",
+    help: "Repository link used in structured data and the footer. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_SEO_GITHUB_URL in lib/config/config-values.ts and rebuild instead.",
   },
   SEO_GOOGLE_VERIFICATION: {
     tier: "build",
@@ -599,7 +619,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SEO_GOOGLE_VERIFICATION,
     group: "SEO",
     label: "Google verification token",
-    help: "Search Console ownership token. Leave empty to skip the meta tag.",
+    help: "Search Console ownership token. Leave empty to skip the meta tag. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION in the environment, or CONFIG_SEO_GOOGLE_VERIFICATION in lib/config/config-values.ts, and rebuild instead.",
     max: 128,
   },
   SEO_BING_VERIFICATION: {
@@ -608,7 +628,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SEO_BING_VERIFICATION,
     group: "SEO",
     label: "Bing verification token",
-    help: "Bing Webmaster ownership token. Leave empty to skip the meta tag.",
+    help: "Bing Webmaster ownership token. Leave empty to skip the meta tag. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set NEXT_PUBLIC_BING_SITE_VERIFICATION in the environment, or CONFIG_SEO_BING_VERIFICATION in lib/config/config-values.ts, and rebuild instead.",
     max: 128,
   },
   SEO_LOCALE: {
@@ -617,7 +637,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SEO_LOCALE,
     group: "SEO",
     label: "OpenGraph locale",
-    help: 'Locale the content targets, for example "en_US".',
+    help: 'Locale the content targets, for example "en_US". Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_SEO_LOCALE in lib/config/config-values.ts and rebuild instead.',
     min: 2,
     max: 16,
   },
@@ -627,7 +647,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SEO_LANGUAGE,
     group: "SEO",
     label: "HTML language",
-    help: 'Value of the lang attribute on the html element, for example "en".',
+    help: 'Value of the lang attribute on the html element, for example "en". Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_SEO_LANGUAGE in lib/config/config-values.ts and rebuild instead.',
     min: 2,
     max: 16,
   },
@@ -637,7 +657,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SEO_ORG_FOUNDING_YEAR,
     group: "SEO",
     label: "Founding year",
-    help: "Year used in the JSON-LD Organization node.",
+    help: "Year used in the JSON-LD Organization node. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_SEO_ORG_FOUNDING_YEAR in lib/config/config-values.ts and rebuild instead.",
     min: 4,
     max: 4,
   },
@@ -647,7 +667,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SEO_LICENSE,
     group: "SEO",
     label: "Licence",
-    help: "SPDX identifier published in the structured data.",
+    help: "SPDX identifier published in the structured data. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_SEO_LICENSE in lib/config/config-values.ts and rebuild instead.",
     min: 1,
     max: 64,
   },
@@ -734,16 +754,6 @@ export const SETTINGS_REGISTRY = {
     label: "Periodic domain re-verification",
     help: "Re-checks a verified domain's DNS TXT record periodically and revokes its active-probes permission if it no longer resolves -- closes the gap where a domain that changes hands keeps the original account's scan permission forever. On by default as a safety mechanism.",
   },
-  DOMAIN_REVERIFY_TICK_INTERVAL_MS: {
-    tier: "runtime",
-    type: "int",
-    default: CONFIG_DOMAIN_REVERIFY_TICK_INTERVAL_MS,
-    group: "Features",
-    label: "Domain re-verify worker tick interval (ms)",
-    help: "How often the re-verification worker checks for domains due for a recheck.",
-    min: 60000,
-    max: 86400000,
-  },
   DOMAIN_REVERIFY_INTERVAL_DAYS: {
     tier: "runtime",
     type: "int",
@@ -772,16 +782,6 @@ export const SETTINGS_REGISTRY = {
     label: "Posture digest emails",
     help: "Weekly cross-site summary email for users who opt in. Turning this off pauses the worker for everyone without changing anyone's individual opt-in.",
   },
-  POSTURE_DIGEST_MAX_FINDINGS_LISTED: {
-    tier: "runtime",
-    type: "int",
-    default: CONFIG_POSTURE_DIGEST_MAX_FINDINGS_LISTED,
-    group: "Features",
-    label: "Posture digest max findings listed",
-    help: "Caps how many individual findings are itemized in one digest email. The summary counts (sites monitored, total new findings, etc.) are never truncated, only the itemized list.",
-    min: 1,
-    max: 200,
-  },
   SCHEDULED_BACKUP_ENABLED: {
     tier: "runtime",
     type: "bool",
@@ -799,7 +799,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_BILLING_ENABLED,
     group: "Billing",
     label: "Billing enabled",
-    help: "Turning this off gives every user the unlimited-mode limit and hides pricing.",
+    help: "Turning this off gives every user the unlimited-mode limit and unlocks the plan-gated scan features. That half is live within the resolver TTL. The UI half is not: the pricing page and its nav link, the auth-page plan panel, the upgrade prompts and the /checkout guards all read the compiled CONFIG_BILLING_ENABLED, so they stay up until you set that to false in lib/config/config-values.ts and rebuild.",
   },
   BILLING_FREE_LIMIT: {
     tier: "runtime",
@@ -900,16 +900,6 @@ export const SETTINGS_REGISTRY = {
     help: "How long the emailed 6-digit billing verification code stays valid. Keep it at or below the billing verify rate-limit window.",
     min: 1,
     max: 60,
-  },
-  BILLING_HISTORY_PAGE_SIZE: {
-    tier: "runtime",
-    type: "int",
-    default: CONFIG_BILLING_HISTORY_PAGE_SIZE,
-    group: "Billing",
-    label: "Billing history rows",
-    help: "Invoice/payment rows returned to the Billing tab.",
-    min: 1,
-    max: 1000,
   },
   GITHUB_REVIEW_FREE_TRIAL_WINDOW_HOURS: {
     tier: "runtime",
@@ -1219,6 +1209,49 @@ export const SETTINGS_REGISTRY = {
     max: 100000,
   },
 
+  // Pages one crawl may SELECT to scan, per plan. No -1: an unbounded crawl is
+  // a denial-of-service against our own scan pipeline, so the minimum is 1.
+  BILLING_FREE_CRAWL_PAGES: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_BILLING_FREE_CRAWL_PAGES,
+    group: "Billing",
+    label: "Free plan pages per crawl",
+    help: "Pages a free user may select to scan in one crawl. Crawl discovery can surface far more than this; the extras are listed but not selectable.",
+    min: 1,
+    max: 500,
+  },
+  BILLING_CORE_SUPPORTER_CRAWL_PAGES: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_BILLING_CORE_SUPPORTER_CRAWL_PAGES,
+    group: "Billing",
+    label: "Core supporter pages per crawl",
+    help: "Pages a core supporter may select to scan in one crawl.",
+    min: 1,
+    max: 500,
+  },
+  BILLING_PRO_SUPPORTER_CRAWL_PAGES: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_BILLING_PRO_SUPPORTER_CRAWL_PAGES,
+    group: "Billing",
+    label: "Pro supporter pages per crawl",
+    help: "Pages a pro supporter may select to scan in one crawl.",
+    min: 1,
+    max: 500,
+  },
+  BILLING_ELITE_SUPPORTER_CRAWL_PAGES: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_BILLING_ELITE_SUPPORTER_CRAWL_PAGES,
+    group: "Billing",
+    label: "Elite supporter pages per crawl",
+    help: "Pages an elite supporter may select to scan in one crawl. Capped by the deployment-wide crawl scan page ceiling regardless of this value.",
+    min: 1,
+    max: 500,
+  },
+
   // GitHub repo review AI token budget, per fixed AI_USAGE_WINDOW_HOURS
   // window (the same window the AI_TOKENS_PER_WINDOW settings below reset
   // on -- see lib/billing/github-review-usage.ts). Unlike every other
@@ -1234,7 +1267,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_BILLING_FREE_GITHUB_REVIEW_TOKENS_PER_WINDOW,
     group: "Billing",
     label: "Free plan GitHub review tokens/window",
-    help: "AI tokens (prompt + completion) a free-plan user may spend on GitHub repo AI code review per AI_USAGE_WINDOW_HOURS window, using VulnRadar's own AI. 0 disables the feature on this plan. Never -1 (unlimited) — bringing your own AI key bypasses this cap entirely instead.",
+    help: "AI tokens (prompt + completion) a free-plan user may spend on GitHub repo AI code review per AI_USAGE_WINDOW_HOURS window, using VulnRadar's own AI. 0 disables the feature on this plan. Never -1 (unlimited): bringing your own AI key bypasses this cap entirely instead.",
     min: 0,
     max: 100_000_000,
   },
@@ -1244,7 +1277,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_BILLING_CORE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW,
     group: "Billing",
     label: "Core supporter GitHub review tokens/window",
-    help: "AI tokens a core supporter may spend on GitHub repo AI code review per AI_USAGE_WINDOW_HOURS window, using VulnRadar's own AI. Never -1 (unlimited) — bringing your own AI key bypasses this cap entirely instead.",
+    help: "AI tokens a core supporter may spend on GitHub repo AI code review per AI_USAGE_WINDOW_HOURS window, using VulnRadar's own AI. Never -1 (unlimited): bringing your own AI key bypasses this cap entirely instead.",
     min: 0,
     max: 100_000_000,
   },
@@ -1254,7 +1287,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_BILLING_PRO_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW,
     group: "Billing",
     label: "Pro supporter GitHub review tokens/window",
-    help: "AI tokens a pro supporter may spend on GitHub repo AI code review per AI_USAGE_WINDOW_HOURS window, using VulnRadar's own AI. Never -1 (unlimited) — bringing your own AI key bypasses this cap entirely instead.",
+    help: "AI tokens a pro supporter may spend on GitHub repo AI code review per AI_USAGE_WINDOW_HOURS window, using VulnRadar's own AI. Never -1 (unlimited): bringing your own AI key bypasses this cap entirely instead.",
     min: 0,
     max: 100_000_000,
   },
@@ -1264,7 +1297,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_BILLING_ELITE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW,
     group: "Billing",
     label: "Elite supporter GitHub review tokens/window",
-    help: "AI tokens an elite supporter may spend on GitHub repo AI code review per AI_USAGE_WINDOW_HOURS window, using VulnRadar's own AI. A real finite cap — VulnRadar's AI usage runs through subsidized provider capacity, not an unlimited budget, so even the top tier is never -1 (unlimited) for this field. Bringing your own AI key bypasses this cap entirely instead.",
+    help: "AI tokens an elite supporter may spend on GitHub repo AI code review per AI_USAGE_WINDOW_HOURS window, using VulnRadar's own AI. A real finite cap: VulnRadar's AI usage runs through subsidized provider capacity, not an unlimited budget, so even the top tier is never -1 (unlimited) for this field. Bringing your own AI key bypasses this cap entirely instead.",
     min: 0,
     max: 100_000_000,
   },
@@ -1283,7 +1316,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_BILLING_FREE_AI_TOKENS_PER_WINDOW,
     group: "Billing",
     label: "Free plan AI tokens/window",
-    help: "AI tokens (prompt + completion) a free-plan user may spend on AI chat, AI finding verification, and AI scan summaries combined per AI_USAGE_WINDOW_HOURS window, using VulnRadar's own AI. 0 disables these AI features on this plan. Never -1 (unlimited) — bringing your own AI key bypasses this cap entirely instead.",
+    help: "AI tokens (prompt + completion) a free-plan user may spend on AI chat, AI finding verification, and AI scan summaries combined per AI_USAGE_WINDOW_HOURS window, using VulnRadar's own AI. 0 disables these AI features on this plan. Never -1 (unlimited): bringing your own AI key bypasses this cap entirely instead.",
     min: 0,
     max: 100_000_000,
   },
@@ -1293,7 +1326,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_BILLING_CORE_SUPPORTER_AI_TOKENS_PER_WINDOW,
     group: "Billing",
     label: "Core supporter AI tokens/window",
-    help: "AI tokens a core supporter may spend on AI chat, AI finding verification, and AI scan summaries combined per AI_USAGE_WINDOW_HOURS window, using VulnRadar's own AI. Never -1 (unlimited) — bringing your own AI key bypasses this cap entirely instead.",
+    help: "AI tokens a core supporter may spend on AI chat, AI finding verification, and AI scan summaries combined per AI_USAGE_WINDOW_HOURS window, using VulnRadar's own AI. Never -1 (unlimited): bringing your own AI key bypasses this cap entirely instead.",
     min: 0,
     max: 100_000_000,
   },
@@ -1303,7 +1336,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_BILLING_PRO_SUPPORTER_AI_TOKENS_PER_WINDOW,
     group: "Billing",
     label: "Pro supporter AI tokens/window",
-    help: "AI tokens a pro supporter may spend on AI chat, AI finding verification, and AI scan summaries combined per AI_USAGE_WINDOW_HOURS window, using VulnRadar's own AI. Never -1 (unlimited) — bringing your own AI key bypasses this cap entirely instead.",
+    help: "AI tokens a pro supporter may spend on AI chat, AI finding verification, and AI scan summaries combined per AI_USAGE_WINDOW_HOURS window, using VulnRadar's own AI. Never -1 (unlimited): bringing your own AI key bypasses this cap entirely instead.",
     min: 0,
     max: 100_000_000,
   },
@@ -1313,7 +1346,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_BILLING_ELITE_SUPPORTER_AI_TOKENS_PER_WINDOW,
     group: "Billing",
     label: "Elite supporter AI tokens/window",
-    help: "AI tokens an elite supporter may spend on AI chat, AI finding verification, and AI scan summaries combined per AI_USAGE_WINDOW_HOURS window, using VulnRadar's own AI. A real finite cap — VulnRadar's AI usage runs through subsidized provider capacity, not an unlimited budget, so even the top tier is never -1 (unlimited) for this field. Bringing your own AI key bypasses this cap entirely instead.",
+    help: "AI tokens an elite supporter may spend on AI chat, AI finding verification, and AI scan summaries combined per AI_USAGE_WINDOW_HOURS window, using VulnRadar's own AI. A real finite cap: VulnRadar's AI usage runs through subsidized provider capacity, not an unlimited budget, so even the top tier is never -1 (unlimited) for this field. Bringing your own AI key bypasses this cap entirely instead.",
     min: 0,
     max: 100_000_000,
   },
@@ -1323,7 +1356,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_BILLING_FREE_BROWSERBASE_MINUTES_PER_MONTH,
     group: "Billing",
     label: "Free plan Browserbase minutes/month",
-    help: "Live-browser session minutes a free-plan user may use per calendar month (see lib/billing/browserbase-usage.ts). 0 disables the feature on this plan. Never -1 (unlimited) — Browserbase is a real paid third-party API.",
+    help: "Live-browser session minutes a free-plan user may use per calendar month (see lib/billing/browserbase-usage.ts). 0 disables the feature on this plan. Never -1 (unlimited): Browserbase is a real paid third-party API.",
     min: 0,
     max: 100_000,
   },
@@ -1353,7 +1386,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_BILLING_ELITE_SUPPORTER_BROWSERBASE_MINUTES_PER_MONTH,
     group: "Billing",
     label: "Elite supporter Browserbase minutes/month",
-    help: "Live-browser session minutes an elite supporter may use per calendar month. A real finite cap — Browserbase is a real paid third-party API, not subsidized capacity, so even the top tier is never -1 (unlimited) for this field.",
+    help: "Live-browser session minutes an elite supporter may use per calendar month. A real finite cap: Browserbase is a real paid third-party API, not subsidized capacity, so even the top tier is never -1 (unlimited) for this field.",
     min: 0,
     max: 100_000,
   },
@@ -1461,6 +1494,86 @@ export const SETTINGS_REGISTRY = {
     group: "Rate Limits",
     label: "Password reset window (minutes)",
     help: "Length of the password reset rate-limit bucket.",
+    min: 1,
+    max: 1440,
+  },
+  RATE_LIMIT_SIGNUP_EMAIL_ATTEMPTS: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_RATE_LIMIT_SIGNUP_EMAIL_ATTEMPTS,
+    group: "Rate Limits",
+    label: "Signup attempts per email address",
+    help: "Signups allowed per window for one email address, counted on the normalized address rather than the caller's IP. This is the bucket that survives an attacker rotating IPs through a residential proxy pool, so tighten this one during a signup flood.",
+    min: 1,
+    max: 100,
+  },
+  RATE_LIMIT_SIGNUP_EMAIL_WINDOW_MINUTES: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_RATE_LIMIT_SIGNUP_EMAIL_WINDOW_MINUTES,
+    group: "Rate Limits",
+    label: "Signup per-email window (minutes)",
+    help: "Length of the per-email signup rate-limit bucket.",
+    min: 1,
+    max: 1440,
+  },
+  RATE_LIMIT_FORGOT_PASSWORD_EMAIL_ATTEMPTS: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_RATE_LIMIT_FORGOT_PASSWORD_EMAIL_ATTEMPTS,
+    group: "Rate Limits",
+    label: "Password reset requests per email address",
+    help: "Reset emails allowed per window for one email address, counted on the normalized address rather than the caller's IP. Stops a NAT or botnet spamming resets for many distinct addresses from one source.",
+    min: 1,
+    max: 100,
+  },
+  RATE_LIMIT_FORGOT_PASSWORD_EMAIL_WINDOW_MINUTES: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_RATE_LIMIT_FORGOT_PASSWORD_EMAIL_WINDOW_MINUTES,
+    group: "Rate Limits",
+    label: "Password reset per-email window (minutes)",
+    help: "Length of the per-email password reset rate-limit bucket.",
+    min: 1,
+    max: 1440,
+  },
+  RATE_LIMIT_DOMAIN_ADD_ATTEMPTS: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_RATE_LIMIT_DOMAIN_ADD_ATTEMPTS,
+    group: "Rate Limits",
+    label: "Domains added per window",
+    help: "Domains one user may add for verification per window. This number is quoted in the public API docs, so an edit here changes what the docs describe.",
+    min: 1,
+    max: 1000,
+  },
+  RATE_LIMIT_DOMAIN_ADD_WINDOW_MINUTES: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_RATE_LIMIT_DOMAIN_ADD_WINDOW_MINUTES,
+    group: "Rate Limits",
+    label: "Domain add window (minutes)",
+    help: "Length of the domain-add rate-limit bucket.",
+    min: 1,
+    max: 1440,
+  },
+  RATE_LIMIT_DOMAIN_VERIFY_ATTEMPTS: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_RATE_LIMIT_DOMAIN_VERIFY_ATTEMPTS,
+    group: "Rate Limits",
+    label: "Domain verification checks per window",
+    help: "DNS verification checks one user may run per window. Kept above the domain-add cap because a user fixing a typo'd TXT record legitimately retries. Quoted in the public API docs.",
+    min: 1,
+    max: 1000,
+  },
+  RATE_LIMIT_DOMAIN_VERIFY_WINDOW_MINUTES: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_RATE_LIMIT_DOMAIN_VERIFY_WINDOW_MINUTES,
+    group: "Rate Limits",
+    label: "Domain verification window (minutes)",
+    help: "Length of the domain-verification rate-limit bucket.",
     min: 1,
     max: 1440,
   },
@@ -1856,6 +1969,56 @@ export const SETTINGS_REGISTRY = {
     min: 1,
     max: 100,
   },
+  PORT_SCAN_CONCURRENCY: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_PORT_SCAN_CONCURRENCY,
+    group: "Scanning",
+    label: "Port sweep concurrency",
+    help: "Simultaneous TCP connects during the curated port sweep. Lower this if an IDS or firewall in front of your own estate flags the default as a port scan; the sweep just takes longer.",
+    min: 1,
+    max: 100,
+  },
+  PORT_SCAN_CONNECT_TIMEOUT_MS: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_PORT_SCAN_CONNECT_TIMEOUT_MS,
+    group: "Scanning",
+    label: "Port sweep connect timeout (ms)",
+    help: "How long one port may stay silent before it is recorded as closed. Raise this for targets a continent away, where the default is short enough that a filtered port on a slow path looks closed. Raise the overall deadline with it.",
+    min: 100,
+    max: 30000,
+  },
+  PORT_SCAN_BANNER_READ_WINDOW_MS: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_PORT_SCAN_BANNER_READ_WINDOW_MS,
+    group: "Scanning",
+    label: "Port sweep banner read window (ms)",
+    help: "After a port answers, how long to listen for the banner it volunteers before closing the socket. The sweep never writes to the target, so this only decides how much a slow-talking service gets to say.",
+    min: 50,
+    max: 10000,
+  },
+  PORT_SCAN_OVERALL_DEADLINE_MS: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_PORT_SCAN_OVERALL_DEADLINE_MS,
+    group: "Scanning",
+    label: "Port sweep overall deadline (ms)",
+    help: "Wall-clock ceiling for a whole sweep. Must stay comfortably above (ports / concurrency) waves of the connect timeout, or the sweep is cut short and reports fewer ports. It never fails a scan.",
+    min: 1000,
+    max: 120000,
+  },
+  PORT_SCAN_MAX_BANNER_BYTES: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_PORT_SCAN_MAX_BANNER_BYTES,
+    group: "Scanning",
+    label: "Port sweep banner cap (bytes)",
+    help: "Bytes of service banner kept per open port. Bounds what a chatty or hostile service can push into a stored scan result.",
+    min: 32,
+    max: 8192,
+  },
   CRAWL_DISCOVER_MAX_PAGES: {
     tier: "runtime",
     type: "int",
@@ -1982,7 +2145,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_BULK_SCAN_CLIENT_URL_LIMIT,
     group: "Scanning",
     label: "Bulk scan form URL limit",
-    help: "Client-enforced cap on how many URLs may be pasted into the bulk-scan form. Deliberately independent of the server-enforced maximum URLs per bulk scan above; the form fans out one request per URL. Baked into the client bundle, so this applies on the next build.",
+    help: "Client-enforced cap on how many URLs may be pasted into the bulk-scan form. Deliberately independent of the server-enforced maximum URLs per bulk scan above; the form fans out one request per URL. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_BULK_SCAN_CLIENT_URL_LIMIT in lib/config/config-values.ts and rebuild instead.",
     min: 1,
     max: 1000,
   },
@@ -2592,16 +2755,6 @@ export const SETTINGS_REGISTRY = {
     min: 1,
     max: 3650,
   },
-  SITE_NOTIFICATION_DEFAULT_DISMISS_DAYS: {
-    tier: "runtime",
-    type: "int",
-    default: CONFIG_SITE_NOTIFICATION_DEFAULT_DISMISS_DAYS,
-    group: "Advanced",
-    label: "Default banner/modal/toast dismiss duration (days)",
-    help: "How long a dismissed banner, modal, or toast notification stays dismissed when it does not set its own duration.",
-    min: 1,
-    max: 3650,
-  },
   BROWSERBASE_MAX_TTL_SECONDS: {
     tier: "runtime",
     type: "int",
@@ -2651,16 +2804,6 @@ export const SETTINGS_REGISTRY = {
     help: "How long a session-creation request waits for a free concurrency slot before giving up with a 503.",
     min: 1000,
     max: 120000,
-  },
-  MAX_EMAIL_LENGTH: {
-    tier: "runtime",
-    type: "int",
-    default: CONFIG_MAX_EMAIL_LENGTH,
-    group: "Advanced",
-    label: "Maximum email length",
-    help: "Characters accepted in an email address. The database column is 255.",
-    min: 64,
-    max: 255,
   },
   MAX_NAME_LENGTH: {
     tier: "runtime",
@@ -2760,16 +2903,6 @@ export const SETTINGS_REGISTRY = {
     min: 1,
     max: 200,
   },
-  PAGINATION_MAX_PAGE_SIZE: {
-    tier: "runtime",
-    type: "int",
-    default: CONFIG_PAGINATION_MAX_PAGE_SIZE,
-    group: "Advanced",
-    label: "Maximum page size",
-    help: "Largest page a caller may request. Raising this raises the cost of one query.",
-    min: 1,
-    max: 1000,
-  },
   BADGE_CACHE_MAX_AGE_SECONDS: {
     tier: "runtime",
     type: "int",
@@ -2859,7 +2992,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_MAX_AVATAR_UPLOAD_BYTES,
     group: "Advanced",
     label: "Avatar upload max size (bytes)",
-    help: "Server-enforced avatar upload cap, after base64 decode; the profile page's client-side pre-check uses this exact value too. Baked into the client bundle, so a change here applies on the next build.",
+    help: "Server-enforced avatar upload cap, after base64 decode; the profile page's client-side pre-check uses this exact value too. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set CONFIG_MAX_AVATAR_UPLOAD_BYTES in lib/config/config-values.ts and rebuild instead.",
     min: 65536,
     max: 20971520,
   },
@@ -3027,6 +3160,8 @@ export const NEVER_CONFIGURABLE = {
     "Renaming the cookie re-shows the release notice to everyone who already dismissed it.",
   API_KEY_PREFIX:
     "Issued keys carry the old prefix. Changing it invalidates every existing key lookup.",
+  API_VERSION:
+    "Every entry of the API route map is built from it at module load, and Next inlines those paths into the client bundle at build time. A runtime edit would move the server and leave every already-loaded page calling the old paths.",
   API_CURRENT_VERSION:
     "Routes exist on disk. A value pointing at a version with no route directory returns 404.",
   API_SUPPORTED_VERSIONS:
@@ -3043,6 +3178,26 @@ export const NEVER_CONFIGURABLE = {
     "Read once when the posture-digest worker timer is registered, so a runtime change would not take effect.",
   SCHEDULED_BACKUP_INTERVAL_MS:
     "Read once when the scheduled-backup worker timer is registered, so a runtime change would not take effect.",
+  PORT_SCAN_CACHE_TTL_MS:
+    "components/scanner/port-scan-panel.tsx hardcodes the same window to render 'available to refresh in Xm', and a client component cannot reach the settings resolver. A runtime edit would leave the button promising a fresh sweep the server answers from cache. The sweep's own network bounds ARE configurable (PORT_SCAN_CONCURRENCY and friends).",
+  SAFETY_UNSAFE_CRITICAL_EXPLOIT_WEIGHT:
+    "getSafetyRating runs in the browser as well as on the server, so a server-only value would have the scan page and the badge/PDF/public-scans list disagreeing about the same scan. Edit it in config-values.ts and rebuild.",
+  SAFETY_UNSAFE_HIGH_EXPLOIT_WEIGHT:
+    "Same as SAFETY_UNSAFE_CRITICAL_EXPLOIT_WEIGHT: the verdict is recomputed client-side from stored findings.",
+  SAFETY_CAUTION_MEDIUM_EXPLOIT_WEIGHT:
+    "Same as SAFETY_UNSAFE_CRITICAL_EXPLOIT_WEIGHT: the verdict is recomputed client-side from stored findings.",
+  SAFETY_CAUTION_HIGH_HARDENING_WEIGHT:
+    "Same as SAFETY_UNSAFE_CRITICAL_EXPLOIT_WEIGHT: the verdict is recomputed client-side from stored findings.",
+  SSL_GRADE_A_PLUS_MIN_SCORE:
+    "The letter is stamped into every stored scan result, so retuning the scale at runtime would silently put historical grades on a different scale from new ones.",
+  SSL_GRADE_A_MIN_SCORE:
+    "Same as SSL_GRADE_A_PLUS_MIN_SCORE: stored grades would stop meaning what they meant when they were recorded.",
+  SSL_GRADE_B_MIN_SCORE:
+    "Same as SSL_GRADE_A_PLUS_MIN_SCORE: stored grades would stop meaning what they meant when they were recorded.",
+  SSL_GRADE_C_MIN_SCORE:
+    "Same as SSL_GRADE_A_PLUS_MIN_SCORE: stored grades would stop meaning what they meant when they were recorded.",
+  SSL_GRADE_D_MIN_SCORE:
+    "Same as SSL_GRADE_A_PLUS_MIN_SCORE: stored grades would stop meaning what they meant when they were recorded.",
   PAGINATION_DEFAULT_PAGE:
     "The first page is always page 1. The constant exists to avoid a magic number, not to be tuned.",
   DB_POOL_MAX:
@@ -3075,6 +3230,26 @@ export const NEVER_CONFIGURABLE = {
     "The scanner reads the per-scan severity threshold, never this shipped default, so a runtime admin edit changes nothing at scan time.",
   POSTURE_DIGEST_WINDOW_DAYS:
     "Read directly from the shipped constant in lib/notifications/posture-digest.ts, so a runtime admin edit would not move the digest window.",
+  // The seven below were runtime-tier entries in SETTINGS_REGISTRY, which
+  // promises effect within the resolver's 30 second TTL. None of them had a
+  // getSetting reader, so each was an admin control that saved successfully
+  // and changed nothing. Listed here, in the same form as the entries above,
+  // rather than left in the registry: an editable field that does nothing is
+  // worse than no field. Give one a real reader and it can move back.
+  POSTURE_DIGEST_MAX_FINDINGS_LISTED:
+    "Read directly from the shipped constant in lib/notifications/posture-digest.ts, alongside POSTURE_DIGEST_WINDOW_DAYS above, so a runtime admin edit would not reach the digest builder.",
+  DOMAIN_REVERIFY_TICK_INTERVAL_MS:
+    "Read directly from the shipped constant in lib/domains/reverify-worker.ts, which also uses it as a default parameter value, so a runtime admin edit would not change the worker's tick.",
+  PAGINATION_MAX_PAGE_SIZE:
+    "Read directly from the shipped constant by every route that clamps a page size (admin content, email logs, error logs, public scans), so a runtime admin edit would not raise or lower any of their caps.",
+  MAX_EMAIL_LENGTH:
+    "Reached only through the DATABASE limits object in lib/config/constants.ts, never through the resolver, and it must stay at or below the email column's own 255 character width regardless.",
+  SITE_NOTIFICATION_DEFAULT_DISMISS_DAYS:
+    "components/shared/site-notifications.tsx hardcodes the 30 day fallback in the browser, where no server-side resolver runs, so a runtime admin edit would not change how long a dismissed banner stays dismissed.",
+  BILLING_HISTORY_PAGE_SIZE:
+    "Nothing reads it: there is no invoice/payment history route to page through yet, so the setting describes behaviour that does not exist.",
+  ENTERPRISE_EMAIL:
+    "Nothing renders it. The address is exported from lib/config/constants.ts and reaches no page, template or email, so editing it here changed nothing anywhere.",
   SCAN_SCREENSHOT_VIEWPORT_WIDTH:
     "Read directly from the shipped constant in lib/scanner/page-screenshot.ts, so a runtime admin edit would not reach the screenshot capture path.",
   SCAN_SCREENSHOT_VIEWPORT_HEIGHT:

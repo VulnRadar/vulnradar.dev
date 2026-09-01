@@ -131,3 +131,23 @@ export function verifyDiscordState(
 }
 
 export const DISCORD_STATE_TTL_MS = STATE_TTL_MS;
+
+/**
+ * Name of the short-lived httpOnly cookie that binds a Discord SIGN-IN
+ * (`action=login`) to the browser that started it, the twin of
+ * OAUTH_NONCE_COOKIE in lib/auth/oauth-state.ts.
+ *
+ * The userId binding above only fires when the state actually carries a
+ * userId, which a logged-out sign-in never does. That left the sign-in flow
+ * with no browser binding at all: an attacker could start the flow while
+ * signed out, approve at Discord, capture the callback URL without following
+ * it, and lure a victim to that URL inside the state's TTL. The HMAC verifies
+ * (the server minted it), the login branch resolves the ATTACKER's account,
+ * and createSession overwrites the victim's own session cookie: a silent
+ * login CSRF / session fixation.
+ *
+ * The start route stores the state's nonce here and the callback requires it
+ * to match before the login branch runs, so a state replayed into a browser
+ * that never started the flow is rejected.
+ */
+export const DISCORD_NONCE_COOKIE = "vr_discord_nonce";

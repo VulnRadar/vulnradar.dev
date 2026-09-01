@@ -26,6 +26,9 @@ function AnchorLink({ id, label }: { id: string; label: string }) {
   );
 }
 
+/** House reading measure, the same one components/docs/docs-callout.tsx uses. */
+const PROSE_MEASURE = "[&>p]:max-w-[68ch]";
+
 interface DocsSectionProps {
   id: string;
   title: string;
@@ -43,7 +46,15 @@ export function DocsSection({
     <section
       id={id}
       aria-labelledby={`${id}-heading`}
-      className={cn("scroll-mt-24 space-y-4 sm:space-y-6", className)}
+      className={cn(
+        "scroll-mt-24 space-y-4 sm:space-y-6",
+        // The 68ch measure lives here rather than on each page's paragraphs,
+        // where eight of the twenty docs pages had forgotten it and ran prose
+        // at ~124 characters per line on a 1440px screen. Scoped to direct
+        // child <p> so tables, code blocks and grids still use the full column.
+        PROSE_MEASURE,
+        className,
+      )}
     >
       <h2
         id={`${id}-heading`}
@@ -72,7 +83,10 @@ export function DocsSubSection({
   className,
 }: DocsSubSectionProps) {
   return (
-    <div id={id} className={cn("scroll-mt-24 space-y-3", className)}>
+    <div
+      id={id}
+      className={cn("scroll-mt-24 space-y-3", PROSE_MEASURE, className)}
+    >
       <h3 className="group text-base font-medium tracking-tight text-foreground">
         <span>{title}</span>
         {id && <AnchorLink id={id} label={title} />}

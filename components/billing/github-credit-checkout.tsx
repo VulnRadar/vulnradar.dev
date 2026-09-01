@@ -13,12 +13,14 @@ import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
-import { ROUTES } from "@/lib/config/constants";
+import { ROUTES } from "@/lib/config/client-constants";
 import {
   createGithubCreditPaymentIntent,
   confirmGithubCreditPurchase,
 } from "@/app/actions/stripe";
 import type { GithubCreditTier } from "@/lib/billing/github-credit-catalog";
+import { CHECKOUT_CONFIRM_BACKOFF_MS } from "./checkout-confirm";
+import { InlineAlert } from "@/components/shared/inline-alert";
 
 /**
  * Copied verbatim from components/billing/ai-credit-checkout.tsx's own
@@ -68,7 +70,7 @@ function useConfirmGithubCreditPurchase(
   const run = useCallback(
     async (paymentIntentId: string) => {
       setStatus("confirming");
-      const delays = [500, 1000, 1500, 2000, 3000];
+      const delays = CHECKOUT_CONFIRM_BACKOFF_MS;
       for (let attempt = 0; attempt <= delays.length; attempt++) {
         try {
           const result = await confirmGithubCreditPurchase(paymentIntentId);
@@ -137,7 +139,7 @@ function VerifiedStatus({
       className="flex flex-col items-center justify-center py-10 text-center"
       role="status"
     >
-      <div className="w-14 h-14 rounded-full bg-[hsl(var(--success)/0.12)] flex items-center justify-center mb-5">
+      <div className="w-14 h-14 rounded-full bg-[hsl(var(--success))]/10 flex items-center justify-center mb-5">
         <Check
           className="h-7 w-7 text-[hsl(var(--success))]"
           aria-hidden="true"
@@ -172,7 +174,7 @@ function PendingStatus() {
       className="flex flex-col items-center justify-center py-10 text-center"
       role="status"
     >
-      <div className="w-14 h-14 rounded-full bg-[hsl(var(--warning)/0.12)] flex items-center justify-center mb-5">
+      <div className="w-14 h-14 rounded-full bg-[hsl(var(--warning))]/10 flex items-center justify-center mb-5">
         <AlertTriangle
           className="h-7 w-7 text-[hsl(var(--warning))]"
           aria-hidden="true"
@@ -235,7 +237,7 @@ function CheckoutForm({
         elements,
         clientSecret: paymentIntent.clientSecret,
         confirmParams: {
-          return_url: `${window.location.origin}/checkout/success`,
+          return_url: `${window.location.origin}/checkout/success?kind=github-credits`,
         },
         redirect: "if_required",
       });
@@ -270,18 +272,7 @@ function CheckoutForm({
           layout: "tabs",
         }}
       />
-      {error && (
-        <p
-          role="alert"
-          className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-        >
-          <AlertTriangle
-            className="h-4 w-4 shrink-0 mt-0.5"
-            aria-hidden="true"
-          />
-          <span>{error}</span>
-        </p>
-      )}
+      {error && <InlineAlert tone="error">{error}</InlineAlert>}
       <Button
         type="submit"
         disabled={!stripe || !elements || isProcessing}

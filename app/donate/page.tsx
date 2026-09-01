@@ -1,35 +1,35 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useEffect } from "react";
 import { Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { APP_NAME } from "@/lib/config/constants";
+import { PublicPageShell } from "@/components/shared/public-page-shell";
+import { APP_NAME } from "@/lib/config/client-constants";
 
 const STRIPE_DONATE_URL = "https://buy.stripe.com/eVq5kEciX75B9y3eIG2Ji04";
 
 export default function DonatePage() {
-  const [redirected, setRedirected] = useState(false);
-
   useEffect(() => {
+    // location.replace, not location.href: href left /donate in the history
+    // stack, so pressing Back from Stripe returned here and re-fired the
+    // redirect 100ms later, trapping the user in a loop.
     const timeout = setTimeout(() => {
-      window.location.href = STRIPE_DONATE_URL;
-      setRedirected(true);
+      window.location.replace(STRIPE_DONATE_URL);
     }, 100);
 
     return () => clearTimeout(timeout);
   }, []);
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4">
-      <div className="text-center max-w-sm">
+    <PublicPageShell maxWidth="max-w-sm" padding="py-16 sm:py-24">
+      <div className="text-center">
         <Heart
           className="h-9 w-9 text-primary mx-auto mb-6"
           fill="currentColor"
           aria-hidden="true"
         />
 
-        <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground mb-2">
+        <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight mb-5 text-balance text-foreground">
           Support {APP_NAME}
         </h1>
         <p className="text-muted-foreground leading-relaxed mb-8">
@@ -49,17 +49,18 @@ export default function DonatePage() {
           Redirecting to Stripe
         </p>
 
-        {!redirected && (
-          <Button asChild size="lg" className="h-11 px-6">
-            <Link href={STRIPE_DONATE_URL}>Continue to Stripe</Link>
-          </Button>
-        )}
-        {redirected && (
-          <p className="text-sm text-muted-foreground">
-            Thank you for supporting open-source security.
-          </p>
-        )}
+        {/* Rendered unconditionally. The old version hid this button the moment
+            the redirect fired, which is exactly the moment it is needed: if the
+            automatic redirect is blocked, this is the only way through, and it
+            was replaced by a thank-you for a donation that had not happened. */}
+        <Button asChild size="lg" className="h-11 px-6">
+          <a href={STRIPE_DONATE_URL}>Continue to Stripe</a>
+        </Button>
+        <p className="text-xs text-muted-foreground/70 mt-4 leading-relaxed">
+          Not moving? Use the button above. Payment is handled entirely by
+          Stripe.
+        </p>
       </div>
-    </div>
+    </PublicPageShell>
   );
 }

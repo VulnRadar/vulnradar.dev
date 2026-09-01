@@ -41,7 +41,7 @@ export function SoftwareInventoryPanel({
       : `${itemCount} detected`;
 
   return (
-    <div className="overflow-hidden rounded-md border border-border bg-card">
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
@@ -50,7 +50,15 @@ export function SoftwareInventoryPanel({
         className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         <Boxes aria-hidden className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <span className="flex-1 text-sm font-medium text-foreground">
+        {/* min-w-0 + truncate on the title, and the component count hidden
+            below sm. With everything else shrink-0 and the card
+            overflow-hidden, the header measured about 363px against the ~343
+            available on a 375px phone whenever vulnerableCount > 0, so the
+            headline and the chevron were clipped away entirely: the panel
+            looked like it had nothing to expand at exactly the moment it did.
+            The count is the least load-bearing of the three and it is
+            repeated inside the panel body. */}
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
           Software inventory
         </span>
         <span
@@ -63,7 +71,7 @@ export function SoftwareInventoryPanel({
         >
           {headline}
         </span>
-        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+        <span className="hidden shrink-0 text-xs tabular-nums text-muted-foreground sm:inline">
           {itemCount} component{itemCount === 1 ? "" : "s"}
         </span>
         <ChevronDown
@@ -78,7 +86,11 @@ export function SoftwareInventoryPanel({
       {expanded && (
         <div id={panelId} className="border-t border-border">
           <div className="sticky top-0 flex items-center gap-2 bg-muted/40 px-4 py-1.5 backdrop-blur-sm">
-            <span className="font-mono text-[11px] font-semibold uppercase tracking-wide text-primary">
+            {/* min-w-0 + truncate: a hostname is one unbreakable token, so
+                without them a long host pushed the summary line beside it out
+                of the card, which is overflow-hidden. Matches the same bar in
+                components/scanner/dns-records-panel.tsx. */}
+            <span className="min-w-0 truncate font-mono text-[11px] font-semibold uppercase tracking-wide text-primary">
               {softwareInventory.host}
             </span>
             <span className="text-[11px] tabular-nums text-muted-foreground">

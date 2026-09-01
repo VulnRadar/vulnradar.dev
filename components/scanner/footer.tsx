@@ -11,7 +11,7 @@ import {
   SUPPORT_EMAIL,
   ROUTES,
   BILLING_ENABLED,
-} from "@/lib/config/constants";
+} from "@/lib/config/client-constants";
 import { Button } from "@/components/ui/button";
 import { ThemedLogo } from "@/components/shared/themed-logo";
 
@@ -96,6 +96,25 @@ export function Footer() {
                   Badges
                 </Link>
               </li>
+              {/* Scanner, History, Compare and Badges all need a session, so a
+                  logged-out visitor's Product column was a list of redirects to
+                  /login. These two need no account. */}
+              <li>
+                <Link
+                  href="/tools"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Free tools
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/checks"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Check reference
+                </Link>
+              </li>
               {BILLING_ENABLED && (
                 <li>
                   <Link
@@ -153,6 +172,30 @@ export function Footer() {
                   className="hover:text-foreground transition-colors"
                 >
                   Changelog
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href={ROUTES.PUBLIC_SCANS}
+                  className="hover:text-foreground transition-colors"
+                >
+                  Public scans
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/alternatives"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Compared to other scanners
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/security"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Security
                 </Link>
               </li>
             </ul>

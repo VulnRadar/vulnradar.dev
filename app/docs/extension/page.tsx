@@ -1,6 +1,3 @@
-"use client";
-
-import { useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,12 +10,14 @@ import {
   CHROME_WEB_STORE_URL,
   FIREFOX_ADDON_URL,
 } from "@/lib/config/constants";
-import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
+import type { TocItem } from "@/components/docs/docs-types";
+import { DocsTocSpy } from "../docs-toc-spy";
 import {
   DocsHero,
   DocsSection,
   DocsSteps,
   DocsCallout,
+  DocsFigure,
   InlineCode,
 } from "@/components/docs";
 
@@ -26,40 +25,19 @@ const tocItems: TocItem[] = [
   { id: "overview", label: "Overview" },
   { id: "install", label: "Install" },
   { id: "scanning", label: "Scanning from the popup" },
+  { id: "scan-a-link", label: "Scanning a link you haven't opened" },
   { id: "reputation-card", label: "The on-page card" },
   { id: "auto-scan", label: "Auto-scan modes" },
+  { id: "notifications", label: "Desktop notifications" },
   { id: "signed-in-pages", label: "Pages you're signed into" },
   { id: "settings", label: "Settings" },
   { id: "permissions", label: "Permissions and privacy" },
 ];
 
 export default function ExtensionPage() {
-  const { setActiveSection, setTocItems } = useDocsContext();
-  const observerRef = useRef<IntersectionObserver | null>(null);
-
-  useEffect(() => {
-    setTocItems(tocItems);
-    return () => setTocItems([]);
-  }, [setTocItems]);
-
-  useEffect(() => {
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) setActiveSection(entry.target.id);
-        });
-      },
-      { rootMargin: "-20% 0px -70% 0px", threshold: 0 },
-    );
-    tocItems.forEach((item) => {
-      const el = document.getElementById(item.id);
-      if (el) observerRef.current?.observe(el);
-    });
-    return () => observerRef.current?.disconnect();
-  }, [setActiveSection]);
-
   return (
     <div className="space-y-16">
+      <DocsTocSpy items={tocItems} />
       <DocsHero
         id="top"
         badge="Browser Extension"
@@ -85,10 +63,10 @@ export default function ExtensionPage() {
       </DocsSection>
 
       <DocsSection id="install" title="Install">
-        <DocsCallout variant="success" title="Live on the Chrome Web Store">
-          Firefox Add-ons review is still in progress. Chrome and other Chromium
-          browsers (Edge, Brave) can install straight from the store; Firefox
-          needs the packaged release below until AMO approves it.
+        <DocsCallout variant="success" title="Live on both stores">
+          Chrome and other Chromium browsers (Edge, Brave) install from the
+          Chrome Web Store; Firefox installs from Firefox Add-ons, which
+          approved the listing on 2026-08-15. Both update themselves.
         </DocsCallout>
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -147,22 +125,33 @@ export default function ExtensionPage() {
           </Card>
         </div>
 
+        {/* The old step 1 told Firefox users to load a temporary add-on
+            "until the AMO listing is live". It has been live since
+            2026-08-15, and the card above already links to it, so the two
+            halves of this screen contradicted each other. Unpacked loading is
+            now a build-from-source note, not the install path. */}
         <DocsSteps
           steps={[
             {
               step: 1,
-              title: "Firefox: load it unpacked",
-              description:
-                "After unzipping the release above: about:debugging#/runtime/this-firefox -> Load Temporary Add-on -> select any file inside the folder. Temporary add-ons are removed when Firefox restarts, so you'll redo this until the AMO listing is live.",
-            },
-            {
-              step: 2,
               title: "Connect your account",
-              description:
-                "Click the toolbar icon, then Open Settings. Generate an API key from your VulnRadar profile and paste it in - the extension authenticates as you from then on.",
+              description: `Click the toolbar icon, then Open Settings. Generate an API key from your ${APP_NAME} profile and paste it in - the extension authenticates as you from then on.`,
             },
           ]}
         />
+
+        <DocsCallout variant="info" title="Building from source instead">
+          <p>
+            Working on the extension, or want to run an unreleased build? In
+            Chrome, <InlineCode>chrome://extensions</InlineCode> &rarr;
+            Developer mode &rarr; Load unpacked, and pick the built folder. In
+            Firefox,{" "}
+            <InlineCode>about:debugging#/runtime/this-firefox</InlineCode>{" "}
+            &rarr; Load Temporary Add-on &rarr; select any file inside it. A
+            temporary add-on is removed when Firefox restarts, which is why this
+            is a development path and not the way to install the extension.
+          </p>
+        </DocsCallout>
 
         <p className="text-sm text-muted-foreground">
           Need an API key first? Generate one from{" "}
@@ -185,6 +174,27 @@ export default function ExtensionPage() {
           any other scan on your account and shows up in your regular scan
           history: there's no separate extension-only history to lose track of.
         </p>
+      </DocsSection>
+
+      <DocsSection id="scan-a-link" title="Scanning a link you haven't opened">
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          Right-click any link, anywhere, and choose{" "}
+          <strong className="text-foreground">
+            Scan this link with {APP_NAME}
+          </strong>
+          . The scan runs against the link target without navigating to it,
+          which is the point: you can check a search result, a forum post, or an
+          emailed link before deciding whether to open it. It uses the same
+          settings and the same daily limit as a popup scan, and finishes with
+          the same desktop notification.
+        </p>
+        <DocsFigure
+          src="/extension/scan-link-context-menu.png"
+          alt={`Browser link context menu on a search results page, with "Scan this link with ${APP_NAME}" as the last item`}
+          width={533}
+          height={333}
+          caption="The link context menu on a search results page. Nothing is opened: the scan runs against the link target."
+        />
       </DocsSection>
 
       <DocsSection id="reputation-card" title="The on-page card">
@@ -217,6 +227,13 @@ export default function ExtensionPage() {
             turn off the other.
           </li>
         </ul>
+        <DocsFigure
+          src="/extension/on-page-card.png"
+          alt="The on-page card in the corner of a checkout page, showing a danger score of 3, one high and one medium finding, when it was last scanned, and Snooze 24h, Not this site and Turn off controls"
+          width={533}
+          height={333}
+          caption="The card on a host scanned three days ago: the danger score, the severity counts, and the three ways to make it stop."
+        />
       </DocsSection>
 
       <DocsSection id="auto-scan" title="Auto-scan modes">
@@ -224,7 +241,10 @@ export default function ExtensionPage() {
           Off by default. Three modes decide when a scan fires without you
           clicking anything:
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* A name plus a sentence, three times over, is a definition list.
+          As a three-across card grid it read as generic filler and cost the
+          descriptions their line length. */}
+        <dl className="divide-y divide-border/50 border-y border-border/50">
           {[
             {
               name: "On page load",
@@ -242,21 +262,46 @@ export default function ExtensionPage() {
                 "Follows SPA/client-side navigation within a site, not just full page loads.",
             },
           ].map((mode) => (
-            <Card key={mode.name} className="p-4 border-border/50 bg-card/50">
-              <p className="text-sm font-medium text-foreground mb-2">
+            <div key={mode.name} className="py-4">
+              <dt className="text-sm font-semibold text-foreground">
                 {mode.name}
-              </p>
-              <p className="text-xs text-muted-foreground leading-relaxed">
+              </dt>
+              <dd className="mt-1 text-sm leading-relaxed text-muted-foreground">
                 {mode.description}
-              </p>
-            </Card>
+              </dd>
+            </div>
           ))}
-        </div>
+        </dl>
         <p className="text-sm text-muted-foreground">
           A whitelist/blacklist and a global pause are available in Settings for
           hosts or stretches of time you never want auto-scanned, regardless of
           mode.
         </p>
+        <DocsFigure
+          src="/extension/auto-scan-settings.png"
+          alt="The extension settings page on Site Alerts, showing the two on-page card toggles above an auto-scan trigger picker with Off, On tab focus, On page load and On URL change"
+          width={533}
+          height={333}
+          caption="Settings > Site Alerts. The card toggles and the auto-scan trigger are separate controls: the card can stay on with auto-scan off."
+        />
+      </DocsSection>
+
+      <DocsSection id="notifications" title="Desktop notifications">
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          Any scan that wasn&apos;t started from the popup finishes with a
+          desktop notification carrying the finding count and the worst issue,
+          because a background scan you never look at is not worth running.
+          Clicking it opens the full report. The severity threshold that decides
+          whether a result is worth notifying you about is in Settings, so a
+          site with three info-level findings can stay quiet.
+        </p>
+        <DocsFigure
+          src="/extension/scan-finished-notification.png"
+          alt="A desktop notification reading: 3 findings on shop.example.com, Missing Content-Security-Policy header +2 more"
+          width={533}
+          height={333}
+          caption="A finished background scan. The notification names the host and the worst finding, and opens the report when clicked."
+        />
       </DocsSection>
 
       <DocsSection id="signed-in-pages" title="Pages you're signed into">

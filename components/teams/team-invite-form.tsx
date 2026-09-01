@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { ROLE_ABILITIES } from "./teams-types";
-import { TEAM_ROLES } from "@/lib/config/constants";
+import { TEAM_ROLES } from "@/lib/config/client-constants";
 
 type InvitableRole = "admin" | "manager" | "operator" | "member" | "viewer";
 

@@ -16,7 +16,7 @@ import {
   Play,
 } from "lucide-react";
 import Link from "next/link";
-import { ROUTES, BILLING_ENABLED } from "@/lib/config/constants";
+import { ROUTES, BILLING_ENABLED } from "@/lib/config/client-constants";
 import { hasFeatureAccess } from "@/components/modals/premium-upgrade-modal";
 import { getPlanById } from "@/lib/billing/catalog";
 import {
@@ -317,7 +317,7 @@ export function SchedulesSection({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-7 w-7 text-muted-foreground hover:text-foreground shrink-0"
+                      className="h-10 w-10 sm:h-7 sm:w-7 text-muted-foreground hover:text-foreground shrink-0"
                       disabled={isToggling}
                       onClick={() => onToggleSchedule(sch.id, !isPaused)}
                       aria-label={
@@ -337,7 +337,7 @@ export function SchedulesSection({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
+                      className="h-10 w-10 sm:h-7 sm:w-7 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
                       onClick={() =>
                         onRequestConfirm({
                           kind: "delete-schedule",

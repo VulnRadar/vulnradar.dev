@@ -127,7 +127,16 @@ export function TableScrollArea({
   maxHeight = "70vh",
 }: TableScrollAreaProps) {
   return (
-    <div className={cn("overflow-auto", className)} style={{ maxHeight }}>
+    // [&>div]:overflow-visible neutralises the `relative w-full overflow-auto`
+    // wrapper that components/ui/table.tsx puts around every <table>. That
+    // inner div is a scroll container with no height cap, so its scrollTop is
+    // always 0; `position: sticky` binds to the nearest scrolling ancestor, so
+    // the sticky header was pinned to a box that never scrolled while this
+    // outer div did the actual scrolling. Every admin sticky header was inert.
+    <div
+      className={cn("overflow-auto [&>div]:overflow-visible", className)}
+      style={{ maxHeight }}
+    >
       {children}
     </div>
   );

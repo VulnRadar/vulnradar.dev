@@ -18,6 +18,28 @@ vi.mock("@/lib/database/db", () => ({
 const mockGetSession = vi.fn();
 vi.mock("@/lib/auth", () => ({ getSession: () => mockGetSession() }));
 
+/**
+ * The route resolves staff status through requirePermission, not the raw
+ * session role, so that ENFORCE_STAFF_2FA applies here the same way it does on
+ * /api/v3/admin. Model both halves: the REAL role->permission map decides the
+ * role half, and `staff2FAGateBlocks` stands in for a staff account the 2FA
+ * enforcement is holding out (requirePermission returns null for both cases).
+ */
+let staff2FAGateBlocks = false;
+vi.mock("@/lib/auth/authorization", async () => {
+  const { hasStaffPermission } = await import("@/lib/auth/permissions-client");
+  type StaffPermission = Parameters<typeof hasStaffPermission>[1];
+  return {
+    requirePermission: async (permission: StaffPermission) => {
+      const session = await mockGetSession();
+      if (!session) return null;
+      if (!hasStaffPermission(session.role, permission)) return null;
+      if (staff2FAGateBlocks) return null;
+      return { ...session, id: session.userId };
+    },
+  };
+});
+
 vi.mock("@/lib/support/ticket-notify", () => ({
   notifyStaffOfTicketActivity: vi.fn(),
   notifyUserOfStaffReply: vi.fn(),
@@ -72,6 +94,7 @@ function asUser(userId = 7, role = "user") {
 }
 
 beforeEach(() => {
+  staff2FAGateBlocks = false;
   mockQuery.mockReset();
   mockGetSession.mockReset();
   mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
@@ -132,6 +155,47 @@ describe("GET /api/v3/support-tickets/[id]", () => {
     expect(body.viewerIsStaff).toBe(true);
     expect(body.ticket.ownerEmail).toBe("owner@example.com");
     expect(body.messages[0].authorName).toBe("Agent Smith");
+  });
+});
+
+describe("ENFORCE_STAFF_2FA applies to the support surface too", () => {
+  it("404s a support account the 2FA enforcement is blocking, instead of handing it the thread", async () => {
+    // The one control that is supposed to make a staff account without 2FA
+    // harmless. Before this, such an account was locked out of /api/v3/admin
+    // entirely but could still read every customer's full thread here.
+    staff2FAGateBlocks = true;
+    asUser(99, "support");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow()] }) // loadTicket
+      .mockResolvedValueOnce({ rows: [] }); // shares lookup: not shared either
+    const res = await GET(req("GET"), params);
+    expect(res.status).toBe(404);
+  });
+
+  it("does not let a blocked support account reply to a customer as Support", async () => {
+    staff2FAGateBlocks = true;
+    asUser(99, "support");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow()] })
+      .mockResolvedValueOnce({ rows: [] }); // shares lookup
+    const res = await POST(req("POST", { message: "looking into it" }), params);
+    expect(res.status).toBe(404);
+    // Nothing was written: no message row, no status change.
+    expect(
+      mockQuery.mock.calls.some(([sql]) =>
+        String(sql).includes("INSERT INTO support_ticket_messages"),
+      ),
+    ).toBe(false);
+  });
+
+  it("still serves the same account once 2FA enforcement is satisfied", async () => {
+    staff2FAGateBlocks = false;
+    asUser(99, "support");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow()] })
+      .mockResolvedValueOnce({ rows: [] }); // messages
+    const res = await GET(req("GET"), params);
+    expect(res.status).toBe(200);
   });
 });
 
@@ -227,6 +291,25 @@ describe("shared teammate access", () => {
     expect(mockQuery.mock.calls[2][1][2]).toBe(false); // is_staff false
   });
 
+  it("re-checks the teammate relationship at read time, not just when the share was created", async () => {
+    // Nothing deletes a support_ticket_shares row when the membership that
+    // justified it ends (no team column, so the teams cascade never reaches
+    // it). Granting on the bare row let an ex-teammate keep reading and
+    // replying to a private ticket forever.
+    asUser(8, "user");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow()] }) // loadTicket
+      .mockResolvedValueOnce({ rows: [] }); // share row exists but they are no longer teammates
+    const res = await GET(req("GET"), params);
+    expect(res.status).toBe(404);
+
+    const [sharesSql, sharesParams] = mockQuery.mock.calls[1];
+    expect(sharesSql).toContain("support_ticket_shares");
+    expect(sharesSql).toContain("JOIN team_members b ON a.team_id = b.team_id");
+    // ticketId, viewerId, ticketOwnerId
+    expect(sharesParams).toEqual([42, 8, 7]);
+  });
+
   it("forbids a shared teammate from changing status", async () => {
     asUser(8, "user");
     mockQuery
@@ -261,5 +344,47 @@ describe("PATCH /api/v3/support-tickets/[id] (status)", () => {
       .mockResolvedValueOnce({ rows: [] });
     const res = await PATCH(req("PATCH", { status: "awaiting_user" }), params);
     expect(res.status).toBe(200);
+  });
+
+  // Reopening a RESOLVED ticket was already possible for the owner, but only
+  // by writing another message (POST sets awaiting_staff). There was no way to
+  // say "this is not fixed" on its own (AUDIT-011#drift-21).
+  it("lets the owner reopen a ticket they resolved", async () => {
+    asUser(7, "user");
+    mockQuery
+      .mockResolvedValueOnce({ rows: [ticketRow({ status: "resolved" })] })
+      .mockResolvedValueOnce({ rows: [] });
+    const res = await PATCH(req("PATCH", { status: "awaiting_staff" }), params);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ status: "awaiting_staff" });
+  });
+
+  it("does not let the owner reopen a CLOSED ticket", async () => {
+    // `closed` stays terminal for the owner: the UI signposts it as final and
+    // POST refuses to reply to it, so only staff bring one back.
+    asUser(7, "user");
+    mockQuery.mockResolvedValueOnce({
+      rows: [ticketRow({ status: "closed" })],
+    });
+    const res = await PATCH(req("PATCH", { status: "awaiting_staff" }), params);
+    expect(res.status).toBe(403);
+  });
+
+  it("does not let the owner jump an open ticket to a staff-only status", async () => {
+    // The reopen arm is scoped to resolved -> awaiting_staff, nothing wider.
+    asUser(7, "user");
+    mockQuery.mockResolvedValueOnce({ rows: [ticketRow({ status: "open" })] });
+    const res = await PATCH(req("PATCH", { status: "awaiting_staff" }), params);
+    expect(res.status).toBe(403);
+  });
+
+  it("does not let a shared teammate reopen someone else's resolved ticket", async () => {
+    asUser(8, "user");
+    mockQuery.mockResolvedValueOnce({
+      rows: [ticketRow({ status: "resolved" })],
+    });
+    const res = await PATCH(req("PATCH", { status: "awaiting_staff" }), params);
+    // Either "not shared with you" (404) or "owner only" (403); never a write.
+    expect([403, 404]).toContain(res.status);
   });
 });

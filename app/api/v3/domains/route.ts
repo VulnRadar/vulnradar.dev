@@ -3,7 +3,7 @@ import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
-import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getTeamResourceAccess } from "@/lib/auth/team-resource-access";
 import {
   normalizeDomainInput,
@@ -66,10 +66,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Named so the cap the API docs quote is the cap the admin panel edits,
+  // rather than a compiled number the docs can drift from (AUDIT-014#magic-08).
   const rl = await checkRateLimit({
     key: `domain-add:${session.userId}`,
-    maxAttempts: 20,
-    windowSeconds: 3600,
+    ...RATE_LIMITS.domainAdd,
   });
   if (!rl.allowed) {
     return NextResponse.json(
@@ -94,21 +95,28 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // casing: all three POST branches now hand back the SAME resource shape
+  // GET returns, snake_case, straight off the row. They used to disagree
+  // three ways -- GET spread the row, this branch returned neither casing,
+  // and the create branch below returned `createdAt` -- which is why the
+  // client had to hand-translate the POST response into a GET-shaped row and
+  // invent the fields POST never sent (AUDIT-013#dup-09). `createdAt` is
+  // kept alongside for one release so the existing optimistic insert keeps
+  // working while it moves over.
   const existing = await pool.query(
-    `SELECT id, status, verification_token FROM domains WHERE user_id = $1 AND domain = $2`,
+    `SELECT id, domain, team_id, status, verification_method, created_at,
+            verified_at, last_checked_at, last_check_error, verification_token
+     FROM domains WHERE user_id = $1 AND domain = $2`,
     [session.userId, normalized.domain],
   );
   if (existing.rows.length > 0) {
-    const row = existing.rows[0];
+    const { verification_token: existingToken, ...row } = existing.rows[0];
     return NextResponse.json(
       {
-        id: row.id,
-        domain: normalized.domain,
-        status: row.status,
+        ...row,
+        createdAt: row.created_at,
         verificationRecordName: verificationRecordName(normalized.domain),
-        verificationRecordValue: verificationRecordValue(
-          row.verification_token,
-        ),
+        verificationRecordValue: verificationRecordValue(existingToken),
         alreadyExists: true,
       },
       { status: 200 },
@@ -119,16 +127,15 @@ export async function POST(request: NextRequest) {
   const result = await pool.query(
     `INSERT INTO domains (user_id, domain, status, verification_token)
      VALUES ($1, $2, 'pending', $3)
-     RETURNING id, domain, status, created_at`,
+     RETURNING id, domain, team_id, status, verification_method, created_at,
+               verified_at, last_checked_at, last_check_error`,
     [session.userId, normalized.domain, token],
   );
   const row = result.rows[0];
 
   return NextResponse.json(
     {
-      id: row.id,
-      domain: row.domain,
-      status: row.status,
+      ...row,
       createdAt: row.created_at,
       verificationRecordName: verificationRecordName(row.domain),
       verificationRecordValue: verificationRecordValue(token),

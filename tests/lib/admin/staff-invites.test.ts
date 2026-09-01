@@ -37,8 +37,12 @@ describe("ensureStaffInvitesTable", () => {
     );
     expect(sql).toContain("expires_at TIMESTAMP WITH TIME ZONE NOT NULL");
     expect(sql).toContain("accepted_at TIMESTAMP WITH TIME ZONE");
-    expect(sql).toContain("idx_staff_invites_token");
     expect(sql).toContain("idx_staff_invites_email");
+    // No index on `token`: the UNIQUE constraint above is already a unique
+    // b-tree on that column, so a second CREATE INDEX on it was pure write
+    // amplification (AUDIT-013#schema-05). The name lives in
+    // instrumentation.ts's REDUNDANT_INDEXES so existing databases drop it.
+    expect(sql).not.toContain("idx_staff_invites_token");
   });
 
   it("is idempotent (IF NOT EXISTS / IF NOT EXISTS on every statement)", async () => {

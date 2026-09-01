@@ -1,4 +1,8 @@
-import { APP_NAME, APP_VERSION } from "@/lib/config/constants";
+import {
+  APP_NAME,
+  APP_VERSION,
+  AUTH_SESSION_COOKIE_NAME,
+} from "@/lib/config/constants";
 
 /**
  * A machine-readable OpenAPI 3.1 description of the core public v3 API: the
@@ -9,8 +13,8 @@ import { APP_NAME, APP_VERSION } from "@/lib/config/constants";
  *
  * This is a hand-maintained subset focused on what an integrator actually
  * calls, not every internal endpoint. Keep it in step with app/docs/api when
- * an endpoint's shape changes. `baseUrl` is the deployment's origin so a
- * self-hosted instance advertises its own server.
+ * an endpoint's shape changes. `baseUrl` is whatever origin this build was
+ * compiled with; see the note on `servers` for why it is not the first entry.
  */
 export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
   return {
@@ -22,7 +26,27 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
         "Run vulnerability scans and read their results over HTTP. The same engine as the web app. Authenticate with a Bearer API key (Settings > API Keys).",
       license: { name: "GPL-3.0" },
     },
-    servers: [{ url: `${baseUrl}/api/v3`, description: "v3 API" }],
+    // servers[0] is deliberately a relative reference. OpenAPI 3.1 resolves a
+    // relative server URL against the location the document is served from, so
+    // this makes every consumer target the instance it fetched the spec from.
+    // The absolute form cannot do that: NEXT_PUBLIC_APP_URL is inlined by Next
+    // at build time and the published container image is built without it, so
+    // the compiled APP_URL on any self-hosted deployment is the public SaaS
+    // host. Everything that reads servers[0] (the docs playground, a generated
+    // client) therefore used to send a self-hoster's own requests, API key
+    // included, to vulnradar.dev, where they failed CORS. The compiled origin
+    // stays as a second entry for the rare client that cannot resolve a
+    // relative server. ref: AUDIT-014#apidoc-03
+    servers: [
+      {
+        url: "/api/v3",
+        description: "This deployment, relative to where this spec is served",
+      },
+      {
+        url: `${baseUrl}/api/v3`,
+        description: "The absolute origin this build was compiled with",
+      },
+    ],
     security: [{ apiKey: [] }],
     tags: [
       { name: "Scans", description: "Start scans and poll their results." },
@@ -173,6 +197,20 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
             "401": { $ref: "#/components/responses/Unauthorized" },
           },
         },
+        delete: {
+          tags: ["History"],
+          summary: "Clear all scan history",
+          description:
+            "Delete every one of the caller's own past scans and their tags. Deliberately unbounded: it removes the whole account's history, not just the page GET returns. Not reversible.",
+          security: [{ apiKey: ["scan:delete"] }],
+          responses: {
+            "200": { description: "The number of scans deleted" },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "403": {
+              description: "The API key is missing the scan:delete scope",
+            },
+          },
+        },
       },
       "/history/{id}": {
         parameters: [
@@ -194,6 +232,45 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
             "404": { $ref: "#/components/responses/NotFound" },
           },
         },
+        patch: {
+          tags: ["History"],
+          summary: "Update a scan's notes, visibility, or team",
+          description:
+            "Edit one past scan. Send only the fields you want to change: an absent field is left alone. Turning isPublic off revokes any existing share link.",
+          security: [{ apiKey: ["scan:write"] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ScanUpdateRequest" },
+              },
+            },
+          },
+          responses: {
+            "200": { description: "The updated notes, visibility, and team" },
+            "400": { $ref: "#/components/responses/BadRequest" },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "403": {
+              description: "The API key is missing the scan:write scope",
+            },
+            "404": { $ref: "#/components/responses/NotFound" },
+          },
+        },
+        delete: {
+          tags: ["History"],
+          summary: "Delete one scan",
+          description:
+            "Permanently remove a single past scan. Owner only. Not reversible.",
+          security: [{ apiKey: ["scan:delete"] }],
+          responses: {
+            "200": { description: "The scan was deleted" },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "403": {
+              description: "The API key is missing the scan:delete scope",
+            },
+            "404": { $ref: "#/components/responses/NotFound" },
+          },
+        },
       },
       "/history/{id}/report": {
         parameters: [
@@ -206,12 +283,21 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           {
             name: "format",
             in: "query",
-            required: true,
+            // Optional, not required: the route reads
+            // `searchParams.get("format") || "json"`, and its FORMATS list
+            // also accepts `markdown` as an alias for `md`. Marking it
+            // required made every generated client demand an argument the API
+            // defaults for you, and the short enum made a spec-driven
+            // validator reject a legal `format=markdown` request.
+            // ref: AUDIT-014#apidoc-30
+            required: false,
             schema: {
               type: "string",
-              enum: ["sarif", "pdf", "md", "compliance", "json"],
+              enum: ["json", "sarif", "pdf", "md", "markdown", "compliance"],
+              default: "json",
             },
-            description: "The report format to render.",
+            description:
+              "The report format to render. Defaults to json when omitted. `markdown` is an alias for `md`.",
           },
         ],
         get: {
@@ -235,7 +321,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           tags: ["Scans"],
           summary: "Bulk scan",
           description:
-            "Scan several URLs in one request, up to your plan's per-request cap (absolute ceiling 100). Each URL runs a full single-page scan and counts as one daily scan. Returns after every URL finishes.",
+            "Queue a full single-page scan for several URLs in one request, up to your plan's per-request cap (absolute ceiling 100). Each URL counts as one daily scan. Returns immediately with one scan id per accepted URL; the scans then run one at a time in the background. Poll GET /scan/status/{id} for each id, the same way POST /scan works.",
           security: [{ apiKey: ["scan:write"] }],
           requestBody: {
             required: true,
@@ -247,7 +333,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           },
           responses: {
             "200": {
-              description: "Per-URL results for the whole batch",
+              description: "Per-URL admission result for the whole batch",
               content: {
                 "application/json": {
                   schema: { $ref: "#/components/schemas/BulkScanResult" },
@@ -334,7 +420,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           summary: "Set a finding's remediation status",
           description:
             "Record your own remediation status for a single finding, keyed on (finding id, finding URL) so it survives rescans. Setting status to open clears any stored status. Session cookie auth.",
-          security: [{ apiKey: [] }],
+          security: [{ cookieAuth: [] }],
           requestBody: {
             required: true,
             content: {
@@ -356,6 +442,70 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
             },
           },
         },
+        get: {
+          tags: ["Remediation"],
+          summary: "Read stored remediation statuses",
+          description:
+            "The caller's own remediation rows, newest first, capped at 500. Both filters are optional: omit them to list everything. Session cookie auth.",
+          security: [{ cookieAuth: [] }],
+          parameters: [
+            {
+              name: "url",
+              in: "query",
+              required: false,
+              schema: { type: "string" },
+              description:
+                "Only rows recorded against this finding URL (the scanned target).",
+            },
+            {
+              name: "findingId",
+              in: "query",
+              required: false,
+              schema: { type: "string" },
+              description: "Only rows for this finding id.",
+            },
+          ],
+          responses: {
+            "200": { description: "The matching remediation rows" },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "503": {
+              description:
+                "The finding_remediation table has not been migrated yet",
+            },
+          },
+        },
+        delete: {
+          tags: ["Remediation"],
+          summary: "Clear a finding's remediation status",
+          description:
+            "Remove the stored status for one finding, returning it to open. Both query parameters are required. Session cookie auth.",
+          security: [{ cookieAuth: [] }],
+          parameters: [
+            {
+              name: "url",
+              in: "query",
+              required: true,
+              schema: { type: "string" },
+              description: "The finding URL the status was recorded against.",
+            },
+            {
+              name: "findingId",
+              in: "query",
+              required: true,
+              schema: { type: "string" },
+              description: "The finding id to clear.",
+            },
+          ],
+          responses: {
+            "200": { description: "The stored status was cleared" },
+            "400": { $ref: "#/components/responses/BadRequest" },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "503": {
+              description:
+                "The finding_remediation table has not been migrated yet",
+            },
+          },
+        },
       },
       "/scan/remediation/bulk": {
         post: {
@@ -363,7 +513,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           summary: "Set remediation status for many findings",
           description:
             "Apply one remediation status to up to 200 findings at once. assignee and dueAt are applied only when present; absent leaves each finding's existing value. Session cookie auth.",
-          security: [{ apiKey: [] }],
+          security: [{ cookieAuth: [] }],
           requestBody: {
             required: true,
             content: {
@@ -389,7 +539,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           summary: "List API keys",
           description:
             "The account's API keys. Secret values are never returned. Session cookie auth.",
-          security: [{ apiKey: [] }],
+          security: [{ cookieAuth: [] }],
           responses: {
             "200": { description: "The caller's API keys" },
             "401": { $ref: "#/components/responses/Unauthorized" },
@@ -400,7 +550,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           summary: "Create an API key",
           description:
             "Generate a new API key. The raw key value is returned only in this response, so copy it immediately. The active-key count is capped by your plan. Session cookie auth.",
-          security: [{ apiKey: [] }],
+          security: [{ cookieAuth: [] }],
           requestBody: {
             required: false,
             content: {
@@ -437,7 +587,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           summary: "Rotate an API key",
           description:
             "Delete the key and issue a replacement with the same name and scopes. The new raw key is returned once. Session cookie auth.",
-          security: [{ apiKey: [] }],
+          security: [{ cookieAuth: [] }],
           responses: {
             "200": {
               description: "The new key, including its one-time raw value",
@@ -463,7 +613,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           summary: "Revoke an API key",
           description:
             "Set revoked_at on the key. It stops working immediately. Session cookie auth.",
-          security: [{ apiKey: [] }],
+          security: [{ cookieAuth: [] }],
           responses: {
             "200": { description: "The key was revoked" },
             "400": { description: "Invalid key id" },
@@ -478,7 +628,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           summary: "List domains",
           description:
             "Your verified and pending domains, plus any assigned to a team you belong to. Session cookie auth.",
-          security: [{ apiKey: [] }],
+          security: [{ cookieAuth: [] }],
           responses: {
             "200": { description: "The caller's domains" },
             "401": { $ref: "#/components/responses/Unauthorized" },
@@ -489,7 +639,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           summary: "Add a domain",
           description:
             "Add a domain (or subdomain) pending verification. Returns a DNS TXT record to publish; verifying it enables active-probe scans for that domain and everything under it. Session cookie auth.",
-          security: [{ apiKey: [] }],
+          security: [{ cookieAuth: [] }],
           requestBody: {
             required: true,
             content: {
@@ -519,7 +669,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           summary: "Remove a domain",
           description:
             "Remove a domain by id. Active probing stops being allowed against it and its subdomains immediately. Session cookie auth.",
-          security: [{ apiKey: [] }],
+          security: [{ cookieAuth: [] }],
           parameters: [
             {
               name: "id",
@@ -555,7 +705,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           summary: "Verify a domain now",
           description:
             "Look up the DNS TXT record right now and update the domain's status. Safe to call repeatedly while a record propagates. Session cookie auth.",
-          security: [{ apiKey: [] }],
+          security: [{ cookieAuth: [] }],
           responses: {
             "200": { description: "The verification result and new status" },
             "400": { description: "Invalid domain id" },
@@ -575,7 +725,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           summary: "List scheduled scans",
           description:
             "Your scheduled scans plus any belonging to a team you're on. Session cookie auth.",
-          security: [{ apiKey: [] }],
+          security: [{ cookieAuth: [] }],
           responses: {
             "200": { description: "The caller's scheduled scans" },
             "401": { $ref: "#/components/responses/Unauthorized" },
@@ -586,7 +736,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           summary: "Create a scheduled scan",
           description:
             "Schedule a recurring scan of a target. Frequency defaults to weekly; hourly and 6hourly require a higher plan. Session cookie auth.",
-          security: [{ apiKey: [] }],
+          security: [{ cookieAuth: [] }],
           requestBody: {
             required: true,
             content: {
@@ -607,6 +757,49 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
             },
           },
         },
+        patch: {
+          tags: ["Schedules"],
+          summary: "Pause, resume, or reassign a scheduled scan",
+          description:
+            "Toggle a schedule's active flag or move it to a different team. Send at least one of active or teamId. Reassigning is owner-only; toggling is open to anyone with team access. The worker deactivates a schedule itself once its target stops validating, and this is how the owner turns it back on. Session cookie auth.",
+          security: [{ cookieAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ScheduleUpdateRequest" },
+              },
+            },
+          },
+          responses: {
+            "200": { description: "The updated schedule" },
+            "400": { $ref: "#/components/responses/BadRequest" },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "403": { description: "No access to this schedule" },
+            "404": { $ref: "#/components/responses/NotFound" },
+          },
+        },
+        delete: {
+          tags: ["Schedules"],
+          summary: "Delete a scheduled scan",
+          description:
+            "Remove a schedule so it stops running. Session cookie auth.",
+          security: [{ cookieAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ScheduleDeleteRequest" },
+              },
+            },
+          },
+          responses: {
+            "200": { description: "The schedule was deleted" },
+            "400": { $ref: "#/components/responses/BadRequest" },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "403": { description: "No access to this schedule" },
+          },
+        },
       },
       "/teams": {
         get: {
@@ -614,7 +807,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           summary: "List teams",
           description:
             "Teams you belong to, with your role and each team's member count, plus your plan's team limits. Session cookie auth.",
-          security: [{ apiKey: [] }],
+          security: [{ cookieAuth: [] }],
           responses: {
             "200": { description: "The caller's teams and plan limits" },
             "401": { $ref: "#/components/responses/Unauthorized" },
@@ -625,7 +818,7 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           summary: "Create a team",
           description:
             "Create a team owned by the caller. The number of teams you can own is capped by your plan. Session cookie auth.",
-          security: [{ apiKey: [] }],
+          security: [{ cookieAuth: [] }],
           requestBody: {
             required: true,
             content: {
@@ -641,6 +834,48 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
             },
             "401": { $ref: "#/components/responses/Unauthorized" },
             "403": { description: "Teams are disabled on this deployment" },
+          },
+        },
+        patch: {
+          tags: ["Teams"],
+          summary: "Rename a team",
+          description:
+            "Change a team's name. Requires the manage_team permission, which owner, admin, manager and operator all hold. Session cookie auth.",
+          security: [{ cookieAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/TeamRenameRequest" },
+              },
+            },
+          },
+          responses: {
+            "200": { description: "The new team name" },
+            "400": { $ref: "#/components/responses/BadRequest" },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "403": { description: "No permission to rename this team" },
+          },
+        },
+        delete: {
+          tags: ["Teams"],
+          summary: "Delete a team",
+          description:
+            "Delete a team along with its members and pending invites. Owner only: this is its own delete_team permission, not part of manage_team. Session cookie auth.",
+          security: [{ cookieAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/TeamDeleteRequest" },
+              },
+            },
+          },
+          responses: {
+            "200": { description: "The team was deleted" },
+            "400": { $ref: "#/components/responses/BadRequest" },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "403": { description: "Only the team owner can delete a team" },
           },
         },
       },
@@ -683,6 +918,19 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           description:
             "A VulnRadar API key from Settings > API Keys, sent as `Authorization: Bearer <key>`. Keys carry scopes: scan:write, scan:read, scan:delete.",
         },
+        // Several documented operations (remediation, keys, domains,
+        // schedules, teams) are gated on getSession() and never call
+        // validateApiKey, so an API key genuinely cannot reach them. They all
+        // used to advertise `apiKey` anyway, purely because it was the only
+        // scheme this document defined, which told every spec consumer, and
+        // the playground, the opposite of the truth. ref: AUDIT-014#apidoc-14
+        cookieAuth: {
+          type: "apiKey",
+          in: "cookie",
+          name: AUTH_SESSION_COOKIE_NAME,
+          description:
+            "A browser session cookie, set by signing in to the web app. These operations are session-only: an API key is not accepted.",
+        },
       },
       responses: {
         BadRequest: { description: "Missing or invalid parameters" },
@@ -703,18 +951,27 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
                 "A hostname, full URL, or public IPv4. https:// is prepended if the scheme is omitted.",
               example: "example.com",
             },
-            probes: {
-              type: "array",
-              items: { type: "string" },
+            portScan: {
+              type: "boolean",
               description:
-                'Opt-in service probes as "service:port", e.g. "ssh:22".',
-              example: ["ssh:22"],
+                "Opt in to a curated sweep of common ports and services. Replaces the removed per-service `probes` array. Requires the target domain to be verified on your account, the same gate active-probes uses.",
+              example: true,
             },
             scanners: {
               type: "array",
               items: { type: "string" },
               description:
                 "Restrict web checks to these categories. Omit to run all defaults. active-probes is opt-in and needs a verified domain.",
+              // The example is load-bearing, not decoration. lib/api/playground.ts's
+              // buildExample falls back to ["" ] for an array of strings with no
+              // example, and the scan route reads a non-empty array as an explicit
+              // category selection, so the playground's prefilled body used to
+              // select the single category "" -- zero real categories. The first
+              // request a developer sends from the docs burned a daily-scan unit
+              // and came back reporting no findings, which reads as "your site is
+              // clean" rather than "you sent an invalid selector".
+              // ref: AUDIT-014#apidoc-02
+              example: ["headers", "ssl"],
             },
           },
         },
@@ -789,9 +1046,20 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           type: "object",
           properties: {
             total: { type: "integer" },
-            successful: { type: "integer" },
-            failed: { type: "integer" },
-            skipped: { type: "integer" },
+            queued: {
+              type: "integer",
+              description: "URLs accepted and given a scan id.",
+            },
+            failed: {
+              type: "integer",
+              description:
+                "URLs refused before they were queued (blocked target, quota exhausted).",
+            },
+            skipped: {
+              type: "integer",
+              description:
+                "URLs left out because the account's remaining daily quota could not cover the whole batch.",
+            },
             results: {
               type: "array",
               items: {
@@ -799,11 +1067,14 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
                 properties: {
                   url: { type: "string" },
                   success: { type: "boolean" },
-                  scanHistoryId: { type: "integer" },
-                  summary: { $ref: "#/components/schemas/Summary" },
-                  findings_count: { type: "integer" },
-                  duration: { type: "integer" },
+                  scanId: {
+                    type: "integer",
+                    description:
+                      "Poll GET /scan/status/{scanId} for this URL's progress and result.",
+                  },
+                  status: { type: "string", enum: ["queued"] },
                   error: { type: "string" },
+                  details: { type: "string" },
                 },
               },
             },
@@ -1034,6 +1305,62 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
             },
           },
         },
+        ScheduleUpdateRequest: {
+          type: "object",
+          required: ["id"],
+          properties: {
+            id: {
+              oneOf: [{ type: "integer" }, { type: "string" }],
+              description: "The schedule to update.",
+              example: 42,
+            },
+            active: {
+              type: "boolean",
+              description:
+                "Pause (false) or resume (true) the schedule. Omit to leave it alone.",
+              example: true,
+            },
+            teamId: {
+              type: ["integer", "null"],
+              description:
+                "Move the schedule to a team, or null to make it personal again. Owner only. Omit to leave it alone.",
+            },
+          },
+        },
+        ScheduleDeleteRequest: {
+          type: "object",
+          required: ["id"],
+          properties: {
+            id: {
+              oneOf: [{ type: "integer" }, { type: "string" }],
+              description: "The schedule to delete.",
+              example: 42,
+            },
+          },
+        },
+        ScanUpdateRequest: {
+          type: "object",
+          properties: {
+            notes: {
+              type: "string",
+              maxLength: 2000,
+              description:
+                "Your own notes on this scan. Truncated at 2000 characters.",
+              example: "Staging only, the missing HSTS header is expected.",
+            },
+            isPublic: {
+              type: "boolean",
+              description:
+                "Whether the scan has a public share link. Setting it to false revokes the existing link.",
+              example: false,
+            },
+            teamId: {
+              type: ["integer", "null"],
+              description:
+                "Assign the scan to a team you can share to, or null to unassign it.",
+            },
+          },
+        },
         TeamCreateRequest: {
           type: "object",
           required: ["name"],
@@ -1045,6 +1372,27 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
                 "The team name (2 characters up to the deployment's configured maximum).",
               example: "Security Team",
             },
+          },
+        },
+        TeamRenameRequest: {
+          type: "object",
+          required: ["teamId", "name"],
+          properties: {
+            teamId: { type: "integer", example: 7 },
+            name: {
+              type: "string",
+              minLength: 2,
+              description:
+                "The new team name (2 characters up to the deployment's configured maximum).",
+              example: "Platform Security",
+            },
+          },
+        },
+        TeamDeleteRequest: {
+          type: "object",
+          required: ["teamId"],
+          properties: {
+            teamId: { type: "integer", example: 7 },
           },
         },
       },

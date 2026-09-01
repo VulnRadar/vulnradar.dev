@@ -156,7 +156,8 @@ vi.stubGlobal("fetch", mockFetch);
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 const { AUTH_SESSION_COOKIE_NAME, DEVICE_TRUST_COOKIE_NAME } =
   await import("@/lib/config/constants");
-const { signDiscordState } = await import("@/lib/auth/discord-state");
+const { signDiscordState, DISCORD_NONCE_COOKIE } =
+  await import("@/lib/auth/discord-state");
 const { decryptApiKey } = await import("@/lib/auth/crypto");
 const { verifyPendingToken } = await import("@/lib/auth/pending-2fa");
 const { GET } = await import("@/app/api/v3/auth/discord/callback/route");
@@ -171,6 +172,18 @@ function callbackRequest(params: Record<string, string>) {
 
 function locationOf(res: Response): URL {
   return new URL(res.headers.get("location") || "http://localhost/");
+}
+
+/**
+ * A sign-in state is only usable in the browser that STARTED the flow: the
+ * start route mints a nonce, signs it into the state, and drops it in the
+ * httpOnly DISCORD_NONCE_COOKIE. Mint both halves together the way the real
+ * flow does. Without the cookie the callback rejects the state, which is the
+ * login-CSRF / session-fixation fix (see the nonce block in the callback).
+ */
+function loginState(nonce = "test-discord-nonce"): string {
+  cookieState.set(DISCORD_NONCE_COOKIE, nonce);
+  return signDiscordState({ action: "login", nonce });
 }
 
 beforeEach(async () => {
@@ -279,7 +292,7 @@ describe("GET /api/v3/auth/discord/callback", () => {
 
   it("redirects with discord_token_failed when the token exchange fails", async () => {
     tokenExchangeOk = false;
-    const state = signDiscordState({ action: "login" });
+    const state = loginState();
 
     const res = await GET(callbackRequest({ code: "somecode", state }));
 
@@ -290,7 +303,7 @@ describe("GET /api/v3/auth/discord/callback", () => {
 
   it("redirects with discord_user_failed when fetching the Discord user fails", async () => {
     userFetchOk = false;
-    const state = signDiscordState({ action: "login" });
+    const state = loginState();
 
     const res = await GET(callbackRequest({ code: "somecode", state }));
 
@@ -303,7 +316,7 @@ describe("GET /api/v3/auth/discord/callback", () => {
     mockFetch.mockImplementationOnce(async () => {
       throw new Error("network blip");
     });
-    const state = signDiscordState({ action: "login" });
+    const state = loginState();
 
     const res = await GET(callbackRequest({ code: "somecode", state }));
 
@@ -364,10 +377,84 @@ describe("GET /api/v3/auth/discord/callback", () => {
     });
   });
 
+  describe("action=login browser binding (login CSRF / session fixation)", () => {
+    it("rejects a captured sign-in state replayed into a browser that never started the flow", async () => {
+      // The attack: attacker starts action=login while signed out, approves at
+      // Discord, captures the callback URL without following it, and lures a
+      // victim to it inside the state's TTL. The HMAC verifies (the server
+      // minted it) and the login branch resolves the ATTACKER's account, so
+      // createSession would silently replace the victim's own session. The
+      // victim's browser never received the nonce cookie, so this must fail.
+      existingConnectionUserId = 42;
+      twoFAConfigRow = {
+        totp_enabled: false,
+        two_factor_method: "app",
+        email: "u@example.com",
+      };
+      const state = signDiscordState({
+        action: "login",
+        nonce: "attacker-nonce",
+      });
+      // No DISCORD_NONCE_COOKIE in this browser.
+
+      const res = await GET(callbackRequest({ code: "somecode", state }));
+
+      expect(locationOf(res).searchParams.get("error")).toBe(
+        "discord_invalid_state",
+      );
+      expect(sessionInsertCalls).toHaveLength(0);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("rejects a sign-in state whose nonce does not match this browser's cookie", async () => {
+      existingConnectionUserId = 42;
+      cookieState.set(DISCORD_NONCE_COOKIE, "some-other-browsers-nonce");
+      const state = signDiscordState({
+        action: "login",
+        nonce: "attacker-nonce",
+      });
+
+      const res = await GET(callbackRequest({ code: "somecode", state }));
+
+      expect(locationOf(res).searchParams.get("error")).toBe(
+        "discord_invalid_state",
+      );
+      expect(sessionInsertCalls).toHaveLength(0);
+    });
+
+    it("clears the nonce cookie so a sign-in state cannot be replayed twice", async () => {
+      existingConnectionUserId = 42;
+      twoFAConfigRow = {
+        totp_enabled: false,
+        two_factor_method: "app",
+        email: "u@example.com",
+      };
+      const state = loginState();
+
+      await GET(callbackRequest({ code: "somecode", state }));
+
+      expect(cookieState.get(DISCORD_NONCE_COOKIE)).toBeUndefined();
+    });
+
+    it("still binds action=connect by session userId, with no nonce cookie required", async () => {
+      // The connect flow carries a real userId in the signed state, so it is
+      // already bound to the session and must keep working unchanged.
+      cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+      sessionRow = defaultSessionRow({ user_id: 42 });
+      existingConnectionUserId = null;
+      const state = signDiscordState({ action: "connect", userId: 42 });
+
+      const res = await GET(callbackRequest({ code: "somecode", state }));
+
+      expect(connectionUpsertCalls).toHaveLength(1);
+      expect(locationOf(res).pathname).toBe("/profile");
+    });
+  });
+
   describe("action=login", () => {
     it("redirects with discord_not_linked when no account is linked to this Discord id", async () => {
       existingConnectionUserId = null;
-      const state = signDiscordState({ action: "login" });
+      const state = loginState();
 
       const res = await GET(callbackRequest({ code: "somecode", state }));
 
@@ -384,7 +471,7 @@ describe("GET /api/v3/auth/discord/callback", () => {
         two_factor_method: "app",
         email: "u@example.com",
       };
-      const state = signDiscordState({ action: "login" });
+      const state = loginState();
 
       const res = await GET(callbackRequest({ code: "somecode", state }));
 
@@ -400,7 +487,7 @@ describe("GET /api/v3/auth/discord/callback", () => {
         two_factor_method: "app",
         email: "u@example.com",
       };
-      const state = signDiscordState({ action: "login" });
+      const state = loginState();
 
       const res = await GET(callbackRequest({ code: "somecode", state }));
 
@@ -424,7 +511,7 @@ describe("GET /api/v3/auth/discord/callback", () => {
         two_factor_method: "email",
         email: "u@example.com",
       };
-      const state = signDiscordState({ action: "login" });
+      const state = loginState();
 
       await GET(callbackRequest({ code: "somecode", state }));
       await new Promise((resolve) => setImmediate(resolve));
@@ -442,7 +529,7 @@ describe("GET /api/v3/auth/discord/callback", () => {
       };
       trustedDeviceRow = { "?column?": 1 };
       cookieState.set(DEVICE_TRUST_COOKIE_NAME, "f".repeat(64));
-      const state = signDiscordState({ action: "login" });
+      const state = loginState();
 
       const res = await GET(callbackRequest({ code: "somecode", state }));
 
@@ -467,7 +554,7 @@ describe("GET /api/v3/auth/discord/callback", () => {
       vi.resetModules();
       const { GET: unconfiguredGET } =
         await import("@/app/api/v3/auth/discord/callback/route");
-      const state = signDiscordState({ action: "login" });
+      const state = loginState();
 
       const res = await unconfiguredGET(
         callbackRequest({ code: "somecode", state }),

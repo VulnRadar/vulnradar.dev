@@ -16,6 +16,7 @@ import {
   Camera,
   Network,
   AlertTriangle,
+  FileJson,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +27,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/ui/utils";
+import { toggles } from "@/lib/ui/animations";
 import type { Category, ScanStatus } from "@/lib/scanner/types";
 import { CATEGORY_META } from "@/lib/scanner/category-meta";
 import {
@@ -46,7 +48,7 @@ import {
   type InlineAuthFormHandle,
   type InlineAuthValue,
 } from "@/components/scanner/inline-auth-form";
-import { BULK_SCAN_CLIENT_URL_LIMIT } from "@/lib/config/constants";
+import { API, BULK_SCAN_CLIENT_URL_LIMIT } from "@/lib/config/client-constants";
 import { classifyScanTarget } from "@/lib/scanner/scan-target-classify";
 import { useAuth } from "@/components/providers/auth-provider";
 export type ScanMode = "quick" | "deep" | "bulk";
@@ -226,6 +228,11 @@ const BULK_URL_UNLIMITED_CEILING = 500;
 const FOCUS_RING =
   "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
 
+/** Ceiling on a spec file the bulk tab will parse in the browser. An OpenAPI
+ *  or Postman document is text and lands far under this; anything bigger is
+ *  not a spec, and JSON.parse on it would lock the tab up. */
+const SPEC_MAX_BYTES = 5 * 1024 * 1024;
+
 const DOMAIN_REGEX =
   /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*(\.[a-zA-Z]{2,})?(:\d+)?(\/.*)?$/;
 
@@ -343,6 +350,14 @@ export function ScanForm({
   // effect here.
   const [bulkUrls, setBulkUrls] = useState("");
   const [bulkError, setBulkError] = useState("");
+  // POST /api/v3/scan/import-spec turns an OpenAPI 3, Swagger 2, or Postman
+  // document into a list of scan targets. It shipped with no caller at all, so
+  // the only way to reach it was curl (AUDIT-011#drift-21). The bulk tab is
+  // where its output belongs: it produces exactly the one-URL-per-line list
+  // this textarea takes.
+  const [specImporting, setSpecImporting] = useState(false);
+  const [specNote, setSpecNote] = useState("");
+  const specInputRef = useRef<HTMLInputElement>(null);
   const [authValue, setAuthValue] = useState<InlineAuthValue | null>(null);
   const authFormRef = useRef<InlineAuthFormHandle>(null);
 
@@ -400,16 +415,27 @@ export function ScanForm({
     // scan mode. Previously we omitted the param when mode === "quick"
     // (the default), but the user wants the URL to be self-describing:
     // even the default state should be explicit in the URL.
-    setQueryParams({
-      mode,
-      active_probes: serializeActiveProbeIds(selectedActiveProbes),
-      screenshot: captureScreenshot ? "1" : null,
-      port_scan: portScan ? "1" : null,
-    });
+    //
+    // replace, not push: this is an effect mirroring form state into the
+    // URL, so every toggle of a check family, the screenshot switch or the
+    // port-scan switch used to add its own history entry. Configuring a
+    // deep scan could leave a dozen entries behind, and the back button then
+    // walked back through them one checkbox at a time instead of leaving the
+    // page. Toggling a setting is not a navigation.
+    setQueryParams(
+      {
+        mode,
+        active_probes: serializeActiveProbeIds(selectedActiveProbes),
+        screenshot: captureScreenshot ? "1" : null,
+        port_scan: portScan ? "1" : null,
+      },
+      { replace: true },
+    );
     for (const family of CHECK_FAMILIES) {
       setQueryParam(
         `family_${family.id}`,
         enabledFamilies.has(family.id) ? null : "0",
+        { replace: true },
       );
     }
   }, [
@@ -534,6 +560,77 @@ export function ScanForm({
     onBulkScan?.(lines, !keepPrivate);
   }
 
+  /**
+   * Read a spec file the user picked, hand the parsed document to
+   * /api/v3/scan/import-spec, and merge the URLs it finds into the bulk list.
+   *
+   * The document is parsed here and POSTed as JSON rather than sending a URL
+   * for the server to fetch: that is the route's own reason for taking the
+   * document directly, and it keeps spec import off the SSRF surface.
+   */
+  async function handleSpecFile(file: File) {
+    setBulkError("");
+    setSpecNote("");
+    // A spec is a text document; anything this size is not one, and parsing it
+    // would just freeze the tab.
+    if (file.size > SPEC_MAX_BYTES) {
+      setBulkError("That file is too large to be an API spec (over 5 MB).");
+      return;
+    }
+    setSpecImporting(true);
+    try {
+      let spec: unknown;
+      try {
+        spec = JSON.parse(await file.text());
+      } catch {
+        setBulkError(
+          "That file is not valid JSON. Export the spec as JSON (a YAML spec has to be converted first).",
+        );
+        return;
+      }
+      const res = await fetch(API.SCAN_IMPORT_SPEC, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spec }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setBulkError(data?.error || "Could not read that spec.");
+        return;
+      }
+      const targets: string[] = Array.isArray(data.targets) ? data.targets : [];
+      if (targets.length === 0) {
+        setBulkError("That spec declared no scannable URLs.");
+        return;
+      }
+      // Merged, not replaced: someone importing a second spec, or adding one
+      // to URLs they already typed, should not silently lose the first set.
+      const existing = bulkUrls
+        .split("\n")
+        .map((u) => u.trim())
+        .filter(Boolean);
+      const merged = Array.from(new Set([...existing, ...targets]));
+      setBulkUrls(merged.join("\n"));
+      const added = merged.length - existing.length;
+      setSpecNote(
+        added === 0
+          ? `${data.format} spec read: every URL in it was already listed.`
+          : `Added ${added} URL${added === 1 ? "" : "s"} from a ${data.format} spec.`,
+      );
+      if (merged.length > bulkUrlLimit) {
+        setBulkError(
+          `That is ${merged.length} URLs. A bulk run takes at most ${bulkUrlLimit}, so trim the list before scanning.`,
+        );
+      }
+    } catch {
+      setBulkError("Could not reach the server to read that spec.");
+    } finally {
+      setSpecImporting(false);
+      // Clear the input so picking the SAME file again still fires a change.
+      if (specInputRef.current) specInputRef.current.value = "";
+    }
+  }
+
   const allFamiliesSelected = effectiveFamilies === totalFamilies;
   const trimmedUrl = url.trim();
   const isHttpScheme = /^http:\/\//i.test(trimmedUrl);
@@ -559,7 +656,7 @@ export function ScanForm({
 
   return (
     <div className="w-full">
-      <div className="overflow-hidden rounded-md border border-border bg-card">
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
         {/* Mode strip */}
         <div className="flex items-center gap-1 border-b border-border bg-muted/30 px-2 py-1.5">
           {[
@@ -576,7 +673,7 @@ export function ScanForm({
                 disabled={isScanning}
                 aria-pressed={active}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-sm font-medium transition-colors",
+                  `inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-sm font-medium ${toggles.control}`,
                   active
                     ? "bg-card text-foreground shadow-xs"
                     : "text-muted-foreground hover:text-foreground",
@@ -741,7 +838,7 @@ export function ScanForm({
                               disabled={isScanning || autoOff}
                               aria-pressed={active}
                               className={cn(
-                                "group relative flex w-full items-center gap-2 rounded px-2 py-1.5 text-left transition-colors",
+                                `group relative flex w-full items-center gap-2 rounded px-2 py-1.5 text-left ${toggles.control}`,
                                 active && "bg-primary/5 hover:bg-primary/10",
                                 !active && !autoOff && "hover:bg-muted/60",
                                 autoOff && "cursor-not-allowed opacity-40",
@@ -770,7 +867,7 @@ export function ScanForm({
                               <span
                                 aria-hidden
                                 className={cn(
-                                  "ml-auto flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border",
+                                  `ml-auto flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${toggles.control}`,
                                   active
                                     ? "border-primary bg-primary text-primary-foreground"
                                     : "border-border bg-transparent group-hover:border-muted-foreground/50",
@@ -845,7 +942,7 @@ export function ScanForm({
                           disabled={isScanning}
                           aria-pressed={active}
                           className={cn(
-                            "group relative flex w-full items-center gap-2 rounded px-2 py-1.5 text-left transition-colors",
+                            `group relative flex w-full items-center gap-2 rounded px-2 py-1.5 text-left ${toggles.control}`,
                             active && "bg-primary/5 hover:bg-primary/10",
                             !active && "hover:bg-muted/60",
                             isScanning && "cursor-not-allowed opacity-50",
@@ -1053,10 +1150,37 @@ export function ScanForm({
               >
                 {bulkCount}/{bulkUrlLimit}
               </span>
+              <input
+                ref={specInputRef}
+                type="file"
+                accept="application/json,.json"
+                className="sr-only"
+                tabIndex={-1}
+                aria-hidden="true"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleSpecFile(file);
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => specInputRef.current?.click()}
+                disabled={isBulkScanning || specImporting}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50",
+                  FOCUS_RING,
+                )}
+              >
+                <FileJson aria-hidden className="h-3 w-3" />
+                {specImporting ? "Reading..." : "Import spec"}
+              </button>
               {bulkUrls && (
                 <button
                   type="button"
-                  onClick={() => setBulkUrls("")}
+                  onClick={() => {
+                    setBulkUrls("");
+                    setSpecNote("");
+                  }}
                   className={cn(
                     "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
                     FOCUS_RING,
@@ -1077,6 +1201,7 @@ export function ScanForm({
             onChange={(e) => {
               setBulkUrls(e.target.value);
               if (bulkError) setBulkError("");
+              if (specNote) setSpecNote("");
             }}
             rows={6}
             disabled={isBulkScanning}
@@ -1089,11 +1214,20 @@ export function ScanForm({
             aria-describedby={bulkError ? "bulk-error" : undefined}
           />
 
+          {specNote && !bulkError && (
+            <p
+              role="status"
+              className="border-t border-border px-3 py-2 text-xs text-muted-foreground"
+            >
+              {specNote}
+            </p>
+          )}
+
           {isBulkScanning && bulkProgress && (
             <div className="flex flex-col gap-1.5 border-t border-border px-3 py-2.5">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-foreground">
-                  Scanning URL {bulkProgress.current} of {bulkProgress.total}
+                  Queuing scan {bulkProgress.current} of {bulkProgress.total}
                 </span>
                 <span className="font-mono tabular-nums text-muted-foreground">
                   {Math.round(
@@ -1108,7 +1242,7 @@ export function ScanForm({
                 aria-valuemin={0}
                 aria-valuemax={bulkProgress.total}
                 aria-valuenow={bulkProgress.current}
-                aria-label="Bulk scan progress"
+                aria-label="Bulk scan queueing progress"
               >
                 <div
                   className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out"
@@ -1141,7 +1275,7 @@ export function ScanForm({
               {isBulkScanning ? (
                 <>
                   <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
-                  Scanning{" "}
+                  Queuing{" "}
                   {bulkProgress
                     ? `${bulkProgress.current}/${bulkProgress.total}`
                     : ""}

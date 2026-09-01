@@ -21,10 +21,13 @@ import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import {
   canMakeRequest,
   getRateLimitHeaders,
-  getUserPlan,
 } from "@/lib/rate-limiting/daily-limits";
-import { getCrawlPageSelectionLimit } from "@/lib/billing/crawl-page-limits";
+import { getUserPlanLimits } from "@/lib/billing/plan-limits";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
+import {
+  checkTargetScanLimit,
+  targetScanLimitMessage,
+} from "@/lib/rate-limiting/target-limits";
 import { resolveScanIsPublic } from "@/lib/scanner/scan-privacy";
 import { isUrlOwnedByUser } from "@/lib/domains/scope";
 import { requestsActiveProbing } from "@/lib/scanner/active-probe-catalog";
@@ -33,6 +36,10 @@ import {
   reserveConcurrentScanSlot,
 } from "@/lib/rate-limiting/concurrent-scans";
 import { logAction } from "@/lib/auth/authorization";
+import {
+  resolveNewScanTeamIds,
+  attachNewScanTeams,
+} from "@/lib/teams/scan-teams";
 import { normalizeUrl } from "@/lib/scanner/execute-scan";
 import { establishScanSession } from "@/lib/scanner/auth/login";
 import {
@@ -99,7 +106,7 @@ export async function POST(request: NextRequest) {
     if (!rateLimit.allowed) {
       return NextResponse.json(
         {
-          error: "Rate limit exceeded. 50 requests per 24 hours.",
+          error: `Rate limit exceeded. ${rateLimit.limit} requests per 24 hours. Resets at ${rateLimit.resetsAt}`,
           limit: rateLimit.limit,
           used: rateLimit.used,
           remaining: rateLimit.remaining,
@@ -249,14 +256,20 @@ export async function POST(request: NextRequest) {
   // (CRAWL_DISCOVER_MAX_PAGES) can surface far more pages than this so the
   // picker lists options; the cap here is how many the caller may actually
   // queue for scanning. The client picker enforces the same number from the
-  // same source (lib/billing/crawl-page-limits.ts), so a longer selectedUrls
-  // array here is a bypass attempt and is rejected. Billing off (self-hosted)
-  // is unlimited (-1) and never consults the plan. Also threaded into
+  // shipped table (lib/billing/crawl-page-limits.ts), so a longer selectedUrls
+  // array here is a bypass attempt and is rejected. Also threaded into
   // executeCrawlScan so the engine's own discovery path respects the same cap.
-  const billingEnabled = await getSetting("BILLING_ENABLED");
-  const crawlPageLimit = billingEnabled
-    ? getCrawlPageSelectionLimit(await getUserPlan(authedUserId))
-    : -1;
+  //
+  // Resolved through getUserPlanLimits rather than the synchronous shipped
+  // table: these four numbers now have BILLING_*_CRAWL_PAGES registry entries,
+  // so an admin retuning them has to actually take effect here. It returns
+  // null when billing is off, which is the same "self-hosted is unlimited"
+  // answer the separate BILLING_ENABLED read used to produce, so that read is
+  // gone rather than duplicated. getUserPlanLimits, not getPlanLimitsForPlan:
+  // it checks billing FIRST, so a self-hosted deployment still never pays for
+  // the plan lookup at all.
+  const crawlPlanLimits = await getUserPlanLimits(authedUserId);
+  const crawlPageLimit = crawlPlanLimits?.crawlPages ?? -1;
   if (
     Array.isArray(selectedUrls) &&
     crawlPageLimit !== -1 &&
@@ -351,21 +364,56 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Per-target volume, shared across every account (see
+  // lib/rate-limiting/target-limits.ts). A crawl is the heaviest thing this
+  // product points at a third party -- one scan's worth of requests times the
+  // page count -- so it counts against the target's bucket like every other
+  // scan, and a verified owner of the domain is exempt. Counted as one, not as
+  // one per page: the page count is not known until discovery has run, and
+  // charging the bucket per page would make a single legitimate 250-page crawl
+  // of an unverified domain lock that domain out for the hour.
+  // ref: AUDIT-012#abuse-05
+  const crawlTargetLimit = await checkTargetScanLimit(normalizedMainUrl);
+  if (
+    !crawlTargetLimit.allowed &&
+    !(await isUrlOwnedByUser(normalizedMainUrl, authedUserId))
+  ) {
+    return NextResponse.json(
+      {
+        error: targetScanLimitMessage(crawlTargetLimit.rootDomain),
+        statusCode: "TARGET_RATE_LIMIT",
+      },
+      {
+        status: 429,
+        headers: { "Retry-After": String(crawlTargetLimit.retryAfterSeconds) },
+      },
+    );
+  }
+
   // Domain ownership: same gate as POST /api/v3/scan -- see that route's
   // own comment for why active-probes needs this and the others don't. A
   // curated port sweep (portScan) is held to the same gate: it makes this
-  // server a scan source against the target. One check covers both; the `||`
-  // short-circuits so an ordinary crawl never pays for the DB lookup.
+  // server a scan source against the target. A form login is too: it POSTs
+  // the caller's username and password to the target's own login page and
+  // reports back distinguishably whether they were accepted, which is a
+  // credential-stuffing proxy with a success oracle unless the caller has
+  // proven they control the domain. Header and cookie auth stay ungated --
+  // the caller is supplying a session they already hold. One check covers
+  // all three; the `||` chain short-circuits so an ordinary crawl never pays
+  // for the DB lookup.
   const wantsActiveProbing = requestsActiveProbing(scanners);
+  const submitsCredentials = ephemeralAuth?.method === "form";
   if (
-    (wantsActiveProbing || portScan) &&
+    (wantsActiveProbing || portScan || submitsCredentials) &&
     !(await isUrlOwnedByUser(normalizedMainUrl, authedUserId))
   ) {
     return NextResponse.json(
       {
         error: wantsActiveProbing
           ? "Active probing requires a verified domain. Verify ownership of this domain (or its parent) in Profile > Domains before requesting active-probes."
-          : "Port scanning requires a verified domain. Verify ownership of this domain (or its parent) in Profile > Domains before requesting a port scan.",
+          : portScan
+            ? "Port scanning requires a verified domain. Verify ownership of this domain (or its parent) in Profile > Domains before requesting a port scan."
+            : "A form login submits the username and password you supply to the target's own login page, so it requires a verified domain. Verify ownership of this domain (or its parent) in Profile > Domains, or use header or cookie authentication with a session you already hold.",
         statusCode: "DOMAIN_NOT_VERIFIED",
       },
       { status: 403 },
@@ -422,6 +470,18 @@ export async function POST(request: NextRequest) {
         typeof body.isPublic === "boolean" ? body.isPublic : undefined,
       );
 
+  // Team assignment for the tracker row. Omitted means a personal crawl;
+  // only a request that names teams the caller can manage shares it.
+  // `teamIds` shares with several at once, `teamId` is the original
+  // single-team form. The per-page rows executeCrawlScan inserts are not
+  // covered here: it copies the tracker's scan_history.team_id onto each
+  // page, so a multi-team crawl currently shares its discovered pages with
+  // the PRIMARY team only -- see lib/scanner/execute-crawl-scan.ts.
+  const teamAssignment = await resolveNewScanTeamIds(authedUserId, body);
+  if (!teamAssignment.ok) {
+    return NextResponse.json({ error: teamAssignment.error }, { status: 400 });
+  }
+
   // Create the tracker row immediately so there is something to poll. Page
   // discovery and the daily-quota check both depend on work that happens
   // in the background (discovery is itself a multi-fetch crawl), so unlike
@@ -437,8 +497,8 @@ export async function POST(request: NextRequest) {
       async (client) => {
         const insertResult = await client.query(
           `INSERT INTO scan_history
-             (user_id, url, source, notes, status, started_at, categories_total, is_public)
-           VALUES ($1, $2, $3, $4, 'pending', NOW(), 0, $5)
+             (user_id, url, source, notes, status, started_at, categories_total, is_public, team_id)
+           VALUES ($1, $2, $3, $4, 'pending', NOW(), 0, $5, $6)
            RETURNING id`,
           [
             authedUserId,
@@ -446,6 +506,7 @@ export async function POST(request: NextRequest) {
             isApiKeyAuth ? "api" : "web",
             DEFAULT_SCAN_NOTE,
             requestedIsPublic,
+            teamAssignment.primaryTeamId,
           ],
         );
         const insertedId = insertResult.rows[0]?.id;
@@ -460,6 +521,9 @@ export async function POST(request: NextRequest) {
       );
     }
     scanHistoryId = reservation.scanId;
+    // The INSERT above carries the primary team; this writes the rest of the
+    // set into scan_history_teams and is a no-op below two teams.
+    await attachNewScanTeams(scanHistoryId, teamAssignment.teamIds);
   } catch (err) {
     console.error(
       `[${APP_NAME}] Failed to create scan_history row for crawl:`,

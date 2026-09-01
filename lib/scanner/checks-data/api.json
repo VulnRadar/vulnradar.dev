@@ -379,7 +379,7 @@
     "category": "api",
     "severity": "medium",
     "description": "__schema / __type queries dump the entire schema, including internal fields, admin-only mutations, and deprecation hints that aid targeted attacks.",
-    "evidence": "GraphQL introspection query (__schema { queryType { name } }) returned a full schema dump at {{url}}.",
+    "evidence": "Introspection keywords (__schema / __type / IntrospectionQuery) referenced by the /graphql endpoint at {{url}}. This does not confirm a schema dump was returned: send an introspection query to verify the server actually resolves it.",
     "riskImpact": "Introspection in production gives attackers a complete blueprint of your data model: every type, field, mutation, and subscription, eliminating the recon phase and exposing internal-only operations that untrusted clients should never call.",
     "explanation": "__schema / __type queries dump the entire schema, including internal fields, admin-only mutations, and deprecation hints that aid targeted attacks.",
     "fixSteps": [
@@ -409,7 +409,7 @@
   },
   {
     "id": "api-graphql-batch-queries",
-    "type": "body-pattern",
+    "type": "combined",
     "title": "GraphQL batch (array) queries accepted",
     "category": "api",
     "severity": "medium",
@@ -504,7 +504,7 @@
   },
   {
     "id": "api-openapi-default-values-sensitive",
-    "type": "body-pattern",
+    "type": "combined",
     "title": "OpenAPI schema declares defaults for sensitive fields",
     "category": "api",
     "severity": "medium",

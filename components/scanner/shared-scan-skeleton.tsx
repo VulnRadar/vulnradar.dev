@@ -19,7 +19,7 @@ export function SharedScanSkeleton() {
       aria-label="Loading report"
     >
       {/* Header card */}
-      <div className="rounded-md border border-border bg-card p-5 sm:p-6 flex flex-col gap-4">
+      <div className="rounded-xl border border-border bg-card p-5 sm:p-6 flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Skeleton className="h-3 w-64" />
           <Skeleton className="h-3 w-32" />
@@ -38,7 +38,7 @@ export function SharedScanSkeleton() {
       </div>
 
       {/* ScanSummary */}
-      <div className="overflow-hidden rounded-md border border-border bg-card">
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
         <div className="grid grid-cols-1 gap-5 py-4 pl-5 pr-4 sm:py-5 sm:pl-6 sm:pr-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-8">
           <div className="flex flex-col gap-2">
             <Skeleton className="h-5 w-56" />
@@ -70,7 +70,7 @@ export function SharedScanSkeleton() {
       </div>
 
       {/* Findings list */}
-      <div className="rounded-md border border-border overflow-hidden divide-y divide-border">
+      <div className="rounded-xl border border-border overflow-hidden divide-y divide-border">
         {Array.from({ length: FINDING_ROW_COUNT }).map((_, i) => (
           <div key={i} className="flex items-center gap-3 px-4 py-3.5">
             <Skeleton className="h-5 w-16 rounded shrink-0" />

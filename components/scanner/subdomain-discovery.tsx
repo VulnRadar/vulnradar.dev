@@ -18,8 +18,8 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { cn, safeHref } from "@/lib/ui/utils";
 import { animations } from "@/lib/ui/animations";
-import { API, ROUTES } from "@/lib/config/constants";
-import { formatRefreshAvailability } from "@/lib/ui/relative-time";
+import { API, ROUTES } from "@/lib/config/client-constants";
+import { formatAge, formatRefreshAvailability } from "@/lib/ui/relative-time";
 import { useAuth } from "@/components/providers/auth-provider";
 import {
   PremiumUpgradeModal,
@@ -86,22 +86,12 @@ function statusBucket(code?: number): string {
   return "red";
 }
 
-/** How long ago `iso` was, as a compact relative label ("just now", "5 min
- *  ago", "3 hours ago", "2 days ago"). Returns null for a missing/unparseable
- *  timestamp so the caller can fall back to a neutral label. */
-function formatAge(iso?: string): string | null {
-  if (!iso) return null;
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return null;
-  const diffMs = Date.now() - then;
-  if (diffMs < 60_000) return "just now";
-  const mins = Math.floor(diffMs / 60_000);
-  if (mins < 60) return `${mins} min ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
-  const days = Math.floor(hours / 24);
-  return `${days} day${days === 1 ? "" : "s"} ago`;
-}
+// formatAge used to be redefined here, byte-identical to the exported one,
+// while the same import statement above already pulled formatRefreshAvailability
+// out of that very module -- and lib/ui/relative-time.ts names this component
+// as the consumer its wording came from. The two sibling panels (port sweep,
+// DNS records) import it, so the private copy was a silent divergence waiting
+// for the next wording change.
 
 // Mirrors the real stage names the server reports from
 // lib/scanner/discovery-progress.ts -- this is a label lookup, not a
@@ -296,7 +286,7 @@ export function SubdomainDiscovery({
           feature={PREMIUM_FEATURES.subdomain_discovery}
           currentPlan={userPlan}
         />
-        <div className="rounded-md border border-border bg-card p-4">
+        <div className="rounded-xl border border-border bg-card p-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-start gap-2.5">
               <Globe
@@ -337,7 +327,7 @@ export function SubdomainDiscovery({
     // true and this renders the real bar below.
     if (!showProgressUi) return null;
     return (
-      <div className="rounded-md border border-border bg-card p-6">
+      <div className="rounded-xl border border-border bg-card p-6">
         <div className="flex flex-col items-center gap-3">
           <Loader2 aria-hidden className="h-5 w-5 animate-spin text-primary" />
           <div className="text-center">
@@ -374,7 +364,7 @@ export function SubdomainDiscovery({
       />
       <div
         className={cn(
-          "rounded-md border border-border bg-card overflow-hidden",
+          "rounded-xl border border-border bg-card overflow-hidden",
           // Skipped the loading card (fast/cached path): fade the result
           // in instead of a hard cut so it still reads as deliberate.
           !showProgressUi && animations.fadeIn,
@@ -383,6 +373,10 @@ export function SubdomainDiscovery({
         <button
           type="button"
           onClick={() => setExpanded(!expanded)}
+          // a11y (SC 4.1.2): every sibling result panel (response headers,
+          // threat intel, DNS records, screenshot, software inventory) reports
+          // its expanded state; this one was the outlier.
+          aria-expanded={expanded}
           className="flex items-center gap-2 w-full px-4 py-3 text-left hover:bg-muted/50 transition-colors"
         >
           <Globe
@@ -620,6 +614,7 @@ function UnreachableSection({
       <button
         type="button"
         onClick={() => setShow(!show)}
+        aria-expanded={show}
         className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors flex items-center gap-1"
       >
         {show ? (

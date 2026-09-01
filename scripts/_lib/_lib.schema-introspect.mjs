@@ -1,6 +1,6 @@
 /**
- * VulnRadar — General schema introspection for scripts/db-diagnose.mjs and
- * scripts/db-repair.mjs.
+ * VulnRadar — General schema introspection for scripts/maintenance/db-diagnose.mjs and
+ * scripts/maintenance/db-repair.mjs.
  *
  * Everything here is derived from information_schema / pg_catalog at
  * runtime against whatever database DATABASE_URL points at -- nothing

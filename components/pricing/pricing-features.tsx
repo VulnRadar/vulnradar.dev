@@ -3,7 +3,9 @@ import { PLANS } from "@/lib/billing/plans";
 import {
   AI_USAGE_WINDOW_HOURS,
   BILLING_HISTORY_RETENTION,
-} from "@/lib/config/constants";
+  BILLING_PLAN_LIMITS,
+  GITHUB_REVIEW_FREE_TRIAL_WINDOW_HOURS,
+} from "@/lib/config/client-constants";
 
 type CellValue = boolean | string;
 
@@ -27,10 +29,33 @@ function aiUsageQuota(n: number): CellValue {
   return `${n.toLocaleString()} / ${AI_USAGE_WINDOW_HOURS}hr`;
 }
 
-/** githubReviewTokensPerWindow: 0 means the tier doesn't get the feature at all. */
+/**
+ * githubReviewTokensPerWindow: 0 means the tier has no token budget of its
+ * own. That is NOT the same as "no access", and rendering a cross for it was
+ * wrong: lib/billing/github-review-usage.ts gives a 0-budget plan one free
+ * review every GITHUB_REVIEW_FREE_TRIAL_WINDOW_HOURS, so the comparison table
+ * was denying a capability Free actually has (AUDIT-011#drift-23). Say what
+ * the user gets instead.
+ */
 function githubReviewQuota(n: number): CellValue {
-  if (n === 0) return false;
+  if (n === 0) {
+    return `1 free review / ${GITHUB_REVIEW_FREE_TRIAL_WINDOW_HOURS}hr`;
+  }
   return `${n.toLocaleString()} / ${AI_USAGE_WINDOW_HOURS}hr`;
+}
+
+/**
+ * Daily scan cap. Read from the deployment's billing config rather than the
+ * catalog copy in lib/billing/catalog.ts, because the plan cards above this
+ * table (app/pricing/page.tsx) already read it from there: sourcing the same
+ * number from two places meant one config edit could leave the card and the
+ * comparison row disagreeing with each other on the same page. Falls back to
+ * the catalog value for any plan the config does not name.
+ */
+function dailyScans(planId: string, catalogValue: number): CellValue {
+  const configured =
+    BILLING_PLAN_LIMITS[planId as keyof typeof BILLING_PLAN_LIMITS];
+  return quota(typeof configured === "number" ? configured : catalogValue);
 }
 
 function retention(planId: string): CellValue {
@@ -56,7 +81,7 @@ const SECTIONS: Section[] = [
     rows: [
       {
         label: "Scans per day",
-        values: PLANS.map((p) => quota(p.limits.dailyScans)),
+        values: PLANS.map((p) => dailyScans(p.id, p.limits.dailyScans)),
       },
       {
         label: "Scans running at once",
@@ -65,6 +90,13 @@ const SECTIONS: Section[] = [
       {
         label: "URLs per bulk request",
         values: PLANS.map((p) => quota(p.limits.bulkScanUrls)),
+      },
+      {
+        // Enforced since crawl shipped, advertised nowhere until now: a user
+        // met this cap as a 403 mid-crawl rather than as a plan difference
+        // (AUDIT-011#drift-23).
+        label: "Pages per crawl",
+        values: PLANS.map((p) => quota(p.limits.crawlPages)),
       },
       {
         label: "Scheduled scans",
@@ -182,9 +214,14 @@ export function PricingFeatures() {
           <h2 className="text-xl sm:text-2xl font-semibold tracking-tight mb-2">
             Line by line
           </h2>
+          {/* This used to claim the table "cannot drift from what the API
+              actually enforces". It can: enforcement resolves the live,
+              admin-editable billing settings, while this table is built from
+              the shipped plan config. Saying so out loud is better than an
+              assurance that stops anyone checking. */}
           <p className="text-sm text-muted-foreground leading-relaxed">
-            These numbers come straight out of the billing config, so this table
-            cannot drift from what the API actually enforces.
+            These are the plan limits this deployment ships with. Your billing
+            page is always the authority on what your own account gets.
           </p>
         </div>
 

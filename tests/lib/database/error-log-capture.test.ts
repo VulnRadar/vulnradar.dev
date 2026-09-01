@@ -21,6 +21,7 @@ const {
   _shouldCapture,
   _resetErrorLogCaptureStateForTests,
 } = await import("@/lib/database/error-log-capture");
+const { runWithRequestId } = await import("@/lib/database/request-context");
 
 const originalConsoleError = console.error;
 
@@ -236,5 +237,74 @@ describe("installErrorLogCapture — secret redaction", () => {
     console.error(prefix + "BBBB");
 
     expect(mockQuery).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * AUDIT-012#obs-07. The whole point of the request id is that the several
+ * rows one failing request writes (route -> executeScan -> a check ->
+ * safeFetch, each its own console.error) can be pulled back together. That
+ * only works if the wrapper reads the ambient context at the moment it is
+ * called, which is what these assert.
+ */
+describe("installErrorLogCapture: request correlation id", () => {
+  it("stamps the ambient request id onto the row", () => {
+    console.error = vi.fn();
+    installErrorLogCapture();
+
+    runWithRequestId("44444444-4444-4444-8444-444444444444", () => {
+      console.error("scan failed");
+    });
+
+    const [sql, params] = mockQuery.mock.calls[0];
+    expect(sql).toContain("request_id");
+    expect(params[2]).toBe("44444444-4444-4444-8444-444444444444");
+  });
+
+  it("gives every console.error inside one request the same id", () => {
+    console.error = vi.fn();
+    installErrorLogCapture();
+
+    runWithRequestId("55555555-5555-4555-8555-555555555555", () => {
+      console.error("[API Error] upstream refused");
+      console.error("[safeFetch] connect ECONNREFUSED");
+    });
+
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+    expect(mockQuery.mock.calls[0][1][2]).toBe(
+      "55555555-5555-4555-8555-555555555555",
+    );
+    expect(mockQuery.mock.calls[1][1][2]).toBe(
+      "55555555-5555-4555-8555-555555555555",
+    );
+  });
+
+  it("keeps the id across an await, not just the synchronous call", async () => {
+    console.error = vi.fn();
+    installErrorLogCapture();
+
+    await runWithRequestId("66666666-6666-4666-8666-666666666666", async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      console.error("late failure");
+    });
+
+    expect(mockQuery.mock.calls[0][1][2]).toBe(
+      "66666666-6666-4666-8666-666666666666",
+    );
+  });
+
+  it("writes null outside a request, rather than leaking the previous one", () => {
+    // Boot, a cron tick and the background scan worker all log here with no
+    // request in scope. Reusing a stale id would be worse than none: it
+    // would tie an unrelated failure to somebody's request.
+    console.error = vi.fn();
+    installErrorLogCapture();
+
+    runWithRequestId("77777777-7777-4777-8777-777777777777", () => {
+      console.error("during a request");
+    });
+    console.error("outside any request");
+
+    expect(mockQuery.mock.calls[1][1][2]).toBeNull();
   });
 });

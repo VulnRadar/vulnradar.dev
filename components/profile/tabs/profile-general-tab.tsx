@@ -19,7 +19,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { API, ROUTES, MAX_AVATAR_UPLOAD_BYTES } from "@/lib/config/constants";
+import {
+  API,
+  ROUTES,
+  MAX_AVATAR_UPLOAD_BYTES,
+} from "@/lib/config/client-constants";
 import { refreshAuthCache } from "@/components/providers/auth-provider";
 import type { ProfileTabProps } from "../types";
 
@@ -368,7 +372,7 @@ export function ProfileGeneralTab({
                       pendingChanges.name !== (user?.name || "") && (
                         <Badge
                           variant="outline"
-                          className="text-[10px] bg-[hsl(var(--warning)/0.12)] text-[hsl(var(--warning))] border-[hsl(var(--warning)/0.3)]"
+                          className="text-[10px] bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/30"
                         >
                           Unsaved
                         </Badge>
@@ -396,7 +400,7 @@ export function ProfileGeneralTab({
                       pendingChanges.email !== user?.email && (
                         <Badge
                           variant="outline"
-                          className="text-[10px] bg-[hsl(var(--warning)/0.12)] text-[hsl(var(--warning))] border-[hsl(var(--warning)/0.3)]"
+                          className="text-[10px] bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/30"
                         >
                           Unsaved
                         </Badge>

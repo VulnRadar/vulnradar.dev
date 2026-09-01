@@ -7,6 +7,7 @@ import {
   createWriteStream,
   existsSync,
   readdirSync,
+  statSync,
   unlinkSync,
 } from "node:fs";
 import { resolve, dirname } from "node:path";
@@ -55,11 +56,44 @@ function zipDirectory(dist, zip) {
   });
 }
 
+/**
+ * Walks `dir` and returns every .map file below it, relative to `dir`.
+ * Sourcemaps are already off for release builds (vite.config.ts gates them on
+ * mode, scripts/build.mjs sets sourcemap: false), but that used to be `true`
+ * in both places and nothing noticed 606 KB of maps riding along in a 192 KB
+ * extension. This is the gate that would have: a zip is never built from a
+ * dist that still contains them.
+ */
+function findSourcemaps(dir, prefix = "") {
+  const found = [];
+  for (const name of readdirSync(dir)) {
+    const full = resolve(dir, name);
+    if (statSync(full).isDirectory()) {
+      found.push(...findSourcemaps(full, `${prefix}${name}/`));
+    } else if (name.endsWith(".map")) {
+      found.push(`${prefix}${name}`);
+    }
+  }
+  return found;
+}
+
 for (const target of ["chrome", "firefox"]) {
   const dist = resolve(ROOT, `dist-${target}`);
   if (!existsSync(dist)) {
     console.error(
       `[package] missing ${dist} - run \`npm run build:${target}\` first`,
+    );
+    process.exit(1);
+  }
+  const maps = findSourcemaps(dist);
+  if (maps.length > 0) {
+    console.error(
+      `[package] dist-${target} contains ${maps.length} sourcemap(s): ${maps.join(", ")}`,
+    );
+    console.error(
+      "[package] release builds must not ship sourcemaps - rebuild with `npm run build:" +
+        target +
+        "`",
     );
     process.exit(1);
   }

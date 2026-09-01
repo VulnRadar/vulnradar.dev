@@ -27,6 +27,51 @@ import {
   withinPlanLimit,
   planLimitMessage,
 } from "@/lib/billing/plan-limits";
+import { teamsDisabledResponse } from "@/lib/teams/feature-gate";
+
+/**
+ * Drop support-ticket shares between a departing member and the teammates they
+ * no longer share any team with.
+ *
+ * Sharing a ticket is teammate-only, but that was enforced only when the row
+ * was written: support_ticket_shares has no team column, so the teams cascade
+ * never reached it and a removed member's rows survived indefinitely. Read
+ * paths now re-check the teammate relationship (lib/support/ticket-access.ts
+ * and GET /api/v3/support-tickets), which is what actually closes the hole;
+ * this stops the dead rows accumulating. Best-effort: a failure here must not
+ * fail the removal, which has already happened.
+ */
+async function dropOrphanedTicketShares(
+  teamId: number,
+  removedUserId: number,
+): Promise<void> {
+  try {
+    // Both directions: tickets the departing member was given, and tickets
+    // they shared with someone who is still on the team. Only pairs with no
+    // remaining shared team are removed, since two people can be teammates
+    // through more than one team.
+    await pool.query(
+      `DELETE FROM support_ticket_shares s
+        USING support_tickets t
+        WHERE s.ticket_id = t.id
+          AND (s.shared_with_user_id = $2 OR t.user_id = $2)
+          AND (s.shared_with_user_id = $2 OR s.shared_with_user_id IN (
+                SELECT user_id FROM team_members WHERE team_id = $1
+              ))
+          AND NOT EXISTS (
+                SELECT 1 FROM team_members a
+                JOIN team_members b ON a.team_id = b.team_id
+                WHERE a.user_id = t.user_id AND b.user_id = s.shared_with_user_id
+              )`,
+      [teamId, removedUserId],
+    );
+  } catch (err) {
+    console.error(
+      "[teams] Failed to clean up support-ticket shares after a member removal:",
+      err,
+    );
+  }
+}
 
 // Get team members
 export async function GET(request: Request) {
@@ -36,6 +81,9 @@ export async function GET(request: Request) {
       { error: ERROR_MESSAGES.UNAUTHORIZED },
       { status: 401 },
     );
+
+  const gate = await teamsDisabledResponse();
+  if (gate) return gate;
 
   const { searchParams } = new URL(request.url);
   const teamId = searchParams.get("teamId");
@@ -80,6 +128,9 @@ export async function POST(request: Request) {
       { error: ERROR_MESSAGES.UNAUTHORIZED },
       { status: 401 },
     );
+
+  const gate = await teamsDisabledResponse();
+  if (gate) return gate;
 
   const { teamId, email, role = "viewer" } = await request.json();
   if (!teamId || !email)
@@ -307,6 +358,9 @@ export async function DELETE(request: Request) {
       { status: 401 },
     );
 
+  const gate = await teamsDisabledResponse();
+  if (gate) return gate;
+
   const { teamId, userId, inviteId } = await request.json();
 
   // Handle cancel invite
@@ -359,6 +413,7 @@ export async function DELETE(request: Request) {
       "DELETE FROM team_members WHERE team_id = $1 AND user_id = $2",
       [teamId, userId],
     );
+    await dropOrphanedTicketShares(teamId, Number(userId));
     return NextResponse.json({ success: true });
   }
 
@@ -419,6 +474,7 @@ export async function DELETE(request: Request) {
     "DELETE FROM team_members WHERE team_id = $1 AND user_id = $2",
     [teamId, userId],
   );
+  await dropOrphanedTicketShares(teamId, Number(userId));
 
   // Notify the removed member. Gated on the team_changes preference and
   // best-effort: a mail failure must never fail the removal itself.
@@ -449,6 +505,9 @@ export async function PATCH(request: Request) {
       { error: ERROR_MESSAGES.UNAUTHORIZED },
       { status: 401 },
     );
+
+  const gate = await teamsDisabledResponse();
+  if (gate) return gate;
 
   const { teamId, userId, role } = await request.json();
   if (!teamId || !userId || !role)

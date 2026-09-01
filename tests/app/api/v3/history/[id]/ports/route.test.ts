@@ -176,3 +176,40 @@ describe("POST /api/v3/history/[id]/ports - short TTL reuse (BUG 2)", () => {
     );
   });
 });
+
+/**
+ * PORT_SCAN_OVERALL_DEADLINE_MS became an admin-editable setting. This route's
+ * outer abort used to be a hardcoded 20s, which silently capped it: an
+ * operator raising the deadline past 20s got the request aborted before the
+ * sweep they configured could finish.
+ */
+describe("POST /api/v3/history/[id]/ports - sweep timeout follows the setting", () => {
+  it("derives the abort signal from PORT_SCAN_OVERALL_DEADLINE_MS rather than a literal", async () => {
+    mockGetSetting.mockImplementation(async (key: string) =>
+      key === "PORT_SCAN_OVERALL_DEADLINE_MS" ? 45_000 : true,
+    );
+
+    const res = await POST(req(), params());
+
+    expect(res.status).toBe(200);
+    expect(mockGetSetting).toHaveBeenCalledWith(
+      "PORT_SCAN_OVERALL_DEADLINE_MS",
+    );
+    const [hostname, signal] = mockScanPorts.mock.calls[0];
+    expect(hostname).toBe("example.com");
+    expect(signal).toBeInstanceOf(AbortSignal);
+    // A 45s deadline must not be cut short by an outer abort that already
+    // fired: the backstop always sits later than the sweep's own deadline.
+    expect(signal.aborted).toBe(false);
+  });
+
+  it("does not read the deadline at all when a cached sweep is reused", async () => {
+    mockReadPortScan.mockReturnValue(fakePortScan);
+
+    await POST(req(), params());
+
+    expect(mockGetSetting).not.toHaveBeenCalledWith(
+      "PORT_SCAN_OVERALL_DEADLINE_MS",
+    );
+  });
+});

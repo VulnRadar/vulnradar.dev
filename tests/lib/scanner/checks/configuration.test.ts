@@ -137,6 +137,17 @@ const fixtures: DetectorFixtures = {
       headers: { "cache-control": "public" },
       expect: "skip",
     },
+    {
+      // ref: AUDIT-010#scanner-10. A public newsletter/contact/search POST
+      // form carries nothing user-specific, so a normal CDN cache policy on
+      // the page it lives on is correct, not a finding.
+      description:
+        "public newsletter-signup POST form with no sensitive field (no fire)",
+      url: "https://example.com/",
+      headers: { "cache-control": "public, max-age=3600" },
+      body: '<html><body><form method="post" action="/newsletter"><input name="email"></form></body></html>',
+      expect: "skip",
+    },
   ],
 
   "etag-inode": [
@@ -654,6 +665,30 @@ const fixtures: DetectorFixtures = {
         "tutorial blog post showing the install snippet in a <pre><code> block",
       body: '<html><body><p>Example install snippet:</p><pre><code>&lt;script src="/_debugbar/assets/debugbar.js"&gt;&lt;/script&gt;</code></pre></body></html>',
       expect: "skip",
+    },
+    {
+      // The doc-context guard must be applied per occurrence: a benign
+      // snippet FIRST must not clear a real, injected reference later on the
+      // same page. The filler keeps the second hit outside the 200-char
+      // lookback window that classifies a hit as doc context.
+      description:
+        "doc snippet first, then the debugger's real injected asset lower down - still fires",
+      body:
+        '<html><body><pre><code>&lt;script src="/_debugbar/assets/debugbar.js"&gt;&lt;/script&gt;</code></pre>' +
+        "<p>Release notes for this build follow. </p>".repeat(8) +
+        '<footer><script src="/_debugbar/assets/debugbar.js"></script></footer></body></html>',
+      expect: "fire",
+      evidenceIncludes: "Debugbar",
+    },
+    {
+      description:
+        "Django: doc snippet first, then the toolbar's real asset lower down - still fires",
+      body:
+        "<html><body><pre><code>/static/debug_toolbar/js/toolbar.js</code></pre>" +
+        "<p>Release notes for this build follow. </p>".repeat(8) +
+        '<script src="/static/debug_toolbar/js/toolbar.js"></script></body></html>',
+      expect: "fire",
+      evidenceIncludes: "Debug Toolbar",
     },
   ],
 };

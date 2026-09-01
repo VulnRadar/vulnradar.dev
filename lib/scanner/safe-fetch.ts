@@ -68,6 +68,20 @@ const PRIVATE_IPV4_PATTERNS = [
   /^0\./, // Current network (0.0.0.0/8)
   /^2(2[4-9]|3[0-9])\./, // Multicast (224.0.0.0/4 = 224-239.x.x.x)
   /^(24[0-9]|25[0-5])\./, // Reserved/broadcast first octet range 240-255
+  // ssrf: RFC 6598 shared address space (100.64.0.0/10). This is not an
+  // academic gap. 100.100.100.200 is Alibaba Cloud's instance metadata
+  // endpoint, the direct analogue of the 169.254.169.254 blocked two lines
+  // up, and 100.100.2.136/.138 are its internal resolvers. The same /10 is
+  // what EKS and GKE hand to pods and what carrier-grade NAT uses, so on
+  // those platforms it is live internal space. isPrivateIP feeds the
+  // IPv4-mapped/NAT64 IPv6 path too, so this also closes
+  // http://[::ffff:100.100.100.200]/. ref: AUDIT-012#ssrf-03
+  /^100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\./, // 100.64.0.0/10
+  /^198\.1[89]\./, // Benchmarking (198.18.0.0/15), routed internally on many networks
+  /^192\.0\.0\./, // IETF protocol assignments (192.0.0.0/24)
+  /^192\.0\.2\./, // TEST-NET-1
+  /^198\.51\.100\./, // TEST-NET-2
+  /^203\.0\.113\./, // TEST-NET-3
 ];
 
 // IPv6 private/special ranges.
@@ -75,11 +89,20 @@ const PRIVATE_IPV4_PATTERNS = [
 // toCanonicalIPv6() below (e.g. "0000:0000:0000:0000:0000:0000:0000:0001"
 // for "::1"). Shorthand forms (::1, fc00::1) are normalised first, so
 // these regexes need to match the expanded 8-group form.
+//
+// ssrf: each pattern anchors on a WHOLE 16-bit group, so a prefix shorter
+// than 16 bits has to be spelled out across the group's hex digits. Three of
+// these used to name a /7 or /10 in the comment while matching exactly one
+// group: /^fe80:/ covered only fe80 of fe80::/10 (fe80-febf), /^fc00:/ only
+// fc00 of fc00::/7 (fc00-fdff), and /^fec0:/ only fec0 of fec0::/10
+// (fec0-feff). fe81::1, fcff::1 and fec1::1 all canonicalised to something no
+// pattern matched, so isPrivateIP returned false for them: legal, and in use
+// as ULA space on some Kubernetes and overlay networks. The forms below match
+// the prefix lengths the comments claim. ref: AUDIT-012#ssrf-05
 const PRIVATE_IPV6_PATTERNS = [
   /^0000:0000:0000:0000:0000:0000:0000:0001$/i, // IPv6 loopback (::1)
-  /^fe80:/i, // IPv6 link-local (fe80::/10)
-  /^fc00:/i, // IPv6 unique local (ULA) (fc00::/7)
-  /^fd[0-9a-f]{2}:/i, // IPv6 unique local (ULA) (fd00::/8)
+  /^fe[89ab][0-9a-f]:/i, // IPv6 link-local (fe80::/10 = fe80-febf)
+  /^f[cd][0-9a-f]{2}:/i, // IPv6 unique local (ULA) (fc00::/7 = fc00-fdff)
   /^0000:0000:0000:0000:0000:0000:0000:0000$/, // Unspecified (::)
   /^0000:0000:0000:0000:0000:ffff:7f00:/i, // IPv4-mapped 127.0.0.0/8
   /^0000:0000:0000:0000:0000:ffff:0a00:/i, // IPv4-mapped 10.0.0.0/8
@@ -95,7 +118,7 @@ const PRIVATE_IPV6_PATTERNS = [
   /^0100:0000:0000:0000:0000:0000:/i, // Discard prefix (RFC 6666) (100::/64)
   /^2001:0db8:/i, // Documentation prefix (RFC 3849)
   /^2001:0000:/i, // Teredo tunneling (RFC 4380) (2001::/32)
-  /^fec0:/i, // IPv6 site-local (deprecated RFC 3879)
+  /^fe[c-f][0-9a-f]:/i, // IPv6 site-local, deprecated RFC 3879 (fec0::/10 = fec0-feff)
   /^ff0[0-9a-f]:/i, // IPv6 multicast (ff00::/8)
 ];
 
@@ -263,9 +286,17 @@ function setHostHeader(
  * Rewrite an HTTP url to target the IP a prior validateScanTarget already
  * resolved (with the real host preserved in a Host header), so the OS cannot
  * re-resolve the hostname to a rebound private/metadata IP at connect time.
- * HTTPS is returned unchanged -- swapping the hostname would break TLS/SNI, so
- * there the protection is the immediate DNS re-resolution, not IP pinning
- * (the same limitation safeFetch documents). Unlike safeFetch this does NOT
+ * HTTPS is returned unchanged: swapping the hostname would break TLS/SNI.
+ * That leaves a real, un-closed gap on the HTTPS path, and it should not be
+ * read as a protection. An attacker serving a TTL-0 A record can answer
+ * validateScanTarget's lookup with a public IP and undici's connect-time
+ * lookup with an internal one, so on HTTPS the private-range block list is
+ * advisory. Certificate validation still stops a response body coming back,
+ * but the TCP connect and ClientHello do happen. Closing it properly needs a
+ * per-request undici Agent whose `connect.lookup` returns the address already
+ * validated (keeping the hostname for SNI), which needs `undici` as a direct
+ * dependency this repo does not have yet. ref: AUDIT-012#ssrf-02
+ * Unlike safeFetch this does NOT
  * touch redirect handling, so a probe that needs to inspect a raw cross-host
  * 3xx (e.g. the open-redirect canary) keeps working. Pass the `resolvedIp`
  * from the SafetyCheckResult you already validated the url with.
@@ -426,12 +457,37 @@ export function isPrivateHostname(hostname: string): boolean {
 /**
  * Validate a URL for safe scanning
  * Returns safety status and reason if blocked
+ *
+ * Deliberately NOT memoized, even though a single scan calls this 12-20
+ * times for one host and every call is a blocking getaddrinfo on the
+ * four-thread libuv pool (AUDIT-012#perf-10). A memo was tried and reverted:
+ * safeFetch re-validates on every redirect hop precisely so a host that
+ * rebinds to a private IP between hops is caught, and any cache long enough
+ * to be worth having serves the first, public answer to that second call.
+ * The cost of the repeated lookups is real; silently reopening the rebinding
+ * window to save them is not a trade worth making here.
  */
 export async function validateScanTarget(
   url: string,
 ): Promise<SafetyCheckResult> {
   try {
     const parsed = new URL(url);
+
+    // ssrf: the scheme gate belongs HERE, not only in
+    // assertSafePublicHttpUrl. Every module that treats this function as
+    // "the" SSRF guard (page-screenshot, checks/tls, the async-check
+    // probes, the schedules/webhooks routes) called something that looked
+    // at the hostname and never at the protocol. file: and data: URLs
+    // happened to fail anyway, but only as a side effect of an empty
+    // hostname resolving to nothing, and ftp:/gopher: passed outright.
+    // ref: AUDIT-012#ssrf-07
+    if (!ALLOWED_PROTOCOLS.has(parsed.protocol)) {
+      return {
+        safe: false,
+        reason: "Only http and https URLs can be scanned.",
+      };
+    }
+
     const hostname = parsed.hostname;
 
     // Check if hostname is an IP address (IPv4 or IPv6)
@@ -592,6 +648,14 @@ export async function safeFetch(
 
   // For HTTPS/WSS, we MUST keep the original hostname to avoid SSL/TLS certificate validation errors.
   // For HTTP/WS, we can use the resolved IP to prevent DNS rebinding attacks.
+  //
+  // ssrf: on the HTTPS path this leaves the rebinding window open, and the
+  // branch below does NOT close it. undici re-resolves the hostname at
+  // connect time, so a nameserver serving a TTL-0 record can return a public
+  // address to validateScanTarget and an internal one to the socket. See
+  // pinToResolvedIp's comment for the fix this needs (a per-request undici
+  // Agent with a pinned connect.lookup) and why it is not here yet.
+  // ref: AUDIT-012#ssrf-02
   let finalUrl = normalizedUrl;
   let finalInit: RequestInit | undefined = init;
 
@@ -619,7 +683,8 @@ export async function safeFetch(
     // Ensure the original hostname is sent in the Host header for virtual hosting
     finalInit = setHostHeader(init, originalHostname);
   } else if (isSecureProtocol && safety.resolvedIp) {
-    // For HTTPS, just ensure Host header is set but keep original URL
+    // For HTTPS, just ensure Host header is set but keep original URL.
+    // This is virtual-hosting hygiene, not an SSRF control.
     finalInit = setHostHeader(init, urlObj.hostname);
   }
 
@@ -641,6 +706,24 @@ export async function safeFetch(
   const timeoutId = setTimeout(() => {
     controller.abort();
   }, timeoutMs);
+
+  // ssrf: the deadline has to outlive this function when it hands a Response
+  // back. `await fetch(...)` resolves when the response HEADERS arrive, not
+  // when the body finishes, so clearing this timer (and detaching the abort
+  // listeners, further down) on the way out used to hand every caller a
+  // Response whose body could not be aborted by anything: a target that
+  // answers with headers and then trickles one byte a minute held the read
+  // open indefinitely, and a caller-supplied `signal: AbortSignal.timeout(N)`
+  // silently stopped applying the moment headers landed.
+  //
+  // So: on a path that returns a live Response, leave the timer armed until
+  // its original deadline (it aborts the body stream if the caller is still
+  // reading then) and leave the combined-signal listeners attached (so the
+  // caller's own signal still reaches the stream). Only a path that throws,
+  // which hands back no body, clears it. `unref` keeps a pending timer from
+  // holding the process open on its own.
+  // ref: AUDIT-012#ssrf-01
+  let handedResponseToCaller = false;
 
   try {
     let currentUrl = finalUrl;
@@ -684,9 +767,6 @@ export async function safeFetch(
       // to enforce that re-validation hop-by-hop.
       // codeql[js/request-forgery]
       const response = await fetch(currentUrl, requestInit);
-      if (typeof cleanupCombinedSignal === "function") {
-        cleanupCombinedSignal();
-      }
 
       // Let the session absorb cookies and notice if it has been dropped.
       // It ignores anything off its own origin.
@@ -696,6 +776,7 @@ export async function safeFetch(
 
       // Non-3xx: return as-is. The caller handles success/error semantics.
       if (response.status < 300 || response.status >= 400) {
+        handedResponseToCaller = true;
         return response;
       }
 
@@ -703,12 +784,14 @@ export async function safeFetch(
       // treat this as the same URL; we don't loop forever).
       const location = response.headers.get("location");
       if (!location) {
+        handedResponseToCaller = true;
         return response;
       }
 
       // Reached the redirect cap — return what we have so the caller
       // can decide what to do with the chain.
       if (hop === MAX_REDIRECT_HOPS) {
+        handedResponseToCaller = true;
         return response;
       }
 
@@ -720,7 +803,25 @@ export async function safeFetch(
         nextUrlObj = new URL(location, currentUrl);
       } catch {
         // Invalid Location header — return the 3xx response.
+        handedResponseToCaller = true;
         return response;
+      }
+
+      // Every hop passes the same syntactic gate the entry URL did. Without
+      // this the scheme allowlist applied to hop 0 only, so a
+      // `Location: ftp://<same-host>/x` cleared both the cross-host test
+      // (identical hostname) and validateScanTarget and reached fetch(); it
+      // failed only because undici does not implement ftp. Re-running the
+      // gate here makes that a refusal by policy rather than by accident.
+      // ref: AUDIT-012#ssrf-07
+      try {
+        assertSafePublicHttpUrl(nextUrlObj.href);
+      } catch (err) {
+        throw new Error(
+          `Redirect to ${nextUrlObj.protocol}//${nextUrlObj.hostname} is not allowed: ${
+            err instanceof Error ? err.message : "unsafe redirect target"
+          }`,
+        );
       }
 
       // Cross-host redirect: reject unless it's a www ↔ apex redirect on the
@@ -772,6 +873,14 @@ export async function safeFetch(
 
       currentLogicalUrl = nextUrlObj.href;
 
+      // This hop's response is being discarded for the next one, so its
+      // combined signal has no stream left to guard: detach here, on the only
+      // path that continues the loop. (It deliberately does NOT run on the
+      // paths above that return the Response, see the timer comment.)
+      if (typeof cleanupCombinedSignal === "function") {
+        cleanupCombinedSignal();
+      }
+
       // For HTTP we can keep the resolved-IP substitution; for HTTPS
       // we must keep the original hostname for cert validation.
       const isSecure =
@@ -801,6 +910,12 @@ export async function safeFetch(
     // Unreachable, but TypeScript needs an exhaustible return.
     throw new Error("Unreachable: redirect loop exited without returning.");
   } finally {
-    clearTimeout(timeoutId);
+    if (handedResponseToCaller) {
+      // Keep the deadline armed over the body read (see above). unref is
+      // Node-only and absent under a DOM-typed setTimeout, hence the guard.
+      (timeoutId as unknown as { unref?: () => void }).unref?.();
+    } else {
+      clearTimeout(timeoutId);
+    }
   }
 }

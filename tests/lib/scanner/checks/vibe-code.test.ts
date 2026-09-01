@@ -118,6 +118,16 @@ const fixtures: DetectorFixtures = {
       expect: "fire",
       evidenceIncludes: "exception-handling",
     },
+    {
+      description:
+        "regression: the same string appearing first as i18n data and again inside a real .catch() further down still fires -- scoring only the first occurrence let the data copy mask the genuine one",
+      body:
+        '<script>window.__i18n = {"errors":{"generic":"Something went wrong"}};\nconst pad = "' +
+        "x".repeat(200) +
+        '";\nfetch(url).catch(function(e){ alert("Something went wrong"); });</script>',
+      expect: "fire",
+      evidenceIncludes: "exception-handling",
+    },
   ],
   "vibe-weak-password-policy": [
     {
@@ -155,6 +165,13 @@ const fixtures: DetectorFixtures = {
     {
       description: "a commented-out literal credential still fires",
       body: "<script>// password: hunter2\nconst legacyLogin = true;</script>",
+      expect: "fire",
+      evidenceIncludes: "credential",
+    },
+    {
+      description:
+        "regression: a benign validation-rule comment ABOVE a real commented-out credential still fires -- scoring only the first match let the rule comment mask the credential below it",
+      body: "<script>// password: minimum 8 characters, 1 uppercase, 1 number\n// password: hunter2\nconst legacyLogin = true;</script>",
       expect: "fire",
       evidenceIncludes: "credential",
     },

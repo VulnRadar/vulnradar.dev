@@ -278,7 +278,13 @@ describe("POST /api/v3/auth/reset-password", () => {
         q.sql.includes("FROM password_reset_tokens prt") &&
         q.sql.includes("FOR UPDATE"),
     );
-    expect(lookup?.params[0]).not.toBe(rawToken);
-    expect(lookup?.params[0]).toMatch(/^[a-f0-9]{64}$/);
+    // AUDIT-002#secrets-03: HMAC digest plus the pre-HMAC one, so a reset
+    // link already sent when that shipped still resolves. Both are digests.
+    const candidates = lookup?.params[0] as string[];
+    expect(Array.isArray(candidates)).toBe(true);
+    expect(candidates).not.toContain(rawToken);
+    for (const candidate of candidates) {
+      expect(candidate).toMatch(/^[a-f0-9]{64}$/);
+    }
   }, 15_000);
 });

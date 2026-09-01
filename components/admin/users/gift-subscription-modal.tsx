@@ -1,9 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { CrownIcon, X, Loader2, Ban } from "lucide-react";
+import { useState, useEffect, useId } from "react";
+import { CrownIcon, Loader2, Ban } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { getPaidPlans } from "@/lib/billing/catalog";
 
 interface GiftSubscriptionModalProps {
@@ -21,7 +27,19 @@ const PLAN_LABELS: Record<string, string> = Object.fromEntries(
 );
 
 /**
- * Modal for gifting or managing subscriptions
+ * Modal for gifting or managing subscriptions.
+ *
+ * Built on components/ui/dialog (Radix) rather than a hand-rolled
+ * `fixed inset-0` overlay, which is what this used to be. Radix supplies the
+ * focus trap, focus restore on close, Escape-to-close, `role="dialog"` +
+ * `aria-modal`, a portal, and a body scroll lock: none of which the hand-
+ * rolled version had, on a modal that hands out paid plans. Its sibling
+ * user-detail-panel.tsx already used Dialog, so the split ran through one
+ * directory.
+ *
+ * Revoke fires straight through to the caller. It used to sit behind a
+ * two-click inline "Are you sure?" whose Yes button then opened the parent's
+ * SaveConfirmationModal, so revoking a gift was confirmed twice.
  */
 export function GiftSubscriptionModal({
   open,
@@ -39,7 +57,11 @@ export function GiftSubscriptionModal({
       ? new Date(existingGift.end_date).toISOString().slice(0, 16)
       : "",
   );
-  const [confirmRevoke, setConfirmRevoke] = useState(false);
+
+  // Stable ids so each <label htmlFor> names its control; both fields were
+  // announced as unnamed to a screen reader.
+  const planId = useId();
+  const endDateId = useId();
 
   useEffect(() => {
     if (open) {
@@ -50,68 +72,37 @@ export function GiftSubscriptionModal({
           ? new Date(existingGift.end_date).toISOString().slice(0, 16)
           : "",
       );
-      setConfirmRevoke(false);
     }
   }, [open, existingGift]);
 
-  const { dialogProps, titleProps, descriptionProps } = useModalA11y({
-    open,
-    onClose,
-  });
-
-  if (!open) return null;
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs animate-in fade-in"
-      onClick={onClose}
-    >
-      <div
-        className="bg-card border border-border rounded-xl w-full max-w-md mx-4 shadow-2xl animate-in zoom-in-95 overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-        {...dialogProps}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
           <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
-              <CrownIcon className="h-4 w-4 text-primary" />
+            <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+              <CrownIcon className="h-4 w-4 text-primary" aria-hidden="true" />
             </div>
-            <div>
-              <h3
-                className="text-sm font-semibold text-foreground"
-                {...titleProps}
-              >
+            <div className="min-w-0">
+              <DialogTitle className="text-sm font-semibold">
                 {existingGift
                   ? "Manage Gift Subscription"
                   : "Gift a Subscription"}
-              </h3>
-              <p
-                className="text-[11px] text-muted-foreground"
-                {...descriptionProps}
-              >
+              </DialogTitle>
+              <DialogDescription className="text-[11px]">
                 {existingGift
                   ? `Active until ${new Date(existingGift.end_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
                   : "Grant temporary premium access"}
-              </p>
+              </DialogDescription>
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={onClose}
-            aria-label="Close gift subscription dialog"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
+        </DialogHeader>
 
         {/* Active gift banner */}
         {existingGift && (
-          <div className="mx-5 mt-4 flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg border bg-primary/5 border-primary/20 text-primary text-xs font-medium">
-            <CrownIcon className="h-3.5 w-3.5 shrink-0" />
-            Currently gifted:{" "}
+          <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg border bg-primary/5 border-primary/20 text-primary text-xs font-medium">
+            <CrownIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            Currently gifted:
             <span className="font-semibold ml-1">
               {PLAN_LABELS[existingGift.plan] || existingGift.plan}
             </span>
@@ -119,13 +110,17 @@ export function GiftSubscriptionModal({
         )}
 
         {/* Form */}
-        <div className="p-5 flex flex-col gap-4">
+        <div className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+              <label
+                htmlFor={planId}
+                className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider"
+              >
                 Plan
               </label>
               <select
+                id={planId}
                 value={giftPlan}
                 onChange={(e) => setGiftPlan(e.target.value)}
                 className="h-9 rounded-md border border-border/40 bg-background/50 px-2.5 text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary/50"
@@ -138,10 +133,14 @@ export function GiftSubscriptionModal({
               </select>
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+              <label
+                htmlFor={endDateId}
+                className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider"
+              >
                 Expires
               </label>
               <input
+                id={endDateId}
                 type="datetime-local"
                 value={giftEndDate}
                 onChange={(e) => setGiftEndDate(e.target.value)}
@@ -166,11 +165,15 @@ export function GiftSubscriptionModal({
             >
               {isLoading ? (
                 <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving...
+                  <Loader2
+                    className="h-3.5 w-3.5 animate-spin"
+                    aria-hidden="true"
+                  />{" "}
+                  Saving...
                 </>
               ) : (
                 <>
-                  <CrownIcon className="h-3.5 w-3.5" />{" "}
+                  <CrownIcon className="h-3.5 w-3.5" aria-hidden="true" />{" "}
                   {existingGift ? "Update Gift" : "Gift Plan"}
                 </>
               )}
@@ -185,56 +188,24 @@ export function GiftSubscriptionModal({
             </Button>
           </div>
 
-          {/* Revoke — only shown when there's an active gift */}
+          {/* Revoke: only shown when there's an active gift. The parent's
+              SaveConfirmationModal is the confirmation. */}
           {existingGift && (
             <div className="pt-2 border-t border-border">
-              {!confirmRevoke ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full h-8 text-xs text-destructive border-destructive/30 hover:bg-destructive/5 hover:border-destructive/50 gap-1.5"
-                  onClick={() => setConfirmRevoke(true)}
-                  disabled={isLoading}
-                >
-                  <Ban className="h-3.5 w-3.5" />
-                  Revoke Active Gift
-                </Button>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  <p className="text-[11px] text-destructive text-center font-medium">
-                    Are you sure? This will immediately remove their gift
-                    access.
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      className="flex-1 h-8 text-xs bg-destructive hover:bg-destructive/90 text-destructive-foreground gap-1.5"
-                      onClick={onRevoke}
-                      disabled={isLoading}
-                    >
-                      {isLoading ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Ban className="h-3.5 w-3.5" />
-                      )}
-                      Yes, Revoke
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="flex-1 h-8 text-xs"
-                      onClick={() => setConfirmRevoke(false)}
-                      disabled={isLoading}
-                    >
-                      Keep Gift
-                    </Button>
-                  </div>
-                </div>
-              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full h-8 text-xs text-destructive border-destructive/30 hover:bg-destructive/5 hover:border-destructive/50 gap-1.5"
+                onClick={onRevoke}
+                disabled={isLoading}
+              >
+                <Ban className="h-3.5 w-3.5" aria-hidden="true" />
+                Revoke Active Gift
+              </Button>
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

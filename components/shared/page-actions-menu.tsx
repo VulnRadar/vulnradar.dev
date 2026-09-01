@@ -60,7 +60,10 @@ export function PageActionsMenu({
           variant="outline"
           size="icon"
           className={cn(
-            "h-9 w-9 shrink-0 border-border/60 bg-muted/40",
+            // 44px below sm. This is the only route to most of a page's
+            // actions on a phone (Export, Share, Delete all live behind it),
+            // and 36px is under the touch minimum.
+            "h-11 w-11 sm:h-9 sm:w-9 shrink-0 border-border/60 bg-muted/40",
             triggerClassName,
           )}
           aria-label={label}

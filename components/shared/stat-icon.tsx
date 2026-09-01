@@ -10,8 +10,13 @@ import { cn } from "@/lib/ui/utils";
  */
 const STAT_ICON_TONES = {
   primary: "bg-primary/10 text-primary",
-  purple: "bg-purple-500/10 text-purple-500",
-  orange: "bg-orange-500/10 text-orange-500",
+  // purple and orange were the only raw Tailwind palette entries left in this
+  // table. The theme is entirely token-driven (three `dark:` overrides in the
+  // whole product), so a raw palette colour is one that does not participate in
+  // theming at all. --chart-4 is 280deg and --chart-3 is 30deg, the tokens for
+  // exactly this job, and they are defined in both themes.
+  purple: "bg-[hsl(var(--chart-4))]/10 text-[hsl(var(--chart-4))]",
+  orange: "bg-[hsl(var(--chart-3))]/10 text-[hsl(var(--chart-3))]",
   success: "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]",
   destructive: "bg-destructive/10 text-destructive",
   muted: "bg-muted text-muted-foreground",

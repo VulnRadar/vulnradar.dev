@@ -3,7 +3,7 @@
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/ui/utils";
-import { ROUTES } from "@/lib/config/constants";
+import { ROUTES } from "@/lib/config/client-constants";
 import Link from "next/link";
 
 interface Plan {
@@ -22,6 +22,9 @@ interface PricingCardsProps {
   plans: Plan[];
   billing: "monthly" | "yearly";
   currentPlan: string;
+  /** The interval the signed-in account is actually billed on, or null when it
+   *  is not known (free, gifted, staff floor, or the lookup failed). */
+  currentInterval?: "monthly" | "yearly" | null;
   isGifted: boolean;
   isLoggedIn: boolean;
   isStaff: boolean;
@@ -32,6 +35,7 @@ export function PricingCards({
   plans,
   billing,
   currentPlan,
+  currentInterval = null,
   isGifted,
   isLoggedIn,
   isStaff,
@@ -60,7 +64,18 @@ export function PricingCards({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {plans.map((plan) => {
           const price = getPrice(plan.price);
-          const isCurrentPlan = currentPlan === plan.id;
+          // A matching plan id is not enough on its own: someone paying
+          // monthly who flips the toggle to yearly is looking at a product
+          // they are not on, and rendering a disabled "Current Plan" there
+          // left the annual price with no entry point anywhere in the product.
+          // When the interval is unknown (free, gifted, staff floor, or the
+          // lookup failed) this falls back to the old id-only check, so we
+          // never offer a switch to the billing period already being paid for.
+          const isSamePlanId = currentPlan === plan.id;
+          const isCurrentPlan =
+            isSamePlanId &&
+            (currentInterval === null || currentInterval === billing);
+          const isIntervalSwitch = isSamePlanId && !isCurrentPlan;
           const isDowngrade = (planRank.get(plan.id) ?? 0) < currentRank;
 
           return (
@@ -68,8 +83,15 @@ export function PricingCards({
               key={plan.id}
               className={cn(
                 "relative flex flex-col rounded-xl border p-5 lg:p-6",
+                // The popular plan used to add shadow-lg, a coloured glow and a
+                // 6px lift. Nothing else in the product is elevated-and-offset,
+                // and hover-lift-plus-shadow is the single most recognisable
+                // marketing-template gesture on a page whose whole job is to
+                // read as honest. The full-opacity border and background
+                // against the /50 siblings, plus the "Most picked" pill, say it
+                // three times already.
                 plan.popular
-                  ? "border-primary bg-card shadow-lg shadow-primary/10 lg:-translate-y-1.5"
+                  ? "border-primary bg-card"
                   : "border-border/50 bg-card/50",
               )}
             >
@@ -158,7 +180,11 @@ export function PricingCards({
                   <Link
                     href={`/checkout/${getStripeProductId(plan.stripeId!)}`}
                   >
-                    {isDowngrade ? "Downgrade to" : "Upgrade to"} {plan.name}
+                    {isIntervalSwitch
+                      ? billing === "yearly"
+                        ? "Switch to yearly billing"
+                        : "Switch to monthly billing"
+                      : `${isDowngrade ? "Downgrade to" : "Upgrade to"} ${plan.name}`}
                   </Link>
                 </Button>
               ) : (
@@ -167,7 +193,10 @@ export function PricingCards({
                   className="w-full h-10"
                   asChild
                 >
-                  <Link href={ROUTES.SIGNUP}>Get Started</Link>
+                  {/* "Get Started" named no action and was title case on a
+                      sentence-case page. This button goes to /signup, not to
+                      checkout, so say what actually happens. */}
+                  <Link href={ROUTES.SIGNUP}>Start free, upgrade later</Link>
                 </Button>
               )}
             </div>

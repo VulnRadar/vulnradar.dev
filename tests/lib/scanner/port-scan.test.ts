@@ -20,6 +20,9 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 const h = vi.hoisted(() => ({
   openPorts: new Set<number>(),
   silentAll: false,
+  // Admin overrides for the PORT_SCAN_* settings the sweep resolves. Empty
+  // means "use the shipped default", which is what every other test wants.
+  settingOverrides: {} as Record<string, number>,
   lookup: vi.fn(
     async (
       _host: string,
@@ -27,6 +30,28 @@ const h = vi.hoisted(() => ({
     ): Promise<Array<{ address: string }>> => [{ address: "93.184.216.34" }],
   ),
 }));
+
+// The sweep resolves its network bounds through the settings resolver, which
+// opens a Postgres pool at import time. Only getSettings is used here, so
+// resolve straight from the shipped constants instead of standing up a pool --
+// that also keeps these tests asserting against the real defaults rather than
+// hand-copied numbers.
+vi.mock("@/lib/config/runtime-config", async () => {
+  const values =
+    (await import("@/lib/config/config-values")) as unknown as Record<
+      string,
+      unknown
+    >;
+  return {
+    getSettings: async (keys: readonly string[]) =>
+      Object.fromEntries(
+        keys.map((key) => [
+          key,
+          h.settingOverrides[key] ?? values[`CONFIG_${key}`],
+        ]),
+      ),
+  };
+});
 
 vi.mock("node:net", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:net")>();
@@ -62,6 +87,7 @@ function freshSignal(): AbortSignal {
 beforeEach(() => {
   h.openPorts = new Set();
   h.silentAll = false;
+  h.settingOverrides = {};
   h.lookup.mockReset();
   h.lookup.mockResolvedValue([{ address: "93.184.216.34" }]);
 });
@@ -155,6 +181,36 @@ describe("scanPorts best-effort contract", () => {
     const result = await promise;
     expect(result).not.toBeNull();
     expect(result!.open).toEqual([]);
+  });
+});
+
+// AUDIT-014#magic-12: these bounds were inline literals, so a self-hoster
+// scanning their own estate through a firewall they do not control had no way
+// to slow the sweep down short of editing the scanner.
+describe("scanPorts admin-configurable bounds", () => {
+  it("ends the sweep on the admin's overall deadline when nothing ever answers", async () => {
+    h.silentAll = true; // only the deadline can end this sweep
+    h.settingOverrides.PORT_SCAN_OVERALL_DEADLINE_MS = 40;
+
+    const startedAt = Date.now();
+    const result = await scanPorts("example.com", freshSignal());
+
+    expect(result).not.toBeNull();
+    expect(result!.open).toEqual([]);
+    // Nowhere near the shipped 12s default, which is what would have bounded
+    // this before the deadline became configurable.
+    expect(Date.now() - startedAt).toBeLessThan(2000);
+  });
+
+  it("still sweeps every curated port when the admin drops concurrency to one connection at a time", async () => {
+    h.openPorts = new Set([22, 443]);
+    h.settingOverrides.PORT_SCAN_CONCURRENCY = 1;
+
+    const result = await scanPorts("example.com", freshSignal());
+
+    expect(result).not.toBeNull();
+    expect(result!.portsScanned).toBeGreaterThan(100);
+    expect(result!.open.map((p) => p.port)).toEqual([22, 443]);
   });
 });
 

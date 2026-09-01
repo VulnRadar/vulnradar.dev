@@ -61,6 +61,104 @@ interface MatchingScan {
   user_id: number;
 }
 
+/**
+ * The matching-scans list, rendered identically for the free-form lookup and
+ * for the per-rule drawer. Extracted because both copies were byte-identical,
+ * and because both needed the same fix: a four-column table with no md:hidden
+ * card branch shipped to phones and scrolled inside a viewport too narrow to
+ * read it, unlike the six sibling admin panels.
+ */
+function MatchingScansList({ scans }: { scans: MatchingScan[] }) {
+  const formatDate = (iso: string) =>
+    new Date(iso).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+
+  return (
+    <>
+      <div className="hidden md:block">
+        <TableScrollArea maxHeight="16rem">
+          <Table>
+            <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
+              <TableRow className="border-y border-border/50 hover:bg-transparent">
+                <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  URL
+                </TableHead>
+                <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  User
+                </TableHead>
+                <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Type
+                </TableHead>
+                <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Date
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {scans.map((scan) => (
+                <TableRow key={scan.id} className="border-border/30">
+                  <TableCell className="px-4 py-2.5">
+                    <p
+                      className="text-xs font-mono text-foreground truncate max-w-[200px]"
+                      title={scan.url}
+                    >
+                      {scan.url}
+                    </p>
+                  </TableCell>
+                  <TableCell className="px-4 py-2.5">
+                    <p className="text-xs font-mono text-muted-foreground truncate max-w-[150px]">
+                      {scan.user_email || `User #${scan.user_id}`}
+                    </p>
+                  </TableCell>
+                  <TableCell className="px-4 py-2.5">
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] px-1.5 py-0"
+                    >
+                      {scan.source}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
+                    {formatDate(scan.scanned_at)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableScrollArea>
+      </div>
+
+      {/* Mobile cards */}
+      <div className="md:hidden divide-y divide-border/30 max-h-64 overflow-y-auto">
+        {scans.map((scan) => (
+          <div key={scan.id} className="px-4 py-2.5">
+            <p
+              className="text-xs font-mono text-foreground wrap-break-word"
+              title={scan.url}
+            >
+              {scan.url}
+            </p>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                {scan.source}
+              </Badge>
+              <span className="text-xs font-mono text-muted-foreground truncate min-w-0">
+                {scan.user_email || `User #${scan.user_id}`}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {formatDate(scan.scanned_at)}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
 export function BlockedDataManager() {
   const [blockedRules, setBlockedRules] = useState<BlockedRule[]>([]);
   const [loading, setLoading] = useState(false);
@@ -70,6 +168,7 @@ export function BlockedDataManager() {
     Record<number, MatchingScan[]>
   >({});
   const [loadingScans, setLoadingScans] = useState<number | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [deletingScans, setDeletingScans] = useState<number | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{
     ruleId: number;
@@ -98,12 +197,20 @@ export function BlockedDataManager() {
 
   const fetchBlockedRules = async () => {
     setLoading(true);
+    setFetchError(null);
     try {
       const res = await fetch("/api/v3/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "list", section: "access_rules" }),
       });
+      if (!res.ok) {
+        // A failed fetch must never render as "no blocked rules" -- in a
+        // security panel specifically, that reads as a false all-clear
+        // (a green check) rather than the load failure it actually is.
+        setFetchError("Could not load blocked rules.");
+        return;
+      }
       const data = await res.json();
       // Filter to only show blacklist rules
       const blacklistRules = (data.rules || []).filter(
@@ -112,6 +219,7 @@ export function BlockedDataManager() {
       setBlockedRules(blacklistRules);
     } catch (error) {
       console.error("Error fetching blocked rules:", error);
+      setFetchError("Could not load blocked rules.");
     } finally {
       setLoading(false);
     }
@@ -130,6 +238,12 @@ export function BlockedDataManager() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "find_scans", value }),
       });
+      if (!res.ok) {
+        // Without this an error renders as "0 matching scans", which reads
+        // as "nothing to purge" on a rule that may well have data behind it.
+        setToast({ message: "Failed to fetch matching scans", type: "error" });
+        return;
+      }
       const data = await res.json();
       setMatchingScans((prev) => ({ ...prev, [ruleId]: data.scans || [] }));
     } catch (error) {
@@ -559,63 +673,7 @@ export function BlockedDataManager() {
 
               {lookupScans.length > 0 && (
                 <div className="border-t border-border/40">
-                  <TableScrollArea maxHeight="16rem">
-                    <Table>
-                      <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
-                        <TableRow className="border-y border-border/50 hover:bg-transparent">
-                          <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                            URL
-                          </TableHead>
-                          <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                            User
-                          </TableHead>
-                          <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                            Type
-                          </TableHead>
-                          <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                            Date
-                          </TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {lookupScans.map((scan) => (
-                          <TableRow key={scan.id} className="border-border/30">
-                            <TableCell className="px-4 py-2.5">
-                              <p
-                                className="text-xs font-mono text-foreground truncate max-w-[200px]"
-                                title={scan.url}
-                              >
-                                {scan.url}
-                              </p>
-                            </TableCell>
-                            <TableCell className="px-4 py-2.5">
-                              <p className="text-xs font-mono text-muted-foreground truncate max-w-[150px]">
-                                {scan.user_email || `User #${scan.user_id}`}
-                              </p>
-                            </TableCell>
-                            <TableCell className="px-4 py-2.5">
-                              <Badge
-                                variant="outline"
-                                className="text-[10px] px-1.5 py-0"
-                              >
-                                {scan.source}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
-                              {new Date(scan.scanned_at).toLocaleDateString(
-                                "en-US",
-                                {
-                                  month: "short",
-                                  day: "numeric",
-                                  year: "numeric",
-                                },
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </TableScrollArea>
+                  <MatchingScansList scans={lookupScans} />
                 </div>
               )}
             </CardContent>
@@ -679,6 +737,12 @@ export function BlockedDataManager() {
               <div className="p-4">
                 <DataTableSkeleton rows={5} />
               </div>
+            ) : fetchError ? (
+              <EmptyState
+                icon={AlertTriangle}
+                title="Couldn't load blocked rules"
+                description={fetchError}
+              />
             ) : filteredRules.length === 0 ? (
               <EmptyState
                 icon={CheckCircle2}
@@ -831,66 +895,7 @@ export function BlockedDataManager() {
 
                               {/* Scans list */}
                               <div className="border border-border/40 rounded-lg overflow-hidden">
-                                <TableScrollArea maxHeight="16rem">
-                                  <Table>
-                                    <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
-                                      <TableRow className="border-y border-border/50 hover:bg-transparent">
-                                        <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                          URL
-                                        </TableHead>
-                                        <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                          User
-                                        </TableHead>
-                                        <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                          Type
-                                        </TableHead>
-                                        <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                          Date
-                                        </TableHead>
-                                      </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                      {scans.map((scan) => (
-                                        <TableRow
-                                          key={scan.id}
-                                          className="border-border/30"
-                                        >
-                                          <TableCell className="px-4 py-2.5">
-                                            <p
-                                              className="text-xs font-mono text-foreground truncate max-w-[200px]"
-                                              title={scan.url}
-                                            >
-                                              {scan.url}
-                                            </p>
-                                          </TableCell>
-                                          <TableCell className="px-4 py-2.5">
-                                            <p className="text-xs font-mono text-muted-foreground truncate max-w-[150px]">
-                                              {scan.user_email ||
-                                                `User #${scan.user_id}`}
-                                            </p>
-                                          </TableCell>
-                                          <TableCell className="px-4 py-2.5">
-                                            <Badge
-                                              variant="outline"
-                                              className="text-[10px] px-1.5 py-0"
-                                            >
-                                              {scan.source}
-                                            </Badge>
-                                          </TableCell>
-                                          <TableCell className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
-                                            {new Date(
-                                              scan.scanned_at,
-                                            ).toLocaleDateString("en-US", {
-                                              month: "short",
-                                              day: "numeric",
-                                              year: "numeric",
-                                            })}
-                                          </TableCell>
-                                        </TableRow>
-                                      ))}
-                                    </TableBody>
-                                  </Table>
-                                </TableScrollArea>
+                                <MatchingScansList scans={scans} />
                                 <div className="px-4 py-2 bg-muted/20 border-t border-border/30 text-center">
                                   <p className="text-xs text-muted-foreground">
                                     {scans.length} scan

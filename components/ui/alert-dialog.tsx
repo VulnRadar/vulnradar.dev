@@ -17,7 +17,12 @@ const AlertDialogOverlay = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Overlay>
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Overlay
-    className={cn("fixed inset-0 z-50 bg-black/80", className)}
+    // Same scrim as DialogOverlay; see the comment there for why bg-black/80
+    // could not stay (it inverts against the light theme's --background).
+    className={cn(
+      "fixed inset-0 z-50 bg-background/80 backdrop-blur-xs",
+      className,
+    )}
     {...props}
     ref={ref}
   />
@@ -34,16 +39,22 @@ const AlertDialogContent = React.forwardRef<
       <AlertDialogPrimitive.Content
         ref={ref}
         className={cn(
-          "relative z-50 grid w-full max-w-lg gap-4 border bg-background p-6 shadow-lg sm:rounded-lg max-h-[90vh] overflow-y-auto",
+          // Bare `border` (i.e. --border), not border-input; see the comment
+          // on DialogContent for why a panel edge is not an SC 1.4.11 control
+          // edge.
+          "relative z-50 grid w-full max-w-lg gap-4 border bg-card p-6 shadow-lg sm:rounded-lg max-h-[90vh] overflow-y-auto",
           className,
         )}
         onOpenAutoFocus={(e) => {
           // Same reasoning as DialogContent's override -- Radix's default
           // auto-focuses the first focusable descendant, which for an
           // AlertDialog is very often the confirm/destructive action
-          // button. No auto-focus at all: Enter can't fire anything until
-          // the user presses Tab themselves.
+          // button, so Enter must not be able to fire it on open. Focus then
+          // moves to the panel rather than being left on the now
+          // aria-hidden trigger, so the dialog is announced and Tab starts
+          // inside it. See DialogContent for the full note.
           e.preventDefault();
+          (e.currentTarget as HTMLElement).focus();
         }}
         {...props}
       />

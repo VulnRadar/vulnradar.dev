@@ -1,0 +1,26 @@
+[
+  {
+    "icon": "Search",
+    "label": "GraphQL Field Suggestions Are Detected Again",
+    "desc": "The check that spots GraphQL servers leaking field-name suggestions was only matching the message when it appeared as plain page text, not as it actually arrives inside a real JSON error response. That meant it quietly found nothing on the exact case it exists for. It now matches both forms, so a GraphQL endpoint handing attackers free schema hints gets reported.",
+    "category": "fixed"
+  },
+  {
+    "icon": "ShieldAlert",
+    "label": "A Harmless First Match No Longer Hides A Real One",
+    "desc": "Four API checks looked at only the first thing they found on a page and then dismissed the whole page if that one match turned out to be innocent. A tutorial mention near the top of a page, an empty placeholder field, or a short throwaway URL parameter could therefore hide a genuine exposed XML-RPC endpoint, leaked stack trace, internal file path, or access token further down. Each check now weighs every occurrence on its own.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Gauge",
+    "label": "More Honest Confidence On Two API Checks",
+    "desc": "The GraphQL batching and OpenAPI sensitive-defaults checks were labelled as plain response-body pattern matches even though they now also require the request URL or document type to line up. Their reported confidence and detection method were understating what they actually verify, so both now show the combined analysis they really perform.",
+    "category": "changed"
+  },
+  {
+    "icon": "FileText",
+    "label": "Clearer Wording On GraphQL Introspection And Exposed Files",
+    "desc": "The GraphQL introspection finding claimed a full schema dump had been returned when the scan had only seen introspection keywords referenced by the endpoint. It now says what was actually observed and asks you to confirm the server resolves the query. Supply-chain findings about exposed lockfiles, Dockerfiles, and .env files also had their punctuation cleaned up to match the rest of the product.",
+    "category": "changed"
+  }
+]

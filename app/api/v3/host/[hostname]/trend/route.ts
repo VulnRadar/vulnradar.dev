@@ -32,6 +32,14 @@ import type { Vulnerability } from "@/lib/scanner/types";
  * own www-stripping so "example.com" and "www.example.com" scans both
  * count, without also matching an unrelated subdomain like
  * "evil.example.com" or "example.com.attacker.com".
+ *
+ * The regex is not b-tree indexable, so this still walks every public
+ * completed scan (the partial index idx_scan_history_url_public_completed
+ * narrows that to the public completed rows, but cannot seek within them).
+ * The remaining fix is the schema one: a normalized `host` column written at
+ * scan time and indexed, after which this becomes `WHERE host = $1`
+ * (AUDIT-012#perf-16). Until then the projection below keeps the cost to the
+ * row walk rather than the row walk plus 30 detoasted findings blobs.
  */
 export interface HostScoreTrendPoint {
   scanId: number;
@@ -74,7 +82,20 @@ export async function GET(
       findings: Vulnerability[] | string | null;
       scanned_at: string | Date;
     }>(
-      `SELECT id, findings, scanned_at
+      // perf: this used to select the whole findings JSONB -- every finding's
+      // description, explanation, fixSteps and codeExamples -- for 30 rows on
+      // a public unauthenticated route, purely to hand each array to
+      // getDangerScore. That function reads exactly four fields off a
+      // finding, so project those four in SQL and leave the rest on disk,
+      // the same shape app/api/v3/shares/route.ts and the posture digest
+      // already use (AUDIT-012#perf-16).
+      `SELECT id, scanned_at,
+              (SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                        'title', e->>'title',
+                        'severity', e->>'severity',
+                        'aiVerdict', e->'aiVerdict',
+                        'aiConfidence', e->'aiConfidence')), '[]'::jsonb)
+                 FROM jsonb_array_elements(COALESCE(findings, '[]'::jsonb)) e) AS findings
        FROM scan_history
        WHERE is_public = true AND status = 'completed' AND url ~* $1
        ORDER BY scanned_at DESC

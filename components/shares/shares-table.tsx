@@ -19,7 +19,7 @@ export function SharesTable({
   onTogglePubliclyListed,
 }: SharesTableProps) {
   return (
-    <div className="overflow-hidden rounded-md border border-border bg-card">
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
       {/* Table header - hidden on mobile */}
       <div className="hidden sm:grid grid-cols-[1fr_110px_100px_110px_80px] gap-4 border-b border-border bg-muted/30 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         <div>Target</div>

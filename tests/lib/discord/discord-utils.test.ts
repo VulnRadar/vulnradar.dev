@@ -14,6 +14,15 @@ import { createHash } from "node:crypto";
  */
 
 const mockQuery = vi.fn();
+// The code expiry is read from the live admin setting rather than a hardcoded
+// SQL interval, so changing EMAIL_2FA_CODE_EXPIRY_MINUTES actually takes
+// effect. Mocked here so the test does not depend on system_settings and can
+// assert the value is threaded into the INSERT.
+const mockGetSetting = vi.fn<(key: string) => Promise<number>>();
+vi.mock("@/lib/config/runtime-config", () => ({
+  getSetting: (key: string) => mockGetSetting(key),
+}));
+
 vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
 }));
@@ -41,6 +50,8 @@ let previousKey: string | undefined;
 
 beforeEach(() => {
   mockQuery.mockReset();
+  mockGetSetting.mockReset();
+  mockGetSetting.mockResolvedValue(10);
   mockSendEmail.mockReset();
   mockSendEmail.mockResolvedValue(undefined);
   previousKey = process.env.API_KEY_ENCRYPTION_KEY;
@@ -69,10 +80,17 @@ describe("sendDiscordEmail2FACode", () => {
 
     const [insertSql, insertParams] = mockQuery.mock.calls[1];
     expect(insertSql).toContain("INSERT INTO email_2fa_codes");
-    const [userId, codeHash, codeSalt] = insertParams;
+    const [userId, codeHash, codeSalt, expiryMinutes] = insertParams;
     expect(userId).toBe(42);
     expect(typeof codeHash).toBe("string");
     expect(typeof codeSalt).toBe("string");
+    // The expiry is a bound parameter from the admin setting, not a literal
+    // baked into the SQL, so an admin change to it takes effect.
+    expect(mockGetSetting).toHaveBeenCalledWith(
+      "EMAIL_2FA_CODE_EXPIRY_MINUTES",
+    );
+    expect(expiryMinutes).toBe(10);
+    expect(insertSql).toContain("$4 * INTERVAL '1 minute'");
 
     expect(mockSendEmail).toHaveBeenCalledTimes(1);
     const emailArgs = mockSendEmail.mock.calls[0][0];

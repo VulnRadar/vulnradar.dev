@@ -11,6 +11,7 @@ import {
   stripDocBlocks,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
+import { tagsWith } from "./_tag-scan";
 
 // ── JWT jku/x5u header decoding ─────────────────────────────────────────────
 // Header-only decode (no signature check, no network fetch) so this stays a
@@ -183,18 +184,23 @@ const rawDetectors: Record<string, DetectFn> = {
     // page's <head> by default, whether or not the endpoint is actually
     // reachable or has been hardened — strip that tag so this doesn't fire
     // on virtually every WordPress site regardless of its security posture.
-    const withoutPingback = body.replace(
-      /<link[^>]+rel=["']pingback["'][^>]*>/gi,
-      "",
-    );
-    const xmlRpcPattern = /xmlrpc|\/RPC2\b/i;
-    const match = xmlRpcPattern.exec(withoutPingback);
-    if (match) {
-      const idx = withoutPingback.indexOf(match[0]);
+    let withoutPingback = body;
+    for (const tag of tagsWith(body, "link", /rel=["']pingback["']/i)) {
+      withoutPingback = withoutPingback.split(tag).join("");
+    }
+    // Every occurrence is judged at its own offset. A single non-global
+    // exec plus `return null` on the doc-context guard meant one benign
+    // earlier mention ("for example, xmlrpc.php ...") decided the whole
+    // page, so a real endpoint reference further down went unreported: a
+    // silent false negative, worse than the false positive the guard exists
+    // to prevent. Iterate and `continue` past each doc-context hit instead.
+    const xmlRpcPattern = /xmlrpc|\/RPC2\b/gi;
+    let match: RegExpExecArray | null;
+    while ((match = xmlRpcPattern.exec(withoutPingback)) !== null) {
       const before = withoutPingback
-        .slice(Math.max(0, idx - 200), idx)
+        .slice(Math.max(0, match.index - 200), match.index)
         .toLowerCase();
-      if (/<code|<pre|```|example|documentation/i.test(before)) return null;
+      if (/<code|<pre|```|example|documentation/i.test(before)) continue;
       return "XML-RPC endpoint reference found (often unauthenticated).";
     }
     return null;
@@ -341,8 +347,15 @@ const rawDetectors: Record<string, DetectFn> = {
     const looksLikeGraphQL =
       /\/graphql/i.test(url) || /"errors"\s*:\s*\[/.test(body);
     if (!looksLikeGraphQL) return null;
+    // The quotes around the suggested field name arrive backslash-escaped in
+    // the overwhelmingly common case: graphql-js puts the suggestion inside
+    // errors[].message, so a real JSON response body literally reads
+    // `Did you mean \"user\"?`. Requiring a bare `"` there made this check
+    // miss every actual GraphQL error response and only match the message
+    // rendered as plain text, so the optional `\\?` is what makes the
+    // graphql-js shape (the whole point of the gate) detectable at all.
     if (
-      /did you mean\s+"[^"]+"/i.test(body) ||
+      /did you mean\s+\\?"[^"\\]{1,120}\\?"/i.test(body) ||
       /["']didYouMean["']\s*:/i.test(body)
     ) {
       return "GraphQL field suggestion ('did you mean') enabled - schema enumeration aid.";
@@ -497,8 +510,6 @@ const rawDetectors: Record<string, DetectFn> = {
   "api-bearer-header-leak": (url, _headers, _body) => {
     // Only check URL-based token leaks. Authorization in response headers is
     // not a security issue — that header belongs in the REQUEST, not the response.
-    const match = /[?&](?:token|access_token|bearer)=([^&]+)/i.exec(url);
-    if (!match) return null;
     // Password-reset / email-verification / unsubscribe links are a
     // standard one-time-use pattern with a different security model than a
     // long-lived Bearer credential, and use the same param name.
@@ -508,19 +519,27 @@ const rawDetectors: Record<string, DetectFn> = {
     // Match on the parameter NAME alone flagged any value, including a
     // short one-time token. Require the value to actually look like a
     // Bearer credential: JWT-shaped, or a long opaque high-entropy string.
-    // Malformed percent-encoding (e.g. ?token=100%off) throws from
-    // decodeURIComponent; guard it so the throw can't disable the whole check.
-    let value: string;
-    try {
-      value = decodeURIComponent(match[1]);
-    } catch {
-      return null;
+    // Every candidate parameter is checked, not just the first: a URL like
+    // ?token=1&access_token=eyJ... would otherwise be cleared by the short
+    // leading value and the real credential beside it never reported.
+    const tokenParams = /[?&](?:token|access_token|bearer)=([^&]+)/gi;
+    let match: RegExpExecArray | null;
+    while ((match = tokenParams.exec(url)) !== null) {
+      // Malformed percent-encoding (e.g. ?token=100%off) throws from
+      // decodeURIComponent; guard it so the throw can't disable the check.
+      let value: string;
+      try {
+        value = decodeURIComponent(match[1]);
+      } catch {
+        continue;
+      }
+      const looksLikeBearerToken =
+        /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/.test(value) ||
+        /^[A-Za-z0-9_-]{32,}$/.test(value);
+      if (!looksLikeBearerToken) continue;
+      return "Bearer token present in URL query string - leaks via logs and Referer.";
     }
-    const looksLikeBearerToken =
-      /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/.test(value) ||
-      /^[A-Za-z0-9_-]{32,}$/.test(value);
-    if (!looksLikeBearerToken) return null;
-    return "Bearer token present in URL query string - leaks via logs and Referer.";
+    return null;
   },
 
   // ── JSONP / older API patterns ───────────────────────────────────────────
@@ -611,7 +630,11 @@ const rawDetectors: Record<string, DetectFn> = {
     // info severity by soap-endpoint below — every ordinary (and correctly
     // hardened) SOAP call stacked a duplicate critical finding on top of it
     // with zero DOCTYPE/ENTITY evidence.
-    if (/<!DOCTYPE[^>]*\[[\s\S]*?<!ENTITY[^>]*(?:SYSTEM|PUBLIC)/i.test(body)) {
+    if (
+      /<!DOCTYPE[^>]{0,2000}\[[\s\S]*?<!ENTITY[^>]{0,2000}(?:SYSTEM|PUBLIC)/i.test(
+        body,
+      )
+    ) {
       return "SOAP/XML payload contains DOCTYPE with external ENTITY - XXE enabled.";
     }
     return null;
@@ -713,22 +736,32 @@ const rawDetectors: Record<string, DetectFn> = {
       /application\/json/i.test(contentType) || /\/api\//i.test(url);
     if (!looksLikeApiResponse) return null;
 
-    const stackField = /"stack"\s*:\s*"((?:[^"\\]|\\.)*)"/i.exec(body);
-    if (
-      stackField &&
-      STACK_FRAME_PATTERN.test(stackField[1]) &&
-      !precededByDocContext(body, stackField.index)
-    ) {
-      return 'Response body includes a "stack" field containing a full stack trace with internal file paths and line numbers.';
+    // Both fields are scanned globally and judged at each hit's own offset.
+    // A single non-global exec let the FIRST "stack"/"message" field decide
+    // the whole response, so a benign leading one (a "stack":"" placeholder,
+    // an earlier field sitting in doc context) masked a real leak further
+    // down the same body and the check reported clean on a response that
+    // genuinely leaks. STACK_FRAME_PATTERN/INTERNAL_PATH_PATTERN are
+    // non-global, so .test() carries no lastIndex state between iterations.
+    const stackFields = /"stack"\s*:\s*"((?:[^"\\]|\\.)*)"/gi;
+    let field: RegExpExecArray | null;
+    while ((field = stackFields.exec(body)) !== null) {
+      if (
+        STACK_FRAME_PATTERN.test(field[1]) &&
+        !precededByDocContext(body, field.index)
+      ) {
+        return 'Response body includes a "stack" field containing a full stack trace with internal file paths and line numbers.';
+      }
     }
 
-    const messageField = /"message"\s*:\s*"((?:[^"\\]|\\.)*)"/i.exec(body);
-    if (
-      messageField &&
-      INTERNAL_PATH_PATTERN.test(messageField[1]) &&
-      !precededByDocContext(body, messageField.index)
-    ) {
-      return 'Response body\'s "message" field exposes an internal filesystem path.';
+    const messageFields = /"message"\s*:\s*"((?:[^"\\]|\\.)*)"/gi;
+    while ((field = messageFields.exec(body)) !== null) {
+      if (
+        INTERNAL_PATH_PATTERN.test(field[1]) &&
+        !precededByDocContext(body, field.index)
+      ) {
+        return 'Response body\'s "message" field exposes an internal filesystem path.';
+      }
     }
     return null;
   },

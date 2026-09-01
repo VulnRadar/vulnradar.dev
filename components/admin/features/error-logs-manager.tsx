@@ -21,6 +21,10 @@ import {
   ConfirmDialog,
   Toast,
 } from "@/components/admin/shared";
+import { formatTimestamp as formatAdminTimestamp } from "@/components/admin/utils";
+
+// Log views want second precision; the shared formatter defaults to minutes.
+const formatTimestamp = (iso: string) => formatAdminTimestamp(iso, true);
 import type { ToastState } from "@/components/admin/types";
 import { cn } from "@/lib/ui/utils";
 
@@ -32,17 +36,6 @@ interface ErrorLogEntry {
 }
 
 const DEFAULT_PAGE_SIZE = 20;
-
-function formatTimestamp(iso: string): string {
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}
 
 /**
  * Admin > System > Error Logs. Shows console.error calls captured by

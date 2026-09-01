@@ -49,7 +49,8 @@ vi.mock("next/headers", () => ({
 
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 const { AUTH_SESSION_COOKIE_NAME } = await import("@/lib/config/constants");
-const { verifyDiscordState } = await import("@/lib/auth/discord-state");
+const { verifyDiscordState, DISCORD_NONCE_COOKIE } =
+  await import("@/lib/auth/discord-state");
 const { GET } = await import("@/app/api/v3/auth/discord/route");
 
 function discordGet(action?: string) {
@@ -127,6 +128,37 @@ describe("GET /api/v3/auth/discord", () => {
     // A different signed-in user's id must not verify against this state.
     const mismatched = verifyDiscordState(state, 999);
     expect(mismatched.ok).toBe(false);
+  });
+
+  it("sets an httpOnly nonce cookie for action=login and signs the same nonce into the state", async () => {
+    // Browser binding for sign-in: without it a state minted by an attacker
+    // can be replayed into a victim's browser to log the victim into the
+    // attacker's account (login CSRF / session fixation).
+    const res = await GET(discordGet("login"));
+    const setCookie = res.headers.get("set-cookie") || "";
+    expect(setCookie).toContain(`${DISCORD_NONCE_COOKIE}=`);
+    expect(setCookie.toLowerCase()).toContain("httponly");
+    expect(setCookie.toLowerCase()).toContain("samesite=lax");
+
+    const cookieNonce = decodeURIComponent(
+      setCookie.split(`${DISCORD_NONCE_COOKIE}=`)[1].split(";")[0],
+    );
+    const state = new URL(res.headers.get("location") || "").searchParams.get(
+      "state",
+    )!;
+    const verified = verifyDiscordState(state);
+    expect(verified.ok).toBe(true);
+    if (verified.ok) expect(verified.payload.nonce).toBe(cookieNonce);
+  });
+
+  it("sets no nonce cookie for action=connect, which is bound by session userId instead", async () => {
+    cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+    sessionRow = defaultSessionRow({ user_id: 7 });
+
+    const res = await GET(discordGet("connect"));
+    expect(res.headers.get("set-cookie") || "").not.toContain(
+      DISCORD_NONCE_COOKIE,
+    );
   });
 
   it("allows action=connect once a session is present", async () => {

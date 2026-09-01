@@ -59,12 +59,17 @@ export const ROLE_ICONS: Record<string, typeof Crown> = {
   viewer: Eye,
 };
 
+// One table, one vocabulary. manager and operator used raw indigo-500 and
+// orange-500 while every other row used theme tokens, so those two badges did
+// not follow the theme at all and sat in the low-contrast band in light mode.
+// The two privileged roles keep the accent because privilege is what the colour
+// is for; the rest are told apart by ROLE_ICONS on a neutral badge.
 export const ROLE_COLORS: Record<string, string> = {
   owner:
     "bg-[hsl(var(--warning)/0.12)] text-[hsl(var(--warning))] border-[hsl(var(--warning)/0.3)]",
   admin: "bg-primary/10 text-primary border-primary/20",
-  manager: "bg-indigo-500/10 text-indigo-500 border-indigo-500/20",
-  operator: "bg-orange-500/10 text-orange-500 border-orange-500/20",
+  manager: "bg-muted text-foreground border-border",
+  operator: "bg-muted text-foreground border-border",
   member: "bg-muted text-foreground border-border",
   viewer: "bg-muted text-muted-foreground border-border",
 };

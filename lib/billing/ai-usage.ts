@@ -94,11 +94,13 @@ export async function getAiTokensUsed(
  * recordAiTokens spend past the free allowance, see below).
  */
 export async function getAiCreditBalance(userId: number): Promise<number> {
-  const result = await pool.query<{ ai_credit_balance: number }>(
-    "SELECT ai_credit_balance FROM users WHERE id = $1",
-    [userId],
-  );
-  return result.rows[0]?.ai_credit_balance ?? 0;
+  const result = await pool.query<{
+    ai_credit_balance: string | number | null;
+  }>("SELECT ai_credit_balance FROM users WHERE id = $1", [userId]);
+  // BIGINT column: node-pg returns it as a string to protect values past
+  // 2^53, so this must be coerced or callers get a string from a
+  // Promise<number>. Balances are bounded far below that, so Number is exact.
+  return Number(result.rows[0]?.ai_credit_balance ?? 0);
 }
 
 /**

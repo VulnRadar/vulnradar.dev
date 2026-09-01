@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { PASSWORD_RESET_TOKEN_LIFETIME } from "@/lib/config/constants";
+import { PASSWORD_RESET_TOKEN_LIFETIME } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
 import { AuthOutcome, authFocusRing } from "@/components/auth/auth-shell";
 

@@ -18,7 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ThemedLogo } from "@/components/shared/themed-logo";
 import { cn } from "@/lib/ui/utils";
-import { API, APP_NAME } from "@/lib/config/constants";
+import { API, APP_NAME } from "@/lib/config/client-constants";
 import { useClientConfig } from "@/lib/hooks/use-client-config";
 import type { NetworkRequest } from "@/lib/browserbase/client";
 
@@ -151,7 +151,13 @@ export default function BrowserViewerPage({ params }: PageProps) {
       setSession((data?.session as BrowserSession) || null);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load session.");
+      // Never render the raw runtime message: a stale-deploy HTML response
+      // surfaced `Unexpected token '<', "<!DOCTYPE "... is not valid JSON` to
+      // the user. The detail belongs in the console, not on screen.
+      console.error("[browser-viewer] session fetch failed:", e);
+      setError(
+        "Could not reach the server to load this session. Try again in a moment.",
+      );
     } finally {
       setLoading(false);
     }
@@ -306,10 +312,18 @@ export default function BrowserViewerPage({ params }: PageProps) {
         if (!res.ok) {
           // 429 = rate limited by Browserbase, back off silently, don't show an error.
           if (res.status === 429) return;
-          const msg =
-            (data as { error?: string } | null)?.error || `HTTP ${res.status}`;
-          console.error("[network-panel] logs fetch failed:", msg);
-          setLogsError(msg);
+          // The API's own error copy is written for people; a bare
+          // `HTTP 502` is not, so it stays in the console and the panel gets a
+          // sentence instead.
+          const apiError = (data as { error?: string } | null)?.error;
+          console.error(
+            "[network-panel] logs fetch failed:",
+            apiError || `HTTP ${res.status}`,
+          );
+          setLogsError(
+            apiError ||
+              "The network log for this session is not available right now.",
+          );
           return;
         }
         setLogsError(null);
@@ -317,9 +331,10 @@ export default function BrowserViewerPage({ params }: PageProps) {
           (data as { requests?: NetworkRequest[] } | null)?.requests || [];
         if (requests.length > 0) setNetworkRequests(requests);
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Fetch error";
-        console.error("[network-panel] logs fetch error:", msg);
-        setLogsError(msg);
+        console.error("[network-panel] logs fetch error:", err);
+        setLogsError(
+          "Could not reach the server for this session's network log.",
+        );
       }
     }
 
@@ -334,7 +349,22 @@ export default function BrowserViewerPage({ params }: PageProps) {
   }, [showLogs, isLive, sessionId, LOGS_POLL_MS]);
 
   return (
-    <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
+    <div
+      // 100dvh, not h-screen. This is the one page in the app that pins
+      // itself to exactly the viewport height and clips the overflow, and
+      // 100vh on iOS Safari means the LARGE viewport: the bottom ~113px sat
+      // under the URL bar with overflow-hidden making it unreachable, which
+      // on a phone cut off the bottom of the live browser frame and the
+      // network sheet docked to that same edge.
+      className="h-[100dvh] flex flex-col bg-background text-foreground overflow-hidden"
+    >
+      {/* a11y (SC 1.3.1 / 2.4.6): this was the one page in the app with no
+          heading of any level, so a screen-reader user landing on it had
+          nothing to orient from and no heading to jump to. The visible chrome
+          is a brand mark and a "Live Browser" label, neither of which is a
+          heading, so the h1 is sr-only rather than inventing visible copy. */}
+      <h1 className="sr-only">Live browser session</h1>
+
       {/* Top bar */}
       <header className="shrink-0 h-14 border-b border-border/60 bg-card/70 backdrop-blur-md flex items-center px-3 sm:px-4 gap-2 sm:gap-3 z-20">
         {/* Brand mark */}
@@ -398,6 +428,11 @@ export default function BrowserViewerPage({ params }: PageProps) {
             <button
               onClick={handleExtend}
               disabled={!canExtend}
+              // a11y (SC 4.1.2): the only icon-only control in the app whose
+              // name came from `title` alone. title is unreachable on touch
+              // and inconsistently exposed, so the name is explicit and title
+              // stays as the sighted-user tooltip.
+              aria-label="Extend session by 1 minute"
               title={
                 canExtend
                   ? `Add 1 minute (${minutesAllocated}/${MAX_MINUTES} min used)`
@@ -667,7 +702,7 @@ export default function BrowserViewerPage({ params }: PageProps) {
                 <p className="text-[11px] font-semibold text-foreground">
                   Could not load logs
                 </p>
-                <p className="text-[10px] text-muted-foreground font-mono break-all">
+                <p className="text-[10px] text-muted-foreground leading-relaxed">
                   {logsError}
                 </p>
               </div>

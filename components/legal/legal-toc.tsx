@@ -20,12 +20,17 @@ export function LegalToc({ items }: { items: LegalTocItem[] }) {
       <p className="mb-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
         On this page
       </p>
-      <ol className="grid grid-cols-1 list-none gap-x-6 gap-y-1.5 sm:grid-cols-2">
+      {/* The links used to be bare text with no vertical padding: a 20px
+          tall tap target in a two-column grid, which is under half the 44px
+          minimum and the worst offender in the legal and docs navigation.
+          min-h-11 is 44px; the negative margin keeps the visual rhythm of
+          the list the same while the target grows around it. */}
+      <ol className="grid grid-cols-1 list-none gap-x-6 sm:grid-cols-2">
         {items.map((item) => (
           <li key={item.id} className="min-w-0">
             <a
               href={`#${item.id}`}
-              className="block truncate rounded-sm text-sm text-muted-foreground underline-offset-2 hover:text-primary hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex min-h-11 items-center truncate rounded-sm text-sm text-muted-foreground underline-offset-2 hover:text-primary hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             >
               {item.label}
             </a>

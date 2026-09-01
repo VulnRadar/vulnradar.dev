@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import pool from "@/lib/database/db";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
-import { getClientIp } from "@/lib/api/request-utils";
+import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
 import {
   ApiResponse,
   parseBody,
@@ -13,7 +13,7 @@ import { sendEmailVerification } from "@/lib/auth/email-verification";
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const ip = await getClientIp();
   const rl = await checkRateLimit({
-    key: `resend-verify:${ip}`,
+    key: `resend-verify:${rateLimitIpKey(ip)}`,
     ...RATE_LIMITS.forgotPassword,
   });
   if (!rl.allowed) {
@@ -57,8 +57,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     });
   }
 
-  // Mint + send a fresh verification link (stores sha256(token), clears any
-  // prior tokens first). Shared with the profile email-change path.
+  // Mint + send a fresh verification link (stores hashAuthToken(token),
+  // clears any prior tokens first). Shared with the profile email-change path.
   await sendEmailVerification(user.id, user.name, normalizedEmail);
 
   return ApiResponse.success({

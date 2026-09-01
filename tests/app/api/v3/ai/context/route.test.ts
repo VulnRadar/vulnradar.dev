@@ -27,6 +27,8 @@ vi.mock("fs", () => ({
 }));
 
 const { GET } = await import("@/app/api/v3/ai/context/route");
+const { __resetKnowledgeCacheForTests } =
+  await import("@/lib/ai/knowledge-files");
 
 function getRequest(cmd: string) {
   return new NextRequest(
@@ -35,6 +37,11 @@ function getRequest(cmd: string) {
 }
 
 beforeEach(() => {
+  // The knowledge files are build artifacts, so the reader caches each one for
+  // the life of the process (they used to be readFileSync'd on every request,
+  // ~1MB synchronously per hit). Clear it between cases so each one exercises
+  // its own present/missing fixture.
+  __resetKnowledgeCacheForTests();
   mockGetSession.mockReset();
   mockQuery.mockReset();
   mockExistsSync.mockReset();
@@ -75,5 +82,27 @@ describe("GET /api/v3/ai/context?cmd=legal", () => {
     expect(res.status).toBe(200);
     expect(body.content).toBe("");
     expect(body.summary).toContain("npm run build:knowledge");
+  });
+
+  it("reads each knowledge file from disk once, not on every request", async () => {
+    // checks-knowledge.md is close to 1 MB and readFileSync blocks the whole
+    // process, so re-reading it per request let any signed-in user stall the
+    // event loop by looping this endpoint.
+    mockExistsSync.mockReturnValue(true);
+    mockReadFileSync.mockReturnValue("# Legal\n\n## Terms of Service\n");
+
+    await GET(getRequest("legal"));
+    await GET(getRequest("legal"));
+    await GET(getRequest("legal"));
+
+    expect(mockReadFileSync).toHaveBeenCalledTimes(1);
+  });
+
+  it("resolves the session once per request instead of twice on the account commands", async () => {
+    mockQuery.mockResolvedValue({ rows: [] });
+
+    await GET(getRequest("stats"));
+
+    expect(mockGetSession).toHaveBeenCalledTimes(1);
   });
 });

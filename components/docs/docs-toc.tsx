@@ -71,7 +71,10 @@ export function DocsInlineToc({ items }: { items: TocItem[] }) {
               <a
                 href={`#${item.id}`}
                 className={cn(
-                  "block rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors",
+                  // py-2.5 rather than py-1.5: 40px instead of 32px, which
+                  // is the difference between a comfortable and a fiddly tap
+                  // on a phone-sized table of contents.
+                  "block rounded-md px-2 py-2.5 text-sm text-muted-foreground transition-colors",
                   "hover:bg-muted hover:text-foreground",
                   "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
                   item.level === 2 && "pl-6 text-[13px]",

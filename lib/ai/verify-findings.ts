@@ -12,7 +12,7 @@ import {
 import { callAnthropicMessages } from "@/lib/ai/anthropic";
 import { resolveAnthropicThinkingBudget } from "@/lib/ai/reasoning";
 import { getSettings } from "@/lib/config/runtime-config";
-import { APP_NAME } from "@/lib/config/constants";
+import { APP_NAME, APP_URL } from "@/lib/config/constants";
 import { recordAiTokens } from "@/lib/billing/ai-usage";
 
 type AiVerdict = "confirmed" | "possible_fp" | "uncertain";
@@ -361,8 +361,10 @@ async function callVerify(
     try {
       const host = new URL(endpoint.baseUrl).hostname.toLowerCase();
       if (host === "openrouter.ai") {
-        headers["HTTP-Referer"] =
-          process.env.NEXT_PUBLIC_APP_URL ?? "https://vulnradar.dev";
+        // Identify THIS deployment to OpenRouter, not the SaaS: APP_URL already
+        // resolves NEXT_PUBLIC_APP_URL first, so a self-hoster's AI spend is no
+        // longer attributed to vulnradar.dev by a hardcoded fallback.
+        headers["HTTP-Referer"] = APP_URL;
         headers["X-Title"] = APP_NAME;
       }
     } catch {

@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "description": "Run a VulnRadar scan from the command line and gate CI on the findings.",
   "license": "GPL-3.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VulnRadar/vulnradar.dev.git",
+    "directory": "cli"
+  },
   "type": "module",
   "bin": {
     "vulnradar": "./vulnradar.mjs"
@@ -10,13 +15,15 @@
   "files": [
     "vulnradar.mjs",
     "lib.mjs",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=22.0.0"
   },
+  "packageManager": "npm@10.9.0",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test --experimental-test-coverage"
   },
   "keywords": [
     "vulnradar",

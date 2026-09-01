@@ -222,10 +222,83 @@ async function pickTargetVersion(recommended) {
   }
 }
 
+/**
+ * AUDIT-013 migrate-09: re-read the live schema after a migration and
+ * compare it against what the target version is supposed to contain.
+ *
+ * The expectation comes from the version files themselves, via
+ * buildMigrationSchema(): the v1 baseline with every registered upgrade
+ * applied. That is exactly what the plan just promised to produce, so a
+ * mismatch means a step silently no-opped (an IF NOT EXISTS matching a
+ * pre-existing object of a different shape, for instance) rather than
+ * that the expectation is wrong. tests/scripts/migrate/schema-parity.test.ts
+ * separately guarantees that same derived set equals instrumentation.ts's.
+ *
+ * Falls back to the registry fingerprint if the version files cannot be
+ * parsed for any reason: a verification that cannot run must not be the
+ * thing that fails a migration.
+ */
+async function verifyTargetSchema(pool, target) {
+  const actual = await getActualSchema(pool);
+  const live = new Map(
+    Object.entries(actual).map(([t, cols]) => [t, new Set(cols)]),
+  );
+
+  let expected;
+  try {
+    if (target !== VERSIONS[VERSIONS.length - 1].name) {
+      // Only the newest version has a derived expectation; an older
+      // target is a downgrade and its shape is the fingerprint.
+      throw new Error("not the newest version");
+    }
+    const { buildMigrationSchema } =
+      await import("../_lib/_lib.schema-parity.mjs");
+    const derived = await buildMigrationSchema();
+    expected = derived.tables;
+  } catch {
+    const fp = getVersion(target).fingerprint;
+    expected = new Map(
+      [...fp.tables].map((t) => [t, new Set(fp.columns?.[t] || [])]),
+    );
+  }
+
+  const missingTables = [];
+  const missingColumns = [];
+  for (const [table, cols] of expected) {
+    const liveCols = live.get(table);
+    if (!liveCols) {
+      missingTables.push(table);
+      continue;
+    }
+    for (const col of cols) {
+      if (!liveCols.has(col.toLowerCase())) {
+        missingColumns.push(`${table}.${col}`);
+      }
+    }
+  }
+
+  missingTables.sort();
+  missingColumns.sort();
+  return {
+    ok: missingTables.length === 0 && missingColumns.length === 0,
+    missingTables,
+    missingColumns,
+    checkedTables: expected.size,
+  };
+}
+
 // ── Big red warning for downgrades ────────────────────────────────────────
 function showDowngradeWarning(current, target, destructiveSteps) {
   const dropTables = destructiveSteps.filter((s) => s.kind === "dropTable");
   const dropColumns = destructiveSteps.filter((s) => s.kind === "dropColumn");
+  // AUDIT-013 migrate-15: destructive steps of kind "dataUpdate" were
+  // excluded from both filters above, so the 3.0.0 -> 2.0.0 downgrade's
+  // `DELETE FROM users WHERE password_hash IS NULL` never appeared in the
+  // box the operator types the confirmation phrase into. Every OAuth-only
+  // account was deleted, and every purchased AI credit balance zeroed,
+  // without either being named anywhere the operator could see. Their
+  // labels are the only description that exists, so print those.
+  const dataLosses = destructiveSteps.filter((s) => s.kind === "dataUpdate");
 
   const body = [
     `You are DOWNGRADING from ${c.bold}${current}${c.reset} to ${c.bold}${target}${c.reset}.`,
@@ -248,6 +321,14 @@ function showDowngradeWarning(current, target, destructiveSteps) {
         .slice(0, 3)
         .join(", ")})${c.reset}`,
     );
+  }
+  if (dataLosses.length > 0) {
+    body.push(
+      `  ${c.red}•${c.reset} ${c.bold}${dataLosses.length} row-level change(s)${c.reset} ${c.dim}(not a table or column drop, real data loss all the same)${c.reset}`,
+    );
+    for (const s of dataLosses) {
+      body.push(`      ${c.red}!${c.reset} ${s.label}`);
+    }
   }
   body.push("");
   body.push(
@@ -365,6 +446,16 @@ async function main() {
       info(
         `Detected: ${c.bold}${current}${c.reset} ${c.dim}(confidence: ${detected.confidence})${c.reset} ${c.dim}·${c.reset} ${detected.reason}`,
       );
+      // AUDIT-013 migrate-08: an unattended run has nobody to sanity-check
+      // a guess, and acting on a wrong guess is how a half-migrated
+      // database gets stamped as complete. Only "high" is acted on
+      // without a human.
+      if (NON_INTERACTIVE && detected.confidence !== "high") {
+        error(
+          `Refusing to migrate on a ${detected.confidence}-confidence version detection in an unattended run. Run npm run db:migrate interactively, or npm run db:diagnose to see what is missing.`,
+        );
+        process.exit(1);
+      }
       info(
         `Meta not yet written. It will be recorded after a migration (or initialized if you pick the same version below).`,
       );
@@ -532,21 +623,76 @@ async function main() {
       );
       // Still repair sequences on same-version re-runs so any desync
       // introduced outside of migrations (imports, seeds) gets fixed.
+      // AUDIT-009 migration-03: guarded, like the call in runPlan. This is
+      // a safety net running after the work is already done; a failure
+      // here must not turn a successful no-op re-run into a reported
+      // failure that also skips the meta-row write below.
       const seqClient = await livePool.connect();
       try {
         await repairAllSequences(seqClient);
+      } catch (seqErr) {
+        warn(`Sequence repair failed (non-fatal): ${seqErr.message}`);
       } finally {
         seqClient.release();
       }
     } else {
-      const result = await runPlan(livePool, plan, { dryRun: false });
+      // AUDIT-013 migrate-05: the schema-version marker is written as the
+      // last statement INSIDE the migration's own transaction, not as a
+      // separate commit afterwards. Before, a migration reached durability
+      // in three independent commits (the DDL, then sequence repair, then
+      // writeMeta), so a killed process or a dropped connection anywhere
+      // after the DDL COMMIT left a fully migrated database whose meta row
+      // still held the old version. instrumentation.ts then compared that
+      // stale version against MIN_SCHEMA_VERSION and process.exit(1)'d
+      // with a SCHEMA VERSION MISMATCH box: the app would not start at all,
+      // on a database that was actually correct, and the message told the
+      // operator the opposite of what was true.
+      const result = await runPlan(livePool, plan, {
+        dryRun: false,
+        beforeCommit: (client) =>
+          writeMeta(client, {
+            schemaVersion: target,
+            appVersion: projectMeta.version,
+          }),
+      });
       if (result.failed > 0) {
         error(`Migration failed with ${result.failed} error(s).`);
         process.exit(1);
       }
+
+      // AUDIT-013 migrate-09: verify the schema actually reached the
+      // target before reporting success. The registry's own header has
+      // always said fingerprints are used "for verifying a target version
+      // was reached after a migration"; that half did not exist, so there
+      // was no gate at all between "every statement executed without
+      // error" and "the schema is now version X". That is the structural
+      // reason the same drift shipped twice (AUDIT-009 migration-01, then
+      // AUDIT-013 migrate-01) while db:migrate kept reporting success.
+      const verified = await verifyTargetSchema(livePool, target);
+      if (!verified.ok) {
+        error(
+          `Migration ran, but the resulting schema does not match ${target}.`,
+        );
+        for (const t of verified.missingTables) {
+          log(`    ${c.red}missing table${c.reset}  ${t}`);
+        }
+        for (const col of verified.missingColumns) {
+          log(`    ${c.red}missing column${c.reset} ${col}`);
+        }
+        warn(
+          "The DDL is committed and the meta row records the target version, so re-running db:migrate is safe and is the first thing to try. If the same items are still missing afterwards, the version file for this transition is incomplete.",
+        );
+        process.exit(1);
+      }
+      success(
+        `Verified: every ${target} table and column is present (${verified.checkedTables} tables checked).`,
+      );
     }
 
-    // 13. Update the meta table (always, even for same version).
+    // 13. Update the meta table. For a real migration this already
+    // happened inside the transaction above (see beforeCommit); this is
+    // the same-version path, where there is no transaction to ride along
+    // with. The upsert is idempotent either way.
     await writeMeta(livePool, {
       schemaVersion: target,
       appVersion: projectMeta.version,

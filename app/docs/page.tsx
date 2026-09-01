@@ -1,6 +1,3 @@
-"use client";
-
-import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,8 +8,10 @@ import {
   ENGINE_VERSION,
   TOTAL_CHECKS_LABEL,
   API_CURRENT_VERSION,
+  ROUTES,
 } from "@/lib/config/constants";
-import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
+import type { TocItem } from "@/components/docs/docs-types";
+import { DocsTocSpy } from "./docs-toc-spy";
 import {
   DocsHero,
   DocsSection,
@@ -32,27 +31,37 @@ const tocItems: TocItem[] = [
   { id: "support", label: "Support and versions" },
 ];
 
+// Step 1 is the no-account path on purpose. Most people arriving on /docs are
+// deciding whether this is worth their time, not integrating yet, and the old
+// step 1 ("create an account") asked them to sign up before they had seen
+// anything run.
 const quickStartSteps: Step[] = [
   {
     step: 1,
+    title: "Scan one URL, no account",
+    description:
+      "Open /demo and run a scan. It is the same engine as everything below; an account adds your own history, an API key, and higher limits.",
+  },
+  {
+    step: 2,
     title: "Create an account",
     description:
       "Sign up on the hosted instance, or self-host and register the first user through the normal signup form.",
   },
   {
-    step: 2,
+    step: 3,
     title: "Generate an API key",
     description:
-      "Profile, then API Keys, then Generate New Key. The raw key is shown once and never again. Up to 3 active keys per account.",
+      "Profile, then API Keys, then Generate New Key. The raw key is shown once and never again. How many active keys you may hold is set by your plan: 1 on Free, 3 on Core Supporter, 10 on Pro Supporter, unlimited on Elite Supporter.",
   },
   {
-    step: 3,
+    step: 4,
     title: "Send the first scan",
     description:
       "POST the target to /api/v3/scan with your key as a Bearer token. A bare hostname works: https:// is prepended for you.",
   },
   {
-    step: 4,
+    step: 5,
     title: "Read the findings",
     description:
       "Each finding carries a stable id, a severity, the evidence that triggered it, and fix steps with a copyable snippet.",
@@ -85,41 +94,14 @@ const CHECK_CATEGORIES = [
 const SERVICE_PROBES = ["ssh", "smtp", "imap", "pop3", "ftp", "mongodb"];
 
 export default function DocsPage() {
-  const { setActiveSection, setTocItems } = useDocsContext();
-  const observerRef = useRef<IntersectionObserver | null>(null);
-
-  useEffect(() => {
-    setTocItems(tocItems);
-    return () => setTocItems([]);
-  }, [setTocItems]);
-
-  useEffect(() => {
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setActiveSection(entry.target.id);
-          }
-        });
-      },
-      { rootMargin: "-20% 0px -70% 0px", threshold: 0 },
-    );
-
-    tocItems.forEach((item) => {
-      const el = document.getElementById(item.id);
-      if (el) observerRef.current?.observe(el);
-    });
-
-    return () => observerRef.current?.disconnect();
-  }, [setActiveSection]);
-
   const curlExample = `curl -X POST "${APP_URL}/api/v3/scan" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"url": "example.com", "probes": ["ssh:22", "smtp:587"]}'`;
+  -d '{"url": "example.com", "portScan": true}'`;
 
   return (
     <div className="space-y-12 sm:space-y-16">
+      <DocsTocSpy items={tocItems} />
       <DocsHero
         badge={`v${APP_VERSION}`}
         title={`${APP_NAME} documentation`}
@@ -132,6 +114,23 @@ export default function DocsPage() {
         ]}
       />
 
+      {/* The two no-setup paths, above the fold. Both were previously only
+          reachable from the sidebar, well below an API-key quickstart. */}
+      <div className="-mt-8 flex flex-wrap gap-2 sm:-mt-10">
+        <Link
+          href={ROUTES.DEMO}
+          className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+        >
+          Scan a URL now, no account
+        </Link>
+        <Link
+          href="/docs/extension"
+          className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+        >
+          Browser extension
+        </Link>
+      </div>
+
       <DocsSection id="quick-start" title="First scan">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-10">
           <div className="min-w-0">
@@ -140,8 +139,9 @@ export default function DocsPage() {
           <div className="min-w-0">
             <CodeBlock code={curlExample} language="bash" />
             <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-              <InlineCode>probes</InlineCode> is optional. Leave it out and only
-              the web checks run. Full request and response shapes are on the{" "}
+              <InlineCode>portScan</InlineCode> is optional. Leave it out and
+              only the web checks run. Full request and response shapes are on
+              the{" "}
               <Link
                 href="/docs/api"
                 className="text-primary underline-offset-2 hover:underline"

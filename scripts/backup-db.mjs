@@ -67,7 +67,10 @@ import {
   section,
 } from "./_lib/_lib.output.mjs";
 
-const ENCRYPTION_ALGORITHM = "aes-256-gcm";
+// Exported so the pre-migration backup path (scripts/_lib/_lib.backup.mjs)
+// writes the same `.json` sidecar this file does, rather than hardcoding a
+// second copy of the algorithm name that could drift from it.
+export const ENCRYPTION_ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12;
 
 /** `vulnradar-backup-<ISO-with-safe-chars>.sql.gz`. Exported for tests. */

@@ -30,10 +30,30 @@ export const TICKET_STATUSES = [
 ] as const;
 export type TicketStatus = (typeof TICKET_STATUSES)[number];
 
+/**
+ * Status labels as the REQUESTER reads them. "Awaiting your reply" means the
+ * user owes the reply, which is why staff must not use this map: on a staff
+ * screen the same string reads as the opposite of what is true. Use
+ * STAFF_TICKET_STATUS_LABELS there.
+ */
 export const TICKET_STATUS_LABELS: Record<TicketStatus, string> = {
   open: "Open",
   awaiting_staff: "Awaiting staff",
   awaiting_user: "Awaiting your reply",
+  resolved: "Resolved",
+  closed: "Closed",
+};
+
+/**
+ * The same statuses as STAFF read them. `open` is a brand-new ticket nobody
+ * has answered yet, which is a different queue from `awaiting_staff` (a
+ * conversation the user has come back to), so the two must not collapse into
+ * one word on an inbox screen.
+ */
+export const STAFF_TICKET_STATUS_LABELS: Record<TicketStatus, string> = {
+  open: "New",
+  awaiting_staff: "Needs reply",
+  awaiting_user: "Awaiting user",
   resolved: "Resolved",
   closed: "Closed",
 };

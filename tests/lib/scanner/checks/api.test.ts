@@ -90,6 +90,185 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
+  // ── GraphQL introspection / suggestions / error envelope ─────────────
+  // All three used to fire on any page: introspection on the bare text
+  // `"__schema" {` that every GraphQL client library bundles, suggestions on
+  // the ubiquitous search-UI phrase "did you mean", and the stack-trace check
+  // on a bare "stacktrace" key from any API at all. Each is now gated on real
+  // GraphQL context, and these fixtures pin both sides of that gate.
+
+  "api-graphql-introspection-enabled": [
+    {
+      description: "__schema resolved by an actual /graphql endpoint",
+      url: "https://example.com/graphql",
+      body: '{"data":{"__schema":{"queryType":{"name":"Query"}}}}',
+      expect: "fire",
+      evidenceIncludes: "introspection",
+    },
+    {
+      description:
+        "ordinary page whose bundled GraphQL client ships the literal __schema fragment text",
+      url: "https://example.com/",
+      body: "<html><body><script>var q = 'query IntrospectionQuery { __schema { types { name } } }';</script></body></html>",
+      expect: "skip",
+    },
+  ],
+
+  "api-graphql-suggestions-enabled": [
+    {
+      description:
+        "graphql-js suggestion inside a real JSON error response (quotes arrive backslash-escaped)",
+      url: "https://example.com/graphql",
+      body: '{"errors":[{"message":"Cannot query field \\"usr\\" on type \\"Query\\". Did you mean \\"user\\"?"}]}',
+      expect: "fire",
+      evidenceIncludes: "suggestion",
+    },
+    {
+      description: "didYouMean key on a GraphQL error envelope",
+      url: "https://api.example.com/gateway",
+      body: '{"errors":[{"message":"Unknown field","extensions":{"didYouMean":["user"]}}]}',
+      expect: "fire",
+      evidenceIncludes: "suggestion",
+    },
+    {
+      description:
+        "e-commerce search page showing the ordinary 'did you mean' typo suggestion, no GraphQL anywhere",
+      url: "https://shop.example.com/search?q=shose",
+      body: '<html><body><p>Did you mean "shoes"?</p></body></html>',
+      expect: "skip",
+    },
+  ],
+
+  "api-graphql-error-stack-trace": [
+    {
+      description: "stacktrace inside a GraphQL error's extensions object",
+      url: "https://example.com/graphql",
+      body: '{"errors":[{"message":"boom","extensions":{"stacktrace":"Error: boom\\n    at resolve (/app/src/index.js:10:5)"}}]}',
+      expect: "fire",
+      evidenceIncludes: "stacktrace",
+    },
+    {
+      description:
+        "plain REST API leaking a stacktrace key with no GraphQL context (a different check's concern)",
+      url: "https://api.example.com/api/orders",
+      body: '{"error":"failed","stacktrace":"Error: boom at /app/index.js:1:1"}',
+      expect: "skip",
+    },
+  ],
+
+  // ── Rate-limit evidence honesty ──────────────────────────────────────
+  // x-forwarded-for used to count as evidence that limits are keyed on
+  // client IP; the two facts are unrelated, so only x-ratelimit-limit fires.
+
+  "api-rate-limit-per-ip-no-auth": [
+    {
+      description: "API response advertises x-ratelimit-limit",
+      url: "https://example.com/api/users",
+      headers: { "x-ratelimit-limit": "100" },
+      expect: "fire",
+      evidenceIncludes: "verify",
+    },
+    {
+      description:
+        "API response carries x-forwarded-for but no rate-limit header at all",
+      url: "https://example.com/api/users",
+      headers: { "x-forwarded-for": "203.0.113.7" },
+      expect: "skip",
+    },
+  ],
+
+  "api-rest-mass-assignment-risk": [
+    {
+      description:
+        "response exposes a privileged field; evidence must ask for verification, not assert a confirmed vulnerability",
+      url: "https://example.com/api/me",
+      body: '{"id":1,"email":"a@example.com","role":"admin"}',
+      expect: "fire",
+      evidenceIncludes: "verify",
+      evidenceExcludes: "without filtering",
+    },
+  ],
+
+  // ── Documentation/tutorial pages must not self-trigger ───────────────
+  // Every detector in api.ts is wrapped in stripDocBlocks(), so example
+  // payloads rendered as literal text inside <pre>/<code> are removed
+  // before matching. A raw API/config response has no such tags, so the
+  // primary detection path is unaffected.
+
+  "soap-endpoint": [
+    {
+      description: "raw SOAP response body",
+      body: '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body/></soap:Envelope>',
+      expect: "fire",
+      evidenceIncludes: "SOAP",
+    },
+    {
+      description:
+        "docs page rendering the same envelope as an example inside <pre>",
+      url: "https://docs.example.com/guides/soap",
+      body: '<html><body><h2>Example request</h2><pre><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body/></soap:Envelope></pre></body></html>',
+      expect: "skip",
+    },
+  ],
+
+  "api-jwt-hs256-weak-secret": [
+    {
+      description: "inline script signs a JWT with a short hardcoded secret",
+      body: "<html><body><script>const t = jwt.sign({ sub: 1 }, 'secret123');</script></body></html>",
+      expect: "fire",
+      evidenceIncludes: "HS256",
+    },
+    {
+      description:
+        "tutorial page showing the same call as an example inside <code>",
+      url: "https://blog.example.com/posts/jwt-mistakes",
+      body: "<html><body><p>Never do this:</p><code>jwt.sign({ sub: 1 }, 'secret123')</code></body></html>",
+      expect: "skip",
+    },
+  ],
+
+  // ── A benign FIRST occurrence must not mask a real one ───────────────
+  // These three detectors judged only the first regex hit and then rejected
+  // the whole response on a context/plausibility guard, so an innocent
+  // leading occurrence silently cleared a page that really was affected.
+  // Each fixture puts the benign occurrence first and the real one second.
+
+  "xml-rpc": [
+    {
+      description:
+        "doc-context mention first, a real xmlrpc.php reference further down the same page",
+      url: "https://example.com/",
+      body:
+        "<html><body><p>For example, older sites still ship xmlrpc.php.</p>" +
+        "<p>".repeat(60) +
+        "filler paragraph text with nothing notable in it</p>".repeat(4) +
+        '<a href="/xmlrpc.php">endpoint</a></body></html>',
+      expect: "fire",
+      evidenceIncludes: "XML-RPC",
+    },
+    {
+      description: "only a doc-context mention, no real reference",
+      url: "https://blog.example.com/posts/wordpress-hardening",
+      body: "<html><body><p>For example, xmlrpc.php should be disabled.</p></body></html>",
+      expect: "skip",
+    },
+  ],
+
+  "api-bearer-header-leak": [
+    {
+      description:
+        "short non-credential token param first, a real JWT access_token second",
+      url: "https://example.com/api/data?token=1&access_token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0",
+      expect: "fire",
+      evidenceIncludes: "Bearer token",
+    },
+    {
+      description: "only a short non-credential token param",
+      url: "https://example.com/api/data?token=1&page=2",
+      expect: "skip",
+    },
+  ],
+
   // ── Modern auth/session + API hardening ─────────────────────────────────
   // Generated fixtures, decoded here for reference:
   //   JKU_TOKEN:    header {"alg":"RS256","typ":"JWT","jku":"https://attacker.example.com/keys.json"}, payload {"sub":"123"}
@@ -188,6 +367,24 @@ const fixtures: DetectorFixtures = {
       headers: { "content-type": "text/html" },
       body: 'A vulnerable response looks like this: {"error": true, "message": "failed", "stack": "at Object.<anonymous> (/usr/src/app/index.js:1:1)"} which is bad practice.',
       expect: "skip",
+    },
+    {
+      description:
+        'empty "stack" placeholder appears first, the real stack trace is on a later element',
+      url: "https://api.example.com/api/batch",
+      headers: { "content-type": "application/json" },
+      body: '{"results":[{"ok":true,"stack":""},{"ok":false,"stack":"TypeError: x\\n    at Object.<anonymous> (/usr/src/app/routes/users.js:42:17)"}]}',
+      expect: "fire",
+      evidenceIncludes: "stack",
+    },
+    {
+      description:
+        'benign "message" field first, the internal-path leak is in a nested error object',
+      url: "https://api.example.com/api/config",
+      headers: { "content-type": "application/json" },
+      body: '{"message":"Request failed","error":{"message":"ENOENT: no such file or directory, open \'/usr/src/app/config/database.yml\'"}}',
+      expect: "fire",
+      evidenceIncludes: "path",
     },
   ],
 

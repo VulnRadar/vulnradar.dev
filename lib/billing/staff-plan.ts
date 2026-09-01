@@ -67,6 +67,34 @@ function isStaffRoleForPlanGrant(role: string | null | undefined): boolean {
   return !!role && (STAFF_ROLES.includes(role) || role === "super_admin");
 }
 
+/**
+ * The plan a cancelled or lapsed subscription falls back to, as a SQL CASE
+ * over `users.role`, plus the role array it needs bound.
+ *
+ * The three cancellation paths (the Stripe webhook's
+ * customer.subscription.deleted, POST /api/v3/billing/subscription/cancel,
+ * and POST /api/v3/billing's cancel_immediately) each hand-wrote
+ * `role IN ('admin', 'moderator', 'support')`. That covered three of the
+ * seven roles in STAFF_ROLES, so a billing/security_analyst/content_manager/
+ * ops account dropped to free instead of the pro_supporter floor its role
+ * grants, and super_admin -- whose floor is elite_supporter -- was in none of
+ * the lists at all. Deriving the CASE from the same constants
+ * grantStaffPlan uses means the policy cannot drift again when a role is
+ * added.
+ *
+ * `roleParam` is the placeholder the caller binds STAFF_ROLE_FLOOR_ROLES to,
+ * e.g. "$2". The plan literals are module constants, never caller input.
+ */
+export const STAFF_PLAN_FLOOR_ROLES: readonly string[] = STAFF_ROLES;
+
+export function staffPlanFloorCase(roleParam: string): string {
+  return (
+    `CASE WHEN role = 'super_admin' THEN '${SUPER_ADMIN_GRANTED_PLAN}' ` +
+    `WHEN role = ANY(${roleParam}::text[]) THEN '${GRANTED_PLAN}' ` +
+    `ELSE 'free' END`
+  );
+}
+
 export async function grantStaffPlan(
   userId: number,
   role: string | null | undefined,

@@ -87,16 +87,24 @@ vi.mock("next/headers", () => ({
 
 const { startImpersonation, stopImpersonation } =
   await import("@/lib/auth/impersonation");
+const { hashSessionId } = await import("@/lib/auth/auth");
 const { AUTH_SESSION_COOKIE_NAME } = await import("@/lib/config/constants");
 
-function seedAdminSession(sessionId: string) {
-  sessionsById[sessionId] = {
-    id: sessionId,
+/**
+ * The cookie holds the raw bearer token; sessions.id holds its sha256
+ * digest (AUDIT-012#auth-07). The fixture mirrors that split deliberately:
+ * seeding both sides with the same string would let a regression that
+ * forgets to hash keep passing.
+ */
+function seedAdminSession(sessionToken: string) {
+  const storedId = hashSessionId(sessionToken);
+  sessionsById[storedId] = {
+    id: storedId,
     user_id: 1,
     expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
     impersonated_by: null,
   };
-  cookieState.set(AUTH_SESSION_COOKIE_NAME, sessionId);
+  cookieState.set(AUTH_SESSION_COOKIE_NAME, sessionToken);
 }
 
 beforeEach(() => {
@@ -154,7 +162,7 @@ describe("startImpersonation", () => {
 
   it("rejects starting a nested impersonation session", async () => {
     seedAdminSession("admin-sess");
-    sessionsById["admin-sess"].impersonated_by = 1;
+    sessionsById[hashSessionId("admin-sess")].impersonated_by = 1;
     const result = await startImpersonation(1, 2);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/already impersonating/i);
@@ -172,7 +180,7 @@ describe("startImpersonation", () => {
     expect(newSessionId).toBeDefined();
     expect(newSessionId).not.toBe("admin-sess");
 
-    const row = sessionsById[newSessionId!];
+    const row = sessionsById[hashSessionId(newSessionId!)];
     expect(row.user_id).toBe(2);
     expect(row.impersonated_by).toBe(1);
     expect(row.ip_address).toBe("1.2.3.4");
@@ -189,7 +197,7 @@ describe("startImpersonation", () => {
     await startImpersonation(1, 2);
     expect(cookieState.get("imp_return_session")).toBe("admin-sess");
     // The original admin session row itself is untouched (not deleted).
-    expect(sessionsById["admin-sess"]).toBeDefined();
+    expect(sessionsById[hashSessionId("admin-sess")]).toBeDefined();
   });
 });
 
@@ -217,7 +225,7 @@ describe("stopImpersonation", () => {
     expect(result.ok).toBe(true);
     expect(cookieState.get(AUTH_SESSION_COOKIE_NAME)).toBe("admin-sess");
     expect(cookieState.has("imp_return_session")).toBe(false);
-    expect(sessionsById[impSessionId]).toBeUndefined();
+    expect(sessionsById[hashSessionId(impSessionId)]).toBeUndefined();
   });
 
   it("tears down the impersonation session even when the admin's return session expired", async () => {
@@ -225,14 +233,14 @@ describe("stopImpersonation", () => {
     await startImpersonation(1, 2);
     const impSessionId = cookieState.get(AUTH_SESSION_COOKIE_NAME)!;
     // Simulate the admin's original session having expired mid-impersonation.
-    sessionsById["admin-sess"].expires_at = new Date(
+    sessionsById[hashSessionId("admin-sess")].expires_at = new Date(
       Date.now() - 1000,
     ).toISOString();
 
     const result = await stopImpersonation();
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/expired/i);
-    expect(sessionsById[impSessionId]).toBeUndefined();
+    expect(sessionsById[hashSessionId(impSessionId)]).toBeUndefined();
     expect(cookieState.has(AUTH_SESSION_COOKIE_NAME)).toBe(false);
     expect(cookieState.has("imp_return_session")).toBe(false);
   });

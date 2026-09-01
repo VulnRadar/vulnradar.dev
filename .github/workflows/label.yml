@@ -4,7 +4,12 @@ on:
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review]
 
+# Declaring any permission sets every unlisted scope to `none`, so
+# `contents: read` is not redundant here: actions/labeler reads
+# .github/labeler.yml out of the repository through the API, and without
+# contents access that read is what fails.
 permissions:
+  contents: read
   pull-requests: write
 
 jobs:
@@ -13,7 +18,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Apply size label
+      # Named for what it does. It was "Apply size label", which described a
+      # rule that had never worked (see the schema note in labeler.yml).
+      - name: Apply path labels
         uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13 # v6
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}

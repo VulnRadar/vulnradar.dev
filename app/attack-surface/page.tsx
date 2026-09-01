@@ -5,6 +5,7 @@ import { Header } from "@/components/scanner/header";
 import { Footer } from "@/components/scanner/footer";
 import { HistoryViewTabs } from "@/components/history";
 import { DomainsSection } from "@/components/profile/tabs/developer/domains-section";
+import { InlineAlert } from "@/components/shared/inline-alert";
 
 /**
  * First-class attack-surface view: the caller's verified-domain portfolio. The
@@ -27,7 +28,10 @@ export default function AttackSurfacePage() {
         className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6"
       >
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+          {/* Tier B page H1: the scale used by every in-app working page
+              (history, assets, shares, repos, public scans, profile), where
+              the title sits above a dense table and must not eat the fold. */}
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
             Attack surface
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
@@ -41,16 +45,8 @@ export default function AttackSurfacePage() {
         <HistoryViewTabs />
 
         <div className="mt-6 space-y-3">
-          {error && (
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {error}
-            </div>
-          )}
-          {success && (
-            <div className="rounded-md border border-[hsl(var(--success))]/30 bg-[hsl(var(--success))]/10 px-3 py-2 text-sm text-[hsl(var(--success))]">
-              {success}
-            </div>
-          )}
+          {error && <InlineAlert tone="error">{error}</InlineAlert>}
+          {success && <InlineAlert tone="success">{success}</InlineAlert>}
           <DomainsSection setError={setError} setSuccess={setSuccess} />
         </div>
       </main>

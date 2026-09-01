@@ -1,5 +1,5 @@
 {
-  "nextId": 11,
+  "nextId": 15,
   "audits": [
     {
       "id": "AUDIT-001",
@@ -84,7 +84,13 @@
     {
       "id": "AUDIT-005",
       "title": "Engine 3.0.0 cleanup, email-2FA race, Bearer CSRF bypass, billing salt",
-      "scopes": ["auth", "csrf", "crypto", "scanner", "misc"],
+      "scopes": [
+        "auth",
+        "csrf",
+        "crypto",
+        "scanner",
+        "misc"
+      ],
       "createdAt": "2026-07-05T00:00:00Z",
       "closedAt": "2026-07-05T06:00:00Z",
       "status": "shipped",
@@ -93,7 +99,12 @@
     {
       "id": "AUDIT-006",
       "title": "Engine 3.0.0 probe evidence masking and body-size hardening",
-      "scopes": ["scanner", "evidence", "perf", "rate-limit"],
+      "scopes": [
+        "scanner",
+        "evidence",
+        "perf",
+        "rate-limit"
+      ],
       "createdAt": "2026-07-05T23:10:00Z",
       "closedAt": "2026-07-05T23:30:00Z",
       "status": "shipped",
@@ -121,7 +132,9 @@
     {
       "id": "AUDIT-008",
       "title": "Scanner check accuracy sweep (post-Walmart false-positive report)",
-      "scopes": ["scanner"],
+      "scopes": [
+        "scanner"
+      ],
       "createdAt": "2026-08-09T02:53:57.917Z",
       "closedAt": "2026-08-09T03:21:43.480Z",
       "status": "in_progress",
@@ -169,6 +182,96 @@
       "status": "shipped",
       "findingsCount": 41,
       "shipCommit": "c58d0481"
+    },
+    {
+      "id": "AUDIT-011",
+      "title": "Product surface audit — scanning page, UI breakage, design language, QOL, capability drift",
+      "scopes": [
+        "ux",
+        "mobile",
+        "design",
+        "perf",
+        "drift",
+        "api",
+        "admin",
+        "extension",
+        "misc"
+      ],
+      "createdAt": "2026-08-28T00:00:00Z",
+      "closedAt": null,
+      "status": "in_progress",
+      "findingsCount": 117
+    },
+    {
+      "id": "AUDIT-012",
+      "title": "Correctness, SSRF and scan abuse, performance, error handling and observability",
+      "scopes": [
+        "security",
+        "authz",
+        "injection",
+        "ssrf",
+        "rate-limit",
+        "quota",
+        "perf",
+        "db",
+        "observability",
+        "errors"
+      ],
+      "createdAt": "2026-08-28T00:00:00Z",
+      "closedAt": null,
+      "status": "in_progress",
+      "findingsCount": 114
+    },
+    {
+      "id": "AUDIT-013",
+      "title": "Database and migrations, dependencies, tests, consistency and dead code",
+      "scopes": [
+        "db",
+        "migration",
+        "schema",
+        "deps",
+        "supply-chain",
+        "test",
+        "coverage",
+        "cleanup",
+        "duplication"
+      ],
+      "createdAt": "2026-08-28T00:00:00Z",
+      "closedAt": null,
+      "status": "in_progress",
+      "findingsCount": 114
+    },
+    {
+      "id": "AUDIT-014",
+      "title": "Closing batch: build/deploy, documentation, hardcoded values, accessibility and states, discoverability, competitive gaps, and the unfinished halves of design, the scanning page and QOL",
+      "scopes": [
+        "deploy",
+        "ci",
+        "self-host",
+        "docs",
+        "config",
+        "hardcoded",
+        "a11y",
+        "states",
+        "seo",
+        "marketing",
+        "competitive",
+        "design",
+        "ux",
+        "qol"
+      ],
+      "createdAt": "2026-08-28T00:00:00Z",
+      "closedAt": null,
+      "status": "complete",
+      "findingsCount": 307
     }
-  ]
+  ],
+  "report": {
+    "path": "audits/report.html",
+    "mergedData": "audits/merged-findings.json",
+    "generated": "2026-08-29",
+    "totalFindings": 843,
+    "auditsMerged": 14,
+    "url": "https://claude.ai/code/artifact/dc44f2b8-2979-48a2-a8e0-0a413cd7a606"
+  }
 }

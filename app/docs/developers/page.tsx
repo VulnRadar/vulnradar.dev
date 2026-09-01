@@ -1,6 +1,3 @@
-"use client";
-
-import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +10,9 @@ import {
   TOTAL_CHECKS_LABEL,
 } from "@/lib/config/constants";
 import { ALL_CATEGORIES } from "@/lib/scanner/types";
-import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
+import { CRAWL_PAGE_SELECTION_LIMITS } from "@/lib/billing/crawl-page-limits";
+import type { TocItem } from "@/components/docs/docs-types";
+import { DocsTocSpy } from "../docs-toc-spy";
 import {
   DocsHero,
   DocsSection,
@@ -56,17 +55,21 @@ const coreEndpoints = [
   {
     endpoint: "/scan/bulk",
     method: "POST",
-    description: "Scan up to 100 URLs in one request",
+    description: "Queue up to 100 URLs in one request, then poll each scan id",
   },
   {
     endpoint: "/scan/crawl",
     method: "POST",
-    description: "Deep-crawl and scan up to 15 pages",
+    // Rendered from CRAWL_PAGE_SELECTION_LIMITS rather than typed out: the
+    // caps moved from a flat 15 to per-plan values and the hardcoded number
+    // was left behind. Reading the table means it cannot drift again.
+    description: `Deep-crawl and scan up to ${CRAWL_PAGE_SELECTION_LIMITS.free}/${CRAWL_PAGE_SELECTION_LIMITS.core_supporter}/${CRAWL_PAGE_SELECTION_LIMITS.pro_supporter}/${CRAWL_PAGE_SELECTION_LIMITS.elite_supporter} pages by plan; unlimited when billing is off`,
   },
   {
     endpoint: "/scan/crawl/discover",
     method: "POST",
-    description: "Discover up to 20 crawlable URLs",
+    description:
+      "Discover crawlable URLs, capped by the CRAWL_DISCOVER_MAX_PAGES setting (ships at 500)",
   },
   {
     endpoint: "/scan/discover",
@@ -142,36 +145,9 @@ const sdkChecklist = [
 ];
 
 export default function DevelopersPage() {
-  const { setActiveSection, setTocItems } = useDocsContext();
-  const observerRef = useRef<IntersectionObserver | null>(null);
-
-  useEffect(() => {
-    setTocItems(tocItems);
-    return () => setTocItems([]);
-  }, [setTocItems]);
-
-  useEffect(() => {
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setActiveSection(entry.target.id);
-          }
-        });
-      },
-      { rootMargin: "-20% 0px -70% 0px", threshold: 0 },
-    );
-
-    tocItems.forEach((item) => {
-      const el = document.getElementById(item.id);
-      if (el) observerRef.current?.observe(el);
-    });
-
-    return () => observerRef.current?.disconnect();
-  }, [setActiveSection]);
-
   return (
     <div className="space-y-16">
+      <DocsTocSpy items={tocItems} />
       <DocsHero
         id="top"
         badge="SDK Development"
@@ -240,9 +216,9 @@ export default function DevelopersPage() {
 
           <div className="space-y-6">
             <div>
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
                 Request
-              </h4>
+              </h3>
               <CodeBlock
                 code={`curl ${APP_URL}/api/v3/finding-types`}
                 language="bash"
@@ -250,9 +226,9 @@ export default function DevelopersPage() {
             </div>
 
             <div>
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
                 Response
-              </h4>
+              </h3>
               <CodeBlock
                 code={`{
   "success": true,
@@ -299,9 +275,9 @@ export default function DevelopersPage() {
             </div>
 
             <div>
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
                 Response fields
-              </h4>
+              </h3>
               <FieldTable fields={findingTypeFields} />
             </div>
           </div>
@@ -494,18 +470,28 @@ npm run dev
           The first run auto-initializes the schema via{" "}
           <InlineCode>instrumentation.ts</InlineCode>. Watch for{" "}
           <InlineCode>Database schema verified successfully</InlineCode> in the
-          logs. To create an admin user, sign up normally, then promote via SQL:
+          logs. The very first account created on a fresh install is made{" "}
+          <InlineCode>super_admin</InlineCode> automatically, so on a new
+          instance you just sign up and you already have full access. Only run
+          the SQL below to promote a <em>later</em> account, and note it grants{" "}
+          <InlineCode>admin</InlineCode>, which is one level below the first
+          account. Running it against the first account would demote it, and no
+          screen in the product can grant <InlineCode>super_admin</InlineCode>{" "}
+          back.
         </p>
         <CodeBlock
           language="sql"
-          code={`UPDATE users SET role = 'admin' WHERE email = 'you@example.com';`}
+          code={`UPDATE users SET role = 'admin' WHERE email = 'someone-else@example.com';`}
         />
       </DocsSection>
 
       <DocsSection id="scripts" title="Scripts" className="ml-0">
-        <p className="text-muted-foreground mb-3">
+        <p className="max-w-[68ch] text-muted-foreground mb-3">
           Every npm script and what it does. Defined in{" "}
-          <InlineCode>package.json</InlineCode>.
+          <InlineCode>package.json</InlineCode>. Not listed:{" "}
+          <InlineCode>predev</InlineCode> and <InlineCode>prebuild</InlineCode>,
+          which npm runs for you and which both do the same work as{" "}
+          <InlineCode>npm run build:knowledge</InlineCode>.
         </p>
         <DocsTable
           caption="Every npm script and what it does"
@@ -577,6 +563,62 @@ npm run dev
             {
               cmd: "npm run db:create:dry-run",
               what: "Same, but only prints the plan",
+            },
+            {
+              cmd: "npm run db:diagnose",
+              what: "Introspect the live schema and report data corruption: FK orphans, columns that will not decrypt, bad enum values, impossible timestamps. Read-only",
+            },
+            {
+              cmd: "npm run db:repair",
+              what: "Apply the fixes db:diagnose found. Dry run by default; real writes need --apply --admin-id=<id> and are logged to admin_audit_log",
+            },
+            {
+              cmd: "npm run db:diagnose-2fa",
+              what: "Report accounts whose 2FA columns are internally inconsistent. Read-only",
+            },
+            {
+              cmd: "npm run db:repair-2fa",
+              what: "Fix only the rows db:diagnose-2fa proved corrupt. It cannot unlock a healthy account",
+            },
+            {
+              cmd: "npm run db:repair-sequences",
+              what: "Reset the Postgres identity sequences, which is what causes duplicate-key errors on insert after a restore",
+            },
+            {
+              cmd: "npm run db:migrate-avatars",
+              what: "One-off: move avatars stored as database blobs onto the filesystem",
+            },
+            {
+              cmd: "npm run db:backup",
+              what: "Write a full dump. Run this before any upgrade or repair",
+            },
+            {
+              cmd: "npm run db:restore",
+              what: "Restore a dump written by db:backup",
+            },
+            {
+              cmd: "npm run build:knowledge",
+              what: "Regenerate every AI knowledge file. CI fails the PR if the committed output does not match, so run this after editing docs, changelog, checks, or legal pages",
+            },
+            {
+              cmd: "npm run docs:compile",
+              what: "Regenerate lib/ai/docs-knowledge.md only",
+            },
+            {
+              cmd: "npm run changelog:compile",
+              what: "Regenerate the changelog knowledge file only",
+            },
+            {
+              cmd: "npm run checks:compile",
+              what: "Regenerate the checks knowledge file and lib/config/check-stats.generated.ts",
+            },
+            {
+              cmd: "npm run legal:compile",
+              what: "Regenerate the legal knowledge file only",
+            },
+            {
+              cmd: "npm run audit:new",
+              what: "Start a new entry in audits/. The other audit:* scripts (add-finding, list, show, close) work the same record",
             },
           ]}
         />
@@ -767,10 +809,14 @@ npm run lint:fix    # auto-fix`}
         <ol className="list-decimal pl-6 space-y-3 text-sm text-muted-foreground">
           <li>
             <strong className="text-foreground">
-              Editing <InlineCode>lib/types/config.ts</InlineCode> defaults:
+              Editing a value in{" "}
+              <InlineCode>lib/config/constants.ts</InlineCode> or{" "}
+              <InlineCode>registry.ts</InlineCode>:
             </strong>{" "}
-            they are derived from <InlineCode>config-values.ts</InlineCode>.
-            Edit <InlineCode>config-values.ts</InlineCode> instead.
+            both derive from <InlineCode>config-values.ts</InlineCode>. Edit{" "}
+            <InlineCode>config-values.ts</InlineCode> to move the shipped
+            default, or change the value in Admin &rarr; Settings if it is
+            runtime tier, which 239 of the 268 settings are.
           </li>
           <li>
             <strong className="text-foreground">

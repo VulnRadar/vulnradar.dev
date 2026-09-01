@@ -23,6 +23,22 @@ const CONFIGURABLE_LIMITS: Partial<
     "RATE_LIMIT_FORGOT_PASSWORD_ATTEMPTS",
     "RATE_LIMIT_FORGOT_PASSWORD_WINDOW_MINUTES",
   ],
+  signupEmail: [
+    "RATE_LIMIT_SIGNUP_EMAIL_ATTEMPTS",
+    "RATE_LIMIT_SIGNUP_EMAIL_WINDOW_MINUTES",
+  ],
+  forgotPasswordEmail: [
+    "RATE_LIMIT_FORGOT_PASSWORD_EMAIL_ATTEMPTS",
+    "RATE_LIMIT_FORGOT_PASSWORD_EMAIL_WINDOW_MINUTES",
+  ],
+  domainAdd: [
+    "RATE_LIMIT_DOMAIN_ADD_ATTEMPTS",
+    "RATE_LIMIT_DOMAIN_ADD_WINDOW_MINUTES",
+  ],
+  domainVerify: [
+    "RATE_LIMIT_DOMAIN_VERIFY_ATTEMPTS",
+    "RATE_LIMIT_DOMAIN_VERIFY_WINDOW_MINUTES",
+  ],
   api: ["RATE_LIMIT_API_REQUESTS", "RATE_LIMIT_API_WINDOW_MINUTES"],
   scan: ["RATE_LIMIT_SCAN_REQUESTS", "RATE_LIMIT_SCAN_WINDOW_MINUTES"],
   bulkScan: [
@@ -124,6 +140,19 @@ export async function checkRateLimit(
   // starting at count=1, bypassing the cap entirely.
   //
   // Bucket boundary = floor(epoch_ms / window_ms) * window_ms.
+  //
+  // Read every shipped number as a ceiling of 2x maxAttempts, not
+  // maxAttempts. This is a FIXED window, not a sliding one, so a caller who
+  // spends the whole cap in the last instant of one bucket and the whole cap
+  // in the first instant of the next gets 2 x maxAttempts inside one
+  // window's duration: 10 login attempts in 15 minutes rather than 5
+  // (AUDIT-012#abuse-13). That is the deliberate residual of the
+  // quantisation, which fixes the strictly worse bug described above, and it
+  // is not the only defence: the per-account counters (login-fail:${userId},
+  // and the 2FA-verify equivalent) are what actually bound an attack on one
+  // account. Tightening it means a two-bucket weighted sliding window,
+  // reading the current and previous bucket in one statement and rejecting
+  // when prev * (1 - elapsed/windowMs) + curr >= maxAttempts.
   const windowMs = windowSeconds * 1000;
   const bucketStart = new Date(Math.floor(now.getTime() / windowMs) * windowMs);
 
@@ -228,6 +257,25 @@ export async function peekRateLimit(
 }
 
 /**
+ * Drop every bucket for `key`, so the next attempt starts from zero.
+ *
+ * Exists for counters that record FAILURES and should be forgiven by a
+ * success: the per-account failed-login counter is the only such case today.
+ * Without it a lockout window had to expire on its own even after the real
+ * owner proved they hold the password.
+ *
+ * Best-effort by design: the caller is on a success path, so a transient DB
+ * error here must never turn a valid sign-in into an error.
+ */
+export async function resetRateLimit(key: string): Promise<void> {
+  try {
+    await pool.query("DELETE FROM rate_limits WHERE key = $1", [key]);
+  } catch (err) {
+    console.error("[rate-limit] failed to reset key:", err);
+  }
+}
+
+/**
  * @deprecated Use getClientIp from request-utils instead
  */
 export async function getClientIP(): Promise<string> {
@@ -251,6 +299,13 @@ export const RATE_LIMITS = {
     ...RATE_LIMIT_DEFAULTS.forgotPassword,
   },
   signup: { limit: "signup", ...RATE_LIMIT_DEFAULTS.signup },
+  signupEmail: { limit: "signupEmail", ...RATE_LIMIT_DEFAULTS.signupEmail },
+  forgotPasswordEmail: {
+    limit: "forgotPasswordEmail",
+    ...RATE_LIMIT_DEFAULTS.forgotPasswordEmail,
+  },
+  domainAdd: { limit: "domainAdd", ...RATE_LIMIT_DEFAULTS.domainAdd },
+  domainVerify: { limit: "domainVerify", ...RATE_LIMIT_DEFAULTS.domainVerify },
   api: { limit: "api", ...RATE_LIMIT_DEFAULTS.api },
   scan: { limit: "scan", ...RATE_LIMIT_DEFAULTS.scan },
   bulkScan: { limit: "bulkScan", ...RATE_LIMIT_DEFAULTS.bulkScan },

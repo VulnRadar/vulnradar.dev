@@ -332,3 +332,112 @@ describe("ADMIN_ACTIONS stays in sync with app/api/v3/admin/route.ts", () => {
     expect(staleIds).toEqual([]);
   });
 });
+
+/**
+ * AUDIT-011#drift-18: fifteen constants were reported as gating nothing.
+ * Five of them turned out to have call sites (ACCESS_ADMIN_PANEL and
+ * ACCESS_STAFF_PAGE through their canAccessAdmin/canAccessStaffPage
+ * wrappers, VIEW_USER_SESSIONS and VIEW_BADGES in the admin route,
+ * SEND_USER_EMAILS through its ADMIN_ACTIONS entry). Two were wired to the
+ * admin cards that had been rendering ungated. The remaining eight were
+ * deleted. These tests pin both halves so neither drifts back.
+ */
+describe("permissions with no enforcement anywhere are not reintroduced", () => {
+  it.each([
+    "VIEW_SCAN_STATS",
+    "VIEW_SUBSCRIPTIONS",
+    "MANAGE_SUBSCRIPTIONS",
+    "DELETE_ANY_TEAM",
+    "VIEW_REPORTS",
+    "RESOLVE_REPORTS",
+    "VIEW_DEBUG_INFO",
+    "CLEAR_CACHE",
+    // Not in the audit's own list: it went dead later, when "set_scan_limit"
+    // was deleted for writing a column nothing enforces.
+    "MANAGE_SCAN_LIMIT",
+  ])(
+    "%s stays removed: an operator granting or withholding it changed nothing",
+    (name) => {
+      expect(STAFF_PERMISSIONS).not.toHaveProperty(name);
+    },
+  );
+
+  it("no role list still references a permission that no longer exists", () => {
+    const known = new Set<string>(Object.values(STAFF_PERMISSIONS));
+    for (const role of Object.values(STAFF_ROLES)) {
+      for (const perm of getStaffPermissions(role)) {
+        expect(known.has(perm)).toBe(true);
+      }
+    }
+  });
+});
+
+describe("the admin panel's user-detail cards are gated on their permissions", () => {
+  const routeSource = readFileSync(
+    join(__dirname, "..", "..", "..", "app", "api", "v3", "admin", "route.ts"),
+    "utf8",
+  );
+  const panelSource = readFileSync(
+    join(
+      __dirname,
+      "..",
+      "..",
+      "..",
+      "components",
+      "admin",
+      "users",
+      "user-detail-panel.tsx",
+    ),
+    "utf8",
+  );
+
+  // The server gate is the one that matters (the panel only decides what to
+  // draw), but a card drawn without a gate renders a confident empty state
+  // against data the caller was never allowed to see, so both are pinned.
+  it.each([
+    "VIEW_ALL_SCANS",
+    "VIEW_USER_API_KEYS",
+    "VIEW_USER_SESSIONS",
+  ] as const)("the route checks %s before querying for it", (name) => {
+    expect(routeSource).toContain(`STAFF_PERMISSIONS.${name}`);
+  });
+
+  it.each([
+    "VIEW_ALL_SCANS",
+    "VIEW_USER_API_KEYS",
+    "VIEW_USER_SESSIONS",
+  ] as const)(
+    "the panel hides the %s card when the grant is missing",
+    (name) => {
+      expect(panelSource).toContain(`STAFF_PERMISSIONS.${name}`);
+    },
+  );
+
+  it("support, which holds neither key grant, cannot view or revoke API keys", () => {
+    expect(
+      hasStaffPermission(
+        STAFF_ROLES.SUPPORT,
+        STAFF_PERMISSIONS.VIEW_USER_API_KEYS,
+      ),
+    ).toBe(false);
+    expect(
+      hasStaffPermission(
+        STAFF_ROLES.SUPPORT,
+        STAFF_PERMISSIONS.REVOKE_USER_API_KEYS,
+      ),
+    ).toBe(false);
+  });
+
+  it("billing holds VIEW_USERS but none of the three narrower card grants", () => {
+    expect(
+      hasStaffPermission(STAFF_ROLES.BILLING, STAFF_PERMISSIONS.VIEW_USERS),
+    ).toBe(true);
+    for (const perm of [
+      STAFF_PERMISSIONS.VIEW_ALL_SCANS,
+      STAFF_PERMISSIONS.VIEW_USER_API_KEYS,
+      STAFF_PERMISSIONS.VIEW_USER_SESSIONS,
+    ]) {
+      expect(hasStaffPermission(STAFF_ROLES.BILLING, perm)).toBe(false);
+    }
+  });
+});

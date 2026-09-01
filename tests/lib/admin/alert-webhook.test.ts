@@ -137,7 +137,10 @@ describe("sendAdminAlert", () => {
     expect(opts.headers["X-VulnRadar-Signature"]).toBeUndefined();
   });
 
-  it("never throws when the fetch itself fails", async () => {
+  // AUDIT-012#obs-11: sendAdminAlert now REPORTS the delivery outcome
+  // instead of returning void, so a "Send test alert" action can tell the
+  // operator why nothing arrived. It still must never throw.
+  it("never throws when the fetch itself fails, and reports the reason", async () => {
     SETTINGS.ADMIN_ALERT_WEBHOOK_URL = "https://hooks.example.com/alerts";
     mockSafeFetch.mockRejectedValue(new Error("network unreachable"));
 
@@ -147,7 +150,7 @@ describe("sendAdminAlert", () => {
         severity: "critical",
         message: "test",
       }),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ delivered: false, reason: "network unreachable" });
   });
 
   it("never throws when validateScanTarget itself fails", async () => {
@@ -160,10 +163,10 @@ describe("sendAdminAlert", () => {
         severity: "critical",
         message: "test",
       }),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ delivered: false, reason: "dns lookup failed" });
   });
 
-  it("does not throw when the receiver responds with a non-2xx status", async () => {
+  it("does not throw when the receiver responds with a non-2xx status, and surfaces that status", async () => {
     SETTINGS.ADMIN_ALERT_WEBHOOK_URL = "https://hooks.example.com/alerts";
     mockSafeFetch.mockResolvedValue({ ok: false, status: 500 });
 
@@ -173,6 +176,35 @@ describe("sendAdminAlert", () => {
         severity: "critical",
         message: "test",
       }),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({
+      delivered: false,
+      reason: "The endpoint responded with HTTP 500.",
+    });
+  });
+
+  it("reports success with the upstream status on a delivered alert", async () => {
+    SETTINGS.ADMIN_ALERT_WEBHOOK_URL = "https://hooks.example.com/alerts";
+    mockSafeFetch.mockResolvedValue({ ok: true, status: 204 });
+
+    await expect(
+      sendAdminAlert({
+        event: "boot_schema_check_failed",
+        severity: "warning",
+        message: "test",
+      }),
+    ).resolves.toEqual({ delivered: true, status: 204 });
+  });
+
+  it("reports the unconfigured case rather than looking like a success", async () => {
+    SETTINGS.ADMIN_ALERT_WEBHOOK_URL = "";
+
+    const result = await sendAdminAlert({
+      event: "boot_schema_check_failed",
+      severity: "warning",
+      message: "test",
+    });
+
+    expect(result.delivered).toBe(false);
+    expect(mockSafeFetch).not.toHaveBeenCalled();
   });
 });

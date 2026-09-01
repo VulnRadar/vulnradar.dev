@@ -1,6 +1,20 @@
+// Build-time API host. Replaced textually by Vite's `define` (see
+// vite.config.ts and scripts/build.mjs) from $VULNRADAR_API_HOST, defaulting
+// to the hosted instance. The `typeof` guard keeps the file usable under a
+// tool that does not apply the define. The same value is templated into
+// `host_permissions` in both manifests by scripts/build.mjs, because patching
+// only this constant leaves every request blocked by the browser.
+declare const __API_HOST__: string;
+const API_HOST =
+  typeof __API_HOST__ !== "undefined" ? __API_HOST__ : "https://vulnradar.dev";
+
 export const VULNRADAR = {
-  /** API host (matches CONFIG_APP_URL in main repo). */
-  apiHost: "https://vulnradar.dev",
+  /**
+   * API host (matches CONFIG_APP_URL in main repo). Self-hosters build with
+   * VULNRADAR_API_HOST=https://their-instance.example to repoint it, the way
+   * the CLI takes --api-base and the GitHub Action takes api-base-url.
+   */
+  apiHost: API_HOST,
   /** API key prefix - users paste `vr_live_xxxx`. Matches CONFIG_API_KEY_PREFIX. */
   apiKeyPrefix: "vr_live_",
   /** Brand display name. */

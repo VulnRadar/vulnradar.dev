@@ -12,6 +12,7 @@ import {
   getHeader,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
+import { tagsWith } from "./_tag-scan";
 
 // Hosts that intentionally serve scripts/stylesheets without SRI support:
 // content is mutable server-side by design (analytics/payment/CAPTCHA
@@ -154,12 +155,10 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "third-party-script-no-sri": (_url, _headers, body) => {
-    const externalScriptPattern =
-      /<script[^>]+src=["'](https?:\/\/(?!(?:localhost|127\.0\.0\.1))[^"']+)["'][^>]*>/gi;
-    let m: RegExpExecArray | null;
-    while ((m = externalScriptPattern.exec(body)) !== null) {
-      const tag = m[0];
-      const url = m[1];
+    const srcRe =
+      /src=["'](https?:\/\/(?!(?:localhost|127\.0\.0\.1))[^"']+)["']/i;
+    for (const tag of tagsWith(body, "script", srcRe)) {
+      const url = srcRe.exec(tag)?.[1] ?? "";
       if (/integrity\s*=/i.test(tag)) continue;
       // A malformed src (e.g. an out-of-range port) throws from new URL(); skip
       // that one src rather than letting the throw disable the whole check.
@@ -244,13 +243,20 @@ export const detectors: Record<string, DetectFn> = {
     // are excluded: both are vendor-documented as safe to expose client-side,
     // restricted via origin/domain allowlisting rather than secrecy.
     const patterns = [
-      /(?:apiKey|api_key|APIKey)\s*[:=]\s*["']((?:sk-|SG\.|rk_live_|AKID|eyJ)[A-Za-z0-9+/\-_]{20,})["']/,
-      /(?:openai|anthropic|stripe|sendgrid|twilio)\s*(?:api.?key|secret)\s*[:=]\s*["'](?!pk_)([A-Za-z0-9\-_]{20,})["']/i,
+      /(?:apiKey|api_key|APIKey)\s*[:=]\s*["']((?:sk-|SG\.|rk_live_|AKID|eyJ)[A-Za-z0-9+/\-_]{20,})["']/g,
+      /(?:openai|anthropic|stripe|sendgrid|twilio)\s*(?:api.?key|secret)\s*[:=]\s*["'](?!pk_)([A-Za-z0-9\-_]{20,})["']/gi,
     ];
+    // Walk every match, not just the first. The placeholder guard rejects a
+    // value, not the page: with a single exec, a page whose first hit is a
+    // documented example key (Stripe's sk_test_... appears near the top of
+    // countless tutorial pages) was reported clean even when a real key sat
+    // further down the same bundle.
     for (const p of patterns) {
-      const m = p.exec(body);
-      if (m && isPlausibleApiKeyValue(m[1])) {
-        return "API key or service credential hardcoded in client-side JavaScript — treat as compromised.";
+      let m: RegExpExecArray | null;
+      while ((m = p.exec(body)) !== null) {
+        if (isPlausibleApiKeyValue(m[1])) {
+          return "API key or service credential hardcoded in client-side JavaScript: treat as compromised.";
+        }
       }
     }
     return null;
@@ -368,9 +374,9 @@ export const detectors: Record<string, DetectFn> = {
 
   "cs-dev-tunnel-script-reference": (_url, _headers, body) => {
     const pattern =
-      /<script[^>]+src=["']https?:\/\/[^"']*\.(?:ngrok(?:-free)?\.app|ngrok\.io|loca\.lt|trycloudflare\.com|serveo\.net)[^"']*["']/i;
-    const m = body.match(pattern);
-    if (m) {
+      /src=["']https?:\/\/[^"']*\.(?:ngrok(?:-free)?\.app|ngrok\.io|loca\.lt|trycloudflare\.com|serveo\.net)[^"']*["']/i;
+    const m = tagsWith(body, "script", pattern);
+    if (m.length > 0) {
       const src = m[0].match(/src=["']([^"']+)["']/i)?.[1] ?? "tunnel URL";
       return `Script loaded from a development tunneling domain (${src}) — looks like a temporary dev/debug endpoint left wired into production markup.`;
     }

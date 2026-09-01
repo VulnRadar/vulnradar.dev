@@ -13,8 +13,12 @@ import {
   canMakeRequest,
   incrementDailyCountCapped,
 } from "@/lib/rate-limiting/daily-limits";
-import { runSyncChecks, getPlannedSyncCategories } from "./engine";
-import { runAsyncChecks, getPlannedAsyncBranches } from "./async-checks";
+import { runSyncChecksYielding, getPlannedSyncCategories } from "./engine";
+import {
+  runAsyncChecksDetailed,
+  getPlannedAsyncBranches,
+  type AsyncCheckResult,
+} from "./async-checks";
 import { readSslGrade } from "./ssl-grade";
 import { readThreatIntel } from "./reputation-lookup";
 import { readDnsRecords } from "./dns-records";
@@ -27,6 +31,7 @@ import {
   markScanRunning,
   ScanCancelledError,
   getCancelSignal,
+  clearCancel,
 } from "./scan-jobs";
 import pool from "@/lib/database/db";
 import {
@@ -43,6 +48,7 @@ import type {
 } from "./types";
 import { checkAccessRules } from "./access-rules";
 import { safeFetch } from "./safe-fetch";
+import { safeReadBody } from "./read-bounded-body";
 import { discoverPages } from "./crawl-discovery";
 import type { ScanSessionBinding, ScanAuthReport } from "./auth/types";
 import { redactSensitiveResponseHeaders } from "./response-headers";
@@ -77,40 +83,16 @@ const SEVERITY_ORDER: Record<Severity, number> = {
   low: 3,
   info: 4,
 };
-async function safeReadBody(
-  response: Response,
-  maxBytes: number,
-): Promise<string> {
-  const reader = response.body?.getReader();
-  if (!reader) return "";
-  const decoder = new TextDecoder("utf-8", { fatal: false });
-  const chunks: string[] = [];
-  let totalBytes = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      totalBytes += value.byteLength;
-      if (totalBytes > maxBytes) {
-        const overshoot = totalBytes - maxBytes;
-        const trimmed = value.slice(0, value.byteLength - overshoot);
-        if (trimmed.byteLength > 0)
-          chunks.push(decoder.decode(trimmed, { stream: false }));
-        break;
-      }
-      chunks.push(decoder.decode(value, { stream: true }));
-    }
-  } catch {
-    /* return partial */
-  } finally {
-    try {
-      reader.cancel();
-    } catch {
-      /* ignore */
-    }
-  }
-  return chunks.join("");
-}
+
+/**
+ * Pages in flight at once. Deliberately small: a crawl is still a stranger's
+ * server being probed, and politeness matters more than wall-clock here. It
+ * is only safe at all because the host-level branches (DNS, TLS, reputation,
+ * robots/security.txt, the 23 exposed-file probes) no longer run per page,
+ * so one page is now its own fetch plus its own page-level checks rather
+ * than ~25 requests at the shared origin. ref: AUDIT-012#perf-03
+ */
+const CRAWL_PAGE_CONCURRENCY = 3;
 
 async function scanSingleUrl(
   url: string,
@@ -126,8 +108,25 @@ async function scanSingleUrl(
   summary: Record<string, number>;
   duration: number;
   responseHeaders: Record<string, string>;
+  /**
+   * Async branch labels that did not contribute for this page: they timed
+   * out, threw, or never ran because the page could not be fetched. Empty
+   * means every planned branch reached a conclusion. The caller unions these
+   * across pages into the crawl's result_meta.incomplete, exactly as a
+   * single-URL scan does (execute-scan.ts), so "no TLS findings" is never
+   * shown as "TLS is clean" when the TLS branch simply did not finish.
+   */
+  incomplete: string[];
 }> {
   const startTime = Date.now();
+
+  // What the async layer would run for this page. Needed up front because the
+  // failure paths below have no per-branch report to read: on a fetch failure
+  // or the outer ceiling, everything planned is what did not complete.
+  //
+  // "page" scope only: the host-level branches run once for the whole crawl
+  // in executeCrawlScan, not once per page. ref: AUDIT-012#perf-03
+  const plannedBranches = getPlannedAsyncBranches(url, scanners, "page");
 
   let response: Response;
   try {
@@ -154,12 +153,17 @@ async function scanSingleUrl(
       session,
     );
   } catch {
+    // The page could not be fetched at all, so nothing ran against it. That
+    // is a hole in the crawl, not a clean page: report every planned branch
+    // as not completed so the merged result cannot claim coverage it never
+    // had. ref: AUDIT-014#state-03
     return {
       url,
       findings: [],
       summary: { critical: 0, high: 0, medium: 0, low: 0, info: 0, total: 0 },
       duration: Date.now() - startTime,
       responseHeaders: {},
+      incomplete: plannedBranches,
     };
   }
 
@@ -190,7 +194,11 @@ async function scanSingleUrl(
     /* best-effort: a fingerprint hiccup never affects the page scan */
   }
 
-  const syncResult = runSyncChecks(
+  // Yielding variant: a crawl runs this once per page in the same process
+  // that is serving every other scan and status poll, so the per-page
+  // synchronous block is exactly what must not be uninterrupted.
+  // ref: AUDIT-011#scan-06
+  const syncResult = await runSyncChecksYielding(
     url,
     headers,
     bodyForChecks,
@@ -199,17 +207,35 @@ async function scanSingleUrl(
   );
   const syncFindings = syncResult.findings;
 
+  // runAsyncChecksDetailed, not runAsyncChecks: the crawl result is rendered
+  // through the same components as a single scan, so it needs the same
+  // completeness bookkeeping. The bookkeeping-free variant was what made a
+  // deep scan structurally unable to say it came back short.
   let asyncFindings: Vulnerability[] = [];
+  let asyncIncomplete: string[] = [];
   let asyncTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
   try {
-    asyncFindings = await Promise.race([
-      runAsyncChecks(url, scanners, onProgress, cancelSignal),
-      new Promise<Vulnerability[]>((resolve) => {
-        asyncTimeoutHandle = setTimeout(() => resolve([]), 15000);
+    const asyncResult = await Promise.race<AsyncCheckResult>([
+      runAsyncChecksDetailed(url, scanners, onProgress, cancelSignal, "page"),
+      new Promise<AsyncCheckResult>((resolve) => {
+        // On the ceiling, resolve to "every planned branch did not complete",
+        // never to a bare []. An empty findings array with no marker is
+        // indistinguishable from a page whose DNS, TLS and live-fetch checks
+        // all ran and found nothing, which is how a timed-out deep scan came
+        // back reading as clean. ref: AUDIT-014#state-03
+        asyncTimeoutHandle = setTimeout(
+          () => resolve({ findings: [], incomplete: plannedBranches }),
+          15000,
+        );
       }),
     ]);
+    asyncFindings = asyncResult.findings;
+    asyncIncomplete = asyncResult.incomplete;
   } catch {
-    /* non-fatal */
+    // runAsyncChecksDetailed absorbs per-branch failures, so this is only
+    // reachable on something it cannot absorb. Either way this page's async
+    // layer contributed nothing, which is exactly what incomplete records.
+    asyncIncomplete = plannedBranches;
   } finally {
     // Cancel the per-page async timeout once the race settles so it can't stay
     // pending across the rest of this page's work (and the next page's).
@@ -238,6 +264,7 @@ async function scanSingleUrl(
     summary,
     duration: Date.now() - startTime,
     responseHeaders: redactedHeaders,
+    incomplete: asyncIncomplete,
   };
 }
 
@@ -362,17 +389,22 @@ export async function executeCrawlScan(
     crawlTimeoutSeconds * 1000,
     `Crawl scan exceeded the ${crawlTimeoutSeconds}s time limit.`,
   );
-  const { onProgress, setTotal } = createProgressTracker(scanId);
+  const {
+    onProgress,
+    setTotal,
+    flush: flushProgress,
+  } = createProgressTracker(scanId);
   const cancelSignal = getCancelSignal(scanId);
 
   try {
     await markScanRunning(scanId);
 
     // Automatic subdomain discovery for the crawl's main host, kicked off
-    // here so it runs concurrently with the page crawl and per-page scans,
-    // then awaited (bounded) before result_meta is assembled. Best-effort and
-    // time-bounded inside autoDiscoverSubdomains, so it can never fail or
-    // stall the crawl. Reuses the manual flow's per-domain cache.
+    // here so it runs concurrently with the page crawl and per-page scans. It
+    // resolves as soon as the per-domain cache lookup settles and never waits
+    // for a fresh sweep (see subdomain-auto.ts's DEFAULT_AUTO_TIMEOUT_MS), so
+    // it can never fail or stall the crawl. Reuses the manual flow's
+    // per-domain cache.
     const autoSubdomainsPromise = autoDiscoverSubdomains(normalizedMainUrl, {
       signal: cancelSignal,
     });
@@ -442,17 +474,22 @@ export async function executeCrawlScan(
       );
     }
 
-    // Daily quota: each page counts as one scan (API-key auth uses its own
-    // per-key limits, already checked at request time in POST).
-    const quotaCheck = isApiKeyAuth
-      ? {
-          allowed: true,
-          limit: -1,
-          used: 0,
-          remaining: pages.length,
-          resetsAt: "",
-        }
-      : await canMakeRequest(authedUserId);
+    // Daily quota: each page counts as one scan, for every auth method.
+    //
+    // billing: this used to fabricate an allow-everything quota for API-key
+    // callers, on the reasoning that the key's own per-key limit had already
+    // been checked in POST. That was wrong twice over. The key's daily limit
+    // is an apiRequestsPerDay REQUEST throttle, not a scan-compute cap, and
+    // the POST gate (app/api/v3/scan/crawl/route.ts) calls canMakeRequest,
+    // which only reads. Since nothing on the API path ever incremented the
+    // day counter, that read always reported the caller as under quota, so
+    // dailyScans placed no bound at all: a free key could run 25 crawls x 25
+    // pages = 625 page scans against a 25/day plan cap, and an Elite key was
+    // effectively unbounded. The usage figure shown in GET /api/v3/billing
+    // also stayed at zero the whole time, so neither the user nor an operator
+    // could see the consumption. Charge uniformly, exactly as POST /scan and
+    // POST /scan/bulk already do.
+    const quotaCheck = await canMakeRequest(authedUserId);
     if (!quotaCheck.allowed) {
       throw new Error(
         "Daily scan limit reached. Upgrade your plan or wait until midnight UTC for the limit to reset.",
@@ -468,49 +505,142 @@ export async function executeCrawlScan(
     const skippedCount = pages.length - pagesToScan.length;
 
     // Progress denominator: every page runs the same planned set of
-    // categories/branches (crawl pages all share the main URL's origin, so
-    // https-ness and the scanners filter are identical for each one).
+    // categories/page-level branches (crawl pages all share the main URL's
+    // origin, so https-ness and the scanners filter are identical for each
+    // one), plus the host-level branches that run exactly once.
+    const plannedHostBranches = getPlannedAsyncBranches(
+      normalizedMainUrl,
+      scanners,
+      "host",
+    );
     const perPageUnits =
       getPlannedSyncCategories(scanners as Category[] | null).length +
-      getPlannedAsyncBranches(normalizedMainUrl, scanners).length;
-    setTotal(pagesToScan.length * perPageUnits);
+      getPlannedAsyncBranches(normalizedMainUrl, scanners, "page").length;
+    setTotal(pagesToScan.length * perPageUnits + plannedHostBranches.length);
 
-    // Scan each page
-    const pageResults: Array<{
-      url: string;
-      findings: Vulnerability[];
-      summary: Record<string, number>;
-      duration: number;
-      responseHeaders: Record<string, string>;
-    }> = [];
+    // The host-level half of the async layer, run ONCE for the whole crawl.
+    //
+    // Every one of these branches answers a question about the host, not the
+    // page: the DNS branch's 28 sub-checks (checkDKIM alone probes 26
+    // selectors, and a domain with no DKIM costs a TXT plus a CNAME lookup
+    // for each), the TLS handshake, reputation, robots.txt, security.txt and
+    // the 23 fixed exposed-file paths. Running them per page meant a 25-page
+    // crawl fired roughly 1,300 DKIM lookups at one domain and fetched
+    // /.git/config and friends 25 times each, all to produce 25 identical
+    // copies of findings the merge below then deduped away. It also looked
+    // like an attack to the target's WAF and could eat the whole crawl
+    // budget. Started here rather than at the top of the function so the
+    // progress denominator is already set when its first event lands.
+    // ref: AUDIT-012#perf-03
+    const hostAsyncPromise: Promise<AsyncCheckResult> =
+      plannedHostBranches.length > 0
+        ? runAsyncChecksDetailed(
+            normalizedMainUrl,
+            scanners,
+            onProgress,
+            cancelSignal,
+            "host",
+          )
+        : Promise.resolve({ findings: [], incomplete: [] });
+    hostAsyncPromise.catch(() => {});
 
-    for (const pageUrl of pagesToScan) {
-      // Charge the daily quota before each scan (skip for API-key auth, which
-      // uses its own per-key limits). Capped + atomic so two concurrent
-      // crawls that each sized pagesToScan from the same read-once `remaining`
-      // still can't push the shared day counter past the cap: once the guard
-      // stops recording, stop scanning the rest of this crawl's pages.
-      if (!isApiKeyAuth) {
+    // Scan the pages with a small bounded-concurrency pool. Results are
+    // written back by index, so the merged output keeps the crawl's page
+    // order no matter what order the pages finish in.
+    const pageSlots: Array<Awaited<ReturnType<typeof scanSingleUrl>> | null> =
+      new Array(pagesToScan.length).fill(null);
+    let nextPageIndex = 0;
+    let quotaExhausted = false;
+
+    const scanPagesFromQueue = async (): Promise<void> => {
+      while (!quotaExhausted) {
+        const index = nextPageIndex++;
+        if (index >= pagesToScan.length) return;
+        // Charge the daily quota before each scan, for every auth method.
+        // Capped + atomic so two concurrent crawls that each sized
+        // pagesToScan from the same read-once `remaining` still can't push
+        // the shared day counter past the cap: once the guard stops
+        // recording, stop scanning the rest of this crawl's pages.
         const charge = await incrementDailyCountCapped(
           authedUserId,
           quotaCheck.limit,
         );
-        if (!charge.recorded) break;
+        if (!charge.recorded) {
+          quotaExhausted = true;
+          return;
+        }
+        pageSlots[index] = await scanSingleUrl(
+          pagesToScan[index],
+          maxBodySize,
+          scanners,
+          onProgress,
+          cancelSignal,
+          session,
+        );
       }
-      const result = await scanSingleUrl(
-        pageUrl,
-        maxBodySize,
-        scanners,
-        onProgress,
-        cancelSignal,
-        session,
-      );
-      pageResults.push(result);
+    };
+
+    // allSettled, not all: a worker can throw (the progress hook throws
+    // ScanCancelledError on a cancelled scan), and Promise.all would return
+    // while its siblings kept hitting the target detached behind an already
+    // -rejected promise. Wait for every worker to stop, then rethrow the
+    // first real failure so the outer handler sees exactly what it used to.
+    const workerOutcomes = await Promise.allSettled(
+      Array.from(
+        { length: Math.min(CRAWL_PAGE_CONCURRENCY, pagesToScan.length) },
+        () => scanPagesFromQueue(),
+      ),
+    );
+    const failedWorker = workerOutcomes.find((o) => o.status === "rejected");
+    if (failedWorker && failedWorker.status === "rejected") {
+      throw failedWorker.reason;
     }
 
-    // Merge all findings, deduplicating by id
+    const pageResults = pageSlots.filter(
+      (r): r is Awaited<ReturnType<typeof scanSingleUrl>> => r !== null,
+    );
+
+    // Host-level branch results. Each branch is individually bounded by
+    // SCANNER_ASYNC_BRANCH_TIMEOUT_MS inside runAsyncChecksDetailed, so this
+    // await cannot stall the crawl. A rejection means nothing host-level
+    // reached a conclusion, which is what `incomplete` has to say: an empty
+    // findings array with no marker is indistinguishable from "DNS, TLS and
+    // live-fetch all ran and found nothing".
+    let hostAsync: AsyncCheckResult = { findings: [], incomplete: [] };
+    try {
+      hostAsync = await hostAsyncPromise;
+    } catch (err) {
+      if (err instanceof ScanCancelledError) throw err;
+      hostAsync = { findings: [], incomplete: plannedHostBranches };
+    }
+
+    // Every async branch that did not complete on at least one page. The
+    // ceiling is applied per page, so a slow host drops a different subset of
+    // DNS/TLS/live-fetch checks on each one; the union is the honest answer
+    // for the merged result. Non-empty means the crawl came back short, which
+    // both the engine-confidence figure and result_meta.incomplete below have
+    // to reflect: a crawl that quietly reported "97% confidence, nothing
+    // exploitable found" after dropping its whole TLS branch was the single
+    // worst failure mode this executor had. ref: AUDIT-014#state-03
+    const incomplete = [
+      ...new Set([
+        ...hostAsync.incomplete,
+        ...pageResults.flatMap((pr) => pr.incomplete),
+      ]),
+    ].sort();
+
+    // Merge all findings, deduplicating by id. Host-level findings go in
+    // first so their id (which folds in the URL they were raised against) is
+    // the crawl's main URL rather than whichever page happened to be scanned
+    // first.
     const seenIds = new Set<string>();
     let allFindings: Vulnerability[] = [];
+    for (const f of hostAsync.findings) {
+      if (!seenIds.has(f.id)) {
+        seenIds.add(f.id);
+        allFindings.push(f);
+      }
+    }
     for (const pr of pageResults) {
       for (const f of pr.findings) {
         if (!seenIds.has(f.id)) {
@@ -624,30 +754,71 @@ export async function executeCrawlScan(
     const mainHeaders = pageResults[0]?.responseHeaders || {};
     const scannedAt = new Date().toISOString();
 
+    // Team assignment for the per-page rows, read back off the tracker row
+    // the route already resolved it onto. The child rows used to omit
+    // team_id entirely, so a crawl started for a team put the tracker row in
+    // the team's history and every discovered page's row outside it: the team
+    // could open the crawl but not a single one of its pages. Reading it here
+    // rather than taking it as a parameter keeps the child rows definitionally
+    // in step with the parent. ref: AUDIT-011#drift-01
+    let crawlTeamId: number | null = null;
+    try {
+      const teamRes = await pool.query<{ team_id: number | null }>(
+        `SELECT team_id FROM scan_history WHERE id = $1`,
+        [scanId],
+      );
+      crawlTeamId = teamRes.rows[0]?.team_id ?? null;
+    } catch (err) {
+      console.error(
+        `[${APP_NAME}] Failed to read crawl team assignment:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+
     // Save EACH page as its own history entry (like bulk scan), separate
     // from the tracker row this whole job is reported against.
+    //
+    // One multi-row INSERT, not one per page: this used to be a sequential
+    // loop, so an Elite crawl paid up to 250 serialized round trips at the
+    // very tail of a scan the user is already waiting on. Built the same way
+    // saveAutoTags (lib/tags/auto-tags.ts) builds its parameter list. The ids
+    // come back keyed by url rather than by position, because RETURNING row
+    // order is not something Postgres promises. ref: AUDIT-012#perf-26
     const pageHistoryIds: Record<string, number> = {};
-    for (const pr of pageResults) {
-      try {
-        const insertResult = await pool.query(
-          `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, notes, is_public, authenticated)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
-          [
-            authedUserId,
-            pr.url,
-            JSON.stringify(pr.summary),
-            JSON.stringify(pr.findings),
-            pr.summary.total,
-            pr.duration,
-            scannedAt,
-            isApiKeyAuth ? "api" : "web",
-            JSON.stringify(pr.responseHeaders),
-            DEFAULT_SCAN_NOTE,
-            isPublic,
-            authenticated,
-          ],
+    if (pageResults.length > 0) {
+      const COLUMNS = 13;
+      const tuples: string[] = [];
+      const params: unknown[] = [];
+      for (const pr of pageResults) {
+        const base = params.length;
+        tuples.push(
+          `(${Array.from({ length: COLUMNS }, (_, i) => `$${base + i + 1}`).join(", ")})`,
         );
-        pageHistoryIds[pr.url] = insertResult.rows[0]?.id;
+        params.push(
+          authedUserId,
+          pr.url,
+          JSON.stringify(pr.summary),
+          JSON.stringify(pr.findings),
+          pr.summary.total,
+          pr.duration,
+          scannedAt,
+          isApiKeyAuth ? "api" : "web",
+          JSON.stringify(pr.responseHeaders),
+          DEFAULT_SCAN_NOTE,
+          isPublic,
+          authenticated,
+          crawlTeamId,
+        );
+      }
+      try {
+        const insertResult = await pool.query<{ id: number; url: string }>(
+          `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, notes, is_public, authenticated, team_id)
+           VALUES ${tuples.join(", ")} RETURNING id, url`,
+          params,
+        );
+        for (const row of insertResult.rows) {
+          pageHistoryIds[row.url] = row.id;
+        }
       } catch (err) {
         console.error(
           `[${APP_NAME}] Failed to save crawl history:`,
@@ -744,8 +915,12 @@ export async function executeCrawlScan(
         // instead of leaving those stats silently blank. Computed from the
         // merged, deduped findings across every crawled page.
         dangerScore: getDangerScore(allFindings),
-        engineConfidence: getEngineConfidence(allFindings, false),
+        engineConfidence: getEngineConfidence(
+          allFindings,
+          incomplete.length > 0,
+        ),
         ...(authReport ? { authReport } : {}),
+        ...(incomplete.length > 0 ? { incomplete } : {}),
         ...(sslGrade ? { sslGrade } : {}),
         ...(dnsRecords ? { dnsRecords } : {}),
         ...(subdomains ? { subdomains } : {}),
@@ -834,5 +1009,10 @@ export async function executeCrawlScan(
     }
   } finally {
     clearTimeout(watchdog);
+    // Land any coalesced progress and stop the flush timer. ref: AUDIT-012#perf-12
+    flushProgress();
+    // Same reasoning as execute-scan.ts: the cancellation controller must
+    // outlive the work, not the row. ref: AUDIT-012#abuse-06
+    clearCancel(scanId);
   }
 }

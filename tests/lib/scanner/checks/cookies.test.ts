@@ -12,19 +12,10 @@ import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 const fixtures: DetectorFixtures = {
   // ── Flag presence ───────────────────────────────────────────────────
 
-  "cookie-security": [
-    {
-      description: "cookie missing HttpOnly/Secure/SameSite",
-      cookies: ["session=abc"],
-      expect: "fire",
-      evidenceIncludes: "HttpOnly",
-    },
-    {
-      description: "cookie with all flags",
-      cookies: ["session=abc; HttpOnly; Secure; SameSite=Lax"],
-      expect: "skip",
-    },
-  ],
+  // "cookie-security" is deliberately absent here: its live implementation is
+  // in headers.ts (the definition's category is "headers"), and the dead copy
+  // that used to sit in cookies.ts was deleted. headers.test.ts covers it.
+  // ref: AUDIT-009#dup-09
 
   "cookie-httponly-missing": [
     {

@@ -25,7 +25,17 @@ import { c, warn, error } from "./_lib.output.mjs";
 export const NON_INTERACTIVE =
   !process.stdin.isTTY || process.argv.includes("--yes");
 
-function rawQuestion(prompt) {
+/**
+ * One question, one readline.Interface, closed immediately after.
+ *
+ * That is only safe because NON_INTERACTIVE above short-circuits every caller
+ * before it gets here when stdin is not a TTY. Node's readline greedily buffers
+ * a whole pipe into the first Interface it creates, so with piped stdin the
+ * first question would consume every answer and the second would block forever.
+ * Exported so _lib.target.mjs shares this one implementation rather than
+ * keeping its own copy that has to stay in sync with the rule above.
+ */
+export function rawQuestion(prompt) {
   return new Promise((resolve) => {
     const rl = readline.createInterface({
       input: process.stdin,

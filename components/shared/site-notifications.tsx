@@ -13,9 +13,11 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, safeHref } from "@/lib/ui/utils";
-import { STAFF_ROLES } from "@/lib/config/constants";
+import { STAFF_ROLES } from "@/lib/config/client-constants";
 import { useAuth } from "@/components/providers/auth-provider";
 import { matchesPathPattern } from "@/lib/notifications/match-path";
+import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
+import { fetchActiveNotifications } from "@/components/shared/active-notifications";
 
 const STAFF_ROLE_VALUES = Object.values(STAFF_ROLES);
 
@@ -247,7 +249,7 @@ export function SiteBanner({ notification }: { notification: Notification }) {
         {notification.is_dismissible && (
           <button
             onClick={handleDismiss}
-            className="shrink-0 flex items-center justify-center h-7 w-7 rounded-md text-foreground/60 hover:text-foreground hover:bg-foreground/10 transition-colors"
+            className="shrink-0 flex items-center justify-center h-11 w-11 sm:h-7 sm:w-7 rounded-md text-foreground/60 hover:text-foreground hover:bg-foreground/10 transition-colors"
             aria-label="Dismiss notification"
           >
             <X className="h-4 w-4" />
@@ -288,6 +290,30 @@ export function SiteModal({
     onClose,
   ]);
 
+  /* a11y. This was the one hand-rolled overlay in the product not wired to
+     useModalA11y: no role="dialog", no aria-modal, no Escape, no focus moved
+     in, no focus restored on close, and the page behind neither aria-hidden
+     nor inert. It renders from the root layout, so it could appear over any
+     page, and a keyboard user was left with focus on a control now sitting
+     under an opaque scrim (SC 2.4.3, 2.4.11, 4.1.2).
+
+     Escape is routed at handleClose rather than onClose, which matters for a
+     notification published with is_dismissible false: that path deliberately
+     writes no dismissal cookie, so the announcement comes back on the next
+     load, but the user is not sealed in front of it with no keyboard way out
+     (SC 2.1.2 -- and adding the focus trap this hook brings is precisely what
+     makes 2.1.2 bite, since before it there was no trap to escape from).
+
+     aria-labelledby has to point at something that exists. `title` is
+     optional on a notification, so when it is absent the message paragraph
+     carries titleProps and becomes the accessible name; when it is present
+     the h2 names the dialog and the message describes it. */
+  const { dialogProps, titleProps, descriptionProps } = useModalA11y({
+    open: true,
+    onClose: handleClose,
+    hasDescription: !!notification.title,
+  });
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop - matches site overlay style */}
@@ -299,17 +325,24 @@ export function SiteModal({
         onClick={notification.is_dismissible ? handleClose : undefined}
       />
 
-      {/* Modal card */}
+      {/* Modal card. The message is admin-authored and of arbitrary length,
+          and this card had neither a height cap nor a scroll region: a long
+          announcement ran off both edges of a phone, and because the parent
+          is a centring flex container rather than a scroller there was no way
+          to reach the rest of it or the action buttons under it. Header and
+          footer stay pinned, the message scrolls between them. dvh, not vh,
+          because 100vh on iOS Safari is the large viewport. */}
       <div
+        {...dialogProps}
         className={cn(
-          "relative w-full max-w-md rounded-lg border border-border bg-card shadow-lg transition-all duration-200",
+          "relative flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col rounded-lg border border-border bg-card shadow-lg transition-all duration-200 focus:outline-hidden",
           mounted ? "opacity-100 scale-100" : "opacity-0 scale-95",
         )}
       >
         {/* Header */}
         <div
           className={cn(
-            "flex items-start gap-3 p-4 border-b border-border",
+            "flex shrink-0 items-start gap-3 p-4 border-b border-border",
             config.bg,
           )}
         >
@@ -318,7 +351,10 @@ export function SiteModal({
           </div>
           <div className="flex-1 min-w-0 pt-0.5">
             {notification.title && (
-              <h2 className="text-base font-semibold text-foreground">
+              <h2
+                {...titleProps}
+                className="text-base font-semibold text-foreground"
+              >
                 {notification.title}
               </h2>
             )}
@@ -335,8 +371,11 @@ export function SiteModal({
         </div>
 
         {/* Content */}
-        <div className="p-4">
-          <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
+          <p
+            {...(notification.title ? descriptionProps : titleProps)}
+            className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap"
+          >
             {notification.message}
           </p>
         </div>
@@ -348,7 +387,7 @@ export function SiteModal({
             notification has no actions, leaving the X as the way to close.
             Buttons stack full width on mobile so long labels don't clip. */}
         {(notification.action_url || notification.action_url_2) && (
-          <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 p-4 pt-0">
+          <div className="flex shrink-0 flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 p-4 pt-0">
             {notification.action_url_2 && (
               <Button
                 size="sm"
@@ -534,7 +573,10 @@ export function SiteToast({
           {notification.is_dismissible && (
             <button
               onClick={handleDismiss}
-              className="shrink-0 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              // a11y (SC 2.5.8): p-1 around a 14px icon is a 22x22 target.
+              // The modal's close button above uses a 16px icon and lands
+              // exactly on 24; this one did not, so it gets an explicit box.
+              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
               aria-label="Dismiss toast"
             >
               <X className="h-3.5 w-3.5" />
@@ -648,9 +690,12 @@ export function SiteNotifications({
         />
       )}
 
-      {/* Toast container - bottom right */}
+      {/* Toast container - bottom right. bottom offsets by --vr-cookie-h
+          (components/shared/cookie-notice.tsx) because that bar is z-60 and
+          mounted after this one, so at a flat bottom-4 a toast landed behind
+          it on a first visit, which is exactly when a toast is most likely. */}
       {toastQueue.length > 0 && (
-        <div className="fixed bottom-4 right-4 left-4 sm:left-auto z-50 flex flex-col gap-2 pointer-events-none">
+        <div className="fixed bottom-[calc(1rem+var(--vr-cookie-h,0px))] right-4 left-4 sm:left-auto z-50 flex flex-col gap-2 pointer-events-none transition-[bottom] duration-300">
           {toastQueue.slice(0, 3).map((notification) => (
             <SiteToast
               key={notification.id}
@@ -679,25 +724,24 @@ export function SiteNotificationsWrapper() {
         // them the API defaults both to false, which silently breaks every
         // non-"all" audience: "authenticated" never matches, "unauthenticated"
         // matches everyone (including logged-in users), and "staff"/"admin"
-        // never match.
-        const params = new URLSearchParams({
-          authenticated: me?.userId ? "true" : "false",
-          staff: isStaff ? "true" : "false",
-        });
-        const res = await fetch(`/api/v3/notifications/active?${params}`);
-        if (res.ok) {
-          const data = await res.json();
-          // API returns array directly, not { notifications: [...] }
-          const allNotifs = Array.isArray(data)
-            ? data
-            : data.notifications || [];
-          // Filter to only banner, modal, toast types (bell is handled by NotificationCenter)
-          const siteNotifs = allNotifs.filter(
-            (n: Notification) =>
+        // never match. They are the shared fetcher's cache key for the same
+        // reason.
+        //
+        // This wrapper and the notification bell are both mounted in the root
+        // layout and both want this one payload, so they went out as two
+        // identical requests on every page view, for anonymous visitors on the
+        // marketing pages too. One request now, filtered twice.
+        const allNotifs = await fetchActiveNotifications<Notification>(
+          !!me?.userId,
+          !!isStaff,
+        );
+        // Filter to only banner, modal, toast types (bell is handled by NotificationCenter)
+        setNotifications(
+          allNotifs.filter(
+            (n) =>
               n.type === "banner" || n.type === "modal" || n.type === "toast",
-          );
-          setNotifications(siteNotifs);
-        }
+          ),
+        );
       } catch {
         // Silent fail
       }

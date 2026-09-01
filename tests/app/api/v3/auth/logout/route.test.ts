@@ -46,6 +46,7 @@ vi.mock("next/headers", () => ({
 
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 const { AUTH_SESSION_COOKIE_NAME } = await import("@/lib/config/constants");
+const { hashSessionId } = await import("@/lib/auth/auth");
 const { POST } = await import("@/app/api/v3/auth/logout/route");
 
 beforeEach(() => {
@@ -65,7 +66,9 @@ describe("POST /api/v3/auth/logout", () => {
 
     expect(res.status).toBe(200);
     expect(json.message).toBeTruthy();
-    expect(sessionDeleteCalls).toEqual([["session-1"]]);
+    // The DELETE keys on the digest of the cookie, never the cookie itself
+    // (AUDIT-012#auth-07).
+    expect(sessionDeleteCalls).toEqual([[hashSessionId("session-1")]]);
     expect(cookieState.has(AUTH_SESSION_COOKIE_NAME)).toBe(false);
   });
 

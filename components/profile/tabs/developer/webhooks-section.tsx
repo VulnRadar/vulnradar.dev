@@ -229,11 +229,15 @@ export function WebhooksSection({
                         className="bg-card h-9 flex-1 min-w-0"
                         aria-label="Webhook URL"
                       />
+                      {/* h-11 (44px) on touch, back to h-8 from sm up: a
+                          32px icon button is under the minimum tap target,
+                          and save/cancel sitting a few pixels apart made
+                          cancelling an edit by accident easy on a phone. */}
                       <div className="flex items-center gap-1 shrink-0 justify-end">
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10"
+                          className="h-11 w-11 sm:h-8 sm:w-8 text-primary hover:text-primary hover:bg-primary/10"
                           disabled={savingWebhookEdit || !editWebhookUrl}
                           onClick={onSaveWebhookEdit}
                           title="Save changes"
@@ -248,7 +252,7 @@ export function WebhooksSection({
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                          className="h-11 w-11 sm:h-8 sm:w-8 text-muted-foreground hover:text-foreground"
                           disabled={savingWebhookEdit}
                           onClick={onCancelEditWebhook}
                           title="Cancel"
@@ -331,7 +335,7 @@ export function WebhooksSection({
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                        className="h-10 w-10 sm:h-7 sm:w-7 text-muted-foreground hover:text-foreground"
                         onClick={() => onStartEditWebhook(wh)}
                         title="Edit webhook"
                         aria-label={`Edit webhook ${wh.name}`}
@@ -341,7 +345,7 @@ export function WebhooksSection({
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 text-primary hover:text-primary hover:bg-primary/10"
+                        className="h-10 w-10 sm:h-7 sm:w-7 text-primary hover:text-primary hover:bg-primary/10"
                         disabled={testingWebhookId === wh.id}
                         onClick={() => onTestWebhook(wh.id)}
                         title="Send test webhook"
@@ -356,7 +360,7 @@ export function WebhooksSection({
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        className="h-10 w-10 sm:h-7 sm:w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
                         onClick={() =>
                           onRequestConfirm({
                             kind: "delete-webhook",

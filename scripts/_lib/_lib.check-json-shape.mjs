@@ -6,7 +6,7 @@
  * into a real JS value on the way out, so a per-row "parse failure" for
  * these columns is not reachable the way it is for a TEXT column that
  * merely stores JSON by convention (like users.backup_codes, already
- * covered by scripts/db-diagnose-2fa.mjs). This module reports that fact
+ * covered by scripts/maintenance/db-diagnose-2fa.mjs). This module reports that fact
  * explicitly via `columnsInspected` rather than silently having nothing
  * to say, and instead checks the one thing Postgres does NOT enforce:
  * shape. `findings JSONB NOT NULL DEFAULT '[]'` and

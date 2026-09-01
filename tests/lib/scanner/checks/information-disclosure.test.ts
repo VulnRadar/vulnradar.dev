@@ -72,14 +72,11 @@ const fixtures: DetectorFixtures = {
 
   // ── Source maps / debug paths ───────────────────────────────────────
 
-  "sourcemap-reference": [
-    {
-      description: "JS with sourceMappingURL",
-      body: '<html><body><script src="/app.js">//# sourceMappingURL=/app.js.map</script></body></html>',
-      expect: "fire",
-      evidenceIncludes: "source map",
-    },
-  ],
+  // "sourcemap-reference" is implemented in content.ts (which owns the
+  // "content"-category definition), so its fixtures moved to content.test.ts.
+  // The identical copy that used to live in information-disclosure.ts was dead
+  // and these fixtures were only ever exercising that dead copy, so they
+  // proved nothing about what a real scan does. ref: AUDIT-009#dup-07
 
   // "env-file-reference" is implemented in content.ts (owns the
   // "content"-category definition), so its fixtures live in
@@ -291,6 +288,16 @@ const fixtures: DetectorFixtures = {
       cookies: ["csrftoken=abc123; Path=/; Secure; SameSite=Strict"],
       expect: "skip",
     },
+    {
+      description:
+        "regression: a hardened csrftoken listed first must not clear a django-session that is still missing HttpOnly",
+      cookies: [
+        "csrftoken=abc123; Path=/; Secure; SameSite=Strict",
+        "django-session=xyz; Path=/; Secure; SameSite=Strict",
+      ],
+      expect: "fire",
+      evidenceIncludes: "HttpOnly",
+    },
   ],
 
   "laravel-session-cookie-exposes": [
@@ -305,6 +312,16 @@ const fixtures: DetectorFixtures = {
         "laravel_session cookie with all attributes set does NOT fire just for using the default name",
       cookies: ["laravel_session=abc; Secure; HttpOnly; SameSite=Strict"],
       expect: "skip",
+    },
+    {
+      description:
+        "regression: a hardened XSRF-TOKEN listed first must not clear a laravel_session that is still missing HttpOnly",
+      cookies: [
+        "XSRF-TOKEN=tok; Secure; SameSite=Lax",
+        "laravel_session=abc; Secure; SameSite=Lax",
+      ],
+      expect: "fire",
+      evidenceIncludes: "HttpOnly",
     },
   ],
 

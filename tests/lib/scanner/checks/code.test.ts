@@ -215,6 +215,16 @@ const fixtures: DetectorFixtures = {
       body: '<html><body><script>const sample = "SELECT * FROM users WHERE active = 1"; console.log(sample);</script></body></html>',
       expect: "skip",
     },
+    {
+      description:
+        "regression: a doc page that prints a query in a <pre> block AND then genuinely concatenates the identical query in a script still fires -- each hit is scored at its own offset, where the old body.indexOf(text) lookup collapsed both onto the <pre> copy and dropped the real one",
+      body:
+        "<html><body><pre>\nSELECT * FROM users WHERE id = 1\n</pre>\n<p>" +
+        "filler ".repeat(60) +
+        '</p>\n<script>\nconst q = "SELECT * FROM users WHERE id = 1" + req.query.id;\n</script></body></html>',
+      expect: "fire",
+      evidenceIncludes: "SQL patterns in inline scripts",
+    },
   ],
 
   "code-timing-no-constant-time-compare": [

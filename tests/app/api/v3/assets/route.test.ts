@@ -151,6 +151,16 @@ describe("GET /api/v3/assets", () => {
       isPublic: true,
       findingsCount: 4,
     });
+    // Privacy: the scanned URL itself (path + query string) must never leave
+    // this branch. It has no owner predicate, so returning it would hand every
+    // signed-in caller the exact URL of the latest public scan of every host,
+    // tokens included. Only the hostname is public.
+    const [hostSql] = mockQuery.mock.calls.find((c) =>
+      String(c[0]).includes("FROM host_reputation"),
+    )!;
+    expect(hostSql).not.toContain("scanned_url");
+    expect(json.assets[0].latestUrl).toBe("https://someone-else.com");
+    expect(JSON.stringify(json)).not.toContain("someone-else.com/x");
   });
 
   it("groups scans of the same host (www-stripped) and counts them, keyed to the newest scan", async () => {

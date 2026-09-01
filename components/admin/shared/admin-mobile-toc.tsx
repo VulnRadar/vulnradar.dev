@@ -6,7 +6,14 @@ import { ChevronDown, List, X } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 
 export interface AdminTocItem {
+  /** Unique per list: it is this item's React key. Several items can point
+   *  at the same DOM node (System Settings' tabs all live inside one
+   *  #settings-panel card), so use `targetId` for the scroll anchor and keep
+   *  this distinct. Duplicate ids made React reconcile the wrong button with
+   *  the wrong item, so tapping one tab switched to another. */
   id: string;
+  /** Element to scroll to, when it differs from `id`. Defaults to `id`. */
+  targetId?: string;
   label: string;
   /** Optional group heading (e.g. "Security"). Items sharing a group are
    *  rendered together under one heading; omit on every item for a flat
@@ -34,12 +41,30 @@ export interface AdminTocItem {
 export function AdminMobileTocTrigger({
   isOpen,
   onToggle,
+  raised = false,
 }: {
   isOpen: boolean;
   onToggle: () => void;
+  /** Set while a floating save bar is showing. Those bars are z-50 and
+   *  pinned to the bottom, and this pill used to be z-40 at bottom-6, so
+   *  editing one field covered the pill. On System Settings the desktop
+   *  TabsList is hidden below lg, which left the admin with no way to
+   *  switch tabs until they saved or discarded. */
+  raised?: boolean;
 }) {
   return (
-    <div className="lg:hidden fixed bottom-6 right-4 z-40">
+    <div
+      className={cn(
+        // Both offsets add --vr-cookie-h on top of the constant: the cookie
+        // notice is z-60 and roughly 125px tall on a phone, so even the
+        // raised 96px put this pill behind it. The save bars it clears are
+        // themselves lifted by the same variable, so the two stay stacked.
+        "lg:hidden fixed right-4 z-50 transition-[bottom] duration-200",
+        raised
+          ? "bottom-[calc(6rem+var(--vr-cookie-h,0px))]"
+          : "bottom-[calc(1.5rem+var(--vr-cookie-h,0px))]",
+      )}
+    >
       <button
         type="button"
         onClick={onToggle}
@@ -133,15 +158,50 @@ export function AdminMobileToc({
   id = "admin-mobile-toc",
 }: AdminMobileTocProps) {
   const closeRef = useRef<HTMLButtonElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
 
+  // a11y. This drawer declares role="dialog" aria-modal="true" below but only
+  // ever handled Escape: Tab walked straight out into the page behind, which
+  // is neither aria-hidden nor inert, so a screen-reader user was told the
+  // background was inert when it was fully reachable. It also dropped focus
+  // to <body> on close instead of returning it to the trigger. Same trap and
+  // same restore as components/docs/docs-mobile-nav.tsx, which is the sibling
+  // implementation of this exact widget.
   useEffect(() => {
     if (!isOpen) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
     closeRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const focusable = panel.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !panel.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (
+        !event.shiftKey &&
+        (active === last || !panel.contains(active))
+      ) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      previouslyFocused?.focus();
+    };
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
@@ -153,7 +213,7 @@ export function AdminMobileToc({
     // scrolling to it.
     requestAnimationFrame(() => {
       document
-        .getElementById(item.id)
+        .getElementById(item.targetId ?? item.id)
         ?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   };
@@ -174,6 +234,7 @@ export function AdminMobileToc({
 
   return (
     <div
+      ref={panelRef}
       id={id}
       role="dialog"
       aria-modal="true"

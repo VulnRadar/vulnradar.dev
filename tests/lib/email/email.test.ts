@@ -52,7 +52,14 @@ vi.mock("nodemailer", () => ({
 // mock at all (the dynamic import rejects, logEmailAttempt's own
 // try/catch swallows it).
 let emailLogInserts: unknown[][] = [];
+// sendEmail also resolves the NOREPLY_EMAIL runtime setting, which reads
+// system_settings through lib/config/runtime-config. Rows are served from a
+// mutable list so a test can pretend an operator edited the admin field.
+let systemSettingsRows: { key: string; value: string }[] = [];
 const mockDbQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
+  if (sql.includes("system_settings")) {
+    return { rows: systemSettingsRows };
+  }
   if (sql.trim().startsWith("INSERT INTO email_logs")) {
     emailLogInserts.push(params);
   }
@@ -94,6 +101,7 @@ beforeEach(() => {
   sendMailMock.mockReset();
   createTransportMock.mockClear();
   emailLogInserts = [];
+  systemSettingsRows = [];
   mockDbQuery.mockClear();
   resetEnv();
 });
@@ -286,6 +294,159 @@ describe("sendEmail with SMTP configured", () => {
     await sendEmail({ to: "u@x.com", subject: "s", text: "t", html: "<p/>" });
     const mailArgs = sendMailMock.mock.calls[0][0] as Record<string, unknown>;
     expect(mailArgs.from as string).toContain("<no-reply@vulnradar.dev>");
+  });
+
+  describe("List-Unsubscribe (RFC 8058)", () => {
+    it("sets a one-click unsubscribe header when a token is given", async () => {
+      configureSmtp();
+      sendMailMock.mockResolvedValueOnce({ messageId: "1" });
+      const { sendEmail } = await loadEmail();
+
+      await sendEmail({
+        to: "user@example.com",
+        subject: "Digest",
+        text: "digest",
+        html: "<p>digest</p>",
+        unsubscribeToken: "abc123",
+      });
+
+      const mailArgs = sendMailMock.mock.calls[0][0] as Record<string, unknown>;
+      const headers = mailArgs.headers as Record<string, string>;
+      // Must be the API route, not the /unsubscribe page: RFC 8058 requires
+      // the https URI in the header to accept the POST, and a Next page route
+      // answers 405.
+      expect(headers["List-Unsubscribe"]).toContain(
+        "/api/v3/account/unsubscribe?token=abc123&action=unsubscribe_all",
+      );
+      expect(headers["List-Unsubscribe"]).toContain("mailto:");
+      expect(headers["List-Unsubscribe-Post"]).toBe(
+        "List-Unsubscribe=One-Click",
+      );
+    });
+
+    it("sends no unsubscribe header on mail with no token, so security notices stay non-optional", async () => {
+      configureSmtp();
+      sendMailMock.mockResolvedValueOnce({ messageId: "1" });
+      const { sendEmail } = await loadEmail();
+
+      await sendEmail({
+        to: "user@example.com",
+        subject: "Your password was changed",
+        text: "t",
+        html: "<p/>",
+      });
+
+      const mailArgs = sendMailMock.mock.calls[0][0] as Record<string, unknown>;
+      expect(mailArgs.headers).toBeUndefined();
+    });
+  });
+
+  describe("preheader", () => {
+    it("renders a hidden preview line derived from the plain-text body", async () => {
+      configureSmtp();
+      sendMailMock.mockResolvedValueOnce({ messageId: "1" });
+      const { sendEmail } = await loadEmail();
+
+      await sendEmail({
+        to: "user@example.com",
+        subject: "Scan complete",
+        text: "2 critical, 5 high on https://example.com, scanned in 3.1s.\n\nFindings:\n- Critical: 2",
+        html: "<p>body</p>",
+      });
+
+      const html = (sendMailMock.mock.calls[0][0] as Record<string, unknown>)
+        .html as string;
+      expect(html).toContain(
+        "2 critical, 5 high on https://example.com, scanned in 3.1s.",
+      );
+      // It has to sit before the wordmark, or the preview still starts with
+      // the sender name.
+      expect(html.indexOf("2 critical, 5 high")).toBeLessThan(
+        html.indexOf("VulnRadar</span>"),
+      );
+      expect(html).toContain("mso-hide: all");
+    });
+
+    it("keeps a numeric code out of the preview line", async () => {
+      configureSmtp();
+      sendMailMock.mockResolvedValueOnce({ messageId: "1" });
+      const { sendEmail } = await loadEmail();
+
+      await sendEmail({
+        to: "user@example.com",
+        subject: "112233 is your sign-in code",
+        text: "Your VulnRadar sign-in code is 112233. It expires in 10 minutes.\n\nDon't share this code.",
+        html: "<p>body</p>",
+      });
+
+      const html = (sendMailMock.mock.calls[0][0] as Record<string, unknown>)
+        .html as string;
+      const preheader = /mso-hide: all[^>]*>([^<]*)</.exec(html)?.[1] ?? "";
+      expect(preheader).not.toContain("112233");
+      expect(preheader).toContain("It expires in 10 minutes.");
+    });
+
+    it("uses an explicit preheader over the derived one", async () => {
+      configureSmtp();
+      sendMailMock.mockResolvedValueOnce({ messageId: "1" });
+      const { sendEmail } = await loadEmail();
+
+      await sendEmail({
+        to: "user@example.com",
+        subject: "s",
+        text: "Derived sentence here.",
+        html: "<p/>",
+        preheader: "Explicit preview line.",
+      });
+
+      const html = (sendMailMock.mock.calls[0][0] as Record<string, unknown>)
+        .html as string;
+      expect(html).toContain("Explicit preview line.");
+      expect(html).not.toContain("Derived sentence here.");
+    });
+  });
+
+  describe("From address (NOREPLY_EMAIL)", () => {
+    it("uses a configured NOREPLY_EMAIL when SMTP_FROM is unset", async () => {
+      configureSmtp();
+      systemSettingsRows = [
+        { key: "NOREPLY_EMAIL", value: "noreply@selfhosted.test" },
+      ];
+      sendMailMock.mockResolvedValueOnce({ messageId: "1" });
+      const { sendEmail } = await loadEmail();
+
+      await sendEmail({ to: "u@x.com", subject: "s", text: "t", html: "<p/>" });
+
+      const mailArgs = sendMailMock.mock.calls[0][0] as Record<string, unknown>;
+      expect(mailArgs.from as string).toContain("<noreply@selfhosted.test>");
+    });
+
+    it("still lets an explicit SMTP_FROM win, for relays that pin the envelope sender", async () => {
+      configureSmtp({ SMTP_FROM: "verified@ses.test" });
+      systemSettingsRows = [
+        { key: "NOREPLY_EMAIL", value: "noreply@selfhosted.test" },
+      ];
+      sendMailMock.mockResolvedValueOnce({ messageId: "1" });
+      const { sendEmail } = await loadEmail();
+
+      await sendEmail({ to: "u@x.com", subject: "s", text: "t", html: "<p/>" });
+
+      const mailArgs = sendMailMock.mock.calls[0][0] as Record<string, unknown>;
+      expect(mailArgs.from as string).toContain("<verified@ses.test>");
+    });
+
+    it("falls back to SMTP_USER when NOREPLY_EMAIL is left at its shipped default", async () => {
+      // An operator who never touched either field must not start sending as
+      // noreply@vulnradar.dev and fail their own SPF.
+      configureSmtp();
+      sendMailMock.mockResolvedValueOnce({ messageId: "1" });
+      const { sendEmail } = await loadEmail();
+
+      await sendEmail({ to: "u@x.com", subject: "s", text: "t", html: "<p/>" });
+
+      const mailArgs = sendMailMock.mock.calls[0][0] as Record<string, unknown>;
+      expect(mailArgs.from as string).toContain("<user@example.com>");
+    });
   });
 
   it("passes replyTo through untouched", async () => {

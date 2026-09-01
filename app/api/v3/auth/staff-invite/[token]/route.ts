@@ -9,6 +9,7 @@ import {
   checkPasswordRequirements,
   passwordRequirementsMet,
   unmetRequirementLabels,
+  meetsMinimumPasswordScore,
 } from "@/lib/auth/password-strength";
 import {
   ApiResponse,
@@ -168,7 +169,7 @@ export const POST = withErrorHandling(
         // auth: same weak/low-entropy password check used at signup and
         // password reset.
         const pwAnalysis = analyzePassword(password as string);
-        if (pwAnalysis.score < 3) {
+        if (!meetsMinimumPasswordScore(pwAnalysis.score)) {
           await client.query("ROLLBACK");
           return ApiResponse.badRequest(
             "Password is too weak. " +

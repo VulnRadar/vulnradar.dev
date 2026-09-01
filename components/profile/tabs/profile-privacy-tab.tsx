@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { AlertTriangle, Clock, Download, Trash2, Loader2 } from "lucide-react";
-import { API, APP_SLUG } from "@/lib/config/constants";
+import { API, APP_SLUG } from "@/lib/config/client-constants";
 import { downloadBlob } from "@/lib/ui/download";
 import type { ProfileTabProps } from "@/components/profile/types";
 
@@ -450,7 +450,7 @@ export function ProfilePrivacyTab({
 
       {/* Danger zone: same visual language as the sign-out-everywhere danger
           zone on the Security tab, so both read as the same kind of action. */}
-      <section className="rounded-xl border border-destructive/25 bg-destructive/3 p-4 sm:p-5">
+      <section className="rounded-xl border border-destructive/25 bg-destructive/5 p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0 max-w-xl">
             <h2 className="text-base font-semibold tracking-tight text-foreground flex items-center gap-2">

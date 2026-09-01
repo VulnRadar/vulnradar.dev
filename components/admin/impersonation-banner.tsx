@@ -6,8 +6,7 @@ import {
   useAuth,
   refreshAuthCache,
 } from "@/components/providers/auth-provider";
-import { API } from "@/lib/config/constants";
-import { ROUTES } from "@/lib/config/client-constants";
+import { API, ROUTES } from "@/lib/config/client-constants";
 
 /**
  * Fixed banner shown app-wide while the current session is an active
@@ -85,23 +84,30 @@ export function ImpersonationBanner() {
     <div
       ref={bannerRef}
       role="alert"
-      className="fixed top-0 left-0 right-0 z-60 flex items-center justify-center gap-2 bg-amber-500 px-4 py-2 text-sm font-medium text-amber-950"
+      /* flex-wrap + min-w-0 + truncate: at 375px the unwrapped row measured
+         wider than the viewport, and justify-center split the overflow both
+         ways, so the page scrolled horizontally on every route while
+         impersonating and the Stop button sat partly off the right edge. */
+      className="fixed top-0 left-0 right-0 z-60 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 bg-amber-500 px-4 py-2 text-sm font-medium text-amber-950"
     >
       <UserCog className="h-4 w-4 shrink-0" aria-hidden="true" />
-      <span>
-        Viewing as <span className="font-semibold">{me.email}</span>
+      <span className="min-w-0 truncate">
+        Viewing as{" "}
+        <span className="font-semibold max-w-[45vw] inline-block align-bottom truncate">
+          {me.email}
+        </span>
       </span>
       <button
         type="button"
         onClick={handleStop}
         disabled={stopping}
-        className="ml-2 inline-flex items-center gap-1.5 rounded-md bg-amber-950/10 px-2.5 py-1 font-semibold hover:bg-amber-950/20 disabled:opacity-60"
+        className="shrink-0 inline-flex items-center gap-1.5 rounded-md bg-amber-950/10 px-2.5 py-1 font-semibold hover:bg-amber-950/20 disabled:opacity-60"
       >
         {stopping && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
         Stop impersonating
       </button>
       {stopError && (
-        <span className="inline-flex items-center gap-1 text-amber-950/80">
+        <span className="inline-flex items-center gap-1 text-amber-950/80 shrink-0">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           Couldn&apos;t stop, try again
         </span>

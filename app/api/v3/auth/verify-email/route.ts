@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHash } from "node:crypto";
 import pool from "@/lib/database/db";
 import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api/api-utils";
 import { SUCCESS_MESSAGES } from "@/lib/config/constants";
+import { authTokenHashCandidates } from "@/lib/auth/token-hash";
 
-// auth: hash incoming token with the same function used at
-// generation so a DB dump can't replay raw tokens.
-function hashToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
-}
+// auth: hash the incoming token with the same function used at generation
+// so a DB dump can't replay raw tokens. The candidate list is the HMAC
+// digest plus the pre-HMAC sha256 one, so a verification link already sent
+// when the switch to HMAC shipped still works (AUDIT-002#secrets-03).
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const parsed = await parseBody<{ token: string }>(request);
@@ -19,7 +18,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     return ApiResponse.badRequest("Verification token is required.");
   }
 
-  const tokenHash = hashToken(token);
+  const tokenHashes = authTokenHashCandidates(token);
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -29,17 +28,17 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       `SELECT evt.id, evt.user_id, evt.expires_at, u.email, u.name, u.email_verified_at
        FROM email_verification_tokens evt
        JOIN users u ON evt.user_id = u.id
-       WHERE evt.token_hash = $1 AND evt.used_at IS NULL
+       WHERE evt.token_hash = ANY($1::text[]) AND evt.used_at IS NULL
        FOR UPDATE`,
-      [tokenHash],
+      [tokenHashes],
     );
 
     if (tokenRes.rows.length === 0) {
       await client.query("ROLLBACK");
       // Check if token exists but was already used
       const usedTokenRes = await client.query(
-        "SELECT id, used_at FROM email_verification_tokens WHERE token_hash = $1",
-        [tokenHash],
+        "SELECT id, used_at FROM email_verification_tokens WHERE token_hash = ANY($1::text[])",
+        [tokenHashes],
       );
       if (usedTokenRes.rows.length > 0) {
         return ApiResponse.badRequest(

@@ -1,4 +1,4 @@
-import { randomBytes, createHmac } from "node:crypto";
+import { randomBytes, createHmac, timingSafeEqual } from "node:crypto";
 import bcrypt from "bcryptjs";
 import pool from "@/lib/database/db";
 import { API_KEY_PREFIX } from "@/lib/config/constants";
@@ -20,6 +20,25 @@ import {
   resolveApiKeyScopes,
   type ApiKeyScope,
 } from "@/lib/config/client-constants";
+
+/**
+ * Constant-time compare for a decrypted API key against the presented one.
+ * `a === b` short-circuits on the first differing byte, which is the one
+ * pattern every other secret compare in this codebase already avoids
+ * (lib/auth/password-hash.ts, lib/auth/totp.ts, lib/auth/oauth-state.ts).
+ * The timing signal here is weak because the locator lookup has already
+ * narrowed the candidate set to one row, but there is no reason for this to
+ * be the single exception to the rule (AUDIT-012#auth-11).
+ *
+ * timingSafeEqual throws on a length mismatch, so the length is compared
+ * first. Key length is not a secret: it is fixed by generateApiKey.
+ */
+function apiKeysMatch(decrypted: string, presented: string): boolean {
+  const a = Buffer.from(decrypted, "utf8");
+  const b = Buffer.from(presented, "utf8");
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
 
 // Helper function to generate a random deprecated placeholder string
 function generateDeprecatedPlaceholder(): string {
@@ -320,23 +339,78 @@ async function notifyApiKeyIpMismatch(params: {
   }
 }
 
+/**
+ * perf: whether any api_keys row still lacks a key_locator.
+ *
+ * The locator lookup is O(1) and indexed; the two fallback paths below are
+ * full scans of the un-backfilled rows, and one of them runs a bcryptjs
+ * compare (cost 12, pure JS, on the main thread) PER ROW. Because a locator
+ * miss fell straight through to them, every INVALID key, and every request
+ * from a scanner probing for one, paid both scans. generateApiKey has
+ * written a locator since it shipped, so on any install without legacy rows
+ * the correct answer is "return null immediately".
+ *
+ * null means "not looked up yet". Once resolved to false it stays false: no
+ * code path creates a locator-less row. Reset to null after a backfill so
+ * the next miss re-checks whether any remain.
+ */
+let legacyKeyRowsPresent: boolean | null = null;
+
+async function hasLegacyKeyRows(): Promise<boolean> {
+  if (legacyKeyRowsPresent !== null) return legacyKeyRowsPresent;
+  try {
+    const res = await pool.query<{ present: boolean }>(
+      "SELECT EXISTS(SELECT 1 FROM api_keys WHERE key_locator IS NULL) AS present",
+    );
+    legacyKeyRowsPresent = res.rows[0]?.present === true;
+  } catch {
+    // Fail OPEN: a failed probe must never turn a valid legacy key into an
+    // authentication failure. The scans below are slow, not wrong.
+    return true;
+  }
+  return legacyKeyRowsPresent;
+}
+
+/** Test-only: forget the cached legacy-row answer. */
+export function __resetLegacyKeyRowCache(): void {
+  legacyKeyRowsPresent = null;
+}
+
 // Validate an API key and return the user/key info, or null.
 // Uses an indexed key_locator for O(1) lookup instead of a full-table scan.
 // Returns { needsTermsAcceptance: true } if user hasn't accepted latest terms.
+//
+// Every branch checks `u.disabled_at` alongside `ak.revoked_at`. The cookie
+// path already re-checks the suspension on every getSession() (lib/auth/auth.ts),
+// but the Bearer path had no equivalent, so an account the admin panel showed as
+// disabled kept full API access: a user suspended for abuse could go on running
+// scans and reading or deleting their history with a key issued before the ban.
+// The account-state gate belongs here rather than at the ~15 Bearer call sites.
 export async function validateApiKey(
   key: string,
 ): Promise<KeyValidationResult | null> {
   const locator = computeKeyLocator(key);
-  const { TERMS_UPDATED_AT: termsUpdatedAt } = await getSettings([
-    "TERMS_UPDATED_AT",
-  ] as const);
+  const [{ TERMS_UPDATED_AT: termsUpdatedAt }, featureEnabled] =
+    await Promise.all([
+      getSettings(["TERMS_UPDATED_AT"] as const),
+      getSetting("FEATURE_API_KEYS"),
+    ]);
+
+  // FEATURE_API_KEYS gated only key CREATION, so turning the feature off (what
+  // an operator does when a key may have leaked, or to lock a self-hosted
+  // deployment down to browser sessions) left every already-issued key
+  // authenticating against the whole API while the admin panel reported the
+  // feature as off. Gate the authentication path too, following the
+  // DOMAIN_REVERIFY_ENABLED pattern. Fails closed with the ordinary
+  // invalid-key result: callers already handle null.
+  if (!featureEnabled) return null;
 
   if (isEncryptionConfigured()) {
     // Primary path: O(1) indexed lookup by HMAC locator.
     const locatorResult = await pool.query(
       `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit,
               ak.revoked_at, ak.key_encrypted, ak.bound_ip, ak.scopes,
-              u.email, u.name as user_name, u.tos_accepted_at
+              u.email, u.name as user_name, u.tos_accepted_at, u.disabled_at
          FROM api_keys ak
               JOIN users u ON ak.user_id = u.id
         WHERE ak.key_locator = $1
@@ -347,8 +421,8 @@ export async function validateApiKey(
     for (const row of locatorResult.rows) {
       try {
         const decrypted = decryptApiKey(row.key_encrypted);
-        if (decrypted === key) {
-          if (row.revoked_at) return null;
+        if (apiKeysMatch(decrypted, key)) {
+          if (row.revoked_at || row.disabled_at) return null;
           if (!(await passesApiKeyIpBinding(row))) return null;
           return rowToResult(row, termsUpdatedAt);
         }
@@ -357,12 +431,16 @@ export async function validateApiKey(
       }
     }
 
+    // Everything below is a scan of the rows that have no locator yet. Skip
+    // both scans entirely when there are none, which is the normal state.
+    if (!(await hasLegacyKeyRows())) return null;
+
     // Backfill: key matched a row that has no locator yet (legacy row).
     // Compute locator from decrypted key and persist it for future lookups.
     const legacyResult = await pool.query(
       `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit,
               ak.revoked_at, ak.key_encrypted, ak.key_locator, ak.bound_ip, ak.scopes,
-              u.email, u.name as user_name, u.tos_accepted_at
+              u.email, u.name as user_name, u.tos_accepted_at, u.disabled_at
          FROM api_keys ak
               JOIN users u ON ak.user_id = u.id
         WHERE ak.key_locator IS NULL
@@ -371,7 +449,7 @@ export async function validateApiKey(
     for (const row of legacyResult.rows) {
       try {
         const decrypted = decryptApiKey(row.key_encrypted);
-        if (decrypted === key) {
+        if (apiKeysMatch(decrypted, key)) {
           // Persist locator so subsequent lookups are O(1).
           await pool
             .query(
@@ -379,7 +457,9 @@ export async function validateApiKey(
               [computeKeyLocator(decrypted), row.key_id],
             )
             .catch(() => undefined);
-          if (row.revoked_at) return null;
+          // A row just lost its legacy status, so re-check whether any remain.
+          legacyKeyRowsPresent = null;
+          if (row.revoked_at || row.disabled_at) return null;
           if (!(await passesApiKeyIpBinding(row))) return null;
           return rowToResult(row, termsUpdatedAt);
         }
@@ -392,7 +472,7 @@ export async function validateApiKey(
     const hashResult = await pool.query(
       `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit,
               ak.revoked_at, ak.key_hash, ak.bound_ip, ak.scopes,
-              u.email, u.name as user_name, u.tos_accepted_at
+              u.email, u.name as user_name, u.tos_accepted_at, u.disabled_at
          FROM api_keys ak
               JOIN users u ON ak.user_id = u.id
         WHERE ak.key_hash IS NOT NULL
@@ -402,7 +482,7 @@ export async function validateApiKey(
     for (const row of hashResult.rows) {
       try {
         if (await verifyKey(key, row.key_hash)) {
-          if (row.revoked_at) return null;
+          if (row.revoked_at || row.disabled_at) return null;
           if (!(await passesApiKeyIpBinding(row))) return null;
           return rowToResult(row, termsUpdatedAt);
         }
@@ -418,7 +498,7 @@ export async function validateApiKey(
   const locatorResult = await pool.query(
     `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit,
             ak.revoked_at, ak.key_hash, ak.bound_ip, ak.scopes,
-            u.email, u.name as user_name, u.tos_accepted_at
+            u.email, u.name as user_name, u.tos_accepted_at, u.disabled_at
        FROM api_keys ak
             JOIN users u ON ak.user_id = u.id
       WHERE ak.key_locator = $1
@@ -428,7 +508,7 @@ export async function validateApiKey(
   for (const row of locatorResult.rows) {
     try {
       if (await verifyKey(key, row.key_hash)) {
-        if (row.revoked_at) return null;
+        if (row.revoked_at || row.disabled_at) return null;
         if (!(await passesApiKeyIpBinding(row))) return null;
         return rowToResult(row, termsUpdatedAt);
       }
@@ -437,11 +517,15 @@ export async function validateApiKey(
     }
   }
 
+  // Legacy bcrypt keys without locator: full scan with a bcrypt compare per
+  // row. Skipped entirely when no locator-less row exists.
+  if (!(await hasLegacyKeyRows())) return null;
+
   // Legacy bcrypt keys without locator: full scan (backfill on match).
   const legacyHashResult = await pool.query(
     `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit,
             ak.revoked_at, ak.key_hash, ak.bound_ip, ak.scopes,
-            u.email, u.name as user_name, u.tos_accepted_at
+            u.email, u.name as user_name, u.tos_accepted_at, u.disabled_at
        FROM api_keys ak
             JOIN users u ON ak.user_id = u.id
       WHERE ak.key_hash IS NOT NULL
@@ -456,7 +540,8 @@ export async function validateApiKey(
             [locator, row.key_id],
           )
           .catch(() => undefined);
-        if (row.revoked_at) return null;
+        legacyKeyRowsPresent = null;
+        if (row.revoked_at || row.disabled_at) return null;
         if (!(await passesApiKeyIpBinding(row))) return null;
         return rowToResult(row, termsUpdatedAt);
       }
@@ -614,7 +699,12 @@ export async function recordUsage(_keyId: number) {
 // response and directly by the profile UI).
 export async function getUserApiKeys(userId: number) {
   const result = await pool.query(
-    `SELECT ak.id, ak.key_prefix, ak.name, ak.daily_limit, ak.created_at, ak.last_used_at, ak.revoked_at, ak.scopes,
+    // bound_ip is selected because it is enforced: when
+    // API_KEY_IP_BINDING_ENABLED is on, a key that worked yesterday starts
+    // returning 403 from a new network. Without the value on the list there
+    // is no visible cause and no way to fix it short of issuing a new key
+    // (AUDIT-011#drift-27). Pairs with resetApiKeyBinding below.
+    `SELECT ak.id, ak.key_prefix, ak.name, ak.daily_limit, ak.created_at, ak.last_used_at, ak.revoked_at, ak.scopes, ak.bound_ip,
                 (SELECT COUNT(*)::int FROM api_usage au WHERE au.api_key_id = ak.id AND au.used_at > NOW() - INTERVAL '24 hours') as usage_today
          FROM api_keys ak
          WHERE ak.user_id = $1
@@ -623,6 +713,26 @@ export async function getUserApiKeys(userId: number) {
   );
 
   return result.rows;
+}
+
+/**
+ * Clear a key's pinned home network so the next successful use re-adopts
+ * whichever subnet it comes from, exactly as if the key had never been used
+ * (see passesApiKeyIpBinding). This is the recovery path for the ordinary
+ * case of a legitimate owner moving networks: before it existed the only way
+ * out of a binding mismatch was to rotate the key, which invalidates the
+ * secret every consumer of that key already has (AUDIT-011#drift-27).
+ *
+ * Scoped to the caller's own non-revoked keys; returns false when the key is
+ * not theirs, which the route reports as 404 rather than 403 so the endpoint
+ * cannot be used to probe for other users' key ids.
+ */
+export async function resetApiKeyBinding(keyId: number, userId: number) {
+  const result = await pool.query(
+    "UPDATE api_keys SET bound_ip = NULL WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL RETURNING id",
+    [keyId, userId],
+  );
+  return result.rows.length > 0;
 }
 
 // Revoke an API key

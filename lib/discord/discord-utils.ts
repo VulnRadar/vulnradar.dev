@@ -1,6 +1,7 @@
 ﻿import pool from "@/lib/database/db";
 import { email2FACodeEmail, sendEmail } from "@/lib/email/email";
 import { encryptApiKey, decryptApiKey } from "@/lib/auth/crypto";
+import { getSetting } from "@/lib/config/runtime-config";
 import { randomInt, randomBytes, createHash } from "node:crypto";
 
 /**
@@ -25,9 +26,14 @@ export async function sendDiscordEmail2FACode(
     const codeHash = createHash("sha256")
       .update(`${codeSalt}:${code}`)
       .digest("hex");
+    // Read the admin setting, same as the other three insert sites (login,
+    // 2fa/email-send, oauth callback). This was a hardcoded INTERVAL '10
+    // minutes' literal, so changing EMAIL_2FA_CODE_EXPIRY_MINUTES in the admin
+    // panel silently did not apply to the Discord sign-in path.
+    const codeExpiryMinutes = await getSetting("EMAIL_2FA_CODE_EXPIRY_MINUTES");
     await pool.query(
-      "INSERT INTO email_2fa_codes (user_id, code_hash, code_salt, expires_at) VALUES ($1, $2, $3, NOW() + INTERVAL '10 minutes')",
-      [userId, codeHash, codeSalt],
+      "INSERT INTO email_2fa_codes (user_id, code_hash, code_salt, expires_at) VALUES ($1, $2, $3, NOW() + ($4 * INTERVAL '1 minute'))",
+      [userId, codeHash, codeSalt, codeExpiryMinutes],
     );
 
     // Send the email

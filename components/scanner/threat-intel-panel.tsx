@@ -44,7 +44,7 @@ export function ThreatIntelPanel({ threatIntel }: ThreatIntelPanelProps) {
         : "Not reachable";
 
   return (
-    <div className="overflow-hidden rounded-md border border-border bg-card">
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
@@ -56,7 +56,14 @@ export function ThreatIntelPanel({ threatIntel }: ThreatIntelPanelProps) {
           aria-hidden
           className="h-4 w-4 shrink-0 text-muted-foreground"
         />
-        <span className="flex-1 text-sm font-medium text-foreground">
+        {/* Same shape as components/scanner/software-inventory-panel.tsx's
+            header and for the same reason: with every other child shrink-0
+            and the card overflow-hidden, this row measured about 363px
+            against the ~343 a 375px phone has, so the headline and the
+            chevron were clipped away entirely and the panel looked like it
+            had nothing to expand. min-w-0 + truncate here, and the source
+            count (repeated in the body below) hidden under sm. */}
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
           Threat intelligence
         </span>
         <span
@@ -71,7 +78,7 @@ export function ThreatIntelPanel({ threatIntel }: ThreatIntelPanelProps) {
         >
           {headline}
         </span>
-        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+        <span className="hidden shrink-0 text-xs tabular-nums text-muted-foreground sm:inline">
           {reachableCount}/{sources.length} checked
         </span>
         <ChevronDown
@@ -86,7 +93,11 @@ export function ThreatIntelPanel({ threatIntel }: ThreatIntelPanelProps) {
       {expanded && (
         <div id={panelId} className="border-t border-border">
           <div className="sticky top-0 flex items-center gap-2 bg-muted/40 px-4 py-1.5 backdrop-blur-sm">
-            <span className="font-mono text-[11px] font-semibold uppercase tracking-wide text-primary">
+            {/* min-w-0 + truncate: a hostname is one unbreakable token, so
+                without them a long host pushed the summary line beside it out
+                of the card, which is overflow-hidden. Matches the same bar in
+                components/scanner/dns-records-panel.tsx. */}
+            <span className="min-w-0 truncate font-mono text-[11px] font-semibold uppercase tracking-wide text-primary">
               {threatIntel.host}
             </span>
             <span className="text-[11px] tabular-nums text-muted-foreground">

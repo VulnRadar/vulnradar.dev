@@ -1,7 +1,7 @@
 import {
   BILLING_HISTORY_RETENTION,
   BILLING_PLAN_LIMITS,
-} from "@/lib/config/constants";
+} from "@/lib/config/client-constants";
 
 const FREE_SCANS = BILLING_PLAN_LIMITS.free;
 const FREE_RETENTION = BILLING_HISTORY_RETENTION.free;

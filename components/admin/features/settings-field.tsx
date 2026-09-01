@@ -71,7 +71,11 @@ function ListValueEditor({
               <button
                 type="button"
                 onClick={() => removeAt(i)}
-                className="rounded-full hover:bg-primary/20 p-0.5"
+                // a11y (target size): p-0.5 around a 10px icon computed to a
+                // 14x14 hit area, and these chips wrap in a dense row so the
+                // spacing exception does not rescue it either. The mark stays
+                // 10px; only the box around it grows to 24.
+                className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-primary/20"
                 aria-label={`Remove ${item}`}
               >
                 <X className="h-2.5 w-2.5" aria-hidden="true" />

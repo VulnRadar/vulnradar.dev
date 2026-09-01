@@ -135,13 +135,17 @@ function expandPlan(plan, step) {
     });
   }
 
-  // Indexes to add
+  // Indexes to add. `unique: true` emits CREATE UNIQUE INDEX (AUDIT-013
+  // migrate-06): without it, two indexes with the same NAME but different
+  // uniqueness existed, one here and one in instrumentation.ts, and since
+  // IF NOT EXISTS matches on the name alone whichever path ran first
+  // silently decided whether the constraint existed at all.
   for (const i of plan.addIndexes || []) {
-    const sql = `CREATE INDEX IF NOT EXISTS ${i.name} ON "${i.table}"${i.using ? ` USING ${i.using}` : ""}(${i.columns})${i.where ? ` WHERE ${i.where}` : ""}`;
+    const sql = `CREATE ${i.unique ? "UNIQUE " : ""}INDEX IF NOT EXISTS ${i.name} ON "${i.table}"${i.using ? ` USING ${i.using}` : ""}(${i.columns})${i.where ? ` WHERE ${i.where}` : ""}`;
     steps.push({
       kind: "createIndex",
       sql,
-      label: `CREATE INDEX ${i.name} ON ${i.table}`,
+      label: `CREATE ${i.unique ? "UNIQUE " : ""}INDEX ${i.name} ON ${i.table}`,
       destructive: false,
       dataLoss: null,
       versionStep: step,

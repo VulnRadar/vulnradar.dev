@@ -52,24 +52,64 @@ vi.mock("@/lib/rate-limiting/daily-limits", () => ({
 }));
 
 const mockRunSyncChecks = vi.fn();
+// The crawl executor drives the yielding variant (AUDIT-011#scan-06): it runs
+// the sync pass once per crawled page, so that is exactly the block that must
+// not hold the event loop for the whole page. Same arguments, same return
+// shape, awaited.
 vi.mock("@/lib/scanner/engine", () => ({
-  runSyncChecks: (...args: unknown[]) => mockRunSyncChecks(...args),
+  runSyncChecksYielding: async (...args: unknown[]) =>
+    mockRunSyncChecks(...args),
   getPlannedSyncCategories: () => ["headers"],
 }));
 
+// The crawl executor now uses runAsyncChecksDetailed, not runAsyncChecks, so
+// a crawl can report which branches did not complete (result_meta.incomplete),
+// exactly as a single-URL scan does. The mock resolves the detailed shape.
+//
+// The 5th argument is the branch scope (AUDIT-012#perf-03): a crawl runs the
+// host-level branches once for the whole crawl and only the page-level ones
+// per page, so the planner mock answers per scope the way the real one does.
 const mockRunAsyncChecks = vi.fn();
 vi.mock("@/lib/scanner/async-checks", () => ({
-  runAsyncChecks: (...args: unknown[]) => mockRunAsyncChecks(...args),
-  getPlannedAsyncBranches: () => ["dns"],
+  runAsyncChecksDetailed: (...args: unknown[]) => mockRunAsyncChecks(...args),
+  getPlannedAsyncBranches: (
+    _url: string,
+    _categories: unknown,
+    scope: string = "all",
+  ) => (scope === "page" ? ["osv-libraries"] : ["dns"]),
 }));
 
 const { executeCrawlScan } = await import("@/lib/scanner/execute-crawl-scan");
 
+/** Columns per tuple in the per-page multi-row child INSERT. */
+const CHILD_INSERT_COLUMNS = 13;
+
+/** The per-page tuples of the one multi-row child INSERT the crawl issues. */
+function childInsertTuples(): unknown[][] {
+  const call = mockQuery.mock.calls.find(([sql]) =>
+    (sql as string).includes("INSERT INTO scan_history"),
+  );
+  if (!call) return [];
+  const params = call[1] as unknown[];
+  const tuples: unknown[][] = [];
+  for (let i = 0; i < params.length; i += CHILD_INSERT_COLUMNS) {
+    tuples.push(params.slice(i, i + CHILD_INSERT_COLUMNS));
+  }
+  return tuples;
+}
+
 function installDefaultQueryMock() {
   mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
     if (sql.includes("INSERT INTO scan_history")) {
-      // Per-page child row insert.
-      return { rows: [{ id: 900 }], rowCount: 1 };
+      // The per-page child rows go in as ONE multi-row INSERT (perf-26), so
+      // the mock answers with one returned row per tuple, keyed by the url in
+      // that tuple, exactly as `RETURNING id, url` does.
+      const p = (params ?? []) as unknown[];
+      const rows: { id: number; url: unknown }[] = [];
+      for (let i = 0; i < p.length; i += CHILD_INSERT_COLUMNS) {
+        rows.push({ id: 900 + rows.length, url: p[i + 1] });
+      }
+      return { rows, rowCount: rows.length };
     }
     const last = Array.isArray(params) ? params[params.length - 1] : 1;
     return { rows: [{ id: last }], rowCount: 1 };
@@ -123,7 +163,7 @@ beforeEach(() => {
     deduped: 0,
   });
   mockRunAsyncChecks.mockReset();
-  mockRunAsyncChecks.mockResolvedValue([]);
+  mockRunAsyncChecks.mockResolvedValue({ findings: [], incomplete: [] });
 });
 
 describe("executeCrawlScan", () => {
@@ -135,10 +175,13 @@ describe("executeCrawlScan", () => {
       calls.some(([sql]) => (sql as string).includes("status = 'running'")),
     ).toBe(true);
 
-    const perPageInserts = calls.filter(([sql]) =>
+    // One INSERT statement carrying one tuple per selected page, not one
+    // statement per page. ref: AUDIT-012#perf-26
+    const insertStatements = calls.filter(([sql]) =>
       (sql as string).includes("INSERT INTO scan_history"),
     );
-    expect(perPageInserts.length).toBe(2); // one per selected page
+    expect(insertStatements.length).toBe(1);
+    expect(childInsertTuples().length).toBe(2);
 
     const completedCall = calls.find(([sql]) =>
       (sql as string).includes("status = 'completed'"),
@@ -146,6 +189,49 @@ describe("executeCrawlScan", () => {
     expect(completedCall).toBeDefined();
 
     expect(mockIncrementDailyCountCapped).toHaveBeenCalledTimes(2);
+  });
+
+  // ref: AUDIT-011#drift-01. The route resolves team_id onto the tracker row;
+  // the per-page child rows used to omit the column entirely, so a team could
+  // open the crawl and not a single one of the pages it covered.
+  it("inherits the tracker row's team_id onto every per-page child row", async () => {
+    const defaultImpl = mockQuery.getMockImplementation()!;
+    mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+      if (sql.includes("SELECT team_id FROM scan_history")) {
+        return { rows: [{ team_id: 8 }], rowCount: 1 };
+      }
+      return defaultImpl(sql, params);
+    });
+
+    await executeCrawlScan(baseParams());
+
+    const insertCall = mockQuery.mock.calls.find(([sql]) =>
+      (sql as string).includes("INSERT INTO scan_history"),
+    );
+    expect(insertCall![0] as string).toContain("team_id");
+    const tuples = childInsertTuples();
+    expect(tuples.length).toBe(2);
+    for (const tuple of tuples) {
+      expect(tuple.at(-1)).toBe(8);
+    }
+  });
+
+  it("writes a null team_id on the child rows of a personal crawl", async () => {
+    const defaultImpl = mockQuery.getMockImplementation()!;
+    mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+      if (sql.includes("SELECT team_id FROM scan_history")) {
+        return { rows: [{ team_id: null }], rowCount: 1 };
+      }
+      return defaultImpl(sql, params);
+    });
+
+    await executeCrawlScan(baseParams());
+
+    const tuples = childInsertTuples();
+    expect(tuples.length).toBe(2);
+    for (const tuple of tuples) {
+      expect(tuple.at(-1)).toBeNull();
+    }
   });
 
   it("accumulates progress across pages instead of resetting per page", async () => {
@@ -157,23 +243,133 @@ describe("executeCrawlScan", () => {
       },
     );
     mockRunAsyncChecks.mockImplementation(
-      async (_url, _categories, onProgress) => {
-        onProgress?.("dns", "start");
-        onProgress?.("dns", "done");
-        return [];
+      async (
+        _url: string,
+        _categories: unknown,
+        onProgress: ((label: string, phase: string) => void) | undefined,
+        _signal: unknown,
+        scope: string = "all",
+      ) => {
+        const label = scope === "page" ? "osv-libraries" : "dns";
+        onProgress?.(label, "start");
+        onProgress?.(label, "done");
+        return { findings: [], incomplete: [] };
       },
     );
 
     await executeCrawlScan(baseParams());
 
-    const doneCalls = mockQuery.mock.calls.filter(([sql]) =>
-      (sql as string).includes("categories_completed = $1"),
+    // Progress writes are coalesced into one UPDATE carrying all three columns
+    // (AUDIT-012#perf-12), so the assertion is on the VALUE that lands, not on
+    // one write per event: the count must climb across pages and finish at 5
+    // (one host-level branch for the whole crawl, plus 2 pages x 2 units)
+    // rather than restarting at 1 per page.
+    const progressCalls = mockQuery.mock.calls.filter(([sql]) =>
+      (sql as string).includes("categories_completed = $2"),
     );
-    // 2 pages x 2 categories (headers, dns) each = 4 "done" events, and the
-    // count must climb across pages (1,2,3,4), not restart at 1 per page.
-    expect(doneCalls.length).toBe(4);
-    const counts = doneCalls.map(([, params]) => (params as unknown[])[0]);
-    expect(counts).toEqual([1, 2, 3, 4]);
+    expect(progressCalls.length).toBeGreaterThan(0);
+    const counts = progressCalls.map(
+      ([, params]) => (params as unknown[])[1] as number,
+    );
+    expect(counts).toEqual([...counts].sort((a, b) => a - b));
+    expect(counts.at(-1)).toBe(5);
+  });
+
+  // AUDIT-012#perf-03: the host-level branches (DNS, TLS, reputation,
+  // robots/security.txt, the 23 exposed-file probes) used to run on every
+  // single page, so a 25-page crawl re-asked the same host-level questions 25
+  // times and threw away 24 identical copies of the answer.
+  it("runs the host-level branches once for the whole crawl, not once per page", async () => {
+    await executeCrawlScan(
+      baseParams({
+        scanId: 40,
+        selectedUrls: [
+          "https://example.com/",
+          "https://example.com/a",
+          "https://example.com/b",
+          "https://example.com/c",
+        ],
+      }),
+    );
+
+    const scopes = mockRunAsyncChecks.mock.calls.map((call) => call[4]);
+    expect(scopes.filter((s) => s === "host")).toHaveLength(1);
+    expect(scopes.filter((s) => s === "page")).toHaveLength(4);
+    // The single host-level run is made against the crawl's main URL.
+    const hostCall = mockRunAsyncChecks.mock.calls.find(
+      (call) => call[4] === "host",
+    );
+    expect(hostCall![0]).toBe("https://example.com/");
+  });
+
+  it("merges the host-level findings into the crawl result", async () => {
+    mockRunAsyncChecks.mockImplementation(
+      async (
+        _url: string,
+        _categories: unknown,
+        _onProgress: unknown,
+        _signal: unknown,
+        scope: string = "all",
+      ) =>
+        scope === "host"
+          ? {
+              findings: [
+                {
+                  id: "host-dns-1",
+                  title: "SPF record missing",
+                  severity: "medium",
+                  category: "dns",
+                  description: "",
+                  evidence: "",
+                  riskImpact: "",
+                  explanation: "",
+                  fixSteps: [],
+                  references: [],
+                  confidence: 90,
+                  detectionMethod: "dns",
+                },
+              ],
+              incomplete: [],
+            }
+          : { findings: [], incomplete: [] },
+    );
+
+    await executeCrawlScan(baseParams({ scanId: 41 }));
+
+    const completedCall = mockQuery.mock.calls.find(
+      ([sql, params]) =>
+        (sql as string).includes("status = 'completed'") &&
+        (params as unknown[])[8] === 41,
+    );
+    const findings = JSON.parse((completedCall![1] as unknown[])[0] as string);
+    expect(findings.map((f: { id: string }) => f.id)).toEqual(["host-dns-1"]);
+  });
+
+  it("reports a host-level branch that did not complete as incomplete", async () => {
+    mockRunAsyncChecks.mockImplementation(
+      async (
+        _url: string,
+        _categories: unknown,
+        _onProgress: unknown,
+        _signal: unknown,
+        scope: string = "all",
+      ) =>
+        scope === "host"
+          ? { findings: [], incomplete: ["dns"] }
+          : { findings: [], incomplete: [] },
+    );
+
+    await executeCrawlScan(baseParams({ scanId: 42 }));
+
+    const completedCall = mockQuery.mock.calls.find(
+      ([sql, params]) =>
+        (sql as string).includes("status = 'completed'") &&
+        (params as unknown[])[8] === 42,
+    );
+    const resultMeta = JSON.parse(
+      (completedCall![1] as unknown[])[6] as string,
+    );
+    expect(resultMeta.incomplete).toEqual(["dns"]);
   });
 
   it("marks the tracker row failed with a real reason when every pre-selected URL is off-origin", async () => {
@@ -198,11 +394,8 @@ describe("executeCrawlScan", () => {
   it("caps pre-selected pages to the plan's crawlPageLimit", async () => {
     await executeCrawlScan(baseParams({ scanId: 14, crawlPageLimit: 1 }));
 
-    const perPageInserts = mockQuery.mock.calls.filter(([sql]) =>
-      (sql as string).includes("INSERT INTO scan_history"),
-    );
     // Two URLs pre-selected, but the plan cap of 1 slices it to one.
-    expect(perPageInserts.length).toBe(1);
+    expect(childInsertTuples().length).toBe(1);
     expect(mockIncrementDailyCountCapped).toHaveBeenCalledTimes(1);
   });
 
@@ -318,5 +511,82 @@ describe("executeCrawlScan (authenticated)", () => {
     for (const call of mockSafeFetch.mock.calls) {
       expect(call[3]).toBeUndefined();
     }
+  });
+
+  // ── Completeness reporting (AUDIT-014#state-03) ─────────────────────────
+  //
+  // A crawl is rendered through the same components as a single scan, so it
+  // has to answer "did every check actually run?" the same way. Before this,
+  // a page whose async layer timed out had its DNS/TLS/live-fetch findings
+  // replaced by an empty array with no record, and engineConfidence was
+  // hardcoded to the complete value, so a deep scan that came back short
+  // still reported "nothing exploitable found" at full confidence.
+
+  it("writes no incomplete marker when every branch completed", async () => {
+    await executeCrawlScan(baseParams({ scanId: 30 }));
+
+    const completedCall = mockQuery.mock.calls.find(
+      ([sql, params]) =>
+        (sql as string).includes("status = 'completed'") &&
+        (params as unknown[])[8] === 30,
+    );
+    const resultMeta = JSON.parse(
+      (completedCall![1] as unknown[])[6] as string,
+    );
+    expect(resultMeta.incomplete).toBeUndefined();
+  });
+
+  it("records the branches that did not complete and discounts engine confidence", async () => {
+    mockRunAsyncChecks.mockResolvedValue({
+      findings: [],
+      incomplete: ["dns"],
+    });
+
+    await executeCrawlScan(baseParams({ scanId: 31 }));
+
+    const completedCall = mockQuery.mock.calls.find(
+      ([sql, params]) =>
+        (sql as string).includes("status = 'completed'") &&
+        (params as unknown[])[8] === 31,
+    );
+    const resultMeta = JSON.parse(
+      (completedCall![1] as unknown[])[6] as string,
+    );
+    expect(resultMeta.incomplete).toEqual(["dns"]);
+
+    // Same finding set, but one branch short: confidence must be lower than
+    // the all-clear run above, not the hardcoded complete value.
+    mockRunAsyncChecks.mockResolvedValue({ findings: [], incomplete: [] });
+    await executeCrawlScan(baseParams({ scanId: 32 }));
+    const completeCall = mockQuery.mock.calls.find(
+      ([sql, params]) =>
+        (sql as string).includes("status = 'completed'") &&
+        (params as unknown[])[8] === 32,
+    );
+    const completeMeta = JSON.parse(
+      (completeCall![1] as unknown[])[6] as string,
+    );
+    expect(resultMeta.engineConfidence).toBeLessThan(
+      completeMeta.engineConfidence,
+    );
+  });
+
+  it("reports a page it could never fetch as incomplete, not as clean", async () => {
+    mockSafeFetch.mockRejectedValue(new Error("ECONNREFUSED"));
+
+    await executeCrawlScan(baseParams({ scanId: 33 }));
+
+    const completedCall = mockQuery.mock.calls.find(
+      ([sql, params]) =>
+        (sql as string).includes("status = 'completed'") &&
+        (params as unknown[])[8] === 33,
+    );
+    const resultMeta = JSON.parse(
+      (completedCall![1] as unknown[])[6] as string,
+    );
+    // The page-level branches are what did not run: the host-level ones do
+    // not depend on any individual page being fetchable, so they are not
+    // reported as incomplete just because a page was unreachable.
+    expect(resultMeta.incomplete).toEqual(["osv-libraries"]);
   });
 });

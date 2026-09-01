@@ -11,6 +11,7 @@ import {
   checkPasswordRequirements,
   passwordRequirementsMet,
   unmetRequirementLabels,
+  meetsMinimumPasswordScore,
 } from "@/lib/auth/password-strength";
 import {
   profileNameChangedEmail,
@@ -175,6 +176,13 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
+    // Set when the account's email address actually changes. Changing the
+    // login identifier is as much of a takeover-relevant event as changing
+    // the password, so it rotates sessions and trusted devices the same way
+    // (handled after the password branch below, which already does its own
+    // rotation and returns early).
+    let emailChanged = false;
+
     // Update email
     if (typeof email === "string") {
       const trimmedEmail = email.toLowerCase().trim();
@@ -208,6 +216,7 @@ export async function PATCH(request: NextRequest) {
           "UPDATE users SET email = $1, email_verified_at = NULL, updated_at = NOW() WHERE id = $2",
           [trimmedEmail, session.userId],
         );
+        emailChanged = true;
 
         // Send a verification link to the new address immediately. Without
         // this the account was left with email_verified_at NULL and no token
@@ -299,7 +308,7 @@ export async function PATCH(request: NextRequest) {
       // signup and reset-password -- the profile change was the one path that
       // let a user rotate to "Password1!".
       const pwAnalysis = analyzePassword(newPassword);
-      if (pwAnalysis.score < 3) {
+      if (!meetsMinimumPasswordScore(pwAnalysis.score)) {
         return NextResponse.json(
           {
             error:
@@ -406,6 +415,43 @@ export async function PATCH(request: NextRequest) {
       "SELECT id, email, name, avatar_url FROM users WHERE id = $1",
       [session.userId],
     );
+
+    // session: an email change rotates sessions and trusted devices too.
+    // Only the password branch above used to do this, so an attacker holding
+    // a stolen cookie could move the account to their own address and keep
+    // every other session (and every device_trust row that skips 2FA) alive
+    // for the full session TTL. Reached only when no password was changed:
+    // that branch returns above after doing exactly this.
+    if (emailChanged) {
+      await deleteAllSessions(session.userId);
+      await pool.query("DELETE FROM device_trust WHERE user_id = $1", [
+        session.userId,
+      ]);
+      const uaForSession = await getUserAgent();
+      const newSessionId = await createSession(
+        session.userId,
+        ip,
+        uaForSession,
+      );
+      const response = NextResponse.json({
+        userId: updated.rows[0].id,
+        email: updated.rows[0].email,
+        name: updated.rows[0].name,
+        avatarUrl: updated.rows[0].avatar_url || null,
+        message:
+          "Profile updated successfully. All other sessions have been signed out for security.",
+        sessionInvalidated: true,
+      });
+      const sessionMaxAgeDays = await getSetting("SESSION_MAX_AGE_DAYS");
+      response.cookies.set(AUTH_SESSION_COOKIE_NAME, newSessionId, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: sessionMaxAgeDays * 24 * 60 * 60,
+      });
+      return response;
+    }
 
     return NextResponse.json({
       userId: updated.rows[0].id,

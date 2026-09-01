@@ -13,10 +13,15 @@ const badgeVariants = cva(
         destructive:
           "border-transparent bg-destructive text-destructive-foreground",
         outline: "text-foreground",
-        info: "border-transparent bg-blue-500/10 text-blue-600",
-        success: "border-transparent bg-green-500/10 text-green-600",
-        warning: "border-transparent bg-amber-500/10 text-amber-600",
-        error: "border-transparent bg-red-500/10 text-red-600",
+        // info / success / warning / error used to live here as
+        // bg-blue-500/10 text-blue-600 and friends: the only primitive in
+        // components/ui that painted from the raw Tailwind palette instead
+        // of the theme tokens, and the only one with no dark-mode variant,
+        // so text-blue-600 on a dark card was close to unreadable. They had
+        // zero call sites across app/ and components/ (status colour is done
+        // with the --severity-* and --success/--warning tokens everywhere it
+        // actually happens), so they are removed rather than re-tokenised:
+        // adding a fifth way to paint a status was the problem.
       },
     },
     defaultVariants: {

@@ -16,6 +16,8 @@
  * `<checkId>--<urlHash>` (see lib/scanner/_helpers.ts's generateId) that the
  * same check produces again for the same URL on every later scan, which is
  * what makes "is this the same finding as last time" answerable at all.
+ * Identity alone is not the whole answer, though: the id carries no severity,
+ * so the severity of each matched finding is compared separately below.
  *
  * "New" is relative to the most recent prior *completed* scan of the exact
  * same (normalized) URL for the same user -- the same row a hand-triggered
@@ -118,11 +120,37 @@ export async function checkForNewCriticalOrHighFindings(
     (f) => f.id,
   );
 
-  const newFindings = added.filter(
-    (f) => isCriticalOrHigh(f) && !suppressedIds.has(f.id),
+  // Severity is not part of the finding id, and several checks decide severity
+  // per run rather than declaring one: page-cookie-missing-secure, for
+  // instance, is high when the cookie looks session-like and medium
+  // otherwise. So a site that adds a session cookie without Secure produces a
+  // finding whose id is byte-identical to the previous scan's medium one, the
+  // id-only diff files it under "unchanged", and the alert that exists
+  // precisely to report a new high never fires. Compare the severity too: a
+  // finding that climbed into critical/high since the last scan is new
+  // information about this site, which is the whole point of the feature.
+  // ref: AUDIT-009#regression-01
+  const previousSeverityById = new Map(
+    previousFindings.map((f) => [f.id, f.severity] as const),
   );
+  const escalated = unchanged.filter((f) => {
+    if (!isCriticalOrHigh(f)) return false;
+    const before = previousSeverityById.get(f.id);
+    return before !== undefined && before !== "critical" && before !== "high";
+  });
+  const escalatedIds = new Set(escalated.map((f) => f.id));
+
+  const newFindings = [
+    ...added.filter((f) => isCriticalOrHigh(f) && !suppressedIds.has(f.id)),
+    ...escalated.filter((f) => !suppressedIds.has(f.id)),
+  ];
+  // An escalated finding is reported as new, so it must not also be listed as
+  // "still outstanding" in the same email.
   const outstandingFindings = unchanged.filter(
-    (f) => isCriticalOrHigh(f) && !suppressedIds.has(f.id),
+    (f) =>
+      isCriticalOrHigh(f) &&
+      !suppressedIds.has(f.id) &&
+      !escalatedIds.has(f.id),
   );
 
   return {

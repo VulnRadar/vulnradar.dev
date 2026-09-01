@@ -1,0 +1,32 @@
+[
+  {
+    "icon": "Palette",
+    "label": "The AI Verification Result Panel Has Its Edges Back",
+    "desc": "The panel that appears after AI re-checks a scan's findings had lost its outline: its border was the only thing separating it from the page behind it, and a theme change earlier in this release made that border almost the same colour as the panel itself. It rendered as text floating on the page with nothing around it. The panel now uses the theme's high-contrast outline colour and a deeper shadow, so it reads as a card again in both light and dark mode.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Users",
+    "label": "One Team Picker Instead Of One Menu Row Per Team",
+    "desc": "The scan actions menu used to add a separate row for every team you could share a scan with, so a few teams pushed every other action out of sight. There is now a single \"Share with a team\" entry that opens a picker listing your teams, showing which one the scan is already shared with and letting you stop sharing from the same place.",
+    "category": "changed"
+  },
+  {
+    "icon": "Timer",
+    "label": "Share Links Can Now Expire",
+    "desc": "Share links were permanent with no way to see that or change it. The share dialog now offers Never, 7, 30 or 90 days, shows the exact date an existing link stops working, and lets you clear the expiry or issue a fresh link if the old one already lapsed.",
+    "category": "added"
+  },
+  {
+    "icon": "Layout",
+    "label": "Badge Is Back In The Navigation Bar",
+    "desc": "The Badge page was dropped from the top navigation when the Developer entry was added. Both are there now, with slightly tighter spacing between the links so they still fit on smaller laptop screens.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Filter",
+    "label": "\"File As GitHub Issue\" Only Shows When You Can Use It",
+    "desc": "The scan actions menu offered to file findings as a GitHub issue whether or not you had a GitHub account connected. Without a connection the action could only ever end in an error, so it is now hidden until GitHub is connected.",
+    "category": "fixed"
+  }
+]

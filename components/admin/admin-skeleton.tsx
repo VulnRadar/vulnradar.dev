@@ -1,19 +1,25 @@
 import { Header } from "@/components/scanner/header";
 import { Footer } from "@/components/scanner/footer";
-import { StatBarSkeleton, DataTableSkeleton } from "@/components/admin/shared";
+import { HealthCardSkeleton } from "@/components/admin/shared";
 
 /**
- * Mirrors AdminContent's real layout (title, grouped sidebar nav, stat
- * bars, user table) so the route-level loading.tsx and the client
- * component's own pre-fetch state render the same shape instead of a
+ * Mirrors AdminContent's real layout (title, grouped sidebar nav, the System
+ * Health card the panel lands on) so the route-level loading.tsx and the
+ * client component's own pre-fetch state render the same shape instead of a
  * spinner followed by a differently-shaped skeleton.
+ *
+ * The body used to be two stat bars over an eight-row user table. That was
+ * the shape of the old landing tab: Overview has been the landing tab since
+ * AUDIT-014#qols-02, so the skeleton drew counters and a table, then a status
+ * list arrived in their place. The width was stale for the same reason,
+ * max-w-7xl against the page's max-w-6xl, so the content edge jumped too.
  */
 export function AdminSkeleton() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Header />
       <main
-        className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-8"
+        className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-8"
         role="status"
         aria-live="polite"
         aria-label="Loading admin panel"
@@ -37,11 +43,9 @@ export function AdminSkeleton() {
             ))}
           </div>
 
-          {/* Stat bars + user table */}
+          {/* Overview: the System Health card, header over a status list */}
           <div className="flex-1 min-w-0 flex flex-col gap-6">
-            <StatBarSkeleton segments={5} />
-            <StatBarSkeleton segments={5} />
-            <DataTableSkeleton rows={8} />
+            <HealthCardSkeleton />
           </div>
         </div>
       </main>

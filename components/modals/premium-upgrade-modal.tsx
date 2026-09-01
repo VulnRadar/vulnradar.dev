@@ -17,7 +17,7 @@ import {
   BILLING_ENABLED,
   BILLING_PLAN_LIMITS,
   BILLING_HISTORY_RETENTION,
-} from "@/lib/config/constants";
+} from "@/lib/config/client-constants";
 import { PLANS } from "@/lib/billing/plans";
 
 export interface PremiumFeature {

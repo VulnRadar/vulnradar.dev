@@ -18,7 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/ui/utils";
-import { SEVERITY_LEVELS } from "@/lib/config/constants";
+import { SEVERITY_LEVELS } from "@/lib/config/client-constants";
 import { severityTone } from "@/components/scanner/severity-badge";
 import { SeverityPill } from "./severity-pill";
 import { ScanTags } from "./scan-tags";
@@ -28,14 +28,15 @@ import {
   formatDate,
   getDomain,
   displayUrl,
+  type TagMutationResult,
 } from "./history-types";
 
 interface HistoryScanRowProps {
   scan: ScanRecord;
   onView: (scan: ScanRecord) => void;
   onRescan: (scan: ScanRecord) => void;
-  onAddTag: (scanId: string | number, tag: string) => void;
-  onRemoveTag: (scanId: string | number, tag: string) => void;
+  onAddTag: (scanId: string | number, tag: string) => TagMutationResult;
+  onRemoveTag: (scanId: string | number, tag: string) => TagMutationResult;
   rescanning: boolean;
 }
 
@@ -71,6 +72,17 @@ export function HistoryScanRow({
             ? "low"
             : "info";
 
+  const worstCount =
+    critical > 0
+      ? critical
+      : high > 0
+        ? high
+        : medium > 0
+          ? medium
+          : low > 0
+            ? low
+            : info;
+
   const tone = severityTone(worst);
 
   return (
@@ -85,7 +97,7 @@ export function HistoryScanRow({
           onView(scan);
         }
       }}
-      className="group relative flex cursor-pointer flex-col gap-3 border-l-2 border-transparent py-3.5 pl-4 pr-4 transition-colors hover:bg-muted/30 focus-visible:bg-muted/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:grid sm:grid-cols-[auto_1fr_auto_auto_auto_auto] sm:items-center sm:gap-4"
+      className="group relative flex cursor-pointer flex-col gap-3 border-l-2 border-transparent py-3.5 pl-4 pr-16 sm:pr-4 transition-colors hover:bg-muted/30 focus-visible:bg-muted/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:grid sm:grid-cols-[auto_1fr_auto_auto_auto_auto] sm:items-center sm:gap-4"
       style={{
         borderLeftColor: isClean
           ? "hsl(var(--success))"
@@ -195,15 +207,22 @@ export function HistoryScanRow({
         </span>
       </div>
 
-      {/* Actions - desktop only */}
-      <div className="hidden sm:flex items-center justify-end w-12 shrink-0">
+      {/* Actions. This used to be `hidden sm:flex`, so on a phone the row had
+          no actions at all: no rescan, no open-URL, no view-details, only the
+          row body. And above sm the trigger was opacity-0 until hover, which
+          a touch device never produces. Both are fixed by rendering it at
+          every width and only hiding it behind hover from sm up, which is
+          what components/shares/shares-row.tsx already does. On mobile it
+          sits in its own absolutely-positioned corner so it does not disturb
+          the stacked layout. */}
+      <div className="absolute right-3 top-3 flex items-center justify-end sm:static sm:w-12 sm:shrink-0">
         <DropdownMenu>
           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
             <Button
               variant="ghost"
               size="sm"
               aria-label="Scan actions"
-              className="h-8 w-8 p-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+              className="h-11 w-11 p-0 transition-opacity sm:h-8 sm:w-8 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 sm:focus-visible:opacity-100 sm:data-[state=open]:opacity-100"
             >
               <MoreHorizontal className="h-4 w-4" />
             </Button>
@@ -219,8 +238,10 @@ export function HistoryScanRow({
               View details
             </DropdownMenuItem>
             <DropdownMenuItem
+              disabled={rescanning}
               onClick={(e) => {
                 e.stopPropagation();
+                if (rescanning) return;
                 onRescan(scan);
               }}
             >
@@ -242,8 +263,10 @@ export function HistoryScanRow({
         </DropdownMenu>
       </div>
 
-      {/* Mobile: meta row */}
-      <div className="flex sm:hidden items-center justify-between text-xs text-muted-foreground ml-12">
+      {/* Mobile: meta row. The findings total alone did not say whether a row
+          was worth opening, so the worst severity present is named beside it:
+          "3 findings, worst high" is a triage signal, "3 findings" is not. */}
+      <div className="flex sm:hidden items-center justify-between gap-2 text-xs text-muted-foreground ml-12">
         <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           {scan.source === "api" ? "API" : "Web"}
         </span>
@@ -259,6 +282,7 @@ export function HistoryScanRow({
           <span className={cn("font-medium", tone.text)}>
             {scan.findings_count}{" "}
             {scan.findings_count === 1 ? "finding" : "findings"}
+            {worstCount > 0 && `, ${worstCount} ${worst}`}
           </span>
         )}
       </div>

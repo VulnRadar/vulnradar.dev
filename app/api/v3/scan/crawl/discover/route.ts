@@ -8,8 +8,18 @@ import {
   API_KEY_SCOPES,
 } from "@/lib/api/api-key-scopes";
 import { BEARER_PREFIX } from "@/lib/config/constants";
-import { getSettings } from "@/lib/config/runtime-config";
+import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import { discoverPages } from "@/lib/scanner/crawl-discovery";
+import { isUrlOwnedByUser } from "@/lib/domains/scope";
+import { establishScanSession } from "@/lib/scanner/auth/login";
+import {
+  buildAuthRequestSchema,
+  toEphemeralAuth,
+} from "@/lib/scanner/auth/request-schema";
+import type {
+  EphemeralAuthInput,
+  ScanSessionBinding,
+} from "@/lib/scanner/auth/types";
 
 export async function POST(request: NextRequest) {
   // Allow either session-based auth or API key (Bearer)
@@ -53,6 +63,13 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Both branches above either return early or assign userId; this guard only
+  // exists so TypeScript can treat it as a plain number from here on (the
+  // verified-domain check below takes one).
+  if (userId === null) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const rl = await checkRateLimit({
     key: `crawl-discover:${userId}`,
     ...RATE_LIMITS.scan,
@@ -64,10 +81,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { url } = await request.json();
+  const body = await request.json();
+  const url = body?.url;
   if (!url || typeof url !== "string") {
     return NextResponse.json({ error: "URL is required" }, { status: 400 });
   }
+  // Optional login for discovery. Without it the picker could only ever list
+  // what a signed-out visitor reaches, so an authenticated deep scan covered
+  // the marketing site and nothing behind the login. Same schema, same admin
+  // toggle, and same verified-domain gate on form logins as POST
+  // /api/v3/scan/crawl -- see that route for why form auth is gated and header
+  // and cookie auth are not. AUDIT-011#drift-21.
+  const authRequested = body?.auth != null && typeof body.auth === "object";
   // scanner: per-URL length cap shared with scan/route.ts.
   const {
     MAX_URL_LENGTH: maxUrlLength,
@@ -103,15 +128,99 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Parse and gate the optional auth block, then establish the session. All of
+  // this happens after the URL checks above so a malformed request never pays
+  // for a login attempt. Credential material lives only in these locals: it is
+  // never persisted, logged, or echoed back, exactly as on the scan routes.
+  let scanSession: ScanSessionBinding | undefined;
+  if (authRequested) {
+    const scanAuthEnabled = await getSetting("SCAN_AUTH_ENABLED");
+    if (!scanAuthEnabled) {
+      return NextResponse.json(
+        { error: "Authenticated scanning is disabled on this deployment." },
+        { status: 403 },
+      );
+    }
+    // Prepend https:// to a bare-domain loginUrl before the schema's
+    // z.string().url() check sees it, the same gap-fix the two scan routes
+    // apply. Inlined rather than importing normalizeUrl from
+    // lib/scanner/execute-scan: that module pulls the whole check engine and
+    // the email stack in behind it, which is a lot of graph for a discovery
+    // request that runs no checks and sends no mail.
+    const authBody = body.auth as Record<string, unknown>;
+    const rawLoginUrl = authBody.loginUrl;
+    if (typeof rawLoginUrl === "string" && rawLoginUrl.trim() !== "") {
+      const trimmed = rawLoginUrl.trim();
+      authBody.loginUrl = /^[a-z]+:\/\//i.test(trimmed)
+        ? trimmed
+        : `https://${trimmed}`;
+    }
+    const { SCAN_AUTH_MAX_SECRET_LENGTH, SCAN_AUTH_MAX_COOKIES } =
+      await getSettings([
+        "SCAN_AUTH_MAX_SECRET_LENGTH",
+        "SCAN_AUTH_MAX_COOKIES",
+      ] as const);
+    const parsedAuth = buildAuthRequestSchema({
+      maxSecretLength: SCAN_AUTH_MAX_SECRET_LENGTH,
+      maxCookies: SCAN_AUTH_MAX_COOKIES,
+    }).safeParse(body.auth);
+    if (!parsedAuth.success) {
+      return NextResponse.json(
+        { error: parsedAuth.error.issues[0]?.message || "Invalid auth block." },
+        { status: 400 },
+      );
+    }
+    const ephemeralAuth: EphemeralAuthInput = toEphemeralAuth(parsedAuth.data);
+    // A form login POSTs the caller's username and password to the target's
+    // own login page and reports back whether they were accepted, which is a
+    // credential-stuffing oracle unless the caller has proven they control the
+    // domain. Header and cookie auth stay ungated: the caller already holds
+    // that session.
+    if (
+      ephemeralAuth.method === "form" &&
+      !(await isUrlOwnedByUser(startUrl.href, userId))
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "A form login submits the username and password you supply to the target's own login page, so it requires a verified domain. Verify ownership of this domain (or its parent) in Profile > Domains, or use header or cookie authentication with a session you already hold.",
+          statusCode: "DOMAIN_NOT_VERIFIED",
+        },
+        { status: 403 },
+      );
+    }
+    const loginResult = await establishScanSession(
+      ephemeralAuth,
+      startUrl.href,
+    );
+    if (!loginResult.ok) {
+      // The reason string is non-secret by construction (see
+      // lib/scanner/auth/login.ts); no credential material reaches it.
+      return NextResponse.json(
+        {
+          error: `Could not sign in to discover pages: ${loginResult.reason}`,
+          statusCode: "AUTH_FAILED",
+        },
+        { status: 422 },
+      );
+    }
+    scanSession = loginResult.session;
+  }
+
   // Same-origin, SSRF-safe discovery: sitemap URLs (index + robots directive)
   // plus a depth-bounded link crawl, all pinned to the entry hostname so no
   // subdomain or cross-host URL can ever enter the list. Shared with the crawl
-  // scan job so the picker surfaces exactly the pages a scan would cover.
-  const urls = await discoverPages(startUrl.href, {
-    maxPages,
-    fetchTimeoutMs,
-    maxBodySize,
-  });
+  // scan job so the picker surfaces exactly the pages a scan would cover. The
+  // session, when present, is attached by safeFetch to same-origin hops only.
+  const urls = await discoverPages(
+    startUrl.href,
+    {
+      maxPages,
+      fetchTimeoutMs,
+      maxBodySize,
+    },
+    scanSession,
+  );
 
   return NextResponse.json({ urls });
 }

@@ -7,7 +7,7 @@ import { cn } from "@/lib/ui/utils";
 import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
 import { useAuth } from "@/components/providers/auth-provider";
 import { getCrawlPageSelectionLimit } from "@/lib/billing/crawl-page-limits";
-import { BILLING_ENABLED } from "@/lib/config/constants";
+import { BILLING_ENABLED } from "@/lib/config/client-constants";
 
 interface CrawlUrlSelectorProps {
   urls: string[];
@@ -104,7 +104,7 @@ export function CrawlUrlSelector({
       />
 
       <div
-        className="relative flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-md border border-border bg-card shadow-lg"
+        className="relative flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-lg border border-border bg-card shadow-lg"
         {...crawlDialogProps}
       >
         <div className="flex items-start gap-3 border-b border-border px-5 py-4">
@@ -125,7 +125,7 @@ export function CrawlUrlSelector({
             type="button"
             onClick={onCancel}
             className={cn(
-              "-mr-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+              "-mr-1 inline-flex h-11 w-11 sm:h-7 sm:w-7 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
               FOCUS_RING,
             )}
             aria-label="Close"

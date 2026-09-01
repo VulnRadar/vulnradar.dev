@@ -181,6 +181,80 @@ describe("checkForNewCriticalOrHighFindings", () => {
     expect(result.outstandingFindings).toEqual([]);
   });
 
+  // ── Severity escalation (AUDIT-009#regression-01) ───────────────────────
+  //
+  // The finding id is <checkId>--<urlHash> with no severity component, and
+  // several checks pick their severity per run. An id-only diff therefore
+  // filed a finding that climbed from medium to high under "unchanged" and
+  // never alerted, which is exactly the event the feature exists to report.
+
+  it("treats a finding that escalated into high since the last scan as new", async () => {
+    const before = finding({ id: "cookie--x", severity: "medium" });
+    const after = finding({ id: "cookie--x", severity: "high" });
+    installQueryMock({ previousFindings: [before] });
+
+    const result = await checkForNewCriticalOrHighFindings({
+      userId: 1,
+      url: "https://example.com",
+      scanId: 2,
+      currentFindings: [after],
+    });
+
+    expect(result.hasNewCriticalOrHigh).toBe(true);
+    expect(result.newFindings.map((f) => f.id)).toEqual(["cookie--x"]);
+    // Reported once, as new -- not also as "still outstanding".
+    expect(result.outstandingFindings).toEqual([]);
+  });
+
+  it("does not re-alert a finding that was already high last scan", async () => {
+    const same = finding({ id: "cookie--x", severity: "high" });
+    installQueryMock({ previousFindings: [same] });
+
+    const result = await checkForNewCriticalOrHighFindings({
+      userId: 1,
+      url: "https://example.com",
+      scanId: 2,
+      currentFindings: [same],
+    });
+
+    expect(result.hasNewCriticalOrHigh).toBe(false);
+    expect(result.outstandingFindings.map((f) => f.id)).toEqual(["cookie--x"]);
+  });
+
+  it("does not alert on a finding that dropped out of critical/high", async () => {
+    installQueryMock({
+      previousFindings: [finding({ id: "cookie--x", severity: "high" })],
+    });
+
+    const result = await checkForNewCriticalOrHighFindings({
+      userId: 1,
+      url: "https://example.com",
+      scanId: 2,
+      currentFindings: [finding({ id: "cookie--x", severity: "medium" })],
+    });
+
+    expect(result.hasNewCriticalOrHigh).toBe(false);
+    expect(result.newFindings).toEqual([]);
+  });
+
+  it("keeps an escalated finding suppressed when the user marked it a false positive", async () => {
+    installQueryMock({
+      previousFindings: [finding({ id: "cookie--x", severity: "medium" })],
+      suppressedFindingIds: ["cookie--x"],
+    });
+
+    const result = await checkForNewCriticalOrHighFindings({
+      userId: 1,
+      url: "https://example.com",
+      scanId: 2,
+      currentFindings: [finding({ id: "cookie--x", severity: "high" })],
+    });
+
+    expect(result.hasNewCriticalOrHigh).toBe(false);
+    expect(result.newFindings).toEqual([]);
+    expect(result.outstandingFindings).toEqual([]);
+  });
+
   it("scopes the previous-scan lookup to the same user, URL, and status='completed', excluding the current scan id", async () => {
     installQueryMock({ previousFindings: [] });
 

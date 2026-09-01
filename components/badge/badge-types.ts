@@ -1,5 +1,6 @@
 import type { Vulnerability } from "@/lib/scanner/types";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
+import { SEVERITY_TONE } from "@/components/scanner/severity-badge";
 
 export interface ScanEntry {
   id: number;
@@ -22,25 +23,48 @@ export interface ScanEntry {
   };
 }
 
+/**
+ * The badge page rates a whole scan safe/caution/unsafe rather than one
+ * finding, and it used to paint that with its own red-500/amber-500/
+ * emerald-500 scale. That was a second severity scale beside the single source
+ * of truth in components/scanner/severity-badge.tsx, so /badge could rate a
+ * scan on colours that drift from the real ones, and raw palette colours do
+ * not follow the theme at all. unsafe and caution map onto the real scale;
+ * "safe" has no severity equivalent, so it uses --success, the token the rest
+ * of the product already uses for a clean result.
+ */
+const RATING_TONE = {
+  unsafe: {
+    text: SEVERITY_TONE.critical.text,
+    surface: SEVERITY_TONE.critical.surface,
+    label: "Unsafe",
+  },
+  caution: {
+    text: SEVERITY_TONE.medium.text,
+    surface: SEVERITY_TONE.medium.surface,
+    label: "Caution",
+  },
+  safe: {
+    text: "text-[hsl(var(--success))]",
+    surface: "bg-[hsl(var(--success))]/10",
+    label: "Safe",
+  },
+} as const;
+
+function ratingTone(scan: ScanEntry) {
+  return RATING_TONE[getSafetyRating(scan.findings || [])];
+}
+
 export function getSeverityColor(scan: ScanEntry) {
-  const rating = getSafetyRating(scan.findings || []);
-  if (rating === "unsafe") return "text-red-500";
-  if (rating === "caution") return "text-amber-500";
-  return "text-emerald-500";
+  return ratingTone(scan).text;
 }
 
 export function getSeverityBg(scan: ScanEntry) {
-  const rating = getSafetyRating(scan.findings || []);
-  if (rating === "unsafe") return "bg-red-500/10";
-  if (rating === "caution") return "bg-amber-500/10";
-  return "bg-emerald-500/10";
+  return ratingTone(scan).surface;
 }
 
 export function getSeverityLabel(scan: ScanEntry) {
-  const rating = getSafetyRating(scan.findings || []);
-  if (rating === "unsafe") return "Unsafe";
-  if (rating === "caution") return "Caution";
-  return "Safe";
+  return ratingTone(scan).label;
 }
 
 // Canonical relative-time formatter (see lib/ui/relative-time.ts).

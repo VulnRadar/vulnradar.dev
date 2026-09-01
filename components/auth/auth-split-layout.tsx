@@ -6,7 +6,7 @@ import {
   BILLING_HISTORY_RETENTION,
   BILLING_PLAN_LIMITS,
   TOTAL_CHECKS_LABEL,
-} from "@/lib/config/constants";
+} from "@/lib/config/client-constants";
 import {
   ResponseReadout,
   type ResponseReadoutRow,

@@ -59,24 +59,35 @@ export async function GET(request: NextRequest) {
 
   try {
     const whereClause = search
-      ? "WHERE message ILIKE $1 OR detail ILIKE $1"
+      ? "WHERE message ILIKE $1 ESCAPE '\\' OR detail ILIKE $1 ESCAPE '\\'"
       : "";
-    const whereParams = search ? [`%${search}%`] : [];
+    // Escape LIKE metacharacters so the search is exact-substring, not a
+    // pattern. Without this a literal "_" matches any character and a bare
+    // "%" degrades to a full scan of system_error_logs, one of the
+    // highest-volume tables in the schema. Same one-liner the user and team
+    // searches use (app/api/v3/admin/route.ts, admin/teams/route.ts).
+    const whereParams = search
+      ? [`%${search.replace(/[\\%_]/g, "\\$&")}%`]
+      : [];
 
-    const countRes = await pool.query<{ count: string }>(
-      `SELECT COUNT(*) FROM system_error_logs ${whereClause}`,
-      whereParams,
-    );
-    const total = parseInt(countRes.rows[0]?.count || "0", 10);
-    const totalPages = Math.max(1, Math.ceil(total / limit));
-
-    const rowsRes = await pool.query<ErrorLogRow>(
-      `SELECT id, message, detail, created_at FROM system_error_logs
+    // perf: COUNT(*) scans the whole matching set regardless of the sibling
+    // LIMIT, so running it before the page query doubled the wall time of
+    // every keystroke-driven reload. They are independent: run them together.
+    const [countRes, rowsRes] = await Promise.all([
+      pool.query<{ count: string }>(
+        `SELECT COUNT(*) FROM system_error_logs ${whereClause}`,
+        whereParams,
+      ),
+      pool.query<ErrorLogRow>(
+        `SELECT id, message, detail, created_at FROM system_error_logs
        ${whereClause}
        ORDER BY created_at DESC
        LIMIT $${whereParams.length + 1} OFFSET $${whereParams.length + 2}`,
-      [...whereParams, limit, offset],
-    );
+        [...whereParams, limit, offset],
+      ),
+    ]);
+    const total = parseInt(countRes.rows[0]?.count || "0", 10);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
 
     return NextResponse.json({
       logs: rowsRes.rows,

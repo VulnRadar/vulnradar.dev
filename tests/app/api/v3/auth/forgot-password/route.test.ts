@@ -20,6 +20,9 @@ const rateLimitCounts = new Map<string, number>();
 const knownUsers = new Map<string, { id: number; totp_enabled: boolean }>();
 let tokenDeleteCalls: unknown[][] = [];
 let tokenInsertCalls: unknown[][] = [];
+// Admin overrides the route's rate limits should resolve through, exactly as a
+// real system_settings row would.
+let systemSettingsRows: { key: string; value: string }[] = [];
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   const s = sql.trim();
@@ -34,7 +37,7 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     return { rows: [{ count: String(next) }] };
   }
   if (s.startsWith("SELECT key, value FROM system_settings"))
-    return { rows: [] };
+    return { rows: systemSettingsRows };
   if (s.startsWith("SELECT id, totp_enabled FROM users WHERE email = $1")) {
     const row = knownUsers.get(params[0] as string);
     return { rows: row ? [row] : [] };
@@ -99,6 +102,7 @@ beforeEach(async () => {
   knownUsers.clear();
   tokenDeleteCalls = [];
   tokenInsertCalls = [];
+  systemSettingsRows = [];
   invalidateSettingsCache();
 });
 
@@ -204,6 +208,30 @@ describe("POST /api/v3/auth/forgot-password", () => {
 
     const res = await POST(
       forgotRequest({ email: "Account-Owner@Example.com" }),
+    );
+
+    expect(res.status).toBe(429);
+    expect(tokenInsertCalls).toHaveLength(0);
+  });
+
+  // AUDIT-014#magic-08: this bucket was two inline literals, so an operator
+  // tightening every limiter in the admin panel during a reset flood left the
+  // per-email counter at its compiled value.
+  it("resolves the per-email reset cap from the admin setting, not a compiled literal", async () => {
+    systemSettingsRows = [
+      { key: "RATE_LIMIT_FORGOT_PASSWORD_EMAIL_ATTEMPTS", value: "1" },
+    ];
+    invalidateSettingsCache();
+    knownUsers.set("account-owner@example.com", {
+      id: 55,
+      totp_enabled: false,
+    });
+    // One prior attempt is under the shipped cap of 3, but at the admin's
+    // tightened cap of 1 the next request must be refused.
+    rateLimitCounts.set("forgot-email:account-owner@example.com", 1);
+
+    const res = await POST(
+      forgotRequest({ email: "account-owner@example.com" }),
     );
 
     expect(res.status).toBe(429);

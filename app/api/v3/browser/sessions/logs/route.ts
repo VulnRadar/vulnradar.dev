@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { BROWSERBASE_ENABLED } from "@/lib/config/constants";
+import { BROWSERBASE_ENABLED } from "@/lib/config/server-constants";
 import {
   BrowserBaseError,
   getBrowserSessionLogs,

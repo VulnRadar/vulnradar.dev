@@ -1,26 +1,44 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Tag, Sparkles, Plus, X } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
-import type { ScanTag } from "./history-types";
+import { CONFIG_MAX_TAG_LENGTH } from "@/lib/config/config-values";
+import type { ScanTag, TagMutationResult } from "./history-types";
 
 /**
- * scan_tags.tag is VARCHAR(50) in the database (see instrumentation.ts).
- * The server truncates to the live, admin-configurable MAX_TAG_LENGTH
- * setting (30 by default) rather than rejecting an overlong tag, so this
- * is a client-side sanity check against the hard column limit, not a
- * substitute for that server-side truncation.
+ * scan_tags.tag is VARCHAR(50) in the database (see instrumentation.ts). This
+ * is the hard column guard, nothing more.
  */
 const MAX_CLIENT_TAG_LENGTH = 50;
+
+/**
+ * What the server will actually keep. app/api/v3/scan/tags/route.ts does not
+ * reject an overlong tag, it silently truncates to the MAX_TAG_LENGTH setting,
+ * so a 45-character tag used to be accepted by this form, sent, shortened, and
+ * come back as a different string than the user typed, right after the error
+ * copy had promised them 50 characters were fine.
+ *
+ * This is the value the deployment ships with, not the live admin-editable
+ * one: /api/v3/config/client does not carry MAX_TAG_LENGTH yet. An admin who
+ * lowers the setting can still truncate a tag that this form accepted, which
+ * is why the copy below says the limit is where tags get shortened rather than
+ * promising a number as a hard rule.
+ */
+const SERVER_TAG_LENGTH = CONFIG_MAX_TAG_LENGTH;
 
 interface ScanTagsProps {
   // Opaque public_id (History list) or a numeric id (the dashboard's
   // just-completed result). The tags route resolves either shape.
   scanId: string | number;
   tags: ScanTag[];
-  onAdd: (scanId: string | number, tag: string) => void;
-  onRemove: (scanId: string | number, tag: string) => void;
+  /** Both resolve to null when the change stuck, or to the message to show.
+   *  These used to be fire-and-forget: the input closed the instant it was
+   *  called and nothing awaited the request, so two racing writes could
+   *  leave the chip row disagreeing with the server with no error path to
+   *  notice it. */
+  onAdd: (scanId: string | number, tag: string) => TagMutationResult;
+  onRemove: (scanId: string | number, tag: string) => TagMutationResult;
   /** Hides the "+ Add tag" affordance until the row is hovered/focused. Default true. */
   revealOnHover?: boolean;
   /**
@@ -57,30 +75,55 @@ export function ScanTags({
   const [adding, setAdding] = useState(false);
   const [newTag, setNewTag] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  // a11y (SC 1.3.1 / 3.3.1): the tag-rejected message was tied to the input
+  // by nothing but sitting under it, so a screen-reader user typing an
+  // invalid tag got no announcement and no way to find out why nothing
+  // happened. aria-describedby links them and role="alert" announces it.
+  const errorId = useId();
 
   const userTagNames = new Set(
     tags.filter((t) => t.source === "user").map((t) => t.tag.toLowerCase()),
   );
 
-  function submitTag() {
+  async function submitTag() {
+    if (pending) return;
     const trimmed = newTag.trim();
     if (!trimmed) {
       setAdding(false);
       setNewTag("");
       return;
     }
-    if (trimmed.length > MAX_CLIENT_TAG_LENGTH) {
-      setError(`Keep tags under ${MAX_CLIENT_TAG_LENGTH} characters.`);
+    if (trimmed.length > SERVER_TAG_LENGTH) {
+      setError(
+        `Tags are shortened to ${SERVER_TAG_LENGTH} characters when saved.`,
+      );
       return;
     }
     if (userTagNames.has(trimmed.toLowerCase())) {
       setError("That tag is already on this scan.");
       return;
     }
-    onAdd(scanId, trimmed);
+    setPending(true);
+    const failure = await onAdd(scanId, trimmed);
+    setPending(false);
+    if (failure) {
+      // Keep the input open with the text in it, same reasoning as the
+      // notes editor: a closed input reads as a saved tag.
+      setError(failure);
+      return;
+    }
     setAdding(false);
     setNewTag("");
     setError(null);
+  }
+
+  async function removeTag(tag: string) {
+    if (pending) return;
+    setPending(true);
+    const failure = await onRemove(scanId, tag);
+    setPending(false);
+    if (failure) setError(failure);
   }
 
   return (
@@ -97,12 +140,13 @@ export function ScanTags({
             {!readOnly && (
               <button
                 type="button"
+                disabled={pending}
                 aria-label={`Dismiss auto tag ${t.tag}: not accurate for this scan`}
                 title="Tell us this tag is wrong for this scan"
-                className="ml-0.5 hover:text-destructive"
+                className="ml-0.5 hover:text-destructive disabled:opacity-50"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onRemove(scanId, t.tag);
+                  removeTag(t.tag);
                 }}
               >
                 <X className="h-2.5 w-2.5" aria-hidden />
@@ -119,11 +163,12 @@ export function ScanTags({
             {!readOnly && (
               <button
                 type="button"
+                disabled={pending}
                 aria-label={`Remove tag ${t.tag}`}
-                className="ml-0.5 hover:text-destructive"
+                className="ml-0.5 hover:text-destructive disabled:opacity-50"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onRemove(scanId, t.tag);
+                  removeTag(t.tag);
                 }}
               >
                 <X className="h-2.5 w-2.5" aria-hidden />
@@ -142,6 +187,8 @@ export function ScanTags({
             <input
               type="text"
               aria-label="Tag name"
+              aria-invalid={!!error}
+              aria-describedby={error ? errorId : undefined}
               value={newTag}
               onChange={(e) => {
                 setNewTag(e.target.value);
@@ -162,13 +209,20 @@ export function ScanTags({
               }}
               onBlur={submitTag}
               placeholder="tag"
-              maxLength={MAX_CLIENT_TAG_LENGTH}
-              className="w-20 text-base sm:text-[10px] px-1.5 py-0.5 rounded-md border border-primary/30 bg-background text-foreground focus:outline-hidden"
+              maxLength={Math.min(SERVER_TAG_LENGTH, MAX_CLIENT_TAG_LENGTH)}
+              disabled={pending}
+              className="w-20 text-base sm:text-[10px] px-1.5 py-0.5 rounded-md border border-primary/30 bg-background text-foreground focus:outline-hidden disabled:opacity-60"
               autoFocus
             />
           </span>
           {error && (
-            <span className="text-[10px] text-destructive">{error}</span>
+            <span
+              id={errorId}
+              role="alert"
+              className="text-[10px] text-destructive"
+            >
+              {error}
+            </span>
           )}
         </span>
       ) : (
@@ -176,9 +230,18 @@ export function ScanTags({
           type="button"
           aria-label="Add tag"
           className={cn(
-            "inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-md border border-dashed border-border text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors",
+            // a11y (target size): min-h-6 lifts the 18px-tall chip the
+            // comment below already measured up to the 24px floor without
+            // changing the type size or the dashed-chip look.
+            "inline-flex min-h-6 items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-md border border-dashed border-border text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors",
+            // opacity-0 hides the button but leaves it clickable, and a
+            // phone never hovers, so an invisible ~24x18px target sat
+            // directly under every history row's URL and ate the tap that
+            // was meant to open the scan. pointer-events-none is what
+            // actually takes it out of the way, restored the moment the row
+            // is hovered or focused.
             revealOnHover &&
-              "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100",
+              "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto",
           )}
           onClick={(e) => {
             e.stopPropagation();

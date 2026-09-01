@@ -20,7 +20,17 @@ name: Attach Release Artifacts
 #
 # Self-hosters verifying a release can do:
 #
-#   # Verify the source tarball
+#   # Verify the sums file itself FIRST, then the hashes in it. The sums
+#   # file and the artifacts it describes come from the same host, so on
+#   # its own it proves nothing; the cosign bundle is what anchors it.
+#   cosign verify-blob \
+#     --bundle sha256sums.txt.cert \
+#     --certificate-identity-regexp 'https://github.com/<owner>/vulnradar.dev' \
+#     --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+#     sha256sums.txt
+#
+#   # Verify the source tarball (and the extension zips + SBOMs, which are
+#   # covered by the signed sums file rather than signed individually)
 #   curl -sL https://github.com/<owner>/vulnradar.dev/releases/download/vX.Y.Z/sha256sums.txt | \
 #     sha256sum -c -
 #
@@ -112,7 +122,7 @@ jobs:
         # pin as ci.yml (Node 22 LTS, see package.json#engines).
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
-          node-version: "22"
+          node-version: "22.11.0"
 
       - name: Build + package browser extension
         # release: the workflow_run trigger does NOT check out the tagged
@@ -147,7 +157,27 @@ jobs:
           cd dist-chrome && zip -r "${ARTIFACT_DIR}/vulnradar-chrome-v${EXT_VERSION}.zip" . && cd ..
           cd dist-firefox && zip -r "${ARTIFACT_DIR}/vulnradar-firefox-v${EXT_VERSION}.zip" . && cd ..
 
-      - name: Download release artifacts (with retry)
+      - name: Generate extension SBOM (CycloneDX, JSON)
+        # release: docker-publish.yml's SBOM is generated against the server
+        # IMAGE, so it describes nothing about the two extension zips
+        # attached to this same release: separate package, separate
+        # lockfile, none of it inside the image. SECURITY.md calls the
+        # release SBOM a full bill of materials, which was only true of half
+        # the release. This scans the extension source tree (node_modules
+        # included, since npm ci has already run there) and writes into the
+        # same ARTIFACT_DIR, so the sha256sums step below picks it up with
+        # the *.cdx.json glob it already has.
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          path: ${{ runner.temp }}/extension-src/extension
+          format: cyclonedx-json
+          output-file: ${{ runner.temp }}/release-artifacts/vulnradar-extension-v${{ env.EXT_VERSION }}.sbom.cdx.json
+          # The file is attached to the release directly below; there is no
+          # second workflow that needs to download it as an Actions artifact.
+          upload-artifact: false
+
+      - name: Download image SBOM (with retry)
+        id: sbom_download
         # release: if the user publishes the release while docker-publish
         # is still running, the SBOM artifact may not exist yet. Retry
         # up to 5 times (5 minutes total) so the manual-publish flow
@@ -158,6 +188,17 @@ jobs:
         # separate "release-artifacts" bundle -- sbom-action generates
         # and uploads the SBOM itself; it never lands in the checkout
         # for a later step to re-upload under a different name.
+        #
+        # infra: only attempted on the workflow_run path. `run-id` reads
+        # github.event.workflow_run.id, which is EMPTY on the
+        # `release: published` trigger, so on the manual-publish path this
+        # step was asking for an artifact from run "" and failing every
+        # time. continue-on-error then swallowed it, `shopt -s nullglob`
+        # expanded *.cdx.json to nothing, and the release simply came out
+        # one asset short with a green tick. The `if` stops the impossible
+        # attempt; the check in "Build artifact list" below makes a genuine
+        # miss on the primary path loud instead of silent.
+        if: github.event_name == 'workflow_run'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: vulnradar-${{ steps.vars.outputs.tag }}.sbom.cdx.json
@@ -165,6 +206,9 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: ${{ runner.temp }}/downloaded
           # download-artifact v4 retries 5x with 10s delay on 404
+        # Kept so a genuine race (the artifact still uploading) does not
+        # abandon the whole release; the absence is reported below rather
+        # than ignored.
         continue-on-error: true
 
       - name: Install cosign
@@ -231,6 +275,20 @@ jobs:
             --bundle "vulnradar-${TAG}.tar.gz.cert" \
             "vulnradar-${TAG}.tar.gz"
 
+          # Sign the sums file too. Without this, sha256sums.txt was an
+          # unsigned manifest fetched from the same host as the artifacts it
+          # describes, so on a machine without cosign (lib/updater/cosign.ts
+          # soft-skips there, which it names as the common case) the
+          # "checksum verified" path compared a tarball against a file an
+          # attacker who could alter release assets would simply alter too.
+          # A signed sums file is the anchor that makes the checksum check
+          # mean something on its own: verify this bundle, then trust every
+          # hash in the file, including the extension zips and the SBOMs
+          # which are not individually signed.
+          cosign sign-blob --yes \
+            --bundle "sha256sums.txt.cert" \
+            "sha256sums.txt"
+
           # Move to workspace for the upload step.
           cp -v ./* "${GITHUB_WORKSPACE}/"
 
@@ -238,6 +296,7 @@ jobs:
         id: files
         env:
           TAG: ${{ steps.vars.outputs.tag }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           ARTIFACTS=()
           for f in \
@@ -245,13 +304,29 @@ jobs:
             "vulnradar-${TAG}.tar.gz.cert" \
             "vulnradar-chrome-v${EXT_VERSION}.zip" \
             "vulnradar-firefox-v${EXT_VERSION}.zip" \
-            "sha256sums.txt"; do
+            "vulnradar-extension-v${EXT_VERSION}.sbom.cdx.json" \
+            "sha256sums.txt" \
+            "sha256sums.txt.cert"; do
             if [ -f "$f" ]; then
               ARTIFACTS+=("$f")
             fi
           done
+          # SECURITY.md promises a CycloneDX SBOM with every tagged release,
+          # and this used to be the one place that could quietly not deliver
+          # one: the download above failed, nullglob swallowed the missing
+          # file, and the release shipped an asset short with nothing said.
+          # On the workflow_run path the image SBOM must exist, so its
+          # absence is a hard failure. On the manual release: published
+          # path it legitimately does not exist yet (the later workflow_run
+          # run attaches it), so that is a warning.
           if [ -f "vulnradar-${TAG}.sbom.cdx.json" ]; then
             ARTIFACTS+=("vulnradar-${TAG}.sbom.cdx.json")
+          elif [ "${EVENT_NAME}" = "workflow_run" ]; then
+            echo "::error::Image SBOM vulnradar-${TAG}.sbom.cdx.json is missing. docker-publish.yml uploaded no artifact under that name, so this release would ship without the SBOM SECURITY.md documents."
+            exit 1
+          else
+            echo "::warning::Image SBOM not attached on this manual-publish run; docker-publish.yml will attach it when it completes."
+            echo "Image SBOM not yet available on this run (manual publish)." >> "$GITHUB_STEP_SUMMARY"
           fi
           printf '%s\n' "${ARTIFACTS[@]}" > files.txt
           echo "Will attach:"
@@ -286,9 +361,20 @@ jobs:
             else
               echo "Initial release." > "${NOTES}"
             fi
+            # release: a tag with a suffix (v3.8.0-rc.1, v1.9.4-patch.1) is
+            # not a stable release. Without --prerelease it became the
+            # repository's "latest release", which is what
+            # app/api/version/route.ts polls, so every self-hosted instance
+            # was offered a release candidate or an old-line backport as an
+            # upgrade. GitHub excludes prereleases from /releases/latest.
+            PRERELEASE=""
+            case "${TAG}" in
+              *-*) PRERELEASE="--prerelease" ;;
+            esac
             gh release create "${TAG}" \
               --title "${TAG}" \
               --notes-file "${NOTES}" \
+              ${PRERELEASE} \
               ${ARTIFACTS}
             rm -f "${NOTES}"
           fi

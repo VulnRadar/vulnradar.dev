@@ -4,14 +4,17 @@ import {
   APP_URL,
   SUPPORT_EMAIL,
   LOGO_URL,
-  SMTP_HOST,
-  SMTP_PORT,
-  SMTP_USER,
-  SMTP_PASS,
-  SMTP_FROM,
+  NOREPLY_EMAIL,
 } from "@/lib/config/constants";
 import { STAFF_INVITE_EXPIRY_DAYS } from "@/lib/config/constants";
+import {
+  CONFIG_BILLING_VERIFY_CODE_EXPIRY_MINUTES,
+  CONFIG_EMAIL_2FA_CODE_EXPIRY_MINUTES,
+  CONFIG_TEAM_INVITE_EXPIRY_DAYS,
+} from "@/lib/config/config-values";
 import { BRAND } from "@/lib/config/brand";
+import { emailLayout, escapeHtml, MONO_STACK } from "@/lib/email/layout";
+import { getSetting } from "@/lib/config/runtime-config";
 
 // Named for the legacy call sites throughout this file. The values come from
 // lib/config/brand.ts (the single brand source of truth for email) rather than
@@ -45,6 +48,25 @@ const COLORS = {
   ACCENT_RED_PALE: BRAND.dangerPale,
   WHITE: BRAND.onPrimary,
 } as const;
+
+// SMTP CREDENTIALS
+//
+// These used to be declared in lib/config/constants.ts, which client
+// components import, so `process.env.SMTP_PASS` and its four siblings were
+// compiled into the root-layout client chunk as bare expression statements
+// and shipped on all 311 routes (AUDIT-012#fe-15). Nothing leaked -- Next
+// only inlines NEXT_PUBLIC_* into browser code, so they all evaluated to
+// undefined -- but the read sites were one careless rename away from being
+// real. They live here now, next to their only consumer: this module builds
+// the nodemailer transport, so it can never end up in a client bundle, and
+// there is no config module in between to carry them somewhere it could.
+const SMTP_HOST = process.env.SMTP_HOST || "";
+const SMTP_PORT = Number(process.env.SMTP_PORT) || 587;
+const SMTP_USER = process.env.SMTP_USER || "";
+const SMTP_PASS = process.env.SMTP_PASS || "";
+// Most providers reject a From that is not the authenticated mailbox, so an
+// unset SMTP_FROM falls back to the login.
+const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER;
 
 // infra: pin SMTP to TLS. The transport used `secure: false` without
 // `requireTLS: true`, which falls back to plaintext if the server
@@ -80,6 +102,20 @@ function buildSmtpTransport() {
 const transporter =
   SMTP_HOST && SMTP_USER && SMTP_PASS ? buildSmtpTransport() : null;
 
+/**
+ * Whether this deployment can send email at all.
+ *
+ * Callers use this to decide whether an email-dependent REQUIREMENT is
+ * enforceable. Email verification is the important one: it exists to prove
+ * control of an address by sending to it, so on an instance that cannot send,
+ * enforcing it is not a weaker security posture, it is a lockout with no
+ * escape. A self-hoster could sign up and then never log in, and the
+ * troubleshooting steps for it needed a session they could not obtain.
+ */
+export function isEmailConfigured(): boolean {
+  return transporter !== null;
+}
+
 interface SendEmailOptions {
   to: string;
   subject: string;
@@ -88,6 +124,13 @@ interface SendEmailOptions {
   replyTo?: string;
   skipLayout?: boolean;
   unsubscribeToken?: string;
+  /**
+   * Inbox preview line, shown after the subject by every mail client. Leave
+   * it unset and it is derived from the first sentence of `text`, which is
+   * better than the alternative: without one, the preview is whatever visible
+   * text the body starts with, which for this layout is the wordmark.
+   */
+  preheader?: string;
 }
 
 interface SecurityAlertDetails {
@@ -95,88 +138,110 @@ interface SecurityAlertDetails {
   userAgent: string;
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+interface LayoutOptions {
+  unsubscribeToken?: string;
+  preheader?: string;
 }
 
-function layout(content: string, unsubscribeToken?: string): string {
-  const hostname = new URL(APP_URL).hostname;
+// escapeHtml used to be a private copy here, byte-identical to the one in
+// lib/email/layout.ts and to a third in the admin preview. The layout module
+// is the one both the mail sender and the admin preview already import, so it
+// owns the escaper too: three copies of "escape these five characters" is
+// three places to miss when a sixth one matters.
+
+/**
+ * Build the one-click unsubscribe URL for a token.
+ *
+ * Two different URLs are involved and they are not interchangeable. This one
+ * is the API route, which accepts a bodyless POST with
+ * `action=unsubscribe_all` and is therefore a valid RFC 8058 endpoint; it is
+ * what goes in the List-Unsubscribe header. The in-body button below points
+ * at /unsubscribe instead, which is the page a human should land on.
+ */
+function unsubscribeApiUrl(token: string): string {
+  return `${APP_URL}/api/v3/account/unsubscribe?token=${encodeURIComponent(token)}&action=unsubscribe_all`;
+}
+
+/**
+ * Hidden inbox preview line.
+ *
+ * Gmail, Apple Mail and Outlook render the subject followed by the first
+ * visible text of the body. This layout starts with the wordmark, so every
+ * message previewed as "VulnRadar" plus the first words of the heading, which
+ * repeats the sender name and the subject and tells the reader nothing. The
+ * trailing run of figure-space + zero-width-no-break-space stops the client
+ * pulling body copy in behind a short preheader.
+ */
+function preheaderBlock(preheader: string): string {
+  const text = preheader.trim();
+  if (!text) return "";
+  const filler = "&#8199;&#65279;".repeat(30);
+  return `<div style="display: none; max-height: 0; overflow: hidden; mso-hide: all; font-size: 1px; line-height: 1px; color: transparent; opacity: 0;">${escapeHtml(text)}${filler}</div>`;
+}
+
+const PREHEADER_MAX_CHARS = 140;
+
+/**
+ * Fall back to the first sentence of the plain-text body when a caller has
+ * not written a preheader. Sentences carrying a numeric code or an opaque
+ * token are skipped rather than redacted: a 2FA mail's first sentence is
+ * "Your sign-in code is 123456", and an inbox preview is exactly the surface
+ * a shoulder-surfer or a lock-screen notification exposes. Links are kept,
+ * since the scanned URL is useful in the preview.
+ */
+function derivePreheader(text: string): string {
+  // A terminator only ends a sentence when whitespace or the end of the body
+  // follows it, so the dots inside "example.com" and "3.1s" do not split.
+  const SENTENCE = /^(.*?[.!?])(?=\s|$)/;
+  let rest = text.trim().replace(/\s+/g, " ");
+
+  while (rest) {
+    const match = SENTENCE.exec(rest);
+    const sentence = (match ? match[1] : rest).trim();
+    if (!sentence) break;
+    const carriesSecret =
+      /\b\d{4,}\b/.test(sentence) || /\b[A-Za-z0-9_-]{20,}\b/.test(sentence);
+    if (!carriesSecret) {
+      return sentence.length > PREHEADER_MAX_CHARS
+        ? sentence.slice(0, PREHEADER_MAX_CHARS - 3).trimEnd() + "..."
+        : sentence;
+    }
+    if (!match) break;
+    rest = rest.slice(match[1].length).trim();
+  }
+  return "";
+}
+
+/**
+ * The shell markup now lives in lib/email/layout.ts, which the admin preview
+ * (components/admin/shared/email-preview-html.ts) also calls. It used to be
+ * duplicated by hand there and had drifted on the logo source, the mobile
+ * media query, the preferences button and the support line, so what an admin
+ * previewed before a broadcast was not what recipients received. This wrapper
+ * keeps the server-only half: resolving the deployment's constants and turning
+ * an unsubscribe token into a URL.
+ */
+function layout(
+  content: string,
+  { unsubscribeToken, preheader }: LayoutOptions = {},
+): string {
   // Email clients don't resolve root-relative asset paths, so an absolute URL
   // is required for the logo to load at all.
   const logoSrc = /^https?:\/\//i.test(LOGO_URL)
     ? LOGO_URL
     : `${APP_URL}${LOGO_URL}`;
-  const unsubscribeUrl = unsubscribeToken
-    ? `${APP_URL}/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`
-    : null;
 
-  const preferencesButton = unsubscribeUrl
-    ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto 18px auto;">
-        <tr>
-          <td bgcolor="${COLORS.BG_SECTION}" style="border-radius: 6px;">
-            <a href="${unsubscribeUrl}" style="display: inline-block; padding: 8px 18px; background-color: ${COLORS.BG_SECTION}; border: 1px solid ${COLORS.BORDER_SECTION}; color: ${COLORS.TEXT_SECONDARY}; font-size: 12px; font-weight: 600; text-decoration: none; border-radius: 6px;">Manage email preferences</a>
-          </td>
-        </tr>
-      </table>`
-    : "";
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="color-scheme" content="dark light" />
-  <meta name="supported-color-schemes" content="dark light" />
-  <title>${APP_NAME}</title>
-  <style>
-    /* Progressive enhancement only; every element also carries inline styles. */
-    @media only screen and (max-width: 600px) {
-      .vr-shell { padding: 24px 12px !important; }
-      .vr-card { padding: 26px 20px !important; }
-    }
-    a { color: ${COLORS.ACCENT_BLUE_LIGHT}; }
-  </style>
-</head>
-<body style="margin: 0; padding: 0; background-color: ${COLORS.BG_DARK}; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: ${COLORS.TEXT_PRIMARY};">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: ${COLORS.BG_DARK};">
-    <tr>
-      <td align="center" class="vr-shell" style="padding: 40px 20px;">
-        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; width: 100%;">
-          <tr>
-            <td align="center" style="padding: 0 0 22px 0;">
-              <a href="${APP_URL}" style="text-decoration: none; color: ${COLORS.TEXT_PRIMARY};">
-                <img src="${logoSrc}" alt="" width="30" height="30" style="display: inline-block; vertical-align: middle; border: 0;" />
-                <span style="display: inline-block; vertical-align: middle; margin-left: 9px; font-size: 19px; font-weight: 700; letter-spacing: -0.2px; color: ${COLORS.TEXT_PRIMARY};">${APP_NAME}</span>
-              </a>
-            </td>
-          </tr>
-          <tr>
-            <td class="vr-card" style="background-color: ${COLORS.BG_CARD}; border: 1px solid ${COLORS.BORDER}; border-top: 3px solid ${COLORS.ACCENT_BLUE}; border-radius: 12px; padding: 34px 32px;">
-              ${content}
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 26px 16px 0 16px; text-align: center;">
-              ${preferencesButton}
-              <p style="margin: 0 0 10px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED}; line-height: 1.6;">
-                You're getting this because you have a ${APP_NAME} account. Choose what we send you in your account settings, or reach the team at <a href="mailto:${SUPPORT_EMAIL}" style="color: ${COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">${SUPPORT_EMAIL}</a>.
-              </p>
-              <p style="margin: 0; font-size: 11px; color: ${COLORS.TEXT_DARK}; line-height: 1.5;">
-                ${APP_NAME}, web vulnerability scanner &middot; <a href="${APP_URL}" style="color: ${COLORS.TEXT_DARK}; text-decoration: underline;">${hostname}</a>
-              </p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
+  return emailLayout({
+    content,
+    appName: APP_NAME,
+    appUrl: APP_URL,
+    logoSrc,
+    supportEmail: SUPPORT_EMAIL,
+    unsubscribeUrl: unsubscribeToken
+      ? `${APP_URL}/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`
+      : null,
+    preheaderHtml: preheaderBlock(preheader ?? ""),
+  });
 }
 
 // NEW EMAIL PATTERN -- shared building blocks.
@@ -190,8 +255,12 @@ function layout(content: string, unsubscribeToken?: string): string {
 // building it out of these instead. See emailVerificationEmail /
 // passwordResetEmail / scanCompleteEmail below for the reference conversions.
 
+// weight 600, not 700: the app ships three weights (default, medium,
+// semibold) and bold appears nowhere in it, so an email heading at 700 was
+// heavier than any heading the recipient sees after they click through. The
+// wordmark in lib/email/layout.ts is 600 for the same reason.
 function emailHeading(text: string): string {
-  return `<h1 style="margin: 0 0 12px 0; font-size: 21px; line-height: 1.3; font-weight: 700; color: ${COLORS.TEXT_PRIMARY}; letter-spacing: -0.2px;">${text}</h1>`;
+  return `<h1 style="margin: 0 0 12px 0; font-size: 21px; line-height: 1.3; font-weight: 600; color: ${COLORS.TEXT_PRIMARY}; letter-spacing: -0.2px;">${text}</h1>`;
 }
 
 function emailLead(text: string): string {
@@ -223,7 +292,7 @@ function emailButton(
 function emailFallbackLink(url: string): string {
   return `
     <p style="margin: 0 0 6px 0; font-size: 13px; color: ${COLORS.TEXT_MUTED}; line-height: 1.6;">Or paste this link into your browser:</p>
-    <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_BLUE_LIGHT}; word-break: break-all; line-height: 1.6; font-family: 'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace;">${url}</p>`;
+    <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_BLUE_LIGHT}; word-break: break-all; line-height: 1.6; font-family: ${MONO_STACK};">${url}</p>`;
 }
 
 // A quiet callout: an accent edge and prose, no bold question label. Use it for
@@ -256,9 +325,7 @@ function emailDetailPanel(rows: EmailDetailRow[]): string {
           ? ""
           : `border-top: 1px solid ${COLORS.BORDER}; padding-top: 10px;`;
       const gap = i === 0 ? "0" : "10px";
-      const mono = r.mono
-        ? "font-family: 'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace;"
-        : "";
+      const mono = r.mono ? `font-family: ${MONO_STACK};` : "";
       return `
         <tr>
           <td style="padding: ${gap} 0 8px 0; ${top} color: ${COLORS.TEXT_MUTED}; font-size: 13px; width: 130px; vertical-align: top;">${r.label}</td>
@@ -296,7 +363,7 @@ function emailCodeBlock(code: string): string {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 0 0 22px 0;">
       <tr>
         <td align="center" style="background-color: ${COLORS.BG_SECTION}; border: 1px solid ${COLORS.BORDER_SECTION}; border-radius: 10px; padding: 24px 16px;">
-          <div style="font-size: 34px; font-weight: 700; letter-spacing: 10px; text-indent: 10px; color: ${COLORS.ACCENT_BLUE_LIGHT}; font-family: 'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace;">${escapeHtml(code)}</div>
+          <div style="font-size: 34px; font-weight: 700; letter-spacing: 10px; text-indent: 10px; color: ${COLORS.ACCENT_BLUE_LIGHT}; font-family: ${MONO_STACK};">${escapeHtml(code)}</div>
         </td>
       </tr>
     </table>`;
@@ -392,6 +459,7 @@ export async function sendEmail({
   replyTo,
   skipLayout,
   unsubscribeToken,
+  preheader,
 }: SendEmailOptions) {
   // Check if SMTP is configured
   if (!transporter) {
@@ -427,8 +495,42 @@ export async function sendEmail({
     throw new Error("Email service not configured");
   }
 
-  const from = `"${APP_NAME}" <${SMTP_FROM}>`;
-  const finalHtml = skipLayout ? html : layout(html, unsubscribeToken);
+  // NOREPLY_EMAIL is registered as "From address on automated mail" and the
+  // self-hosting docs tell operators to set it, but the From was built from
+  // SMTP_FROM || SMTP_USER only, so the setting changed nothing and an
+  // operator debugging an SPF rejection was looking at a field that was not in
+  // the code path. It is honoured now, with two guards: an explicit SMTP_FROM
+  // still wins, because relays like SES require an exact verified envelope
+  // sender, and the setting is only used when it differs from the shipped
+  // default (NOREPLY_EMAIL is that default). Without the second guard, a
+  // self-hoster who never touched either field would start sending as
+  // noreply@vulnradar.dev and fail their own SPF.
+  const configuredNoReply = await getSetting("NOREPLY_EMAIL");
+  const fromAddress =
+    process.env.SMTP_FROM ||
+    (configuredNoReply && configuredNoReply !== NOREPLY_EMAIL
+      ? configuredNoReply
+      : SMTP_FROM);
+  const from = `"${APP_NAME}" <${fromAddress}>`;
+  const finalHtml = skipLayout
+    ? html
+    : layout(html, {
+        unsubscribeToken,
+        preheader: preheader ?? derivePreheader(text),
+      });
+
+  // Gmail and Yahoo's bulk sender rules want a one-click unsubscribe
+  // (RFC 8058) on mail of this shape, and treat its absence as a spam signal.
+  // Only mail that carries an unsubscribe token gets it: security notices
+  // (password changed, 2FA, new login) are not opt-out and deliberately have
+  // no token.
+  const headers = unsubscribeToken
+    ? {
+        "List-Unsubscribe": `<${unsubscribeApiUrl(unsubscribeToken)}>, <mailto:${SUPPORT_EMAIL}?subject=unsubscribe>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      }
+    : undefined;
+
   try {
     await transporter.sendMail({
       from,
@@ -437,6 +539,7 @@ export async function sendEmail({
       text,
       html: finalHtml,
       replyTo,
+      headers,
     });
     await logEmailAttempt({ to, subject, text, status: "sent" });
   } catch (err) {
@@ -545,6 +648,57 @@ export function emailVerificationEmail(name: string, verifyLink: string) {
   };
 }
 
+/**
+ * Sent when someone posts an already-registered address to signup.
+ *
+ * Signup used to answer 409 for a registered address and 200 for an
+ * unregistered one, which is a free account-enumeration oracle: one request
+ * per address tells an attacker which of a scraped list has accounts here, and
+ * for a security-tools vendor the membership list itself is the interesting
+ * output. Every other auth route already refuses to leak this (login returns
+ * one generic 401 for both wrong-user and wrong-password, forgot-password
+ * always says "if an account exists"), so signup now returns the same 200 and
+ * the real disambiguation happens here, in an inbox only the address owner can
+ * read (AUDIT-012#auth-09).
+ *
+ * This mail must always be sent on that path. A 200 with no mail would leave a
+ * real person who forgot they had an account waiting for a verification link
+ * that never arrives.
+ */
+export function signupAttemptOnExistingAccountEmail(
+  name: string,
+  loginLink: string,
+  resetLink: string,
+) {
+  const safeName = escapeHtml(name);
+  const greeting = name ? `Hi ${name}, ` : "";
+  const safeGreeting = safeName ? `Hi ${safeName}, ` : "";
+  // Same scheme guard teamInviteEmail uses. Both links are built from APP_URL
+  // here, but a template that renders an href must never assume its caller.
+  const safeLoginLink = /^https?:\/\//i.test(loginLink)
+    ? loginLink
+    : "#invalid";
+  const safeResetLink = /^https?:\/\//i.test(resetLink)
+    ? resetLink
+    : "#invalid";
+  return {
+    subject: `Someone tried to sign up with your ${APP_NAME} email`,
+    text: `${greeting}someone just tried to create a ${APP_NAME} account with this email address. You already have one, so nothing was created and nothing changed.\n\nIf that was you, sign in instead:\n${loginLink}\n\nIf you don't remember your password, reset it:\n${resetLink}\n\nIf it wasn't you, you can ignore this email. Your account is untouched and whoever submitted the form was not told whether this address is registered.`,
+    html: `
+      ${emailHeading("You already have an account")}
+      ${emailLead(`${safeGreeting}someone just tried to create a ${APP_NAME} account with this email address. You already have one, so nothing was created and nothing changed.`)}
+      ${emailButton(safeLoginLink, "Sign in instead")}
+      ${emailParagraph(
+        `Forgot your password? <a href="${safeResetLink}" style="color: ${COLORS.ACCENT_BLUE_LIGHT};">Reset it here</a>.`,
+      )}
+      ${emailNote(
+        "If it wasn't you, you can ignore this email. Your account is untouched, and whoever submitted the form was not told whether this address is registered.",
+      )}
+      ${emailFallbackLink(safeLoginLink)}
+    `,
+  };
+}
+
 export function passwordResetEmail(resetLink: string) {
   return {
     subject: `Reset your ${APP_NAME} password`,
@@ -587,22 +741,28 @@ export function teamInviteEmail(
   teamName: string,
   inviteLink: string,
   invitedBy: string,
+  // TEAM_INVITE_EXPIRY_DAYS is admin-editable and the caller has already
+  // resolved it for the INSERT, so the copy has to be told what the window
+  // actually is: hardcoding "7 days" meant an operator who lengthened it to
+  // 30 shipped mail telling recipients to discard a still-live invite. The
+  // shipped default is the fallback so a caller that has not been updated
+  // still matches a default install.
+  expiryDays: number = CONFIG_TEAM_INVITE_EXPIRY_DAYS,
 ) {
   const safeTeamName = escapeHtml(teamName);
   const safeInvitedBy = escapeHtml(invitedBy);
   const safeInviteLink = /^https?:\/\//i.test(inviteLink)
     ? inviteLink
     : "#invalid";
+  const expiryCopy = `The invite expires in ${expiryDays} ${expiryDays === 1 ? "day" : "days"}. If you weren't expecting it, you can ignore this email.`;
   return {
     subject: `Join ${safeTeamName} on ${APP_NAME}`,
-    text: `${invitedBy} invited you to join the team "${teamName}" on ${APP_NAME}. Accepting shares scans, history, and reports across everyone on the team.\n\nAccept the invitation:\n${inviteLink}\n\nThe invite expires in 7 days. If you weren't expecting it, you can ignore this email.`,
+    text: `${invitedBy} invited you to join the team "${teamName}" on ${APP_NAME}. Accepting shares scans, history, and reports across everyone on the team.\n\nAccept the invitation:\n${inviteLink}\n\n${expiryCopy}`,
     html: `
       ${emailHeading(`Join ${safeTeamName} on ${APP_NAME}`)}
       ${emailLead(`<strong style="color: ${COLORS.TEXT_PRIMARY};">${safeInvitedBy}</strong> invited you to their team. Accepting shares scans, history, and reports across everyone on it.`)}
       ${emailButton(safeInviteLink, "Accept invitation")}
-      ${emailNote(
-        "The invite expires in 7 days. If you weren't expecting it, you can ignore this email.",
-      )}
+      ${emailNote(expiryCopy)}
       ${emailFallbackLink(inviteLink)}
     `,
   };
@@ -1164,32 +1324,50 @@ export function apiKeyRotationEmail(
   };
 }
 
-export function email2FACodeEmail(code: string) {
+/** "10 minutes" / "1 minute", for copy that has to follow a live setting. */
+function minutesCopy(minutes: number): string {
+  return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+}
+
+export function email2FACodeEmail(
+  code: string,
+  // EMAIL_2FA_CODE_EXPIRY_MINUTES is admin-editable, and the call sites
+  // already resolve it one line above their INSERT. Hardcoding "10 minutes"
+  // meant an operator who tightened the window for a compliance requirement
+  // shipped mail telling every user it lasted twice as long, which users
+  // then report as codes "expiring early".
+  expiryMinutes: number = CONFIG_EMAIL_2FA_CODE_EXPIRY_MINUTES,
+) {
+  const window = minutesCopy(expiryMinutes);
   return {
     subject: `${code} is your ${APP_NAME} sign-in code`,
-    text: `Your ${APP_NAME} sign-in code is ${code}. It expires in 10 minutes.\n\nDon't share this code with anyone. ${APP_NAME} will never ask you for it. If you didn't try to sign in, change your password.`,
+    text: `Your ${APP_NAME} sign-in code is ${code}. It expires in ${window}.\n\nDon't share this code with anyone. ${APP_NAME} will never ask you for it. If you didn't try to sign in, change your password.`,
     html: `
       ${emailHeading("Your sign-in code")}
       ${emailLead("Enter this code to finish signing in.")}
       ${emailCodeBlock(code)}
       ${emailNote(
-        `The code expires in 10 minutes. Don't share it with anyone; ${APP_NAME} will never ask you for it. If you didn't try to sign in, change your password.`,
+        `The code expires in ${window}. Don't share it with anyone; ${APP_NAME} will never ask you for it. If you didn't try to sign in, change your password.`,
         COLORS.ACCENT_YELLOW_LIGHT,
       )}
     `,
   };
 }
 
-export function billingVerificationCodeEmail(code: string) {
+export function billingVerificationCodeEmail(
+  code: string,
+  expiryMinutes: number = CONFIG_BILLING_VERIFY_CODE_EXPIRY_MINUTES,
+) {
+  const window = minutesCopy(expiryMinutes);
   return {
     subject: `${code} is your ${APP_NAME} billing access code`,
-    text: `Your ${APP_NAME} billing access code is ${code}. It expires in 5 minutes.\n\nYou'll need a fresh code each time you open billing. Don't share it with anyone. We ask for this so payment details stay locked even if someone reaches your account, since only your email can unlock them.\n\nIf you didn't request this, secure your account.`,
+    text: `Your ${APP_NAME} billing access code is ${code}. It expires in ${window}.\n\nYou'll need a fresh code each time you open billing. Don't share it with anyone. We ask for this so payment details stay locked even if someone reaches your account, since only your email can unlock them.\n\nIf you didn't request this, secure your account.`,
     html: `
       ${emailHeading("Billing access code")}
       ${emailLead("Enter this code to view your billing details.")}
       ${emailCodeBlock(code)}
       ${emailNote(
-        "The code expires in 5 minutes, and you'll need a fresh one each time you open billing. Don't share it with anyone.",
+        `The code expires in ${window}, and you'll need a fresh one each time you open billing. Don't share it with anyone.`,
         COLORS.ACCENT_YELLOW_LIGHT,
       )}
       ${emailParagraph(
@@ -1339,9 +1517,28 @@ export function scanCompleteEmail(
         )
       : "";
 
+  // The first sentence of the plain-text body is what sendEmail turns into
+  // the inbox preheader, so it leads with the counts rather than the
+  // duration. A recipient scanning an inbox can now tell a clean scan from
+  // one with two criticals without opening the mail, which is the judgement
+  // this email exists to let them make.
+  const countBreakdown = [
+    summary.critical > 0 ? `${summary.critical} critical` : "",
+    summary.high > 0 ? `${summary.high} high` : "",
+    summary.medium > 0 ? `${summary.medium} medium` : "",
+    summary.low > 0 ? `${summary.low} low` : "",
+    summary.info > 0 ? `${summary.info} info` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+  const textLead =
+    summary.total === 0
+      ? `Nothing to flag on ${url}, scanned in ${durationSecs}s.`
+      : `${countBreakdown} on ${url}, scanned in ${durationSecs}s.`;
+
   return {
     subject: `Scan complete: ${summary.total} ${issueWord} found - ${APP_NAME}`,
-    text: `Your scan of ${url} finished in ${durationSecs}s.\n\nFindings:\n- Critical: ${summary.critical}\n- High: ${summary.high}\n- Medium: ${summary.medium}\n- Low: ${summary.low}\n- Info: ${summary.info}\nTotal: ${summary.total}\n\nView the full report: ${viewLink}`,
+    text: `${textLead}\n\nFindings:\n- Critical: ${summary.critical}\n- High: ${summary.high}\n- Medium: ${summary.medium}\n- Low: ${summary.low}\n- Info: ${summary.info}\nTotal: ${summary.total}\n\nView the full report: ${viewLink}`,
     html: `
       ${emailHeading("Scan complete")}
       ${emailLead(lead)}

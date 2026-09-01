@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, LayoutDashboard, RefreshCw } from "lucide-react";
-import { ROUTES } from "@/lib/config/constants";
+import { ROUTES } from "@/lib/config/client-constants";
 import { useAuth } from "@/components/providers/auth-provider";
 import type { ScanResult } from "@/lib/scanner/types";
 
@@ -12,6 +12,26 @@ interface DemoResultsHeaderProps {
   onScanAgain: () => void;
 }
 
+/**
+ * The band above the demo's report.
+ *
+ * It used to open with a headline that restated the verdict ("3 issues worth
+ * looking at") and a hand-rolled row of four numbers: elapsed, issues, checks
+ * run, findings returned. Both duplicated the ScanSummary card rendered
+ * directly beneath by the shared result renderer, which states the verdict in
+ * a coloured panel and carries risk score, SSL grade, engine confidence,
+ * checks run, duration and scan time as proper stat cells. So the page opened
+ * with two verdicts and two stat strips in two different visual languages, one
+ * of them bare monospace text, which is what made it read as unfinished beside
+ * the real dashboard.
+ *
+ * What it never showed was the target. Every other result surface prints the
+ * scanned URL (dashboard-results, history-detail-header, the /host and /shared
+ * reports) because ScanResultDetail passes `hideHeader` to ScanSummary on the
+ * assumption that the page supplies one. The demo supplied none, and since the
+ * hero started accepting a typed URL, a visitor scanning their own site got a
+ * report that never named the host. That is the h1 now.
+ */
 export function DemoResultsHeader({
   result,
   onScanAgain,
@@ -21,25 +41,13 @@ export function DemoResultsHeader({
 
   const issues = result.findings.filter((f) => f.severity !== "info").length;
   const isPassing = issues === 0;
-  const seconds = (result.duration / 1000).toFixed(1);
-
-  const stats: [string, string][] = [
-    [`${seconds}s`, "elapsed"],
-    [String(issues), issues === 1 ? "issue" : "issues"],
-    ...(result.checksRun
-      ? ([[result.checksRun.toLocaleString(), "checks run"]] as [
-          string,
-          string,
-        ][])
-      : []),
-    [String(result.findings.length), "findings returned"],
-  ];
+  const target = result.url.replace(/^https?:\/\//, "").replace(/\/$/, "");
 
   return (
     <section className="border-b border-border/50">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-12 pb-8 sm:pt-16">
+      <div className="mx-auto max-w-6xl px-4 pb-8 pt-12 sm:px-6 sm:pt-16">
         <p
-          className={`font-mono text-xs uppercase tracking-wider mb-3 ${
+          className={`mb-3 font-mono text-xs uppercase tracking-wider ${
             isPassing
               ? "text-[hsl(var(--success))]"
               : "text-[hsl(var(--warning))]"
@@ -48,28 +56,15 @@ export function DemoResultsHeader({
           Scan complete
         </p>
 
-        <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-5 text-balance">
-          {isPassing
-            ? "Nothing to fix on this run"
-            : `${issues} ${issues === 1 ? "issue" : "issues"} worth looking at`}
+        <h1 className="mb-4 break-all font-mono text-3xl font-semibold tracking-tight sm:text-4xl">
+          {target}
         </h1>
 
-        <dl className="flex flex-wrap items-baseline gap-x-6 gap-y-2 border-y border-border/50 py-4 mb-6">
-          {stats.map(([value, label]) => (
-            <div key={label} className="flex items-baseline gap-1.5">
-              <dt className="sr-only">{label}</dt>
-              <dd className="font-mono text-sm font-semibold tabular-nums text-foreground">
-                {value}
-              </dd>
-              <span
-                aria-hidden="true"
-                className="text-sm text-muted-foreground"
-              >
-                {label}
-              </span>
-            </div>
-          ))}
-        </dl>
+        <p className="mb-6 max-w-2xl leading-relaxed text-muted-foreground">
+          {isPassing
+            ? "Nothing came back on this run. The whole report is below, exactly as the scanner produced it."
+            : `The scanner returned ${issues} ${issues === 1 ? "issue" : "issues"} plus whatever it noted for information. Everything it found is below, unfiltered.`}
+        </p>
 
         <div className="flex flex-wrap gap-3">
           <Button variant="outline" onClick={onScanAgain} className="gap-2">

@@ -53,6 +53,29 @@ vi.mock("@/lib/scanner/safe-fetch", () => ({
   validateScanTarget: (...args: unknown[]) => mockValidateScanTarget(...args),
 }));
 
+// Discovery now honours the admin blocklist and, on a forced refresh, charges
+// the daily quota: a forced refresh skips the cache and runs the full engine
+// (191-prefix DNS brute force plus probing), which used to be free.
+const mockCheckAccessRules =
+  vi.fn<(url: string) => Promise<{ allowed: boolean; reason?: string }>>();
+const mockGetDailyLimit = vi.fn<(userId: number) => Promise<number>>();
+const mockIncrementDailyCountCapped =
+  vi.fn<
+    (
+      userId: number,
+      limit: number,
+    ) => Promise<{ recorded: boolean; count: number }>
+  >();
+
+vi.mock("@/lib/scanner/access-rules", () => ({
+  checkAccessRules: (url: string) => mockCheckAccessRules(url),
+}));
+vi.mock("@/lib/rate-limiting/daily-limits", () => ({
+  getDailyLimit: (userId: number) => mockGetDailyLimit(userId),
+  incrementDailyCountCapped: (userId: number, limit: number) =>
+    mockIncrementDailyCountCapped(userId, limit),
+}));
+
 const mockResolve4 = vi.fn();
 const mockResolve6 = vi.fn();
 const mockResolveCname = vi.fn();
@@ -94,6 +117,13 @@ function subdomainMap(subdomains: DiscoveredSubdomainResult[]) {
 
 beforeEach(() => {
   vi.stubGlobal("fetch", mockFetch);
+
+  mockCheckAccessRules.mockReset();
+  mockCheckAccessRules.mockResolvedValue({ allowed: true });
+  mockGetDailyLimit.mockReset();
+  mockGetDailyLimit.mockResolvedValue(100);
+  mockIncrementDailyCountCapped.mockReset();
+  mockIncrementDailyCountCapped.mockResolvedValue({ recorded: true, count: 1 });
 
   mockQuery.mockReset();
   mockQuery.mockResolvedValue({ rows: [] });

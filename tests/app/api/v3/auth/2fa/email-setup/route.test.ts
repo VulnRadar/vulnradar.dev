@@ -18,7 +18,7 @@ import {
 const rateLimitCounts = new Map<string, number>();
 let sessionRow: Record<string, unknown> | null = null;
 let userRow: {
-  password_hash: string;
+  password_hash: string | null;
   totp_enabled: boolean;
   two_factor_method: string | null;
   email: string;
@@ -43,11 +43,16 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     rateLimitCounts.set(key, next);
     return { rows: [{ count: String(next) }] };
   }
+  // The re-auth helper (lib/auth/reauth.ts) runs its own password_hash
+  // read, so the route's own SELECT no longer carries the hash.
+  if (s.startsWith("SELECT password_hash FROM users")) {
+    return {
+      rows: userRow ? [{ password_hash: userRow.password_hash }] : [],
+    };
+  }
   if (
-    s.startsWith(
-      "SELECT password_hash, totp_enabled, two_factor_method, email FROM users",
-    ) ||
-    s.startsWith("SELECT password_hash, two_factor_method, email FROM users")
+    s.startsWith("SELECT totp_enabled, two_factor_method, email FROM users") ||
+    s.startsWith("SELECT two_factor_method, email FROM users")
   ) {
     return { rows: userRow ? [userRow] : [] };
   }
@@ -165,17 +170,40 @@ describe("POST /api/v3/auth/2fa/email-setup", () => {
     expect(res.status).toBe(400);
   });
 
-  it("requires a password", async () => {
+  it("requires a password when the account has one", async () => {
     login();
+    userRow = {
+      password_hash: realPasswordHash,
+      totp_enabled: false,
+      two_factor_method: null,
+      email: "user@example.com",
+    };
     const res = await POST(req("POST", {}));
     expect(res.status).toBe(400);
+    expect(enableUpdateCalls).toHaveLength(0);
   });
 
-  it("returns 404 when the user row can't be found", async () => {
+  it("rejects a stale session whose user row is gone", async () => {
     login();
     userRow = null;
     const res = await POST(req("POST", { password: REAL_PASSWORD }));
-    expect(res.status).toBe(404);
+    // The re-auth helper fails closed on a missing row rather than
+    // distinguishing "deleted account" from "wrong password".
+    expect(res.status).toBe(403);
+    expect(enableUpdateCalls).toHaveLength(0);
+  });
+
+  it("lets an OAuth-only account (no password) enable email 2FA", async () => {
+    login(1);
+    userRow = {
+      password_hash: null,
+      totp_enabled: false,
+      two_factor_method: null,
+      email: "oauth@example.com",
+    };
+    const res = await POST(req("POST", {}));
+    expect(res.status).toBe(200);
+    expect(enableUpdateCalls).toEqual([[1]]);
   });
 
   it("rejects an incorrect password", async () => {
@@ -237,17 +265,39 @@ describe("DELETE /api/v3/auth/2fa/email-setup", () => {
     expect(res.status).toBe(429);
   });
 
-  it("requires a password", async () => {
+  it("requires a password when the account has one", async () => {
     login();
+    userRow = {
+      password_hash: realPasswordHash,
+      totp_enabled: true,
+      two_factor_method: "email",
+      email: "user@example.com",
+    };
     const res = await DELETE(req("DELETE", {}));
     expect(res.status).toBe(400);
+    expect(disableUpdateCalls).toHaveLength(0);
   });
 
-  it("returns 404 when the user row can't be found", async () => {
+  it("rejects a stale session whose user row is gone", async () => {
     login();
     userRow = null;
     const res = await DELETE(req("DELETE", { password: REAL_PASSWORD }));
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(403);
+    expect(disableUpdateCalls).toHaveLength(0);
+  });
+
+  it("lets an OAuth-only account (no password) disable email 2FA", async () => {
+    login(1);
+    userRow = {
+      password_hash: null,
+      totp_enabled: true,
+      two_factor_method: "email",
+      email: "oauth@example.com",
+    };
+    const res = await DELETE(req("DELETE", {}));
+    expect(res.status).toBe(200);
+    expect(disableUpdateCalls).toEqual([[1]]);
+    expect(deleteCodesCalls).toEqual([[1]]);
   });
 
   it("rejects an incorrect password", async () => {

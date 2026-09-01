@@ -55,6 +55,15 @@ export function DocsShell({ children }: { children: React.ReactNode }) {
       value={{ activeSection, setActiveSection, tocItems, setTocItems }}
     >
       <div className="min-h-screen flex flex-col bg-background">
+        {/* Deliberately the plain nav, with no width override. Docs used to
+            widen the nav's inner row to max-w-360 so the wordmark lined up
+            with the sidebar beneath it, which made the docs top bar the one
+            public bar that did not match /changelog, /pricing and /demo: the
+            wordmark moved 144px on every navigation between them. Owner call,
+            2026-08-31: one top bar across the whole public surface wins over
+            aligning it with a single page's sidebar. max-w-6xl is also the
+            container CLAUDE.md documents. Do not re-add the override; the
+            docs sidebar and TOC below it stay exactly as they are. */}
         <LandingNav />
 
         <div className="flex-1 max-w-360 w-full mx-auto">
@@ -74,7 +83,10 @@ export function DocsShell({ children }: { children: React.ReactNode }) {
             />
 
             <main
-              id="docs-content"
+              id="main-content"
+              // Focusable target for the root layout's skip link; without it
+              // the link scrolls but focus stays in the nav.
+              tabIndex={-1}
               className="flex-1 min-w-0 px-4 sm:px-6 lg:px-10 py-6 sm:py-8 lg:py-10"
             >
               <article className="max-w-4xl mx-auto lg:mx-0">

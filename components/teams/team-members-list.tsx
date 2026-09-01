@@ -1,7 +1,14 @@
 "use client";
 
 import Image from "next/image";
-import { Eye, MoreHorizontal, X, Trash2, Mail } from "lucide-react";
+import {
+  Eye,
+  MoreHorizontal,
+  ShieldCheck,
+  X,
+  Trash2,
+  Mail,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -9,7 +16,12 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/ui/utils";
@@ -19,7 +31,8 @@ import {
   STAFF_ROLE_LABELS,
   ROLE_BADGE_STYLES,
   hasTeamPermission,
-} from "@/lib/config/constants";
+  canAssignTeamRole,
+} from "@/lib/config/client-constants";
 import {
   type Member,
   type Invite,
@@ -27,28 +40,55 @@ import {
   ROLE_COLORS,
   ROLE_ABILITIES,
   ROLE_ORDER,
+  INVITABLE_ROLES,
 } from "./teams-types";
 
 interface TeamMembersListProps {
   members: Member[];
   invites: Invite[];
   loading: boolean;
+  /** Set when the members request failed. A team always contains at least its
+   *  owner, so an empty list is not a state real data can produce: without
+   *  this the card renders "Members 0" over a blank div and looks authoritative. */
+  loadError?: string | null;
   currentRole: string;
+  /** The viewer's own user id, so their own row does not offer a role change
+   *  that PATCH /api/v3/teams/members refuses ("You can't change your own
+   *  role."). Optional: without it the option is still offered and the API is
+   *  still the one saying no. */
+  currentUserId?: number;
   onViewScans: (member: Member) => void;
   onRemoveMember: (userId: number) => void;
   onCancelInvite: (inviteId: number) => void;
+  /** Change a teammate's role. PATCH /api/v3/teams/members has always
+   *  supported this (with its own ceiling and self-demotion guards) but had no
+   *  caller, so the only way to change a role was to remove the person and
+   *  re-invite them, which destroys their team scans' association on the way
+   *  through (AUDIT-011#drift-21). Optional so the list still renders in any
+   *  context that has nothing to wire it to. */
+  onChangeRole?: (userId: number, role: string) => void;
 }
 
 export function TeamMembersList({
   members,
   invites,
   loading,
+  loadError = null,
   currentRole,
+  currentUserId,
   onViewScans,
   onRemoveMember,
   onCancelInvite,
+  onChangeRole,
 }: TeamMembersListProps) {
   const canManage = hasTeamPermission(currentRole, "manage_members");
+  // Only the roles this viewer may actually grant. The team roles are a
+  // partial order rather than a ladder, so this is the same subset relation
+  // the API enforces (canAssignTeamRole), not a rank comparison: offering a
+  // role the caller cannot assign would just produce a 403 on click.
+  const assignableRoles = INVITABLE_ROLES.filter((r) =>
+    canAssignTeamRole(currentRole, r),
+  );
 
   return (
     <>
@@ -58,7 +98,7 @@ export function TeamMembersList({
           <div className="px-5 py-4 border-b border-border flex items-center justify-between">
             <p className="text-sm font-medium">Members</p>
             <span className="text-xs text-muted-foreground tabular-nums">
-              {members.length}
+              {loadError ? "" : members.length}
             </span>
           </div>
 
@@ -79,6 +119,10 @@ export function TeamMembersList({
                   <Skeleton className="h-6 w-20 rounded-full shrink-0" />
                 </div>
               ))}
+            </div>
+          ) : loadError ? (
+            <div className="px-5 py-10 text-center" role="alert">
+              <p className="text-sm text-destructive">{loadError}</p>
             </div>
           ) : (
             <div className="divide-y divide-border">
@@ -143,7 +187,12 @@ export function TeamMembersList({
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 transition-opacity"
+                          // This menu is the only route to removing a member,
+                          // and opacity-0 until hover is a state a touch
+                          // device never reaches: on a phone the control was
+                          // invisible and unreachable. Hover-gate it from sm
+                          // up only, and give it a real 44px target below that.
+                          className="h-11 w-11 sm:h-8 sm:w-8 p-0 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 transition-opacity"
                           aria-label={`Actions for ${m.name || m.email}`}
                         >
                           <MoreHorizontal
@@ -157,6 +206,55 @@ export function TeamMembersList({
                           <Eye className="h-4 w-4 mr-2" />
                           View Scans
                         </DropdownMenuItem>
+                        {canManage &&
+                          m.role !== TEAM_ROLES.OWNER &&
+                          onChangeRole &&
+                          m.user_id !== currentUserId &&
+                          // The ceiling applies to the CURRENT role too: a
+                          // manager must not be able to demote an admin it
+                          // cannot itself assign. Same both-directions check
+                          // the API makes before it writes.
+                          canAssignTeamRole(currentRole, m.role) &&
+                          assignableRoles.length > 0 && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuSub>
+                                <DropdownMenuSubTrigger>
+                                  <ShieldCheck
+                                    className="h-4 w-4 mr-2"
+                                    aria-hidden="true"
+                                  />
+                                  Change role
+                                </DropdownMenuSubTrigger>
+                                <DropdownMenuSubContent className="w-40">
+                                  <DropdownMenuRadioGroup
+                                    value={m.role}
+                                    onValueChange={(role) => {
+                                      if (role !== m.role)
+                                        onChangeRole(m.user_id, role);
+                                    }}
+                                  >
+                                    {assignableRoles.map((role) => {
+                                      const RoleIcon = ROLE_ICONS[role] || Eye;
+                                      return (
+                                        <DropdownMenuRadioItem
+                                          key={role}
+                                          value={role}
+                                          className="capitalize"
+                                        >
+                                          <RoleIcon
+                                            className="h-3.5 w-3.5 mr-2 text-muted-foreground"
+                                            aria-hidden="true"
+                                          />
+                                          {role}
+                                        </DropdownMenuRadioItem>
+                                      );
+                                    })}
+                                  </DropdownMenuRadioGroup>
+                                </DropdownMenuSubContent>
+                              </DropdownMenuSub>
+                            </>
+                          )}
                         {canManage && m.role !== TEAM_ROLES.OWNER && (
                           <>
                             <DropdownMenuSeparator />
@@ -254,7 +352,7 @@ export function TeamMembersList({
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive shrink-0"
+                        className="h-11 w-11 sm:h-8 sm:w-8 p-0 text-muted-foreground hover:text-destructive shrink-0"
                         onClick={() => onCancelInvite(inv.id)}
                         aria-label={`Cancel the invite to ${inv.email}`}
                       >

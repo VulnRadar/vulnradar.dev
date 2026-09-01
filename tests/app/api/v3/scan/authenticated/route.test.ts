@@ -64,15 +64,39 @@ vi.mock("@/lib/rate-limiting/daily-limits", () => ({
   getRateLimitHeaders: () => ({}),
 }));
 
+// The route now takes a concurrency slot for the scanning half of the request
+// (lib/rate-limiting/concurrent-scans.ts's withInlineScanSlot), because an
+// authenticated scan runs inline and only writes its already-'completed'
+// scan_history row at the end, so the row-count limiter never saw it running.
+// Mocked as a pass-through by default; `mockInlineSlot` lets a test drive the
+// refusal branch.
+const mockInlineSlot = vi.fn(
+  async (_userId: number, work: () => Promise<unknown>) => ({
+    ok: true as const,
+    value: await work(),
+  }),
+);
+vi.mock("@/lib/rate-limiting/concurrent-scans", () => ({
+  withInlineScanSlot: (userId: number, work: () => Promise<unknown>) =>
+    mockInlineSlot(userId, work),
+}));
+
+// Module-scope handles, not inline always-allow factories: a stub declared
+// inside the factory cannot be driven to refuse from a test, so the SSRF
+// guard and the access-rule blocklist could both be deleted from this route
+// with the suite still green. See the matching block in
+// tests/app/api/v3/scan/route.test.ts.
+const mockValidateScanTarget = vi.fn();
+const mockCheckAccessRules = vi.fn();
 vi.mock("@/lib/scanner/safe-fetch", () => ({
-  validateScanTarget: vi.fn(async () => ({ safe: true })),
+  validateScanTarget: (...args: unknown[]) => mockValidateScanTarget(...args),
   safeFetch: vi.fn(
     async () => new Response("<html>ok</html>", { status: 200 }),
   ),
 }));
 
 vi.mock("@/lib/scanner/access-rules", () => ({
-  checkAccessRules: vi.fn(async () => ({ allowed: true })),
+  checkAccessRules: (...args: unknown[]) => mockCheckAccessRules(...args),
 }));
 
 const mockIsUrlOwnedByUser = vi.fn();
@@ -121,6 +145,79 @@ beforeEach(() => {
   mockLogAction.mockClear();
   mockIsUrlOwnedByUser.mockReset();
   mockIsUrlOwnedByUser.mockResolvedValue(true);
+  mockValidateScanTarget.mockReset();
+  mockValidateScanTarget.mockResolvedValue({ safe: true });
+  mockCheckAccessRules.mockReset();
+  mockCheckAccessRules.mockResolvedValue({ allowed: true });
+  mockInlineSlot.mockReset();
+  mockInlineSlot.mockImplementation(
+    async (_userId: number, work: () => Promise<unknown>) => ({
+      ok: true as const,
+      value: await work(),
+    }),
+  );
+});
+
+describe("POST /api/v3/scan/authenticated - concurrency slot", () => {
+  it("returns 429 and never attempts a login when the account is at its concurrent-scan cap", async () => {
+    mockInlineSlot.mockResolvedValue({
+      ok: false,
+      check: {
+        allowed: false,
+        current: 1,
+        limit: 1,
+        message: "You already have 1 scan(s) running.",
+      },
+    } as never);
+
+    const res = await POST(postRequest(FORM_AUTH_BODY));
+
+    expect(res.status).toBe(429);
+    expect((await res.json()).statusCode).toBe("CONCURRENT_SCAN_LIMIT");
+    expect(mockEstablishScanSession).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/v3/scan/authenticated - target safety gates", () => {
+  // This route is the one where a refusal matters most: past these two
+  // checks it submits caller-supplied credentials to the target's own login
+  // form. Both gates therefore have to run BEFORE establishScanSession, and
+  // that ordering is what these assert.
+  it("returns 400 and never attempts a login when the target is unsafe", async () => {
+    mockValidateScanTarget.mockResolvedValue({
+      safe: false,
+      reason: "Target resolves to a private IP address",
+    });
+
+    const res = await POST(postRequest(FORM_AUTH_BODY));
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/private IP address/);
+    expect(mockEstablishScanSession).not.toHaveBeenCalled();
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("returns 403 and never attempts a login when access rules refuse", async () => {
+    mockCheckAccessRules.mockResolvedValue({ allowed: false });
+
+    const res = await POST(postRequest(FORM_AUTH_BODY));
+
+    expect(res.status).toBe(403);
+    expect(mockEstablishScanSession).not.toHaveBeenCalled();
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("consults both gates with the target URL on the happy path", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: false,
+      reason: "stop here; the gates have already run",
+    });
+
+    await POST(postRequest(FORM_AUTH_BODY));
+
+    expect(mockValidateScanTarget).toHaveBeenCalledWith(FORM_AUTH_BODY.url);
+    expect(mockCheckAccessRules).toHaveBeenCalledWith(FORM_AUTH_BODY.url);
+  });
 });
 
 const FORM_AUTH_BODY = {
@@ -249,8 +346,10 @@ describe("POST /api/v3/scan/authenticated", () => {
 
     const insertCall = mockQuery.mock.calls[0];
     expect(insertCall[0]).toContain("is_public");
-    // requestedIsPublic is the last bound param ($10 in the VALUES list).
-    expect(insertCall[1].at(-2)).toBe(false);
+    // requestedIsPublic is $10 in the VALUES list, so index 9. Indexed from
+    // the front rather than the end: team_id was appended after it, and an
+    // .at(-2) assertion silently started reading result_meta instead.
+    expect(insertCall[1][9]).toBe(false);
 
     const reputationCalls = mockQuery.mock.calls.filter(([sql]) =>
       String(sql).includes("INSERT INTO host_reputation"),
@@ -283,7 +382,7 @@ describe("POST /api/v3/scan/authenticated", () => {
     await POST(postRequest({ ...FORM_AUTH_BODY, isPublic: false }));
 
     const insertCall = mockQuery.mock.calls[0];
-    expect(insertCall[1].at(-2)).toBe(false);
+    expect(insertCall[1][9]).toBe(false);
 
     const reputationCalls = mockQuery.mock.calls.filter(([sql]) =>
       String(sql).includes("INSERT INTO host_reputation"),
@@ -301,12 +400,66 @@ describe("POST /api/v3/scan/authenticated", () => {
     await POST(postRequest({ ...FORM_AUTH_BODY, isPublic: true }));
 
     const insertCall = mockQuery.mock.calls[0];
-    expect(insertCall[1].at(-2)).toBe(true);
+    expect(insertCall[1][9]).toBe(true);
 
     const reputationCalls = mockQuery.mock.calls.filter(([sql]) =>
       String(sql).includes("INSERT INTO host_reputation"),
     );
     expect(reputationCalls).toHaveLength(1);
+  });
+
+  // scan_history.team_id used to be written by nothing at all, so a team
+  // could never see a scan a member ran for it. It is now bound on every
+  // scan-creation path, but only when the request explicitly names a team.
+  it("stores team_id null when the request names no team, and does not look up team membership", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 128 }] });
+
+    await POST(postRequest(FORM_AUTH_BODY));
+
+    const insertCall = mockQuery.mock.calls[0];
+    expect(insertCall[0]).toContain("team_id");
+    expect(insertCall[1].at(-1)).toBeNull();
+    const membershipCalls = mockQuery.mock.calls.filter(([sql]) =>
+      String(sql).includes("FROM team_members"),
+    );
+    expect(membershipCalls).toHaveLength(0);
+  });
+
+  it("stores the requested team_id when the caller can assign scans to that team", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    // getAssignableTeamIds, then the scan_history INSERT.
+    mockQuery.mockResolvedValueOnce({ rows: [{ team_id: 7, role: "admin" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 129 }] });
+
+    const res = await POST(postRequest({ ...FORM_AUTH_BODY, teamId: 7 }));
+    expect(res.status).toBe(200);
+
+    const insertCall = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO scan_history"),
+    );
+    expect(insertCall![1].at(-1)).toBe(7);
+  });
+
+  it("rejects a team the caller cannot assign scans to, and writes no scan row", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ team_id: 3, role: "viewer" }] });
+
+    const res = await POST(postRequest({ ...FORM_AUTH_BODY, teamId: 3 }));
+    expect(res.status).toBe(400);
+    const insertCalls = mockQuery.mock.calls.filter(([sql]) =>
+      String(sql).includes("INSERT INTO scan_history"),
+    );
+    expect(insertCalls).toHaveLength(0);
   });
 
   it("reports a lost session without ever writing a credential_id column", async () => {
@@ -383,14 +536,53 @@ describe("POST /api/v3/scan/authenticated", () => {
   });
 });
 
-describe("active-probes domain ownership gate", () => {
-  it("never checks domain ownership for an ordinary authenticated scan that doesn't request active-probes", async () => {
+describe("domain ownership gate", () => {
+  // A form login POSTs the caller's username and password to the target's
+  // own login page and reports back distinguishably whether they were
+  // accepted, so it is now held to the same verified-domain gate as active
+  // probing: without it the endpoint is a credential-stuffing proxy with a
+  // built-in success oracle, running from this server's IP.
+  it("requires a verified domain for a form login even with no active probes requested", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    await POST(postRequest(FORM_AUTH_BODY));
+    expect(mockIsUrlOwnedByUser).toHaveBeenCalledWith(
+      "https://app.example.com/dashboard",
+      42,
+    );
+  });
+
+  it("rejects a form login against an unverified domain before ever attempting it", async () => {
+    mockIsUrlOwnedByUser.mockResolvedValue(false);
+    const res = await POST(postRequest(FORM_AUTH_BODY));
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.statusCode).toBe("DOMAIN_NOT_VERIFIED");
+    expect(json.error).toMatch(/form login/i);
+    expect(mockEstablishScanSession).not.toHaveBeenCalled();
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  // Header and cookie auth are the caller supplying a session they already
+  // hold, not credentials being validated against a login form, so they stay
+  // ungated.
+  it("never checks domain ownership for a cookie-auth scan with no active probes", async () => {
     mockEstablishScanSession.mockResolvedValue({
       ok: true,
       session: { lost: false, reason: null },
     });
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 1 }] });
-    await POST(postRequest(FORM_AUTH_BODY));
+    await POST(
+      postRequest({
+        url: "https://app.example.com/dashboard",
+        auth: {
+          method: "cookie",
+          cookies: [{ name: "sessionid", value: "already-mine" }],
+        },
+      }),
+    );
     expect(mockIsUrlOwnedByUser).not.toHaveBeenCalled();
   });
 

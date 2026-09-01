@@ -1,45 +1,35 @@
-# Auto-label PRs based on changed files
-
-size:
-  - label: "size/xs"
-    files:
-      - "**/*.{md,yml,yaml,json}"
-  - label: "size/s"
-    files:
-      - "**/*.{ts,tsx,js,jsx,css}"
-      - "!app/**"
-      - "!lib/**"
-      - "!components/**"
-  - label: "size/m"
-    files:
-      - "app/**/*.{ts,tsx}"
-      - "lib/**/*.{ts,tsx}"
-  - label: "size/l"
-    files:
-      - "components/**/*.{ts,tsx}"
+# Auto-label PRs based on changed files (actions/labeler).
+#
+# SCHEMA: the top-level key is the LABEL NAME, and the only matcher keys the
+# action understands are `changed-files`, `base-branch`, `head-branch`, `any`
+# and `all`. Anything else is not an error: get-label-configs.ts logs an
+# info-level "An unknown config option was under ..." line and produces no
+# matcher at all, so the rule silently never fires.
+#
+# Half of this file used to be written in an invented schema
+# (`size:` with `- label:`/`files:` entries, and `dependencies:` with
+# `from-branch:`), so those rules had never applied a label once. The `size`
+# block is gone rather than rewritten: labeler matches on PATHS, and a path
+# cannot tell you how large a diff is, so `size/l` for "this PR touched
+# components/" was never going to mean what the name says. If a real size
+# label is wanted it needs a line-count action, not this one.
 
 dependencies:
-  - label: "dependencies"
-    from-branch:
-      - "dependabot/**"
+  - head-branch: ["^dependabot/"]
 
 ci:
-  - label: "ci"
-    changed-files:
+  - changed-files:
       - any-glob-to-any-file: [".github/workflows/**"]
 
 config:
-  - label: "config"
-    changed-files:
+  - changed-files:
       - any-glob-to-any-file:
           ["lib/config/**", ".env.example", "**/config.{ts,js,mjs}"]
 
 security:
-  - label: "security"
-    changed-files:
+  - changed-files:
       - any-glob-to-any-file: ["lib/auth/**", "lib/scanner/**", "**/security*"]
 
 docs:
-  - label: "docs"
-    changed-files:
+  - changed-files:
       - any-glob-to-any-file: ["docs/**", "**/*.md", "**/README*"]

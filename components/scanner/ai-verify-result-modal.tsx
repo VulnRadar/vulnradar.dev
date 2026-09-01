@@ -89,7 +89,24 @@ export function AiVerifyResultModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="overflow-hidden p-0 sm:max-w-lg">
+      {/* shadow-2xl, not DialogContent's shadow-lg: this is the only dialog
+          in the product that sets p-0 and runs its content edge to edge, so
+          it leans harder on elevation to read as a card.
+
+          It also carried a border-input override, on the premise that a bare
+          `border` resolves to the v4 compat shim's near-white
+          --color-gray-200. It does not: `* { @apply border-border }` is
+          emitted after that shim in the same layer and wins on source order,
+          so the inherited edge is --border, which is the right token for a
+          panel. A modal is not an SC 1.4.11 user interface component; see
+          components/ui/dialog.tsx. */}
+      {/* overflow-x-hidden, not overflow-hidden: the shorthand also cancelled
+          DialogContent's own overflow-y-auto, so on a short viewport the
+          4-up Stat row (which wraps to three or four rows at 375px) and the
+          skipped-findings note past max-h were simply cut off with no way to
+          scroll to them. The x axis still clips, which is what keeps the
+          full-bleed rail inside the rounded corners. */}
+      <DialogContent className="overflow-x-hidden p-0 shadow-2xl sm:max-w-lg">
         {loading ? (
           <div className="flex items-start gap-3 p-6">
             <Loader2

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { API } from "@/lib/config/constants";
+import { API } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
 import { AuthAlert, authFocusRing } from "@/components/auth/auth-shell";
 

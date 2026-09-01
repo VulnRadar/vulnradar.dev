@@ -5,14 +5,6 @@
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
-export const ALL_SEVERITIES: readonly Severity[] = [
-  "critical",
-  "high",
-  "medium",
-  "low",
-  "info",
-] as const;
-
 export const SEVERITY_RANK: Record<Severity, number> = {
   critical: 5,
   high: 4,
@@ -21,13 +13,13 @@ export const SEVERITY_RANK: Record<Severity, number> = {
   info: 1,
 };
 
-export const SEVERITY_HEX: Record<Severity, string> = {
-  critical: "#ef4444",
-  high: "#f97316",
-  medium: "#eab308",
-  low: "#3b82f6",
-  info: "#6b7280",
-};
+/**
+ * Filled severity colour, re-exported from lib/tokens.ts so the rails, dots,
+ * chips and popup.css badges all read one ramp. The hand-written copy this
+ * replaces had drifted from the app on three of five values: low was Tailwind
+ * blue-500, info was Tailwind gray-500, and medium was blue-adjacent yellow.
+ */
+export { SEVERITY_SOLID as SEVERITY_HEX } from "./tokens";
 
 export type ScannerCategory =
   | "headers"
@@ -109,7 +101,15 @@ export interface ScanSummary {
 export interface ScanRequest {
   readonly url: string;
   readonly scanners?: readonly ScannerCategory[];
-  readonly probes?: readonly string[];
+  /**
+   * Opt in to the curated port and service sweep. This is the field the API
+   * actually reads (app/api/v3/scan/route.ts). It replaced a per-service
+   * `probes: ["ssh:22", ...]` array that the extension went on sending long
+   * after every server handler had stopped reading it, which is why the
+   * whole Service Probes panel was a no-op. Like active probing, it needs
+   * the target domain verified on the account.
+   */
+  readonly portScan?: boolean;
 }
 
 /**
@@ -132,6 +132,11 @@ export interface ScanResult {
    *  reputation-card.ts's verdictFor() for how a missing value is handled. */
   readonly verdict?: SafetyVerdict;
   readonly engineConfidence?: number;
+  /** Branches of the async check layer ("dns" | "tls" | "live-fetch") that
+   *  ran out of time budget. A branch listed here means "not checked", not
+   *  "checked and clean", so a zero-finding result with a non-empty list is
+   *  not an all-clear and must not be shown as one. */
+  readonly incomplete?: readonly string[];
   readonly scanHistoryId?: number;
   readonly notes?: string;
   /** Set when the scan followed a redirect away from the requested URL (e.g. a
@@ -211,14 +216,6 @@ export interface AuthMe {
   readonly avatarUrl: string | null;
 }
 
-export type ServiceProbeId =
-  "ssh" | "smtp" | "imap" | "pop3" | "ftp" | "mongodb";
-
-export interface ProbeConfig {
-  readonly enabled: boolean;
-  readonly port: number;
-}
-
 export type ThemeMode = "light" | "dark" | "system";
 
 export type AutoScanMode = "off" | "onTabFocus" | "onPageLoad" | "onUrlChange";
@@ -237,7 +234,10 @@ export interface Settings {
   readonly autoScan: AutoScanMode;
   readonly autoScanThrottleSeconds: number;
   readonly families: Readonly<Record<ScannerCategory, boolean>>;
-  readonly probes: Readonly<Record<ServiceProbeId, ProbeConfig>>;
+  /** Curated port and service sweep. Needs a verified domain, so it is off
+   *  by default and a scan requesting it on an unverified domain is
+   *  rejected by the API rather than silently downgraded. */
+  readonly portScan: boolean;
   readonly scanMode: "quick" | "deep";
   readonly notifyThreshold: NotificationThreshold;
   readonly notifySound: boolean;
@@ -295,14 +295,7 @@ export const DEFAULT_SETTINGS: Settings = {
     // into nine per-probe toggles; see lib/scanner/active-probe-catalog.ts).
     "active-probes": false,
   },
-  probes: {
-    ssh: { enabled: false, port: 22 },
-    smtp: { enabled: false, port: 587 },
-    imap: { enabled: false, port: 143 },
-    pop3: { enabled: false, port: 110 },
-    ftp: { enabled: false, port: 21 },
-    mongodb: { enabled: false, port: 27017 },
-  },
+  portScan: false,
   scanMode: "quick",
   notifyThreshold: "high",
   notifySound: false,

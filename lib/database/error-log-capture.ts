@@ -17,6 +17,7 @@
  */
 import pool from "@/lib/database/db";
 import { redactEmailsInDetails } from "@/lib/auth/authorization";
+import { currentRequestId } from "@/lib/database/request-context";
 
 const MAX_MESSAGE_LENGTH = 2000;
 const MAX_DETAIL_LENGTH = 8000;
@@ -163,13 +164,22 @@ export function installErrorLogCapture(): void {
       // coalesce window.
       if (!_shouldCapture(joined, Date.now())) return;
 
+      // The correlation id of the request that is running, if there is
+      // one (AUDIT-012#obs-07, see lib/database/request-context.ts). Read
+      // here, synchronously, rather than passed in by the ~330 console.error
+      // call sites: this runs inside the caller's async context, so the
+      // lookup is exact, and it is what ties the several rows one failing
+      // request writes together. Null for anything outside a request
+      // (boot, cron tick, background worker).
+      const requestId = currentRequestId();
+
       // Fire-and-forget: never awaited inline, and any rejection is
       // swallowed here so it can never propagate to the console.error
       // caller (which may itself be inside an error handler).
       void pool
         .query(
-          "INSERT INTO system_error_logs (message, detail) VALUES ($1, $2)",
-          [message, detail],
+          "INSERT INTO system_error_logs (message, detail, request_id) VALUES ($1, $2, $3)",
+          [message, detail, requestId],
         )
         .catch(() => {
           // Best-effort only. Do not call console.error here -- that

@@ -12,8 +12,11 @@
  *   4. Creates the target database via the admin connection.
  *   5. Applies the schema for the chosen version.
  *   6. Seeds default badges (v2 only).
- *   7. Optionally copies user data table-by-table (filtered to the
- *      target schema; v2-only tables are flagged in red, not copied).
+ *   7. Optionally copies user data table-by-table. The set is derived from
+ *      what the two databases actually contain, not from a list in this
+ *      file: everything the source and the target both have is copied, in
+ *      foreign-key order, and anything skipped is named on screen with a
+ *      reason (transient data, or a table the target schema lacks).
  *   8. Writes the meta row so the migrator sees the new schema version.
  *
  * Usage:
@@ -23,7 +26,6 @@
  * Requires DATABASE_URL in .env.local or as an environment variable.
  */
 
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import pg from "pg";
 import {
@@ -50,81 +52,66 @@ import {
   requireDatabaseUrl,
 } from "../_lib/_lib.mjs";
 import { repairAllSequences } from "../migrate/_runner.mjs";
+import {
+  readSchemaStatements,
+  bootSchemaStatements,
+  moduleStepStatements,
+} from "../_lib/_lib.schema-parity.mjs";
+import { getForeignKeys } from "../_lib/_lib.schema-introspect.mjs";
+import { planTableCopy } from "../_lib/_lib.table-copy.mjs";
+import {
+  applySchema,
+  META_TABLE_SQL,
+} from "../../lib/database/schema/index.mjs";
+import { DEFAULT_BADGES_SQL } from "../../lib/database/schema/seeds.mjs";
 
-const ROOT = resolve(import.meta.dirname, "..", "..");
 const SCHEMAS_DIR = resolve(import.meta.dirname, "schemas");
 
 // Only two flags: --dry-run (preview) and --help. The schema version is
 // always picked interactively.
 let DRY_RUN = false;
 
-// Schema files for each known version. All but the newest are frozen
-// snapshots in schemas/ — the newest always points at the live
-// instrumentation.ts so it can never drift from what `docker compose up`
-// actually creates. When a new schema version ships: freeze the current
-// instrumentation.ts into schemas/instrumentation-v<old>.ts, then repoint
-// the previous "newest" entry at that new snapshot file.
-const SCHEMA_FILES = {
-  "1.0.0": resolve(SCHEMAS_DIR, "instrumentation-v1.ts"),
-  "2.0.0": resolve(SCHEMAS_DIR, "instrumentation-v2.ts"),
-  "3.0.0": resolve(ROOT, "instrumentation.ts"),
+// Where each known schema version comes from.
+//
+// Older versions are frozen snapshots in schemas/, read as text and replayed
+// statement by statement. They are historical artefacts; nothing executes
+// them but this script.
+//
+// The NEWEST version has no file: it is lib/database/schema, the same ordered
+// step array instrumentation.ts's register() runs at boot, executed here
+// through the same applySchema(). That is the whole point. This script used to
+// rebuild the newest schema by reading instrumentation.ts as TEXT, which
+// cannot resolve a template literal whose table name comes from a loop
+// variable, so a database built here was silently missing four ON DELETE SET
+// NULL foreign keys, six CHECK constraints and seven updated_at triggers, and
+// nothing compared the two results.
+//
+// When a new schema version ships: freeze the current schema into
+// schemas/instrumentation-v<old>.ts, then add the previous "newest" entry
+// here pointing at that snapshot.
+const SCHEMA_SOURCES = {
+  "1.0.0": { snapshot: resolve(SCHEMAS_DIR, "instrumentation-v1.ts") },
+  "2.0.0": { snapshot: resolve(SCHEMAS_DIR, "instrumentation-v2.ts") },
+  "3.0.0": { snapshot: null },
 };
+const KNOWN_VERSIONS = Object.keys(SCHEMA_SOURCES);
+const LATEST_VERSION = KNOWN_VERSIONS[KNOWN_VERSIONS.length - 1];
 
-// Tables that contain user data worth migrating (in FK-safe order).
-// Names match the actual schema: `admin_audit_log` (not `audit_log`),
-// `scheduled_scans` (not `scan_schedules`). At runtime, the script
-// filters this list against the target DB's actual tables — anything
-// not in the target is flagged in red, not attempted.
-const MIGRATE_TABLES = [
-  // v1 baseline
-  "users",
-  "sessions",
-  "password_reset_tokens",
-  "api_keys",
-  "scan_history",
-  "scan_tags",
-  "scheduled_scans",
-  "teams",
-  "team_members",
-  "team_invites",
-  "admin_audit_log",
-  // v2-only
-  "billing_history",
-  "badges", // before user_badges (FK)
-  "user_badges",
-  "gifted_subscriptions",
-  "admin_notifications",
-  // v3.0.0-only
-  "ai_conversations",
-  "browser_sessions",
-  "scan_finding_feedback",
-  // Per-finding remediation status (open / in_progress / fixed / ...),
-  // keyed on the stable finding_id so it persists across rescans. Copied
-  // for the same "whatever exists in the source" consistency as the other
-  // v3.0.0-only tables; references users, so it comes after users above.
-  "finding_remediation",
-  "user_notifications",
-  "host_reputation",
-  "github_connections",
-  "github_review_usage",
-  // AUDIT-009 migration-01: these 4 tables existed in instrumentation.ts
-  // but were missing from this list (the same blind spot the versioned
-  // migration file had -- see scripts/migrate/versions/2.0.0-to-3.0.0.mjs).
-  "processed_stripe_events",
-  "user_ai_configs",
-  "cve_kev_cache",
-  "webhook_deliveries",
-  // system_error_logs: Admin > System > Error Logs capture table (see
-  // lib/database/error-log-capture.ts). Included here for the same
-  // "copy whatever exists in the source" consistency as the other
-  // v3.0.0-only tables above.
-  "system_error_logs",
-  // auto_tag_dismissals: log of which auto tags real users told us were
-  // wrong (see app/api/v3/scan/tags/route.ts), keyed by scan_id -- must
-  // come after scan_history above in this FK-safe ordering. Included for
-  // the same "copy whatever exists in the source" consistency.
-  "auto_tag_dismissals",
-];
+/** What to show an operator as the source of a version's schema. */
+function schemaSourceLabel(version) {
+  const snapshot = SCHEMA_SOURCES[version]?.snapshot;
+  return snapshot ? snapshot.split(/[\\/]/).pop() : "lib/database/schema";
+}
+
+// AUDIT-013 migrate-02: there used to be a hardcoded 30-entry
+// MIGRATE_TABLES list here, and it drove BOTH the copy loop and the plan
+// shown to the operator. 33 of the 63 app tables were not in it, so they
+// were never copied and never mentioned: cloning production silently lost
+// system_settings, access_rules, webhooks, host_badges, support_tickets
+// and thirty more. The copy set is now derived (source tables that the
+// target also has) by scripts/_lib/_lib.table-copy.mjs, ordered from the
+// target's real foreign keys, and everything skipped is named on screen.
+// The only list left is TRANSIENT_TABLES, in that module.
 
 // Hard-coded defaults for v1 -> v2 columns that are NOT NULL but missing in source.
 const COLUMN_DEFAULTS = {
@@ -159,129 +146,90 @@ const JSON_COLUMNS = {
 };
 
 // ── Step 2: apply schema to the new database ────────────────────────────────
-async function applySchemaToNewPool(newPool, version) {
-  const instrPath = SCHEMA_FILES[version];
-  if (!instrPath) {
-    error(`No schema file registered for version ${version}.`);
-    return { tables: 0, indexes: 0, tableNames: [] };
-  }
-  let content;
-  try {
-    content = readFileSync(instrPath, "utf-8");
-  } catch (err) {
-    error(
-      `Failed to read schema file for ${version} (${instrPath}): ${err.message}`,
-    );
-    return { tables: 0, indexes: 0, tableNames: [] };
-  }
 
-  // Pull every pool.query(`...`) template literal out of the file and split
-  // on ';' to get individual statements.
-  //
-  // Must account for two call shapes beyond the bare `pool.query(\`...\`)`
-  // this originally matched, or a match's own non-greedy `[\s\S]*?` runs
-  // straight past that call (its own closing backtick isn't immediately
-  // followed by `)`) and keeps searching forward for the next "`)"
-  // ANYWHERE later in the file -- silently swallowing real, unrelated
-  // TypeScript source as if it were SQL, and corrupting extraction for
-  // everything after it. Confirmed against instrumentation.ts's sequence-
-  // repair block: `pool.query(\`SELECT setval($1, $2)\`, [seqName, val])`'s
-  // own closing backtick is followed by `, [...])`, not `)`, so the old
-  // regex ran forward and matched the NEXT "`)" it found -- inside an
-  // unrelated `fixed.push(\`...\`)` call several lines later -- and fed the
-  // resulting garbage blob to the database as three bogus "statements".
-  //   1. `pool.query<{ SomeType }>(\`...\`)`   -- an inline generic type
-  //      argument between `.query` and `(`. Also previously caused a
-  //      silent (non-corrupting, but invisible) skip on its own.
-  //   2. `pool.query(\`...\`, [a, b])`          -- a bound-parameter array
-  //      after the template literal.
-  //   3. `pool.query(\`...\`,\n)`               -- a bare trailing comma
-  //      with no params (prettier's multi-line-call style), no `[...]` to
-  //      anchor on.
-  // Neither shape is schema DDL in this file (they're read-only integrity
-  // checks and the sequence-repair safety net), so extracting and running
-  // them against a fresh database is expected to no-op or fail loudly with
-  // an accurate, non-corrupting warning -- the fix here is bounding every
-  // call correctly, not extracting 100% of statement forms. Rather than
-  // enumerate every possible shape of "whatever comes between the closing
-  // backtick and the real closing paren", `[^`)]*` matches any run of
-  // trailing-arg characters that contains neither (so it can never skip
-  // into the NEXT template literal, and stops at the first real `)`).
-  //
-  // `pool\s*\.\s*query` (not the literal substring "pool.query"): several
-  // tables from ai_conversations onward are created via
-  // `await pool\n  .query(\`...\`,\n  )\n  .catch(...)` -- the method-chain
-  // break lands right after `pool`, putting a newline between `pool` and
-  // `.query`. A regex requiring "pool.query" as one contiguous token never
-  // matches that call at all, so this function's own `while` loop resumes
-  // scanning from the wrong place and silently skips every table from that
-  // point to the next contiguous-style call it can match (confirmed via a
-  // live round-trip test: `npm run db:create`'s "3.0.0" option was silently
-  // producing a database missing ai_conversations, browser_sessions,
-  // scan_finding_feedback, user_notifications, host_reputation,
-  // github_connections, github_review_usage, processed_stripe_events,
-  // user_ai_configs, cve_kev_cache, webhook_deliveries, and ai_usage -- 12
-  // tables, roughly a quarter of the v3.0.0 schema). `pool\s*\.\s*query`
-  // matches both the contiguous and line-broken call shapes identically.
-  const sqlBlockRegex =
-    /pool\s*\.\s*query(?:<[\s\S]*?>)?\(\s*`([\s\S]*?)`[^`)]*\)/g;
-  const statements = [];
-  let match;
-  while ((match = sqlBlockRegex.exec(content)) !== null) {
-    const sql = match[1].trim();
-    for (const part of sql
-      .split(";")
-      .map((s) => s.trim())
-      .filter(Boolean)) {
-      // A bare regex sweep over the whole file also picks up every
-      // read-only `pool.query` call in instrumentation.ts that has
-      // nothing to do with schema creation -- a startup schema-version
-      // check, a couple of one-off integrity checks used elsewhere, and
-      // the sequence-repair safety net's introspection queries (one of
-      // which references `${row.col_name}`/`${row.tbl_name}` literally,
-      // since extraction reads raw source text rather than evaluating the
-      // template interpolation). None of those are schema-mutating, none
-      // of them make sense run out of order against a database that has
-      // no rows yet, and running them just produces noisy, confusing
-      // warnings for something this step was never trying to do in the
-      // first place. Applying the schema means CREATE/ALTER/DROP/INSERT;
-      // a bare SELECT never is.
-      if (/^SELECT\b/i.test(part)) continue;
-      statements.push(part);
+/**
+ * Count and announce what a batch of executed statements produced. Shared by
+ * the two paths below so the operator sees the same summary either way.
+ */
+function tallyStatements(statements, tally) {
+  for (const stmt of statements) {
+    const upper = stmt.toUpperCase();
+    if (upper.includes("CREATE TABLE")) {
+      const m = stmt.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)/i);
+      if (m) {
+        success(`  Created table: ${m[1]}`);
+        tally.tables++;
+        tally.tableNames.push(m[1]);
+      }
+    } else if (/CREATE\s+(?:UNIQUE\s+)?INDEX/.test(upper)) {
+      // A CREATE UNIQUE INDEX statement's uppercased text doesn't contain the
+      // literal substring "CREATE INDEX" (UNIQUE sits in between), so a plain
+      // .includes() check here silently undercounts the summary.
+      tally.indexes++;
     }
   }
+}
 
-  let created = 0;
-  let indexes = 0;
-  const tableNames = [];
-  for (const stmt of statements) {
+async function applySchemaToNewPool(newPool, version) {
+  const source = SCHEMA_SOURCES[version];
+  if (!source) {
+    error(`No schema source registered for version ${version}.`);
+    return { tables: 0, indexes: 0, tableNames: [] };
+  }
+  const tally = { tables: 0, indexes: 0, tableNames: [] };
+
+  if (source.snapshot === null) {
+    // The live schema. Same module, same ordered steps, same guards
+    // instrumentation.ts's register() runs at boot, so a database created
+    // here and a database created by `docker compose up` cannot disagree:
+    // there is only one list, and both execute it.
+    await applySchema(newPool, {
+      onApplied: (_step, queries) => tallyStatements(queries, tally),
+      // Three steps' DDL is owned by a TypeScript helper module (see
+      // moduleStepStatements). This script is plain Node and cannot import
+      // TypeScript, so it runs the same statements read out of the same file.
+      runModuleStep: async (step) => {
+        const statements = moduleStepStatements(step);
+        for (const stmt of statements) await newPool.query(stmt);
+        return statements;
+      },
+      onWarn: (step, err) => {
+        warn(`  ${step.id}: ${String(err.message ?? err).slice(0, 80)}`);
+      },
+    });
+    log(`  ${c.dim}${tally.indexes} index(es) created${c.reset}`);
+    return tally;
+  }
+
+  // A frozen snapshot of an older version: text, replayed exactly as frozen.
+  let statements;
+  try {
+    statements = readSchemaStatements(source.snapshot);
+  } catch (err) {
+    error(
+      `Failed to read the v${version} snapshot (${source.snapshot}): ${err.message}`,
+    );
+    return tally;
+  }
+
+  // A snapshot also carries the read-only `pool.query` calls its boot path
+  // made (the startup schema-version check, a couple of one-off integrity
+  // checks, the sequence-repair introspection). None are schema-mutating,
+  // none make sense run out of order against a database with no rows yet, and
+  // running them only produces noisy, confusing warnings. Applying a schema
+  // means CREATE/ALTER/DROP/INSERT; a bare SELECT never is.
+  for (const stmt of statements.filter((s) => !/^\s*SELECT\b/i.test(s))) {
     try {
       await newPool.query(stmt);
-      const upper = stmt.toUpperCase();
-      if (upper.includes("CREATE TABLE")) {
-        const m = stmt.match(
-          /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)/i,
-        );
-        if (m) {
-          success(`  Created table: ${m[1]}`);
-          created++;
-          tableNames.push(m[1]);
-        }
-      } else if (/CREATE\s+(?:UNIQUE\s+)?INDEX/.test(upper)) {
-        // A CREATE UNIQUE INDEX statement's uppercased text doesn't
-        // contain the literal substring "CREATE INDEX" (UNIQUE sits in
-        // between), so a plain .includes() check here silently undercounts
-        // the summary -- instrumentation.ts has several unique indexes.
-        indexes++;
-      }
+      tallyStatements([stmt], tally);
     } catch (err) {
       if (!err.message.includes("already exists")) {
         warn(`  ${err.message.slice(0, 80)}`);
       }
     }
   }
-  log(`  ${c.dim}${indexes} index(es) created${c.reset}`);
-  return { tables: created, indexes, tableNames };
+  log(`  ${c.dim}${tally.indexes} index(es) created${c.reset}`);
+  return tally;
 }
 
 /**
@@ -290,14 +238,9 @@ async function applySchemaToNewPool(newPool, version) {
  */
 async function writeInitialMetaRow(newPool, schemaVersion, appVersion) {
   try {
-    await newPool.query(`
-      CREATE TABLE IF NOT EXISTS vulnradar_schema_meta (
-        id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
-        schema_version VARCHAR(20) NOT NULL,
-        app_version     VARCHAR(20) NOT NULL,
-        applied_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-    `);
+    // Same DDL the boot path uses, imported rather than retyped: this table
+    // used to be written out by hand in three separate places.
+    await newPool.query(META_TABLE_SQL);
     await newPool.query(
       `INSERT INTO vulnradar_schema_meta (id, schema_version, app_version, applied_at)
        VALUES (1, $1, $2, NOW())
@@ -318,16 +261,11 @@ async function writeInitialMetaRow(newPool, schemaVersion, appVersion) {
 async function seedDefaultBadges(newPool) {
   info("Seeding default badges...");
   try {
-    await newPool.query(`
-      INSERT INTO badges (name, display_name, description, color, icon, priority) VALUES
-        ('beta_tester', 'Beta Tester', 'Helped test VulnRadar before release', '#8b5cf6', 'flask', 10),
-        ('bug_hunter', 'Bug Hunter', 'Reported bugs or security issues', '#ef4444', 'bug', 7),
-        ('contributor', 'Contributor', 'Contributed to VulnRadar development', '#10b981', 'code', 8),
-        ('premium', 'Premium', 'Premium subscription member', '#fbbf24', 'star', 6),
-        ('verified', 'Verified', 'Verified identity', '#06b6d4', 'check-circle', 5),
-        ('founder', 'Founder', 'Original founding member', '#f59e0b', 'crown', 20)
-      ON CONFLICT (name) DO NOTHING
-    `);
+    // Imported, not retyped. This function used to carry its own six-badge
+    // list while the boot path seeded eight, and the four names they shared
+    // disagreed on icon, colour and priority: a cloned database rendered
+    // different badges than the same database booted.
+    await newPool.query(DEFAULT_BADGES_SQL);
     success("  Seeded default badges");
   } catch (err) {
     warn(`  Could not seed badges: ${err.message}`);
@@ -468,73 +406,137 @@ function mappingReverseGet(mapping, targetName) {
   return targetName;
 }
 
-async function migrateData(originalPool, newPool, tablesWithData, newDbTables) {
-  section("Step 3: Data Migration");
+/**
+ * Read the target database's foreign keys so the copy inserts parents
+ * before children. The TARGET's constraints are the ones that matter: that
+ * is where the rows land. Best-effort -- if introspection fails the copy
+ * still runs, just in alphabetical order, and any resulting FK violation
+ * is reported per row by copyTableData.
+ */
+async function readTargetForeignKeys(newPool) {
+  try {
+    return await getForeignKeys(newPool);
+  } catch (err) {
+    warn(
+      `Could not read foreign keys from the target (copy order will be alphabetical): ${err.message}`,
+    );
+    return [];
+  }
+}
+
+async function migrateData(originalPool, newPool, plan) {
   info(`Transferring data from source to target...`);
   log("");
 
-  // Filter MIGRATE_TABLES against what's actually in the new DB. Tables
-  // not in the target (e.g. v2-only tables when copying to a v1 target)
-  // can't be transferred and are skipped with a warning.
-  const targetSet = new Set(newDbTables);
-  const canCopy = MIGRATE_TABLES.filter((t) => targetSet.has(t));
-  const cannotCopy = MIGRATE_TABLES.filter((t) => !targetSet.has(t));
-
-  for (const table of canCopy) {
-    const meta = tablesWithData.find((t) => t.name === table);
-    if (!meta || meta.count === 0) continue;
-    await copyTableData(originalPool, newPool, table, meta.count);
+  const copied = [];
+  const refused = [];
+  for (const { table, count } of plan.copy) {
+    const ok = await copyTableData(originalPool, newPool, table, count);
+    if (ok) copied.push({ table, count });
+    else refused.push({ table, count });
   }
 
-  if (cannotCopy.length > 0) {
+  // AUDIT-013 migrate-02: the old version reported nothing about what it
+  // had not copied, so 33 tables' worth of loss was invisible both before
+  // and after. Every skipped table is named here with the reason.
+  if (refused.length > 0) {
     log("");
-    for (const table of cannotCopy) {
-      const srcCount = tablesWithData.find((t) => t.name === table)?.count ?? 0;
-      if (srcCount > 0) {
-        warn(
-          `  ${c.red}!${c.reset} ${c.bold}${table}${c.reset} ${c.dim}(${srcCount} source rows)${c.reset} — ${c.red}table does not exist in target schema${c.reset}`,
-        );
-      }
+    for (const { table, count } of refused) {
+      warn(
+        `  ${c.red}!${c.reset} ${c.bold}${table}${c.reset} ${c.dim}(${count} source rows)${c.reset} — ${c.red}NOT copied: the target has a NOT NULL column with no default that the source cannot supply${c.reset}`,
+      );
     }
   }
+  if (plan.transient.length > 0) {
+    log("");
+    info("Deliberately not copied (transient data):");
+    for (const { table, count, reason } of plan.transient) {
+      log(
+        `    ${c.dim}-${c.reset} ${c.bold}${table}${c.reset} ${c.dim}(${count} source rows): ${reason}${c.reset}`,
+      );
+    }
+  }
+  if (plan.missingInTarget.length > 0) {
+    log("");
+    for (const { table, count } of plan.missingInTarget) {
+      warn(
+        `  ${c.red}!${c.reset} ${c.bold}${table}${c.reset} ${c.dim}(${count} source rows)${c.reset} — ${c.red}table does not exist in target schema, NOT copied${c.reset}`,
+      );
+    }
+  }
+
   log("");
   success("Data migration complete.");
+  return { copied, refused };
 }
 
 /**
- * Show a clear data-migration plan: which tables WILL transfer (green)
- * and which CANNOT (red). Helps the user understand what they're about
- * to do before approving.
+ * Compare row counts after the copy and shout about any table that lost
+ * rows without saying so. copyTableData already reports per-table skips,
+ * but only this check can catch a table that was silently short.
+ *
+ * Returns the list of shortfalls so the caller can set the exit code.
  */
-function showDataMigrationPlan(tablesWithData, newDbTables) {
-  const targetSet = new Set(newDbTables);
-  const canCopy = [];
-  const cannotCopy = [];
-  for (const table of MIGRATE_TABLES) {
-    const src = tablesWithData.find((t) => t.name === table);
-    if (!src || src.count === 0) continue;
-    if (targetSet.has(table)) {
-      canCopy.push({ table, count: src.count });
-    } else {
-      cannotCopy.push({ table, count: src.count });
+async function verifyCopiedCounts(newPool, copied) {
+  const shortfalls = [];
+  for (const { table, count } of copied) {
+    try {
+      const res = await newPool.query(
+        `SELECT COUNT(*)::int AS n FROM "${table}"`,
+      );
+      const got = res.rows[0].n;
+      if (got < count) shortfalls.push({ table, expected: count, got });
+    } catch (err) {
+      shortfalls.push({ table, expected: count, got: `error: ${err.message}` });
     }
   }
+  return shortfalls;
+}
+
+/**
+ * Show a clear data-migration plan before the operator approves it: what
+ * transfers, what is deliberately skipped and why, and what cannot be
+ * transferred at all.
+ */
+function showDataMigrationPlan(plan) {
   log("");
   log(`  ${c.bold}Data migration plan:${c.reset}`);
   log("");
-  if (canCopy.length === 0 && cannotCopy.length === 0) {
+  if (
+    plan.copy.length === 0 &&
+    plan.transient.length === 0 &&
+    plan.missingInTarget.length === 0
+  ) {
     log(`    ${c.dim}(no data to migrate)${c.reset}`);
-  } else {
-    for (const { table, count } of canCopy) {
-      log(
-        `    ${c.green}✓${c.reset} ${c.bold}${table}${c.reset}  ${c.dim}(${count} row${count === 1 ? "" : "s"})${c.reset}`,
-      );
-    }
-    for (const { table, count } of cannotCopy) {
-      log(
-        `    ${c.red}✗${c.reset} ${c.bold}${table}${c.reset}  ${c.dim}(${count} row${count === 1 ? "" : "s"})${c.reset}  ${c.red}— table not in target schema${c.reset}`,
-      );
-    }
+    log("");
+    return;
+  }
+  for (const { table, count } of plan.copy) {
+    log(
+      `    ${c.green}✓${c.reset} ${c.bold}${table}${c.reset}  ${c.dim}(${count} row${count === 1 ? "" : "s"})${c.reset}`,
+    );
+  }
+  for (const { table, count, reason } of plan.transient) {
+    log(
+      `    ${c.dim}-${c.reset} ${c.bold}${table}${c.reset}  ${c.dim}(${count} row${count === 1 ? "" : "s"})  skipped: ${reason}${c.reset}`,
+    );
+  }
+  for (const { table, count } of plan.missingInTarget) {
+    log(
+      `    ${c.red}✗${c.reset} ${c.bold}${table}${c.reset}  ${c.dim}(${count} row${count === 1 ? "" : "s"})${c.reset}  ${c.red}— table not in target schema${c.reset}`,
+    );
+  }
+  if (plan.cycles.length > 0) {
+    log("");
+    warn(
+      `  Foreign keys form a cycle between ${plan.cycles.join(", ")}; those are copied last and individual rows may be skipped on a FK violation.`,
+    );
+  }
+  if (plan.unaccounted.length > 0) {
+    log("");
+    error(
+      `  ${plan.unaccounted.length} source table(s) could not be classified and would be silently dropped: ${plan.unaccounted.join(", ")}. This is a bug in scripts/_lib/_lib.table-copy.mjs; do not proceed.`,
+    );
   }
   log("");
 }
@@ -590,13 +592,12 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
     // No --version flag exists (by design — see the arg-parsing loop
     // above), so targetVersion is always unset here: default to the
     // latest known schema.
-    const known = Object.keys(SCHEMA_FILES);
-    targetVersion = known[known.length - 1];
+    targetVersion = LATEST_VERSION;
     const dryRunSource = sourceParsed.database;
     const dryRunTarget = `${dryRunSource}_v${targetVersion.split(".")[0]}_dryrun`;
     log(`  ${c.dim}Would create:${c.reset} ${c.bold}${dryRunTarget}${c.reset}`);
     log(
-      `  ${c.dim}Would apply schema:${c.reset} ${c.bold}v${targetVersion}${c.reset} ${c.dim}(${SCHEMA_FILES[targetVersion].split(/[\\/]/).pop()})${c.reset}`,
+      `  ${c.dim}Would apply schema:${c.reset} ${c.bold}v${targetVersion}${c.reset} ${c.dim}(${schemaSourceLabel(targetVersion)})${c.reset}`,
     );
     log(
       `  ${c.dim}Source database:${c.reset} ${c.bold}${dryRunSource}${c.reset} ${c.dim}(from DATABASE_URL)${c.reset}`,
@@ -611,22 +612,28 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
     }
     const source = await getDatabaseSummary(sourcePool);
 
-    const schemaFileContent = readFileSync(
-      SCHEMA_FILES[targetVersion],
-      "utf-8",
-    );
-    const tableMatches = [
-      ...schemaFileContent.matchAll(
-        /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)/gi,
-      ),
-    ];
-    const targetTables = new Set(tableMatches.map((m) => m[1]));
+    // The same statement list the real run executes, so the preview cannot
+    // promise a different set of tables than the run creates.
+    const targetTables = new Set();
+    const previewStatements =
+      SCHEMA_SOURCES[targetVersion].snapshot === null
+        ? bootSchemaStatements()
+        : readSchemaStatements(SCHEMA_SOURCES[targetVersion].snapshot);
+    for (const stmt of previewStatements) {
+      const m = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"?(\w+)"?/i.exec(
+        stmt,
+      );
+      if (m) targetTables.add(m[1]);
+    }
 
-    const tablesWithData = source.tables
-      .map((t) => ({ name: t, count: source.counts[t] }))
-      .filter((t) => t.count > 0);
-    const canCopy = tablesWithData.filter((t) => targetTables.has(t.name));
-    const cannotCopy = tablesWithData.filter((t) => !targetTables.has(t.name));
+    // No target database exists yet, so there are no foreign keys to read:
+    // the preview lists tables alphabetically. The real run orders them
+    // parents-first from the target's own constraints.
+    const plan = planTableCopy({
+      sourceTables: source.tables,
+      targetTables: [...targetTables],
+      counts: source.counts,
+    });
 
     log(`  ${c.bold}Schema plan (v${targetVersion}):${c.reset}`);
     log(
@@ -637,26 +644,10 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
     );
     log("");
 
-    log(`  ${c.bold}Data migration plan:${c.reset}`);
     log(
       `    ${c.dim}Source: ${dryRunSource} (${source.tables.length} tables, ${source.totalRows} total rows)${c.reset}`,
     );
-    log("");
-    if (canCopy.length === 0 && cannotCopy.length === 0) {
-      log(`    ${c.dim}(no data to migrate)${c.reset}`);
-    } else {
-      for (const t of canCopy) {
-        log(
-          `    ${c.green}✓${c.reset} ${c.bold}${t.name}${c.reset}  ${c.dim}(${t.count} row${t.count === 1 ? "" : "s"})${c.reset}`,
-        );
-      }
-      for (const t of cannotCopy) {
-        log(
-          `    ${c.red}✗${c.reset} ${c.bold}${t.name}${c.reset}  ${c.dim}(${t.count} row${t.count === 1 ? "" : "s"})${c.reset}  ${c.red}— table not in v${targetVersion}${c.reset}`,
-        );
-      }
-    }
-    log("");
+    showDataMigrationPlan(plan);
 
     success(
       "[DRY-RUN] No changes were made. Run `npm run db:create` to apply.",
@@ -670,8 +661,8 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
   // and this prompt always runs — it always was; the previous `if
   // (!targetVersion)` guard around it was a no-op.
   {
-    const KNOWN = Object.keys(SCHEMA_FILES);
-    const LATEST = KNOWN[KNOWN.length - 1];
+    const KNOWN = KNOWN_VERSIONS;
+    const LATEST = LATEST_VERSION;
     const LABELS = {
       "1.0.0": "v1 baseline (19 tables, pre-MVP)",
       "2.0.0": "v2 / production schema (34 tables)",
@@ -725,7 +716,7 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
       "Let you pick which database to copy FROM (or skip)",
       `Ask for a name for the NEW database (default ends in _v${targetVersion.split(".")[0]})`,
       "Create the target database via the admin connection",
-      `Apply the ${targetVersion} schema (${SCHEMA_FILES[targetVersion].split(/[\\/]/).pop()})`,
+      `Apply the ${targetVersion} schema (${schemaSourceLabel(targetVersion)})`,
       targetVersion !== "1.0.0"
         ? "Seed default badges"
         : "(no badges seed for v1)",
@@ -900,22 +891,31 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
   const newDbTables = [...tableNames, "vulnradar_schema_meta"];
 
   // ── Step 3: optionally migrate data ───────────────────────────────────────
-  const tablesWithData = source.tables
-    .map((t) => ({ name: t, count: source.counts[t] }))
-    .filter((t) => t.count > 0);
+  // The plan is derived from what the two databases actually contain, not
+  // from a list in this file (AUDIT-013 migrate-02). Foreign keys come from
+  // the TARGET, since that is where the inserts land.
+  const plan = planTableCopy({
+    sourceTables: source.tables,
+    targetTables: newDbTables,
+    counts: source.counts,
+    fkEdges: await readTargetForeignKeys(newPool),
+  });
+  const hasSourceData =
+    plan.copy.length > 0 ||
+    plan.transient.length > 0 ||
+    plan.missingInTarget.length > 0;
 
-  // Compute the data-migration plan once, so the user can see it before
-  // approving. The "will copy" set is filtered against the target DB's
-  // actual tables (so v2-only tables don't get inserted into a v1 DB).
-  const targetSet = new Set(newDbTables);
-  const canCopy = MIGRATE_TABLES.filter(
-    (t) => targetSet.has(t) && tablesWithData.some((tw) => tw.name === t),
-  );
-  const cannotCopy = MIGRATE_TABLES.filter(
-    (t) => !targetSet.has(t) && tablesWithData.some((tw) => tw.name === t),
-  );
+  if (plan.unaccounted.length > 0) {
+    error(
+      `Aborting: ${plan.unaccounted.length} source table(s) with rows could not be classified as copy, skip or missing (${plan.unaccounted.join(", ")}). Copying anyway would drop them silently, which is the exact defect this planner exists to prevent.`,
+    );
+    await newPool.end();
+    await sourcePool.end();
+    process.exit(1);
+  }
+
   const willMigrate =
-    canCopy.length > 0 &&
+    plan.copy.length > 0 &&
     (await askYesNo("Migrate data from source database?", true));
 
   // Seed defaults ONLY if we're not bringing our own badges. Otherwise the
@@ -924,7 +924,7 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
   const hasBadgesTable = targetVersion !== "1.0.0";
   if (
     hasBadgesTable &&
-    (!willMigrate || !tablesWithData.some((t) => t.name === "badges"))
+    (!willMigrate || !plan.copy.some((t) => t.table === "badges"))
   ) {
     await seedDefaultBadges(newPool);
   } else if (!hasBadgesTable) {
@@ -933,29 +933,38 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
     info("Skipping default badge seed (will copy from source).");
   }
 
-  if (canCopy.length === 0 && cannotCopy.length === 0) {
+  let copied = [];
+  let refused = [];
+  let shortfalls = [];
+  if (!hasSourceData) {
     log("");
     info("No data to migrate from source database.");
   } else if (willMigrate) {
     section("Step 3: Data Migration");
-    showDataMigrationPlan(tablesWithData, newDbTables);
-    log("");
-    await migrateData(sourcePool, newPool, tablesWithData, newDbTables);
+    showDataMigrationPlan(plan);
+    ({ copied, refused } = await migrateData(sourcePool, newPool, plan));
+    // Count-for-count check. copyTableData reports its own per-table skips,
+    // but only this catches a table that came up short without saying so.
+    shortfalls = await verifyCopiedCounts(newPool, copied);
+    if (shortfalls.length > 0) {
+      log("");
+      error(
+        `${shortfalls.length} table(s) have fewer rows in the new database than in the source:`,
+      );
+      for (const s of shortfalls) {
+        log(
+          `    ${c.red}!${c.reset} ${c.bold}${s.table}${c.reset}  ${c.dim}source ${s.expected}, target ${s.got}${c.reset}`,
+        );
+      }
+      log("");
+      warn(
+        "Do NOT cut over to this database until you understand why. The source database is untouched.",
+      );
+    }
   } else {
     log("");
     info("Skipped data migration.");
-    if (cannotCopy.length > 0) {
-      log("");
-      warn(
-        `${cannotCopy.length} table(s) in the source have no equivalent in the target schema and would NOT have been copied:`,
-      );
-      for (const t of cannotCopy) {
-        const src = tablesWithData.find((x) => x.name === t);
-        log(
-          `    ${c.red}!${c.reset} ${c.bold}${t}${c.reset}  ${c.dim}(${src?.count ?? 0} source rows)${c.reset}  ${c.red}— table not in v${targetVersion}${c.reset}`,
-        );
-      }
-    }
+    showDataMigrationPlan(plan);
   }
 
   log("");
@@ -986,14 +995,29 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
   );
   if (willMigrate) {
     log(
-      `    ${c.cyan}•${c.reset} Copied ${c.bold}${canCopy.length}${c.reset} table(s) from source`,
+      `    ${c.cyan}•${c.reset} Copied ${c.bold}${copied.length}${c.reset} of ${plan.copy.length} table(s) from source`,
     );
-    if (cannotCopy.length > 0) {
+    if (plan.transient.length > 0) {
       log(
-        `    ${c.cyan}•${c.reset} ${c.red}Skipped ${cannotCopy.length} table(s)${c.reset} ${c.dim}(not in v${targetVersion})${c.reset}`,
+        `    ${c.cyan}•${c.reset} ${c.dim}Skipped ${plan.transient.length} transient table(s) on purpose${c.reset}`,
       );
     }
-  } else if (canCopy.length > 0 || cannotCopy.length > 0) {
+    if (plan.missingInTarget.length > 0) {
+      log(
+        `    ${c.cyan}•${c.reset} ${c.red}Skipped ${plan.missingInTarget.length} table(s)${c.reset} ${c.dim}(not in v${targetVersion})${c.reset}`,
+      );
+    }
+    if (refused.length > 0) {
+      log(
+        `    ${c.cyan}•${c.reset} ${c.red}${refused.length} table(s) could not be copied${c.reset} ${c.dim}(NOT NULL column with no default)${c.reset}`,
+      );
+    }
+    if (shortfalls.length > 0) {
+      log(
+        `    ${c.cyan}•${c.reset} ${c.red}${shortfalls.length} table(s) came up short -- see above${c.reset}`,
+      );
+    }
+  } else if (hasSourceData) {
     log(`    ${c.cyan}•${c.reset} ${c.dim}Skipped data migration${c.reset}`);
   }
   log(
@@ -1015,6 +1039,11 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
 
   await newPool.end();
   await sourcePool.end();
+
+  // A clone that lost rows must not exit 0. The new database is left in
+  // place (dropping it would destroy the evidence) but the exit code says
+  // the copy is not trustworthy, so a script wrapping this command stops.
+  if (shortfalls.length > 0 || refused.length > 0) process.exitCode = 1;
 }
 
 main().catch((err) => {

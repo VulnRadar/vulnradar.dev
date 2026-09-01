@@ -13,7 +13,7 @@
 
 We take all security reports seriously. To report a vulnerability:
 
-1. **Email**: Send details to **security@vulnradar.dev** (PGP key below).
+1. **Email**: Send details to **security@vulnradar.dev**.
 2. **Subject line**: `[SECURITY] <short description>`
 3. **Response time**: We acknowledge within 48 hours and aim to provide an
    initial assessment within 5 business days.
@@ -23,8 +23,8 @@ We take all security reports seriously. To report a vulnerability:
 - Description of the vulnerability and its impact
 - Steps to reproduce or a proof-of-concept
 - Affected version(s) and commit SHA(s)
-- Your name/handle (for credit in the Acknowledgments section of
-  `public/.well-known/security.txt`, if you want it)
+- Your name/handle (for credit in the changelog entry for the fix, if you
+  want it)
 - Whether you want public disclosure coordination
 
 ### What to expect
@@ -54,18 +54,23 @@ Out of scope:
 - Issues in third-party services we don't control (e.g. Stripe itself)
 - Reports from automated scanners without proof of impact
 - Theoretical issues without a concrete attack path
-- Self-hosted deployments that don't follow our hardening guide
+- Self-hosted deployments that skip the hardening steps in the
+  [Security Checklist](https://vulnradar.dev/docs/self-hosting#security):
+  in particular running without TLS, with a weak or missing
+  `API_KEY_ENCRYPTION_KEY`, or with the Content-Security-Policy disabled
 
 ## Hall of Fame
 
-We credit security researchers who responsibly disclose valid issues.
-See `public/.well-known/security.txt` for the latest list.
+We credit security researchers who responsibly disclose valid issues, in the
+[changelog](https://vulnradar.dev/changelog) entry for the fix. The
+`Acknowledgments:` field in our security.txt points at the same place.
 
-## PGP Key
+## Encrypted reports
 
-We accept reports encrypted to the PGP key published in
-`public/.well-known/security.txt`. If you need the key fingerprint
-separately, request it via email reply.
+We do not currently publish a PGP key, so `security.txt` carries no
+`Encryption:` field and there is nothing to encrypt to. Send the report
+unencrypted, or email us first and we will agree a channel. Do not include
+live credentials or personal data in the report body.
 
 ## Security.txt
 
@@ -78,7 +83,13 @@ Every tagged release on GitHub is accompanied by:
 
 - **Source tarball** (`vulnradar-vX.Y.Z.tar.gz`): a git-archive of the
   tagged commit
-- **SHA256SUMS.txt**: checksums for every release artifact
+- **Browser extension packages** (`vulnradar-chrome-vE.E.E.zip` and
+  `vulnradar-firefox-vE.E.E.zip`): built from the same tag. These carry the
+  extension's own version, which is not the app version, so do not assume
+  `vX.Y.Z` here
+- **`sha256sums.txt`** (lowercase, exactly): checksums for every release
+  artifact, i.e. the tarball, both extension zips, and the SBOM. The updater
+  looks this file up by exact name, so the case matters
 - **CycloneDX SBOM** (`vulnradar-vX.Y.Z.sbom.cdx.json`): full
   software bill of materials
 - **Cosign signature bundle** (`vulnradar-vX.Y.Z.tar.gz.cert`):
@@ -108,9 +119,14 @@ You can publish the release either way:
 To verify a release:
 
 ```bash
-# Verify the tarball
+# Verify the tarball.
+# sha256sums.txt lists every release artifact (tarball, both extension zips,
+# SBOM), so --ignore-missing is required: without it sha256sum reports the
+# artifacts you did not download as failures and exits non-zero on a
+# perfectly good release, which is indistinguishable from a real tamper
+# signal. Drop the flag only if you downloaded the full asset set.
 curl -sL https://github.com/VulnRadar/vulnradar.dev/releases/download/vX.Y.Z/sha256sums.txt | \
-  sha256sum -c -
+  sha256sum --ignore-missing -c -
 
 # Verify the cosign signature (keyless, tied to the GitHub Actions OIDC)
 cosign verify-blob \

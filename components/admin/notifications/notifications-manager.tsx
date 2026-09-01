@@ -622,7 +622,10 @@ export function NotificationsManager() {
                     </div>
 
                     {/* Actions */}
-                    <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                    {/* md: prefix on the fade: touch devices have no hover, so an
+                        unprefixed opacity-0 left these actions permanently invisible
+                        while still hit-testable. Below md they are always shown. */}
+                    <div className="flex items-center gap-0.5 shrink-0 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity">
                       <button
                         onClick={() => handleToggleActive(notif)}
                         title={notif.is_active ? "Deactivate" : "Activate"}

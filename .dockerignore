@@ -1,11 +1,41 @@
-node_modules
+# Docker matches these patterns against the whole context-relative path with
+# filepath.Match semantics: `*` does not cross a `/`, and only `**` does. So
+# every pattern here without a `**` is ROOT-ANCHORED. `node_modules` used to
+# mean "the one at the root" and let extension/node_modules and
+# marketing/node_modules (648 MB, including a 270 MB chrome-headless-shell)
+# into the build context, and `.env` / `.env.*` let marketing/.env through
+# with real credentials in it. Dockerfile's `COPY . .` then puts all of that
+# in the builder layer. It never reaches the published image (the runner
+# stage copies named paths only), but it is in the context transfer and in
+# the builder cache on whatever machine ran the build.
+**/node_modules
 .next
+
+# Version control and agent/audit working directories. .claude in particular
+# can hold a full second checkout under .claude/worktrees/.
 .git
-.env
-.env.*
-.env*.local
+.claude
+audits
+graphify-out
+coverage
+.nyc_output
+
+# Real pre-migration database dumps (see .gitignore). Customer data.
+databases
+
+# Standalone Remotion asset project, not part of the product build.
+marketing
+
+# Dotenv files at any depth. The re-include must stay AFTER the exclusions.
+**/.env
+**/.env.*
 !.env.example
+
 .DS_Store
+# Root-level only, deliberately: lib/ai/*.md are runtime data files the app
+# reads through process.cwd(), and the runner stage copies lib/ wholesale.
+# Broadening this to **/*.md would ship an image whose /docs, /changelog,
+# /checks and /legal AI context is silently empty.
 *.md
 .gitignore
 .prettierrc*
@@ -13,3 +43,4 @@ node_modules
 .vscode
 .idea
 docker-compose.yml
+docker-compose.dev.yml

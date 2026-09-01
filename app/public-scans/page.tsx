@@ -6,12 +6,13 @@ import { PublicPageShell } from "@/components/shared/public-page-shell";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PaginationControl } from "@/components/ui/pagination-control";
 import { HistoryViewTabs } from "@/components/history";
+import { useAuth } from "@/components/providers/auth-provider";
 import {
   PublicScansTable,
   PublicScansEmptyState,
 } from "@/components/public-scans";
 import type { PublicScan } from "@/components/public-scans/public-scans-types";
-import { API } from "@/lib/config/constants";
+import { API } from "@/lib/config/client-constants";
 import {
   getQueryParamInt,
   QUERY_CHANGE_EVENT,
@@ -39,6 +40,8 @@ function PublicScansTableSkeleton() {
 }
 
 export default function PublicScansPage() {
+  const { me } = useAuth();
+  const isLoggedIn = !!me?.userId;
   const [scans, setScans] = useState<PublicScan[]>([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -111,7 +114,12 @@ export default function PublicScansPage() {
       padding="py-6 sm:py-8"
     >
       <div className="flex flex-col gap-5">
-        <HistoryViewTabs />
+        {/* This is the one page in the tab set anonymous visitors can reach,
+            and the other three (My History, Assets, Attack Surface) all bounce
+            a guest to /login. Three of four tabs being traps for exactly the
+            audience the page exists to serve is worse than no tab strip, so a
+            signed-out visitor does not get one. */}
+        {isLoggedIn && <HistoryViewTabs />}
 
         <div className="flex flex-wrap items-end justify-between gap-3 pb-2 pt-2 sm:pt-4">
           <div>

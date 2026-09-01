@@ -2,6 +2,7 @@ import {
   describe,
   it,
   expect,
+  beforeAll,
   beforeEach,
   afterEach,
   afterAll,
@@ -25,6 +26,26 @@ vi.mock("server-only", () => ({}));
 
 const originalKey = process.env.STRIPE_SECRET_KEY;
 
+// Pay the cold-import cost of the module graph in a hook rather than inside
+// the first test. Every test here calls vi.resetModules() and re-imports
+// @/lib/billing/stripe, which pulls in the stripe SDK and the whole
+// lib/config/constants -> config-values chain. Measured standalone: the first
+// import takes ~660ms and each subsequent one ~20ms, because vite's transform
+// cache survives resetModules even though the module registry does not. Under
+// `vitest run --coverage` (v8 instruments every one of those modules) with the
+// suite's parallel forks all competing, that first import crossed the default
+// 5000ms per-test budget and the run failed on "billing disabled, no key" with
+// a timeout rather than an assertion. Hooks get their own 10s budget, so
+// warming the graph here keeps the timed tests measuring behaviour instead of
+// transform throughput. Nothing is loosened: the assertions below are
+// unchanged and still fail if the gating is wrong.
+// The explicit budget is deliberate: this hook does one thing, and what it
+// measures is how long a cold instrumented transform takes on a contended
+// runner, which is not a property of the code under test.
+beforeAll(async () => {
+  await import("@/lib/billing/stripe");
+}, 30_000);
+
 beforeEach(() => {
   delete process.env.STRIPE_SECRET_KEY;
   // Defensive isolation: start every test with no stale constants mock and a
@@ -47,7 +68,29 @@ afterAll(() => {
   }
 });
 
-async function loadWithBillingEnabled(billingEnabled: boolean) {
+async function loadWithBillingEnabled(
+  billingEnabled: boolean,
+  /**
+   * The value STRIPE_SECRET_KEY must hold when the assertion runs. Pass
+   * `null` for "must be absent".
+   *
+   * isStripeEnabled() reads process.env at CALL time, and process.env is
+   * shared by every test file in the worker. Three other suites
+   * (stripe-webhook-setup, api/v3/stripe/setup-webhook, github-repo-scan)
+   * assign STRIPE_SECRET_KEY, so clearing it in beforeEach left a window in
+   * which one of them could set it again between that hook and the
+   * expectation here. That is the intermittent "billing disabled, no key"
+   * failure: the suite passed in isolation and failed under a full run.
+   * Setting the value immediately before the module loads, rather than a
+   * hook earlier, closes the window.
+   */
+  secretKey: string | null = null,
+) {
+  if (secretKey === null) {
+    delete process.env.STRIPE_SECRET_KEY;
+  } else {
+    process.env.STRIPE_SECRET_KEY = secretKey;
+  }
   vi.doMock("@/lib/config/constants", async (importOriginal) => {
     const actual =
       await importOriginal<typeof import("@/lib/config/constants")>();
@@ -65,8 +108,10 @@ describe("isStripeEnabled / getStripe", () => {
   });
 
   it("billing disabled overrides a configured key: still disabled and null", async () => {
-    process.env.STRIPE_SECRET_KEY = "sk_test_fake_key_for_tests";
-    const { isStripeEnabled, getStripe } = await loadWithBillingEnabled(false);
+    const { isStripeEnabled, getStripe } = await loadWithBillingEnabled(
+      false,
+      "sk_test_fake_key_for_tests",
+    );
     expect(isStripeEnabled()).toBe(false);
     expect(getStripe()).toBeNull();
   });
@@ -78,8 +123,10 @@ describe("isStripeEnabled / getStripe", () => {
   });
 
   it("billing enabled with a key: enabled, returns a cached Stripe instance", async () => {
-    process.env.STRIPE_SECRET_KEY = "sk_test_fake_key_for_tests";
-    const { isStripeEnabled, getStripe } = await loadWithBillingEnabled(true);
+    const { isStripeEnabled, getStripe } = await loadWithBillingEnabled(
+      true,
+      "sk_test_fake_key_for_tests",
+    );
 
     expect(isStripeEnabled()).toBe(true);
 

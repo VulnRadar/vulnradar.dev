@@ -11,6 +11,10 @@ import {
 } from "@/lib/email/email";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "@/lib/billing/subscription-status";
 import { grantPremiumBadge, revokePremiumBadge } from "@/lib/billing/badges";
+import {
+  staffPlanFloorCase,
+  STAFF_PLAN_FLOOR_ROLES,
+} from "@/lib/billing/staff-plan";
 import { getAiCreditTier } from "@/lib/billing/ai-credit-catalog";
 import {
   creditAiCreditPurchase,
@@ -28,6 +32,7 @@ import {
 } from "@/lib/billing/browserbase-usage";
 import pool from "@/lib/database/db";
 import Stripe from "stripe";
+import { sendAdminAlert } from "@/lib/admin/alert-webhook";
 
 // getPlanFromProductId() only recognizes our own catalog ids (e.g.
 // "core_supporter_monthly"), never a raw Stripe product id like
@@ -147,6 +152,28 @@ export async function POST(req: NextRequest) {
 
   const body = await req.text();
   const signature = req.headers.get("stripe-signature")!;
+
+  // A missing STRIPE_WEBHOOK_SECRET used to surface as "Invalid signature" with
+  // a 400, indistinguishable from a forged request, so a deployment that had
+  // simply not been given the secret looked like it was under attack while
+  // every real Stripe event was silently dropped (and 400 means Stripe stops
+  // retrying). Report it as what it is: a misconfiguration, a 503 so Stripe
+  // retries once it is fixed, and an admin alert.
+  if (!process.env.STRIPE_WEBHOOK_SECRET) {
+    console.error(
+      "[Stripe] STRIPE_WEBHOOK_SECRET is not set. Every incoming Stripe event is being rejected; subscriptions and credits will not be applied.",
+    );
+    void sendAdminAlert({
+      event: "stripe_webhook_secret_missing",
+      severity: "critical",
+      message:
+        "STRIPE_WEBHOOK_SECRET is not configured, so no Stripe webhook can be verified. Payments will not be applied until it is set.",
+    });
+    return NextResponse.json(
+      { error: "Webhook not configured" },
+      { status: 503 },
+    );
+  }
 
   let event: Stripe.Event;
 
@@ -637,13 +664,13 @@ export async function POST(req: NextRequest) {
         // otherwise duplicates/races with for the immediate-cancel path.
         const result = await pool.query(
           `UPDATE users SET
-            plan = CASE WHEN role IN ('admin', 'moderator', 'support') THEN 'pro_supporter' ELSE 'free' END,
+            plan = ${staffPlanFloorCase("$2")},
             subscription_status = 'canceled',
             stripe_subscription_id = NULL,
             billing_interval = NULL
           WHERE stripe_customer_id = $1
           RETURNING id`,
-          [customerId],
+          [customerId, STAFF_PLAN_FLOOR_ROLES],
         );
         if (result.rowCount && result.rowCount > 0) {
           await revokePremiumBadge(result.rows[0].id);

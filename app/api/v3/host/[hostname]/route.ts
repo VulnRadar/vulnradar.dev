@@ -5,6 +5,8 @@ import {
   type SeverityCounts,
 } from "@/lib/scanner/host-reputation";
 import { APP_NAME } from "@/lib/config/constants";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 
 /**
@@ -74,6 +76,30 @@ export async function GET(
   { params }: { params: Promise<{ hostname: string }> },
 ) {
   try {
+    // abuse: unauthenticated and one row per hostname, so without a limiter
+    // the whole public-scan corpus (every host anyone has ever scanned
+    // publicly, with its full findings) could be walked for free at whatever
+    // rate a caller liked. Shares the publicScans bucket with the directory
+    // listing at /api/v3/public-scans, which is the same corpus by another
+    // door. The badge SVG endpoints are deliberately NOT limited this way:
+    // they are embedded in READMEs and fetched through image proxies whose
+    // whole traffic arrives from a handful of addresses, so a per-IP cap
+    // there would break legitimate badges rather than stop a scraper.
+    const ip = await getClientIp();
+    const rl = await checkRateLimit({
+      key: `host-report:${rateLimitIpKey(ip)}`,
+      ...RATE_LIMITS.publicScans,
+    });
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests. Please slow down." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(rl.retryAfterSeconds) },
+        },
+      );
+    }
+
     const { hostname: rawHostname } = await params;
     let decoded: string;
     try {

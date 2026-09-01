@@ -152,6 +152,44 @@ const fixtures: DetectorFixtures = {
       expect: "skip",
     },
   ],
+
+  // ── Documentation/tutorial pages must not self-trigger ───────────────
+  // Every detector here is wrapped in stripDocBlocks(), so config-file
+  // content rendered as an example inside <pre>/<code> is removed before
+  // the fingerprint patterns run. A genuinely exposed file is served raw
+  // with no HTML tags at all, so the primary path is unaffected.
+
+  "supply-chain-lockfile-exposed": [
+    {
+      description: "raw package-lock.json served over HTTP",
+      body: '{"name":"app","lockfileVersion":3,"requires":true,"packages":{}}',
+      expect: "fire",
+      evidenceIncludes: "package-lock.json",
+    },
+    {
+      description:
+        "tutorial page showing lockfile content as an example inside <code>",
+      url: "https://blog.example.com/posts/npm-lockfiles",
+      body: '<html><body><p>A lockfile starts like this:</p><code>{"name":"app","lockfileVersion":3}</code></body></html>',
+      expect: "skip",
+    },
+  ],
+
+  "supply-chain-env-file-exposed": [
+    {
+      description: "raw .env file served over HTTP",
+      body: "DATABASE_URL=postgres://user:pass@localhost/db\nAPI_KEY=abc123\nSECRET_TOKEN=xyz789\n",
+      expect: "fire",
+      evidenceIncludes: ".env",
+    },
+    {
+      description:
+        "docs page showing the same .env content as an example inside <pre>",
+      url: "https://docs.example.com/setup",
+      body: "<html><body><h2>Example .env</h2><pre>DATABASE_URL=postgres://user:pass@localhost/db\nAPI_KEY=abc123\nSECRET_TOKEN=xyz789\n</pre></body></html>",
+      expect: "skip",
+    },
+  ],
 };
 
 runDetectorTests(detectors, fixtures);

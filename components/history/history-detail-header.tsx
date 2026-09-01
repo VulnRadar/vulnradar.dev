@@ -47,7 +47,10 @@ export function HistoryDetailHeader({
             type="button"
             onClick={onBack}
             aria-label="Back to history"
-            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/40 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            // 44px below sm: this is the only way back out of a scan detail
+            // on a phone and at 28px it was under the touch minimum, sitting
+            // right beside the URL button it is easy to hit by mistake.
+            className="inline-flex h-11 w-11 sm:h-7 sm:w-7 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/40 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
             <ArrowLeft aria-hidden className="h-4 w-4" />
           </button>

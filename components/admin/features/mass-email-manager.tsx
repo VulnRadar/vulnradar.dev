@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -28,15 +28,22 @@ import {
   UserCog,
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
-import { APP_NAME, APP_URL } from "@/lib/config/constants";
+import {
+  APP_NAME,
+  APP_URL,
+  LOGO_URL,
+  SUPPORT_EMAIL,
+} from "@/lib/config/client-constants";
 import { getPaidPlans } from "@/lib/billing/catalog";
 import { SaveConfirmationModal } from "@/components/shared/save-confirmation-modal";
 import {
   EmptyState,
   DataTableSkeleton,
   StatBar,
+  Toast,
   generateEmailPreviewHtml,
 } from "@/components/admin/shared";
+import type { ToastState } from "@/components/admin/types";
 
 interface Broadcast {
   id: string;
@@ -86,6 +93,16 @@ export function MassEmailManager() {
   const [historyFilter, setHistoryFilter] = useState<"all" | "draft" | "sent">(
     "all",
   );
+  const [toast, setToast] = useState<ToastState | null>(null);
+
+  // Stable ids so each <label htmlFor> actually names its control. Without
+  // them a screen reader reads four unnamed fields in a row, one of which
+  // decides whether the blast goes to one person or every registered user.
+  const subjectId = useId();
+  const contentId = useId();
+  const segmentId = useId();
+  const specificEmailId = useId();
+  const categoryId = useId();
 
   useEffect(() => {
     fetchMessages();
@@ -133,16 +150,30 @@ export function MassEmailManager() {
           segment_filter: segmentFilter,
         }),
       });
-      if (res.ok) {
-        setTitle("");
-        setContent("");
-        setSegment("all");
-        setSpecificEmail("");
-        setCategory("none");
-        fetchMessages();
+      if (!res.ok) {
+        // Never clear the composer on failure: the draft body is the only
+        // copy of what the admin just wrote, and a silent no-op here used
+        // to lose it with no warning at all.
+        const data = await res.json().catch(() => ({}));
+        setToast({
+          message: data.error || "Failed to save draft. Your text is intact.",
+          type: "error",
+        });
+        return;
       }
+      setTitle("");
+      setContent("");
+      setSegment("all");
+      setSpecificEmail("");
+      setCategory("none");
+      setToast({ message: "Draft saved.", type: "success" });
+      fetchMessages();
     } catch (err) {
       console.error("Error creating message:", err);
+      setToast({
+        message: "Failed to save draft. Your text is intact.",
+        type: "error",
+      });
     } finally {
       setLoading(false);
     }
@@ -289,10 +320,14 @@ export function MassEmailManager() {
         </div>
         <CardContent className="p-4 sm:p-5 space-y-4">
           <div>
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">
+            <label
+              htmlFor={subjectId}
+              className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block"
+            >
               Subject
             </label>
             <Input
+              id={subjectId}
               placeholder={`e.g., Important update from ${APP_NAME}`}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -301,10 +336,14 @@ export function MassEmailManager() {
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">
+            <label
+              htmlFor={contentId}
+              className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block"
+            >
               Content (HTML supported)
             </label>
             <Textarea
+              id={contentId}
               placeholder="Write your email content here... HTML tags are supported."
               value={content}
               onChange={(e) => setContent(e.target.value)}
@@ -314,10 +353,14 @@ export function MassEmailManager() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">
+              <label
+                htmlFor={segmentId}
+                className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block"
+              >
                 Recipients
               </label>
               <select
+                id={segmentId}
                 value={segment}
                 onChange={(e) => setSegment(e.target.value)}
                 className="w-full h-10 rounded-lg border border-border/40 bg-background/50 px-3 py-2 text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/20"
@@ -331,10 +374,14 @@ export function MassEmailManager() {
             </div>
             {segment === "specific" && (
               <div>
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">
+                <label
+                  htmlFor={specificEmailId}
+                  className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block"
+                >
                   Email Address
                 </label>
                 <Input
+                  id={specificEmailId}
                   type="email"
                   placeholder="user@example.com"
                   value={specificEmail}
@@ -344,10 +391,14 @@ export function MassEmailManager() {
               </div>
             )}
             <div>
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">
+              <label
+                htmlFor={categoryId}
+                className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block"
+              >
                 Category (opt-in filter)
               </label>
               <select
+                id={categoryId}
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 className="w-full h-10 rounded-lg border border-border/40 bg-background/50 px-3 py-2 text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/20"
@@ -405,6 +456,15 @@ export function MassEmailManager() {
                       content || "<p>Email content will appear here...</p>",
                     appName: APP_NAME,
                     appUrl: APP_URL,
+                    logoSrc: LOGO_URL,
+                    supportEmail: SUPPORT_EMAIL,
+                    // Every broadcast recipient has an unsubscribe token, so
+                    // the real message always carries this button. The preview
+                    // used to omit it entirely, which is how an admin could
+                    // sign off on a footer the recipient never sees. The href
+                    // is the real page, unresolvable without a token, and the
+                    // iframe is sandboxed so it is not clickable anyway.
+                    unsubscribeUrl: `${APP_URL}/unsubscribe`,
                   })}
                   sandbox=""
                   className="w-full h-[700px] border border-border/50 rounded-lg"
@@ -570,7 +630,10 @@ export function MassEmailManager() {
                   </div>
 
                   {/* Actions */}
-                  <div className="flex items-center gap-2 shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity">
+                  {/* md: prefix on the fade: touch devices have no hover, so an
+                      unprefixed opacity-0 left these actions permanently invisible
+                      while still hit-testable. Below md they are always shown. */}
+                  <div className="flex items-center gap-2 shrink-0 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 md:focus-visible:opacity-100 transition-opacity">
                     {isDraft ? (
                       <>
                         <Button
@@ -729,6 +792,8 @@ export function MassEmailManager() {
         }
         variant="destructive"
       />
+
+      {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
     </div>
   );
 }

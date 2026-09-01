@@ -144,7 +144,10 @@ function SslGradeStat({ grade }: { grade: string }) {
             type="button"
             aria-label="What does the SSL grade mean?"
             className={cn(
-              "ml-0.5 shrink-0 rounded-full p-0.5 text-muted-foreground/60 transition-colors hover:text-foreground",
+              // a11y (target size): p-0.5 around a 14px icon was an 18x18
+              // target on a control that sits inline with body text, where
+              // there is nothing to aim at but the icon itself.
+              "ml-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-muted-foreground/60 transition-colors hover:text-foreground",
               "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
             )}
           >
@@ -215,7 +218,7 @@ export function ScanSummary({
   return (
     <div className="flex flex-col gap-3">
       {!hideHeader && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-card px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
           <button
             type="button"
             onClick={copyUrl}
@@ -243,7 +246,7 @@ export function ScanSummary({
         </div>
       )}
 
-      <div className="overflow-hidden rounded-md border border-border bg-card">
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
         <div className="relative">
           <span
             aria-hidden
@@ -318,7 +321,7 @@ export function ScanSummary({
       </div>
 
       {aiSummary && (
-        <div className="rounded-md border border-border bg-card px-4 py-3">
+        <div className="rounded-xl border border-border bg-card px-4 py-3">
           <div className="mb-1 flex items-center justify-between gap-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               AI summary

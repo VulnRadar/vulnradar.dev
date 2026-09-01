@@ -58,11 +58,14 @@ export async function generateMetadata({
   const count = getChecksInCategory(cat).length;
   return pageMetadata({
     title: seo.heading,
-    // Clamp to the ~155-char meta window: several category intros are long
-    // enough that appending the count sentence pushed them past 160. The full
-    // intro still renders on the page.
+    // The count leads, because it is the only thing that differentiates this
+    // snippet from the intro copy already on the page. It used to be appended
+    // AFTER the intro and then clamped to 155, which deleted it again on 17 of
+    // the 18 categories (the intros are 130 to 160 characters on their own, so
+    // a 39-character suffix could never survive the clamp). Now the intro is
+    // the part that clamps, and the full intro still renders on the page.
     description: clampText(
-      `${seo.intro} ${count} checks, each with fix steps and code.`,
+      `${count} ${getCategoryLabel(cat).toLowerCase()} checks, each with fix steps and code. ${seo.intro}`,
     ),
     path: `/checks/category/${cat}`,
     keywords: seo.keywords,
@@ -161,7 +164,11 @@ export default async function CategoryPage({
                         className="scale-90 shrink-0 mt-0.5"
                       />
                       <span className="min-w-0">
-                        <span className="block font-medium text-foreground group-hover:text-primary transition-colors">
+                        {/* wrap-break-word: some check titles are a single
+                            unbreakable identifier, and beside the shrink-0
+                            severity pill there is only ~263px for them on a
+                            phone. */}
+                        <span className="block font-medium text-foreground group-hover:text-primary transition-colors wrap-break-word">
                           {c.title}
                         </span>
                         <span className="block text-sm text-muted-foreground leading-relaxed line-clamp-2">

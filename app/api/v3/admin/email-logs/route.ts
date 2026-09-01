@@ -65,9 +65,14 @@ export async function GET(request: NextRequest) {
     const conditions: string[] = [];
     const params: unknown[] = [];
     if (search) {
-      params.push(`%${search}%`);
+      // Escape LIKE metacharacters so the search is exact-substring, not a
+      // pattern. Without this a literal "_" matches any character and a bare
+      // "%" degrades to a full scan of email_logs, one of the highest-volume
+      // tables in the schema. Same one-liner the user and team searches use
+      // (app/api/v3/admin/route.ts, app/api/v3/admin/teams/route.ts).
+      params.push(`%${search.replace(/[\\%_]/g, "\\$&")}%`);
       conditions.push(
-        `(recipient ILIKE $${params.length} OR subject ILIKE $${params.length})`,
+        `(recipient ILIKE $${params.length} ESCAPE '\\' OR subject ILIKE $${params.length} ESCAPE '\\')`,
       );
     }
     if (status) {
@@ -78,21 +83,25 @@ export async function GET(request: NextRequest) {
       ? `WHERE ${conditions.join(" AND ")}`
       : "";
 
-    const countRes = await pool.query<{ count: string }>(
-      `SELECT COUNT(*) FROM email_logs ${whereClause}`,
-      params,
-    );
-    const total = parseInt(countRes.rows[0]?.count || "0", 10);
-    const totalPages = Math.max(1, Math.ceil(total / limit));
-
-    const rowsRes = await pool.query<EmailLogRow>(
-      `SELECT id, recipient, subject, status, error_message, redacted_preview, created_at
+    // perf: COUNT(*) scans the whole matching set regardless of the sibling
+    // LIMIT, so running it before the page query doubled the wall time of
+    // every keystroke-driven reload. They are independent: run them together.
+    const [countRes, rowsRes] = await Promise.all([
+      pool.query<{ count: string }>(
+        `SELECT COUNT(*) FROM email_logs ${whereClause}`,
+        params,
+      ),
+      pool.query<EmailLogRow>(
+        `SELECT id, recipient, subject, status, error_message, redacted_preview, created_at
        FROM email_logs
        ${whereClause}
        ORDER BY created_at DESC
        LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-      [...params, limit, offset],
-    );
+        [...params, limit, offset],
+      ),
+    ]);
+    const total = parseInt(countRes.rows[0]?.count || "0", 10);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
 
     return NextResponse.json({
       logs: rowsRes.rows,

@@ -21,10 +21,24 @@
 // populated object, it just has an empty `mx` array.
 // ════════════════════════════════════════════════════════════════════════════
 
-import * as dns from "dns/promises";
 // The record-shape interfaces are declared on the callback `dns` module, not
 // on `dns/promises` (which only re-exports the promise-returning functions).
 import type { MxRecord, CaaRecord, SoaRecord } from "dns";
+// Shared per-scan DNS memo. checkDNSSecurity has already resolved most of
+// these record types by the time it calls resolveDnsRecords at the end of the
+// same scan, so going through the memo makes this panel free rather than a
+// second full sweep. Outside a scan (a standalone call) it passes straight
+// through to the resolver. ref: AUDIT-012#perf-09
+import {
+  resolveTxtOnce,
+  resolveMxOnce,
+  resolveNsOnce,
+  resolveSoaOnce,
+  resolveCnameOnce,
+  resolveCaaOnce,
+  resolve4Once,
+  resolve6Once,
+} from "./dns-memo";
 
 /** A single MX record: mail exchanger hostname plus its preference value. */
 export interface DnsMxRecord {
@@ -192,14 +206,14 @@ export async function resolveDnsRecords(
   const host = hostname.trim().toLowerCase();
 
   const [a, aaaa, cname, mx, ns, txt, caa, soa] = await Promise.allSettled([
-    queryWithTimeout(() => dns.resolve4(host), signal),
-    queryWithTimeout(() => dns.resolve6(host), signal),
-    queryWithTimeout(() => dns.resolveCname(host), signal),
-    queryWithTimeout(() => dns.resolveMx(host), signal),
-    queryWithTimeout(() => dns.resolveNs(host), signal),
-    queryWithTimeout(() => dns.resolveTxt(host), signal),
-    queryWithTimeout(() => dns.resolveCaa(host), signal),
-    queryWithTimeout(() => dns.resolveSoa(host), signal),
+    queryWithTimeout(() => resolve4Once(host), signal),
+    queryWithTimeout(() => resolve6Once(host), signal),
+    queryWithTimeout(() => resolveCnameOnce(host), signal),
+    queryWithTimeout(() => resolveMxOnce(host), signal),
+    queryWithTimeout(() => resolveNsOnce(host), signal),
+    queryWithTimeout(() => resolveTxtOnce(host), signal),
+    queryWithTimeout(() => resolveCaaOnce(host), signal),
+    queryWithTimeout(() => resolveSoaOnce(host), signal),
   ]);
 
   return {

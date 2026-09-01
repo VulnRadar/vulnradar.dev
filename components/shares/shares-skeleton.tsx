@@ -23,7 +23,7 @@ function SharesStatsSkeleton() {
 
 function SharesTableSkeleton() {
   return (
-    <div className="rounded-md border border-border overflow-hidden divide-y divide-border">
+    <div className="rounded-xl border border-border overflow-hidden divide-y divide-border">
       {Array.from({ length: ROW_COUNT }).map((_, i) => (
         <div key={i} className="flex items-center gap-4 py-3.5 pl-4 pr-4">
           <div className="flex-1 min-w-0 space-y-1.5">

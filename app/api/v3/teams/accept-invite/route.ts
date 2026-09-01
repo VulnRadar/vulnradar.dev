@@ -4,6 +4,8 @@ import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { markTeamInviteNotificationsHandled } from "@/lib/notifications/user-notifications";
+import { teamsDisabledResponse } from "@/lib/teams/feature-gate";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 
 export async function POST(request: Request) {
   const session = await getSession();
@@ -13,12 +15,38 @@ export async function POST(request: Request) {
       { status: 401 },
     );
 
+  const gate = await teamsDisabledResponse();
+  if (gate) return gate;
+
   const { token, inviteId } = await request.json();
   if (!token && !inviteId)
     return NextResponse.json(
       { error: "Invite token or inviteId required." },
       { status: 400 },
     );
+
+  // rate-limit: sending invites was capped, accepting them was not
+  // (AUDIT-002#secrets-02). The token path needs 256 bits guessed correctly
+  // so it was never brute-forceable, but the inviteId path takes a small
+  // sequential integer, and its two failure messages differ ("invalid or
+  // already used" vs "sent to a different email address"), so an unbounded
+  // caller could walk the id space and learn which invites exist and which
+  // are still open. Reuses the team-invite limiter's admin-configurable
+  // numbers under its own key, so accepting cannot consume the sending
+  // budget or vice versa.
+  const acceptRl = await checkRateLimit({
+    key: `team-accept-invite:${session.userId}`,
+    ...RATE_LIMITS.teamInvite,
+  });
+  if (!acceptRl.allowed) {
+    return NextResponse.json(
+      { error: "Too many invite attempts. Please try again later." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(acceptRl.retryAfterSeconds) },
+      },
+    );
+  }
 
   // Two ways in: the emailed link carries a plaintext token (compared
   // against the stored hash, never the plaintext), while the bell's

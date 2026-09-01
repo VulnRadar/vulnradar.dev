@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { ensureStripeWebhook } from "@/lib/billing/stripe-webhook-setup";
 import { getSetting } from "@/lib/config/runtime-config";
-import { getSession } from "@/lib/auth";
-import pool from "@/lib/database/db";
+import { requireAdmin } from "@/lib/auth/authorization";
+import { ERROR_MESSAGES } from "@/lib/config/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -22,19 +22,23 @@ export const dynamic = "force-dynamic";
  * When configured, only returns a simple success message.
  */
 export async function GET() {
-  // Always require admin authentication — even "already configured" status
-  // reveals Stripe integration presence to unauthenticated callers.
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const userResult = await pool.query("SELECT role FROM users WHERE id = $1", [
-    session.userId,
-  ]);
-  const userRole = userResult.rows[0]?.role;
-  if (userRole !== "admin") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Always require admin authentication: even the "already configured"
+  // status reveals Stripe integration presence to unauthenticated callers.
+  //
+  // requireAdmin, not a hand-rolled `role !== "admin"`. The hand-rolled
+  // version skipped ENFORCE_STAFF_2FA (so an admin without 2FA, refused
+  // everywhere else in the admin surface, could still create a live Stripe
+  // webhook endpoint here) and its exact string comparison locked out
+  // super_admin. It also removes a duplicate `SELECT role FROM users`.
+  const admin = await requireAdmin();
+  if (!admin) {
+    // requireAdmin returns null for both "no session" and "not an admin",
+    // so this cannot honestly claim the caller is unauthenticated. 403 also
+    // matches the sibling setup-products route and app/api/v3/admin/teams.
+    return NextResponse.json(
+      { error: ERROR_MESSAGES.FORBIDDEN },
+      { status: 403 },
+    );
   }
 
   const hasWebhookSecret = !!process.env.STRIPE_WEBHOOK_SECRET;

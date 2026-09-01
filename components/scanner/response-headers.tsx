@@ -43,7 +43,7 @@ export function ResponseHeaders({ headers }: ResponseHeadersProps) {
   const coverage = Math.round((present.length / SECURITY_HEADERS.length) * 100);
 
   return (
-    <div className="overflow-hidden rounded-md border border-border bg-card">
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}

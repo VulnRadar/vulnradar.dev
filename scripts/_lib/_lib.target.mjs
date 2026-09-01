@@ -7,23 +7,15 @@
  */
 
 import pg from "pg";
-import * as readline from "node:readline";
 import { c, log, warn } from "./_lib.output.mjs";
-import { ask, askYesNo, askDanger, NON_INTERACTIVE } from "./_lib.prompts.mjs";
+import {
+  ask,
+  askYesNo,
+  askDanger,
+  rawQuestion,
+  NON_INTERACTIVE,
+} from "./_lib.prompts.mjs";
 import { buildConnectionString } from "./_lib.db.mjs";
-
-function rawQuestion(prompt) {
-  return new Promise((resolve) => {
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-    });
-    rl.question(prompt, (answer) => {
-      rl.close();
-      resolve(answer);
-    });
-  });
-}
 
 function formatBytes(n) {
   if (n < 1024) return `${n} B`;

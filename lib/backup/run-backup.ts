@@ -25,11 +25,28 @@ import { appendLog, finishJob } from "./job-store";
 // not a tuned expectation of how long a normal backup takes.
 const BACKUP_TIMEOUT_MS = 30 * 60 * 1000;
 
+/**
+ * Resolved outcome of one backup run.
+ *
+ * This used to be `Promise<void>`, which made every failure invisible to the
+ * caller: the scheduled worker awaited it and unconditionally reported a clean
+ * pass to the failure escalator, so a pg_dump that failed every single night
+ * never fired the admin alert built for exactly that case. The status is now
+ * part of the return value, and both failure paths also console.error so
+ * lib/database/error-log-capture.ts records them in system_error_logs (the
+ * in-memory job store is capped at 20 jobs and wiped on every restart, so it
+ * cannot be the only record of a failure).
+ */
+export interface BackupRunResult {
+  ok: boolean;
+  error?: string;
+}
+
 export function runBackupJob(
   jobId: string,
   appRoot: string = process.cwd(),
-): Promise<void> {
-  return new Promise((resolveJob) => {
+): Promise<BackupRunResult> {
+  return new Promise<BackupRunResult>((resolveJob) => {
     const scriptPath = join(appRoot, "scripts", "backup-db.mjs");
     const child = spawn(process.execPath, [scriptPath], {
       cwd: appRoot,
@@ -62,7 +79,8 @@ export function runBackupJob(
       clearTimeout(killTimer);
       appendLog(jobId, `Failed to start backup process: ${err.message}`);
       finishJob(jobId, "failed", err.message);
-      resolveJob();
+      console.error("[backup] Failed to start backup process:", err.message);
+      resolveJob({ ok: false, error: err.message });
     });
 
     child.on("close", (code) => {
@@ -71,10 +89,13 @@ export function runBackupJob(
       clearTimeout(killTimer);
       if (code === 0) {
         finishJob(jobId, "success");
-      } else {
-        finishJob(jobId, "failed", `Backup script exited with code ${code}`);
+        resolveJob({ ok: true });
+        return;
       }
-      resolveJob();
+      const error = `Backup script exited with code ${code}`;
+      finishJob(jobId, "failed", error);
+      console.error(`[backup] ${error}`);
+      resolveJob({ ok: false, error });
     });
   });
 }

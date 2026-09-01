@@ -42,7 +42,7 @@ function buildIssueBody(
   const lines: string[] = [
     `Security scan of \`${url}\` by ${APP_NAME}.`,
     "",
-    `**${findings.length} finding${findings.length === 1 ? "" : "s"}** — ${counts}`,
+    `**${findings.length} finding${findings.length === 1 ? "" : "s"}**: ${counts}`,
     "",
   ];
 

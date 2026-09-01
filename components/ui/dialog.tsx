@@ -20,7 +20,16 @@ const DialogOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
-    className={cn("fixed inset-0 z-50 bg-black/80", className)}
+    // The scrim used to be bg-black/80. In dark mode that is close enough to
+    // bg-background/80, which the newer in-app modals use, but in light mode
+    // --background is 213 25% 90%, so the two are opposites: opening a
+    // black/80 modal and then a background/80 one dimmed the page to near
+    // black and then washed it to near white, which reads as a rendering bug.
+    // One scrim, correct in both themes.
+    className={cn(
+      "fixed inset-0 z-50 bg-background/80 backdrop-blur-xs",
+      className,
+    )}
     {...props}
   />
 ));
@@ -36,17 +45,43 @@ const DialogContent = React.forwardRef<
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          "relative z-50 grid w-full max-w-lg gap-4 border bg-background p-6 shadow-lg sm:rounded-lg max-h-[90vh] overflow-y-auto",
+          // bg-card, not bg-background: the scrim above is now built from
+          // --background, so a bg-background panel would have nothing but its
+          // border separating it from the dimmed page behind.
+          //
+          // A bare `border`, which resolves to --border through the
+          // `* { @apply border-border }` rule in app/globals.css. This was
+          // briefly `border-input` to satisfy SC 1.4.11, which was a misread:
+          // that criterion asks for 3:1 on the visual information required to
+          // identify a user interface COMPONENT and its states. A modal panel
+          // is not a component you operate. It is identified by its own
+          // surface, its shadow and the scrim over the page behind it, all
+          // three of which are present here. Putting a 3:1 rule around it
+          // bought no conformance and drew a hard outline around every modal
+          // in the product. The control edge inside the panel is where
+          // --input belongs, and that is where it stayed.
+          "relative z-50 grid w-full max-w-lg gap-4 border bg-card p-6 shadow-lg sm:rounded-lg max-h-[90vh] overflow-y-auto",
           className,
         )}
         onOpenAutoFocus={(e) => {
-          // No auto-focus at all, by explicit product decision: Radix's
-          // default focuses the first focusable descendant (often a
-          // submit/destructive button), so Enter could fire it the instant
-          // the dialog opens. Nothing gets focus until the user presses Tab
-          // themselves, at which point it lands on the first tabbable
-          // element as normal.
+          // Radix's default focuses the first focusable descendant, which in
+          // this product is often a submit or destructive button, so Enter
+          // could fire it the instant the dialog opened. That is still the
+          // reason for preventDefault().
+          //
+          // What preventDefault() ALONE did was leave focus on the trigger,
+          // which Radix has just put behind an aria-hidden barrier: a
+          // keyboard user got no visible focus anywhere on screen, a screen
+          // reader was never told a dialog had opened, and the first Tab was
+          // eaten by FocusScope hauling focus back inside. Moving focus to
+          // the panel itself keeps Enter inert (the panel is not a control)
+          // while satisfying SC 2.4.3 and 4.1.2: focus is inside the dialog,
+          // the dialog is announced, and Tab continues from here. Radix gives
+          // Content tabindex="-1" for exactly this, and the global
+          // :focus-visible rule in app/globals.css skips tabindex="-1", so
+          // this does not paint a ring around the whole panel.
           e.preventDefault();
+          (e.currentTarget as HTMLElement).focus();
         }}
         {...props}
       >

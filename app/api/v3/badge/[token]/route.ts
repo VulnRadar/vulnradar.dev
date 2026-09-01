@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import pool from "@/lib/database/db";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
+import { getSiteGrade } from "@/lib/scanner/site-grade";
 import { APP_NAME } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 
@@ -96,13 +97,21 @@ export async function GET(
 
   const safetyRating = getSafetyRating(findings);
 
+  // The badge leads with the A+ to F grade rather than safe/caution/unsafe.
+  // Every free peer a prospect compares this against grades a whole site on
+  // that one scale, so a badge speaking a private three-state vocabulary
+  // could not be compared with them at all, and "caution" on a README is
+  // something an owner removes rather than keeps. The safety rating is still
+  // what picks the colour, so the badge's at-a-glance meaning is unchanged.
+  // ref: AUDIT-014#comp-03
   const ratingConfig = {
-    safe: { label: "Safe", color: "#22c55e" },
-    caution: { label: "Caution", color: "#eab308" },
-    unsafe: { label: "Unsafe", color: "#ef4444" },
+    safe: { color: "#22c55e" },
+    caution: { color: "#eab308" },
+    unsafe: { color: "#ef4444" },
   };
 
-  const { label: rating, color } = ratingConfig[safetyRating];
+  const { color } = ratingConfig[safetyRating];
+  const grade = getSiteGrade(findings);
 
   const scanDate = new Date(row.scanned_at).toLocaleDateString("en-US", {
     month: "short",
@@ -110,11 +119,7 @@ export async function GET(
     year: "numeric",
   });
 
-  const svg = makeBadgeSvg(
-    rating.toLowerCase(),
-    `${rating} - ${scanDate}`,
-    color,
-  );
+  const svg = makeBadgeSvg(safetyRating, `${grade} - ${scanDate}`, color);
 
   const cacheMaxAge = await getSetting("BADGE_CACHE_MAX_AGE_SECONDS");
   return new NextResponse(svg, {

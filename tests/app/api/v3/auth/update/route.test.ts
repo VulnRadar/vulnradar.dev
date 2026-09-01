@@ -353,6 +353,46 @@ describe("PATCH /api/v3/auth/update", () => {
       );
       expect(sentTo).toContain("new-address@example.com");
     });
+
+    it("rotates every other session and every trusted device on an email change", async () => {
+      logIn();
+      const res = await PATCH(
+        updateRequest({
+          email: "new-address@example.com",
+          currentPassword: CURRENT_PASSWORD,
+        }),
+      );
+      const json = await res.json();
+
+      // Changing the login identifier is as takeover-relevant as changing
+      // the password, which already did this. Without it a stolen cookie
+      // could move the account to the attacker's address and keep every
+      // other session, and every 2FA-skipping device_trust row, alive.
+      expect(json.sessionInvalidated).toBe(true);
+      expect(sessionDeleteCalls).toEqual([[7]]);
+      expect(
+        queries.some(
+          (q) =>
+            q.sql.startsWith("DELETE FROM device_trust") && q.params[0] === 7,
+        ),
+      ).toBe(true);
+      // The caller is not signed out: a fresh session replaces the cookie.
+      expect(sessionInsertCalls).toHaveLength(1);
+      expect(res.cookies.get(AUTH_SESSION_COOKIE_NAME)?.value).toBeTruthy();
+    });
+
+    it("does not rotate sessions when the submitted email is unchanged", async () => {
+      logIn();
+      await PATCH(
+        updateRequest({
+          email: "user@example.com",
+          currentPassword: CURRENT_PASSWORD,
+        }),
+      );
+
+      expect(emailUpdateCalls).toHaveLength(0);
+      expect(sessionDeleteCalls).toHaveLength(0);
+    });
   });
 
   describe("avatar", () => {

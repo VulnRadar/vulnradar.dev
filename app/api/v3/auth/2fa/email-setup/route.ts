@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { getSession, verifyPassword } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
+import { verifyReauthPassword } from "@/lib/auth/reauth";
 import { email2FAEnabledEmail, email2FADisabledEmail } from "@/lib/email/email";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import pool from "@/lib/database/db";
@@ -36,16 +37,26 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     return ApiResponse.badRequest("Invalid request body.");
   }
   const { password } = body;
-  if (!password) return ApiResponse.badRequest("Password is required.");
+
+  // An OAuth-only account has no password to re-enter, so its session is the
+  // re-auth signal instead (see verifyReauthPassword). Demanding one
+  // unconditionally meant a Google/GitHub/Discord account could never turn on
+  // email 2FA, which is the only second factor those accounts can use.
+  const reauth = await verifyReauthPassword(session.userId, password, {
+    missing: "Password is required.",
+    wrong: "Incorrect password.",
+  });
+  if (!reauth.ok) {
+    return reauth.status === 400
+      ? ApiResponse.badRequest(reauth.error)
+      : ApiResponse.forbidden(reauth.error);
+  }
 
   const { rows } = await pool.query(
-    "SELECT password_hash, totp_enabled, two_factor_method, email FROM users WHERE id = $1",
+    "SELECT totp_enabled, two_factor_method, email FROM users WHERE id = $1",
     [session.userId],
   );
   if (rows.length === 0) return ApiResponse.notFound("User not found.");
-
-  const valid = await verifyPassword(password, rows[0].password_hash);
-  if (!valid) return ApiResponse.forbidden("Incorrect password.");
 
   if (rows[0].totp_enabled && rows[0].two_factor_method === "app") {
     return ApiResponse.badRequest("Disable authenticator app 2FA first.");
@@ -103,16 +114,24 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
     return ApiResponse.badRequest("Invalid request body.");
   }
   const { password } = body;
-  if (!password) return ApiResponse.badRequest("Password is required.");
+
+  // Same OAuth-only rule as the POST: without this, an account that has no
+  // password could enable email 2FA and then never turn it off again.
+  const reauth = await verifyReauthPassword(session.userId, password, {
+    missing: "Password is required.",
+    wrong: "Incorrect password.",
+  });
+  if (!reauth.ok) {
+    return reauth.status === 400
+      ? ApiResponse.badRequest(reauth.error)
+      : ApiResponse.forbidden(reauth.error);
+  }
 
   const { rows } = await pool.query(
-    "SELECT password_hash, two_factor_method, email FROM users WHERE id = $1",
+    "SELECT two_factor_method, email FROM users WHERE id = $1",
     [session.userId],
   );
   if (rows.length === 0) return ApiResponse.notFound("User not found.");
-
-  const valid = await verifyPassword(password, rows[0].password_hash);
-  if (!valid) return ApiResponse.forbidden("Incorrect password.");
 
   if (rows[0].two_factor_method !== "email") {
     return ApiResponse.badRequest("Email 2FA is not enabled.");
@@ -123,6 +142,13 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
     [session.userId],
   );
   await pool.query("DELETE FROM email_2fa_codes WHERE user_id = $1", [
+    session.userId,
+  ]);
+  // Same reasoning as the authenticator-app disable route: a device_trust row
+  // is a standing "skip the second factor here" grant, so leaving them behind
+  // meant re-enabling 2FA later silently re-honoured every previously trusted
+  // browser, including one an attacker had planted.
+  await pool.query("DELETE FROM device_trust WHERE user_id = $1", [
     session.userId,
   ]);
 

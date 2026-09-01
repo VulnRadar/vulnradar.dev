@@ -19,32 +19,24 @@ export function applyTheme(mode: ThemeMode): void {
 }
 
 /**
- * Returns the effective theme (resolves "system" to the OS preference).
- * Useful for picking icon variants or computing background colors
- * that depend on the actual current theme.
+ * Subscribes to OS color-scheme changes and re-applies the theme, returning
+ * the unsubscribe function. Called once from popup and options startup:
+ * applyTheme() resolves "system" exactly once when the page opens, so an OS
+ * light/dark flip while the options tab sat open left it on the stale theme
+ * until reload.
+ *
+ * Takes a getter rather than a fixed mode because the user can switch to (or
+ * away from) "system" in Appearance without the page reloading; reading the
+ * mode at event time keeps one subscription correct for the page's lifetime,
+ * and a non-"system" mode simply ignores the event.
  */
-export function effectiveTheme(mode: ThemeMode): "light" | "dark" {
-  if (mode === "system") {
-    if (typeof window === "undefined") return "light";
-    return window.matchMedia?.("(prefers-color-scheme: dark)").matches
-      ? "dark"
-      : "light";
-  }
-  return mode;
-}
-
-/**
- * Subscribes to OS color-scheme changes and re-applies the theme.
- * Returns the unsubscribe function. Use in popup/options startup to
- * keep the UI in sync with the OS when the user has chosen "system".
- */
-export function watchSystemTheme(
-  mode: ThemeMode,
-  onChange: (effective: "light" | "dark") => void,
-): () => void {
-  if (mode !== "system" || typeof window === "undefined") return () => {};
+export function watchSystemTheme(getMode: () => ThemeMode): () => void {
+  if (typeof window === "undefined" || !window.matchMedia) return () => {};
   const mql = window.matchMedia("(prefers-color-scheme: dark)");
-  const handler = () => onChange(mql.matches ? "dark" : "light");
+  const handler = () => {
+    const mode = getMode();
+    if (mode === "system") applyTheme(mode);
+  };
   mql.addEventListener("change", handler);
   return () => mql.removeEventListener("change", handler);
 }

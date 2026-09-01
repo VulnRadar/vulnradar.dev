@@ -4,7 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Check, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { APP_URL, ROUTES } from "@/lib/config/constants";
+import { APP_URL, ROUTES } from "@/lib/config/client-constants";
+import { EXACT_CHECK_COUNT } from "@/lib/config/check-stats.generated";
 import { copyToClipboard } from "@/lib/ui/clipboard";
 
 const API_BASE = APP_URL.replace(/\/$/, "");
@@ -79,7 +80,7 @@ function CodeBlock({ code, label }: { code: string; label: string }) {
 }
 
 interface LandingApiExampleProps {
-  checkCount: number;
+  checkCount: string;
 }
 
 export function LandingApiExample({ checkCount }: LandingApiExampleProps) {
@@ -90,7 +91,7 @@ export function LandingApiExample({ checkCount }: LandingApiExampleProps) {
           <div className="space-y-3 min-w-0">
             <CodeBlock code={CURL} label="request.sh" />
             <CodeBlock
-              code={responseSample(checkCount)}
+              code={responseSample(EXACT_CHECK_COUNT)}
               label="response.json"
             />
           </div>

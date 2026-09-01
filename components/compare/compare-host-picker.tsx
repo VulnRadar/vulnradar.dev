@@ -1,6 +1,6 @@
 "use client";
 
-import { Globe, ChevronRight } from "lucide-react";
+import { Globe, ChevronRight, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { focus } from "@/lib/ui/animations";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,6 +12,9 @@ interface CompareHostPickerProps {
   hosts: HostGroup[];
   loading: boolean;
   searchActive: boolean;
+  /** The scan history request failed. Distinct from an empty list: "we could
+   *  not load your scans" must never render as "you have no scans". */
+  loadFailed?: boolean;
   onSelect: (host: string) => void;
 }
 
@@ -24,6 +27,7 @@ export function CompareHostPicker({
   hosts,
   loading,
   searchActive,
+  loadFailed = false,
   onSelect,
 }: CompareHostPickerProps) {
   return (
@@ -44,6 +48,23 @@ export function CompareHostPicker({
               <Skeleton className="h-4 w-4 rounded shrink-0" />
             </div>
           ))}
+        </div>
+      ) : loadFailed ? (
+        <div
+          role="alert"
+          className="flex flex-col items-center justify-center py-14 text-center px-4 gap-2"
+        >
+          <AlertTriangle
+            className="h-7 w-7 text-destructive/60"
+            aria-hidden="true"
+          />
+          <p className="text-sm text-foreground">
+            Your scan history could not be loaded
+          </p>
+          <p className="text-xs text-muted-foreground/70 max-w-xs">
+            This is a problem on our side, not an empty history. Refresh the
+            page to try again.
+          </p>
         </div>
       ) : hosts.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-14 text-center px-4 gap-2">

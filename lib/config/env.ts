@@ -3,7 +3,7 @@ import { z } from "zod";
 /**
  * Centralized runtime environment validation.
  *
-replaces the previous pattern of "silently fall back to
+ * Replaces the previous pattern of "silently fall back to
  * hardcoded secrets" in `lib/auth/discord-state.ts` and `lib/api/api-keys.ts`.
  * Callers fail fast at startup with a clear error message instead of running
  * with a forgeable global default.
@@ -44,7 +44,7 @@ const OptionalSchema = z.object({
     .string()
     .min(
       32,
-      "AUTH_SECRET must be at least 32 chars (HMAC key — shorter is brute-forceable)",
+      "AUTH_SECRET must be at least 32 chars (HMAC key; shorter is brute-forceable)",
     )
     .optional(),
 
@@ -57,6 +57,13 @@ const OptionalSchema = z.object({
 
   // Stripe
   STRIPE_SECRET_KEY: z.string().optional(),
+  // Accepted, never read. The publishable key only matters client-side and
+  // Next.js will only inline the NEXT_PUBLIC_ form below, so nothing
+  // consumes the bare name. It stays in the schema (and in the CI and
+  // Dockerfile placeholder envs) so an existing .env or compose file that
+  // sets it does not have to change; same treatment as CONTACT_EMAIL
+  // further down. Do not add a consumer for it: add one for the
+  // NEXT_PUBLIC_ variant.
   STRIPE_PUBLISHABLE_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().optional(),
@@ -81,7 +88,11 @@ const OptionalSchema = z.object({
   GITHUB_CLIENT_ID: z.string().optional(),
   GITHUB_CLIENT_SECRET: z.string().optional(),
 
-  // Contact
+  // Contact. CONTACT_EMAIL is accepted and validated but read by nothing:
+  // the contact form delivers to SMTP_FROM, then SMTP_USER, then the
+  // NOREPLY_EMAIL setting. Kept so an existing .env does not fail
+  // validation, and documented as a no-op on /docs/config rather than
+  // quietly left to look like a bug.
   CONTACT_EMAIL: z.string().email().optional(),
   SUPPORT_EMAIL: z.string().email().optional(),
 
@@ -89,16 +100,21 @@ const OptionalSchema = z.object({
   TURNSTILE_SECRET_KEY: z.string().optional(),
   NEXT_PUBLIC_TURNSTILE_SITE_KEY: z.string().optional(),
 
-  // BrowserBase (removed — was unreliable; see ViewPageButton for
-  // the fallback that opens the scanned URL in a new tab)
+  // BrowserBase: live session viewer, browser-driven login and the opt-in
+  // page screenshot all run through it (lib/browserbase/client.ts,
+  // app/browser/[id]/page.tsx). The comment here used to say the
+  // integration had been removed as unreliable, which stopped being true
+  // several releases ago and would have sent the next reader looking for a
+  // fallback that no longer exists. Optional: unset, the View Page button
+  // hides and captures are skipped.
   BROWSERBASE_API_KEY: z.string().optional(),
   BROWSERBASE_PROJECT_ID: z.string().optional(),
 
-  // Database — strict bool so "1" / "yes" can't slip through and
+  // Database: strict bool so "1" / "yes" can't slip through and
   // leave production running without SSL.
   DATABASE_SSL: BoolString.optional(),
 
-  // Proxy / IP trust — must be a valid CIDR or a comma-separated list of
+  // Proxy / IP trust: must be a valid CIDR or a comma-separated list of
   // CIDRs. Used by lib/api/request-utils.ts to walk X-Forwarded-For
   // right-to-left. A typo here silently disables IP trust.
   TRUSTED_PROXY_CIDR: z.string().optional(),
@@ -106,7 +122,7 @@ const OptionalSchema = z.object({
   // headers: when DISABLE_CSP is "1" the application strips every
   // CSP / COOP / CORP / X-Frame-Options / Permissions-Policy header.
   // Useful only for debugging third-party embed compatibility in
-  // development. Must NOT be enabled in production — see
+  // development. Must NOT be enabled in production. See
   // assertProductionSafe below.
   DISABLE_CSP: z.string().optional(),
 
@@ -114,7 +130,7 @@ const OptionalSchema = z.object({
   // (those without a valid Origin / Cookie pair) bypass the CSRF check
   // and the middleware public-path gate. Intended for local development
   // with API clients (curl, Postman, etc.) that cannot send cookies.
-  // MUST NOT be set in production — middleware.ts's enforceCsrf()
+  // MUST NOT be set in production: middleware.ts's enforceCsrf()
   // checks NODE_ENV === "production" as a secondary guard, but
   // the env-schema declaration here makes the flag visible at startup
   // validation so typos in the var name are caught immediately

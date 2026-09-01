@@ -34,8 +34,12 @@ vi.mock("@/lib/scanner/safe-fetch", () => ({
 }));
 
 const mockRunSyncChecks = vi.fn();
+// executeScan drives the yielding variant (AUDIT-011#scan-06): the check loop
+// releases the event loop between categories instead of blocking it for the
+// whole ~1.2s pass on a 1MB body. Same arguments, same return shape, awaited.
 vi.mock("@/lib/scanner/engine", () => ({
-  runSyncChecks: (...args: unknown[]) => mockRunSyncChecks(...args),
+  runSyncChecksYielding: async (...args: unknown[]) =>
+    mockRunSyncChecks(...args),
 }));
 
 const mockRunAsyncChecksDetailed = vi.fn();
@@ -171,10 +175,18 @@ describe("executeScan", () => {
     );
     expect(runningCall).toBeDefined();
 
+    // Progress writes are coalesced (AUDIT-012#perf-12): a fast fixture scan
+    // fits inside one flush window, so what matters is that progress was
+    // persisted at all and that it named a real category, not the write count.
     const progressCalls = calls.filter(([sql]) =>
       (sql as string).includes("current_category = $1"),
     );
-    expect(progressCalls.length).toBe(2); // headers + dns "start" events
+    expect(progressCalls.length).toBeGreaterThan(0);
+    expect(
+      progressCalls.some(([, params]) =>
+        ["headers", "dns"].includes((params as unknown[])[0] as string),
+      ),
+    ).toBe(true);
 
     const completedCall = calls.find(([sql]) =>
       (sql as string).includes("status = 'completed'"),

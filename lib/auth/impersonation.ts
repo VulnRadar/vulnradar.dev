@@ -11,7 +11,7 @@
  * - The impersonation session is short-lived (1 hour) regardless of the
  *   deployment's normal SESSION_TIMEOUT_DAYS setting, capping how long a
  *   forgotten "stop" leaves an admin sitting in someone else's account.
- * - The admin's own session id is preserved in a second, separate httpOnly
+ * - The admin's own session token is preserved in a second, separate httpOnly
  *   cookie (not destroyed) so stopImpersonation can restore it -- the main
  *   session cookie is overwritten to the target's session while
  *   impersonating, so without this there would be no way back except
@@ -25,6 +25,7 @@ import { randomBytes } from "node:crypto";
 import pool from "@/lib/database/db";
 import { AUTH_SESSION_COOKIE_NAME } from "@/lib/config/constants";
 import { STAFF_ROLE_HIERARCHY } from "@/lib/config/client-constants";
+import { hashSessionId } from "@/lib/auth/auth";
 
 const IMPERSONATION_SESSION_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
 const RETURN_SESSION_COOKIE = "imp_return_session";
@@ -63,26 +64,30 @@ export async function startImpersonation(
   }
 
   const cookieStore = await cookies();
-  const currentSessionId = cookieStore.get(AUTH_SESSION_COOKIE_NAME)?.value;
-  if (!currentSessionId) {
+  // Cookies hold the raw bearer token; sessions.id holds its sha256 digest
+  // (see createSession in lib/auth/auth.ts, AUDIT-012#auth-07). Every lookup
+  // and delete in this file therefore hashes the cookie value first, and
+  // every cookie write stores the raw token.
+  const currentSessionToken = cookieStore.get(AUTH_SESSION_COOKIE_NAME)?.value;
+  if (!currentSessionToken) {
     return { ok: false, error: "No active admin session." };
   }
 
   const currentRes = await pool.query<{ impersonated_by: number | null }>(
     "SELECT impersonated_by FROM sessions WHERE id = $1",
-    [currentSessionId],
+    [hashSessionId(currentSessionToken)],
   );
   if (currentRes.rows[0]?.impersonated_by) {
     return { ok: false, error: "Already impersonating -- stop first." };
   }
 
-  const sessionId = generateSessionId();
+  const sessionToken = generateSessionId();
   const expiresAt = new Date(Date.now() + IMPERSONATION_SESSION_MAX_AGE_MS);
   await pool.query(
     `INSERT INTO sessions (id, user_id, expires_at, ip_address, user_agent, impersonated_by)
      VALUES ($1, $2, $3, $4, $5, $6)`,
     [
-      sessionId,
+      hashSessionId(sessionToken),
       targetUserId,
       expiresAt,
       ip || null,
@@ -99,8 +104,8 @@ export async function startImpersonation(
     path: "/",
     maxAge,
   };
-  cookieStore.set(AUTH_SESSION_COOKIE_NAME, sessionId, cookieOpts);
-  cookieStore.set(RETURN_SESSION_COOKIE, currentSessionId, cookieOpts);
+  cookieStore.set(AUTH_SESSION_COOKIE_NAME, sessionToken, cookieOpts);
+  cookieStore.set(RETURN_SESSION_COOKIE, currentSessionToken, cookieOpts);
 
   return { ok: true, targetEmail: target.email };
 }
@@ -110,10 +115,10 @@ export type StopImpersonationResult =
 
 export async function stopImpersonation(): Promise<StopImpersonationResult> {
   const cookieStore = await cookies();
-  const currentSessionId = cookieStore.get(AUTH_SESSION_COOKIE_NAME)?.value;
-  const returnSessionId = cookieStore.get(RETURN_SESSION_COOKIE)?.value;
+  const currentSessionToken = cookieStore.get(AUTH_SESSION_COOKIE_NAME)?.value;
+  const returnSessionToken = cookieStore.get(RETURN_SESSION_COOKIE)?.value;
 
-  if (!currentSessionId || !returnSessionId) {
+  if (!currentSessionToken || !returnSessionToken) {
     cookieStore.delete(RETURN_SESSION_COOKIE);
     return { ok: false, error: "Not currently impersonating." };
   }
@@ -123,7 +128,7 @@ export async function stopImpersonation(): Promise<StopImpersonationResult> {
   // return-session cookie can never be used to hijack an ordinary session.
   const currentRes = await pool.query<{ impersonated_by: number | null }>(
     "SELECT impersonated_by FROM sessions WHERE id = $1",
-    [currentSessionId],
+    [hashSessionId(currentSessionToken)],
   );
   if (!currentRes.rows[0]?.impersonated_by) {
     cookieStore.delete(RETURN_SESSION_COOKIE);
@@ -137,7 +142,7 @@ export async function stopImpersonation(): Promise<StopImpersonationResult> {
     `SELECT s.expires_at, u.role FROM sessions s
      JOIN users u ON u.id = s.user_id
      WHERE s.id = $1`,
-    [returnSessionId],
+    [hashSessionId(returnSessionToken)],
   );
   const returnSession = returnRes.rows[0];
   const returnStillValid =
@@ -148,7 +153,9 @@ export async function stopImpersonation(): Promise<StopImpersonationResult> {
   // Always tear down the impersonation session -- it should never outlive
   // the "stop" action, whether or not the admin's original session is
   // still valid to restore.
-  await pool.query("DELETE FROM sessions WHERE id = $1", [currentSessionId]);
+  await pool.query("DELETE FROM sessions WHERE id = $1", [
+    hashSessionId(currentSessionToken),
+  ]);
   cookieStore.delete(RETURN_SESSION_COOKIE);
 
   if (!returnStillValid) {
@@ -159,7 +166,7 @@ export async function stopImpersonation(): Promise<StopImpersonationResult> {
     };
   }
 
-  cookieStore.set(AUTH_SESSION_COOKIE_NAME, returnSessionId, {
+  cookieStore.set(AUTH_SESSION_COOKIE_NAME, returnSessionToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",

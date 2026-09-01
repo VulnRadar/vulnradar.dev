@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
+import { teamsDisabledResponse } from "@/lib/teams/feature-gate";
 
 /**
  * Everyone the caller shares a team with, deduped across all their teams
@@ -17,6 +18,9 @@ export async function GET() {
       { error: ERROR_MESSAGES.UNAUTHORIZED },
       { status: 401 },
     );
+
+  const gate = await teamsDisabledResponse();
+  if (gate) return gate;
 
   const res = await pool.query(
     `SELECT DISTINCT u.id, u.name, u.email, u.avatar_url

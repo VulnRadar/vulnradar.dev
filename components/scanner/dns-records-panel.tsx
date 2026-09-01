@@ -82,7 +82,10 @@ function ValueRow({ row }: { row: RecordRow }) {
         type="button"
         onClick={onCopy}
         aria-label={copied ? "Copied" : "Copy value"}
-        className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring group-hover/row:opacity-100"
+        // Hover-gated from sm up only: a touch device never produces hover, so
+        // below that the copy button was permanently invisible. It also gets a
+        // larger tap target on the phone layout.
+        className="shrink-0 rounded p-2.5 sm:p-1 text-muted-foreground transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring sm:opacity-0 sm:group-hover/row:opacity-100"
       >
         {copied ? (
           <Check
@@ -182,9 +185,63 @@ export function DnsRecordsPanel({
     return out;
   }, [records]);
 
-  // Absent field (raw IP / unreachable target): render nothing, matching how
-  // the response-headers panel bows out when there is nothing to show.
-  if (!records || groups.length === 0) return null;
+  // Absent field: the scan read a per-host cache, so a cold cache (or a raw
+  // IP / unreachable target) leaves nothing here.
+  //
+  // Same bug as the port panel: returning null took the fetch control down
+  // with the panel, even though POST /api/v3/history/[id]/dns resolves and
+  // merges records whether or not any were there before. The one case the
+  // control was built for was the one case it could not be reached in. Offer
+  // the fetch on the owner's own surfaces (the ones that pass a scanId);
+  // /shared and /host still render nothing.
+  if (!records || groups.length === 0) {
+    if (!scanId) return null;
+    return (
+      <>
+        <PremiumUpgradeModal
+          open={showUpgradeModal}
+          onOpenChange={setShowUpgradeModal}
+          feature={PREMIUM_FEATURES.dns_refetch}
+          currentPlan={userPlan}
+        />
+        <div className="flex items-center gap-3 overflow-hidden rounded-xl border border-border bg-card px-4 py-3">
+          <Network
+            aria-hidden
+            className="h-4 w-4 shrink-0 text-muted-foreground"
+          />
+          <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+            DNS records
+          </span>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            Not fetched
+          </span>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className={cn(
+              "inline-flex shrink-0 items-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50",
+              canRefresh
+                ? "text-foreground hover:bg-muted"
+                : "text-primary hover:bg-primary/10",
+            )}
+          >
+            {refreshing ? (
+              <Loader2 aria-hidden className="h-3 w-3 animate-spin" />
+            ) : (
+              <RefreshCw aria-hidden className="h-3 w-3" />
+            )}
+            Fetch DNS records
+          </button>
+        </div>
+        {error && (
+          <p role="alert" className="px-1 text-xs text-destructive">
+            {error}
+          </p>
+        )}
+      </>
+    );
+  }
 
   const total = groups.reduce((n, g) => n + g.rows.length, 0);
   const fetchedAge = formatAge(records.resolvedAt);
@@ -204,7 +261,7 @@ export function DnsRecordsPanel({
         feature={PREMIUM_FEATURES.dns_refetch}
         currentPlan={userPlan}
       />
-      <div className="overflow-hidden rounded-md border border-border bg-card">
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
         <button
           type="button"
           onClick={() => setExpanded(!expanded)}

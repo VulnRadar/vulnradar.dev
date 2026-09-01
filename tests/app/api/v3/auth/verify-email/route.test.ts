@@ -37,7 +37,7 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   }
   if (
     s.startsWith(
-      "SELECT id, used_at FROM email_verification_tokens WHERE token_hash = $1",
+      "SELECT id, used_at FROM email_verification_tokens WHERE token_hash = ANY($1::text[])",
     )
   ) {
     return { rows: usedTokenRow ? [usedTokenRow] : [] };
@@ -176,6 +176,10 @@ describe("POST /api/v3/auth/verify-email", () => {
     expect(tokenUsedCalls).toEqual([[3]]);
   });
 
+  // AUDIT-002#secrets-03: the digest is now HMAC-SHA256 keyed with the
+  // server secret, and the lookup matches a candidate LIST so a link already
+  // in someone's inbox when that shipped still resolves. Every candidate is
+  // still a digest, never the raw token.
   it("looks the token up by its hash, never the raw value", async () => {
     tokenRow = validToken();
     const rawToken = "plaintext-verification-token";
@@ -187,8 +191,12 @@ describe("POST /api/v3/auth/verify-email", () => {
         q.sql.includes("FROM email_verification_tokens evt") &&
         q.sql.includes("FOR UPDATE"),
     );
-    expect(lookup?.params[0]).not.toBe(rawToken);
-    expect(lookup?.params[0]).toMatch(/^[a-f0-9]{64}$/);
+    const candidates = lookup?.params[0] as string[];
+    expect(Array.isArray(candidates)).toBe(true);
+    expect(candidates).not.toContain(rawToken);
+    for (const candidate of candidates) {
+      expect(candidate).toMatch(/^[a-f0-9]{64}$/);
+    }
   });
 });
 

@@ -51,7 +51,7 @@ export function CrawlPagesInfo({
   );
 
   return (
-    <div className="overflow-hidden rounded-md border border-border bg-card">
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
       <button
         type="button"
         onClick={() => setOpen(!open)}

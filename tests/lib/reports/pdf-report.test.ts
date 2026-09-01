@@ -60,9 +60,21 @@ function makeResult(
 
 function decode(bytes: Uint8Array): string {
   // Every byte the generator writes comes from ASCII template strings
-  // (escPdf only ever inserts `\`, `(`, `)`), so latin1 round-trips the
-  // exact source string for assertions.
+  // (escPdf escapes everything else to an octal escape), so latin1
+  // round-trips the exact source string for assertions.
   return Buffer.from(bytes).toString("latin1");
+}
+
+/** Every string literal the content streams draw, still escaped. */
+function drawnLiterals(pdf: string): string[] {
+  return [...pdf.matchAll(/Td \((.*?)\) Tj/g)].map((m) => m[1]);
+}
+
+/** Undo escPdf: octal escapes back to bytes, `\(` `\)` `\\` back to chars. */
+function unescapePdfLiteral(literal: string): string {
+  return literal.replace(/\\([0-7]{3}|.)/g, (_, esc: string) =>
+    /^[0-7]{3}$/.test(esc) ? String.fromCharCode(parseInt(esc, 8)) : esc,
+  );
 }
 
 describe("generatePdfReport", () => {
@@ -213,5 +225,136 @@ describe("generatePdfReport", () => {
 
     expect(pdf).not.toContain("Remediation Steps:");
     expect(pdf).not.toContain("Code Examples:");
+  });
+
+  describe("text encoding", () => {
+    it("declares WinAnsiEncoding on every font", () => {
+      const pdf = decode(generatePdfReport(makeResult([makeFinding()])));
+
+      // Without /Encoding a viewer falls back to the font's built-in
+      // StandardEncoding, which has no slot for most of the CP1252 range.
+      expect(pdf).toContain("/BaseFont /Helvetica /Encoding /WinAnsiEncoding");
+      expect(pdf).toContain(
+        "/BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding",
+      );
+      expect(pdf).toContain("/BaseFont /Courier /Encoding /WinAnsiEncoding");
+    });
+
+    it("emits no raw byte above 0x7F anywhere in the document", () => {
+      // The document is serialised with TextEncoder (UTF-8), so any byte the
+      // generator leaves un-escaped reaches a single-byte font as N separate
+      // glyph codes: that is the mojibake this guards against.
+      const bytes = generatePdfReport(
+        makeResult([
+          makeFinding({
+            title: "Exposed GitHub token → full repo access",
+            evidence: "Matched ghp_ prefix in /assets/app.js",
+            fixSteps: [
+              "Revoke the token immediately via GitHub Settings → Developer Settings → Personal Access Tokens",
+            ],
+            explanation: "See RFC 5321 §5.1 for the envelope rules.",
+            codeExamples: [
+              {
+                label: "Rotate",
+                language: "bash",
+                code: "gh auth refresh → gh auth status",
+              },
+            ],
+          }),
+        ]),
+      );
+
+      const high = [...bytes].filter((b) => b > 0x7f);
+      expect(high).toEqual([]);
+    });
+
+    it("transliterates an arrow to -> and keeps the section sign as a WinAnsi byte", () => {
+      const pdf = decode(
+        generatePdfReport(
+          makeResult([
+            makeFinding({
+              fixSteps: [
+                "Revoke the token via GitHub Settings → Developer Settings",
+              ],
+              explanation: "RFC 5321 §5.1 defines the envelope.",
+            }),
+          ]),
+        ),
+      );
+
+      // U+2192 has no WinAnsi slot, so it becomes an ASCII stand-in rather
+      // than the three-glyph "a-dagger-quote" the UTF-8 bytes used to draw.
+      expect(pdf).toContain(
+        "Revoke the token via GitHub Settings -> Developer Settings",
+      );
+      expect(pdf).not.toContain("â’");
+
+      // U+00A7 does have a slot (0xA7), so it is escaped to octal 247 and
+      // renders as a real section sign.
+      const literals = drawnLiterals(pdf).map(unescapePdfLiteral);
+      expect(literals.some((l) => l.includes("RFC 5321 §5.1"))).toBe(true);
+      expect(pdf).toContain("RFC 5321 \\2475.1");
+    });
+  });
+
+  describe("layout", () => {
+    it("hard-breaks a token longer than the line budget instead of running it off the page", () => {
+      const longToken =
+        "https://example.com/callback?state=" + "a1b2c3d4".repeat(40);
+      const pdf = decode(
+        generatePdfReport(makeResult([makeFinding({ evidence: longToken })])),
+      );
+
+      const literals = drawnLiterals(pdf).map(unescapePdfLiteral);
+      // The widest budget in the document is 7pt Helvetica at ~141 chars.
+      for (const line of literals) {
+        expect(line.length).toBeLessThanOrEqual(150);
+      }
+      // And the token really was split rather than dropped: the tail survives.
+      expect(literals.some((l) => l.includes("a1b2c3d4a1b2c3d4"))).toBe(true);
+      expect(literals.join("")).toContain("state=");
+    });
+
+    it("draws the severity breakdown as filled rectangles, not repeated hashes", () => {
+      const findings = [
+        ...Array.from({ length: 40 }, () =>
+          makeFinding({ severity: "critical" }),
+        ),
+        ...Array.from({ length: 3 }, () => makeFinding({ severity: "low" })),
+      ];
+      const pdf = decode(generatePdfReport(makeResult(findings)));
+
+      expect(pdf).toContain("SEVERITY BREAKDOWN");
+      // The old renderer capped the bar at 30 "#" so 40 criticals and 3 lows
+      // looked like a 30:3 ratio.
+      expect(pdf).not.toContain("##########");
+      expect(pdf).toMatch(/re f/);
+      // Legend skips the zero counts, exactly like the email chip row.
+      const literals = drawnLiterals(pdf).map(unescapePdfLiteral);
+      expect(literals).toContain("40 critical");
+      expect(literals).toContain("3 low");
+      expect(literals.some((l) => l.includes("0 medium"))).toBe(false);
+    });
+
+    it("repeats the running header on a continuation page inside one finding", () => {
+      // A single finding long enough to span pages on its own: the header used
+      // to be emitted only between findings, so the continuation page had none.
+      const pdf = decode(
+        generatePdfReport(
+          makeResult([
+            makeFinding({
+              description: "A long paragraph of description text. ".repeat(200),
+            }),
+          ]),
+        ),
+      );
+
+      const pageMatches = pdf.match(/\/Type \/Page[^s]/g) ?? [];
+      expect(pageMatches.length).toBeGreaterThan(2);
+
+      const headers = pdf.match(/VulnRadar Security Report\) Tj/g) ?? [];
+      // One per findings page (the cover page carries the wordmark instead).
+      expect(headers.length).toBeGreaterThanOrEqual(pageMatches.length - 1);
+    });
   });
 });

@@ -3,7 +3,7 @@ import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { resolveScanRow } from "@/lib/history/resolve-scan";
-import { getTeamResourceAccess } from "@/lib/auth/team-resource-access";
+import { getScanResourceAccess } from "@/lib/teams/scan-teams";
 
 /**
  * PUT /api/v3/history/[id]/share/publicly-listed
@@ -49,14 +49,11 @@ export async function PUT(
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }
 
-  // Listing a share publicly is a write action, scoped to the scan's own
-  // team_id (owner-only for a personal scan). See the share route's POST.
+  // Listing a share publicly is a write action, scoped to the teams the scan
+  // is shared with (owner-only for a personal scan). See the share route's
+  // POST.
   if (scan.user_id !== session.userId) {
-    const access = await getTeamResourceAccess(
-      session.userId,
-      scan.user_id,
-      scan.team_id,
-    );
+    const access = await getScanResourceAccess(session.userId, scan);
     if (!access.canWrite) {
       return NextResponse.json({ error: "Scan not found" }, { status: 404 });
     }

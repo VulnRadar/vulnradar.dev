@@ -18,14 +18,37 @@ vi.mock("@/lib/api/api-keys", () => ({
   recordUsage: (...a: unknown[]) => mockRecordUsage(...a),
 }));
 
+// FEATURE_PDF_REPORTS now gates ?format=pdf server-side. Mocked at the
+// module boundary so the route never pulls in the real resolver (which
+// imports the pg pool at module load and needs DATABASE_URL).
+const mockGetSetting = vi.fn(async (_key: string) => true as unknown);
+vi.mock("@/lib/config/runtime-config", () => ({
+  getSetting: (...a: unknown[]) =>
+    mockGetSetting(...(a as Parameters<typeof mockGetSetting>)),
+}));
+
+// The session branch is now metered too (the API-key branch always was), so
+// a signed-in user cannot loop a synchronous PDF build and pin the event
+// loop. Mocked at the module boundary for the same reason as the resolver
+// above: lib/rate-limiting/rate-limit imports the pg pool at module load.
+const mockSessionRateLimit = vi.fn(async () => ({
+  allowed: true,
+  retryAfterSeconds: 0,
+}));
+vi.mock("@/lib/rate-limiting/rate-limit", () => ({
+  checkRateLimit: (...a: unknown[]) =>
+    mockSessionRateLimit(...(a as Parameters<typeof mockSessionRateLimit>)),
+  RATE_LIMITS: { api: { limit: "api", maxAttempts: 100, windowMinutes: 15 } },
+}));
+
 const mockResolveScanRow = vi.fn();
 vi.mock("@/lib/history/resolve-scan", () => ({
   resolveScanRow: (...a: unknown[]) => mockResolveScanRow(...a),
 }));
 
 const mockTeamAccess = vi.fn();
-vi.mock("@/lib/auth/team-resource-access", () => ({
-  getTeamResourceAccess: (...a: unknown[]) => mockTeamAccess(...a),
+vi.mock("@/lib/teams/scan-teams", () => ({
+  getScanResourceAccess: (...a: unknown[]) => mockTeamAccess(...a),
 }));
 
 vi.mock("@/lib/scanner/remediation-store", () => ({
@@ -75,9 +98,29 @@ beforeEach(() => {
   mockGetSession.mockResolvedValue({ userId: 7, role: "user" });
   mockResolveScanRow.mockResolvedValue(SCAN);
   mockTeamAccess.mockResolvedValue({ canRead: false });
+  mockGetSetting.mockResolvedValue(true);
+  mockSessionRateLimit.mockResolvedValue({
+    allowed: true,
+    retryAfterSeconds: 0,
+  });
 });
 
 describe("GET /api/v3/history/[id]/report", () => {
+  it("rate-limits the session path and never builds the report when the cap is hit", async () => {
+    mockSessionRateLimit.mockResolvedValue({
+      allowed: false,
+      retryAfterSeconds: 300,
+    });
+
+    const res = await GET(req("pdf"), params);
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("300");
+    // Rejected before the scan is even looked up, so the expensive
+    // synchronous build is never reached.
+    expect(mockResolveScanRow).not.toHaveBeenCalled();
+  });
+
   it("401s with no session and no API key", async () => {
     mockGetSession.mockResolvedValueOnce(null);
     const res = await GET(req("sarif"), params);
@@ -100,6 +143,22 @@ describe("GET /api/v3/history/[id]/report", () => {
     const res = await GET(req("pdf"), params);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("application/pdf");
+  });
+
+  // FEATURE_PDF_REPORTS used to hide only the download menu item, leaving
+  // ?format=pdf fully served to anyone who asked for it directly.
+  it("refuses ?format=pdf when FEATURE_PDF_REPORTS is off, before any scan lookup", async () => {
+    mockGetSetting.mockResolvedValueOnce(false);
+    const res = await GET(req("pdf"), params);
+    expect(res.status).toBe(403);
+    expect(mockResolveScanRow).not.toHaveBeenCalled();
+  });
+
+  it("still serves the other formats when only PDF reports are off", async () => {
+    mockGetSetting.mockResolvedValue(false);
+    const res = await GET(req("sarif"), params);
+    expect(res.status).toBe(200);
+    mockGetSetting.mockResolvedValue(true);
   });
 
   it("returns markdown and compliance", async () => {

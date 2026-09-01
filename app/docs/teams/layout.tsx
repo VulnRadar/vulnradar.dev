@@ -5,9 +5,9 @@ import {
   BreadcrumbStructuredData,
   TechArticleStructuredData,
 } from "@/components/seo/structured-data";
+import { APP_NAME } from "@/lib/config/constants";
 
-const description =
-  "How VulnRadar teams work: create a team, invite members by email, assign one of the six roles, and share scan reports across the whole team.";
+const description = `How ${APP_NAME} teams work: create a team, invite members by email, assign one of the six roles, and share scan reports across the whole team.`;
 
 export const metadata: Metadata = pageMetadata({
   title: "Team Roles, Invitations, and Shared Scans",
@@ -30,6 +30,7 @@ export default async function Layout({
     <>
       <BreadcrumbStructuredData
         items={[
+          { name: "Home", path: "/landing" },
           { name: "Docs", path: "/docs" },
           { name: "Teams", path: "/docs/teams" },
         ]}

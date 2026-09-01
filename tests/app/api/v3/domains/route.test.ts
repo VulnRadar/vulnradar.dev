@@ -26,9 +26,18 @@ vi.mock("@/lib/config/runtime-config", () => ({
 }));
 
 const mockCheckRateLimit = vi.fn();
-vi.mock("@/lib/rate-limiting/rate-limit", () => ({
-  checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
-}));
+// RATE_LIMITS is passed through from the real module, not stubbed: the point
+// of AUDIT-014#magic-08 was that the route names its limit so checkRateLimit
+// can resolve the live admin value, and a hand-written stub here would let a
+// regression back to inline numbers pass unnoticed.
+vi.mock("@/lib/rate-limiting/rate-limit", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/rate-limiting/rate-limit")>();
+  return {
+    ...actual,
+    checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
+  };
+});
 
 const mockGetTeamResourceAccess = vi.fn();
 vi.mock("@/lib/auth/team-resource-access", () => ({
@@ -133,6 +142,26 @@ describe("POST /api/v3/domains", () => {
     });
     const res = await POST(postRequest({ domain: "example.com" }));
     expect(res.status).toBe(429);
+  });
+
+  // AUDIT-014#magic-08: the cap used to be two inline numbers, which meant the
+  // number the API docs quote could not be edited from the admin panel.
+  it("names its rate limit so checkRateLimit resolves the admin-configured cap", async () => {
+    // Denied, so the route returns before the insert path this test does not
+    // care about; the assertion is on what it asked the limiter for.
+    mockCheckRateLimit.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 300,
+    });
+    await POST(postRequest({ domain: "example.com" }));
+
+    expect(mockCheckRateLimit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: "domain-add:42",
+        limit: "domainAdd",
+      }),
+    );
   });
 
   it("requires a domain", async () => {

@@ -39,6 +39,140 @@ const VALID_PREF_COLS = new Set([
   "email_tips_guides",
 ]);
 
+// Broadcast delivery. The send and resend actions used to carry two byte
+// identical copies of this loop, each of which (a) selected the entire
+// verified user base with no LIMIT into Node memory, (b) ran a dedupe SELECT
+// per recipient against broadcast_recipients, and (c) awaited one SMTP
+// handshake per recipient strictly in order. That is 1 + 2N round trips and N
+// serial handshakes per broadcast.
+//
+// Now: recipients are walked with a keyset cursor a page at a time, each page
+// is deduped with ONE query instead of one per row, and the page is delivered
+// with bounded concurrency. Bounded rather than Promise.all over everything,
+// for the same reason lib/scanner/scheduled-scans-worker.ts's runInBatches
+// exists: an unbounded fan-out opens one SMTP connection per user and takes
+// the transport (or the pool) down on the first large send.
+const BROADCAST_PAGE_SIZE = 200;
+const BROADCAST_SEND_CONCURRENCY = 5;
+
+async function deliverBroadcast(messageId: number): Promise<void> {
+  const messageResult = await pool.query(
+    `SELECT id, title, content, segment_filter FROM broadcast_messages WHERE id = $1`,
+    [messageId],
+  );
+  const message = messageResult.rows[0];
+  if (!message) return;
+
+  const segment = message.segment_filter?.segment || message.segment_filter;
+  const prefCol = message.segment_filter?.preference_col;
+  const safeCol =
+    typeof prefCol === "string" && VALID_PREF_COLS.has(prefCol)
+      ? prefCol
+      : null;
+
+  const conditions: string[] = ["u.email_verified_at IS NOT NULL"];
+  const queryParams: unknown[] = [];
+
+  if (segment && segment !== "all") {
+    if (segment === "premium") {
+      conditions.push("u.plan != 'free'");
+    } else if (
+      segment === "free" ||
+      segment === "core_supporter" ||
+      segment === "pro_supporter" ||
+      segment === "elite_supporter"
+    ) {
+      queryParams.push(segment);
+      conditions.push(`u.plan = $${queryParams.length}`);
+    } else if (typeof segment === "string" && segment.startsWith("email:")) {
+      queryParams.push(segment.replace("email:", ""));
+      conditions.push(`u.email = $${queryParams.length}`);
+    }
+  }
+  if (safeCol) {
+    conditions.push(`(np.user_id IS NULL OR np.${safeCol} = true)`);
+  }
+
+  // Keyset, not OFFSET: the page query re-runs after each batch and OFFSET
+  // would re-scan and discard every row already sent.
+  let cursor = 0;
+  for (;;) {
+    const pageParams = [...queryParams, cursor, BROADCAST_PAGE_SIZE];
+    const page = await pool.query<{ id: number; email: string }>(
+      `SELECT u.id, u.email FROM users u
+       ${safeCol ? "LEFT JOIN notification_preferences np ON np.user_id = u.id" : ""}
+       WHERE ${conditions.join(" AND ")} AND u.id > $${queryParams.length + 1}
+       ORDER BY u.id
+       LIMIT $${queryParams.length + 2}`,
+      pageParams,
+    );
+    if (page.rows.length === 0) return;
+    cursor = page.rows[page.rows.length - 1].id;
+
+    // AUDIT-013 schema-08: this used to be a read-then-insert guard -- SELECT
+    // "have we sent to these people", then sendEmail, then INSERT. The whole
+    // SMTP round trip sat inside that window, so an admin double-clicking
+    // send, or a resend racing a still-running first send, passed the SELECT
+    // for the same recipient twice and mailed them twice. Duplicate mass mail
+    // is the fastest way to get a sending domain reputation-flagged.
+    //
+    // The claim is now the INSERT itself, made atomic by the unique index on
+    // (message_id, user_id) that instrumentation.ts adds. Only the writer
+    // whose row came back sends. A send that then fails is marked 'failed'
+    // and the DO UPDATE re-claims exactly those rows on a later resend, so
+    // retry still works; a row left 'pending' by a process that died
+    // mid-send is deliberately NOT re-claimable, because a second sender
+    // cannot tell "the first one crashed before sending" from "the first one
+    // is mid-handshake right now".
+    const ids = page.rows.map((r) => r.id);
+    const claimed = await pool.query<{ user_id: number }>(
+      `INSERT INTO broadcast_recipients (message_id, user_id, status)
+       SELECT $1, u, 'pending' FROM unnest($2::int[]) AS u
+       ON CONFLICT (message_id, user_id) DO UPDATE SET status = 'pending'
+         WHERE broadcast_recipients.status = 'failed'
+       RETURNING user_id`,
+      [messageId, ids],
+    );
+    const mine = new Set(claimed.rows.map((r) => r.user_id));
+    const pending = page.rows.filter((r) => mine.has(r.id));
+
+    for (let i = 0; i < pending.length; i += BROADCAST_SEND_CONCURRENCY) {
+      const batch = pending.slice(i, i + BROADCAST_SEND_CONCURRENCY);
+      await Promise.all(
+        batch.map(async (recipient) => {
+          try {
+            await sendEmail({
+              to: recipient.email,
+              subject: message.title,
+              text: stripHtmlTags(message.content),
+              html: message.content,
+              skipLayout: false,
+            });
+            await pool.query(
+              `UPDATE broadcast_recipients SET status = 'sent'
+                WHERE message_id = $1 AND user_id = $2`,
+              [messageId, recipient.id],
+            );
+          } catch (err) {
+            console.error(
+              `[Broadcast] Failed to send to userId ${recipient.id}:`,
+              err instanceof Error ? err.message : "non-Error thrown",
+            );
+            // Release the claim so a resend picks this recipient up again.
+            await pool
+              .query(
+                `UPDATE broadcast_recipients SET status = 'failed'
+                  WHERE message_id = $1 AND user_id = $2`,
+                [messageId, recipient.id],
+              )
+              .catch(() => {});
+          }
+        }),
+      );
+    }
+  }
+}
+
 // TERMS_UPDATED_AT drives the ToS re-accept comparison directly (see
 // components/auth/tos-gate.tsx and lib/api/api-keys.ts's
 // hasAcceptedLatestTerms). SETTINGS_REGISTRY only knows "string" for it
@@ -162,10 +296,15 @@ export async function POST(req: NextRequest) {
       }
 
       if (action === "list") {
+        // include_inactive is opt-in so existing callers that only care about
+        // enforced rules keep their behaviour. The access-rules panel passes
+        // it: without inactive rows a paused rule vanished from the UI
+        // entirely and could never be resumed.
+        const includeInactive = body.include_inactive === true;
         const result = await pool.query(
-          `SELECT id, rule_type, value_type, value as ip_address, description, reason, hit_count, is_active, created_at, expires_at 
-           FROM access_rules 
-           WHERE is_active = true 
+          `SELECT id, rule_type, value_type, value as ip_address, description, reason, hit_count, is_active, created_at, expires_at
+           FROM access_rules
+           ${includeInactive ? "" : "WHERE is_active = true"}
            ORDER BY created_at DESC`,
         );
         return NextResponse.json({ rules: result.rows });
@@ -488,6 +627,15 @@ export async function POST(req: NextRequest) {
         // finishes, not here. Marking it sent up front meant a crash or a
         // partial failure during delivery still showed the broadcast as fully
         // sent when many recipients never got it.
+        //
+        // sent_by IS set here though. Only the resend branch used to write it,
+        // so a broadcast's first send left the column NULL and the list above
+        // (which LEFT JOINs users on bm.sent_by for sent_by_name) showed no
+        // "sent by" until someone happened to resend it.
+        await pool.query(
+          `UPDATE broadcast_messages SET sent_by = $1 WHERE id = $2`,
+          [user.id, id],
+        );
 
         await logAction(
           user.id,
@@ -500,88 +648,11 @@ export async function POST(req: NextRequest) {
         // Queue background job to send emails
         setTimeout(async () => {
           try {
-            const messageResult = await pool.query(
-              `SELECT id, title, content, segment_filter FROM broadcast_messages WHERE id = $1`,
-              [id],
-            );
-            const message = messageResult.rows[0];
-            if (!message) return;
-
-            const segment =
-              message.segment_filter?.segment || message.segment_filter;
-            const prefCol = message.segment_filter?.preference_col;
-            const safeCol =
-              typeof prefCol === "string" && VALID_PREF_COLS.has(prefCol)
-                ? prefCol
-                : null;
-
-            let userQuery = `SELECT u.id, u.email FROM users u`;
-            const queryParams: string[] = [];
-
-            if (safeCol) {
-              userQuery += ` LEFT JOIN notification_preferences np ON np.user_id = u.id`;
-            }
-
-            userQuery += ` WHERE u.email_verified_at IS NOT NULL`;
-
-            if (segment && segment !== "all") {
-              if (segment === "premium") {
-                userQuery += ` AND u.plan != 'free'`;
-              } else if (segment === "free") {
-                userQuery += ` AND u.plan = 'free'`;
-              } else if (segment === "core_supporter") {
-                userQuery += ` AND u.plan = 'core_supporter'`;
-              } else if (segment === "pro_supporter") {
-                userQuery += ` AND u.plan = 'pro_supporter'`;
-              } else if (segment === "elite_supporter") {
-                userQuery += ` AND u.plan = 'elite_supporter'`;
-              } else if (
-                typeof segment === "string" &&
-                segment.startsWith("email:")
-              ) {
-                const specificEmail = segment.replace("email:", "");
-                userQuery += ` AND u.email = $1`;
-                queryParams.push(specificEmail);
-              }
-            }
-
-            if (safeCol) {
-              userQuery += ` AND (np.user_id IS NULL OR np.${safeCol} = true)`;
-            }
-
-            const usersResult = await pool.query(userQuery, queryParams);
-            for (const recipient of usersResult.rows) {
-              // Idempotent: skip anyone already delivered for this message, so a
-              // re-triggered send or a resend never emails the same person
-              // twice. broadcast_recipients has no unique key, so this is an
-              // app-level guard rather than ON CONFLICT.
-              const already = await pool.query(
-                `SELECT 1 FROM broadcast_recipients WHERE message_id = $1 AND user_id = $2 AND status = 'sent' LIMIT 1`,
-                [id, recipient.id],
-              );
-              if (already.rows.length > 0) continue;
-              try {
-                await sendEmail({
-                  to: recipient.email,
-                  subject: message.title,
-                  text: stripHtmlTags(message.content),
-                  html: message.content,
-                  skipLayout: false,
-                });
-                await pool.query(
-                  `INSERT INTO broadcast_recipients (message_id, user_id, status) VALUES ($1, $2, 'sent')`,
-                  [id, recipient.id],
-                );
-              } catch (err) {
-                console.error(
-                  `[Broadcast] Failed to send to userId ${recipient.id}:`,
-                  err instanceof Error ? err.message : "non-Error thrown",
-                );
-              }
-            }
+            await deliverBroadcast(id);
             // Only now is the broadcast actually sent. A crash before this
-            // leaves it 'draft', so re-triggering resumes (the skip above means
-            // already-delivered recipients aren't emailed again).
+            // leaves it 'draft', so re-triggering resumes (the per-page dedupe
+            // in deliverBroadcast means already-delivered recipients aren't
+            // emailed again).
             await pool.query(
               `UPDATE broadcast_messages SET status = 'sent', sent_at = NOW() WHERE id = $1`,
               [id],
@@ -662,85 +733,7 @@ export async function POST(req: NextRequest) {
         // Queue background job to send emails again
         setTimeout(async () => {
           try {
-            const messageResult = await pool.query(
-              `SELECT id, title, content, segment_filter FROM broadcast_messages WHERE id = $1`,
-              [id],
-            );
-            const message = messageResult.rows[0];
-            if (!message) return;
-
-            const segment =
-              message.segment_filter?.segment || message.segment_filter;
-            const prefCol = message.segment_filter?.preference_col;
-            const safeCol =
-              typeof prefCol === "string" && VALID_PREF_COLS.has(prefCol)
-                ? prefCol
-                : null;
-
-            let userQuery = `SELECT u.id, u.email FROM users u`;
-            const queryParams: string[] = [];
-
-            if (safeCol) {
-              userQuery += ` LEFT JOIN notification_preferences np ON np.user_id = u.id`;
-            }
-
-            userQuery += ` WHERE u.email_verified_at IS NOT NULL`;
-
-            if (segment && segment !== "all") {
-              if (segment === "premium") {
-                userQuery += ` AND u.plan != 'free'`;
-              } else if (segment === "free") {
-                userQuery += ` AND u.plan = 'free'`;
-              } else if (segment === "core_supporter") {
-                userQuery += ` AND u.plan = 'core_supporter'`;
-              } else if (segment === "pro_supporter") {
-                userQuery += ` AND u.plan = 'pro_supporter'`;
-              } else if (segment === "elite_supporter") {
-                userQuery += ` AND u.plan = 'elite_supporter'`;
-              } else if (
-                typeof segment === "string" &&
-                segment.startsWith("email:")
-              ) {
-                const specificEmail = segment.replace("email:", "");
-                userQuery += ` AND u.email = $1`;
-                queryParams.push(specificEmail);
-              }
-            }
-
-            if (safeCol) {
-              userQuery += ` AND (np.user_id IS NULL OR np.${safeCol} = true)`;
-            }
-
-            const usersResult = await pool.query(userQuery, queryParams);
-            for (const recipient of usersResult.rows) {
-              // Idempotent: skip anyone already delivered for this message, so a
-              // re-triggered send or a resend never emails the same person
-              // twice. broadcast_recipients has no unique key, so this is an
-              // app-level guard rather than ON CONFLICT.
-              const already = await pool.query(
-                `SELECT 1 FROM broadcast_recipients WHERE message_id = $1 AND user_id = $2 AND status = 'sent' LIMIT 1`,
-                [id, recipient.id],
-              );
-              if (already.rows.length > 0) continue;
-              try {
-                await sendEmail({
-                  to: recipient.email,
-                  subject: message.title,
-                  text: stripHtmlTags(message.content),
-                  html: message.content,
-                  skipLayout: false,
-                });
-                await pool.query(
-                  `INSERT INTO broadcast_recipients (message_id, user_id, status) VALUES ($1, $2, 'sent')`,
-                  [id, recipient.id],
-                );
-              } catch (err) {
-                console.error(
-                  `[Broadcast] Failed to send to userId ${recipient.id}:`,
-                  err instanceof Error ? err.message : "non-Error thrown",
-                );
-              }
-            }
+            await deliverBroadcast(id);
           } catch (err) {
             console.error("[Broadcast] Background job failed:", err);
           }

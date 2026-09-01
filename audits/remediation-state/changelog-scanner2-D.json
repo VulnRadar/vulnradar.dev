@@ -1,0 +1,14 @@
+[
+  {
+    "icon": "Lock",
+    "label": "Session Cookie Checks No Longer Stop At The First Safe Cookie",
+    "desc": "The Django, Laravel, and Express cookie checks looked at the cookies in a response one at a time and stopped as soon as they found one that was configured correctly. On a Laravel site that sets a properly hardened CSRF cookie first, that meant a session cookie missing HttpOnly further down the list was never examined and the scan came back clean. Each cookie is now judged on its own, so a correctly configured cookie only clears itself.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Key",
+    "label": "Hardcoded API Key Check Now Scans The Whole Page",
+    "desc": "The check for API keys left in client-side JavaScript ignores keys that vendors publish in their own documentation, since those are inert examples. It was only looking at the first key-shaped value on the page, so a page that opened with one of those documented example keys was reported clean even when a real credential appeared further down the same file. It now checks every match on the page instead of stopping at the first one.",
+    "category": "fixed"
+  }
+]

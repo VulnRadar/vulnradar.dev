@@ -13,6 +13,7 @@ import {
   parseCookieName,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
+import { hasTagWith, openingTagOf, tagElements } from "./_tag-scan";
 
 const h = getHeader;
 
@@ -92,14 +93,31 @@ export const detectors: Record<string, DetectFn> = {
     return "Neither 'Cache-Control' nor 'Pragma' headers are present.";
   },
 
+  // The registered implementation of this id lives in checks/headers.ts (the
+  // definition's own category is headers, and that is what the registry
+  // resolves). This copy is kept in sync with it rather than left on the old
+  // "any POST form is sensitive" condition, which flagged every public
+  // contact/newsletter/search form on a normally-cached page.
+  // ref: AUDIT-010#scanner-10
   "cache-control-public-sensitive": (_url, headers, body) => {
     const cc = h(headers, "cache-control");
     if (!cc || !cc.includes("public")) return null;
     // Bound the [^>]* attribute gaps to avoid O(n^2) backtracking (ReDoS) on a
     // body full of unclosed tags; a real tag's attributes never exceed ~2000 chars.
-    const hasForm = /<form[^>]{0,2000}method\s*=\s*["']?post/i.test(body);
-    const hasPasswd = /<input[^>]{0,2000}type\s*=\s*["']?password/i.test(body);
-    if (!hasForm && !hasPasswd) return null;
+    const hasPasswd = hasTagWith(body, "input", /type\s*=\s*["']?password/i);
+    if (hasPasswd) {
+      return "Cache-Control: public set on page containing sensitive forms.";
+    }
+    const hasSensitiveField = (form: string) =>
+      hasTagWith(
+        form,
+        "input",
+        /(?:name|id)\s*=\s*["'][^"']*(?:card|ssn|cvv|account[-_]?number)[^"']*["']/i,
+      );
+    const postForms = tagElements(body, "form").filter((f) =>
+      /method\s*=\s*["']?post/i.test(openingTagOf(f)),
+    );
+    if (!postForms.some(hasSensitiveField)) return null;
     return "Cache-Control: public set on page containing sensitive forms.";
   },
 
@@ -452,17 +470,26 @@ export const detectors: Record<string, DetectFn> = {
     // install-guide blog post referencing these asset paths doesn't match
     // the same way the toolbar's actually-injected assets would, mirroring
     // the xml-external-entity check in code.ts.
-    const isDocContext = (match: string) => {
-      const idx = body.indexOf(match);
-      const before = body.slice(Math.max(0, idx - 200), idx).toLowerCase();
+    //
+    // Every occurrence is judged at its own offset. Matching once and then
+    // clearing the whole page when that single hit sat in a <pre> example
+    // meant a documentation snippet near the top of a page masked the
+    // toolbar's real, injected asset reference further down: a silent false
+    // negative on a page that genuinely was exposing the debugger.
+    const isDocContext = (index: number) => {
+      const before = body.slice(Math.max(0, index - 200), index).toLowerCase();
       return /<code|<pre|```|example|documentation/i.test(before);
     };
-    const django = body.match(/\/static\/debug_toolbar\/|djDebug/i);
-    if (django && !isDocContext(django[0])) {
+    const hasRealReference = (pattern: RegExp) => {
+      for (const m of body.matchAll(pattern)) {
+        if (typeof m.index === "number" && !isDocContext(m.index)) return true;
+      }
+      return false;
+    };
+    if (hasRealReference(/\/static\/debug_toolbar\/|djDebug/gi)) {
       return "Django Debug Toolbar assets referenced in page output — the toolbar is active on a publicly reachable page.";
     }
-    const laravel = body.match(/_debugbar\/assets|phpdebugbar/i);
-    if (laravel && !isDocContext(laravel[0])) {
+    if (hasRealReference(/_debugbar\/assets|phpdebugbar/gi)) {
       return "Laravel Debugbar / PHP Debug Bar assets referenced in page output — the debugger is active on a publicly reachable page.";
     }
     return null;

@@ -6,6 +6,30 @@ import { DISALLOWED_PATHS, SCANNER_DISALLOWED_PATHS } from "@/lib/seo/routes";
 export const dynamic = "force-static";
 
 /**
+ * Link-preview (unfurl) fetchers. These are not indexers: they fetch a URL
+ * once to read its Open Graph tags so a pasted link renders as a card. They
+ * honour robots.txt, so a Disallow on /shared/ and /host/ silently reduced
+ * every shared report to a bare link in Slack, X, LinkedIn, Discord and
+ * iMessage.
+ */
+const PREVIEW_CRAWLERS = [
+  "Twitterbot",
+  "facebookexternalhit",
+  "Facebot",
+  "Slackbot",
+  "Slackbot-LinkExpanding",
+  "LinkedInBot",
+  "Discordbot",
+  "WhatsApp",
+  "TelegramBot",
+  "redditbot",
+  "Applebot", // also powers iMessage link previews
+  "SkypeUriPreview",
+  "vkShare",
+  "Iframely",
+];
+
+/**
  * The answer-engine and generative-engine crawlers we explicitly want reading
  * the public content: search-grounding fetchers (an AI cites us when it
  * answers a question), training crawlers (Google-Extended, Applebot-Extended,
@@ -67,6 +91,25 @@ export default function robots(): MetadataRoute.Robots {
         userAgent: AI_CRAWLERS,
         allow: "/",
         disallow: [...DISALLOWED_PATHS, ...QUERY_DISALLOW],
+      },
+      {
+        // seo: link-preview fetchers must reach /shared/ and /host/, which the
+        // wildcard group above disallows. These bots honour robots.txt, so a
+        // shared scan report pasted into Slack, X, LinkedIn, Discord or
+        // iMessage unfurled as a bare URL with no title, description or image.
+        // Sharing a report is a core feature and the main organic loop, so
+        // that was the loop silently broken.
+        //
+        // Allowing them costs nothing in indexing terms: those pages already
+        // carry a `noindex` robots meta tag, which is what actually keeps them
+        // out of search results. robots.txt Disallow was never the control
+        // doing that job, it only stopped the preview fetch.
+        userAgent: PREVIEW_CRAWLERS,
+        allow: ["/shared/", "/host/", "/"],
+        disallow: [
+          ...DISALLOWED_PATHS.filter((p) => p !== "/shared/" && p !== "/host/"),
+          ...QUERY_DISALLOW,
+        ],
       },
       {
         // VulnRadar's own scan crawler honors Disallow rules that name it

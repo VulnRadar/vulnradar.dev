@@ -9,6 +9,12 @@ let rows: Record<string, unknown>[] = [];
 const calls: { sql: string; params: unknown[] }[] = [];
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
+  // The FEATURE_TEAMS kill switch (lib/teams/feature-gate.ts) loads the
+  // runtime-config table first on every teams route. It is infrastructure,
+  // not part of what this route does, so it stays out of `calls`. An empty
+  // result means "no admin override", so the flag falls back to its
+  // compiled default (on).
+  if (sql.includes("FROM system_settings")) return { rows: [] };
   calls.push({ sql, params });
   return { rows };
 });

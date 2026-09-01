@@ -28,6 +28,7 @@ export default async function Layout({
     <>
       <BreadcrumbStructuredData
         items={[
+          { name: "Home", path: "/landing" },
           { name: "Docs", path: "/docs" },
           { name: "Scheduled Scans", path: "/docs/scheduled-scans" },
         ]}

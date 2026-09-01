@@ -54,7 +54,7 @@ describe("runBackupJob", () => {
     const promise = runBackupJob(job.id, "/app");
     child.stdout.emit("data", Buffer.from("Backup complete.\n"));
     child.emit("close", 0);
-    await promise;
+    expect(await promise).toEqual({ ok: true });
 
     const finished = getJob(job.id)!;
     expect(finished.status).toBe("success");
@@ -70,7 +70,13 @@ describe("runBackupJob", () => {
     const promise = runBackupJob(job.id, "/app");
     child.stderr.emit("data", Buffer.from("pg_dump: connection refused\n"));
     child.emit("close", 1);
-    await promise;
+    const result = await promise;
+
+    // The resolved result is the only channel a caller has: the in-memory job
+    // store is capped and wiped on restart, so a failure that is not reported
+    // here is invisible to the scheduled worker's failure escalator.
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("exited with code 1");
 
     const finished = getJob(job.id)!;
     expect(finished.status).toBe("failed");
@@ -78,18 +84,43 @@ describe("runBackupJob", () => {
     expect(finished.log).toContain("pg_dump: connection refused");
   });
 
+  it("console.errors a non-zero exit so it reaches system_error_logs", async () => {
+    const job = createJob(1)!;
+    const child = fakeChild();
+    mockSpawn.mockReturnValue(child);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const promise = runBackupJob(job.id, "/app");
+      child.emit("close", 2);
+      await promise;
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("exited with code 2"),
+      );
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it("marks the job failed when the process fails to spawn at all", async () => {
     const job = createJob(1)!;
     const child = fakeChild();
     mockSpawn.mockReturnValue(child);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    const promise = runBackupJob(job.id, "/app");
-    child.emit("error", new Error("ENOENT: node not found"));
-    await promise;
+    try {
+      const promise = runBackupJob(job.id, "/app");
+      child.emit("error", new Error("ENOENT: node not found"));
+      const result = await promise;
 
-    const finished = getJob(job.id)!;
-    expect(finished.status).toBe("failed");
-    expect(finished.error).toBe("ENOENT: node not found");
+      expect(result).toEqual({ ok: false, error: "ENOENT: node not found" });
+      expect(errorSpy).toHaveBeenCalled();
+      const finished = getJob(job.id)!;
+      expect(finished.status).toBe("failed");
+      expect(finished.error).toBe("ENOENT: node not found");
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 
   it("does not double-finish the job if both error and close fire", async () => {

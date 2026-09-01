@@ -20,9 +20,32 @@ const root = resolve(__dirname, "src");
 // in Firefox. scripts/build.mjs builds background.js and content.js
 // separately, each as its own single-entry `format: "iife"` bundle with no
 // external imports, so they work unmodified as classic scripts everywhere.
-export default defineConfig({
+// Every network call, deep link and privacy statement in the extension comes
+// off VULNRADAR.apiHost, which used to be a plain literal with no override:
+// a self-hoster could not point the extension at their own instance at all.
+// It is a build-time define now, and scripts/build.mjs templates the same
+// value into host_permissions so the browser actually allows the requests.
+export const API_HOST_DEFINE = {
+  __API_HOST__: JSON.stringify(
+    process.env.VULNRADAR_API_HOST || "https://vulnradar.dev",
+  ),
+};
+
+// `mode` is "development" only for `npm run dev` (the watch build); every
+// release path (scripts/build.mjs, and therefore CI and the store zips) runs
+// in the default production mode. Sourcemaps are gated on it: shipping them
+// added ~606 KB of .map files to a 192 KB extension, roughly tripling what a
+// user downloads and installs, and handing anyone who unpacks the zip the
+// unminified source. Local development still gets full maps.
+export default defineConfig(({ mode }) => ({
   root,
+  // Only the extension's own runtime assets belong here: publicDir is copied
+  // verbatim into every build, so anything added under it ends up inside the
+  // store zip. The Chrome Web Store / AMO listing screenshots deliberately
+  // live in ../store-assets instead, outside publicDir, since the extension
+  // never references them.
   publicDir: resolve(__dirname, "public"),
+  define: API_HOST_DEFINE,
   resolve: {
     alias: {
       "@": resolve(__dirname, "src/lib"),
@@ -44,7 +67,7 @@ export default defineConfig({
     outDir: resolve(__dirname, "dist-build"),
     emptyOutDir: true,
     minify: "esbuild",
-    sourcemap: true,
+    sourcemap: mode === "development",
     target: "es2022",
     rollupOptions: {
       input: {
@@ -61,4 +84,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

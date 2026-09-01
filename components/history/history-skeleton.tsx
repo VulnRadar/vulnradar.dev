@@ -23,7 +23,7 @@ function HistoryStatsSkeleton() {
 
 function HistoryScanListSkeleton() {
   return (
-    <div className="rounded-md border border-border overflow-hidden divide-y divide-border">
+    <div className="rounded-xl border border-border overflow-hidden divide-y divide-border">
       {Array.from({ length: ROW_COUNT }).map((_, i) => (
         <div key={i} className="flex items-center gap-4 py-3.5 pl-4 pr-4">
           <Skeleton className="h-9 w-9 rounded-md shrink-0" />

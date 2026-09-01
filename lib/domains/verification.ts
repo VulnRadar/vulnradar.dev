@@ -12,8 +12,8 @@
  * a target -- see that file and app/api/v3/scan/route.ts for enforcement.
  */
 
-import { randomBytes } from "crypto";
-import { resolveTxt } from "dns/promises";
+import { randomBytes } from "node:crypto";
+import { resolveTxt } from "node:dns/promises";
 
 export const VERIFICATION_RECORD_PREFIX = "_vulnradar-verify";
 export const VERIFICATION_VALUE_PREFIX = "vulnradar-verify";

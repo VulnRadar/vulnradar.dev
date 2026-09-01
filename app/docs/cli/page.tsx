@@ -1,7 +1,5 @@
-"use client";
-
-import { useEffect, useRef } from "react";
-import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
+import type { TocItem } from "@/components/docs/docs-types";
+import { DocsTocSpy } from "../docs-toc-spy";
 import {
   DocsHero,
   DocsSection,
@@ -22,32 +20,9 @@ const tocItems: TocItem[] = [
 ];
 
 export default function CliPage() {
-  const { setActiveSection, setTocItems } = useDocsContext();
-  const observerRef = useRef<IntersectionObserver | null>(null);
-
-  useEffect(() => {
-    setTocItems(tocItems);
-    return () => setTocItems([]);
-  }, [setTocItems]);
-
-  useEffect(() => {
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) setActiveSection(entry.target.id);
-        });
-      },
-      { rootMargin: "-20% 0px -70% 0px", threshold: 0 },
-    );
-    tocItems.forEach((item) => {
-      const el = document.getElementById(item.id);
-      if (el) observerRef.current?.observe(el);
-    });
-    return () => observerRef.current?.disconnect();
-  }, [setActiveSection]);
-
   return (
     <div className="space-y-16">
+      <DocsTocSpy items={tocItems} />
       <DocsHero
         id="top"
         badge="CLI"
@@ -97,9 +72,12 @@ npm install -g .`}
           needs Node 18 or newer and has no dependencies of its own.
         </p>
         <DocsCallout variant="info" title="Coming to npm">
-          Once the package is published you will be able to run it with{" "}
-          <InlineCode>npx vulnradar scan &lt;url&gt;</InlineCode> and skip the
-          clone. This page will switch to that the moment it ships.
+          The <InlineCode>vulnradar</InlineCode> name on npm is registered to
+          this project, but what is published there today is a placeholder, not
+          the CLI. Do not wire <InlineCode>npx vulnradar</InlineCode> into a
+          pipeline yet: clone and run the entrypoint as above. This page will
+          switch to <InlineCode>npx vulnradar scan &lt;url&gt;</InlineCode> the
+          moment the real package ships.
         </DocsCallout>
       </DocsSection>
 
@@ -132,7 +110,7 @@ npm install -g .`}
             },
             {
               flag: "--crawl",
-              desc: "Crawl and scan up to 15 pages instead of a single URL.",
+              desc: "Crawl and scan multiple pages instead of a single URL. The cap depends on your plan (Free 25, Core 50, Pro 100, Elite 250).",
               def: "off",
             },
             {

@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 
+// lib/config/server-constants.ts (the SMTP credentials and the Browserbase
+// configured-check) carries `import "server-only"`, a bundler marker package
+// whose default entry throws outside a react-server context. Neutralize it so
+// the module under test loads here (AUDIT-012#fe-15).
+vi.mock("server-only", () => ({}));
+
 /**
  * Route-level tests for GET /api/v3/browser/sessions/logs. Same mocking
  * boundary as tests/app/api/v3/browser/sessions/route.test.ts: the database

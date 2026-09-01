@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { API, APP_NAME } from "@/lib/config/constants";
+import { API, APP_NAME } from "@/lib/config/client-constants";
 import { copyToClipboard as copyTextToClipboard } from "@/lib/ui/clipboard";
 import type { ScanEntry } from "./badge-types";
 import { parseUrl } from "./badge-types";
@@ -111,7 +111,7 @@ function SnippetBlock({
         >
           {copied ? (
             <>
-              <Check className="h-3 w-3 text-emerald-500" />
+              <Check className="h-3 w-3 text-[hsl(var(--success))]" />
               Copied
             </>
           ) : (

@@ -10,6 +10,7 @@ import {
   landingContactConfirmationEmail,
 } from "@/lib/email/email";
 import { getSetting } from "@/lib/config/runtime-config";
+import { rateLimitIpKey } from "@/lib/api/request-utils";
 import { TURNSTILE_ENABLED } from "@/lib/config/constants";
 
 function asTrimmedString(value: unknown): string | null {
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
   try {
     const ip = await getClientIP();
     const rl = await checkRateLimit({
-      key: `landing-contact:${ip}`,
+      key: `landing-contact:${rateLimitIpKey(ip)}`,
       ...RATE_LIMITS.api,
     });
     if (!rl.allowed) {

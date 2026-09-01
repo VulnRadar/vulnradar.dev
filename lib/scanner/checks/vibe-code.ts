@@ -15,6 +15,7 @@ import {
   extractScriptContents,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
+import { hasTagWith, tagsWith } from "./_tag-scan";
 
 function hasScript(body: string): boolean {
   return /<script[\s\S]*?>/i.test(body);
@@ -66,21 +67,25 @@ const rawDetectors: Record<string, DetectFn> = {
   "vibe-generic-error-message": (_url, _headers, body) => {
     if (!hasScript(body)) return null;
     const patterns = [
-      /["']An error occurred["']/i,
-      /["']Something went wrong["']/i,
-      /["']Oops[,!]? something went wrong["']/i,
-      /["']An unexpected error occurred["']/i,
-      /["']We encountered an error["']/i,
+      /["']An error occurred["']/gi,
+      /["']Something went wrong["']/gi,
+      /["']Oops[,!]? something went wrong["']/gi,
+      /["']An unexpected error occurred["']/gi,
+      /["']We encountered an error["']/gi,
     ];
+    // Every occurrence is checked, not just the first: the same friendly
+    // string routinely appears once as i18n/state data near the top of the
+    // page AND again inside the real catch block further down, and testing
+    // only the first hit let the data copy mask the genuine one.
     for (const p of patterns) {
-      const m = p.exec(body);
-      if (!m) continue;
-      const nearby = body.slice(
-        Math.max(0, m.index - 150),
-        m.index + m[0].length + 150,
-      );
-      if (ERROR_HANDLING_CONTEXT.test(nearby)) {
-        return "Generic catch-all error message detected near exception-handling code — suggests AI-generated error handling that swallows real errors.";
+      for (const m of body.matchAll(p)) {
+        const nearby = body.slice(
+          Math.max(0, m.index - 150),
+          m.index + m[0].length + 150,
+        );
+        if (ERROR_HANDLING_CONTEXT.test(nearby)) {
+          return "Generic catch-all error message detected near exception-handling code, suggesting AI-generated error handling that swallows real errors.";
+        }
       }
     }
     return null;
@@ -306,7 +311,7 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 
   "vibe-missing-csrf": (_url, _headers, body) => {
-    const hasPostForm = /<form[^>]*method\s*=\s*["']?post/i.test(body);
+    const hasPostForm = hasTagWith(body, "form", /method\s*=\s*["']?post/i);
     if (!hasPostForm) return null;
     const hasCsrfToken =
       /(?:csrf|_token|authenticity_token)\s*['"]/i.test(body) ||
@@ -365,14 +370,19 @@ const rawDetectors: Record<string, DetectFn> = {
 
   "vibe-password-in-comment": (_url, _headers, body) => {
     const patterns = [
-      /\/\/\s*password\s*[:=]\s*("[^"]+"|'[^']+'|[A-Za-z0-9_!@#$%^&*-]{4,})/i,
-      /\/\*[\s\S]{0,100}password\s*[:=]\s*("[^"]+"|'[^']+'|[A-Za-z0-9_!@#$%^&*-]{4,})[\s\S]{0,100}\*\//i,
-      /<!--[\s\S]{0,100}password\s*[:=]\s*("[^"]+"|'[^']+'|[A-Za-z0-9_!@#$%^&*-]{4,})[\s\S]{0,100}-->/i,
+      /\/\/\s*password\s*[:=]\s*("[^"]+"|'[^']+'|[A-Za-z0-9_!@#$%^&*-]{4,})/gi,
+      /\/\*[\s\S]{0,100}password\s*[:=]\s*("[^"]+"|'[^']+'|[A-Za-z0-9_!@#$%^&*-]{4,})[\s\S]{0,100}\*\//gi,
+      /<!--[\s\S]{0,100}password\s*[:=]\s*("[^"]+"|'[^']+'|[A-Za-z0-9_!@#$%^&*-]{4,})[\s\S]{0,100}-->/gi,
     ];
+    // Every occurrence is checked, not just the first: a benign
+    // "// password: minimum 8 characters" rule comment near the top of a
+    // file otherwise masked a genuine "// password: hunter2" left further
+    // down, because only the first match was ever scored.
     for (const p of patterns) {
-      const m = p.exec(body);
-      if (m && isPlausibleCommentedCredentialValue(m[1])) {
-        return "Commented-out credential detected in response — remove and rotate any exposed secrets.";
+      for (const m of body.matchAll(p)) {
+        if (isPlausibleCommentedCredentialValue(m[1])) {
+          return "Commented-out credential detected in response: remove and rotate any exposed secrets.";
+        }
       }
     }
     return null;
@@ -550,8 +560,7 @@ const rawDetectors: Record<string, DetectFn> = {
     // field -- an EXISTING credential being entered, not created, fired
     // on /docs/api). A field with NO autocomplete attribute at all still
     // counts, which is the actually-careless case this check exists for.
-    const passwordInputs =
-      body.match(/<input[^>]*type\s*=\s*["']?password[^>]*>/gi) || [];
+    const passwordInputs = tagsWith(body, "input", /type\s*=\s*["']?password/i);
     const newPasswordFields = passwordInputs.filter(
       (tag) =>
         !/autocomplete\s*=\s*["'](?:current-password|off)["']/i.test(tag),

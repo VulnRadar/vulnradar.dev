@@ -3,8 +3,8 @@ import { PublicScanRow } from "./public-scan-row";
 
 export function PublicScansTable({ scans }: { scans: PublicScan[] }) {
   return (
-    <div className="overflow-hidden rounded-md border border-border bg-card">
-      <div className="hidden sm:grid grid-cols-[1fr_150px_150px_90px] gap-4 border-b border-border bg-muted/30 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="hidden md:grid md:grid-cols-[minmax(0,1fr)_90px_150px_120px] gap-4 border-b border-border bg-muted/30 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         <div>Site</div>
         <div>Verdict</div>
         <div>Findings</div>

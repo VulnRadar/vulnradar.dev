@@ -108,12 +108,18 @@ describe("GET /api/v3/history", () => {
     mockBusinessQuery.mockResolvedValueOnce({
       rows: [{ id: 1, url: "https://a.test" }],
     });
+    // GET also asks for the true account total, so the client cannot present
+    // the capped page size as the total (AUDIT-014#magic-02: the delete-all
+    // confirmation understated what the unbounded DELETE actually removes).
+    mockBusinessQuery.mockResolvedValueOnce({ rows: [{ n: 412 }] });
 
     const res = await GET(getRequest());
     const json = await res.json();
 
     expect(res.status).toBe(200);
     expect(json.scans).toEqual([{ id: 1, url: "https://a.test" }]);
+    expect(json.total).toBe(412);
+    expect(json.truncated).toBe(true);
 
     const [sql, params] = mockBusinessQuery.mock.calls[1];
     expect(sql).toContain("sh.user_id = $1");
@@ -131,6 +137,7 @@ describe("GET /api/v3/history", () => {
     mockBusinessQuery.mockResolvedValueOnce({
       rows: [{ id: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4", url: "https://a.test" }],
     });
+    mockBusinessQuery.mockResolvedValueOnce({ rows: [{ n: 1 }] });
 
     const res = await GET(getRequest());
     const json = await res.json();

@@ -54,7 +54,13 @@
  * up -- meaning `db:migrate` alone left an existing database claiming
  * schema_version=3.0.0 while actually missing real tables/columns, with
  * only the app's own next boot (instrumentation.ts) able to fill the
- * gap. Added below to close that gap for good:
+ * gap. This paragraph used to end "added below to close that gap for
+ * good", and it was wrong: the gap re-opened at 11 tables as AUDIT-013
+ * migrate-01, because the only guard was a hand-typed list of names in a
+ * test. Nothing written by hand can close it. What closes it is
+ * tests/scripts/migrate/schema-parity.test.ts, which parses
+ * instrumentation.ts and this file and fails on any difference in either
+ * direction. Added below for the AUDIT-009 round:
  *   - `processed_stripe_events`, `user_ai_configs` (+ its `ai_disabled`
  *     column), `cve_kev_cache`, `webhook_deliveries` tables.
  *   - `api_keys.scopes`; `users.ai_chat_banned`, the Google/GitHub/
@@ -380,8 +386,18 @@ const SYSTEM_ERROR_LOGS_SQL = `
     id SERIAL PRIMARY KEY,
     message TEXT NOT NULL,
     detail TEXT,
+    request_id VARCHAR(64),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
+
+  -- AUDIT-012#obs-07: the per-request correlation id. The ALTER is not
+  -- redundant with the column above -- a database that already ran this
+  -- bucket back when the table had four columns gets nothing from CREATE
+  -- TABLE IF NOT EXISTS, and lib/database/error-log-capture.ts's INSERT
+  -- names request_id unconditionally. instrumentation.ts carries the same
+  -- pair for the same reason.
+  ALTER TABLE system_error_logs
+    ADD COLUMN IF NOT EXISTS request_id VARCHAR(64);
 
   CREATE INDEX IF NOT EXISTS idx_system_error_logs_created_at
     ON system_error_logs(created_at DESC);
@@ -414,8 +430,6 @@ const USER_AI_CONFIGS_SQL = `
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
-
-  CREATE INDEX IF NOT EXISTS idx_user_ai_configs_user_id ON user_ai_configs(user_id);
 
   ALTER TABLE user_ai_configs
     ADD COLUMN IF NOT EXISTS ai_disabled BOOLEAN NOT NULL DEFAULT FALSE;
@@ -480,9 +494,6 @@ const PROMOTED_AUTO_TAG_RULES_SQL = `
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CHECK (cwes IS NOT NULL OR categories IS NOT NULL)
   );
-
-  CREATE INDEX IF NOT EXISTS idx_promoted_auto_tag_rules_tag
-    ON promoted_auto_tag_rules(tag);
 `;
 
 // AI CREDIT PURCHASE IDEMPOTENCY LEDGER - see this file's header comment.
@@ -499,6 +510,237 @@ const AI_CREDIT_PURCHASES_SQL = `
     tokens BIGINT NOT NULL,
     credited_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
+`;
+
+// ─────────────────────────────────────────────────────────────────────
+// AUDIT-013 migrate-01: the 11 tables below had grown into
+// instrumentation.ts on top of the same v2.0.0 base this file upgrades
+// from, and no migration step created any of them. This is the SECOND
+// time that gap opened (AUDIT-009 migration-01 was the first, at 4
+// tables), which is why the fix this time is paired with a derived
+// parity guard: tests/scripts/migrate/schema-parity.test.ts now parses
+// instrumentation.ts and this file and fails on any difference, instead
+// of checking a hand-typed list of names.
+//
+// Every block below is copied verbatim from instrumentation.ts, including
+// each table's own indexes, so the two paths produce byte-identical
+// tables. Order matters in `addTables`: support_tickets before its
+// messages/shares, and everything after `teams` (a v1 table) for
+// domains' FK.
+// ─────────────────────────────────────────────────────────────────────
+
+// Outbound email delivery log (Admin > System > Email Logs). Pruned by
+// lib/database/cleanup.ts's retention pass.
+const EMAIL_LOGS_SQL = `
+  CREATE TABLE IF NOT EXISTS email_logs (
+    id SERIAL PRIMARY KEY,
+    recipient VARCHAR(255) NOT NULL,
+    subject TEXT NOT NULL,
+    status VARCHAR(30) NOT NULL,
+    error_message TEXT,
+    redacted_preview TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_email_logs_created_at
+    ON email_logs(created_at DESC);
+`;
+
+// Page screenshot bytes, keyed 1:1 on the scan that produced them.
+const SCAN_SCREENSHOTS_SQL = `
+  CREATE TABLE IF NOT EXISTS scan_screenshots (
+    scan_id INTEGER PRIMARY KEY REFERENCES scan_history(id) ON DELETE CASCADE,
+    image_data BYTEA NOT NULL,
+    content_type VARCHAR(40) NOT NULL DEFAULT 'image/jpeg',
+    width INTEGER,
+    height INTEGER,
+    captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+`;
+
+// Uploaded avatar bytes, keyed 1:1 on the user.
+const USER_AVATARS_SQL = `
+  CREATE TABLE IF NOT EXISTS user_avatars (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    image_data BYTEA NOT NULL,
+    content_type TEXT NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  );
+`;
+
+// GitHub AI-review credit purchase idempotency ledger. Same shape and
+// same purpose as ai_credit_purchases above.
+const GITHUB_CREDIT_PURCHASES_SQL = `
+  CREATE TABLE IF NOT EXISTS github_credit_purchases (
+    payment_intent_id VARCHAR(255) PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tokens BIGINT NOT NULL,
+    credited_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+`;
+
+// Browserbase session-seconds counter, bucketed per billing period.
+const BROWSERBASE_USAGE_SQL = `
+  CREATE TABLE IF NOT EXISTS browserbase_usage (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    period_start TIMESTAMPTZ NOT NULL,
+    seconds_used INTEGER NOT NULL DEFAULT 0,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, period_start)
+  );
+`;
+
+// Browserbase second-pack purchase idempotency ledger.
+const BROWSERBASE_CREDIT_PURCHASES_SQL = `
+  CREATE TABLE IF NOT EXISTS browserbase_credit_purchases (
+    payment_intent_id VARCHAR(255) PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    seconds BIGINT NOT NULL,
+    credited_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+`;
+
+// Consecutive-failure counter behind the background worker watchdog.
+const WORKER_FAILURE_STATE_SQL = `
+  CREATE TABLE IF NOT EXISTS worker_failure_state (
+    event VARCHAR(100) PRIMARY KEY,
+    consecutive_failures INTEGER NOT NULL DEFAULT 0,
+    alerted BOOLEAN NOT NULL DEFAULT false,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+`;
+
+// Verified custom domains. status='verified' is the gate that authorizes
+// intrusive active probing (lib/domains/scope.ts), so this table missing
+// silently disables that whole feature rather than failing loudly.
+const DOMAINS_SQL = `
+  CREATE TABLE IF NOT EXISTS domains (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+    domain VARCHAR(255) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    verification_token VARCHAR(64) NOT NULL,
+    verification_method VARCHAR(20) NOT NULL DEFAULT 'dns_txt',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    verified_at TIMESTAMPTZ,
+    last_checked_at TIMESTAMPTZ,
+    last_check_error TEXT,
+    UNIQUE(user_id, domain)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_domains_team_id ON domains(team_id) WHERE team_id IS NOT NULL;
+  CREATE INDEX IF NOT EXISTS idx_domains_domain_verified ON domains(domain) WHERE status = 'verified';
+`;
+
+// In-app support tickets. Parent first: the two tables below reference it.
+const SUPPORT_TICKETS_SQL = `
+  CREATE TABLE IF NOT EXISTS support_tickets (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    subject VARCHAR(200) NOT NULL,
+    category VARCHAR(20) NOT NULL DEFAULT 'other'
+      CHECK (category IN ('billing', 'scanning', 'account', 'other')),
+    status VARCHAR(20) NOT NULL DEFAULT 'open'
+      CHECK (status IN ('open', 'awaiting_staff', 'awaiting_user', 'resolved', 'closed')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_message_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_support_tickets_user
+    ON support_tickets(user_id, last_message_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_support_tickets_status
+    ON support_tickets(status, last_message_at DESC);
+`;
+
+const SUPPORT_TICKET_MESSAGES_SQL = `
+  CREATE TABLE IF NOT EXISTS support_ticket_messages (
+    id SERIAL PRIMARY KEY,
+    ticket_id INTEGER NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+    author_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    is_staff BOOLEAN NOT NULL DEFAULT FALSE,
+    body TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_support_ticket_messages_ticket
+    ON support_ticket_messages(ticket_id, created_at);
+`;
+
+/**
+ * Multi-team scan sharing. scan_history.team_id (added by addColumns below)
+ * holds ONE team; this join table is the many side. The column is deliberately
+ * NOT dropped: it stays in sync as the primary team, so a rollback to v2.0.0
+ * keeps every scan's primary team rather than losing all team association.
+ *
+ * ON DELETE CASCADE on both sides, unlike the column's ON DELETE SET NULL: a
+ * row here is a membership fact and nothing else.
+ *
+ * The backfill is unconditional and idempotent by design, exactly as the boot
+ * schema runs it: three write paths in lib/scanner/ still write only the
+ * column, so this converges the two representations on every run rather than
+ * migrating history once.
+ */
+const SCAN_HISTORY_TEAMS_SQL = `
+  CREATE TABLE IF NOT EXISTS scan_history_teams (
+    scan_id INTEGER NOT NULL REFERENCES scan_history(id) ON DELETE CASCADE,
+    team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    PRIMARY KEY (scan_id, team_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_scan_history_teams_team
+    ON scan_history_teams(team_id);
+
+  INSERT INTO scan_history_teams (scan_id, team_id)
+  SELECT id, team_id FROM scan_history WHERE team_id IS NOT NULL
+  ON CONFLICT (scan_id, team_id) DO NOTHING;
+`;
+
+const SUPPORT_TICKET_SHARES_SQL = `
+  CREATE TABLE IF NOT EXISTS support_ticket_shares (
+    ticket_id INTEGER NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+    shared_with_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    shared_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (ticket_id, shared_with_user_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_support_ticket_shares_user
+    ON support_ticket_shares(shared_with_user_id);
+`;
+
+// Staff invites. Was created lazily by lib/admin/staff-invites.ts on every
+// admin request instead of by any schema file (AUDIT-013 schema-02);
+// instrumentation.ts now creates it at boot and this is the matching
+// migration step.
+const STAFF_INVITES_SQL = `
+  CREATE TABLE IF NOT EXISTS staff_invites (
+    id SERIAL PRIMARY KEY,
+    token VARCHAR(64) NOT NULL UNIQUE,
+    email VARCHAR(255) NOT NULL,
+    role VARCHAR(20) NOT NULL,
+    invited_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    accepted_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_staff_invites_email ON staff_invites(email);
+`;
+
+// Admin audit log archive. Same story as staff_invites: created lazily
+// inside the nightly cleanup transaction, in no schema file.
+const ADMIN_AUDIT_LOG_ARCHIVE_SQL = `
+  CREATE TABLE IF NOT EXISTS admin_audit_log_archive (
+    id SERIAL PRIMARY KEY,
+    purged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    retention_days INTEGER,
+    row_count INTEGER NOT NULL,
+    rows JSONB NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_admin_audit_log_archive_purged_at
+    ON admin_audit_log_archive(purged_at DESC);
 `;
 
 const ASSIGN_SUPER_ADMIN_SQL = `
@@ -564,7 +806,13 @@ export const upgrade = {
     "plan grant backfill for every existing staff account. Does NOT " +
     "create scan_credentials: that table was added and removed within " +
     "this same unreleased tail (ephemeral authenticated scanning " +
-    "replaced it), so production never sees it.",
+    "replaced it), so production never sees it. Also DROPS five v2.0.0 " +
+    "columns nothing ever wrote or read (AUDIT-011 drift-17): " +
+    "users.email_session_revoked (a legacy duplicate of the real " +
+    "preference on notification_preferences), data_requests.completed_at, " +
+    "system_settings.setting_type, and broadcast_recipients.opened_at / " +
+    ".clicked_at. Every one of them is NULL or its default on every row, " +
+    "so no data goes with them, and downgrade.addColumns restores them.",
 
   addTables: [
     { name: "ai_conversations", sql: V3_NEW_TABLES.ai_conversations },
@@ -585,6 +833,26 @@ export const upgrade = {
     { name: "auto_tag_dismissals", sql: AUTO_TAG_DISMISSALS_SQL },
     { name: "promoted_auto_tag_rules", sql: PROMOTED_AUTO_TAG_RULES_SQL },
     { name: "ai_credit_purchases", sql: AI_CREDIT_PURCHASES_SQL },
+    // AUDIT-013 migrate-01: the 13 below existed only on the boot path.
+    // FK-safe order: support_tickets before its children, everything after
+    // the users/teams/scan_history parents that already exist at v2.0.0.
+    { name: "email_logs", sql: EMAIL_LOGS_SQL },
+    { name: "scan_screenshots", sql: SCAN_SCREENSHOTS_SQL },
+    { name: "user_avatars", sql: USER_AVATARS_SQL },
+    { name: "github_credit_purchases", sql: GITHUB_CREDIT_PURCHASES_SQL },
+    { name: "browserbase_usage", sql: BROWSERBASE_USAGE_SQL },
+    {
+      name: "browserbase_credit_purchases",
+      sql: BROWSERBASE_CREDIT_PURCHASES_SQL,
+    },
+    { name: "worker_failure_state", sql: WORKER_FAILURE_STATE_SQL },
+    { name: "domains", sql: DOMAINS_SQL },
+    { name: "support_tickets", sql: SUPPORT_TICKETS_SQL },
+    { name: "support_ticket_messages", sql: SUPPORT_TICKET_MESSAGES_SQL },
+    { name: "support_ticket_shares", sql: SUPPORT_TICKET_SHARES_SQL },
+    { name: "staff_invites", sql: STAFF_INVITES_SQL },
+    { name: "admin_audit_log_archive", sql: ADMIN_AUDIT_LOG_ARCHIVE_SQL },
+    { name: "scan_history_teams", sql: SCAN_HISTORY_TEAMS_SQL },
   ],
 
   addColumns: [
@@ -918,6 +1186,127 @@ export const upgrade = {
       column: "free_github_review_used_at",
       definition: "TIMESTAMPTZ",
     },
+    // ── AUDIT-013 migrate-01: columns that existed only on the boot path.
+    // Every definition is copied verbatim from instrumentation.ts.
+    // Admin impersonation bookkeeping and the display-only IPv4 captured
+    // out-of-band by the echo endpoint.
+    {
+      table: "sessions",
+      column: "impersonated_by",
+      definition: "INTEGER REFERENCES users(id)",
+    },
+    { table: "sessions", column: "ipv4_address", definition: "VARCHAR(45)" },
+    // Org-level resource scoping: a scan / API key / webhook / schedule can
+    // belong to a team instead of only its creating user. ON DELETE SET
+    // NULL, not CASCADE: deleting a team must not destroy scan history.
+    {
+      table: "scan_history",
+      column: "team_id",
+      definition: "INTEGER REFERENCES teams(id) ON DELETE SET NULL",
+    },
+    // AUDIT-011#drift-17: api_keys.team_id is deliberately absent from this
+    // list. It was added alongside the other three and then never
+    // referenced by anything -- lib/api/api-keys.ts and app/api/v3/keys
+    // scope every key to its creating user -- so it is simply not created
+    // any more, here or in instrumentation.ts. No dropColumns entry is
+    // needed: it never existed at v2.0.0, so there is nothing to remove
+    // from a database arriving through this step.
+    {
+      table: "webhooks",
+      column: "team_id",
+      definition: "INTEGER REFERENCES teams(id) ON DELETE SET NULL",
+    },
+    {
+      table: "scheduled_scans",
+      column: "team_id",
+      definition: "INTEGER REFERENCES teams(id) ON DELETE SET NULL",
+    },
+    {
+      table: "finding_remediation",
+      column: "due_at",
+      definition: "TIMESTAMPTZ",
+    },
+    {
+      table: "host_reputation",
+      column: "auto_tags",
+      definition: "JSONB NOT NULL DEFAULT '[]'",
+    },
+    { table: "users", column: "billing_interval", definition: "VARCHAR(10)" },
+    {
+      table: "users",
+      column: "github_credit_balance",
+      definition: "BIGINT NOT NULL DEFAULT 0",
+    },
+    {
+      table: "users",
+      column: "browserbase_credit_seconds_balance",
+      definition: "BIGINT NOT NULL DEFAULT 0",
+    },
+    // Refund marker on all three credit ledgers. The two newer ledgers get
+    // it via their own CREATE TABLE above; ai_credit_purchases predates it.
+    {
+      table: "ai_credit_purchases",
+      column: "refunded_at",
+      definition: "TIMESTAMPTZ",
+    },
+    {
+      table: "github_credit_purchases",
+      column: "refunded_at",
+      definition: "TIMESTAMPTZ",
+    },
+    {
+      table: "browserbase_credit_purchases",
+      column: "refunded_at",
+      definition: "TIMESTAMPTZ",
+    },
+    // The GitHub @handle for a GitHub sign-in, read by /api/v3/auth/me,
+    // the admin user detail and the OAuth disconnect path.
+    { table: "users", column: "github_login", definition: "TEXT" },
+    // Posture digest (AUDIT-010). These three had never been on the migration
+    // path at all: their DDL lives in lib/notifications/digest-schema.ts, which
+    // the boot sequence called from inside the posture-digest worker's start-up
+    // and which no schema derivation had ever looked at. A database that had
+    // only ever been through `npm run db:create` or `npm run db:migrate` did
+    // not have them, and got them silently on its first boot instead.
+    // Definitions match that module exactly.
+    {
+      table: "users",
+      column: "digest_email_enabled",
+      definition: "BOOLEAN NOT NULL DEFAULT false",
+    },
+    {
+      table: "users",
+      column: "last_digest_sent_at",
+      definition: "TIMESTAMPTZ",
+    },
+    {
+      table: "notification_preferences",
+      column: "email_posture_digest",
+      definition: "BOOLEAN NOT NULL DEFAULT true",
+    },
+  ],
+
+  // AUDIT-011#drift-17: five columns a v2.0.0 database has that nothing ever
+  // wrote or read. Each was verified by grepping the whole tree for its
+  // name and finding only DDL (and, for users.email_session_revoked, nine
+  // references that all resolve to the identically-named column on
+  // notification_preferences, which is the real one). instrumentation.ts no
+  // longer declares any of them, so a freshly-booted database and a
+  // migrated one converge on the same shape; downgrade.addColumns puts them
+  // back so a rollback still reaches a true v2.0.0.
+  //
+  // Not listed here, deliberately: users.beta_access, users.daily_scan_limit,
+  // broadcast_messages.scheduled_at, broadcast_messages.message_type,
+  // badges.is_limited and gifted_subscriptions.reason are unwired too, but
+  // each is half of a real feature rather than a leftover, so dropping them
+  // is a product decision, not a cleanup. Each carries a comment at its DDL
+  // in instrumentation.ts saying so.
+  dropColumns: [
+    { table: "users", column: "email_session_revoked" },
+    { table: "data_requests", column: "completed_at" },
+    { table: "system_settings", column: "setting_type" },
+    { table: "broadcast_recipients", column: "opened_at" },
+    { table: "broadcast_recipients", column: "clicked_at" },
   ],
 
   addIndexes: [
@@ -930,11 +1319,6 @@ export const upgrade = {
       name: "idx_ai_conversations_created_at",
       table: "ai_conversations",
       columns: "created_at DESC",
-    },
-    {
-      name: "idx_ai_conversations_session_id",
-      table: "ai_conversations",
-      columns: "session_id",
     },
     {
       name: "idx_browser_sessions_user_id",
@@ -991,15 +1375,18 @@ export const upgrade = {
       table: "host_reputation",
       columns: "last_scanned_at",
     },
-    {
-      name: "idx_github_connections_user",
-      table: "github_connections",
-      columns: "user_id",
-    },
+    // AUDIT-013 migrate-06: instrumentation.ts creates this as a UNIQUE
+    // index under the same name. It was plain here, and IF NOT EXISTS
+    // matches on the name only, so whichever path ran first decided
+    // whether one GitHub identity could be connected to two VulnRadar
+    // accounts (and both consume that identity's review quota). Safe to
+    // make UNIQUE here: github_connections is created empty by this same
+    // migration a few steps above.
     {
       name: "idx_github_connections_github_user_id",
       table: "github_connections",
       columns: "github_user_id",
+      unique: true,
     },
     // github_review_usage's index is created via dataUpdates below (see
     // this file's header comment) instead of here, alongside the
@@ -1016,12 +1403,360 @@ export const upgrade = {
       columns: "url",
       where: "is_public = true AND status = 'completed'",
     },
+    // AUDIT-013 migrate-06: same name-collision problem as the index
+    // above. instrumentation.ts declares this UNIQUE with no predicate;
+    // matched here exactly. host_badges is also created empty by this
+    // migration, and a b-tree treats NULLs as distinct, so dropping the
+    // partial predicate changes nothing except making the two paths agree.
     {
       name: "idx_host_badges_token_hash",
       table: "host_badges",
       columns: "badge_token_hash",
-      where: "badge_token_hash IS NOT NULL",
+      unique: true,
     },
+    // ── AUDIT-013 migrate-01: indexes instrumentation.ts creates on
+    // tables that already exist at v2.0.0, which no migration step
+    // created. Every one is a plain performance index (no UNIQUE among
+    // them), copied verbatim. They are cheap here: at production size
+    // these tables are small, and the ones on scan_history are partial
+    // indexes over a nullable column that is NULL for every existing row.
+    {
+      name: "idx_users_plan",
+      table: "users",
+      columns: "plan",
+    },
+    {
+      name: "idx_scan_history_team_id",
+      table: "scan_history",
+      columns: "team_id",
+      where: "team_id IS NOT NULL",
+    },
+    // idx_api_keys_team_id is gone with the column it indexed, see the
+    // AUDIT-011#drift-17 note in addColumns above.
+    {
+      name: "idx_webhooks_team_id",
+      table: "webhooks",
+      columns: "team_id",
+      where: "team_id IS NOT NULL",
+    },
+    {
+      name: "idx_scheduled_scans_team_id",
+      table: "scheduled_scans",
+      columns: "team_id",
+      where: "team_id IS NOT NULL",
+    },
+    {
+      name: "idx_billing_history_user",
+      table: "billing_history",
+      columns: "user_id",
+    },
+    {
+      name: "idx_admin_user_notes_user",
+      table: "admin_user_notes",
+      columns: "user_id",
+    },
+    {
+      name: "idx_staff_activity_heartbeat",
+      table: "staff_activity",
+      columns: "last_heartbeat DESC",
+    },
+    {
+      name: "idx_billing_verify_user",
+      table: "billing_verification_codes",
+      columns: "user_id",
+    },
+    {
+      name: "idx_billing_verify_expires",
+      table: "billing_verification_codes",
+      columns: "expires_at",
+    },
+    {
+      name: "idx_gifted_subscriptions_user",
+      table: "gifted_subscriptions",
+      columns: "user_id",
+    },
+    {
+      name: "idx_gifted_subscriptions_expires",
+      table: "gifted_subscriptions",
+      columns: "expires_at",
+      where: "revoked_at IS NULL",
+    },
+    {
+      name: "idx_admin_notifications_active",
+      table: "admin_notifications",
+      columns: "is_active, starts_at, ends_at",
+      where: "is_active = true",
+    },
+    {
+      name: "idx_admin_notifications_type",
+      table: "admin_notifications",
+      columns: "type",
+    },
+    {
+      name: "idx_access_rules_active",
+      table: "access_rules",
+      columns: "is_active, rule_type",
+    },
+    { name: "idx_access_rules_value", table: "access_rules", columns: "value" },
+    {
+      name: "idx_access_rules_type",
+      table: "access_rules",
+      columns: "value_type",
+    },
+    {
+      name: "idx_security_alerts_user",
+      table: "security_alerts",
+      columns: "user_id",
+    },
+    {
+      name: "idx_security_alerts_severity",
+      table: "security_alerts",
+      columns: "severity",
+    },
+    {
+      name: "idx_security_alerts_created",
+      table: "security_alerts",
+      columns: "created_at DESC",
+    },
+    {
+      name: "idx_broadcast_messages_status",
+      table: "broadcast_messages",
+      columns: "status",
+    },
+    {
+      name: "idx_broadcast_messages_created",
+      table: "broadcast_messages",
+      columns: "created_at DESC",
+    },
+    {
+      name: "idx_broadcast_recipients_user",
+      table: "broadcast_recipients",
+      columns: "user_id",
+    },
+    {
+      name: "idx_subdomain_cache_cached_at",
+      table: "subdomain_cache",
+      columns: "cached_at",
+    },
+    {
+      name: "idx_host_reputation_source_scan_id",
+      table: "host_reputation",
+      columns: "source_scan_id",
+      where: "source_scan_id IS NOT NULL",
+    },
+    // ── AUDIT-012 perf-05 / perf-15 and AUDIT-013 schema-03: retention,
+    // foreign-key and hot-path indexes. See instrumentation.ts's
+    // "RETENTION, FOREIGN-KEY AND HOT-PATH INDEXES" block for why each
+    // one exists. Mirrored here so a migrated database and a booted one
+    // have the same index set.
+    {
+      name: "idx_scan_history_url_scanned",
+      table: "scan_history",
+      columns: "url, scanned_at DESC",
+    },
+    {
+      name: "idx_sff_created",
+      table: "scan_finding_feedback",
+      columns: "created_at",
+    },
+    {
+      name: "idx_user_notifications_created",
+      table: "user_notifications",
+      columns: "created_at",
+    },
+    {
+      name: "idx_ai_conversations_last_msg",
+      table: "ai_conversations",
+      columns: "last_message_at DESC",
+    },
+    {
+      name: "idx_finding_remediation_user_url",
+      table: "finding_remediation",
+      columns: "user_id, finding_url",
+    },
+    {
+      name: "idx_sff_user_url",
+      table: "scan_finding_feedback",
+      columns: "user_id, finding_url",
+    },
+    {
+      name: "idx_sff_scan_history_id",
+      table: "scan_finding_feedback",
+      columns: "scan_history_id",
+      where: "scan_history_id IS NOT NULL",
+    },
+    {
+      name: "idx_auto_tag_dismissals_scan_id",
+      table: "auto_tag_dismissals",
+      columns: "scan_id",
+    },
+    { name: "idx_teams_owner_id", table: "teams", columns: "owner_id" },
+    {
+      name: "idx_sessions_impersonated_by",
+      table: "sessions",
+      columns: "impersonated_by",
+      where: "impersonated_by IS NOT NULL",
+    },
+    {
+      name: "idx_user_badges_awarded_by",
+      table: "user_badges",
+      columns: "awarded_by",
+      where: "awarded_by IS NOT NULL",
+    },
+    {
+      name: "idx_user_badges_badge_id",
+      table: "user_badges",
+      columns: "badge_id",
+    },
+    {
+      name: "idx_admin_user_notes_admin_id",
+      table: "admin_user_notes",
+      columns: "admin_id",
+      where: "admin_id IS NOT NULL",
+    },
+    {
+      name: "idx_team_invites_invited_by",
+      table: "team_invites",
+      columns: "invited_by",
+      where: "invited_by IS NOT NULL",
+    },
+    {
+      name: "idx_gifted_subscriptions_gifted_by",
+      table: "gifted_subscriptions",
+      columns: "gifted_by",
+      where: "gifted_by IS NOT NULL",
+    },
+    {
+      name: "idx_gifted_subscriptions_revoked_by",
+      table: "gifted_subscriptions",
+      columns: "revoked_by",
+      where: "revoked_by IS NOT NULL",
+    },
+    {
+      name: "idx_admin_notifications_created_by",
+      table: "admin_notifications",
+      columns: "created_by",
+      where: "created_by IS NOT NULL",
+    },
+    {
+      name: "idx_access_rules_created_by",
+      table: "access_rules",
+      columns: "created_by",
+      where: "created_by IS NOT NULL",
+    },
+    {
+      name: "idx_security_alerts_resolved_by",
+      table: "security_alerts",
+      columns: "resolved_by",
+      where: "resolved_by IS NOT NULL",
+    },
+    {
+      name: "idx_system_settings_updated_by",
+      table: "system_settings",
+      columns: "updated_by",
+      where: "updated_by IS NOT NULL",
+    },
+    {
+      name: "idx_broadcast_messages_created_by",
+      table: "broadcast_messages",
+      columns: "created_by",
+      where: "created_by IS NOT NULL",
+    },
+    {
+      name: "idx_broadcast_messages_sent_by",
+      table: "broadcast_messages",
+      columns: "sent_by",
+      where: "sent_by IS NOT NULL",
+    },
+    {
+      name: "idx_auto_tag_dismissals_dismissed_by",
+      table: "auto_tag_dismissals",
+      columns: "dismissed_by_user_id",
+      where: "dismissed_by_user_id IS NOT NULL",
+    },
+    {
+      name: "idx_promoted_auto_tag_rules_created_by",
+      table: "promoted_auto_tag_rules",
+      columns: "created_by",
+      where: "created_by IS NOT NULL",
+    },
+    {
+      name: "idx_ai_credit_purchases_user_id",
+      table: "ai_credit_purchases",
+      columns: "user_id",
+    },
+    {
+      name: "idx_github_credit_purchases_user_id",
+      table: "github_credit_purchases",
+      columns: "user_id",
+    },
+    {
+      name: "idx_browserbase_credit_purchases_user_id",
+      table: "browserbase_credit_purchases",
+      columns: "user_id",
+    },
+    {
+      name: "idx_support_ticket_messages_author",
+      table: "support_ticket_messages",
+      columns: "author_user_id",
+      where: "author_user_id IS NOT NULL",
+    },
+    {
+      name: "idx_support_ticket_shares_shared_by",
+      table: "support_ticket_shares",
+      columns: "shared_by_user_id",
+      where: "shared_by_user_id IS NOT NULL",
+    },
+    {
+      name: "idx_staff_invites_invited_by",
+      table: "staff_invites",
+      columns: "invited_by",
+    },
+    // github_review_usage.updated_at: created via dataUpdates below with
+    // the rest of that table's window_start rework, for the same
+    // step-ordering reason the (user_id, window_start) constraint is.
+  ],
+
+  // Redundant indexes that a v2.0.0 database already has (AUDIT-013
+  // schema-05). Each one duplicates a UNIQUE constraint, or is a strict
+  // prefix of a wider index the same table now carries, so it can never be
+  // chosen and is pure write amplification on the hottest tables in the
+  // schema. The v3-era duplicates are simply not created any more (their
+  // entries are gone from addIndexes above); these twelve predate v3, so a
+  // migrated database only sheds them if the upgrade says to.
+  // instrumentation.ts drops the same set at boot, so a v3 install that never
+  // runs the migrator converges on the same shape. The matching CREATEs are
+  // in downgrade.addIndexes so a rollback restores a true v2.0.0 shape.
+  dropIndexes: [
+    "idx_users_email", // users.email UNIQUE
+    "idx_api_keys_key_hash", // api_keys.key_hash UNIQUE
+    "idx_notif_prefs_user_id", // notification_preferences.user_id UNIQUE
+    "idx_team_invites_token", // team_invites.token UNIQUE
+    "idx_scan_history_user_id", // idx_scan_history_user_scanned leads with user_id
+    "idx_api_usage_key_id", // idx_api_usage_key_used leads with api_key_id
+    "idx_admin_audit_admin_id", // idx_admin_audit_admin_created leads with admin_id
+    "idx_scan_tags_scan_id", // UNIQUE(scan_id, tag)
+    "idx_rate_limits_key", // UNIQUE(key, window_start)
+    "idx_device_trust_user_id", // UNIQUE(user_id, device_fingerprint)
+    "idx_team_members_team", // UNIQUE(team_id, user_id)
+    "idx_api_keys_key_locator_backfill", // partial subset of idx_api_keys_key_locator
+    // The rest of the redundant set. These are NOT in the derived v2 schema
+    // (the v1 baseline plus the 1.0.0-to-2.0.0 step), so listing them changes
+    // nothing for a database that took that path, but they ARE in the frozen
+    // v2.0.0 snapshot that `npm run db:create` builds a scratch v2 database
+    // from. Without these a database migrated from a snapshot-built v2 would
+    // keep them until its next boot, when instrumentation.ts drops them, and
+    // `npm run db:migrate` alone should be enough. DROP INDEX IF EXISTS is a
+    // no-op wherever they were never created.
+    "idx_users_stripe_customer",
+    "idx_scan_history_share_token",
+    "idx_badges_name",
+    "idx_user_badges_user",
+    "idx_discord_user",
+    "idx_discord_id",
+    "idx_staff_activity_user_heartbeat",
+    "idx_admin_notifications_cookie",
+    "idx_broadcast_recipients_message",
   ],
 
   dataUpdates: [
@@ -1119,10 +1854,59 @@ export const upgrade = {
     // database that already ran this migration bucket back when
     // GITHUB_REVIEW_USAGE_SQL still created year_month does real work
     // here.
+    // AUDIT-013 migrate-14: this used to be
+    // `ADD COLUMN window_start TIMESTAMPTZ NOT NULL DEFAULT NOW()`.
+    // NOW() is transaction-start time and is evaluated ONCE, so every
+    // pre-existing row got the identical window_start. A user with rows
+    // for two different calendar months collapsed onto one
+    // (user_id, window_start) pair and the UNIQUE constraint added a few
+    // steps below failed with "Key is duplicated", rolling back the ENTIRE
+    // v2.0.0 -> v3.0.0 upgrade over a table nobody would think to look at.
+    // Nullable first, then backfilled deterministically from the old key.
     {
-      sql: "ALTER TABLE github_review_usage ADD COLUMN IF NOT EXISTS window_start TIMESTAMPTZ NOT NULL DEFAULT NOW()",
+      sql: "ALTER TABLE github_review_usage ADD COLUMN IF NOT EXISTS window_start TIMESTAMPTZ",
       label:
         "ALTER TABLE github_review_usage ADD COLUMN window_start (for a database that already ran this migration with the old year_month shape)",
+      destructive: false,
+    },
+    {
+      // Guarded by a DO block because year_month does not exist on a
+      // database that only ever saw the window_start shape, and a plain
+      // UPDATE naming a missing column errors at execution time rather
+      // than no-opping.
+      sql: `
+        DO $gru$
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'github_review_usage'
+              AND column_name = 'year_month'
+          ) THEN
+            EXECUTE 'UPDATE github_review_usage
+                        SET window_start = to_timestamp(year_month || ''-01'', ''YYYY-MM-DD'')
+                      WHERE window_start IS NULL AND year_month IS NOT NULL';
+          END IF;
+        END
+        $gru$;
+      `,
+      label:
+        "Backfill github_review_usage.window_start from the old year_month key, one distinct value per calendar month",
+      destructive: false,
+    },
+    {
+      sql: "UPDATE github_review_usage SET window_start = NOW() WHERE window_start IS NULL",
+      label:
+        "Backfill any remaining github_review_usage.window_start (rows with no year_month to derive from)",
+      destructive: false,
+    },
+    {
+      sql: "ALTER TABLE github_review_usage ALTER COLUMN window_start SET DEFAULT NOW()",
+      label: "ALTER TABLE github_review_usage window_start SET DEFAULT NOW()",
+      destructive: false,
+    },
+    {
+      sql: "ALTER TABLE github_review_usage ALTER COLUMN window_start SET NOT NULL",
+      label: "ALTER TABLE github_review_usage window_start SET NOT NULL",
       destructive: false,
     },
     {
@@ -1157,10 +1941,68 @@ export const upgrade = {
       label: "Drop the old github_review_usage(user_id, year_month) index",
       destructive: false,
     },
+    // No idx_github_review_usage_user_window here: the ADD CONSTRAINT above
+    // already creates a unique b-tree on exactly (user_id, window_start), so a
+    // second index on the same columns could never be chosen and only cost a
+    // write on every quota update. ref: AUDIT-013#schema-05
     {
-      sql: "CREATE INDEX IF NOT EXISTS idx_github_review_usage_user_window ON github_review_usage(user_id, window_start)",
+      sql: "CREATE INDEX IF NOT EXISTS idx_gru_updated ON github_review_usage(updated_at)",
       label:
-        "CREATE INDEX idx_github_review_usage_user_window ON github_review_usage(user_id, window_start)",
+        "CREATE INDEX idx_gru_updated ON github_review_usage(updated_at) (retention prune, AUDIT-012 perf-15)",
+      destructive: false,
+    },
+    // ── Constraint-bearing indexes. These live in dataUpdates rather than
+    // addIndexes because each needs a data step to run FIRST: addIndexes
+    // is expanded before dataUpdates, so an index that can only be built
+    // after a backfill or a de-duplication has to be created here.
+    {
+      sql: `
+        UPDATE users SET unsubscribe_token = gen_random_uuid()
+          WHERE unsubscribe_token IS NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_users_unsubscribe_token
+          ON users(unsubscribe_token);
+      `,
+      label:
+        "Backfill users.unsubscribe_token and make it UNIQUE (AUDIT-013 schema-09)",
+      destructive: false,
+    },
+    {
+      sql: `
+        DELETE FROM broadcast_recipients a
+          USING broadcast_recipients b
+         WHERE a.message_id = b.message_id
+           AND a.user_id = b.user_id
+           AND a.id > b.id;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_broadcast_recipients_message_user
+          ON broadcast_recipients(message_id, user_id);
+      `,
+      label:
+        "Collapse duplicate broadcast_recipients rows and make (message_id, user_id) UNIQUE (AUDIT-013 schema-08)",
+      destructive: true,
+    },
+    {
+      // The one index in this migration that can legitimately fail on real
+      // data: a database that already holds two accounts whose addresses
+      // differ only in letter case cannot build it, and that needs a human
+      // to decide which account survives. runPlan wraps the whole plan in
+      // ONE transaction, so an uncaught failure here would roll back the
+      // entire upgrade over a pre-existing data problem. The plpgsql
+      // BEGIN/EXCEPTION pair is a subtransaction: it catches, warns, and
+      // lets the migration finish, exactly like instrumentation.ts's own
+      // per-statement .catch on the same index.
+      sql: `
+        DO $email_lower$
+        BEGIN
+          BEGIN
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_lower ON users(lower(email));
+          EXCEPTION WHEN others THEN
+            RAISE WARNING 'Skipped idx_users_email_lower: %. Two accounts probably share an email address differing only in letter case. Resolve them by hand, then re-run db:migrate.', SQLERRM;
+          END;
+        END
+        $email_lower$;
+      `,
+      label:
+        "Make users.email uniqueness case-insensitive (AUDIT-013 schema-11)",
       destructive: false,
     },
   ],
@@ -1199,7 +2041,9 @@ export const downgrade = {
     "already lost above. Also DELETES every admin-promoted " +
     "auto-tag rule (promoted_auto_tag_rules) -- any concept an admin " +
     "already promoted out of the AI-suggestion path reverts to needing an " +
-    "AI call again until re-promoted.",
+    "AI call again until re-promoted. Re-adds the five unused v2.0.0 " +
+    "columns the upgrade dropped (AUDIT-011 drift-17), empty, so the " +
+    "result is a true v2.0.0 shape.",
 
   dropTables: [
     "github_connections",
@@ -1227,6 +2071,28 @@ export const downgrade = {
     "auto_tag_dismissals",
     "promoted_auto_tag_rules",
     "ai_credit_purchases",
+    // AUDIT-013 migrate-01 / migrate-19: the 13 tables the upgrade now
+    // creates. Children before parents so a plain DROP is enough even if
+    // the planner's CASCADE were ever removed.
+    "support_ticket_shares",
+    "support_ticket_messages",
+    "support_tickets",
+    "email_logs",
+    "scan_screenshots",
+    "user_avatars",
+    "github_credit_purchases",
+    "browserbase_usage",
+    "browserbase_credit_purchases",
+    "worker_failure_state",
+    "domains",
+    "staff_invites",
+    "admin_audit_log_archive",
+    // Lossy on purpose, and only in one direction: a scan shared with several
+    // teams loses its SECOND and later teams here. The primary team survives,
+    // because scan_history.team_id is kept in sync and is not dropped by this
+    // upgrade, so a rolled-back database still shows every scan under one team
+    // rather than none.
+    "scan_history_teams",
   ],
 
   dropColumns: [
@@ -1274,10 +2140,173 @@ export const downgrade = {
     { table: "users", column: "pre_staff_plan" },
     { table: "users", column: "ai_credit_balance" },
     { table: "users", column: "free_github_review_used_at" },
+    // AUDIT-013 migrate-01: matching drops for the columns the upgrade
+    // now adds. Columns on tables that are themselves dropped above
+    // (finding_remediation.due_at, host_reputation.auto_tags, the three
+    // credit ledgers' refunded_at) are deliberately NOT listed: the table
+    // drop already removes them, and DROP COLUMN IF EXISTS still errors
+    // when the TABLE is gone.
+    { table: "sessions", column: "impersonated_by" },
+    { table: "sessions", column: "ipv4_address" },
+    { table: "scan_history", column: "team_id" },
+    // api_keys.team_id is not listed: the upgrade no longer adds it
+    // (AUDIT-011#drift-17), so there is nothing for a rollback to remove.
+    { table: "webhooks", column: "team_id" },
+    { table: "scheduled_scans", column: "team_id" },
+    { table: "users", column: "billing_interval" },
+    { table: "users", column: "github_credit_balance" },
+    { table: "users", column: "browserbase_credit_seconds_balance" },
+    { table: "users", column: "github_login" },
+    { table: "users", column: "digest_email_enabled" },
+    { table: "users", column: "last_digest_sent_at" },
+    { table: "notification_preferences", column: "email_posture_digest" },
+  ],
+
+  // AUDIT-011#drift-17: the five dead columns the upgrade drops existed at
+  // v2.0.0, so a rollback has to put them back or the result is not a true
+  // v2.0.0 shape -- the same rule the redundant-index restore below follows.
+  // Definitions are copied from what the v1 baseline plus the
+  // 1.0.0-to-2.0.0 step (and the frozen v2 snapshot) actually produce, not
+  // from instrumentation.ts, which no longer declares any of them. The
+  // values are gone either way: every one of these was NULL or its default
+  // on every row, which is why they were droppable.
+  addColumns: [
+    {
+      table: "users",
+      column: "email_session_revoked",
+      definition: "BOOLEAN NOT NULL DEFAULT false",
+    },
+    {
+      table: "data_requests",
+      column: "completed_at",
+      definition: "TIMESTAMP WITH TIME ZONE",
+    },
+    {
+      table: "system_settings",
+      column: "setting_type",
+      definition: "VARCHAR(50) DEFAULT 'string'",
+    },
+    {
+      table: "broadcast_recipients",
+      column: "opened_at",
+      definition: "TIMESTAMP WITH TIME ZONE",
+    },
+    {
+      table: "broadcast_recipients",
+      column: "clicked_at",
+      definition: "TIMESTAMP WITH TIME ZONE",
+    },
+  ],
+
+  // The twelve redundant indexes the upgrade drops (AUDIT-013 schema-05)
+  // existed at v2.0.0, so a downgrade has to put them back or the result is
+  // not a true v2.0.0 shape, the same defect AUDIT-009 migration-04 fixed for
+  // the four indexes below. Definitions copied from what the v1 baseline plus
+  // the 1.0.0-to-2.0.0 step actually produce, not from instrumentation.ts,
+  // which no longer creates any of them.
+  addIndexes: [
+    { name: "idx_users_email", table: "users", columns: "email" },
+    { name: "idx_api_keys_key_hash", table: "api_keys", columns: "key_hash" },
+    {
+      name: "idx_api_keys_key_locator_backfill",
+      table: "api_keys",
+      columns: "key_locator",
+      where: "key_locator IS NULL",
+    },
+    {
+      name: "idx_notif_prefs_user_id",
+      table: "notification_preferences",
+      columns: "user_id",
+    },
+    { name: "idx_team_invites_token", table: "team_invites", columns: "token" },
+    {
+      name: "idx_scan_history_user_id",
+      table: "scan_history",
+      columns: "user_id",
+    },
+    { name: "idx_api_usage_key_id", table: "api_usage", columns: "api_key_id" },
+    {
+      name: "idx_admin_audit_admin_id",
+      table: "admin_audit_log",
+      columns: "admin_id",
+    },
+    { name: "idx_scan_tags_scan_id", table: "scan_tags", columns: "scan_id" },
+    { name: "idx_rate_limits_key", table: "rate_limits", columns: "key" },
+    {
+      name: "idx_device_trust_user_id",
+      table: "device_trust",
+      columns: "user_id",
+    },
+    {
+      name: "idx_team_members_team",
+      table: "team_members",
+      columns: "team_id",
+    },
   ],
 
   dropIndexes: [
     "idx_scan_history_status_pending_running",
+    // AUDIT-009 migration-04: these four were added by the upgrade's
+    // addIndexes and left behind by the downgrade, so a downgraded
+    // database was not a true v2.0.0 shape.
+    "idx_admin_audit_admin_created",
+    "idx_admin_audit_target_user",
+    "idx_api_usage_key_used",
+    "idx_scan_history_user_scanned",
+    // AUDIT-013 migrate-01: the performance indexes the upgrade now adds
+    // on tables that SURVIVE the downgrade. Indexes on dropped tables and
+    // dropped columns go away with them and are not repeated here.
+    "idx_users_plan",
+    "idx_users_stripe_customer",
+    "idx_scan_history_share_token",
+    "idx_badges_name",
+    "idx_user_badges_user",
+    "idx_billing_history_user",
+    "idx_admin_user_notes_user",
+    "idx_discord_user",
+    "idx_discord_id",
+    "idx_staff_activity_user_heartbeat",
+    "idx_staff_activity_heartbeat",
+    "idx_billing_verify_user",
+    "idx_billing_verify_expires",
+    "idx_gifted_subscriptions_user",
+    "idx_gifted_subscriptions_expires",
+    "idx_admin_notifications_active",
+    "idx_admin_notifications_type",
+    "idx_admin_notifications_cookie",
+    "idx_access_rules_active",
+    "idx_access_rules_value",
+    "idx_access_rules_type",
+    "idx_security_alerts_user",
+    "idx_security_alerts_severity",
+    "idx_security_alerts_created",
+    "idx_broadcast_messages_status",
+    "idx_broadcast_messages_created",
+    "idx_broadcast_recipients_message",
+    "idx_broadcast_recipients_user",
+    "idx_subdomain_cache_cached_at",
+    // The retention / foreign-key index set added by this upgrade, on
+    // tables that survive the downgrade. DROP INDEX IF EXISTS is a safe
+    // no-op for the ones a dropped table or column already took with it,
+    // so the whole set is listed rather than half of it.
+    "idx_broadcast_recipients_message_user",
+    "idx_users_unsubscribe_token",
+    "idx_users_email_lower",
+    "idx_scan_history_url_scanned",
+    "idx_teams_owner_id",
+    "idx_sessions_impersonated_by",
+    "idx_user_badges_awarded_by",
+    "idx_user_badges_badge_id",
+    "idx_admin_user_notes_admin_id",
+    "idx_team_invites_invited_by",
+    "idx_gifted_subscriptions_gifted_by",
+    "idx_gifted_subscriptions_revoked_by",
+    "idx_admin_notifications_created_by",
+    "idx_access_rules_created_by",
+    "idx_security_alerts_resolved_by",
+    "idx_system_settings_updated_by",
+    "idx_broadcast_messages_created_by",
+    "idx_broadcast_messages_sent_by",
     // AUDIT-009 migration-01: belt-and-suspenders -- dropping
     // scan_history.status/is_public above already CASCADE-drops this
     // partial index, but DROP INDEX IF EXISTS is a safe no-op either way.

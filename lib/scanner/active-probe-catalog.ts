@@ -41,6 +41,24 @@ export interface ActiveProbeOption {
   description: string;
 }
 
+/**
+ * The ceiling on what active probing here can prove, stated plainly, for the
+ * surfaces that render the probe list (the scan-options panel and
+ * app/checks/category/active-probes).
+ *
+ * Every one of the nine probes below decides from the immediate response body
+ * or status. There is no out-of-band interaction server in this codebase and
+ * no second request-cycle verification, so blind and time-based SQL injection,
+ * blind SSRF, blind XXE, out-of-band command injection and stored XSS are not
+ * merely unimplemented, they are undetectable by construction. Someone who
+ * reads "active probing" as ZAP-equivalent coverage will otherwise conclude
+ * the scanner missed something it never looked for. Saying so is the honest
+ * position for a scanner whose pitch is determinism, and it is cheaper and
+ * more useful than operating an OAST server. ref: AUDIT-014#comp-11
+ */
+export const ACTIVE_PROBE_LIMITS_NOTE =
+  "These probes confirm what the response itself proves. They do not attempt blind, time-based, or out-of-band detection, so a flaw whose only evidence arrives on a separate channel or on a later request is out of scope.";
+
 /** Rendered in the scan-options panel, in run order. Descriptions say what
  *  each probe actually submits to the target and what it looks for. */
 export const ACTIVE_PROBE_OPTIONS: readonly ActiveProbeOption[] = [

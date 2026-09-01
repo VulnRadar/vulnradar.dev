@@ -3,7 +3,10 @@
  * No database imports - safe for client-side usage
  */
 
-import { STAFF_ROLES, STAFF_ROLE_HIERARCHY } from "@/lib/config/constants";
+import {
+  STAFF_ROLES,
+  STAFF_ROLE_HIERARCHY,
+} from "@/lib/config/client-constants";
 
 // Staff role permission definitions (client-side, no DB needed)
 export const STAFF_PERMISSIONS = {
@@ -37,22 +40,25 @@ export const STAFF_PERMISSIONS = {
   CREATE_BADGE: "create_badge",
   DELETE_BADGE: "delete_badge",
 
-  // Scans
+  // Scans. VIEW_SCAN_STATS was removed: it gated nothing anywhere, and the
+  // panel's scan counters are part of the stats payload the default section
+  // of app/api/v3/admin/route.ts already serves to any staff role. A
+  // permission that changes nothing when granted or withheld is worse than
+  // no permission, because an operator reasonably believes it does something.
   VIEW_ALL_SCANS: "view_all_scans",
   DELETE_ANY_SCAN: "delete_any_scan",
-  VIEW_SCAN_STATS: "view_scan_stats",
   EXPORT_SCAN_DATA: "export_scan_data",
 
-  // Subscriptions
-  VIEW_SUBSCRIPTIONS: "view_subscriptions",
-  MANAGE_SUBSCRIPTIONS: "manage_subscriptions",
+  // Subscriptions. VIEW_SUBSCRIPTIONS and MANAGE_SUBSCRIPTIONS were removed
+  // for the same reason: nothing ever checked either one. The capabilities
+  // that actually exist are GRANT_PREMIUM/REVOKE_PREMIUM (the gift
+  // subscription actions), EDIT_USER_PLAN, and VIEW_BILLING_OVERVIEW.
   GRANT_PREMIUM: "grant_premium",
   REVOKE_PREMIUM: "revoke_premium",
   // Aggregate, site-wide revenue/plan-distribution dashboard (Admin >
-  // Billing Overview) -- distinct from VIEW_SUBSCRIPTIONS, which is a
-  // single user's own plan/status and is granted to SUPPORT for per-user
-  // triage. SUPPORT must not see site-wide billing numbers, so this can't
-  // reuse that permission.
+  // Billing Overview). Narrower than "may look at a user's account": SUPPORT
+  // holds VIEW_USERS, and so can see one user's plan and status on that
+  // user's own record, but must not see site-wide billing numbers.
   VIEW_BILLING_OVERVIEW: "view_billing_overview",
 
   // System
@@ -70,15 +76,17 @@ export const STAFF_PERMISSIONS = {
   RESET_USER_GITHUB_REVIEW_USAGE: "reset_user_github_review_usage",
   RESET_USER_FREE_GITHUB_TRIAL: "reset_user_free_github_trial",
 
-  // Teams
+  // Teams. DELETE_ANY_TEAM was removed: DELETE /api/v3/admin/teams gates on
+  // requireAdmin(), not on a grant, and no other caller ever looked this up.
   VIEW_ALL_TEAMS: "view_all_teams",
   MANAGE_ANY_TEAM: "manage_any_team",
-  DELETE_ANY_TEAM: "delete_any_team",
 
-  // Moderation
+  // Moderation. VIEW_REPORTS and RESOLVE_REPORTS were removed: there is no
+  // user-reports feature and no table behind it, so those two were granted to
+  // four roles for a surface that has never existed. (The identically named
+  // "view_reports" in TEAM_ROLE_PERMISSIONS is a different, live namespace:
+  // team roles, not staff roles.)
   MODERATE_CONTENT: "moderate_content",
-  VIEW_REPORTS: "view_reports",
-  RESOLVE_REPORTS: "resolve_reports",
 
   // Communication
   SEND_ANNOUNCEMENTS: "send_announcements",
@@ -88,25 +96,29 @@ export const STAFF_PERMISSIONS = {
   // Notifications Management
   MANAGE_NOTIFICATIONS: "manage_notifications",
 
-  // Development
-  VIEW_DEBUG_INFO: "view_debug_info",
+  // Development. VIEW_DEBUG_INFO and CLEAR_CACHE were removed: neither was
+  // ever checked. The OPS role's real admin-panel reach is VIEW_SYSTEM_STATS,
+  // VIEW_ERROR_LOGS and MANAGE_ENGINE_FEEDBACK.
   TRIGGER_MAINTENANCE: "trigger_maintenance",
-  CLEAR_CACHE: "clear_cache",
 
   // Scanner check quality: false-positive feedback triage and AI tag
   // candidate review (app/admin/page.tsx's "Engine Feedback" tab). Its own
-  // permission rather than reusing VIEW_DEBUG_INFO/VIEW_ALL_SCANS -- it's
-  // the one thing the OPS role needs that no existing permission covers.
+  // permission rather than reusing VIEW_ALL_SCANS -- it's the one thing the
+  // OPS role needs that no existing permission covers.
   MANAGE_ENGINE_FEEDBACK: "manage_engine_feedback",
 
-  // User data management (webhooks/schedules/notes/avatar/scan-limit are
-  // each their own resource, distinct from scans/badges/subscriptions
-  // above -- reusing an unrelated existing permission for these would
-  // silently grant them to whatever role already has that permission,
-  // e.g. MODERATOR already has DELETE_ANY_SCAN).
+  // User data management (webhooks/schedules/notes/avatar are each their own
+  // resource, distinct from scans/badges above -- reusing an unrelated
+  // existing permission for these would silently grant them to whatever role
+  // already has that permission, e.g. MODERATOR already has DELETE_ANY_SCAN).
+  //
+  // MANAGE_SCAN_LIMIT was removed with the same broom as the eight above. It
+  // outlived its action: "set_scan_limit" was deleted when it turned out
+  // nothing enforces users.daily_scan_limit (getDailyLimit resolves the cap
+  // from the plan), so this had been the permission for a capability the
+  // panel could not perform.
   DELETE_USER_WEBHOOKS: "delete_user_webhooks",
   DELETE_USER_SCHEDULES: "delete_user_schedules",
-  MANAGE_SCAN_LIMIT: "manage_scan_limit",
   MANAGE_USER_NOTES: "manage_user_notes",
   CLEAR_USER_AVATAR: "clear_user_avatar",
 
@@ -132,9 +144,6 @@ const ROLE_PERMISSION_MAP: Record<string, StaffPermission[]> = {
     STAFF_PERMISSIONS.VIEW_USER_SESSIONS,
     STAFF_PERMISSIONS.VIEW_BADGES,
     STAFF_PERMISSIONS.VIEW_ALL_SCANS,
-    STAFF_PERMISSIONS.VIEW_SCAN_STATS,
-    STAFF_PERMISSIONS.VIEW_REPORTS,
-    STAFF_PERMISSIONS.VIEW_SUBSCRIPTIONS,
     STAFF_PERMISSIONS.MANAGE_SUPPORT_TICKETS,
   ],
   // The four specialist roles below sit at the same hierarchy tier
@@ -146,12 +155,9 @@ const ROLE_PERMISSION_MAP: Record<string, StaffPermission[]> = {
     STAFF_PERMISSIONS.ACCESS_STAFF_PAGE,
     STAFF_PERMISSIONS.ACCESS_ADMIN_PANEL,
     STAFF_PERMISSIONS.VIEW_USERS,
-    STAFF_PERMISSIONS.VIEW_SUBSCRIPTIONS,
     STAFF_PERMISSIONS.VIEW_BILLING_OVERVIEW,
-    STAFF_PERMISSIONS.MANAGE_SUBSCRIPTIONS,
     STAFF_PERMISSIONS.GRANT_PREMIUM,
     STAFF_PERMISSIONS.REVOKE_PREMIUM,
-    STAFF_PERMISSIONS.VIEW_SCAN_STATS,
   ],
   [STAFF_ROLES.SECURITY_ANALYST]: [
     STAFF_PERMISSIONS.ACCESS_STAFF_PAGE,
@@ -161,19 +167,14 @@ const ROLE_PERMISSION_MAP: Record<string, StaffPermission[]> = {
     STAFF_PERMISSIONS.REVOKE_USER_SESSIONS,
     STAFF_PERMISSIONS.RESET_USER_2FA,
     STAFF_PERMISSIONS.VIEW_ALL_SCANS,
-    STAFF_PERMISSIONS.VIEW_SCAN_STATS,
     STAFF_PERMISSIONS.VIEW_AUDIT_LOG,
     STAFF_PERMISSIONS.MODERATE_CONTENT,
-    STAFF_PERMISSIONS.VIEW_REPORTS,
-    STAFF_PERMISSIONS.RESOLVE_REPORTS,
   ],
   [STAFF_ROLES.CONTENT_MANAGER]: [
     STAFF_PERMISSIONS.ACCESS_STAFF_PAGE,
     STAFF_PERMISSIONS.ACCESS_ADMIN_PANEL,
     STAFF_PERMISSIONS.VIEW_USERS,
     STAFF_PERMISSIONS.MODERATE_CONTENT,
-    STAFF_PERMISSIONS.VIEW_REPORTS,
-    STAFF_PERMISSIONS.RESOLVE_REPORTS,
     STAFF_PERMISSIONS.SEND_ANNOUNCEMENTS,
     STAFF_PERMISSIONS.SEND_USER_EMAILS,
     STAFF_PERMISSIONS.MANAGE_NOTIFICATIONS,
@@ -183,11 +184,8 @@ const ROLE_PERMISSION_MAP: Record<string, StaffPermission[]> = {
     STAFF_PERMISSIONS.ACCESS_ADMIN_PANEL,
     STAFF_PERMISSIONS.VIEW_SYSTEM_STATS,
     STAFF_PERMISSIONS.VIEW_ERROR_LOGS,
-    STAFF_PERMISSIONS.VIEW_DEBUG_INFO,
     STAFF_PERMISSIONS.VIEW_ALL_SCANS,
-    STAFF_PERMISSIONS.VIEW_SCAN_STATS,
     STAFF_PERMISSIONS.MANAGE_ENGINE_FEEDBACK,
-    STAFF_PERMISSIONS.CLEAR_CACHE,
   ],
   [STAFF_ROLES.MODERATOR]: [
     STAFF_PERMISSIONS.ACCESS_STAFF_PAGE,
@@ -204,12 +202,8 @@ const ROLE_PERMISSION_MAP: Record<string, StaffPermission[]> = {
     STAFF_PERMISSIONS.REVOKE_BADGE,
     STAFF_PERMISSIONS.VIEW_ALL_SCANS,
     STAFF_PERMISSIONS.DELETE_ANY_SCAN,
-    STAFF_PERMISSIONS.VIEW_SCAN_STATS,
     STAFF_PERMISSIONS.VIEW_AUDIT_LOG,
     STAFF_PERMISSIONS.MODERATE_CONTENT,
-    STAFF_PERMISSIONS.VIEW_REPORTS,
-    STAFF_PERMISSIONS.RESOLVE_REPORTS,
-    STAFF_PERMISSIONS.VIEW_SUBSCRIPTIONS,
     // Matches app/api/v3/admin/route.ts's canPerformAction modActions,
     // which already allows a moderator to call these 4 reset actions.
     STAFF_PERMISSIONS.RESET_USER_DAILY_LIMIT,
@@ -477,19 +471,13 @@ export const ADMIN_ACTIONS: AdminAction[] = [
     icon: "LogOut",
     requiresConfirmation: true,
   },
-  {
-    // Distinct from "revoke_sessions" above -- app/api/v3/admin/route.ts
-    // implements both as separate switch cases. No current UI trigger for
-    // this one; still registered for completeness, same reasoning as
-    // "make_admin" above.
-    id: "revoke_all_sessions",
-    label: "Revoke All Sessions",
-    description: "Log out everywhere",
-    permission: STAFF_PERMISSIONS.REVOKE_USER_SESSIONS,
-    category: "security",
-    icon: "LogOut",
-    requiresConfirmation: true,
-  },
+  // "revoke_all_sessions" used to be registered here as a second entry
+  // "distinct from revoke_sessions". It was not: app/api/v3/admin/route.ts's
+  // case ran the same DELETE without the notification email, no UI ever
+  // dispatched it, and its name did not match what the panel actually sends,
+  // which is why it also escaped the password gate. The route case is gone;
+  // the registry entry goes with it so the two cannot claim different sets
+  // of actions exist.
   {
     id: "revoke_api_keys",
     label: "Revoke API Keys",
@@ -610,16 +598,12 @@ export const ADMIN_ACTIONS: AdminAction[] = [
     category: "user",
     icon: "ImageOff",
   },
-  {
-    // No current UI trigger -- see the "make_admin" comment above for why
-    // this is still registered.
-    id: "set_scan_limit",
-    label: "Set Scan Limit",
-    description: "Override daily scan limit",
-    permission: STAFF_PERMISSIONS.MANAGE_SCAN_LIMIT,
-    category: "data",
-    icon: "Gauge",
-  },
+  // "set_scan_limit" used to be registered here. Its route case wrote
+  // users.daily_scan_limit and audit-logged the change, but nothing enforces
+  // that column: getDailyLimit resolves the cap from the user's plan. The
+  // action reported success and changed nothing. The route case is gone, so
+  // the registry entry goes too rather than continuing to advertise a
+  // capability the panel cannot perform.
   {
     id: "add_note",
     label: "Add Note",

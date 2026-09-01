@@ -40,7 +40,10 @@ import {
   openCdpPageSession,
   type CdpConnection,
 } from "@/lib/browserbase/client";
-import { validateScanTarget } from "@/lib/scanner/safe-fetch";
+import {
+  validateScanTarget,
+  isPrivateHostname,
+} from "@/lib/scanner/safe-fetch";
 import {
   checkBrowserbaseQuota,
   recordBrowserbaseSeconds,
@@ -109,11 +112,63 @@ function withDeadline<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
   ]);
 }
 
+/** Distinct off-target hosts we are willing to re-validate for one capture.
+ *  A page that bounces through more than this is not worth chasing. */
+const MAX_NAVIGATED_HOSTS_CHECKED = 5;
+
+/**
+ * True when any frame the browser navigated to left the validated target for
+ * somewhere the scanner's own SSRF guard refuses.
+ *
+ * validateScanTarget only ever saw the entry URL. Everything the headless
+ * browser does after `Page.navigate` -- a 302, a meta refresh, a
+ * `window.location` assignment -- is outside the Node fetch guard entirely,
+ * so a page could redirect the session onto a private address and have the
+ * result screenshotted and stored. This does not stop the navigation (only
+ * CDP request interception can, see the note in capturePageScreenshot), but
+ * it does stop the frame being captured, stored and served.
+ * ref: AUDIT-012#ssrf-06
+ */
+async function navigatedOffSafeTarget(
+  entryUrl: string,
+  navigatedUrls: Iterable<string>,
+): Promise<boolean> {
+  let entryHost: string;
+  try {
+    entryHost = new URL(entryUrl).hostname.toLowerCase();
+  } catch {
+    return true;
+  }
+
+  const offTargetHosts: string[] = [];
+  for (const raw of navigatedUrls) {
+    let parsed: URL;
+    try {
+      parsed = new URL(raw);
+    } catch {
+      continue;
+    }
+    // about:blank and data: frames reach nothing on the network.
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") continue;
+    const host = parsed.hostname.toLowerCase();
+    if (host === entryHost || offTargetHosts.includes(host)) continue;
+    if (isPrivateHostname(host)) return true;
+    offTargetHosts.push(host);
+    if (offTargetHosts.length >= MAX_NAVIGATED_HOSTS_CHECKED) return true;
+  }
+
+  for (const host of offTargetHosts) {
+    const safety = await validateScanTarget(`https://${host}/`);
+    if (!safety.safe) return true;
+  }
+  return false;
+}
+
 /**
  * Drive an already-open CDP page session to the target and grab one JPEG.
- * Returns null on any CDP hiccup, an aborted signal, or an empty/oversized
- * frame. Bounded by the caller's overall deadline as well as the per-step
- * nav timeout here.
+ * Returns null on any CDP hiccup, an aborted signal, an empty/oversized
+ * frame, or a navigation that left the validated target. Bounded by the
+ * caller's overall deadline as well as the per-step nav timeout here.
  */
 async function captureViaCdp(
   cdp: CdpConnection,
@@ -129,6 +184,16 @@ async function captureViaCdp(
   let loadFired = false;
   cdp.on("Page.loadEventFired", () => {
     loadFired = true;
+  });
+
+  // Every frame the browser actually ended up on, checked below before the
+  // frame is captured. Page.enable above is what makes these arrive.
+  const navigatedUrls = new Set<string>();
+  cdp.on("Page.frameNavigated", (params) => {
+    const frameUrl = (params as { frame?: { url?: unknown } })?.frame?.url;
+    if (typeof frameUrl === "string" && frameUrl.length > 0) {
+      navigatedUrls.add(frameUrl);
+    }
   });
 
   try {
@@ -148,6 +213,10 @@ async function captureViaCdp(
   // whole nav timeout for nothing.
   await sleep(CONFIG_SCAN_SCREENSHOT_SETTLE_MS);
   if (signal?.aborted) return null;
+
+  // Refuse to capture a page that redirected itself somewhere the SSRF guard
+  // would not have let us fetch. ref: AUDIT-012#ssrf-06
+  if (await navigatedOffSafeTarget(targetUrl, navigatedUrls)) return null;
 
   let result: Record<string, unknown>;
   try {
@@ -195,6 +264,16 @@ export async function capturePageScreenshot(
 
   // Re-validate the target so this is safe to call standalone (the scan
   // route already SSRF-checks, but this must not depend on that).
+  //
+  // ssrf: this validates the ENTRY url only. captureViaCdp additionally
+  // refuses to capture a frame that navigated off it, but sub-resource loads
+  // (images, scripts, XHR, iframes) the page issues are still unguarded.
+  // Closing that properly means CDP request interception (Network.enable +
+  // Fetch.enable with a Fetch.requestPaused handler that runs this same check
+  // and calls Fetch.failRequest), wired once in lib/browserbase/client.ts's
+  // openCdpPageSession so browser-login and the interactive session route
+  // inherit it too. Bounded today by the fact that the browser always runs in
+  // BrowserBase's cloud, never locally. ref: AUDIT-012#ssrf-06
   try {
     const safety = await validateScanTarget(targetUrl);
     if (!safety.safe) return null;

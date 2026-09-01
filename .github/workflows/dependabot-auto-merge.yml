@@ -1,7 +1,26 @@
 name: Auto-merge Dependabot PRs
 
-# Auto-merge patch and minor dependabot updates after CI passes.
-# Major updates (e.g. next major bump) are NOT auto-merged.
+# Auto-merge PATCH dependabot updates only, and only once CI has actually
+# gone green. Minor and major updates wait for a human: the `next-stack` and
+# `ui` groups bundle several packages per PR, and a minor bump inside one of
+# those is exactly the change worth reading. The header used to promise patch
+# AND minor while the condition below only ever tested for patch, so every
+# minor bump sat waiting with no explanation. Now the two agree.
+#
+# This used to call `gh pr merge --auto`, which does NOT wait for CI: it waits
+# for the pull request to become mergeable under the branch's protection
+# rules. `main` has no required status checks (see the enforcement note at the
+# top of ci.yml), so under `--auto` a patch bump merged the instant it opened,
+# with lint, typecheck, test and build still queued. A compromised patch
+# release of any runtime dependency would have landed on main unreviewed and
+# untested, and the next `v*` tag would have published it. The gate below
+# waits for every other check on the pull request to finish and refuses to
+# merge unless they all passed, so the promise in this header holds on its own
+# rather than depending on repository settings nobody has configured yet.
+#
+# When required status checks DO get configured on `main`, this gate stays
+# correct: it is strictly stronger than what protection would enforce.
+#
 # Override with the `dependabot-merge-ignore` label.
 
 on:
@@ -14,9 +33,12 @@ permissions:
 
 jobs:
   dependabot-merge:
-    name: Auto-merge patch/minor updates
+    name: Auto-merge patch updates
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Long enough to outlast the whole CI matrix (the Build job alone allows
+    # 15 minutes and the self-host smoke test 20), plus the wait loop's own
+    # 30-minute ceiling.
+    timeout-minutes: 40
     if: github.actor == 'dependabot[bot]'
     steps:
       - name: Fetch metadata
@@ -25,11 +47,69 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Auto-merge patch/minor
+      - name: Wait for CI to pass
+        id: gate
         if: |
           steps.metadata.outputs.update-type == 'version-update:semver-patch' &&
           !contains(github.event.pull_request.labels.*.name, 'dependabot-merge-ignore')
-        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # This job runs as a pull_request workflow, so it is itself one of
+          # the checks on the PR. Watching every check without excluding it
+          # would be waiting on itself: it can only finish after the wait
+          # finishes.
+          SELF_CHECK: "Auto-merge patch updates"
+        run: |
+          set -euo pipefail
+
+          deadline=$(( $(date +%s) + 1800 ))
+
+          while :; do
+            # `gh pr checks` exits non-zero both when a check has failed and
+            # when no check run exists yet, which is the normal state for the
+            # first seconds after a PR opens. Fall back to an empty list and
+            # let the buckets below decide, rather than reading the exit code.
+            checks=$(gh pr checks "$PR_URL" --json name,bucket 2>/dev/null || echo '[]')
+
+            failed=$(echo "$checks" | jq --arg self "$SELF_CHECK" \
+              '[.[] | select(.name != $self and (.bucket == "fail" or .bucket == "cancel"))] | length')
+            pending=$(echo "$checks" | jq --arg self "$SELF_CHECK" \
+              '[.[] | select(.name != $self and .bucket == "pending")] | length')
+            passed=$(echo "$checks" | jq --arg self "$SELF_CHECK" \
+              '[.[] | select(.name != $self and .bucket == "pass")] | length')
+
+            if [ "$failed" -gt 0 ]; then
+              echo "$checks" | jq -r --arg self "$SELF_CHECK" \
+                '.[] | select(.name != $self and (.bucket == "fail" or .bucket == "cancel")) | "  \(.name): \(.bucket)"'
+              echo "::error::CI did not pass on this dependabot PR, so it will not be auto-merged. Review it by hand."
+              exit 1
+            fi
+
+            # `passed > 0` matters as much as `pending == 0`: before any check
+            # has been created both counts are zero, and treating that as
+            # "everything passed" is exactly the `--auto` behaviour this
+            # replaces.
+            if [ "$pending" -eq 0 ] && [ "$passed" -gt 0 ]; then
+              echo "All $passed check(s) passed."
+              break
+            fi
+
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::Timed out after 30 minutes waiting for CI to report on this PR."
+              exit 1
+            fi
+
+            echo "waiting: $pending pending, $passed passed"
+            sleep 30
+          done
+
+      - name: Merge
+        # `steps.gate.outcome` is 'skipped' when the gate did not run (not a
+        # patch bump, or the ignore label is set), so this one condition
+        # covers both "CI passed" and "this PR is not eligible".
+        if: steps.gate.outcome == 'success'
+        run: gh pr merge --squash --delete-branch "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -62,9 +62,17 @@ describe("blockedForAuthenticatedRequest", () => {
 
   it("returns a non-secret reason for a destructive URL", () => {
     const reason = blockedForAuthenticatedRequest(
-      "https://app.example.com/account/delete",
+      "https://app.example.com/account/delete?token=abc123&session=xyz",
     );
     expect(reason).toBeTruthy();
+    // "non-secret" is the contract this test names, and toBeTruthy() alone
+    // never checked it: a reason that echoed the request's own query string
+    // back into a stored scan report would have passed. Same assertion the
+    // logout case above already makes, plus the query string itself, since
+    // that is where the credential material would come from.
+    expect(reason).not.toMatch(/password|cookie=|token=/i);
+    expect(reason).not.toContain("abc123");
+    expect(reason).not.toContain("xyz");
   });
 
   it("returns null for an ordinary page", () => {

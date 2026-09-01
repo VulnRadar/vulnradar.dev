@@ -17,15 +17,38 @@ const mockQuery = vi.fn();
 // plain pool.query, mocked separately via mockQuery.
 const mockClientQuery = vi.fn();
 const mockRelease = vi.fn();
+/**
+ * The interleaving of plain pool.query calls and pool.connect calls, which a
+ * per-mock call count cannot express. finalizeScanSuccess has to warm the
+ * promoted-auto-tag-rules cache BEFORE it takes a connection: on a cache miss
+ * inside its own open transaction, loadPromotedRules asks the pool for a
+ * SECOND connection, and with CONFIG_DB_POOL_MAX = 10 that deadlocks once ten
+ * scans finalize in the same miss window (AUDIT-012#perf-25).
+ */
+const mockPoolCallOrder: string[] = [];
 vi.mock("@/lib/database/db", () => ({
   default: {
-    query: (...args: unknown[]) => mockQuery(...args),
-    connect: () =>
-      Promise.resolve({
+    query: (...args: unknown[]) => {
+      mockPoolCallOrder.push(`query:${String(args[0] ?? "")}`);
+      return mockQuery(...args);
+    },
+    connect: () => {
+      mockPoolCallOrder.push("connect");
+      return Promise.resolve({
         query: (...args: unknown[]) => mockClientQuery(...args),
         release: (...args: unknown[]) => mockRelease(...args),
-      }),
+      });
+    },
   },
+}));
+
+// sweepStaleScans sizes its age guard from the admin-configured scan budgets.
+// Mocked so the guard's arithmetic is asserted against known numbers, and so
+// the settings lookup does not consume the pool.query responses each test
+// queues for the statement actually under test.
+const mockGetSettings = vi.fn();
+vi.mock("@/lib/config/runtime-config", () => ({
+  getSettings: (...args: unknown[]) => mockGetSettings(...args),
 }));
 
 const {
@@ -42,6 +65,8 @@ const {
   sweepStaleScans,
 } = await import("@/lib/scanner/scan-jobs");
 
+const { invalidatePromotedRulesCache } = await import("@/lib/tags/auto-tags");
+
 /**
  * Queues client.query's responses for the transaction finalizeScanSuccess
  * opens: BEGIN first (return value unused by the code), then the status-
@@ -55,6 +80,11 @@ function mockUpdateResult(result: { rows: unknown[]; rowCount: number }) {
 }
 
 beforeEach(() => {
+  mockGetSettings.mockReset();
+  mockGetSettings.mockResolvedValue({
+    SCAN_TIMEOUT_SECONDS: 300,
+    CRAWL_SCAN_TIMEOUT_SECONDS: 900,
+  });
   mockQuery.mockReset();
   mockQuery.mockResolvedValue({ rows: [{ id: 1 }], rowCount: 1 });
   mockClientQuery.mockReset();
@@ -115,7 +145,7 @@ describe("getCancelSignal", () => {
 });
 
 describe("createProgressTracker", () => {
-  it("persists current_category and the total on a start event", () => {
+  it("persists current_category, the count and the total in one UPDATE on the first event", () => {
     const { onProgress, setTotal } = createProgressTracker(42);
     setTotal(5);
     onProgress("headers", "start");
@@ -123,22 +153,98 @@ describe("createProgressTracker", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
     const [sql, params] = mockQuery.mock.calls[0];
     expect(sql).toContain("current_category = $1");
-    expect(sql).toContain("categories_total = $2");
+    expect(sql).toContain("categories_completed = $2");
+    expect(sql).toContain("categories_total = $3");
     expect(sql).toContain("status IN ('pending', 'running')");
-    expect(params).toEqual(["headers", 5, 42]);
+    // $5 is the in-progress findings list, merged into result_meta by the same
+    // UPDATE so the poll can show what the scan has turned up so far.
+    // ref: AUDIT-014#scanui-02
+    expect(params).toEqual([
+      "headers",
+      0,
+      5,
+      42,
+      JSON.stringify({ partialFindings: [] }),
+    ]);
   });
 
-  it("increments categories_completed on each done event", () => {
+  // ref: AUDIT-012#perf-12. Progress used to write one UPDATE per event, two
+  // per category, on the widest row in the schema. Events inside the coalescing
+  // window must now produce no extra writes: the first one lands immediately
+  // and the rest are folded into the trailing flush.
+  it("coalesces a burst of events into a single write", () => {
     const { onProgress, setTotal } = createProgressTracker(42);
+    setTotal(3);
+    onProgress("headers", "start");
+    onProgress("headers", "done");
+    onProgress("ssl", "start");
+    onProgress("ssl", "done");
+
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("flush() lands the coalesced counters that the burst did not write", () => {
+    const { onProgress, setTotal, flush } = createProgressTracker(42);
     setTotal(3);
     onProgress("headers", "done");
     onProgress("ssl", "done");
+    flush();
 
     expect(mockQuery).toHaveBeenCalledTimes(2);
-    const [, firstParams] = mockQuery.mock.calls[0];
-    const [, secondParams] = mockQuery.mock.calls[1];
-    expect(firstParams).toEqual([1, 3, 42]);
-    expect(secondParams).toEqual([2, 3, 42]);
+    const [, lastParams] = mockQuery.mock.calls[1];
+    expect(lastParams.slice(0, 4)).toEqual([null, 2, 3, 42]);
+  });
+
+  /**
+   * AUDIT-014#scanui-02: the poll used to carry a family name, two counters
+   * and a clock, so the user saw none of the scan's output for its whole
+   * duration and then all of it at once.
+   */
+  it("accumulates the findings each category reports, for the live poll", () => {
+    const { onProgress, setTotal, flush } = createProgressTracker(42);
+    setTotal(2);
+    onProgress("headers", "done", {
+      newFindings: [{ severity: "high", title: "Missing CSP" }],
+    });
+    onProgress("ssl", "done", {
+      newFindings: [{ severity: "low", title: "Weak cipher offered" }],
+    });
+    flush();
+
+    const [sql, params] = mockQuery.mock.calls[mockQuery.mock.calls.length - 1];
+    expect(sql).toContain("result_meta");
+    expect(JSON.parse(params[4] as string)).toEqual({
+      partialFindings: [
+        { severity: "high", title: "Missing CSP" },
+        { severity: "low", title: "Weak cipher offered" },
+      ],
+    });
+  });
+
+  it("caps the accumulated findings so a 2-second poll stays small", () => {
+    const { onProgress, setTotal, flush } = createProgressTracker(42);
+    setTotal(1);
+    onProgress("headers", "done", {
+      newFindings: Array.from({ length: 100 }, (_, i) => ({
+        severity: "low" as const,
+        title: `Finding ${i}`,
+      })),
+    });
+    flush();
+
+    const [, params] = mockQuery.mock.calls[mockQuery.mock.calls.length - 1];
+    const { partialFindings } = JSON.parse(params[4] as string);
+    expect(partialFindings).toHaveLength(40);
+  });
+
+  it("flush() writes nothing when there is no coalesced progress left", () => {
+    const { onProgress, setTotal, flush } = createProgressTracker(42);
+    setTotal(1);
+    onProgress("headers", "start");
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+
+    flush();
+    expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
   it("throws ScanCancelledError on a start event when the scan was cancelled, without writing anything", () => {
@@ -334,6 +440,40 @@ describe("finalizeScanSuccess", () => {
     expect(mockClientQuery.mock.calls[3][0]).toBe("COMMIT");
   });
 
+  it("loads the promoted auto-tag rules BEFORE it takes a pool connection", async () => {
+    // The deadlock this guards against needs a cache MISS to reproduce, so
+    // force one. Re-loading here leaves the cache warm again, which is the
+    // state every other test in this file is written against.
+    invalidatePromotedRulesCache();
+    mockPoolCallOrder.length = 0;
+    mockUpdateResult({
+      rows: [{ id: 5, url: "https://example.com", user_id: 42 }],
+      rowCount: 1,
+    });
+
+    await finalizeScanSuccess(5, {
+      summary: { critical: 1 },
+      findings: [{ id: "a", severity: "critical", title: "SQL Injection" }],
+      duration: 1234,
+      scannedAt: "2026-01-01T00:00:00.000Z",
+      responseHeaders: {},
+      resultMeta: {},
+    });
+
+    const rulesAt = mockPoolCallOrder.findIndex((c) =>
+      c.includes("promoted_auto_tag_rules"),
+    );
+    const connectAt = mockPoolCallOrder.indexOf("connect");
+    expect(connectAt).toBeGreaterThanOrEqual(0);
+    expect(
+      rulesAt,
+      `pool call order was: ${mockPoolCallOrder.map((c) => c.split("\n")[0]).join(" | ")}`,
+    ).toBeGreaterThanOrEqual(0);
+    // Strictly before: a rules SELECT issued after connect() is a second
+    // connection requested while the transaction still holds the first.
+    expect(rulesAt).toBeLessThan(connectAt);
+  });
+
   it("does not save auto tags when the RETURNING row has no user_id", async () => {
     mockUpdateResult({
       rows: [{ id: 5, url: "https://example.com" }],
@@ -505,7 +645,7 @@ describe("markScanRunning", () => {
 });
 
 describe("sweepStaleScans", () => {
-  it("fails every pending/running row and returns the count", async () => {
+  it("fails stale pending/running rows and returns the count", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 1 }, { id: 2 }, { id: 3 }],
       rowCount: 3,
@@ -514,10 +654,44 @@ describe("sweepStaleScans", () => {
     const count = await sweepStaleScans();
 
     expect(count).toBe(3);
-    const [sql] = mockQuery.mock.calls[0];
+    const [sql, params] = mockQuery.mock.calls[0];
     expect(sql).toContain("status = 'failed'");
     expect(sql).toContain("WHERE status IN ('pending', 'running')");
-    expect(sql).not.toContain("$1"); // no scan-id scoping -- sweeps everything
+    // Bounded by age, not by scan id. The previous form of this test asserted
+    // the statement took no parameters at all, which pinned the bug: an
+    // unbounded sweep fails the scans a CONCURRENT instance is still running
+    // during a rolling deploy, and finalizeScanSuccess then matches nothing.
+    expect(sql).toContain(
+      "COALESCE(started_at, scanned_at, TIMESTAMP 'epoch')",
+    );
+    expect(sql).toContain("NOW() - ($1 || ' seconds')::interval");
+    expect(params).toEqual([String(900 * 2)]);
+  });
+
+  it("sizes the age guard at twice the longest configured budget", async () => {
+    mockGetSettings.mockResolvedValue({
+      SCAN_TIMEOUT_SECONDS: 1800,
+      CRAWL_SCAN_TIMEOUT_SECONDS: 600,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    await sweepStaleScans();
+
+    // the single scan budget wins here, not the crawl one
+    expect(mockQuery.mock.calls[0][1]).toEqual([String(1800 * 2)]);
+  });
+
+  it("never drops below the fifteen-minute floor", async () => {
+    mockGetSettings.mockResolvedValue({
+      SCAN_TIMEOUT_SECONDS: 30,
+      CRAWL_SCAN_TIMEOUT_SECONDS: 60,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    await sweepStaleScans();
+
+    // 60 * 2 = 120s would sweep a scan a healthy instance is still running
+    expect(mockQuery.mock.calls[0][1]).toEqual([String(15 * 60)]);
   });
 
   it("returns 0 when nothing was stale", async () => {

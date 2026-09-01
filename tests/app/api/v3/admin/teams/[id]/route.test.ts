@@ -1,7 +1,7 @@
 /**
  * Route-level tests for GET /api/v3/admin/teams/[id] (team detail + member
- * list). Same requireModerator gate (moderator+, ENFORCE_STAFF_2FA applies)
- * as the collection route. This route is GET-only: editing/deleting a team
+ * list). Same VIEW_ALL_TEAMS gate (an admin-only grant, ENFORCE_STAFF_2FA
+ * applies) as the collection route. This route is GET-only: editing/deleting a team
  * is only reachable via teamId in the body on the collection route, not a
  * mutation aimed at this per-id endpoint.
  */
@@ -22,7 +22,7 @@ const { GET } = routeModule;
 
 function withRole(role: string) {
   mockGetSession.mockResolvedValue({ userId: 1 });
-  // requireModerator does its own
+  // requirePermission does its own
   // SELECT role, totp_enabled FROM users WHERE id=$1 lookup.
   mockQuery.mockResolvedValueOnce({ rows: [{ role, totp_enabled: false }] });
 }

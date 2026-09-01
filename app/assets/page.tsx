@@ -10,7 +10,7 @@ import {
   PaginationControl,
   usePagination,
 } from "@/components/ui/pagination-control";
-import { API } from "@/lib/config/constants";
+import { API } from "@/lib/config/client-constants";
 import {
   getQueryParam,
   getQueryParamInt,
@@ -155,9 +155,16 @@ export default function AssetsPage() {
           </p>
 
           {/* Scope toggle: your own scans vs every public host on file. The
-              "all" view reads only public scan data (host_reputation). */}
+              "all" view reads only public scan data (host_reputation).
+
+              Deliberately a group of toggle buttons rather than a tablist:
+              role="tab" promises a matching role="tabpanel" with
+              aria-controls and arrow-key navigation between the tabs, and
+              this control has none of that, so a screen reader announced
+              "tab, 1 of 2" and then found nothing the tab governed.
+              aria-pressed describes what these buttons actually are. */}
           <div
-            role="tablist"
+            role="group"
             aria-label="Asset scope"
             className="mt-3 inline-flex rounded-md border border-border bg-card p-0.5"
           >
@@ -169,8 +176,8 @@ export default function AssetsPage() {
             ).map((opt) => (
               <button
                 key={opt.key}
-                role="tab"
-                aria-selected={scope === opt.key}
+                type="button"
+                aria-pressed={scope === opt.key}
                 onClick={() => changeScope(opt.key)}
                 className={cn(
                   "rounded px-3 py-1 text-sm font-medium transition-colors",

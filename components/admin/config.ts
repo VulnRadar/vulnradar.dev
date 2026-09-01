@@ -1,20 +1,12 @@
 // Admin panel configuration - tabs, action metadata, filters
 
-import { Users, UsersRound, Bell, Shield, History } from "lucide-react";
-import type { AdminTab } from "./types";
-
-// Tab definitions
-export const ADMIN_TABS: {
-  key: AdminTab;
-  label: string;
-  icon: typeof Users;
-}[] = [
-  { key: "users", label: "Users", icon: Users },
-  { key: "teams", label: "Teams", icon: UsersRound },
-  { key: "notifications", label: "Notifications", icon: Bell },
-  { key: "admins", label: "Active Staff", icon: Shield },
-  { key: "audit", label: "Audit Logs", icon: History },
-];
+// The five-entry ADMIN_TABS table that used to live here is gone. It was not
+// the live tab table and never had an importer: the panel builds its tabs at
+// runtime from NAV_GROUPS in app/admin/page.tsx (flattened into
+// ALL_ADMIN_TABS), which carries all twenty destinations plus the per-tab
+// permission gate. Keeping a stale five-entry copy in the file literally
+// named "Admin panel configuration" is how a tab gets added in the wrong
+// place. Add a tab in NAV_GROUPS.
 
 // Action metadata for audit log display
 export interface ActionMeta {
@@ -213,6 +205,16 @@ export const ACTION_META: Record<string, ActionMeta> = {
     icon: "eye",
     cls: "bg-[hsl(var(--severity-high))]/10 text-[hsl(var(--severity-high))] border-[hsl(var(--severity-high))]/20",
   },
+  // Read, not a mutation. Admin GETs used to leave no trail at all, so
+  // there was nothing to reconstruct after a compromised or insider staff
+  // account paged through accounts; opening one user's full record (PII,
+  // sessions, billing identifiers) now writes a row.
+  view_user_detail: {
+    label: "Viewed Account",
+    verb: "viewed the account record of",
+    icon: "eye",
+    cls: "bg-muted text-muted-foreground border-border",
+  },
   set_scan_limit: {
     label: "Scan Limit Set",
     verb: "set scan limit for",
@@ -258,7 +260,13 @@ export const ACTION_META: Record<string, ActionMeta> = {
   },
 };
 
-// Action labels for toast messages
+// Success-toast text for every admin PATCH action, keyed by its `action`
+// value. THIS IS THE LIVE COPY: app/admin/page.tsx imports it and does
+// `showToast(ACTION_LABELS[action] || "Action completed.")`. It used to keep
+// its own inlined duplicate that had drifted six entries ahead of this one,
+// so adding a label here (the obvious place, in the file named "Admin panel
+// configuration") silently produced the generic fallback instead. Add new
+// actions here and nowhere else.
 export const ACTION_LABELS: Record<string, string> = {
   set_role: "User role updated.",
   make_admin: "User promoted to admin.",
@@ -276,11 +284,22 @@ export const ACTION_LABELS: Record<string, string> = {
   update_name: "Name updated.",
   update_email: "Email updated.",
   update_plan: "Plan updated.",
+  notify_account_changes: "Account change email sent to user.",
   reset_2fa: "Two-factor authentication reset.",
   delete_scans: "All scans deleted.",
   clear_rate_limits: "Rate limits cleared.",
   gift_subscription: "Subscription gifted successfully.",
   revoke_gift: "Gifted subscription revoked.",
+  toggle_ai_ban: "AI chat access updated.",
+  verify_email: "Email verified.",
+  unverify_email: "Email unverified.",
+  send_notification: "Notification sent.",
+  // No UI dispatches send_email and PATCH /api/v3/admin has no case for it,
+  // so this label is unreachable: the action would 400. Kept because the
+  // permission and its role grant still exist in lib/auth/permissions-client.ts
+  // (tests/lib/auth/permissions-client.test.ts flags it as a known stale id),
+  // and removing one half without the other just moves the inconsistency.
+  send_email: "Email sent.",
   reset_daily_limit: "Daily scan count reset.",
   reset_ai_usage: "AI usage window reset.",
   reset_github_review_usage: "GitHub review usage window reset.",
@@ -323,6 +342,11 @@ export const PASSWORD_GATED_ACTIONS = new Set([
   "make_admin",
   "set_role",
   "impersonate",
+  // Not a PATCH /api/v3/admin action: it names the POST to
+  // /api/v3/admin/staff-invites, which grants the same privilege set_role
+  // does (admin is selectable) and used to take one unconfirmed click.
+  // Enforced in that route's own handler.
+  "send_staff_invite",
 ]);
 
 // Default pagination sizes

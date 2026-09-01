@@ -4,6 +4,7 @@ import {
   getSession,
   findUserSessionByHash,
   deleteSessionById,
+  hashSessionId,
 } from "@/lib/auth";
 import { AUTH_SESSION_COOKIE_NAME } from "@/lib/config/constants";
 import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
@@ -47,7 +48,15 @@ export const DELETE = withErrorHandling(
     }
 
     const cookieStore = await cookies();
-    const currentSessionId = cookieStore.get(AUTH_SESSION_COOKIE_NAME)?.value;
+    const currentSessionToken = cookieStore.get(
+      AUTH_SESSION_COOKIE_NAME,
+    )?.value;
+    // target.id is the stored id, which is the digest of the cookie's bearer
+    // token, so the cookie has to be hashed before the two can be compared
+    // (AUDIT-012#auth-07).
+    const currentSessionId = currentSessionToken
+      ? hashSessionId(currentSessionToken)
+      : undefined;
     if (target.id === currentSessionId) {
       return ApiResponse.badRequest(
         'This is your current session. Use "Sign out everywhere" to end it.',

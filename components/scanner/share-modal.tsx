@@ -4,7 +4,9 @@ import { useState } from "react";
 import {
   Link2,
   Check,
+  Clock,
   Copy,
+  Loader2,
   Mail,
   MessageCircle,
   Globe,
@@ -13,7 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { APP_NAME } from "@/lib/config/constants";
+import { APP_NAME } from "@/lib/config/client-constants";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/ui/utils";
 import { copyToClipboard } from "@/lib/ui/clipboard";
+import { EXPIRY_PRESETS, activePreset, formatExpiry } from "./share-expiry";
 
 interface ShareModalProps {
   open: boolean;
@@ -35,6 +38,12 @@ interface ShareModalProps {
   publiclyListed?: boolean;
   onPubliclyListedChange?: (next: boolean) => void;
   togglingPubliclyListed?: boolean;
+  /** ISO timestamp the link stops working, or null when it never expires. */
+  expiresAt?: string | null;
+  /** Omitted for a viewer who cannot change the share (the control is hidden
+   *  rather than shown disabled). `null` means "never expires". */
+  onExpiryChange?: (days: number | null) => void;
+  updatingExpiry?: boolean;
 }
 
 const SHARE_OPTIONS = [
@@ -100,8 +109,13 @@ export function ShareModal({
   publiclyListed,
   onPubliclyListedChange,
   togglingPubliclyListed = false,
+  expiresAt = null,
+  onExpiryChange,
+  updatingExpiry = false,
 }: ShareModalProps) {
   const [copied, setCopied] = useState(false);
+  const selectedDays = activePreset(expiresAt);
+  const expired = Boolean(expiresAt && new Date(expiresAt) <= new Date());
 
   async function handleCopy() {
     const success = await copyToClipboard(shareUrl);
@@ -118,8 +132,15 @@ export function ShareModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md p-0 gap-0 overflow-hidden bg-card border-border">
-        <DialogHeader className="border-b border-border/50 p-5 pb-4">
+      {/* No bg-card/border override here: DialogContent already sets the
+          panel surface and its --border edge.
+
+          flex-col + a scrolling body rather than the base grid: overflow-hidden
+          cancels the base overflow-y-auto, so on a short viewport (a landscape
+          phone, a small laptop) everything past max-h simply vanished with no
+          way to reach it. Now the header stays put and the body scrolls. */}
+      <DialogContent className="sm:max-w-md p-0 gap-0 flex flex-col max-h-[85vh] overflow-hidden">
+        <DialogHeader className="shrink-0 border-b border-border/50 p-5 pb-4">
           <div className="flex items-center gap-2.5">
             <Share2 aria-hidden className="h-4 w-4 shrink-0 text-primary" />
             <DialogTitle className="text-base font-semibold">
@@ -131,9 +152,9 @@ export function ShareModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-5 p-5">
+        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-5">
           {publiclyListed !== undefined && onPubliclyListedChange && (
-            <div className="flex items-start justify-between gap-4 rounded-md border border-border bg-muted/30 p-3">
+            <div className="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-3">
               <div className="min-w-0">
                 <Label
                   htmlFor="share-publicly-listed"
@@ -168,7 +189,7 @@ export function ShareModal({
                 readOnly
                 value={shareUrl}
                 aria-label="Share link"
-                className="w-full truncate rounded-md border border-border bg-muted/30 py-2.5 pl-9 pr-3 font-mono text-base sm:text-sm text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                className="w-full truncate rounded-md border border-input bg-muted/30 py-2.5 pl-9 pr-3 font-mono text-base sm:text-sm text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={(e) => (e.target as HTMLInputElement).select()}
               />
             </div>
@@ -194,7 +215,74 @@ export function ShareModal({
             </Button>
           </div>
 
-          {/* Platform shortcuts. Brand marks, not decorative icons, so they keep their own colours. */}
+          {/* Link expiry. Presets rather than a date picker: the route only
+              accepts 7, 30, 90 or never, so a free date field would mostly
+              produce 400s. */}
+          {onExpiryChange && (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-1.5">
+                <Clock
+                  aria-hidden
+                  className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                />
+                <span
+                  id="share-expiry-label"
+                  className="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                >
+                  Link expires
+                </span>
+                {updatingExpiry && (
+                  <Loader2
+                    aria-hidden
+                    className="h-3.5 w-3.5 animate-spin text-muted-foreground"
+                  />
+                )}
+              </div>
+              <div
+                role="radiogroup"
+                aria-labelledby="share-expiry-label"
+                className="flex flex-wrap gap-1.5"
+              >
+                {EXPIRY_PRESETS.map((preset) => {
+                  const active = selectedDays === preset.days;
+                  return (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      disabled={updatingExpiry}
+                      onClick={() => {
+                        if (!active) onExpiryChange(preset.days);
+                      }}
+                      className={cn(
+                        "flex-1 basis-16 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors",
+                        "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+                        "disabled:cursor-not-allowed disabled:opacity-60",
+                        active
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-input text-muted-foreground hover:bg-muted hover:text-foreground",
+                      )}
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {expiresAt
+                  ? expired
+                    ? `This link stopped working on ${formatExpiry(expiresAt)}. Pick a new window to issue a fresh one.`
+                    : `Stops working on ${formatExpiry(expiresAt)}. Choose Never to keep it open indefinitely.`
+                  : "This link keeps working until you revoke it."}
+              </p>
+            </div>
+          )}
+
+          {/* Platform shortcuts. Brand marks, not decorative icons, so they
+              keep their own colours. border-input, not border-border: these
+              are controls, and --border is a divider tone that measures about
+              1.2:1 against the card it sits on. */}
           <div className="flex flex-col gap-2">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Or send it directly
@@ -208,7 +296,7 @@ export function ShareModal({
                     type="button"
                     onClick={() => handleShare(option)}
                     aria-label={`Share via ${option.label}`}
-                    className="group flex flex-1 basis-16 flex-col items-center gap-1.5 rounded-md border border-border py-2.5 transition-colors hover:bg-muted/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                    className="group flex flex-1 basis-16 flex-col items-center gap-1.5 rounded-md border border-input py-2.5 transition-colors hover:bg-muted/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <span
                       className={cn(

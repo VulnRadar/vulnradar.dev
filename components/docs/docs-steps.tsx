@@ -1,6 +1,5 @@
 "use client";
 
-import { Card } from "@/components/ui/card";
 import type { Step } from "./docs-types";
 import { cn } from "@/lib/ui/utils";
 
@@ -42,38 +41,5 @@ export function DocsSteps({
         </li>
       ))}
     </ol>
-  );
-}
-
-interface DocsStepCardProps {
-  step: number;
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-  className?: string;
-}
-
-export function DocsStepCard({
-  step,
-  title,
-  description,
-  children,
-  className,
-}: DocsStepCardProps) {
-  return (
-    <Card className={cn("p-3 sm:p-5 border-border/50 bg-card/50", className)}>
-      <div className="mb-3 flex items-baseline gap-2">
-        <span className="text-sm font-semibold text-primary tabular-nums">
-          {step}.
-        </span>
-        <h3 className="text-sm font-medium leading-tight text-foreground">
-          {title}
-        </h3>
-      </div>
-      {description && (
-        <p className="mb-3 text-sm text-muted-foreground">{description}</p>
-      )}
-      {children}
-    </Card>
   );
 }

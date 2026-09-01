@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { API } from "@/lib/config/constants";
+import { API } from "@/lib/config/client-constants";
 
 export interface Teammate {
   id: number;

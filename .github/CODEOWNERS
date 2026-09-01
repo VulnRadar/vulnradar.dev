@@ -14,9 +14,13 @@
 /lib/scanner/       @dbcaa @RejectModders
 /lib/rate-limiting/ @dbcaa @RejectModders
 /lib/billing/       @dbcaa @RejectModders
-/app/api/v2/auth/   @dbcaa @RejectModders
-/app/api/v2/billing/ @dbcaa @RejectModders
-/app/api/v2/webhooks/ @dbcaa @RejectModders
+# v3, not v2. app/api/ holds only security-txt/, v3/ and version/, so the
+# three v2 rules these replace matched nothing: the catch-all above still
+# assigned both owners, but the paths written down here to mark the
+# security-critical API surface pointed at directories that do not exist.
+/app/api/v3/auth/   @dbcaa @RejectModders
+/app/api/v3/billing/ @dbcaa @RejectModders
+/app/api/v3/webhooks/ @dbcaa @RejectModders
 
 # Configuration changes
 /lib/config/        @dbcaa @RejectModders
@@ -29,6 +33,8 @@
 /.github/           @dbcaa @RejectModders
 
 # Database migrations
+# Both runners moved into their own directories; the old single-file paths
+# had stopped matching anything.
 /lib/database/      @dbcaa @RejectModders
-/scripts/migrate.mjs @dbcaa @RejectModders
-/scripts/create-fresh-db.mjs @dbcaa @RejectModders
+/scripts/migrate/   @dbcaa @RejectModders
+/scripts/create-fresh-db/ @dbcaa @RejectModders

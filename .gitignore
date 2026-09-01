@@ -53,7 +53,6 @@ pnpm-debug.log*
 .yarn/unplugged
 .yarn/build-state.yml
 .yarn/install-state.gz
-nscripts/storage/
 
 # FP audit temporary scan storage
 scripts/storage/
@@ -67,3 +66,13 @@ engine/data/host-json/
 # its own build outputs (dist-*/, node_modules/, *.tsbuildinfo).
 # The main .gitignore must NOT add extension/* here or it would
 # ignore ALL of the extension source, which is wrong.
+
+# Marketing / Remotion video project. The WHOLE directory stays local: it
+# carries node_modules, rendered video, downloaded audio and API keys, none of
+# which belong in the product repo.
+marketing/
+
+
+# Local source archives, never committed (a 25MB .rar was staged once).
+*.rar
+*.zip

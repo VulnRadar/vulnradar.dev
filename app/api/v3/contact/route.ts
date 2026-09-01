@@ -11,13 +11,23 @@ import {
 } from "@/lib/email/email";
 import { TURNSTILE_ENABLED } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
+import { rateLimitIpKey } from "@/lib/api/request-utils";
 
+// One label per category the form actually offers (components/contact/
+// contact-types.ts's CATEGORIES). billing, enterprise and feedback used to be
+// missing here, so a message sent under any of those three fell through the
+// `|| "Other"` below and arrived in the support inbox with the sender's own
+// choice discarded. "ticket" is deliberately absent: that option opens a
+// tracked support thread through a different route, never this one.
 const CATEGORY_LABELS: Record<string, string> = {
   bug: "Bug Report",
   feature: "Feature Request",
   security: "Security Issue",
   help: "General Help",
+  billing: "Billing Issue",
+  enterprise: "Enterprise",
   staff_application: "Staff Application",
+  feedback: "Feedback",
 };
 
 function asTrimmedString(value: unknown): string | null {
@@ -32,7 +42,7 @@ export async function POST(request: NextRequest) {
   try {
     const ip = await getClientIP();
     const rl = await checkRateLimit({
-      key: `contact:${ip}`,
+      key: `contact:${rateLimitIpKey(ip)}`,
       ...RATE_LIMITS.api,
     });
     if (!rl.allowed) {

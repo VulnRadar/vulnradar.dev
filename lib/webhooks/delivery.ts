@@ -14,9 +14,11 @@
 import { createHmac } from "node:crypto";
 import pool from "@/lib/database/db";
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
 import { validateScanTarget, safeFetch } from "@/lib/scanner/safe-fetch";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { webhookDeliveryFailedEmail } from "@/lib/email/email";
+import { readWebhookSecret } from "@/lib/webhooks/secret";
 
 const DELIVERY_TIMEOUT_MS = 10000;
 const RETRY_DELAY_MS = 5000;
@@ -31,7 +33,10 @@ export interface WebhookDeliveryTarget {
   userId: number;
   url: string;
   type: string;
-  /** null for a legacy row that predates signing, or a direct-DB insert
+  /** The stored `webhooks.secret` column value, which is encrypted at rest
+   *  since AUDIT-009#webhook-01. Callers pass the column through untouched;
+   *  readWebhookSecret() below turns it back into the raw signing secret.
+   *  null for a legacy row that predates signing, or a direct-DB insert
    *  that bypassed the app's secret generation. Delivery still happens,
    *  just unsigned, rather than dropping the notification outright. */
   secret: string | null;
@@ -55,6 +60,7 @@ export function signWebhookPayload(secret: string, body: string): string {
 async function attemptDelivery(
   webhook: WebhookDeliveryTarget,
   body: string,
+  signingSecret: string | null,
 ): Promise<DeliveryAttempt> {
   // SSRF guard: re-validate the registered webhook URL through safeFetch
   // before POSTing. The URL was checked at registration (and at edit
@@ -73,9 +79,9 @@ async function attemptDelivery(
     "Content-Type": "application/json",
     "User-Agent": `${APP_NAME}-Webhook/1.0`,
   };
-  if (webhook.secret) {
+  if (signingSecret) {
     headers[SIGNATURE_HEADER] =
-      `sha256=${signWebhookPayload(webhook.secret, body)}`;
+      `sha256=${signWebhookPayload(signingSecret, body)}`;
   }
 
   try {
@@ -171,13 +177,25 @@ export async function deliverWebhook(
   eventType: string,
   body: string,
 ): Promise<void> {
-  const first = await attemptDelivery(webhook, body);
+  // FEATURE_WEBHOOKS gated only registration (POST /api/v3/webhooks), never
+  // delivery, so turning the feature off left every already-registered
+  // endpoint receiving POSTs forever. Checked here rather than at the call
+  // site so every future producer inherits the kill switch, matching the
+  // way POSTURE_DIGEST_ENABLED gates its own worker.
+  if (!(await getSetting("FEATURE_WEBHOOKS"))) return;
+
+  // Decrypted once for both attempts rather than per attempt: the retry
+  // signs the identical bytes with the identical secret, so a second
+  // decrypt would only be extra work on the failure path.
+  const signingSecret = readWebhookSecret(webhook.secret);
+
+  const first = await attemptDelivery(webhook, body, signingSecret);
   await logDelivery(webhook.id, eventType, first);
   if (first.ok) return;
 
   await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
 
-  const retry = await attemptDelivery(webhook, body);
+  const retry = await attemptDelivery(webhook, body, signingSecret);
   await logDelivery(webhook.id, eventType, retry);
   if (retry.ok) return;
 

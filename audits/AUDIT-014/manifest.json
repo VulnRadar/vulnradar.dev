@@ -1,0 +1,58 @@
+{
+  "id": "AUDIT-014",
+  "title": "Closing batch: build/deploy, docs, hardcoded values, accessibility, discoverability, competitive gaps, and the unfinished halves of design, the scanning page, and QOL",
+  "scopes": [
+    "deploy",
+    "ci",
+    "self-host",
+    "docs",
+    "config",
+    "hardcoded",
+    "a11y",
+    "states",
+    "seo",
+    "marketing",
+    "competitive",
+    "design",
+    "ux",
+    "qol"
+  ],
+  "createdAt": "2026-08-28T00:00:00Z",
+  "closedAt": null,
+  "status": "complete",
+  "sectionsCovered": [
+    5,
+    6,
+    7,
+    13,
+    14,
+    15,
+    18,
+    19,
+    20
+  ],
+  "sectionsOutstanding": [],
+  "summary": "Final batch, closing all twenty sections of the brief. Sixteen agents across nine sections, run in two passes after the first was halted overnight and restarted from briefs preserved in agent-briefs/. Three criticals, all section 13 and all one story: a self-host cannot be stood up at three independent layers (docker-compose pins an image tag that was never published, instrumentation.ts exits before creating any table on an empty database, and the Dockerfile runtime stage omits scripts/ so the documented recovery command is not in the image). Nothing in CI ever builds the Dockerfile or boots against Postgres, and main is unprotected with zero required checks, which is how all three shipped. Below that: an unbounded history DELETE behind a confirmation that states a capped count, ScanResult.incomplete rendered by nothing so a timed-out scan displays as clean, a dashboard risk number that rises when you fix things, CVSS computed everywhere and shown nowhere, light-mode severity badges at 1.66:1 against a published WCAG AA claim, and a demo flow where no visitor can scan their own URL.",
+  "sectionsComplete": [
+    5,
+    6,
+    7,
+    13,
+    14,
+    15,
+    18,
+    19,
+    20
+  ],
+  "findingsCount": 307,
+  "severityCounts": {
+    "critical": 3,
+    "high": 44,
+    "medium": 154,
+    "low": 87,
+    "info": 19
+  },
+  "agentsCompleted": 16,
+  "agentsDispatched": 16,
+  "closesBrief": true
+}

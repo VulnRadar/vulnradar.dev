@@ -1,9 +1,9 @@
 /**
  * Route-level tests for GET/PATCH/DELETE /api/v3/admin/teams (admin
- * override of team name / deletion). GET/PATCH use requireModerator
- * (moderator+, with ENFORCE_STAFF_2FA applied like every other staff route);
- * DELETE uses requireAdmin (admin+). Only getSession and the database are
- * mocked.
+ * override of team name / deletion). GET gates on VIEW_ALL_TEAMS and PATCH on
+ * MANAGE_ANY_TEAM through requirePermission (both admin-only grants, with
+ * ENFORCE_STAFF_2FA applied like every other staff route); DELETE uses
+ * requireAdmin (admin+). Only getSession and the database are mocked.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
@@ -58,7 +58,7 @@ const { GET, PATCH, DELETE } = routeModule;
 
 function withRole(role: string) {
   mockGetSession.mockResolvedValue({ userId: 1 });
-  // requireModerator/requireAdmin do their own
+  // requirePermission/requireAdmin do their own
   // SELECT role, totp_enabled FROM users WHERE id=$1 lookup.
   mockQuery.mockResolvedValueOnce({ rows: [{ role, totp_enabled: false }] });
 }
@@ -124,6 +124,21 @@ describe("GET /api/v3/admin/teams", () => {
     const json = await res.json();
     expect(res.status).toBe(200);
     expect(json.teams).toHaveLength(1);
+  });
+
+  // The count used to be named totalTeams, unlike the three sibling paginated
+  // admin lists (content, email-logs, error-logs), all of which say total.
+  // The panel's shared "N total" footer reads data.total, so this endpoint
+  // silently rendered 0. AUDIT-013#dup-08.
+  it("names the row count total, matching every other paginated admin list", async () => {
+    withRole("admin");
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: "37" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 1, name: "Acme" }] });
+    const res = await GET(getRequest());
+    const json = await res.json();
+    expect(json.total).toBe(37);
+    expect(json.totalPages).toBe(4);
+    expect(json).not.toHaveProperty("totalTeams");
   });
 
   it("allows a super_admin to list teams (passes every admin-or-higher check)", async () => {

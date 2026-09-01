@@ -17,7 +17,19 @@ export async function GET() {
     "NOTIFICATION_DEFAULT_DISMISS_DAYS",
     "BROWSERBASE_LOGS_POLL_INTERVAL_MS",
     "SCAN_STATUS_POLL_INTERVAL_MS",
+    // All nine feature flags, not just PDF reports. Previously that was the
+    // only one that crossed to the browser, so turning any other feature off
+    // left its UI fully present and the user discovered the flag only from a
+    // 403 on submit.
     "FEATURE_PDF_REPORTS",
+    "FEATURE_DEMO_MODE",
+    "FEATURE_TEAMS",
+    "FEATURE_API_KEYS",
+    "FEATURE_WEBHOOKS",
+    "FEATURE_SCHEDULED_SCANS",
+    "FEATURE_BULK_SCANS",
+    "FEATURE_EMAIL_NOTIFICATIONS",
+    "FEATURE_DOMAIN_VERIFICATION",
   ] as const);
 
   return NextResponse.json(
@@ -29,6 +41,14 @@ export async function GET() {
       browserbaseLogsPollIntervalMs: settings.BROWSERBASE_LOGS_POLL_INTERVAL_MS,
       scanStatusPollIntervalMs: settings.SCAN_STATUS_POLL_INTERVAL_MS,
       featurePdfReports: settings.FEATURE_PDF_REPORTS,
+      featureDemoMode: settings.FEATURE_DEMO_MODE,
+      featureTeams: settings.FEATURE_TEAMS,
+      featureApiKeys: settings.FEATURE_API_KEYS,
+      featureWebhooks: settings.FEATURE_WEBHOOKS,
+      featureScheduledScans: settings.FEATURE_SCHEDULED_SCANS,
+      featureBulkScans: settings.FEATURE_BULK_SCANS,
+      featureEmailNotifications: settings.FEATURE_EMAIL_NOTIFICATIONS,
+      featureDomainVerification: settings.FEATURE_DOMAIN_VERIFICATION,
     },
     // Client components already have a compiled-constant fallback for
     // every one of these values, so a short cache is fine -- this is a

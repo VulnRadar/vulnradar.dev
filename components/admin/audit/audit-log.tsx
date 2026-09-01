@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/ui/utils";
 import { downloadBlob } from "@/lib/ui/download";
-import { APP_SLUG } from "@/lib/config/constants";
+import { APP_SLUG } from "@/lib/config/client-constants";
 import { PaginationControl } from "@/components/ui/pagination-control";
 import {
   UserAvatar,
@@ -278,9 +278,12 @@ export function AuditLog({
           </div>
         </CardHeader>
         <CardContent className="pt-0 space-y-4">
-          {/* Category filters - scrollable on mobile */}
+          {/* Category filters. Wraps rather than scrolling: the old
+              overflow-x-auto + scrollbar-hide strip hid seven of the ten
+              filters on a phone with no cue that more existed. Matches
+              components/admin/features/email-logs-manager.tsx. */}
           <div className="-mx-4 px-4 sm:mx-0 sm:px-0">
-            <div className="flex gap-2 overflow-x-auto pb-2 sm:pb-0 sm:flex-wrap scrollbar-hide">
+            <div className="flex flex-wrap gap-2 pb-2 sm:pb-0">
               {AUDIT_FILTER_CATEGORIES.map((cat) => (
                 <button
                   key={cat.id}
@@ -381,14 +384,26 @@ export function AuditLog({
 
                         return (
                           <React.Fragment key={log.id}>
+                            {/* a11y (SC 2.1.1): expanding a log entry's detail
+                                was click-only. See the note on the same fix in
+                                components/admin/users/users-tab.tsx. */}
                             <TableRow
+                              tabIndex={0}
+                              aria-expanded={isExpanded}
                               className={cn(
-                                "border-border/40 cursor-pointer group",
+                                "border-border/40 cursor-pointer group focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                                 isExpanded && "bg-muted/20",
                               )}
                               onClick={() =>
                                 setExpandedLog(isExpanded ? null : log.id)
                               }
+                              onKeyDown={(e) => {
+                                if (e.target !== e.currentTarget) return;
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  setExpandedLog(isExpanded ? null : log.id);
+                                }
+                              }}
                             >
                               <TableCell className="px-5 py-4">
                                 <ActionBadge action={log.action} />
@@ -420,31 +435,55 @@ export function AuditLog({
                               </TableCell>
                               <TableCell className="px-3 py-4">
                                 {log.target_email ? (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setAuditSearch(
-                                        log.target_email as string,
-                                      );
-                                    }}
-                                    title={`Filter to actions on ${log.target_email}`}
-                                    className={cn(
-                                      "flex items-center gap-2 rounded-sm",
-                                      focusRing,
+                                  // The avatar keeps the existing
+                                  // filter-to-this-target action; the name is
+                                  // now a real link to the account, the deep
+                                  // link the users table already builds. It
+                                  // used to be filter-only, so looking up the
+                                  // account behind an entry meant a manual
+                                  // search in another tab.
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setAuditSearch(
+                                          log.target_email as string,
+                                        );
+                                      }}
+                                      title={`Filter to actions on ${log.target_email}`}
+                                      className={cn(
+                                        "flex items-center rounded-sm",
+                                        focusRing,
+                                      )}
+                                    >
+                                      <UserAvatar
+                                        name={log.target_name}
+                                        email={log.target_email}
+                                        size="sm"
+                                        avatarUrl={log.target_avatar_url}
+                                      />
+                                    </button>
+                                    {log.target_user_id ? (
+                                      <a
+                                        href={`/admin?tab=users&user=${log.target_user_id}`}
+                                        onClick={(e) => e.stopPropagation()}
+                                        title={`Open ${log.target_email}`}
+                                        className={cn(
+                                          "text-sm text-muted-foreground truncate max-w-[120px] hover:underline hover:text-foreground rounded-sm",
+                                          focusRing,
+                                        )}
+                                      >
+                                        {log.target_name ||
+                                          log.target_email.split("@")[0]}
+                                      </a>
+                                    ) : (
+                                      <span className="text-sm text-muted-foreground truncate max-w-[120px]">
+                                        {log.target_name ||
+                                          log.target_email.split("@")[0]}
+                                      </span>
                                     )}
-                                  >
-                                    <UserAvatar
-                                      name={log.target_name}
-                                      email={log.target_email}
-                                      size="sm"
-                                      avatarUrl={log.target_avatar_url}
-                                    />
-                                    <span className="text-sm text-muted-foreground truncate max-w-[120px] hover:underline">
-                                      {log.target_name ||
-                                        log.target_email.split("@")[0]}
-                                    </span>
-                                  </button>
+                                  </div>
                                 ) : (
                                   <span className="text-xs text-muted-foreground/50">
                                     -
@@ -459,7 +498,7 @@ export function AuditLog({
                               <TableCell className="px-3 py-4">
                                 <ChevronDown
                                   className={cn(
-                                    "h-4 w-4 text-muted-foreground transition-transform opacity-0 group-hover:opacity-100",
+                                    "h-4 w-4 text-muted-foreground transition-transform opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
                                     isExpanded && "rotate-180 opacity-100",
                                   )}
                                   aria-hidden="true"

@@ -53,8 +53,13 @@ vi.mock("@/lib/rate-limiting/rate-limit", async (importOriginal) => {
   };
 });
 
+// Module-scope handle rather than an inline always-allow factory: the
+// blocklist could be deleted from this route with the whole suite still
+// green, because no test could drive a refusal and none asserted the call.
+// See the matching block in tests/app/api/v3/scan/route.test.ts.
+const mockCheckAccessRules = vi.fn();
 vi.mock("@/lib/scanner/access-rules", () => ({
-  checkAccessRules: vi.fn(async () => ({ allowed: true })),
+  checkAccessRules: (...args: unknown[]) => mockCheckAccessRules(...args),
 }));
 
 const mockIsUrlOwnedByUser = vi.fn();
@@ -191,6 +196,35 @@ beforeEach(() => {
   mockGetSettings.mockImplementation(async (keys: SettingKey[]) =>
     Object.fromEntries(keys.map((k) => [k, registryDefault(k)])),
   );
+  mockCheckAccessRules.mockReset();
+  mockCheckAccessRules.mockResolvedValue({ allowed: true });
+});
+
+describe("POST /api/v3/scan/crawl - access rules", () => {
+  it("returns 403 BLOCKED and never starts the crawl when the target is on the blocklist", async () => {
+    mockCheckAccessRules.mockResolvedValue({ allowed: false });
+
+    const res = await POST(postRequest({ url: "https://blocked.test" }));
+
+    expect(res.status).toBe(403);
+    expect((await res.json()).statusCode).toBe("BLOCKED");
+    expect(mockExecuteCrawlScan).not.toHaveBeenCalled();
+    // A crawl multiplies the request volume against the target, so this
+    // must refuse before any row is written, not after.
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("consults the blocklist with the normalized URL on the happy path", async () => {
+    mockQuery.mockResolvedValue({ rows: [{ id: 1 }] });
+
+    await POST(postRequest({ url: "example.com" }));
+
+    // The crawl route normalizes through the URL constructor, which adds the
+    // trailing slash; asserting the exact string is the point, since
+    // checking the raw input instead would let a bare host past a blocklist
+    // that only matches absolute URLs.
+    expect(mockCheckAccessRules).toHaveBeenCalledWith("https://example.com/");
+  });
 });
 
 describe("POST /api/v3/scan/crawl", () => {

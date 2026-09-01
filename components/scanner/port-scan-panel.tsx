@@ -98,10 +98,67 @@ export function PortScanPanel({
     }
   }
 
-  // Absent field: the caller did not opt in, or the target was unsafe /
-  // unresolvable. Nothing to say -- render nothing, like the DNS panel does
-  // for a raw IP.
-  if (!portScan) return null;
+  // Absent field: the port sweep is opt-in at scan time (lib/scanner/
+  // execute-scan.ts only runs it when the portScan flag is set), so a scan
+  // run without ticking the option carries nothing here.
+  //
+  // Returning null in that case took the refresh control down with the panel,
+  // which is the one case it was built for: POST /api/v3/history/[id]/ports
+  // resolves the host, runs the sweep and merges it into result_meta whether
+  // or not one was there before, so the endpoint works perfectly well from
+  // cold. The control could only ever refresh data that already existed, and
+  // the user's only recourse was re-running the whole scan, spending a daily
+  // quota slot and leaving a second history row for the same host. Offer the
+  // sweep instead, but only on the owner's own surfaces: /shared and /host
+  // pass no scanId, and there it is still correct to render nothing.
+  if (!portScan) {
+    if (!scanId) return null;
+    return (
+      <>
+        <PremiumUpgradeModal
+          open={showUpgradeModal}
+          onOpenChange={setShowUpgradeModal}
+          feature={PREMIUM_FEATURES.port_refetch}
+          currentPlan={userPlan}
+        />
+        <div className="flex items-center gap-3 overflow-hidden rounded-xl border border-border bg-card px-4 py-3">
+          <Server
+            aria-hidden
+            className="h-4 w-4 shrink-0 text-muted-foreground"
+          />
+          <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+            Open ports
+          </span>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            Not scanned
+          </span>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className={cn(
+              "inline-flex shrink-0 items-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50",
+              canRefresh
+                ? "text-foreground hover:bg-muted"
+                : "text-primary hover:bg-primary/10",
+            )}
+          >
+            {refreshing ? (
+              <Loader2 aria-hidden className="h-3 w-3 animate-spin" />
+            ) : (
+              <RefreshCw aria-hidden className="h-3 w-3" />
+            )}
+            Run port sweep
+          </button>
+        </div>
+        {error && (
+          <p role="alert" className="px-1 text-xs text-destructive">
+            {error}
+          </p>
+        )}
+      </>
+    );
+  }
 
   const openCount = portScan.open.length;
   const closed = portScan.closed ?? [];
@@ -123,7 +180,7 @@ export function PortScanPanel({
         feature={PREMIUM_FEATURES.port_refetch}
         currentPlan={userPlan}
       />
-      <div className="overflow-hidden rounded-md border border-border bg-card">
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
         <button
           type="button"
           onClick={() => setExpanded(!expanded)}
@@ -169,10 +226,15 @@ export function PortScanPanel({
           <div id={panelId} className="border-t border-border">
             {/* Sticky action bar: host + open count, plus the owner refresh. */}
             <div className="sticky top-0 flex items-center gap-2 bg-muted/40 px-4 py-1.5 backdrop-blur-sm">
-              <span className="font-mono text-[11px] font-semibold uppercase tracking-wide text-primary">
+              {/* min-w-0 + truncate: a hostname is one unbreakable token, so
+                  without them a long host pushed the open count and the
+                  Refresh button out of the card, which is overflow-hidden.
+                  Matches the same bar in
+                  components/scanner/dns-records-panel.tsx. */}
+              <span className="min-w-0 truncate font-mono text-[11px] font-semibold uppercase tracking-wide text-primary">
                 {portScan.host}
               </span>
-              <span className="text-[11px] tabular-nums text-muted-foreground">
+              <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
                 {openCount} open
               </span>
               {showRefresh && (
@@ -293,6 +355,10 @@ function ClosedSection({ ports }: { ports: ClosedPort[] }) {
       <button
         type="button"
         onClick={() => setShow(!show)}
+        // a11y (SC 4.1.2): the open-ports disclosure at the top of this file
+        // already reports its state; this one did not, so the chevron was the
+        // only signal that anything was collapsed.
+        aria-expanded={show}
         className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
       >
         {show ? (

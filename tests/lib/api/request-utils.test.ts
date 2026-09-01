@@ -19,6 +19,7 @@ const {
   getClientIp,
   normalizeIp,
   ipsInSameSubnet,
+  rateLimitIpKey,
   getUserAgent,
   getReferer,
   getBearerToken,
@@ -323,5 +324,35 @@ describe("isMethod", () => {
     // so a lowercase allowed-list entry will not match an uppercase
     // request method.
     expect(isMethod("GET", "get")).toBe(false);
+  });
+});
+
+describe("rateLimitIpKey", () => {
+  it("collapses every address in one IPv6 /64 to a single bucket", () => {
+    // The bypass this closes: checkRateLimit treats its key as an opaque
+    // string, so using the raw address gave anyone with a routed /64 (a cheap
+    // VPS allocation) 2^64 independent login / signup / forgot-password
+    // buckets, which is no rate limit at all.
+    const a = rateLimitIpKey("2001:db8:abcd:1234::1");
+    const b = rateLimitIpKey("2001:db8:abcd:1234:ffff:ffff:ffff:ffff");
+    expect(a).toBe(b);
+  });
+
+  it("keeps genuinely different IPv6 /64s in different buckets", () => {
+    expect(rateLimitIpKey("2001:db8:abcd:1234::1")).not.toBe(
+      rateLimitIpKey("2001:db8:abcd:1235::1"),
+    );
+  });
+
+  it("leaves IPv4 untouched so a carrier NAT does not share one bucket", () => {
+    expect(rateLimitIpKey("203.0.113.5")).toBe("203.0.113.5");
+    expect(rateLimitIpKey("203.0.113.5")).not.toBe(
+      rateLimitIpKey("203.0.113.6"),
+    );
+  });
+
+  it("passes through the 'unknown' fallback and anything unparsable", () => {
+    expect(rateLimitIpKey("unknown")).toBe("unknown");
+    expect(rateLimitIpKey("")).toBe("");
   });
 });

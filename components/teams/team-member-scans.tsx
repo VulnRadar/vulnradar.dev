@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { X, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -15,6 +16,9 @@ interface TeamMemberScansProps {
   member: Member;
   scans: MemberScan[];
   loading: boolean;
+  /** Set when the member-scans request failed. Kept separate from an empty
+   *  list so "we could not load these" never renders as "no scans found". */
+  loadError?: string | null;
   page: number;
   pageSize: number;
   totalPages: number;
@@ -28,6 +32,7 @@ export function TeamMemberScans({
   member,
   scans,
   loading,
+  loadError = null,
   page,
   pageSize,
   totalPages,
@@ -51,7 +56,7 @@ export function TeamMemberScans({
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 w-8 p-0 shrink-0"
+            className="h-11 w-11 sm:h-8 sm:w-8 p-0 shrink-0"
             onClick={onClose}
             aria-label="Close member scans"
           >
@@ -75,6 +80,10 @@ export function TeamMemberScans({
                 <Skeleton className="h-8 w-16 rounded-md shrink-0" />
               </div>
             ))}
+          </div>
+        ) : loadError ? (
+          <div className="py-12 text-center px-5" role="alert">
+            <p className="text-sm text-destructive">{loadError}</p>
           </div>
         ) : scans.length === 0 ? (
           <div className="py-12 text-center">
@@ -104,10 +113,17 @@ export function TeamMemberScans({
                     className="gap-1.5 shrink-0"
                     asChild
                   >
-                    <a href={`/history#${scan.id}`}>
+                    {/* /history selects a scan from ?scan=, never from the
+                        hash: the old `#${scan.id}` link dropped the user on
+                        the unfiltered history list with no indication of what
+                        had happened. The numeric primary key is fine here,
+                        because lib/history/resolve-scan.ts matches an
+                        all-digits param against the legacy id as well as the
+                        opaque public_id. */}
+                    <Link href={`/history?scan=${scan.id}`}>
                       View
                       <ExternalLink className="h-3 w-3" />
-                    </a>
+                    </Link>
                   </Button>
                 </div>
               ))}

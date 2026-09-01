@@ -3,6 +3,8 @@ import pool from "@/lib/database/db";
 import { getSession } from "@/lib/auth";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { resolveTicketAccess } from "@/lib/support/ticket-access";
+import { requirePermission } from "@/lib/auth/authorization";
+import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 import {
   notifyStaffOfTicketActivity,
   notifyUserOfStaffReply,
@@ -20,10 +22,26 @@ import {
  * PATCH /api/v3/support-tickets/[id]  -> change status (resolve/close/reopen)
  *
  * Access: the ticket's owner, or any staffer with MANAGE_SUPPORT_TICKETS.
- * Staff status is taken from the session role (getSession re-reads it from the
- * users table), which is enough for a support surface -- the admin inbox list
- * route uses requirePermission for the stricter gate.
+ * Staff status goes through requirePermission, the same gate the admin inbox
+ * list route uses. It used to be read straight off the session role, which
+ * skipped passesTwoFactorEnforcement: with ENFORCE_STAFF_2FA on, a staff
+ * account without 2FA was locked out of /api/v3/admin but could still read
+ * every customer's thread here (owner email included) and reply to customers
+ * as "Support". That is exactly the blast radius the toggle exists to close.
  */
+
+/**
+ * Whether the CURRENT caller is support staff for ticket purposes, with the
+ * ENFORCE_STAFF_2FA gate applied. requirePermission returns null both for a
+ * non-staff account and for a staff account the 2FA enforcement is blocking,
+ * which is the behaviour we want here: neither gets staff reach.
+ */
+async function viewerIsSupportStaff(): Promise<boolean> {
+  const staff = await requirePermission(
+    STAFF_PERMISSIONS.MANAGE_SUPPORT_TICKETS,
+  );
+  return staff !== null;
+}
 
 interface TicketRow {
   id: number;
@@ -78,7 +96,7 @@ export async function GET(
     ticketOwnerId: ticket.user_id,
     ticketId: id,
     viewerId: session.userId,
-    viewerRole: session.role,
+    isStaff: await viewerIsSupportStaff(),
   });
   if (!access.canView) {
     return NextResponse.json({ error: "Ticket not found." }, { status: 404 });
@@ -195,7 +213,7 @@ export async function POST(
     ticketOwnerId: ticket.user_id,
     ticketId: id,
     viewerId: session.userId,
-    viewerRole: session.role,
+    isStaff: await viewerIsSupportStaff(),
   });
   if (!access.canView) {
     return NextResponse.json({ error: "Ticket not found." }, { status: 404 });
@@ -305,7 +323,7 @@ export async function PATCH(
     ticketOwnerId: ticket.user_id,
     ticketId: id,
     viewerId: session.userId,
-    viewerRole: session.role,
+    isStaff: await viewerIsSupportStaff(),
   });
   if (!access.canView) {
     return NextResponse.json({ error: "Ticket not found." }, { status: 404 });
@@ -318,9 +336,25 @@ export async function PATCH(
       { status: 403 },
     );
   }
-  // A ticket owner may only resolve or close their own ticket. Staff may move it
-  // to any state (e.g. reopen to awaiting_user).
-  if (!access.isStaff && status !== "resolved" && status !== "closed") {
+  // A ticket owner may resolve or close their own ticket, and may reopen one
+  // they resolved. Staff may move it to any state.
+  //
+  // The reopen arm is not a new capability: POST on this route already sets
+  // awaiting_staff when the owner replies, and its own comment calls that
+  // "a reply on a resolved ticket reopens it". The owner could therefore
+  // always reopen a resolved ticket, just never without typing a message
+  // first, and the UI offered no way to say "this is not fixed" on its own
+  // (AUDIT-011#drift-21). `closed` stays terminal for the owner on purpose:
+  // that state is signposted as final ("Open a new ticket to continue") and
+  // POST refuses to reply to it, so only staff bring one back.
+  const ownerMayReopen =
+    ticket.status === "resolved" && status === "awaiting_staff";
+  if (
+    !access.isStaff &&
+    status !== "resolved" &&
+    status !== "closed" &&
+    !ownerMayReopen
+  ) {
     return NextResponse.json(
       { error: "You can only resolve or close your own ticket." },
       { status: 403 },
@@ -331,5 +365,23 @@ export async function PATCH(
     `UPDATE support_tickets SET status = $1, updated_at = NOW() WHERE id = $2`,
     [status, id],
   );
+
+  // A reopen with no message would otherwise slide back into the queue with
+  // nothing to announce it: the reply path notifies staff, so this one has to
+  // as well or "reopen" means "hope somebody rechecks the list". Fire and
+  // forget, exactly like the reply path's own notification.
+  if (ownerMayReopen) {
+    queueMicrotask(() => {
+      void notifyStaffOfTicketActivity({
+        ticketId: id,
+        subject: ticket.subject,
+        category: ticket.category,
+        fromEmail: session.email,
+        body: "Reopened this ticket: the issue is not resolved.",
+        isNew: false,
+      });
+    });
+  }
+
   return NextResponse.json({ status });
 }

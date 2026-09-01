@@ -27,6 +27,12 @@ const ROOT = resolve(__dirname, "..");
 const PKG = JSON.parse(await readFile(resolve(ROOT, "package.json"), "utf8"));
 const VERSION = PKG.version;
 
+// The instance this build talks to. A self-hoster sets VULNRADAR_API_HOST and
+// gets a build whose constants, deep links and host_permissions all agree;
+// unset, it is the hosted instance exactly as before.
+const API_HOST = process.env.VULNRADAR_API_HOST || "https://vulnradar.dev";
+const API_HOST_DEFINE = { __API_HOST__: JSON.stringify(API_HOST) };
+
 const targetArg = process.argv[2];
 const targets = (targetArg ? [targetArg] : ["chrome", "firefox"]).filter(
   (t) => t === "chrome" || t === "firefox",
@@ -38,6 +44,10 @@ if (targets.length === 0) {
 }
 
 console.log(`[build] version ${VERSION} - targets: ${targets.join(", ")}`);
+
+// Regenerate src/tokens.css from src/lib/tokens.json first, so a checkout
+// where someone edited the JSON and forgot cannot ship a stale stylesheet.
+await import("./gen-tokens.mjs");
 
 // Run vite build once (outputs to dist-build/) - this builds the extension
 // *pages* (popup/options/welcome) per vite.config.ts.
@@ -61,6 +71,7 @@ for (const [name, entry] of [
   await build({
     root: srcDir,
     configFile: false,
+    define: API_HOST_DEFINE,
     resolve: {
       alias: {
         "@": resolve(srcDir, "lib"),
@@ -70,7 +81,11 @@ for (const [name, entry] of [
       outDir: viteOut,
       emptyOutDir: false,
       minify: "esbuild",
-      sourcemap: true,
+      // No sourcemaps in a release build, matching vite.config.ts. This is
+      // the release path (nothing calls build.mjs in development), and
+      // background.js.map + content.js.map alone were 329 KB of the 606 KB
+      // of maps that used to ship inside every store zip.
+      sourcemap: false,
       target: "es2022",
       rollupOptions: {
         input: entry,
@@ -108,12 +123,25 @@ for (const target of targets) {
     }
   }
 
+  // License + attribution. The store packages are the only copy of the
+  // extension most people ever receive, and they carried neither the GPL text
+  // nor a notice for the MPL-2.0 webextension-polyfill and BSD-3-Clause
+  // lit-html that the IIFE build inlines verbatim into background.js and
+  // content.js. MPL-2.0 section 3.2 requires the binary's recipients to be
+  // told. Copied here so both dist dirs, and therefore both store zips, carry
+  // them.
+  for (const name of ["LICENSE", "THIRD-PARTY.md"]) {
+    await copyFile(resolve(ROOT, name), join(dist, name));
+  }
+
   // Inject manifest with resolved version
   const manifestTpl = JSON.parse(
     await readFile(resolve(ROOT, "manifest", `${target}.json`), "utf8"),
   );
   const finalManifest = JSON.parse(
-    JSON.stringify(manifestTpl).replace(/__VERSION__/g, VERSION),
+    JSON.stringify(manifestTpl)
+      .replace(/__VERSION__/g, VERSION)
+      .replace(/__API_HOST__/g, API_HOST),
   );
   await writeFile(
     join(dist, "manifest.json"),

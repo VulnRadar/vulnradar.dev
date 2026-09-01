@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { BROWSERBASE_ENABLED } from "@/lib/config/constants";
+import { BROWSERBASE_ENABLED } from "@/lib/config/server-constants";
 import { getSettings } from "@/lib/config/runtime-config";
 import {
   BrowserBaseError,
@@ -346,8 +346,16 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
       ),
     );
     if (elapsedSeconds > 0) {
+      // Swallowed so a usage write never fails the delete, but not silent:
+      // browserbase seconds are what the account is metered on, so a
+      // persistent failure would stop usage being counted for every account
+      // while the operator's real bill kept growing, with no signal anywhere.
       recordBrowserbaseSeconds(deletedRow.user_id, elapsedSeconds).catch(
-        () => {},
+        (err) =>
+          console.error(
+            `[browser-sessions] Failed to record browserbase seconds for user ${deletedRow.user_id}:`,
+            err,
+          ),
       );
     }
     // Free the concurrency slot this session held, admitting the next
@@ -355,7 +363,15 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
     // poll/timeout. Only sessions with a tracked row ever held a slot (see
     // POST's acquireConcurrencySlot) -- a row-less session predates
     // ownership tracking and never went through that reservation.
-    releaseConcurrencySlot().catch(() => {});
+    // Swallowed so a metering hiccup never fails the delete, but logged: a
+    // failing release leaks the global session slot permanently and queued
+    // requests then wait out their timeout with nothing in the error log.
+    releaseConcurrencySlot().catch((err) =>
+      console.error(
+        "[browser-sessions] Failed to release a concurrency slot:",
+        err,
+      ),
+    );
   }
 
   return ApiResponse.success({ ended: true, id });

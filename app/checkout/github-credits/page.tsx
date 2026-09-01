@@ -7,7 +7,11 @@ import { ArrowLeft, Check, ChevronLeft, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/ui/utils";
-import { ROUTES, BILLING_ENABLED, APP_NAME } from "@/lib/config/constants";
+import {
+  ROUTES,
+  BILLING_ENABLED,
+  APP_NAME,
+} from "@/lib/config/client-constants";
 import {
   GITHUB_CREDIT_TIERS,
   type GithubCreditTier,
@@ -51,7 +55,9 @@ export default function GithubCreditsCheckoutPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center max-w-md px-4">
-          <h1 className="text-2xl font-bold mb-2">There is nothing to buy</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-balance mb-2">
+            There is nothing to buy
+          </h1>
           <p className="text-muted-foreground mb-4">
             Billing is switched off on this {APP_NAME} deployment, so GitHub
             repo AI review has no window cap to top up.
@@ -75,13 +81,13 @@ export default function GithubCreditsCheckoutPage() {
         role="status"
       >
         <div className="text-center px-4 max-w-md">
-          <div className="w-16 h-16 rounded-full bg-[hsl(var(--success)/0.12)] flex items-center justify-center mx-auto mb-6">
+          <div className="w-16 h-16 rounded-full bg-[hsl(var(--success))]/10 flex items-center justify-center mx-auto mb-6">
             <Check
               className="h-8 w-8 text-[hsl(var(--success))]"
               aria-hidden="true"
             />
           </div>
-          <h1 className="text-2xl font-bold mb-2">
+          <h1 className="text-2xl font-semibold tracking-tight text-balance mb-2">
             {purchaseResult.tokens.toLocaleString()} tokens added
           </h1>
           <p className="text-muted-foreground mb-6">
@@ -117,8 +123,8 @@ export default function GithubCreditsCheckoutPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card/50 sticky top-(--vr-banner-h,0px) z-10 transition-[top] duration-300">
-        <div className="container max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+      <header className="border-b border-border bg-card/50 sticky top-[calc(var(--vr-banner-h,0px)+var(--vr-imp-banner-h,0px))] z-10 transition-[top] duration-300">
+        <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
           <Link
             href={`${ROUTES.PROFILE}?tab=billing`}
             className="inline-flex items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
@@ -130,17 +136,17 @@ export default function GithubCreditsCheckoutPage() {
         </div>
       </header>
       <div
-        className="h-(--vr-banner-h,0px) transition-[height] duration-300"
+        className="h-[calc(var(--vr-banner-h,0px)+var(--vr-imp-banner-h,0px))] transition-[height] duration-300"
         aria-hidden="true"
       />
 
       <main
         id="main-content"
         tabIndex={-1}
-        className="container max-w-4xl mx-auto px-4 py-8 md:py-12"
+        className="w-full max-w-4xl mx-auto px-4 sm:px-6 py-12 sm:py-16"
       >
         <div className="mb-8 max-w-2xl">
-          <h1 className="text-2xl md:text-3xl font-bold mb-2">
+          <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight mb-5 text-balance">
             Buy more GitHub review tokens
           </h1>
           <p className="text-muted-foreground">
@@ -186,7 +192,7 @@ export default function GithubCreditsCheckoutPage() {
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="text-lg font-bold text-foreground">
+                    <p className="text-lg font-semibold tabular-nums text-foreground">
                       ${(tier.priceInCents / 100).toFixed(0)}
                     </p>
                     <p className="text-xs text-muted-foreground">one-time</p>
@@ -196,7 +202,14 @@ export default function GithubCreditsCheckoutPage() {
             })}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 md:items-start max-w-4xl">
+          <div
+            className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 md:items-start max-w-4xl"
+            /* The one md: breakpoint left on these pages, deliberately: every
+               other one moved to sm: to match the rest of app/, but this is the
+               split that gives the Stripe payment form its own column, and at
+               640px that column would be about 270px wide. Wide enough to
+               render the card fields, not wide enough to fill them in. */
+          >
             <div>
               <button
                 type="button"
@@ -222,7 +235,7 @@ export default function GithubCreditsCheckoutPage() {
                 <Separator className="my-4" />
                 <div className="flex justify-between items-center">
                   <span className="font-semibold">Total today</span>
-                  <span className="text-2xl font-bold">
+                  <span className="text-2xl font-semibold tabular-nums">
                     ${(selectedTier.priceInCents / 100).toFixed(0)}
                   </span>
                 </div>

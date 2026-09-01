@@ -3,7 +3,7 @@
 // background contexts.
 
 import { SEVERITY_HEX, SEVERITY_RANK } from "./types";
-import type { Severity } from "./types";
+import type { NotificationThreshold, Severity } from "./types";
 
 /** Hex color for a severity (matches the live app's --severity-* vars). */
 export function severityHex(s: Severity): string {
@@ -15,13 +15,16 @@ export function severityRank(s: Severity): number {
   return SEVERITY_RANK[s];
 }
 
-export function isMoreSevere(a: Severity, b: Severity): boolean {
-  return severityRank(a) > severityRank(b);
-}
-
+/**
+ * The notification threshold rule, in one place. The background worker's
+ * shouldNotify() used to hand-roll this with its own severity rank map, so
+ * the same rule existed twice and a change to one copy would never reach the
+ * other. Typed against NotificationThreshold rather than a repeated inline
+ * union, so adding a threshold level to the settings type breaks here too.
+ */
 export function meetsThreshold(
   findingSeverity: Severity,
-  threshold: "off" | "critical" | "high" | "medium" | "all",
+  threshold: NotificationThreshold,
 ): boolean {
   if (threshold === "off") return false;
   if (threshold === "all") return true;
@@ -78,14 +81,4 @@ export function formatRelative(iso: string, now: number = Date.now()): string {
 export function truncateUrl(s: string, max: number = 48): string {
   if (s.length <= max) return s;
   return s.slice(0, max - 1) + "\u2026";
-}
-
-export function summarizeCounts(
-  counts: Readonly<Record<Severity, number>>,
-): string {
-  const parts: string[] = [];
-  for (const s of ["critical", "high", "medium", "low", "info"] as const) {
-    if (counts[s] > 0) parts.push(`${counts[s]} ${s.toUpperCase()}`);
-  }
-  return parts.join(" / ") || "0";
 }

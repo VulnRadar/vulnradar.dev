@@ -51,6 +51,16 @@ const MIN_CANDIDATE_SCANS = 3;
 /** Example scan links shown per candidate, so an admin can sanity-check what triggered it without opening a database console. */
 const MAX_EXAMPLES = 3;
 
+/**
+ * How many recent scans' findings blobs are sampled per candidate to derive
+ * the suggested CWE/category/severity fields. The query used to be unbounded,
+ * so listing this page transferred every findings JSONB of every AI-tagged
+ * scan, for every candidate tag. suggestRuleFields only wants the two most
+ * common CWEs and categories plus the lowest severity seen, so a recent
+ * sample answers the same question at a fixed cost.
+ */
+const MAX_FINDINGS_SAMPLE = 50;
+
 const VALID_SEVERITIES: readonly Severity[] = [
   "info",
   "low",
@@ -167,43 +177,55 @@ export async function GET() {
       [MIN_CANDIDATE_SCANS],
     );
 
-    const candidates: AiTagCandidate[] = [];
-    for (const row of counts.rows) {
-      const [examples, findingsRows] = await Promise.all([
-        pool.query<ExampleScanRow>(
-          `SELECT st.scan_id, sh.url, sh.scanned_at
+    // perf: this used to be a `for` loop with the Promise.all INSIDE it, so
+    // the "parallel" pair ran strictly one tag after another: two round trips
+    // per candidate, in series. The findings query also had no bound, pulling
+    // the complete findings JSONB of every scan carrying the tag across the
+    // wire only to flatMap it here. Now the per-tag work fans out across the
+    // whole candidate list at once, and the findings sample is capped at the
+    // most recent MAX_FINDINGS_SAMPLE scans: suggestRuleFields only ranks the
+    // two most common CWEs/categories and the lowest severity, which a recent
+    // sample answers as well as the full history.
+    const candidates: AiTagCandidate[] = await Promise.all(
+      counts.rows.map(async (row) => {
+        const [examples, findingsRows] = await Promise.all([
+          pool.query<ExampleScanRow>(
+            `SELECT st.scan_id, sh.url, sh.scanned_at
            FROM scan_tags st
            JOIN scan_history sh ON sh.id = st.scan_id
            WHERE st.tag = $1 AND st.source = 'ai'
            ORDER BY st.id DESC
            LIMIT $2`,
-          [row.tag, MAX_EXAMPLES],
-        ),
-        pool.query<FindingsRow>(
-          `SELECT sh.findings
+            [row.tag, MAX_EXAMPLES],
+          ),
+          pool.query<FindingsRow>(
+            `SELECT sh.findings
            FROM scan_tags st
            JOIN scan_history sh ON sh.id = st.scan_id
-           WHERE st.tag = $1 AND st.source = 'ai'`,
-          [row.tag],
-        ),
-      ]);
+           WHERE st.tag = $1 AND st.source = 'ai'
+           ORDER BY st.id DESC
+           LIMIT $2`,
+            [row.tag, MAX_FINDINGS_SAMPLE],
+          ),
+        ]);
 
-      const allFindings = findingsRows.rows.flatMap((r) =>
-        Array.isArray(r.findings) ? (r.findings as Vulnerability[]) : [],
-      );
+        const allFindings = findingsRows.rows.flatMap((r) =>
+          Array.isArray(r.findings) ? (r.findings as Vulnerability[]) : [],
+        );
 
-      candidates.push({
-        tag: row.tag,
-        scanCount: row.scan_count,
-        userCount: row.user_count,
-        examples: examples.rows.map((e) => ({
-          scanId: e.scan_id,
-          url: e.url,
-          scannedAt: e.scanned_at,
-        })),
-        suggested: suggestRuleFields(allFindings),
-      });
-    }
+        return {
+          tag: row.tag,
+          scanCount: row.scan_count,
+          userCount: row.user_count,
+          examples: examples.rows.map((e) => ({
+            scanId: e.scan_id,
+            url: e.url,
+            scannedAt: e.scanned_at,
+          })),
+          suggested: suggestRuleFields(allFindings),
+        };
+      }),
+    );
 
     return NextResponse.json({
       candidates,

@@ -79,8 +79,34 @@ vi.mock("@/lib/email/email", () => ({
 }));
 
 const mockGetSetting = vi.fn();
+const mockGetSettings =
+  vi.fn<(keys?: readonly string[]) => Promise<Record<string, unknown>>>();
 vi.mock("@/lib/config/runtime-config", () => ({
   getSetting: (...args: unknown[]) => mockGetSetting(...args),
+  getSettings: (keys?: readonly string[]) => mockGetSettings(keys),
+}));
+
+// A scheduled run now goes through the same admin blocklist and daily-quota
+// gates a manual scan does. Default both to "allowed" so the existing cases
+// exercise the happy path; the dedicated cases below drive the refusals.
+const mockCheckAccessRules =
+  vi.fn<(url: string) => Promise<{ allowed: boolean; reason?: string }>>();
+const mockGetDailyLimit = vi.fn<(userId: number) => Promise<number>>();
+const mockIncrementDailyCountCapped =
+  vi.fn<
+    (
+      userId: number,
+      limit: number,
+    ) => Promise<{ recorded: boolean; count: number }>
+  >();
+
+vi.mock("@/lib/scanner/access-rules", () => ({
+  checkAccessRules: (url: string) => mockCheckAccessRules(url),
+}));
+vi.mock("@/lib/rate-limiting/daily-limits", () => ({
+  getDailyLimit: (userId: number) => mockGetDailyLimit(userId),
+  incrementDailyCountCapped: (userId: number, limit: number) =>
+    mockIncrementDailyCountCapped(userId, limit),
 }));
 
 const { claimDueSchedules, processSchedule, runInBatches, runDueSchedules } =
@@ -95,6 +121,7 @@ function makeSchedule(overrides: Partial<Record<string, unknown>> = {}) {
     preferred_hour_utc: 12,
     preferred_day_of_week: 1,
     preferred_day_of_month: 1,
+    team_id: null,
     ...overrides,
   };
 }
@@ -116,6 +143,14 @@ beforeEach(() => {
   mockScheduledScanCompleteEmail.mockClear();
   mockGetSetting.mockReset();
   mockGetSetting.mockResolvedValue(3);
+  mockGetSettings.mockReset();
+  mockGetSettings.mockResolvedValue({});
+  mockCheckAccessRules.mockReset();
+  mockCheckAccessRules.mockResolvedValue({ allowed: true });
+  mockGetDailyLimit.mockReset();
+  mockGetDailyLimit.mockResolvedValue(100);
+  mockIncrementDailyCountCapped.mockReset();
+  mockIncrementDailyCountCapped.mockResolvedValue({ recorded: true, count: 1 });
 
   // Default: every pool.query call succeeds with a generic shape. Tests
   // override specific calls with mockResolvedValueOnce / mockImplementation
@@ -140,6 +175,9 @@ describe("claimDueSchedules", () => {
     expect(sql).toContain("WHERE active = true AND next_run_at <= NOW()");
     expect(sql).toContain("ORDER BY next_run_at ASC");
     expect(sql).toContain("FOR UPDATE SKIP LOCKED");
+    // team_id has to come back with the claim: processSchedule can only write
+    // it onto scan_history if the claim selected it. ref: AUDIT-011#drift-01
+    expect(sql).toContain("team_id");
     expect(params).toEqual([50]);
   });
 
@@ -231,6 +269,7 @@ describe("processSchedule", () => {
       expect.any(String), // DEFAULT_SCAN_NOTE
       expect.any(Number), // categoriesTotal
       true, // is_public: resolveScanIsPublic's account default (no preference set here)
+      null, // team_id: personal schedule
     ]);
     expect(insertArgs![0]).toContain("'scheduled'");
 
@@ -266,7 +305,48 @@ describe("processSchedule", () => {
     const insertArgs = mockPoolQuery.mock.calls.find(([sql]) =>
       String(sql).includes("INSERT INTO scan_history"),
     );
-    expect(insertArgs![1].at(-1)).toBe(false);
+    // is_public is the second-to-last parameter now that team_id trails it.
+    expect(insertArgs![1].at(-2)).toBe(false);
+  });
+
+  // ref: AUDIT-011#drift-01. Every manual scan route writes scan_history.team_id
+  // and every team-scoped history read filters on it, so a scheduled run of a
+  // TEAM schedule that dropped the column produced a row only the schedule's
+  // owner could see. These two cases pin both directions.
+  it("carries the schedule's team_id onto the scan_history row it inserts", async () => {
+    const schedule = makeSchedule({ id: 31, team_id: 8 });
+    mockPoolQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("INSERT INTO scan_history")) {
+        return { rows: [{ id: 900 }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    const result = await processSchedule(schedule);
+
+    expect(result.outcome).toBe("scanned");
+    const insertArgs = mockPoolQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO scan_history"),
+    );
+    expect(String(insertArgs![0])).toContain("team_id");
+    expect(insertArgs![1].at(-1)).toBe(8);
+  });
+
+  it("writes a null team_id for a personal schedule rather than omitting the column", async () => {
+    const schedule = makeSchedule({ id: 32, team_id: null });
+    mockPoolQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("INSERT INTO scan_history")) {
+        return { rows: [{ id: 901 }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    await processSchedule(schedule);
+
+    const insertArgs = mockPoolQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO scan_history"),
+    );
+    expect(insertArgs![1].at(-1)).toBeNull();
   });
 
   it("sends the schedules-typed 'scan complete' email once the run lands as completed", async () => {
@@ -418,6 +498,65 @@ describe("processSchedule", () => {
     expect(rescheduleCall).toBeDefined();
   });
 
+  // AUDIT-014#abuse-04: scheduled runs were entirely unmetered. They neither
+  // checked nor charged dailyScans, so an account with unlimited hourly
+  // schedules could run unbounded full scans against a finite daily cap while
+  // the usage figure it saw stayed at zero. AUDIT-013#cov-05 separately found
+  // that no test anywhere asserted a scan path charges quota, which is why
+  // this went unnoticed; these three cases close that gap.
+  it("charges the daily scan quota before running, like every manual scan path", async () => {
+    const schedule = makeSchedule({ id: 30, user_id: 77 });
+
+    const result = await processSchedule(schedule, new Date());
+
+    expect(result).toEqual({ id: 30, outcome: "scanned" });
+    expect(mockGetDailyLimit).toHaveBeenCalledWith(77);
+    expect(mockIncrementDailyCountCapped).toHaveBeenCalledWith(77, 100);
+    expect(mockExecuteScan).toHaveBeenCalled();
+  });
+
+  it("skips the run and reschedules when the account is over its daily quota, without deactivating the schedule", async () => {
+    const schedule = makeSchedule({ id: 31, user_id: 78 });
+    mockIncrementDailyCountCapped.mockResolvedValue({
+      recorded: false,
+      count: 100,
+    });
+
+    const result = await processSchedule(schedule, new Date());
+
+    expect(result).toEqual({ id: 31, outcome: "quota_gated" });
+    expect(mockExecuteScan).not.toHaveBeenCalled();
+
+    // Being over quota is temporary, so the schedule stays active and simply
+    // runs again next cadence -- the same treatment the plan gate gets.
+    const deactivateCall = mockPoolQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("SET active = false"),
+    );
+    expect(deactivateCall).toBeUndefined();
+    const rescheduleCall = mockPoolQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("SET next_run_at = $1 WHERE id = $2"),
+    );
+    expect(rescheduleCall).toBeDefined();
+  });
+
+  it("stops scanning a target an admin blocklisted after the schedule was created", async () => {
+    const schedule = makeSchedule({ id: 32 });
+    mockCheckAccessRules.mockResolvedValue({
+      allowed: false,
+      reason: "Target is on the blocklist",
+    });
+
+    const result = await processSchedule(schedule, new Date());
+
+    expect(result).toEqual({
+      id: 32,
+      outcome: "blocked",
+      detail: "Target is on the blocklist",
+    });
+    expect(mockExecuteScan).not.toHaveBeenCalled();
+    expect(mockIncrementDailyCountCapped).not.toHaveBeenCalled();
+  });
+
   it("never throws even when scan_history insert fails -- logs, reschedules at the normal cadence, and reports the error outcome (failure isolation)", async () => {
     const schedule = makeSchedule({ id: 13 });
     mockPoolQuery.mockImplementation(async (sql: string) => {
@@ -519,6 +658,33 @@ describe("runInBatches (bounded concurrency)", () => {
 });
 
 describe("runDueSchedules (end to end: claim + bounded-concurrency processing)", () => {
+  // AUDIT-012#logic-07: FEATURE_SCHEDULED_SCANS used to gate only schedule
+  // CREATION, so turning it off in /admin left every existing schedule
+  // running. The kill switch has to stop the worker too.
+  it("claims and runs nothing while FEATURE_SCHEDULED_SCANS is off", async () => {
+    mockGetSetting.mockImplementation(async (key: string) =>
+      key === "FEATURE_SCHEDULED_SCANS" ? false : 3,
+    );
+    mockClientQuery.mockImplementation(async () => ({ rows: [] }));
+
+    const stats = await runDueSchedules();
+
+    expect(stats).toEqual({
+      processed: 0,
+      scanned: 0,
+      blocked: 0,
+      planGated: 0,
+      errors: 0,
+    });
+    // The claim transaction never even opened, so no due row was soft-locked
+    // and pushed forward: flipping the switch back on resumes the normal
+    // cadence rather than skipping an occurrence.
+    expect(mockClientQuery).not.toHaveBeenCalled();
+    expect(mockGetSetting).not.toHaveBeenCalledWith(
+      "SCHEDULE_WORKER_CLAIM_LIMIT",
+    );
+  });
+
   it("reports an all-zero pass when nothing is due, without touching the concurrency setting", async () => {
     mockClientQuery.mockImplementation(async (sql: string) => {
       if (sql.includes("FOR UPDATE SKIP LOCKED")) return { rows: [] };

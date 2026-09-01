@@ -28,9 +28,13 @@ const ICON = html`<img
 />`;
 
 export function ConnectPill(props: ConnectPillProps): TemplateResult {
+  // The pill resolves from "Connecting..." to one of three end states after an
+  // async round trip, with no other signal that anything happened, so it is a
+  // status message (SC 4.1.3). The <img> beside the label is decorative and
+  // already carries alt="".
   if (!props.me && props.initializing) {
     return html`
-      <div class="pill disconnected">
+      <div class="pill disconnected" role="status">
         ${ICON}
         <span class="label">Connecting&hellip;</span>
       </div>
@@ -38,12 +42,16 @@ export function ConnectPill(props: ConnectPillProps): TemplateResult {
   }
   if (!props.me) {
     return html`
-      <div class="pill disconnected">
+      <div class="pill disconnected" role="status">
         ${ICON}
         <span class="label"
           >${props.connectionFailed ? "Failed to connect" : "Not connected"}</span
         >
-        <button class="section-action" @click=${props.onOpenOptions}>
+        <button
+          type="button"
+          class="section-action"
+          @click=${props.onOpenOptions}
+        >
           ${props.connectionFailed ? "Settings" : "Connect"}
         </button>
       </div>
@@ -53,7 +61,7 @@ export function ConnectPill(props: ConnectPillProps): TemplateResult {
   const displayName =
     props.me.name && props.me.name.length > 0 ? props.me.name : props.me.email;
   return html`
-    <div class="pill connected" title=${props.me.email}>
+    <div class="pill connected" role="status" title=${props.me.email}>
       ${ICON}
       <span class="label">${displayName}</span>
       <span class="plan">${plan}</span>

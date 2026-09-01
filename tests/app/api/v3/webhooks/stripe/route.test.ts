@@ -35,6 +35,36 @@ vi.mock("@/lib/billing/stripe", () => ({
   getStripe: () => mockGetStripe(),
 }));
 
+// The three credit-reversal calls behind charge.refunded and
+// charge.dispute.created. Their internals are covered by their own suites;
+// what was untested is the WIRING -- the case labels, the partial-refund
+// early break, and the payment_intent extraction that has to handle both a
+// bare id string and an expanded object. Everything else in these modules
+// stays real so the payment_intent.succeeded tests above keep exercising the
+// crediting path through the mocked pool (AUDIT-013#cov-11).
+const mockReverseAiCreditPurchase = vi.fn();
+vi.mock("@/lib/billing/ai-usage", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/billing/ai-usage")>()),
+  reverseAiCreditPurchase: (...args: unknown[]) =>
+    mockReverseAiCreditPurchase(...args),
+}));
+
+const mockReverseGithubCreditPurchase = vi.fn();
+vi.mock("@/lib/billing/github-review-usage", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/lib/billing/github-review-usage")
+  >()),
+  reverseGithubCreditPurchase: (...args: unknown[]) =>
+    mockReverseGithubCreditPurchase(...args),
+}));
+
+const mockReverseBrowserbaseCreditPurchase = vi.fn();
+vi.mock("@/lib/billing/browserbase-usage", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/billing/browserbase-usage")>()),
+  reverseBrowserbaseCreditPurchase: (...args: unknown[]) =>
+    mockReverseBrowserbaseCreditPurchase(...args),
+}));
+
 const { POST } = await import("@/app/api/v3/webhooks/stripe/route");
 
 // A real Stripe SDK instance purely to get the real, local, network-free
@@ -91,6 +121,12 @@ beforeEach(() => {
   mockCustomerRetrieve.mockReset();
   mockGetStripe.mockReset();
   mockGetStripe.mockReturnValue(fakeStripe());
+  mockReverseAiCreditPurchase.mockReset();
+  mockReverseAiCreditPurchase.mockResolvedValue({ reversed: false });
+  mockReverseGithubCreditPurchase.mockReset();
+  mockReverseGithubCreditPurchase.mockResolvedValue({ reversed: false });
+  mockReverseBrowserbaseCreditPurchase.mockReset();
+  mockReverseBrowserbaseCreditPurchase.mockResolvedValue({ reversed: false });
 });
 
 const badgeRow = { rows: [{ id: 9 }] };
@@ -887,16 +923,32 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.deleted", () => {
     expect(res.status).toBe(200);
     expect(mockQuery).toHaveBeenCalledTimes(5);
     const [sql, params] = mockQuery.mock.calls[1];
-    // billing: plan is now a CASE on role -- a staff account (whose real
-    // paid subscription just ended) falls back to their granted
-    // pro_supporter floor instead of free. See lib/billing/staff-plan.ts.
-    expect(sql).toContain(
-      "CASE WHEN role IN ('admin', 'moderator', 'support') THEN 'pro_supporter' ELSE 'free' END",
-    );
+    // billing: plan is a CASE on role -- a staff account (whose real paid
+    // subscription just ended) falls back to their granted floor instead of
+    // free. The CASE is built from lib/billing/staff-plan.ts's own constants:
+    // the previous inline version listed three of the seven staff roles and
+    // left super_admin out entirely, so those accounts dropped to free.
+    expect(sql).toContain("WHEN role = 'super_admin' THEN 'elite_supporter'");
+    expect(sql).toContain("WHEN role = ANY($2::text[]) THEN 'pro_supporter'");
+    expect(sql).toContain("ELSE 'free' END");
     expect(sql).toContain("stripe_subscription_id = NULL");
-    expect(params).toEqual(["cus_7"]);
+    expect(params[0]).toBe("cus_7");
+    expect(params[1]).toEqual(
+      expect.arrayContaining([
+        "admin",
+        "moderator",
+        "support",
+        "billing",
+        "security_analyst",
+        "content_manager",
+        "ops",
+      ]),
+    );
     const [deleteSql, deleteParams] = mockQuery.mock.calls[3];
     expect(deleteSql).toContain("DELETE FROM user_badges");
+    // The DELETE is now guarded so a live admin gift keeps the badge; the
+    // parameters are unchanged.
+    expect(deleteSql).toContain("gifted_subscriptions");
     expect(deleteParams).toEqual([77, 9]);
   });
 
@@ -1062,6 +1114,209 @@ describe("POST /api/v3/webhooks/stripe: invoice events", () => {
     const [sql, params] = mockQuery.mock.calls[1];
     expect(sql).toContain("subscription_status = 'past_due'");
     expect(params).toEqual(["cus_3"]);
+  });
+});
+
+describe("POST /api/v3/webhooks/stripe: charge.refunded", () => {
+  function refundEvent(id: string, charge: Record<string, unknown>) {
+    return signedRequest(
+      JSON.stringify({ id, type: "charge.refunded", data: { object: charge } }),
+    );
+  }
+
+  it("reverses nothing on a partial refund", async () => {
+    withIdempotency("evt_refund_partial");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const res = await POST(
+      refundEvent("evt_refund_partial", {
+        id: "ch_1",
+        refunded: false,
+        payment_intent: "pi_1",
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockReverseAiCreditPurchase).not.toHaveBeenCalled();
+    expect(mockReverseGithubCreditPurchase).not.toHaveBeenCalled();
+    expect(mockReverseBrowserbaseCreditPurchase).not.toHaveBeenCalled();
+    logSpy.mockRestore();
+  });
+
+  it("claws back all three credit ledgers for a string payment_intent", async () => {
+    withIdempotency("evt_refund_full");
+    mockReverseAiCreditPurchase.mockResolvedValue({
+      reversed: true,
+      tokens: 500,
+      userId: 42,
+    });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const res = await POST(
+      refundEvent("evt_refund_full", {
+        id: "ch_2",
+        refunded: true,
+        payment_intent: "pi_full",
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockReverseAiCreditPurchase).toHaveBeenCalledWith("pi_full");
+    expect(mockReverseGithubCreditPurchase).toHaveBeenCalledWith("pi_full");
+    expect(mockReverseBrowserbaseCreditPurchase).toHaveBeenCalledWith(
+      "pi_full",
+    );
+    logSpy.mockRestore();
+  });
+
+  it("extracts the id when Stripe sends an expanded payment_intent object", async () => {
+    withIdempotency("evt_refund_expanded");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const res = await POST(
+      refundEvent("evt_refund_expanded", {
+        id: "ch_3",
+        refunded: true,
+        payment_intent: { id: "pi_expanded", object: "payment_intent" },
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockReverseAiCreditPurchase).toHaveBeenCalledWith("pi_expanded");
+    logSpy.mockRestore();
+  });
+
+  it("does nothing when the charge carries no payment_intent at all", async () => {
+    withIdempotency("evt_refund_no_pi");
+    const res = await POST(
+      refundEvent("evt_refund_no_pi", {
+        id: "ch_4",
+        refunded: true,
+        payment_intent: null,
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockReverseAiCreditPurchase).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/v3/webhooks/stripe: charge.dispute.created", () => {
+  function disputeEvent(id: string, dispute: Record<string, unknown>) {
+    return signedRequest(
+      JSON.stringify({
+        id,
+        type: "charge.dispute.created",
+        data: { object: dispute },
+      }),
+    );
+  }
+
+  it("claws back all three credit ledgers for a string payment_intent", async () => {
+    withIdempotency("evt_dispute_1");
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const res = await POST(
+      disputeEvent("evt_dispute_1", {
+        id: "dp_1",
+        reason: "fraudulent",
+        amount: 1000,
+        currency: "usd",
+        payment_intent: "pi_disputed",
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockReverseAiCreditPurchase).toHaveBeenCalledWith("pi_disputed");
+    expect(mockReverseGithubCreditPurchase).toHaveBeenCalledWith("pi_disputed");
+    expect(mockReverseBrowserbaseCreditPurchase).toHaveBeenCalledWith(
+      "pi_disputed",
+    );
+    errSpy.mockRestore();
+    logSpy.mockRestore();
+  });
+
+  it("extracts the id when Stripe sends an expanded payment_intent object", async () => {
+    withIdempotency("evt_dispute_expanded");
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const res = await POST(
+      disputeEvent("evt_dispute_expanded", {
+        id: "dp_2",
+        reason: "duplicate",
+        amount: 2000,
+        currency: "usd",
+        payment_intent: { id: "pi_dispute_expanded", object: "payment_intent" },
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockReverseAiCreditPurchase).toHaveBeenCalledWith(
+      "pi_dispute_expanded",
+    );
+    errSpy.mockRestore();
+  });
+
+  it("still logs and acknowledges a dispute with no payment_intent", async () => {
+    withIdempotency("evt_dispute_no_pi");
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const res = await POST(
+      disputeEvent("evt_dispute_no_pi", {
+        id: "dp_3",
+        reason: "fraudulent",
+        amount: 500,
+        currency: "usd",
+        payment_intent: null,
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockReverseAiCreditPurchase).not.toHaveBeenCalled();
+    expect(errSpy).toHaveBeenCalled();
+    errSpy.mockRestore();
+  });
+});
+
+describe("POST /api/v3/webhooks/stripe: registered events and handled events agree", () => {
+  // Registering an event with Stripe that the switch does not handle means
+  // silently dropped webhooks; handling one that is never registered means it
+  // never arrives. Neither shows up as a failure anywhere else, so compare the
+  // two lists directly (AUDIT-013#cov-11).
+  // Both lists are read from source rather than imported: stripe-webhook-setup
+  // pulls in `server-only`, which throws under the test runner.
+  it("every REQUIRED_EVENTS entry has a matching case label, and vice versa", async () => {
+    const { readFileSync } = await import("node:fs");
+
+    const routeSource = readFileSync(
+      new URL(
+        "../../../../../../app/api/v3/webhooks/stripe/route.ts",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    const handled = [...routeSource.matchAll(/^\s*case "([^"]+)": \{/gm)].map(
+      (m) => m[1],
+    );
+
+    const setupSource = readFileSync(
+      new URL(
+        "../../../../../../lib/billing/stripe-webhook-setup.ts",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    const requiredBlock = setupSource.match(
+      /export const REQUIRED_EVENTS = \[([\s\S]*?)\] as const;/,
+    );
+    expect(requiredBlock).not.toBeNull();
+    const required = [
+      ...(requiredBlock as RegExpMatchArray)[1].matchAll(/"([^"]+)"/g),
+    ].map((m) => m[1]);
+
+    expect(required.length).toBeGreaterThan(0);
+    expect([...handled].sort()).toEqual([...required].sort());
   });
 });
 

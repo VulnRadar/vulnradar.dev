@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // VulnRadar CLI: run a scan and gate on the findings, the same flow as the
 // GitHub Action and the GitLab CI template, but from your shell or any CI.
-// No dependencies: Node 18+ (global fetch) is all it needs.
+// No dependencies: global fetch is all it needs. Node 22+, matching the rest
+// of the project. It used to advertise Node 18, which went end of life in
+// April 2025 and is exercised by nothing here.
 
 import { parseArgs, evaluateGate, USAGE } from "./lib.mjs";
 

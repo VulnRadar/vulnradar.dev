@@ -121,6 +121,12 @@ export function AdminPasswordConfirmDialog({
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="current-password"
             autoFocus
+            // a11y (SC 1.3.1 / 3.3.1): "Incorrect password" was a plain <p>
+            // under the field with no association and no live region, so a
+            // screen-reader user re-authenticating for a destructive admin
+            // action was told nothing when it failed.
+            aria-invalid={!!error}
+            aria-describedby={error ? `${inputId}-error` : undefined}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -128,7 +134,15 @@ export function AdminPasswordConfirmDialog({
               }
             }}
           />
-          {error && <p className="text-xs text-destructive">{error}</p>}
+          {error && (
+            <p
+              id={`${inputId}-error`}
+              role="alert"
+              className="text-xs text-destructive"
+            >
+              {error}
+            </p>
+          )}
         </div>
 
         <AlertDialogFooter>

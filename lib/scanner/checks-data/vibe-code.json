@@ -62,11 +62,11 @@
   {
     "id": "vibe-eval-usage",
     "type": "body-pattern",
-    "title": "eval() Usage Detected",
+    "title": "eval() Usage in Page Scripts",
     "category": "vibe-code",
     "severity": "high",
-    "description": "An eval() call was found in the HTTP response body. eval() executes arbitrary JavaScript strings and is a common AI-generated mistake when dynamically constructing logic.",
-    "evidence": "eval() call detected in response body.",
+    "description": "An eval() call was found inside the page's <script> blocks. eval() executes arbitrary JavaScript strings and is a common AI-generated mistake when dynamically constructing logic.",
+    "evidence": "eval() call detected in page scripts.",
     "riskImpact": "If any user-controlled data reaches eval(), it enables full JavaScript code execution in the browser or server context. Even when input is not directly user-controlled, eval() breaks static analysis and makes the application unauditable.",
     "explanation": "AI code generators often produce eval() when asked to 'dynamically evaluate' configuration, templates, or expressions. The correct alternative is almost always a lookup table, JSON.parse, or a dedicated expression parser.",
     "fixSteps": [

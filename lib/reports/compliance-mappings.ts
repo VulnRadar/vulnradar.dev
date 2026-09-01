@@ -5,12 +5,14 @@ import type { Category, Vulnerability } from "@/lib/scanner/types";
  *
  * A data module that translates a finding's own attributes (its OWASP Top 10
  * category tag, its CWE id, or, as a last resort, its scanner category) into
- * the security controls it touches across four frameworks:
+ * the security controls it touches across six frameworks:
  *
  *   - PCI DSS 4.0            (requirement numbers)
  *   - SOC 2                  (2017 Trust Services Criteria, the CC series)
  *   - ISO/IEC 27001:2022     (Annex A control numbers)
  *   - OWASP ASVS 4.0         (verification chapter numbers)
+ *   - HIPAA Security Rule    (45 CFR Part 164 safeguard citations)
+ *   - GDPR                   (Art. 32 security-of-processing articles)
  *
  * WHERE THE MAPPINGS COME FROM, and how far to trust them:
  *

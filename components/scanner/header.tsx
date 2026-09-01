@@ -6,10 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { useState, useEffect, type MouseEvent } from "react";
-import { setQueryParams, QUERY_CHANGE_EVENT } from "@/lib/ui/url-state";
+import { useState } from "react";
 import { cn } from "@/lib/ui/utils";
-import { APP_NAME, ROUTES, API } from "@/lib/config/constants";
+import { APP_NAME, ROUTES, API } from "@/lib/config/client-constants";
 import { backdrops, transitions } from "@/lib/ui/animations";
 import { ThemedLogo } from "@/components/shared/themed-logo";
 import { NotificationBell } from "@/components/shared/notification-center";
@@ -17,11 +16,13 @@ import { useAuth, clearAuthCache } from "@/components/providers/auth-provider";
 
 // Deep-links straight to the Developer tab of the profile page. Scheduled
 // scans, Webhooks, Domains, and API keys all live there as sub-tabs
-// (components/profile/tabs/profile-developer-tab.tsx) but had no top-level
-// entry, so recurring monitoring -- the whole point of a scheduled scan --
-// was two clicks deep under Profile and effectively undiscoverable.
-const DEVELOPER_HREF = `${ROUTES.PROFILE}?tab=developer`;
-
+// Badge is a top-level entry; Developer deliberately is not. An earlier
+// change added a Developer link (deep-linking to /profile?tab=developer) and
+// dropped Badge to make room. The owner wanted the opposite: Badge back, and
+// no Developer entry. Scheduled scans, webhooks and API keys stay where they
+// live, under Profile. Removing that entry also removed the query-string
+// state and soft-navigation handling it needed, which is why this nav no
+// longer reads window.location at all.
 const NAV_LINKS = [
   { href: ROUTES.DASHBOARD, label: "Scanner" },
   { href: ROUTES.HISTORY, label: "History" },
@@ -38,62 +39,21 @@ export function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { isStaff } = useAuth();
 
-  // The Developer and Profile links both point under /profile, told apart
-  // only by the ?tab=developer query. usePathname() drops the query, so the
-  // active state reads it off the URL directly. Seeded empty (matches SSR)
-  // and synced on mount / navigation to avoid a hydration mismatch.
-  const [locationSearch, setLocationSearch] = useState("");
-  useEffect(() => {
-    const sync = () => setLocationSearch(window.location.search);
-    sync();
-    // popstate covers back/forward; QUERY_CHANGE_EVENT covers the profile
-    // page's own tab switches (and the Developer nav click below), both of
-    // which move the tab via history.pushState without a popstate.
-    window.addEventListener("popstate", sync);
-    window.addEventListener(QUERY_CHANGE_EVENT, sync);
-    return () => {
-      window.removeEventListener("popstate", sync);
-      window.removeEventListener(QUERY_CHANGE_EVENT, sync);
-    };
-  }, [pathname]);
-  const onDeveloperTab =
-    pathname === ROUTES.PROFILE && locationSearch.includes("tab=developer");
-
-  // The Developer entry deep-links to /profile?tab=developer. Arriving from
-  // another page, a normal navigation mounts the profile page fresh and it
-  // reads the tab from the URL. But when the user is already on /profile,
-  // the tab is driven by useQueryParam (window.location + QUERY_CHANGE_EVENT,
-  // see lib/ui/url-state.ts), which a soft <Link> navigation does not feed --
-  // so switch the tab the same way the profile sidebar does, via
-  // setQueryParams, rather than letting the URL change with the tab stuck.
-  function handleNavClick(href: string, e: MouseEvent) {
-    if (href !== DEVELOPER_HREF) return;
-    // Let modified clicks (open in new tab, etc.) behave normally.
-    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
-      return;
-    }
-    if (pathname !== ROUTES.PROFILE) return;
-    e.preventDefault();
-    setQueryParams({ tab: "developer", dtab: null });
-    setLocationSearch(window.location.search);
-  }
-
   function isNavActive(href: string): boolean {
-    if (href === DEVELOPER_HREF) return onDeveloperTab;
     const base = href.split("?")[0].split("#")[0];
-    // Profile stays lit for the rest of /profile.
-    if (href === ROUTES.PROFILE) {
-      return pathname.startsWith(base);
-    }
     return (
       pathname === base ||
       pathname.startsWith(base) ||
-      // Public Scans and Assets are both tabs under History
+      // Public Scans, Assets and Attack Surface are all tabs under History
       // (components/history/history-view-tabs.tsx), not their own
       // top-level section -- the History nav link should read as active
-      // there too.
+      // there too. Attack Surface was missing from this list, so a
+      // top-level destination reachable from the History tab strip lit
+      // nothing in the header and read as being outside the app.
       (href === ROUTES.HISTORY &&
-        (pathname === ROUTES.PUBLIC_SCANS || pathname === ROUTES.ASSETS))
+        (pathname === ROUTES.PUBLIC_SCANS ||
+          pathname === ROUTES.ASSETS ||
+          pathname === ROUTES.ATTACK_SURFACE))
     );
   }
 
@@ -150,14 +110,21 @@ export function Header() {
           </Link>
 
           {/* Desktop nav - absolutely centered */}
-          <nav className="hidden lg:flex items-center gap-0.5 absolute left-1/2 -translate-x-1/2">
+          {/* aria-current is the only machine-readable "you are here" signal:
+              the active state was expressed purely as a colour swap, which a
+              screen reader cannot see and which fails on its own for anyone
+              who cannot distinguish the two greys. */}
+          <nav
+            aria-label="Main"
+            className="hidden lg:flex items-center gap-0.5 absolute left-1/2 -translate-x-1/2"
+          >
             {NAV_LINKS.map(({ href, label }) => {
               const active = isNavActive(href);
               return (
                 <Link
                   key={href}
                   href={href}
-                  onClick={(e) => handleNavClick(href, e)}
+                  aria-current={active ? "page" : undefined}
                   className={cn(
                     "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm transition-colors",
                     active
@@ -172,8 +139,9 @@ export function Header() {
             {isStaff && (
               <Link
                 href={ROUTES.ADMIN}
+                aria-current={pathname === ROUTES.ADMIN ? "page" : undefined}
                 className={cn(
-                  "px-2.5 py-1.5 rounded-md text-sm transition-colors",
+                  "px-2 py-1.5 rounded-md text-sm transition-colors",
                   pathname === ROUTES.ADMIN
                     ? "bg-destructive/10 text-destructive font-medium"
                     : "text-destructive/70 hover:text-destructive hover:bg-muted",
@@ -203,8 +171,16 @@ export function Header() {
               variant="ghost"
               size="icon"
               onClick={() => setMobileOpen(true)}
-              aria-label="Toggle menu"
-              className="lg:hidden text-muted-foreground hover:text-foreground"
+              // a11y (SC 4.1.2): the Sheet is opened from local state rather
+              // than SheetTrigger, so Radix contributes no aria-expanded and
+              // the button reported nothing about the menu it controls. The
+              // name also said "Toggle" for a control that only ever opens.
+              aria-expanded={mobileOpen}
+              aria-haspopup="dialog"
+              aria-label="Open menu"
+              // 44px below lg. size="icon" is 40px, and this button only
+              // exists below lg, where it is the only route to the nav.
+              className="lg:hidden h-11 w-11 text-muted-foreground hover:text-foreground"
             >
               <Menu className="h-5 w-5" />
             </Button>
@@ -231,17 +207,18 @@ export function Header() {
               </span>
             </div>
             {/* Links */}
-            <nav className="flex flex-col gap-0.5 p-3 flex-1 overflow-y-auto">
+            <nav
+              aria-label="Mobile"
+              className="flex flex-col gap-0.5 p-3 flex-1 overflow-y-auto"
+            >
               {NAV_LINKS.map(({ href, label }) => {
                 const active = isNavActive(href);
                 return (
                   <Link
                     key={href}
                     href={href}
-                    onClick={(e) => {
-                      handleNavClick(href, e);
-                      setMobileOpen(false);
-                    }}
+                    aria-current={active ? "page" : undefined}
+                    onClick={() => setMobileOpen(false)}
                     className={cn(
                       "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
                       active
@@ -256,6 +233,7 @@ export function Header() {
               {isStaff && (
                 <Link
                   href={ROUTES.ADMIN}
+                  aria-current={pathname === ROUTES.ADMIN ? "page" : undefined}
                   onClick={() => setMobileOpen(false)}
                   className={cn(
                     "flex items-center px-3 py-2 rounded-md text-sm transition-colors",

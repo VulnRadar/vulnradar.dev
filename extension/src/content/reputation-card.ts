@@ -12,7 +12,8 @@
 import { html, render, type TemplateResult } from "lit-html";
 import { colorForScore } from "../lib/badge";
 import { VULNRADAR } from "../lib/constants";
-import { formatRelative } from "../lib/format";
+import { formatRelative, severityHex } from "../lib/format";
+import { buildScopedTokensCss } from "../lib/tokens";
 import type {
   CardPosition,
   ReputationResponse,
@@ -67,13 +68,85 @@ function overlayParent(): Element {
   return document.documentElement ?? document.body;
 }
 
+/**
+ * Layout properties pinned on the HOST element with `!important`.
+ *
+ * Everything inside the shadow root is already unreachable from the page's
+ * stylesheets, but the host <div> is an ordinary element of the page's DOM and
+ * IS matched by the page's own selectors. `:host { all: initial }` in CARD_CSS
+ * does not settle it either: a `:host` rule loses the cascade to a rule in the
+ * outer document that matches the host, so a site with `div { position:
+ * absolute }`, an inverted-dark-mode `filter` on everything, a global
+ * `* { visibility: hidden }` behind a loading class, or a `[id] { display:
+ * none }` reset takes the card with it. An inline declaration marked important
+ * is the highest author-origin priority there is, so this is the one form the
+ * page cannot outrank.
+ *
+ * Deliberately a short list of only the properties that can HIDE the card or
+ * break the `position: fixed` inside it (a transform, filter, perspective,
+ * backdrop-filter, contain or will-change on an ancestor makes that ancestor
+ * the containing block). Everything cosmetic is left to the shadow tree.
+ */
+const HOST_STYLE_PINS: ReadonlyArray<readonly [string, string]> = [
+  ["display", "block"],
+  ["position", "static"],
+  ["visibility", "visible"],
+  ["opacity", "1"],
+  ["pointer-events", "auto"],
+  ["transform", "none"],
+  ["filter", "none"],
+  ["backdrop-filter", "none"],
+  ["perspective", "none"],
+  ["contain", "none"],
+  ["will-change", "auto"],
+  ["clip-path", "none"],
+  ["mask", "none"],
+  ["width", "auto"],
+  ["height", "auto"],
+  ["max-width", "none"],
+  ["max-height", "none"],
+  ["margin", "0"],
+  ["padding", "0"],
+  ["border", "0"],
+  ["float", "none"],
+  ["inset", "auto"],
+];
+
 function ensureRoot(): ShadowRoot {
   if (shadowRoot) return shadowRoot;
   const host = document.createElement("div");
   host.id = HOST_ID;
   host.setAttribute("data-vulnradar", "true");
+  for (const [prop, value] of HOST_STYLE_PINS) {
+    host.style.setProperty(prop, value, "important");
+  }
   overlayParent().appendChild(host);
   shadowRoot = host.attachShadow({ mode: "open" });
+  // Escape closes the card, the way it closes the options page's confirm
+  // dialog. Bound to the host element rather than to the document on purpose:
+  // this listener only ever fires while focus is INSIDE the card, so it can
+  // never swallow an Escape the page underneath wanted (closing its own modal,
+  // leaving a full-screen video, cancelling an autocomplete). A keyboard user
+  // reaches the card by tabbing to it, and the card never takes focus by
+  // itself, so the page keeps control until the user hands it over.
+  host.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      hideCard();
+    }
+  });
+  // SC 2.2.1. The countdown already paused on mouseenter; a keyboard user got
+  // no such courtesy, so the card could vanish mid-tab-through. focusin fires
+  // for focus anywhere inside the shadow tree and bubbles out to the host.
+  host.addEventListener("focusin", cancelAutoDismiss);
+  host.addEventListener("focusout", (e) => {
+    // Moving between two buttons inside the card retargets both target and
+    // relatedTarget to the host, and the DOM spec skips dispatch entirely when
+    // those are equal, so this normally does not even fire for an internal
+    // move. The guard makes that guarantee explicit rather than relying on it.
+    if (e.relatedTarget === host) return;
+    resumeAutoDismiss();
+  });
   return shadowRoot;
 }
 
@@ -144,20 +217,46 @@ function verdictFor(
   return { tier, label: LABEL[tier] };
 }
 
+/**
+ * The verdict rail and the verdict sentence beside it, as CSS variables rather
+ * than the three literal hexes this used to hold.
+ *
+ * Those literals were a dark-theme palette painted on both themes: measured on
+ * the light card, #22c55e reads 2.03:1 and #eab308 1.71:1 as the verdict TEXT,
+ * against the 4.5:1 SC 1.4.3 asks for, and both are under 3:1 as the rail
+ * itself. The tokens follow the theme (buildScopedTokensCss declares them on
+ * `.card`, including the prefers-color-scheme block) and are the values the
+ * rest of the extension already measures against: 6.04:1, 5.35:1 and 5.32:1 on
+ * the light card, 8.01:1, 9.00:1 and 6.64:1 on the dark one.
+ */
 const VERDICT_RAIL: Record<SafetyVerdict, string> = {
-  safe: "#22c55e",
-  caution: "#eab308",
-  unsafe: "#ef4444",
+  safe: "var(--vr-success)",
+  caution: "var(--vr-warning)",
+  unsafe: "var(--vr-danger)",
 };
 
 function MuteRow(actions: CardActions): TemplateResult {
   return html`
     <div class="mute-row">
-      <button class="text-btn" @click=${actions.onSnooze}>Snooze 24h</button>
-      <button class="text-btn" @click=${actions.onMuteSite}>
+      <button type="button" class="text-btn" @click=${actions.onSnooze}>
+        Snooze 24h
+      </button>
+      <button
+        type="button"
+        class="text-btn"
+        @click=${actions.onMuteSite}
+        aria-label="Never show this alert on this site"
+      >
         Not this site
       </button>
-      <button class="text-btn" @click=${actions.onMuteGlobal}>Turn off</button>
+      <button
+        type="button"
+        class="text-btn"
+        @click=${actions.onMuteGlobal}
+        aria-label="Turn off site alerts everywhere"
+      >
+        Turn off
+      </button>
     </div>
   `;
 }
@@ -176,15 +275,29 @@ function Chrome(
     <style>
       ${CARD_CSS}
     </style>
+    <!-- role="complementary" with a name, not a bare <div>: this is an
+         extension panel floating over somebody else's page, and without a
+         landmark and a label a screen reader user meets it as loose text with
+         no indication of where it came from. Deliberately NOT role="dialog":
+         the card appears without the user asking for it and must not behave
+         modally over the page it is sitting on. -->
     <div
       class="card"
+      role="complementary"
+      aria-label="VulnRadar site alert"
       data-position=${cardPosition}
       @mouseenter=${cancelAutoDismiss}
       @mouseleave=${resumeAutoDismiss}
     >
-      <span class="rail" style="background:${rail}"></span>
-      <button class="dismiss-btn" title="Dismiss" @click=${onDismiss}>
-        &times;
+      <span class="rail" style="background:${rail}" aria-hidden="true"></span>
+      <button
+        type="button"
+        class="dismiss-btn"
+        title="Dismiss"
+        aria-label="Dismiss this VulnRadar alert"
+        @click=${onDismiss}
+      >
+        <span aria-hidden="true">&times;</span>
       </button>
       ${body}
     </div>
@@ -195,12 +308,6 @@ function SeverityChips(
   counts: ReputationSeverityCounts | null,
 ): TemplateResult {
   const order = ["critical", "high", "medium", "low"] as const;
-  const colors: Record<(typeof order)[number], string> = {
-    critical: "#ef4444",
-    high: "#f97316",
-    medium: "#eab308",
-    low: "#3b82f6",
-  };
   const present = counts
     ? order.filter((s) => counts[s] > 0).map((s) => ({ s, n: counts[s] }))
     : [];
@@ -212,7 +319,7 @@ function SeverityChips(
       ${present.map(
         ({ s, n }) => html`
           <span class="chip">
-            <span class="dot" style="background:${colors[s]}"></span>
+            <span class="dot" style="background:${severityHex(s)}"></span>
             ${n} ${s}
           </span>
         `,
@@ -243,15 +350,20 @@ function ScoreBody(
 
   return html`
     <div class="score-block">
+      <!-- The ring is a conic gradient with no text of its own, so it is
+           decorative: the number inside it and the "out of 10" in the label
+           beside it carry the value. -->
       <div
         class="score-ring"
         style="--ring-color:${scoreColor};--ring-pct:${ringPct}%"
+        aria-hidden="true"
       >
         <span class="score-num" style="color:${scoreColor}">${score}</span>
       </div>
       <div class="score-meta">
         <div class="eyebrow">Danger score</div>
         <div class="verdict" style="color:${VERDICT_RAIL[verdict.tier]}">
+          <span class="score-spoken">${score} out of 10.</span>
           ${verdict.label}
         </div>
       </div>
@@ -337,7 +449,11 @@ export function showUnknownCard(
         }
       </div>
     </div>
-    <button class="btn-primary" @click=${() => actions.onScanNow(url)}>
+    <button
+      type="button"
+      class="btn-primary"
+      @click=${() => actions.onScanNow(url)}
+    >
       Scan this site
     </button>
     ${
@@ -392,8 +508,8 @@ export function showScanningCard(url: string, onDismiss: () => void): void {
     /* keep raw url as a fallback label */
   }
   const body = html`
-    <div class="scanning-row">
-      <span class="spinner-ring"></span>
+    <div class="scanning-row" role="status">
+      <span class="spinner-ring" aria-hidden="true"></span>
       <div>
         <div class="eyebrow">Running the full check suite</div>
         <div class="title">Scanning ${hostname}&hellip;</div>
@@ -440,33 +556,36 @@ export function showScanErrorCard(
 ): void {
   const root = ensureRoot();
   const body = html`
-    <div class="prompt-row">
+    <div class="prompt-row" role="alert">
       <div class="eyebrow">Scan failed</div>
       <div class="title">Could not finish scanning this site</div>
       <div class="sub">${error}</div>
     </div>
-    <button class="btn-primary" @click=${onRetry}>Try again</button>
+    <button type="button" class="btn-primary" @click=${onRetry}>
+      Try again
+    </button>
   `;
   render(Chrome("#ef4444", body, onDismiss), root);
   scheduleAutoDismiss(AUTO_DISMISS_MS_UNKNOWN);
 }
 
+// The palette is built from lib/tokens.json, the same source scripts/
+// gen-tokens.mjs uses for src/tokens.css. This file used to declare its own
+// copy, which had drifted to a white card against the popup blue-tinted
+// surface and a white-on-primary button the popup had already fixed as a
+// sub-3:1 contrast failure.
 const CARD_CSS = `
   :host { all: initial; }
+${buildScopedTokensCss("  .card")}
   * { box-sizing: border-box; }
   .card {
-    --vr-bg: #ffffff;
-    --vr-text: #15192a;
-    --vr-text-muted: #666e80;
-    --vr-border: #e2e5ec;
-    --vr-primary: #60a5fa;
-    --vr-primary-fg: #ffffff;
-    --vr-muted-bg: #f4f6f9;
     position: fixed;
     top: 16px;
     right: 16px;
     width: 360px;
-    background: var(--vr-bg);
+    /* The elevated-surface token, not the page background: this is a card
+       floating over someone else's site. */
+    background: var(--vr-card);
     color: var(--vr-text);
     border: 1px solid var(--vr-border);
     border-radius: 12px;
@@ -494,15 +613,8 @@ const CARD_CSS = `
     right: auto;
   }
   @media (prefers-color-scheme: dark) {
-    .card {
-      --vr-bg: #14171f;
-      --vr-text: #eaeef4;
-      --vr-text-muted: #8791a8;
-      --vr-border: #262b3a;
-      --vr-primary: #60a5fa;
-      --vr-primary-fg: #0e111a;
-      --vr-muted-bg: #1b1f2b;
-    }
+    /* Only the elevation survives here: a floating overlay needs a heavier
+       shadow on a dark page. Every colour comes from the shared tokens. */
     .card {
       box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
     }
@@ -516,18 +628,45 @@ const CARD_CSS = `
     height: 3px;
     width: 100%;
   }
+  /* SC 2.4.7. Nothing here sets a focus style and the card is a keyboard
+     user's only way to act on the alert, so the ring is declared explicitly in
+     the theme's own colour rather than left to whatever the host page's
+     rendering happens to give a shadow-tree element. */
+  .card :focus-visible {
+    outline: 2px solid var(--vr-primary-text);
+    outline-offset: 2px;
+    border-radius: 5px;
+  }
+  /* Text only the screen reader gets: the score ring is aria-hidden because it
+     is a conic gradient, so the number has to be spoken somewhere. */
+  .score-spoken {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  /* Icon-only and 17x23px before this: the 24px floor (SC 2.5.5) applies, and
+     a dismiss control is exactly the one you do not want to miss and hit
+     something on the page behind instead. */
   .dismiss-btn {
     appearance: none;
     background: none;
     border: none;
     position: absolute;
-    top: 9px;
-    right: 10px;
+    top: 7px;
+    right: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    min-height: 24px;
     color: var(--vr-text-muted);
     font-size: 17px;
     line-height: 1;
     cursor: pointer;
-    padding: 3px 6px;
+    padding: 0;
     border-radius: 5px;
   }
   .dismiss-btn:hover { color: var(--vr-text); background: var(--vr-muted-bg); }

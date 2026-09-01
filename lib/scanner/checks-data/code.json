@@ -486,7 +486,7 @@
   {
     "id": "eval-usage",
     "type": "body-pattern",
-    "title": "eval() Usage Detected",
+    "title": "eval() Code Injection Risk",
     "category": "code",
     "severity": "high",
     "description": "JavaScript eval() function calls detected.",
@@ -2818,7 +2818,7 @@
   {
     "id": "insecure-crypto",
     "type": "body-pattern",
-    "title": "Weak or broken cryptography detected",
+    "title": "Weak cryptography protecting secrets and tokens",
     "category": "code",
     "severity": "high",
     "description": "The code uses deprecated or broken cryptographic algorithms (MD5, SHA1, DES, RC4) that are no longer considered secure.",

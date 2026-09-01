@@ -4,8 +4,10 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { EMAIL_VERIFICATION_TOKEN_LIFETIME } from "@/lib/config/constants";
-import { API } from "@/lib/config/client-constants";
+import {
+  API,
+  EMAIL_VERIFICATION_TOKEN_LIFETIME,
+} from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
 import {
   AuthAlert,
@@ -104,12 +106,22 @@ export function SignupSuccess({ email }: SignupSuccessProps) {
       }
       footnote={`Nothing after a few minutes? Check spam, and confirm ${email} is spelled right. You can start over from the sign-up form.`}
     >
+      {/* Deliberately non-committal about what is in the email, and it must
+          stay that way. POST /api/v3/auth/signup returns a byte-identical 200
+          whether or not the address already has an account: a registered one
+          gets a "someone tried to sign up as you, here is how to sign in"
+          notice instead of a verification link, and the disambiguation happens
+          in the inbox, which only the address owner can read. This screen used
+          to say "we sent a verification link" and "the account is ready",
+          which is false for that second case, and any copy here that hints at
+          which of the two happened rebuilds in the UI the account-enumeration
+          oracle the 409 response was removed to close. */}
       <p>
-        We sent a verification link to{" "}
+        We sent an email to{" "}
         <span className="font-medium text-foreground break-all">{email}</span>.
-        Open it and the account is ready.
+        Open it and follow the link inside.
       </p>
-      <p>The link works once and expires in {VERIFY_HOURS} hours.</p>
+      <p>Verification links work once and expire in {VERIFY_HOURS} hours.</p>
     </AuthOutcome>
   );
 }

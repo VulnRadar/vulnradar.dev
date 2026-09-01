@@ -51,10 +51,17 @@ export function LoginForm({
         body: JSON.stringify({ email }),
       });
       const data = await res.json();
-      if (res.ok && data.success) {
+      // ApiResponse.success (lib/api/api-utils.ts) is a bare NextResponse.json
+      // of the payload: there is no `success` field on the body. Testing for
+      // one made the 200 branch false while `!res.ok` was also false, so
+      // neither branch ran and the button did nothing at all: no confirmation,
+      // no error, on a screen whose only purpose is to get the user unstuck.
+      // signup-success.tsx and verify-email-expired.tsx test res.ok alone,
+      // which is the correct read of this envelope.
+      if (res.ok) {
         setResendSuccess(true);
         setError("");
-      } else if (!res.ok) {
+      } else {
         setError(
           data.error ||
             "That verification email could not be sent. Wait a minute and try again.",

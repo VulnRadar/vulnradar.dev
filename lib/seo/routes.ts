@@ -7,6 +7,8 @@
 
 import { getAllChecks, SEO_CATEGORIES } from "@/lib/seo/checks-content";
 import { getAllAlternatives } from "@/lib/seo/alternatives";
+import { DOCS_PAGES } from "@/components/docs/docs-nav";
+import { CHECK_CATEGORY_LAST_MODIFIED } from "@/lib/config/check-stats.generated";
 
 export interface PublicRoute {
   path: string;
@@ -14,6 +16,12 @@ export interface PublicRoute {
   priority: number;
   changeFrequency:
     "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never";
+  /**
+   * `YYYY-MM-DD` of the last real change to the page's source data, where we
+   * can derive one. Omitted otherwise, and app/sitemap.ts then falls back to
+   * the build timestamp for that route only.
+   */
+  lastModified?: string;
 }
 
 /**
@@ -26,23 +34,12 @@ const STATIC_PUBLIC_ROUTES: readonly PublicRoute[] = [
   { path: "/landing", priority: 1.0, changeFrequency: "weekly" },
   { path: "/pricing", priority: 0.9, changeFrequency: "weekly" },
   { path: "/demo", priority: 0.9, changeFrequency: "weekly" },
-  { path: "/docs", priority: 0.8, changeFrequency: "weekly" },
-  { path: "/docs/api", priority: 0.8, changeFrequency: "weekly" },
-  { path: "/docs/api/playground", priority: 0.6, changeFrequency: "monthly" },
   { path: "/checks", priority: 0.8, changeFrequency: "monthly" },
-  { path: "/docs/setup", priority: 0.7, changeFrequency: "monthly" },
-  { path: "/docs/extension", priority: 0.7, changeFrequency: "monthly" },
-  { path: "/docs/self-hosting", priority: 0.7, changeFrequency: "monthly" },
-  { path: "/docs/developers", priority: 0.7, changeFrequency: "monthly" },
   { path: "/alternatives", priority: 0.7, changeFrequency: "monthly" },
   { path: "/tools", priority: 0.7, changeFrequency: "monthly" },
   { path: "/tools/api-scanner", priority: 0.7, changeFrequency: "monthly" },
   { path: "/tools/link-checker", priority: 0.7, changeFrequency: "monthly" },
-  { path: "/docs/architecture", priority: 0.6, changeFrequency: "monthly" },
-  { path: "/docs/webhooks", priority: 0.6, changeFrequency: "monthly" },
-  { path: "/docs/rate-limits", priority: 0.6, changeFrequency: "monthly" },
-  { path: "/docs/config", priority: 0.6, changeFrequency: "monthly" },
-  { path: "/public-scans", priority: 0.6, changeFrequency: "hourly" },
+  { path: "/public-scans", priority: 0.6, changeFrequency: "daily" },
   { path: "/changelog", priority: 0.6, changeFrequency: "weekly" },
   { path: "/contact", priority: 0.5, changeFrequency: "yearly" },
   { path: "/security", priority: 0.5, changeFrequency: "yearly" },
@@ -61,11 +58,27 @@ const STATIC_PUBLIC_ROUTES: readonly PublicRoute[] = [
 // Generated SEO routes. Built from the exact same loaders the pages use, so
 // adding a check JSON entry or a competitor automatically adds its sitemap
 // entry with no second edit here.
+
+// The docs set used to be hand-typed here, and it drifted: DOCS_NAV had grown
+// to 20 entries while this file still listed 11, so nine indexable docs pages
+// (/docs/cli, /docs/github, /docs/teams, /docs/triage, /docs/sharing,
+// /docs/reports, /docs/ai, /docs/scheduled-scans, /docs/account-security) had
+// their own metadata and JSON-LD but no sitemap entry. Deriving them from the
+// same table that renders the sidebar makes that impossible to repeat.
+// docs-nav.ts is a plain data module with no client-only imports.
+const DOCS_ROUTES: readonly PublicRoute[] = DOCS_PAGES.map((page) => ({
+  path: page.href,
+  priority: page.href === "/docs" ? 0.8 : 0.7,
+  changeFrequency: "monthly" as const,
+}));
+
 const CATEGORY_ROUTES: readonly PublicRoute[] = SEO_CATEGORIES.map(
   (category) => ({
     path: `/checks/category/${category}`,
     priority: 0.6,
     changeFrequency: "monthly" as const,
+    // Same source file as every check page it lists.
+    lastModified: CHECK_CATEGORY_LAST_MODIFIED[category],
   }),
 );
 
@@ -77,10 +90,19 @@ const ALTERNATIVE_ROUTES: readonly PublicRoute[] = getAllAlternatives().map(
   }),
 );
 
+// The whole per-check set used to share one build timestamp with everything
+// else in the sitemap, which claimed all ~820 URLs changed at the same instant
+// on every deploy: Google's documented response to a lastmod that is not
+// consistently accurate is to ignore the field for the entire site. A check
+// page's content is its entry in lib/scanner/checks-data/<category>.json, so
+// the last commit that touched that file is its real modification date.
+// Per-category is the finest granularity git gives us here, which still
+// separates a category edited this week from one untouched for months.
 const CHECK_ROUTES: readonly PublicRoute[] = getAllChecks().map((check) => ({
   path: `/checks/${check.id}`,
   priority: 0.5,
   changeFrequency: "monthly" as const,
+  lastModified: CHECK_CATEGORY_LAST_MODIFIED[check.category],
 }));
 
 /**
@@ -89,6 +111,7 @@ const CHECK_ROUTES: readonly PublicRoute[] = getAllChecks().map((check) => ({
  */
 export const PUBLIC_ROUTES: readonly PublicRoute[] = [
   ...STATIC_PUBLIC_ROUTES,
+  ...DOCS_ROUTES,
   ...CATEGORY_ROUTES,
   ...ALTERNATIVE_ROUTES,
   ...CHECK_ROUTES,
@@ -106,6 +129,13 @@ export const PUBLIC_ROUTES: readonly PublicRoute[] = [
  */
 export const DISALLOWED_PATHS: readonly string[] = [
   "/api/",
+  // app/admin/layout.tsx serves privatePageMetadata("Admin", "/admin") and
+  // says the point is to save crawl budget, but the noindex meta tag only
+  // stops indexing AFTER the fetch. Without the Disallow, a crawler still
+  // spends a fetch on /admin and lands on the /login?redirect=/admin
+  // duplicate the QUERY_DISALLOW rule in app/robots.ts exists to stop.
+  // Prefix matching covers /admin/ai-chats/<id> (AUDIT-014#seo-15).
+  "/admin",
   "/dashboard",
   "/profile",
   // Auth-gated: redirects anon visitors (Googlebot included) to
@@ -128,6 +158,11 @@ export const DISALLOWED_PATHS: readonly string[] = [
   "/reset-password",
   "/forgot-password",
   "/unsubscribe",
+  // Token-gated staff invite acceptance. Public in the middleware sense (the
+  // invitee has no account yet, see lib/config/public-paths.ts) but every URL
+  // carries a single-use token, so an indexed copy is a dead link at best and
+  // a leaked invite at worst.
+  "/staff-invite",
 ] as const;
 
 /**

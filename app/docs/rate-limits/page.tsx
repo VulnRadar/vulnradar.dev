@@ -1,12 +1,10 @@
-"use client";
-
-import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
 import { cn } from "@/lib/ui/utils";
-import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
+import type { TocItem } from "@/components/docs/docs-types";
+import { DocsTocSpy } from "../docs-toc-spy";
 import {
   DocsHero,
   DocsSection,
@@ -19,7 +17,7 @@ import {
 const tocItems: TocItem[] = [
   { id: "overview", label: "Overview" },
   { id: "limits-by-plan", label: "Limits by Plan" },
-  { id: "ip-rate-limits", label: "Per-IP Limits" },
+  { id: "ip-rate-limits", label: "Named Rate Limits" },
   { id: "headers", label: "Rate Limit Headers" },
   { id: "handling", label: "Handling 429s" },
   { id: "best-practices", label: "Best Practices" },
@@ -54,36 +52,9 @@ const dailyQuotas = [
 ];
 
 export default function RateLimitsPage() {
-  const { setActiveSection, setTocItems } = useDocsContext();
-  const observerRef = useRef<IntersectionObserver | null>(null);
-
-  useEffect(() => {
-    setTocItems(tocItems);
-    return () => setTocItems([]);
-  }, [setTocItems]);
-
-  useEffect(() => {
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setActiveSection(entry.target.id);
-          }
-        });
-      },
-      { rootMargin: "-20% 0px -70% 0px", threshold: 0 },
-    );
-
-    tocItems.forEach((item) => {
-      const el = document.getElementById(item.id);
-      if (el) observerRef.current?.observe(el);
-    });
-
-    return () => observerRef.current?.disconnect();
-  }, [setActiveSection]);
-
   return (
     <div className="space-y-16">
+      <DocsTocSpy items={tocItems} />
       <DocsHero
         id="top"
         badge="API Limits"
@@ -103,11 +74,14 @@ export default function RateLimitsPage() {
         </p>
         <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
           <li>
-            <strong className="text-foreground">Per-IP rate limits</strong>:{" "}
+            <strong className="text-foreground">Named rate limits</strong>:{" "}
             <InlineCode>lib/rate-limiting/rate-limit.ts</InlineCode>. Sliding
-            window in the <InlineCode>rate_limits</InlineCode> table. Used by
-            auth endpoints (signup, login, forgot-password), the API as a whole,
-            and the scan routes.
+            window in the <InlineCode>rate_limits</InlineCode> table. Each one
+            names what it is keyed on, and it is not always the IP: the
+            pre-login auth endpoints (signup, login, forgot-password) key on IP
+            because there is no user yet, while almost everything after sign-in
+            keys on the user id, so rotating source addresses does not reset it.
+            See the table below for which is which.
           </li>
           <li>
             <strong className="text-foreground">Per-plan daily quotas</strong>:{" "}
@@ -133,7 +107,10 @@ export default function RateLimitsPage() {
             <div
               key={plan.plan}
               className={cn(
-                "flex min-w-0 flex-1 flex-col gap-0.5 px-4 py-3",
+                // px-2.5 below sm: four cells at px-4 spend 128px on padding
+                // alone, which left the last cell's "/day" being shaved off
+                // by the row's overflow-hidden at 375px.
+                "flex min-w-0 flex-1 flex-col gap-0.5 px-2.5 py-3 sm:px-4",
                 plan.highlight && "bg-primary/5",
               )}
             >
@@ -169,9 +146,12 @@ export default function RateLimitsPage() {
             Daily quotas are defined in{" "}
             <InlineCode>lib/billing/catalog.ts</InlineCode> (one entry per plan:{" "}
             <InlineCode>dailyScans</InlineCode> and{" "}
-            <InlineCode>apiRequestsPerDay</InlineCode>). New API keys default to{" "}
-            <InlineCode>CONFIG_DEFAULT_API_KEY_DAILY_LIMIT = 50</InlineCode> (
-            <InlineCode>lib/config/config-values.ts</InlineCode>).
+            <InlineCode>apiRequestsPerDay</InlineCode>). A new key&rsquo;s{" "}
+            <InlineCode>daily_limit</InlineCode> is your plan&rsquo;s{" "}
+            <InlineCode>apiRequestsPerDay</InlineCode>, not a separate per-key
+            default: 25 on Free, 100 on Core Supporter, 5,000 on Pro Supporter,
+            effectively unlimited on Elite Supporter. Rotating a key re-reads it
+            from your current plan.
           </p>
         </DocsCallout>
 
@@ -186,64 +166,190 @@ export default function RateLimitsPage() {
         </DocsCallout>
       </DocsSection>
 
-      <DocsSection id="ip-rate-limits" title="Per-IP Limits">
+      <DocsSection id="ip-rate-limits" title="Named Rate Limits">
         <p className="max-w-[68ch] text-sm text-muted-foreground">
-          IP-based rate limits are configured in{" "}
-          <InlineCode>lib/config/config-values.ts</InlineCode> as{" "}
+          Every named limit below is admin-editable and configured in{" "}
+          <InlineCode>lib/config/config-values.ts</InlineCode> as a{" "}
           <InlineCode>CONFIG_RATE_LIMIT_*_ATTEMPTS</InlineCode> +{" "}
-          <InlineCode>_WINDOW_MINUTES</InlineCode> pairs. The window is
-          converted to seconds at boot.
+          <InlineCode>_WINDOW_MINUTES</InlineCode> pair (the map from limit name
+          to registry keys is <InlineCode>CONFIGURABLE_LIMITS</InlineCode> in{" "}
+          <InlineCode>lib/rate-limiting/rate-limit.ts</InlineCode>). The window
+          is converted to seconds when the limit is resolved. Every number in
+          the table below is therefore a{" "}
+          <strong className="text-foreground">shipped default</strong>, not a
+          constant: the instance you are calling may have been tuned.
+        </p>
+        <p className="max-w-[68ch] text-sm text-muted-foreground">
+          The <strong className="text-foreground">Keyed on</strong> column is
+          the part that matters when you are sizing a client or reasoning about
+          abuse. A limit keyed on the user is not reset by changing IP; a limit
+          keyed on the IP is shared by everyone behind the same NAT or proxy.
+          This table previously listed IP for all of them, and omitted nine
+          limits that are enforced.
         </p>
 
         <DocsTable
+          caption="Every enforced named rate limit, its shipped default, and what it counts against"
           columns={[
             { key: "endpoint", header: "Endpoint" },
             { key: "attempts", header: "Max attempts" },
             { key: "window", header: "Window (min)" },
+            { key: "keyedOn", header: "Keyed on" },
           ]}
           data={[
             {
               endpoint: "POST /api/v3/auth/login",
               attempts: "5",
               window: "15",
+              keyedOn: "IP",
             },
             {
               endpoint: "POST /api/v3/auth/signup",
               attempts: "3",
               window: "60",
+              keyedOn: "IP",
             },
             {
               endpoint: "POST /api/v3/auth/forgot-password",
               attempts: "3",
               window: "10",
+              keyedOn: "IP",
+            },
+            // The four rows below key on something other than the IP for the
+            // same reason: an attacker who can rotate source addresses walks
+            // straight past an IP bucket, so the thing being protected (one
+            // email address, one account) is what the limit counts against.
+            // They were inline literals in their route files with no setting
+            // and no documentation until AUDIT-014#magic-08.
+            {
+              endpoint: "POST /api/v3/auth/signup (per email address)",
+              attempts: "5",
+              window: "60",
+              keyedOn: "email address",
+            },
+            {
+              endpoint: "POST /api/v3/auth/forgot-password (per email address)",
+              attempts: "3",
+              window: "60",
+              keyedOn: "email address",
+            },
+            {
+              endpoint: "POST /api/v3/domains",
+              attempts: "20",
+              window: "60",
+              keyedOn: "user",
+            },
+            {
+              endpoint: "POST /api/v3/domains/{id}/verify",
+              attempts: "30",
+              window: "60",
+              keyedOn: "user",
             },
             {
               endpoint: "POST /api/v3/auth/2fa/verify",
               attempts: "5",
               window: "5",
+              keyedOn: "user + IP, and user alone",
             },
             {
-              endpoint: "POST /api/v3/auth/2fa/email-send",
-              attempts: "1",
-              window: "1",
-            },
-            {
-              endpoint: "API requests per IP (any /api/v3/*)",
+              // Was published as covering "any /api/v3/*", which middleware
+              // does not do: this bucket is applied per route, on a handful of
+              // them. Documenting a blanket limit that does not exist both
+              // over-promises protection and misleads anyone sizing their own
+              // client against it.
+              endpoint: "API requests (on rate-limited routes)",
               attempts: "100",
               window: "60",
+              keyedOn: "IP or user, per route",
             },
             {
               endpoint: "POST /api/v3/scan (and friends)",
               attempts: "100",
               window: "60",
+              keyedOn: "user",
             },
             {
               endpoint: "POST /api/v3/scan/bulk",
               attempts: "10",
               window: "60",
+              keyedOn: "user",
+            },
+            {
+              endpoint: "POST /api/v3/browser/sessions",
+              attempts: "20",
+              window: "60",
+              keyedOn: "user",
+            },
+            {
+              endpoint: "POST /api/v3/ai/chat",
+              attempts: "60",
+              window: "60",
+              keyedOn: "user",
+            },
+            {
+              endpoint:
+                "POST /api/v3/scan/verify and /api/v3/scan/verify-batch (one shared bucket)",
+              attempts: "20",
+              window: "60",
+              keyedOn: "user",
+            },
+            {
+              endpoint: "POST /api/v3/history/{id}/summary",
+              attempts: "20",
+              window: "60",
+              keyedOn: "user",
+            },
+            {
+              endpoint: "Admin PATCH re-auth",
+              attempts: "10",
+              window: "15",
+              keyedOn: "user + IP",
+            },
+            {
+              endpoint: "POST /api/v3/billing/verify",
+              attempts: "5",
+              window: "5",
+              keyedOn: "user",
+            },
+            {
+              endpoint: "POST /api/v3/teams/members (invites)",
+              attempts: "20",
+              window: "60",
+              keyedOn: "user",
+            },
+            {
+              endpoint: "/api/v3/scan/tags",
+              attempts: "60",
+              window: "60",
+              keyedOn: "user",
+            },
+            {
+              endpoint: "GET /api/v3/public-scans",
+              attempts: "60",
+              window: "1",
+              keyedOn: "IP",
             },
           ]}
         />
+
+        <DocsCallout
+          variant="info"
+          title="2FA email resend is a cooldown, not a rate limit"
+        >
+          <p>
+            This table used to carry a row for{" "}
+            <InlineCode>POST /api/v3/auth/2fa/email-send</InlineCode> at 1
+            attempt / 1 minute, described as an IP limit configured by a{" "}
+            <InlineCode>CONFIG_RATE_LIMIT_*</InlineCode> pair. No such pair
+            exists, so an operator went looking for a setting that was never
+            there. The route uses a different mechanism entirely: it reads{" "}
+            <InlineCode>EMAIL_2FA_RESEND_COOLDOWN_SECONDS</InlineCode> (default{" "}
+            <InlineCode>60</InlineCode>, admin-editable) and refuses with a 429
+            if a code row for that user was created inside the window. It is
+            keyed on the user id from the pending-2FA cookie, not the IP, and it
+            does not use the sliding-window table at all.
+          </p>
+        </DocsCallout>
 
         <DocsCallout variant="success" title="Crawl count semantics">
           <p>
@@ -253,8 +359,14 @@ export default function RateLimitsPage() {
             <strong className="text-foreground">1</strong> daily quota unit. For
             session-authenticated crawls, each scanned page counts as 1 unit (10
             pages = 10 quota units). Discovery (
-            <InlineCode>/api/v3/scan/crawl/discover</InlineCode>) counts as 1
-            unit regardless of how many URLs it returns.
+            <InlineCode>/api/v3/scan/crawl/discover</InlineCode>) costs{" "}
+            <strong className="text-foreground">no</strong> daily quota: it
+            fetches and parses links, it does not scan, so nothing in that route
+            touches the daily counter. It is still frequency-limited, at the
+            scan cap and in its own{" "}
+            <InlineCode>crawl-discover:&#123;userId&#125;</InlineCode> bucket.
+            This paragraph used to say discovery cost 1 unit, which contradicted
+            the API reference and overstated the price of previewing a crawl.
           </p>
         </DocsCallout>
 
@@ -277,18 +389,31 @@ export default function RateLimitsPage() {
       </DocsSection>
 
       <DocsSection id="headers" title="Rate Limit Headers">
-        <p className="text-sm text-muted-foreground">
-          Every successful scan response includes rate-limit headers. A 429
-          response includes the same headers plus{" "}
-          <InlineCode>Retry-After</InlineCode>.
+        <p className="max-w-[68ch] text-sm text-muted-foreground">
+          A 429 from a scan endpoint carries the full set below. Whether{" "}
+          <InlineCode>Retry-After</InlineCode> comes with it depends on which
+          limit you hit: an API key&rsquo;s own daily cap adds it, the account
+          quota does not, because that one always resets at midnight UTC. On a{" "}
+          <strong className="text-foreground">successful</strong> response the
+          coverage is narrower than you might expect:{" "}
+          <InlineCode>POST /scan</InlineCode> and{" "}
+          <InlineCode>POST /scan/crawl</InlineCode> send{" "}
+          <InlineCode>Limit</InlineCode>, <InlineCode>Remaining</InlineCode> and{" "}
+          <InlineCode>Reset</InlineCode> only when the caller used a Bearer key;{" "}
+          <InlineCode>POST /scan/bulk</InlineCode> on the session path sends all
+          five. A session-authenticated single scan, and every{" "}
+          <InlineCode>/history</InlineCode> or{" "}
+          <InlineCode>/scan/status</InlineCode> read, sends none. If you are
+          calling with a session cookie, track your own count rather than
+          waiting for a header that will not arrive.
         </p>
 
         <Card className="p-6 border-border/40">
           <CodeBlock
-            code={`HTTP/1.1 200 OK
+            code={`HTTP/1.1 429 Too Many Requests
 X-RateLimit-Limit: 150
-X-RateLimit-Remaining: 147
-X-RateLimit-Used: 3
+X-RateLimit-Remaining: 0
+X-RateLimit-Used: 150
 X-RateLimit-Policy: daily
 X-RateLimit-Reset: 2026-03-12T00:00:00.000Z`}
             language="http"
@@ -448,8 +573,8 @@ def scan_with_retry(url, max_retries=3):
                 desc: "Distribute scans across the day rather than bursting all at once. It is easier to recover from a single 429.",
               },
               {
-                title: "Use multiple keys",
-                desc: "You can have up to 3 active API keys per user. Split workload by key to get separate quotas.",
+                title: "Use multiple keys, but know what they split",
+                desc: "How many active keys you can hold is per plan, not a flat 3: Free 1, Core Supporter 3, Pro Supporter 10, Elite Supporter unlimited. Going over is a 400 from the key-creation endpoint. Each key carries its own daily API-request budget, so splitting a workload across keys does buy separate request budgets. It does not multiply your scans: the daily scan quota and the named rate limits above are keyed on the account, so a second key shares them.",
               },
               {
                 title: "Use the demo endpoint for testing",

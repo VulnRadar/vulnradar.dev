@@ -48,6 +48,18 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   ) {
     return { rows: userRow ? [userRow] : [] };
   }
+  // The route no longer selects password_hash itself: re-auth moved into
+  // verifyReauthPassword (lib/auth/reauth.ts), which runs its own
+  // SELECT password_hash. That indirection is what lets an OAuth-only
+  // account (password_hash NULL) re-auth with its session instead of a
+  // password it does not have. Both queries are served here so the real
+  // re-auth logic stays under test rather than being mocked away.
+  if (s.startsWith("SELECT totp_enabled FROM users WHERE id = $1")) {
+    return { rows: userRow ? [userRow] : [] };
+  }
+  if (s.startsWith("SELECT password_hash FROM users WHERE id = $1")) {
+    return { rows: userRow ? [userRow] : [] };
+  }
   if (s.startsWith("UPDATE users SET backup_codes = $1 WHERE id = $2")) {
     backupCodesUpdateCalls.push(params);
     return { rows: [] };

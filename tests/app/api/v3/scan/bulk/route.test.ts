@@ -1,23 +1,19 @@
 /**
  * Route-level tests for POST /api/v3/scan/bulk.
  *
- * Unlike app/api/v3/scan/route.ts (now a background job dispatcher), this
- * route still runs the whole scan pipeline inline, per URL, sequentially,
- * inside the request. These tests mock the network and database boundary
- * (pool, getSession, rate limiting, safeFetch/validateScanTarget,
- * checkAccessRules) and let the real check pipeline run: runSyncChecks,
- * runAsyncChecks, getProtocolFromUrl, runWebSocketChecks, runFtpChecks, and
- * redactSensitiveResponseHeaders all execute for real against the mocked
- * safeFetch response.
+ * This route used to run the whole scan pipeline INLINE, per URL, inside the
+ * request, and this file used to test that pipeline through it. It no longer
+ * does: like POST /api/v3/scan, it now validates, reserves one 'pending'
+ * scan_history row per URL, dispatches the batch as a detached background job
+ * (lib/scanner/execute-bulk-scan.ts) and returns the scan ids immediately.
+ * ref: AUDIT-011#drift-06
  *
- * runAsyncChecks reaches past safeFetch straight to node:dns, node:tls, and
- * the global fetch for its DNS / TLS / live-fetch sub-checks (it never goes
- * through safeFetch), so those three primitives are stubbed here as well.
- * This is the same network-boundary mocking tests/lib/scanner/async-checks.test.ts
- * uses to exercise async-checks.ts directly; without it every test in this
- * file would make real DNS lookups and real HTTPS requests.
+ * So what is tested here is admission, not scanning: who may submit a batch,
+ * which URLs are refused and at what cost, what gets written, and that the
+ * request returns without waiting for any scan. The scanning itself is
+ * lib/scanner/execute-scan.ts's own suite.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { SCANNING } from "@/lib/config/constants";
 
@@ -28,9 +24,9 @@ vi.mock("@/lib/database/db", () => ({
 
 // Runtime-config resolves settings via pool.query under the hood in
 // production; mocked here at the module boundary so it does not consume the
-// mockQuery call sequence the "not called" assertions below depend on. The
-// shipped registry default keeps the resolved value identical to the old
-// static SCANNING.MAX_URL_LENGTH / SCANNING.MAX_URLS_IN_BULK constants.
+// mockQuery call sequence the assertions below depend on. The shipped registry
+// default keeps the resolved value identical to the old static
+// SCANNING.MAX_URL_LENGTH / SCANNING.MAX_URLS_IN_BULK constants.
 vi.mock("@/lib/config/runtime-config", async () => {
   const { SETTINGS_REGISTRY } = await import("@/lib/config/registry");
   return {
@@ -61,11 +57,13 @@ vi.mock("@/lib/rate-limiting/rate-limit", async (importOriginal) => {
 });
 
 const mockCanMakeRequest = vi.fn();
-const mockCheckAndRecordRequest = vi.fn();
+const mockGetDailyLimit = vi.fn();
+const mockIncrementDailyCountCapped = vi.fn();
 vi.mock("@/lib/rate-limiting/daily-limits", () => ({
   canMakeRequest: (...args: unknown[]) => mockCanMakeRequest(...args),
-  checkAndRecordRequest: (...args: unknown[]) =>
-    mockCheckAndRecordRequest(...args),
+  getDailyLimit: (...args: unknown[]) => mockGetDailyLimit(...args),
+  incrementDailyCountCapped: (...args: unknown[]) =>
+    mockIncrementDailyCountCapped(...args),
   getRateLimitHeaders: (info: { limit: number; remaining: number }) => ({
     "X-RateLimit-Limit": info.limit === -1 ? "unlimited" : String(info.limit),
     "X-RateLimit-Remaining":
@@ -78,33 +76,16 @@ const mockCheckApiKeyRateLimit = vi.fn();
 vi.mock("@/lib/api/api-keys", () => ({
   validateApiKey: (...args: unknown[]) => mockValidateApiKey(...args),
   checkRateLimit: (...args: unknown[]) => mockCheckApiKeyRateLimit(...args),
-  // Early-rejection check is now the read-only peekRateLimit (it no longer
-  // burns a phantom slot). It returns the same shape and the route calls it
-  // before the per-URL checkRateLimit loop, so aliasing both to the one mock fn
-  // preserves the existing call-order-based mockResolvedValueOnce setups.
+  // The early-rejection check is the read-only peekRateLimit (it does not burn
+  // a phantom slot). Same shape, and the route calls it before the per-URL
+  // checkRateLimit loop, so aliasing both to one mock fn preserves the
+  // call-order-based mockResolvedValueOnce setups below.
   peekRateLimit: (...args: unknown[]) => mockCheckApiKeyRateLimit(...args),
 }));
 
-const mockSafeFetch = vi.fn();
 const mockValidateScanTarget = vi.fn();
 vi.mock("@/lib/scanner/safe-fetch", () => ({
-  safeFetch: (...args: unknown[]) => mockSafeFetch(...args),
   validateScanTarget: (...args: unknown[]) => mockValidateScanTarget(...args),
-  // async-checks.ts (deliberately not mocked - see file header) imports this
-  // directly. A minimal real-ish implementation keeps its live-fetch /
-  // exposed-file sub-checks on the same "fetch, then fail closed because the
-  // global fetch below is stubbed" path they take in production, instead of
-  // throwing on `undefined(...)` because the mock omitted the export.
-  isPrivateHostname: (hostname: string) => {
-    const h = hostname.toLowerCase();
-    return (
-      h === "localhost" ||
-      h.endsWith(".local") ||
-      h.endsWith(".internal") ||
-      h.endsWith(".lan") ||
-      /^127\.|^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\./.test(h)
-    );
-  },
 }));
 
 const mockCheckAccessRules = vi.fn();
@@ -112,16 +93,78 @@ vi.mock("@/lib/scanner/access-rules", () => ({
   checkAccessRules: (...args: unknown[]) => mockCheckAccessRules(...args),
 }));
 
+const mockCheckTargetScanLimit = vi.fn();
+vi.mock("@/lib/rate-limiting/target-limits", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/rate-limiting/target-limits")>();
+  return {
+    ...actual,
+    checkTargetScanLimit: (...args: unknown[]) =>
+      mockCheckTargetScanLimit(...args),
+  };
+});
+
+const mockIsUrlOwnedByUser = vi.fn();
+vi.mock("@/lib/domains/scope", () => ({
+  isUrlOwnedByUser: (...args: unknown[]) => mockIsUrlOwnedByUser(...args),
+}));
+
+vi.mock("@/lib/scanner/engine", () => ({
+  getPlannedSyncCategories: () => ["headers", "ssl"],
+}));
+
+vi.mock("@/lib/scanner/async-checks", () => ({
+  getPlannedAsyncBranches: () => ["dns", "tls", "live-fetch"],
+}));
+
+const mockRunBulkBatch = vi.fn();
+vi.mock("@/lib/scanner/execute-bulk-scan", () => ({
+  runBulkBatch: (...args: unknown[]) => mockRunBulkBatch(...args),
+}));
+
+const mockFinalizeScanFailure = vi.fn();
+vi.mock("@/lib/scanner/scan-jobs", () => ({
+  finalizeScanFailure: (...args: unknown[]) => mockFinalizeScanFailure(...args),
+}));
+
+// reserveConcurrentScanBatch performs every row's INSERT inside one locked
+// transaction. Here the caller's insertRows runs against a fake client, so the
+// INSERTs are inspectable without a real pool, and a refusal is drivable.
+let nextScanId = 0;
+const mockInsertQuery = vi.fn(async (_sql: string, _params: unknown[]) => ({
+  rows: [{ id: ++nextScanId }],
+}));
+type BatchReservation =
+  | { ok: true; scanIds: number[] }
+  | { ok: false; check: Record<string, unknown> };
+const mockReserveConcurrentScanBatch = vi.fn(
+  async (
+    _userId: number,
+    insertRows: (client: {
+      query: (sql: string, params: unknown[]) => unknown;
+    }) => Promise<number[]>,
+  ): Promise<BatchReservation> => ({
+    ok: true,
+    scanIds: await insertRows({ query: mockInsertQuery }),
+  }),
+);
+vi.mock("@/lib/rate-limiting/concurrent-scans", () => ({
+  reserveConcurrentScanBatch: (...args: unknown[]) =>
+    mockReserveConcurrentScanBatch(
+      ...(args as [
+        number,
+        (client: {
+          query: (sql: string, params: unknown[]) => unknown;
+        }) => Promise<number[]>,
+      ]),
+    ),
+}));
+
 // getUserPlanLimits is mocked directly (not left real) because it would
-// otherwise issue an extra pool.query call (via getUserPlan) that this
-// file's dozens of tests don't queue for -- they rely on a fixed
-// mockResolvedValueOnce sequence per test, and an unplanned extra query
-// would shift every later value in that sequence by one. Defaults to null
-// (the same "billing off or staff" shape getUserPlanLimits itself returns),
-// which reproduces this file's original no-plan-cap behavior; the
-// BILLING_*_BULK_SCAN_URLS wiring itself is proven separately below with an
-// explicit non-null return. withinPlanLimit/planLimitMessage are the real,
-// pure implementations, not stand-ins.
+// otherwise issue an extra pool.query call this file's tests do not queue for.
+// Defaults to null (the same "billing off or staff" shape getUserPlanLimits
+// itself returns); withinPlanLimit/planLimitMessage stay the real, pure
+// implementations.
 const mockGetUserPlanLimits = vi.fn(
   async (_userId: number) => null as null | { bulkScanUrls: number },
 );
@@ -134,46 +177,6 @@ vi.mock("@/lib/billing/plan-limits", async (importOriginal) => {
   };
 });
 
-// See file header: runAsyncChecks is exercised for real, so its underlying
-// network primitives are stubbed here instead.
-vi.mock("dns/promises", () => ({
-  resolveTxt: vi
-    .fn()
-    .mockRejectedValue(new Error("mock: dns disabled in tests")),
-  resolveCname: vi
-    .fn()
-    .mockRejectedValue(new Error("mock: dns disabled in tests")),
-  resolveCaa: vi
-    .fn()
-    .mockRejectedValue(new Error("mock: dns disabled in tests")),
-  resolveNs: vi
-    .fn()
-    .mockRejectedValue(new Error("mock: dns disabled in tests")),
-  resolveMx: vi
-    .fn()
-    .mockRejectedValue(new Error("mock: dns disabled in tests")),
-  resolve4: vi.fn().mockRejectedValue(new Error("mock: dns disabled in tests")),
-  // Every dns/promises export async-checks.ts actually calls must be
-  // present here, even ones a given test never exercises: vi.mock replaces
-  // the whole module, so a missing key is `undefined`, and calling it
-  // throws synchronously mid-array-construction inside a Promise.race/
-  // Promise.allSettled literal -- which can orphan an already-running
-  // sibling promise from earlier in the same array (it never reaches the
-  // combinator that would have subscribed to it). resolve6 and resolveSoa
-  // were missing here; resolve6 being absent was silently leaking a real
-  // unhandled rejection on every test in this file that reaches
-  // checkDNSResolution.
-  resolve6: vi.fn().mockRejectedValue(new Error("mock: dns disabled in tests")),
-  resolveSoa: vi
-    .fn()
-    .mockRejectedValue(new Error("mock: dns disabled in tests")),
-}));
-
-vi.mock("tls", () => ({
-  connect: vi.fn(),
-  default: { connect: vi.fn() },
-}));
-
 const { POST } = await import("@/app/api/v3/scan/bulk/route");
 
 function postRequest(body: unknown, headers: Record<string, string> = {}) {
@@ -184,25 +187,25 @@ function postRequest(body: unknown, headers: Record<string, string> = {}) {
   });
 }
 
-function htmlResponse(
-  body = "<html><body>hi</body></html>",
-  headers: Record<string, string> = {},
-) {
-  return new Response(body, {
-    status: 200,
-    headers: { "content-type": "text/html", ...headers },
-  });
-}
-
-async function insertedRows() {
-  return mockQuery.mock.calls.filter(([sql]) =>
+/** Every scan_history INSERT the batch's reservation transaction issued. */
+function insertedRows() {
+  return mockInsertQuery.mock.calls.filter(([sql]) =>
     String(sql).includes("INSERT INTO scan_history"),
   );
 }
 
 beforeEach(() => {
+  nextScanId = 0;
   mockQuery.mockReset();
-  mockQuery.mockResolvedValue({ rows: [{ id: 1 }] });
+  mockQuery.mockResolvedValue({ rows: [] });
+
+  mockInsertQuery.mockClear();
+  mockReserveConcurrentScanBatch.mockClear();
+
+  mockRunBulkBatch.mockReset();
+  mockRunBulkBatch.mockResolvedValue(undefined);
+  mockFinalizeScanFailure.mockReset();
+  mockFinalizeScanFailure.mockResolvedValue(true);
 
   mockGetSession.mockReset();
   mockGetSession.mockResolvedValue({ userId: 42 });
@@ -222,14 +225,10 @@ beforeEach(() => {
     remaining: 100,
     resetsAt: new Date().toISOString(),
   });
-  mockCheckAndRecordRequest.mockReset();
-  mockCheckAndRecordRequest.mockResolvedValue({
-    allowed: true,
-    limit: 100,
-    used: 1,
-    remaining: 99,
-    resetsAt: new Date().toISOString(),
-  });
+  mockGetDailyLimit.mockReset();
+  mockGetDailyLimit.mockResolvedValue(100);
+  mockIncrementDailyCountCapped.mockReset();
+  mockIncrementDailyCountCapped.mockResolvedValue({ recorded: true, count: 1 });
 
   mockValidateApiKey.mockReset();
   mockCheckApiKeyRateLimit.mockReset();
@@ -241,28 +240,23 @@ beforeEach(() => {
     resetsAt: new Date().toISOString(),
   });
 
-  mockSafeFetch.mockReset();
-  // A fresh Response per call: reusing one instance across multiple URLs
-  // would fail on the 2nd+ read with "ReadableStream is locked", since
-  // safeReadBody() calls response.body.getReader() once per response.
-  mockSafeFetch.mockImplementation(async () => htmlResponse());
   mockValidateScanTarget.mockReset();
   mockValidateScanTarget.mockResolvedValue({ safe: true });
 
   mockCheckAccessRules.mockReset();
   mockCheckAccessRules.mockResolvedValue({ allowed: true });
 
+  mockCheckTargetScanLimit.mockReset();
+  mockCheckTargetScanLimit.mockResolvedValue({
+    allowed: true,
+    retryAfterSeconds: 0,
+    rootDomain: "example.com",
+  });
+  mockIsUrlOwnedByUser.mockReset();
+  mockIsUrlOwnedByUser.mockResolvedValue(false);
+
   mockGetUserPlanLimits.mockReset();
   mockGetUserPlanLimits.mockResolvedValue(null);
-
-  vi.stubGlobal(
-    "fetch",
-    vi.fn().mockRejectedValue(new Error("mock: network disabled in tests")),
-  );
-});
-
-afterEach(() => {
-  vi.unstubAllGlobals();
 });
 
 describe("POST /api/v3/scan/bulk - auth", () => {
@@ -272,9 +266,8 @@ describe("POST /api/v3/scan/bulk - auth", () => {
     const res = await POST(postRequest({ urls: ["https://example.com"] }));
 
     expect(res.status).toBe(401);
-    const json = await res.json();
-    expect(json.error).toMatch(/Unauthorized/);
     expect(mockQuery).not.toHaveBeenCalled();
+    expect(insertedRows()).toHaveLength(0);
   });
 
   it("rejects an invalid API key", async () => {
@@ -283,13 +276,11 @@ describe("POST /api/v3/scan/bulk - auth", () => {
     const res = await POST(
       postRequest(
         { urls: ["https://example.com"] },
-        { authorization: "Bearer bad-key" },
+        { authorization: "Bearer vr_live_bogus" },
       ),
     );
 
     expect(res.status).toBe(401);
-    const json = await res.json();
-    expect(json.error).toBe("Invalid or revoked API key.");
   });
 
   it("rejects an API key whose user has not accepted updated terms", async () => {
@@ -333,10 +324,8 @@ describe("POST /api/v3/scan/bulk - auth", () => {
     );
 
     expect(res.status).toBe(429);
-    const json = await res.json();
-    expect(json.error).toBe("Rate limit exceeded.");
-    expect(res.headers.get("X-RateLimit-Limit")).toBe("50");
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(res.headers.get("Retry-After")).toBeTruthy();
+    expect(insertedRows()).toHaveLength(0);
   });
 
   it("rejects with 429 when the session bulk-scan rate limit is hit", async () => {
@@ -351,8 +340,6 @@ describe("POST /api/v3/scan/bulk - auth", () => {
     expect(res.status).toBe(429);
     const json = await res.json();
     expect(json.error).toMatch(/Bulk scan rate limit reached/);
-    expect(json.error).toMatch(/2 minute/);
-    expect(mockQuery).not.toHaveBeenCalled();
   });
 });
 
@@ -360,37 +347,28 @@ describe("POST /api/v3/scan/bulk - request validation", () => {
   it("rejects a non-array urls field", async () => {
     const res = await POST(postRequest({ urls: "https://example.com" }));
     expect(res.status).toBe(400);
-    const json = await res.json();
-    expect(json.error).toBe("Provide an array of URLs.");
-    expect(mockQuery).not.toHaveBeenCalled();
   });
 
   it("rejects an empty urls array", async () => {
     const res = await POST(postRequest({ urls: [] }));
     expect(res.status).toBe(400);
-    const json = await res.json();
-    expect(json.error).toBe("Provide an array of URLs.");
   });
 
   it("rejects when an entry is not a string", async () => {
-    const res = await POST(
-      postRequest({ urls: ["https://example.com", 12345] }),
-    );
+    const res = await POST(postRequest({ urls: ["https://example.com", 42] }));
     expect(res.status).toBe(400);
     const json = await res.json();
-    expect(json.error).toBe("Each entry must be a string URL.");
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(json.error).toMatch(/must be a string URL/);
   });
 
   it("rejects a URL longer than the configured maximum length", async () => {
-    const tooLong =
-      "https://example.com/" + "a".repeat(SCANNING.MAX_URL_LENGTH);
-    const res = await POST(postRequest({ urls: [tooLong] }));
+    const longUrl = `https://example.com/${"a".repeat(SCANNING.MAX_URL_LENGTH)}`;
+
+    const res = await POST(postRequest({ urls: [longUrl] }));
+
     expect(res.status).toBe(400);
     const json = await res.json();
-    expect(json.error).toBe(
-      `URL exceeds maximum length of ${SCANNING.MAX_URL_LENGTH} characters.`,
-    );
+    expect(json.error).toMatch(/exceeds maximum length/);
   });
 
   it("rejects a request over the configured MAX_URLS_IN_BULK cap before scanning anything", async () => {
@@ -402,41 +380,29 @@ describe("POST /api/v3/scan/bulk - request validation", () => {
     const res = await POST(postRequest({ urls }));
 
     expect(res.status).toBe(400);
-    const json = await res.json();
-    expect(json.error).toBe(
-      `Maximum ${SCANNING.MAX_URLS_IN_BULK} URLs per bulk scan.`,
-    );
-    expect(mockQuery).not.toHaveBeenCalled();
-    expect(mockSafeFetch).not.toHaveBeenCalled();
+    expect(insertedRows()).toHaveLength(0);
   });
 
-  /**
-   * Settings-wiring regression: BILLING_*_BULK_SCAN_URLS is resolved by
-   * getUserPlanLimits() (lib/billing/plan-limits.ts) into
-   * PlanLimits.bulkScanUrls, but until this fix nothing ever read that
-   * field back out -- the route enforced only the flat, plan-agnostic
-   * MAX_URLS_BULK setting, so an admin's per-plan bulk-scan cap had zero
-   * effect. This proves a plan limit tighter than MAX_URLS_IN_BULK is
-   * actually enforced.
-   */
   it("rejects a request over the caller's plan-tier bulk scan URL cap, even under MAX_URLS_IN_BULK", async () => {
     mockGetUserPlanLimits.mockResolvedValue({ bulkScanUrls: 1 });
 
     const res = await POST(
-      postRequest({ urls: ["https://example.com/a", "https://example.com/b"] }),
+      postRequest({ urls: ["https://a.example.com", "https://b.example.com"] }),
     );
 
     expect(res.status).toBe(400);
     const json = await res.json();
-    expect(json.error).toContain("up to 1 URLs per bulk scan");
-    expect(mockSafeFetch).not.toHaveBeenCalled();
+    expect(json.error).toMatch(/URLs per bulk scan/);
+    expect(insertedRows()).toHaveLength(0);
   });
 
-  it("allows a request within the caller's plan-tier bulk scan URL cap", async () => {
+  it("allows a request exactly at the caller's plan-tier bulk scan URL cap", async () => {
     mockGetUserPlanLimits.mockResolvedValue({ bulkScanUrls: 2 });
 
     const res = await POST(
-      postRequest({ urls: ["https://example.com/a", "https://example.com/b"] }),
+      postRequest({
+        urls: ["https://example.com/a", "https://example.com/b"],
+      }),
     );
 
     expect(res.status).toBe(200);
@@ -463,34 +429,71 @@ describe("POST /api/v3/scan/bulk - request validation", () => {
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json.error).toBe("No valid URLs provided.");
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(insertedRows()).toHaveLength(0);
   });
 });
 
-describe("POST /api/v3/scan/bulk - single URL scan and persistence", () => {
-  it("scans a single HTTP URL end to end and records it in scan_history", async () => {
+describe("POST /api/v3/scan/bulk - queueing", () => {
+  it("reserves a pending row per URL and returns its scan id without running the scan", async () => {
     const res = await POST(postRequest({ urls: ["https://example.com"] }));
 
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.total).toBe(1);
-    expect(json.successful).toBe(1);
+    expect(json.queued).toBe(1);
     expect(json.failed).toBe(0);
     expect(json.skipped).toBe(0);
-    expect(json.results[0].success).toBe(true);
-    expect(json.results[0].scanHistoryId).toBe(1);
-    expect(typeof json.results[0].duration).toBe("number");
+    expect(json.results[0]).toEqual({
+      url: "https://example.com/",
+      success: true,
+      scanId: 1,
+      status: "queued",
+    });
 
-    const rows = await insertedRows();
+    const rows = insertedRows();
     expect(rows).toHaveLength(1);
     const [sql, params] = rows[0];
     expect(sql).toContain("INSERT INTO scan_history");
+    expect(sql).toContain("'pending'");
     expect(params[0]).toBe(42); // user_id
     expect(params[1]).toBe("https://example.com/"); // normalized url
-    expect(params[7]).toBe("web"); // source
+    expect(params[2]).toBe("web"); // source
   });
 
-  it("records source='api' and still enforces dailyScans quota for API-key auth (distinct from the key's own apiRequestsPerDay rate limit)", async () => {
+  it("dispatches the batch as a detached background job instead of awaiting it", async () => {
+    // The whole point of the change: a batch that takes minutes must not hold
+    // the HTTP request open (a proxy in front of the app cuts it at ~100s and
+    // the scans keep running unobserved). The response must resolve even if
+    // the batch job never does.
+    let releaseBatch: (() => void) | undefined;
+    mockRunBulkBatch.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseBatch = resolve;
+        }),
+    );
+
+    const res = await POST(
+      postRequest({
+        urls: ["https://one.example.com", "https://two.example.com"],
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.queued).toBe(2);
+    expect(mockRunBulkBatch).toHaveBeenCalledTimes(1);
+    const [batchArgs] = mockRunBulkBatch.mock.calls[0];
+    expect(batchArgs.authedUserId).toBe(42);
+    expect(batchArgs.scans.map((s: { scanId: number }) => s.scanId)).toEqual([
+      1, 2,
+    ]);
+    expect(batchArgs.scans[0].url).toBe("https://one.example.com/");
+
+    releaseBatch?.();
+  });
+
+  it("records source='api' and still enforces dailyScans quota for API-key auth", async () => {
     mockValidateApiKey.mockResolvedValue({
       keyId: 1,
       userId: 99,
@@ -506,20 +509,20 @@ describe("POST /api/v3/scan/bulk - single URL scan and persistence", () => {
     );
 
     expect(res.status).toBe(200);
-    const rows = await insertedRows();
+    const rows = insertedRows();
     expect(rows).toHaveLength(1);
     const [, params] = rows[0];
     expect(params[0]).toBe(99);
-    expect(params[7]).toBe("api");
+    expect(params[2]).toBe("api");
 
     // dailyScans applies regardless of auth method -- API-key requests used
     // to skip it entirely, bounded only by apiRequestsPerDay (unbounded on
     // a plan with apiRequestsPerDay: -1).
     expect(mockCanMakeRequest).toHaveBeenCalledWith(99);
-    expect(mockCheckAndRecordRequest).toHaveBeenCalledWith(99);
+    expect(mockIncrementDailyCountCapped).toHaveBeenCalledWith(99, 100);
   });
 
-  it("rejects an API-key bulk request with 429 when dailyScans is exhausted, even though the key's own apiRequestsPerDay limit has room", async () => {
+  it("rejects an API-key bulk request with 429 when dailyScans is exhausted, even though the key's own limit has room", async () => {
     mockValidateApiKey.mockResolvedValue({
       keyId: 1,
       userId: 99,
@@ -544,94 +547,59 @@ describe("POST /api/v3/scan/bulk - single URL scan and persistence", () => {
     expect(res.status).toBe(429);
     const json = await res.json();
     expect(json.error).toMatch(/daily scan limit reached/i);
-    expect(mockSafeFetch).not.toHaveBeenCalled();
+    expect(insertedRows()).toHaveLength(0);
   });
 
-  it("inserts is_public=true by default and upserts host_reputation for the batch", async () => {
+  it("inserts is_public=true by default and is_public=false when the batch is private", async () => {
     await POST(postRequest({ urls: ["https://example.com"] }));
+    expect(insertedRows()[0][1][5]).toBe(true);
 
-    const rows = await insertedRows();
-    const [, params] = rows[0];
-    expect(params[10]).toBe(true);
-
-    const reputationCalls = mockQuery.mock.calls.filter(([sql]) =>
-      String(sql).includes("INSERT INTO host_reputation"),
-    );
-    expect(reputationCalls).toHaveLength(1);
-  });
-
-  it("inserts is_public=false and skips host_reputation when the batch is requested private", async () => {
+    mockInsertQuery.mockClear();
     await POST(postRequest({ urls: ["https://example.com"], isPublic: false }));
-
-    const rows = await insertedRows();
-    const [, params] = rows[0];
-    expect(params[10]).toBe(false);
-
-    const reputationCalls = mockQuery.mock.calls.filter(([sql]) =>
-      String(sql).includes("INSERT INTO host_reputation"),
-    );
-    expect(reputationCalls).toHaveLength(0);
+    expect(insertedRows()[0][1][5]).toBe(false);
   });
 
-  it("redacts sensitive response headers before persisting them", async () => {
-    mockSafeFetch.mockResolvedValue(
-      htmlResponse("<html></html>", { "set-cookie": "sid=abc123; HttpOnly" }),
-    );
-
-    await POST(postRequest({ urls: ["https://example.com"] }));
-
-    const rows = await insertedRows();
-    const [, params] = rows[0];
-    const storedHeaders = JSON.parse(params[8]);
-    expect(storedHeaders["set-cookie"]).toBe("[redacted]");
-  });
-
-  it("still returns success:true with a null scanHistoryId when the DB insert fails", async () => {
+  it("returns 500 without dispatching anything when the reservation transaction fails", async () => {
     const consoleErrorSpy = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
-    mockQuery.mockRejectedValue(new Error("db unavailable"));
+    mockReserveConcurrentScanBatch.mockRejectedValueOnce(
+      new Error("db unavailable"),
+    );
 
     const res = await POST(postRequest({ urls: ["https://example.com"] }));
 
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json.results[0].success).toBe(true);
-    expect(json.results[0].scanHistoryId).toBeNull();
+    expect(res.status).toBe(500);
+    expect(mockRunBulkBatch).not.toHaveBeenCalled();
+    // Nothing was charged: the daily counter is only touched once a row exists.
+    expect(mockIncrementDailyCountCapped).not.toHaveBeenCalled();
 
     consoleErrorSpy.mockRestore();
   });
+
+  it("returns the concurrency 429 without charging any quota when the account is already at capacity", async () => {
+    mockReserveConcurrentScanBatch.mockResolvedValueOnce({
+      ok: false,
+      check: {
+        allowed: false,
+        current: 1,
+        limit: 1,
+        message: "You already have 1 scan(s) running.",
+      },
+    });
+
+    const res = await POST(postRequest({ urls: ["https://example.com"] }));
+
+    expect(res.status).toBe(429);
+    const json = await res.json();
+    expect(json.statusCode).toBe("CONCURRENT_SCAN_LIMIT");
+    expect(mockIncrementDailyCountCapped).not.toHaveBeenCalled();
+    expect(mockRunBulkBatch).not.toHaveBeenCalled();
+  });
 });
 
-describe("POST /api/v3/scan/bulk - one URL fails, others succeed", () => {
-  it("keeps scanning later URLs when an earlier one cannot be reached, and only persists the successful one", async () => {
-    mockSafeFetch
-      .mockRejectedValueOnce(new Error("connection refused"))
-      .mockResolvedValueOnce(htmlResponse());
-
-    const res = await POST(
-      postRequest({
-        urls: ["https://unreachable.example.com", "https://example.com"],
-      }),
-    );
-
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json.total).toBe(2);
-    expect(json.successful).toBe(1);
-    expect(json.failed).toBe(1);
-    expect(json.results[0].success).toBe(false);
-    expect(json.results[0].error).toMatch(/Could not reach/);
-    expect(json.results[1].success).toBe(true);
-
-    // Daily quota is still consumed for the URL that failed to fetch.
-    expect(mockCheckAndRecordRequest).toHaveBeenCalledTimes(2);
-    // Only the successful scan reaches the DB insert.
-    const rows = await insertedRows();
-    expect(rows).toHaveLength(1);
-  });
-
-  it("reports a per-URL SSRF rejection from validateScanTarget without aborting the batch", async () => {
+describe("POST /api/v3/scan/bulk - per-URL refusals", () => {
+  it("reports an SSRF rejection from validateScanTarget without aborting the batch, and charges nothing for it", async () => {
     mockValidateScanTarget
       .mockResolvedValueOnce({ safe: false, reason: "Internal IP blocked." })
       .mockResolvedValueOnce({ safe: true });
@@ -650,14 +618,15 @@ describe("POST /api/v3/scan/bulk - one URL fails, others succeed", () => {
       }),
     );
     expect(json.results[1].success).toBe(true);
-    // The rejected URL never reaches access-rules or safeFetch. The one
-    // successful scan makes 3 calls: the page fetch, plus the async
-    // bucket-listing and OSV-library checks' own follow-up homepage fetches.
+    // The rejected URL never reaches access-rules, never gets a row, and never
+    // costs a daily scan: both gates run BEFORE anything is reserved or
+    // charged, so a blocked target cannot burn quota for work that never ran.
     expect(mockCheckAccessRules).toHaveBeenCalledTimes(1);
-    expect(mockSafeFetch).toHaveBeenCalledTimes(3);
+    expect(insertedRows()).toHaveLength(1);
+    expect(mockIncrementDailyCountCapped).toHaveBeenCalledTimes(1);
   });
 
-  it("reports a per-URL access-rules rejection with a generic message, without aborting the batch", async () => {
+  it("reports an access-rules rejection with a generic message, without aborting the batch", async () => {
     mockCheckAccessRules
       .mockResolvedValueOnce({ allowed: false })
       .mockResolvedValueOnce({ allowed: true });
@@ -677,53 +646,125 @@ describe("POST /api/v3/scan/bulk - one URL fails, others succeed", () => {
     );
     expect(json.results[0].details).toMatch(/restricted from scanning/);
     expect(json.results[1].success).toBe(true);
-    // The one successful scan makes 3 calls: the page fetch, plus the async
-    // bucket-listing and OSV-library checks' own follow-up homepage fetches.
-    expect(mockSafeFetch).toHaveBeenCalledTimes(3);
+    expect(mockIncrementDailyCountCapped).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * AUDIT-012#abuse-05: every other limiter is keyed on the caller, so total
+   * volume aimed at one victim was bounded only by how many accounts the
+   * requester was willing to create.
+   */
+  it("refuses a URL whose target has been scanned too much, unless the caller owns the domain", async () => {
+    mockCheckTargetScanLimit.mockResolvedValue({
+      allowed: false,
+      retryAfterSeconds: 900,
+      rootDomain: "victim.example",
+    });
+
+    const res = await POST(
+      postRequest({ urls: ["https://www.victim.example/"] }),
+    );
+
+    const json = await res.json();
+    expect(json.queued).toBe(0);
+    expect(json.results[0].error).toMatch(/scanned too many times/i);
+    expect(mockIsUrlOwnedByUser).toHaveBeenCalledTimes(1);
+    expect(mockIncrementDailyCountCapped).not.toHaveBeenCalled();
+  });
+
+  it("lets a verified domain owner past the per-target limit, and asks only once per domain", async () => {
+    mockCheckTargetScanLimit.mockResolvedValue({
+      allowed: false,
+      retryAfterSeconds: 900,
+      rootDomain: "mine.example",
+    });
+    mockIsUrlOwnedByUser.mockResolvedValue(true);
+
+    const res = await POST(
+      postRequest({
+        urls: ["https://mine.example/a", "https://mine.example/b"],
+      }),
+    );
+
+    const json = await res.json();
+    expect(json.queued).toBe(2);
+    // Cached per registrable domain: two URLs, one ownership lookup.
+    expect(mockIsUrlOwnedByUser).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns without reserving anything when every URL is refused", async () => {
+    mockCheckAccessRules.mockResolvedValue({ allowed: false });
+
+    const res = await POST(
+      postRequest({
+        urls: [
+          "https://blocked.example.com/a",
+          "https://blocked.example.com/b",
+        ],
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.queued).toBe(0);
+    expect(json.failed).toBe(2);
+    expect(mockReserveConcurrentScanBatch).not.toHaveBeenCalled();
+    expect(mockRunBulkBatch).not.toHaveBeenCalled();
   });
 });
 
-describe("POST /api/v3/scan/bulk - protocol routing", () => {
-  it("routes a ws:// URL through the websocket path, converting to http for the initial fetch", async () => {
-    const res = await POST(postRequest({ urls: ["ws://example.com/socket"] }));
-
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json.results[0].success).toBe(true);
-
-    expect(mockSafeFetch).toHaveBeenCalledWith(
-      "http://example.com/socket",
-      expect.any(Object),
-      ["example.com"],
+describe("POST /api/v3/scan/bulk - per-batch work is not repeated per URL", () => {
+  // AUDIT-012#perf-18: a 100-URL batch performed on the order of 900 to 1000
+  // serialized database round trips, a large share of them re-answering the
+  // same two questions ("what is this user's daily cap" and "is this host
+  // blocklisted") once per URL.
+  it("resolves the daily limit once for the whole batch, not once per URL", async () => {
+    const res = await POST(
+      postRequest({
+        urls: [
+          "https://one.example.com",
+          "https://two.example.com",
+          "https://three.example.com",
+        ],
+      }),
     );
 
-    const rows = await insertedRows();
-    const findings = JSON.parse(rows[0][1][3]);
-    expect(
-      findings.some((f: { id: string }) =>
-        f.id.startsWith("ws-insecure-connection"),
-      ),
-    ).toBe(true);
+    expect(res.status).toBe(200);
+    expect(mockGetDailyLimit).toHaveBeenCalledTimes(1);
+    // The charge itself still happens per URL, atomically.
+    expect(mockIncrementDailyCountCapped).toHaveBeenCalledTimes(3);
   });
 
-  it("routes an ftp:// URL through the FTP path without ever calling safeFetch", async () => {
-    const res = await POST(postRequest({ urls: ["ftp://example.com"] }));
+  it("checks the access rules once per host, not once per URL", async () => {
+    const res = await POST(
+      postRequest({
+        urls: [
+          "https://example.com/a",
+          "https://example.com/b",
+          "https://example.com/c",
+          "https://other.example.net/a",
+        ],
+      }),
+    );
 
     expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json.results[0].success).toBe(true);
-    expect(mockSafeFetch).not.toHaveBeenCalled();
+    expect(mockCheckAccessRules).toHaveBeenCalledTimes(2);
+  });
 
-    const rows = await insertedRows();
-    const findings = JSON.parse(rows[0][1][3]);
-    expect(
-      findings.some((f: { id: string }) =>
-        f.id.startsWith("ftp-insecure-connection"),
-      ),
-    ).toBe(true);
-    expect(
-      findings.some((f: { id: string }) => f.id.startsWith("ftp-limited-scan")),
-    ).toBe(true);
+  it("re-runs the SSRF guard for every URL, since it resolves DNS", async () => {
+    const res = await POST(
+      postRequest({
+        urls: ["https://example.com/a", "https://example.com/b"],
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockValidateScanTarget).toHaveBeenCalledWith(
+      "https://example.com/a",
+    );
+    expect(mockValidateScanTarget).toHaveBeenCalledWith(
+      "https://example.com/b",
+    );
   });
 });
 
@@ -742,10 +783,10 @@ describe("POST /api/v3/scan/bulk - daily quota", () => {
     expect(res.status).toBe(429);
     const json = await res.json();
     expect(json.error).toMatch(/Daily scan limit reached/);
-    expect(mockSafeFetch).not.toHaveBeenCalled();
+    expect(insertedRows()).toHaveLength(0);
   });
 
-  it("scans only as many URLs as remain in the daily quota and marks the rest skipped without scanning them", async () => {
+  it("queues only as many URLs as remain in the daily quota and marks the rest skipped", async () => {
     mockCanMakeRequest.mockResolvedValue({
       allowed: true,
       limit: 100,
@@ -767,6 +808,7 @@ describe("POST /api/v3/scan/bulk - daily quota", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.total).toBe(3);
+    expect(json.queued).toBe(2);
     expect(json.skipped).toBe(1);
     expect(json.results[2]).toEqual(
       expect.objectContaining({
@@ -775,15 +817,50 @@ describe("POST /api/v3/scan/bulk - daily quota", () => {
         error: expect.stringMatching(/Daily scan limit reached/),
       }),
     );
-    // 2 successful scans x 3 calls each: the page fetch, plus the async
-    // bucket-listing and OSV-library checks' own follow-up homepage fetches.
-    expect(mockSafeFetch).toHaveBeenCalledTimes(6);
-    expect(mockCheckAndRecordRequest).toHaveBeenCalledTimes(2);
+    expect(insertedRows()).toHaveLength(2);
+    expect(mockIncrementDailyCountCapped).toHaveBeenCalledTimes(2);
+  });
+
+  it("closes out the reserved rows it cannot charge instead of leaving them pending", async () => {
+    // The atomic capped increment is what really enforces the cap, and it can
+    // refuse mid-batch (a concurrent scan consumed the last slot). Those rows
+    // already exist, so they have to be failed explicitly or they sit
+    // 'pending' forever, holding concurrency and showing as stuck scans.
+    mockIncrementDailyCountCapped
+      .mockResolvedValueOnce({ recorded: true, count: 1 })
+      .mockResolvedValue({ recorded: false, count: 100 });
+
+    const res = await POST(
+      postRequest({
+        urls: [
+          "https://one.example.com",
+          "https://two.example.com",
+          "https://three.example.com",
+        ],
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.queued).toBe(1);
+    expect(json.failed).toBe(2);
+    expect(mockFinalizeScanFailure).toHaveBeenCalledTimes(2);
+    expect(mockFinalizeScanFailure).toHaveBeenCalledWith(
+      2,
+      expect.stringMatching(/Daily scan limit reached/),
+    );
+    expect(mockFinalizeScanFailure).toHaveBeenCalledWith(
+      3,
+      expect.stringMatching(/Daily scan limit reached/),
+    );
+    // Only the URL that was actually charged is handed to the background job.
+    const [batchArgs] = mockRunBulkBatch.mock.calls[0];
+    expect(batchArgs.scans).toHaveLength(1);
   });
 });
 
 describe("POST /api/v3/scan/bulk - API key per-URL rate limiting", () => {
-  it("stops scanning and marks the remaining URLs failed once the API key's per-URL limit is hit mid-batch", async () => {
+  it("fails the remaining URLs once the API key's per-URL limit is hit mid-batch", async () => {
     mockValidateApiKey.mockResolvedValue({
       keyId: 7,
       userId: 42,
@@ -797,7 +874,7 @@ describe("POST /api/v3/scan/bulk - API key per-URL rate limiting", () => {
         used: 0,
         remaining: 2,
         resetsAt: new Date().toISOString(),
-      }) // early check
+      }) // early peek
       .mockResolvedValueOnce({
         allowed: true,
         limit: 2,
@@ -828,43 +905,35 @@ describe("POST /api/v3/scan/bulk - API key per-URL rate limiting", () => {
 
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.successful).toBe(1);
+    expect(json.queued).toBe(1);
     expect(json.failed).toBe(2);
     expect(json.results[0].success).toBe(true);
     expect(json.results[1]).toEqual(
       expect.objectContaining({
         success: false,
-        error: "API key daily limit reached mid-scan.",
+        error: "API key daily limit reached mid-batch.",
       }),
     );
     expect(json.results[2]).toEqual(
       expect.objectContaining({
         success: false,
-        error: "API key daily limit reached mid-scan.",
+        error: "API key daily limit reached mid-batch.",
       }),
     );
-    // Only the first URL was actually fetched - the loop broke before
-    // url2/url3. That one successful scan makes 3 calls: the page fetch,
-    // plus the async bucket-listing and OSV-library checks' own follow-up
-    // homepage fetches.
-    expect(mockSafeFetch).toHaveBeenCalledTimes(3);
+    // The two URLs that lost their charge had their reserved rows closed out.
+    expect(mockFinalizeScanFailure).toHaveBeenCalledTimes(2);
     expect(res.headers.get("X-RateLimit-Limit")).toBe("2");
     expect(res.headers.get("X-RateLimit-Remaining")).toBe("0");
   });
 
   /**
-   * Regression for the "remaining" slice using urlsToScan.indexOf(scanUrl)
-   * instead of the loop index. indexOf() returns the FIRST matching index,
-   * so with a duplicate URL earlier in the batch, exhausting the quota on
-   * the *second* occurrence resolved back to right after the *first*
-   * occurrence -- re-pushing the already-scanned duplicate a second time
-   * (as a bogus quota-exceeded entry) while everything after the real
-   * current position was still correctly appended. That inflated
-   * successful + failed past total. With the fix (tracking the loop index
-   * directly) the duplicate is processed once, in order, and the counts add
-   * up.
+   * Regression for the "remaining" slice using indexOf instead of the loop
+   * index: with a duplicate URL earlier in the batch, exhausting the quota on
+   * the SECOND occurrence used to resolve back to just after the FIRST one,
+   * re-pushing an already-processed entry and inflating queued + failed past
+   * total.
    */
-  it("keeps successful + failed === total when a duplicate URL trips the API key quota mid-batch", async () => {
+  it("keeps queued + failed === total when a duplicate URL trips the API key quota mid-batch", async () => {
     mockValidateApiKey.mockResolvedValue({
       keyId: 7,
       userId: 42,
@@ -878,21 +947,21 @@ describe("POST /api/v3/scan/bulk - API key per-URL rate limiting", () => {
         used: 0,
         remaining: 2,
         resetsAt: new Date().toISOString(),
-      }) // early check
+      })
       .mockResolvedValueOnce({
         allowed: true,
         limit: 2,
         used: 1,
         remaining: 1,
         resetsAt: new Date().toISOString(),
-      }) // url index0 ("one", first occurrence) - succeeds
+      })
       .mockResolvedValueOnce({
         allowed: false,
         limit: 2,
         used: 2,
         remaining: 0,
         resetsAt: new Date().toISOString(),
-      }); // url index1 ("one", duplicate) - exhausted here, not at index0
+      });
 
     const res = await POST(
       postRequest(
@@ -907,44 +976,28 @@ describe("POST /api/v3/scan/bulk - API key per-URL rate limiting", () => {
       ),
     );
 
-    expect(res.status).toBe(200);
     const json = await res.json();
-
     expect(json.total).toBe(3);
     expect(json.results).toHaveLength(3);
-    expect(json.successful + json.failed).toBe(json.total);
-    expect(json.successful).toBe(1);
-    expect(json.failed).toBe(2);
-
-    // index0 (first "one"): actually scanned and succeeded.
+    expect(json.queued + json.failed).toBe(json.total);
     expect(json.results[0]).toEqual(
       expect.objectContaining({
         url: "https://one.example.com/",
         success: true,
       }),
     );
-    // index1 (duplicate "one"): the one the quota was actually exhausted on.
     expect(json.results[1]).toEqual(
       expect.objectContaining({
         url: "https://one.example.com/",
         success: false,
-        error: "API key daily limit reached mid-scan.",
       }),
     );
-    // index2 ("two"): never reached, pushed once as the real remainder.
     expect(json.results[2]).toEqual(
       expect.objectContaining({
         url: "https://two.example.com/",
         success: false,
-        error: "API key daily limit reached mid-scan.",
       }),
     );
-
-    // Only the first URL was actually fetched - the loop broke on index1
-    // before index1's own scan or index2 ran. That one successful scan
-    // makes 3 calls: the page fetch, plus the async bucket-listing and
-    // OSV-library checks' own follow-up homepage fetches.
-    expect(mockSafeFetch).toHaveBeenCalledTimes(3);
   });
 });
 

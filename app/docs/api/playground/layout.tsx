@@ -5,15 +5,14 @@ import {
   BreadcrumbStructuredData,
   TechArticleStructuredData,
 } from "@/components/seo/structured-data";
+import { APP_NAME } from "@/lib/config/constants";
 
 const TITLE = "API Playground";
-const DESCRIPTION =
-  "Send real requests to the VulnRadar REST API from your browser and copy the same call as ready-to-run code in cURL, JavaScript, Python, Go, PHP, Java, Ruby, or C#.";
+const DESCRIPTION = `Send real requests to the ${APP_NAME} REST API from your browser and copy the same call as ready-to-run code in cURL, JavaScript, Python, Go, PHP, Java, Ruby, or C#.`;
 
 export const metadata: Metadata = pageMetadata({
   title: "API Playground: Try Requests in the Browser",
-  description:
-    "Send real requests to the VulnRadar REST API from your browser and copy each call as ready-to-run code: cURL, JavaScript, Python, Go, PHP, and more.",
+  description: `Send real requests to the ${APP_NAME} REST API from your browser and copy each call as ready-to-run code: cURL, JavaScript, Python, Go, PHP, and more.`,
   path: "/docs/api/playground",
   keywords: [
     "api playground",
@@ -33,6 +32,7 @@ export default async function Layout({
     <>
       <BreadcrumbStructuredData
         items={[
+          { name: "Home", path: "/landing" },
           { name: "Docs", path: "/docs" },
           { name: "API Reference", path: "/docs/api" },
           { name: "API Playground", path: "/docs/api/playground" },

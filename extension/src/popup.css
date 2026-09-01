@@ -1,70 +1,10 @@
-/* Popup UI — matches VulnRadar brand. CSS custom properties on :root
-   mirror the live app's --primary / --background / etc. Light + dark
-   via the prefers-color-scheme media query. */
+/* Popup UI. Every colour, radius and font stack comes from tokens.css,
+   which scripts/gen-tokens.mjs generates from src/lib/tokens.json - the one
+   place the extension declares them. options.css imports this file, and the
+   shadow-DOM site-alert card builds the same values as a string from
+   lib/tokens.ts, so the three surfaces can no longer disagree. */
 
-:root {
-  /* Blue-tinted, not stark white -- matches globals.css's light
-     --background (hsl(213 25% 90%)), same reasoning as there. */
-  --vr-bg: #dfe5ec;
-  --vr-card: #eff2f5;
-  --vr-text: #15192a;
-  --vr-text-muted: #666e80;
-  --vr-border: #c3cbd5;
-  /* Primary: matches VulnRadar globals.css hsl(213 94% 68%). fg reuses
-     --vr-text: white-on-primary was ~2.5:1 contrast against this
-     lighter blue, under WCAG AA's 3:1 minimum -- dark mode below
-     already used a near-black fg for the same reason. */
-  --vr-primary: #60a5fa;
-  --vr-primary-fg: #15192a;
-  --vr-success: #15a85f;
-  --vr-warning: #f5a623;
-  --vr-danger: #ef4444;
-  --vr-info: #6b7280;
-  --vr-radius: 10px;
-  --vr-radius-sm: 6px;
-  --vr-radius-pill: 999px;
-  --vr-font:
-    system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, sans-serif;
-  --vr-mono:
-    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  --vr-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --vr-bg: #0e111a;
-    --vr-card: #13161f;
-    --vr-text: #eaeef4;
-    --vr-text-muted: #7d8497;
-    --vr-border: #232735;
-    /* Dark primary: matches VulnRadar globals.css hsl(213 94% 68%) */
-    --vr-primary: #60a5fa;
-    --vr-primary-fg: #0e111a;
-  }
-}
-
-[data-theme="light"] {
-  /* Blue-tinted, not stark white -- matches globals.css's light
-     --background (hsl(213 25% 90%)), same reasoning as there. */
-  --vr-bg: #dfe5ec;
-  --vr-card: #eff2f5;
-  --vr-text: #15192a;
-  --vr-text-muted: #666e80;
-  --vr-border: #c3cbd5;
-  --vr-primary: #60a5fa;
-  --vr-primary-fg: #15192a;
-}
-
-[data-theme="dark"] {
-  --vr-bg: #0e111a;
-  --vr-card: #13161f;
-  --vr-text: #eaeef4;
-  --vr-text-muted: #7d8497;
-  --vr-border: #232735;
-  --vr-primary: #60a5fa;
-  --vr-primary-fg: #0e111a;
-}
+@import url("./tokens.css");
 
 * {
   box-sizing: border-box;
@@ -105,7 +45,12 @@ main {
 }
 
 a {
-  color: var(--vr-primary);
+  /* --vr-primary is the button FILL, not a text colour: on the light theme it
+     measures 2.0:1 against the page. --vr-primary-text is the same hue at a
+     lightness that clears SC 1.4.3 (4.56:1 on bg, 5.15:1 on card), and is
+     identical to --vr-primary in dark mode where the brand blue already reads
+     at 7.6:1. See src/lib/tokens.json. */
+  color: var(--vr-primary-text);
   text-decoration: none;
 }
 a:hover {
@@ -123,6 +68,55 @@ button {
 button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+/* SC 2.4.7. Everything below this line used to rely on the browser's own
+   focus ring, which is drawn in a fixed colour the theme knows nothing about
+   and disappears against a filled primary button. A popup is very often opened
+   by keyboard shortcut and operated without ever touching the mouse, so losing
+   the focus position here is worse than it is on a full page. Declared once,
+   for every focusable thing in the popup, the options page (which imports this
+   file) and the welcome page. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--vr-primary-text);
+  outline-offset: 2px;
+  border-radius: var(--vr-radius-sm);
+}
+
+/* Text that only a screen reader needs: the live-region announcements below
+   have no visual counterpart because the popup already shows the same state
+   graphically. Not `display: none`, which would remove it from the
+   accessibility tree along with the pixels. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The spinner is deliberately NOT covered: it is the only signal that a scan
+   that can legitimately run for minutes is still alive, and freezing it reads
+   as a hung popup. WCAG 2.2.2 exempts movement that is essential to the
+   activity, which a progress indicator is. Everything else here is decoration. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+  }
+  .finding-chevron {
+    transition: none;
+  }
 }
 
 /* --- Pill: connect status --- */
@@ -206,8 +200,12 @@ button:disabled {
 
 .url-pill .copy {
   flex-shrink: 0;
+  /* SC 2.5.5/2.5.8: padding alone left this about 17px tall. The popup is
+     small and tempts controls smaller than a finger or an imprecise pointer
+     can reliably hit, so every button in it carries a 24px floor. */
+  min-height: 24px;
   font-size: 11px;
-  padding: 2px 6px;
+  padding: 2px 8px;
   border-radius: var(--vr-radius-sm);
   background: var(--vr-primary);
   color: var(--vr-primary-fg);
@@ -234,7 +232,9 @@ button:disabled {
 
 .mode-toggle {
   display: flex;
-  border: 1px solid var(--vr-border);
+  /* A control edge, so --vr-input rather than the container --vr-border: this
+     is what tells you the pair of buttons is there (SC 1.4.11, 3:1). */
+  border: 1px solid var(--vr-input);
   border-radius: var(--vr-radius);
   background: var(--vr-card);
   overflow: hidden;
@@ -242,9 +242,16 @@ button:disabled {
 }
 
 .mode-toggle button {
+  min-height: 24px;
   padding: 6px 12px;
   font-weight: 500;
   color: var(--vr-text-muted);
+}
+
+/* Inset, because the group clips to its own rounded corners: an outset ring on
+   the inner button would be cropped by `overflow: hidden` above. */
+.mode-toggle button:focus-visible {
+  outline-offset: -3px;
 }
 
 .mode-toggle button.active {
@@ -340,8 +347,10 @@ button:disabled {
 
 .empty-url-sub {
   font-size: 11px;
+  /* No opacity here. --vr-text-muted is chosen to clear 4.5:1 on this surface
+     and fading it to 0.7 dropped it to 3.09:1 on the light theme, which is the
+     whole point of having a measured token. */
   color: var(--vr-text-muted);
-  opacity: 0.7;
 }
 
 @keyframes spin {
@@ -428,7 +437,10 @@ button:disabled {
   font-size: 9px;
   padding: 1px 5px;
   border-radius: var(--vr-radius-pill);
-  background: var(--vr-border);
+  /* --vr-border as a FILL put muted text at 4.28:1 on the light theme.
+     --vr-muted-bg is the surface token meant to be painted on and measures
+     6.28:1 with the same visual weight. */
+  background: var(--vr-muted-bg);
   color: var(--vr-text-muted);
   font-weight: 600;
   text-transform: uppercase;
@@ -438,9 +450,34 @@ button:disabled {
 .no-findings {
   text-align: center;
   font-size: 13px;
-  color: var(--vr-success);
+  /* Muted, not green: "no findings from the checks that ran" is the absence
+     of a result, and colouring it as success reads as a verified all-clear. */
+  color: var(--vr-text-muted);
   font-weight: 500;
   padding: 10px 0 4px;
+}
+
+/* First-run and failed-history prompt. */
+.empty-state {
+  padding: 14px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--vr-text-muted);
+  text-align: center;
+}
+
+/* A branch that timed out was not checked. Warn-toned so it never reads as
+   part of the result. */
+.badge.warn-incomplete {
+  --vr-sev: var(--vr-warning);
+  --vr-sev-text: var(--vr-warning);
+}
+
+.incomplete-note {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--vr-warning);
 }
 
 .result-summary {
@@ -451,39 +488,78 @@ button:disabled {
   font-weight: 500;
 }
 
+/* Severity chip. Matches components/scanner/severity-badge.tsx in the app:
+   a tinted surface with a matching border and text colour and a small solid
+   dot, on the small radius rather than a pill, because a fully saturated
+   pill reads as a marketing badge instead of a rating. The hue arrives as
+   --vr-sev, set per severity by tokens.css and following the theme. */
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  border-radius: var(--vr-radius-pill);
-  font-size: 11px;
+  gap: 5px;
+  padding: 3px 7px;
+  border-radius: var(--vr-radius-sm);
+  border: 1px solid color-mix(in srgb, var(--vr-sev) 40%, transparent);
+  background: color-mix(in srgb, var(--vr-sev) 15%, transparent);
+  /* The LABEL is --vr-sev-text, not --vr-sev. The tint behind it is the same
+     hue, which lifts the surface enough that the true hue can fall under the
+     4.5:1 this text size needs. For six of the ten values the two are the same
+     colour; tokens.json lists which four differ and why. */
+  color: var(--vr-sev-text);
+  font-size: 10px;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
-.badge.critical {
-  background: #ef4444;
-  color: #fff;
-}
+/* Severity is encoded by weight as well as hue, so a critical never reads as
+   an info with a different colour for someone with a colour vision
+   deficiency. Same rule as the app's emphasis field. */
+.badge.critical,
 .badge.high {
-  background: #f97316;
-  color: #fff;
+  font-weight: 700;
 }
-.badge.medium {
-  background: #eab308;
-  color: #1f1f1f;
-}
-.badge.low {
-  background: #3b82f6;
-  color: #fff;
-}
+
 .badge.info {
-  background: #6b7280;
-  color: #fff;
+  font-weight: 500;
 }
+
+.badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--vr-sev);
+  flex: none;
+}
+
+/* The tint is graded, not uniform, and the grading is copied from the app's
+   own SEVERITY_TONE (components/scanner/severity-badge.tsx): 15% for the loud
+   end, 10% for medium and low, and a neutral surface for info. It exists for
+   contrast headroom. A severity has to be dark enough to read as a label on
+   its own tint, and the quiet end of the ramp is deliberately the lightest
+   part of the scale, so it is the tint that gives way rather than the ramp:
+   pushing medium and low darker to survive a 15% tint would flatten the
+   lightness ordering that app/globals.css's severity comment exists to
+   protect. */
+.badge.medium,
+.badge.low {
+  border-color: color-mix(in srgb, var(--vr-sev) 30%, transparent);
+  background: color-mix(in srgb, var(--vr-sev) 10%, transparent);
+}
+
+.badge.info {
+  border-color: var(--vr-border);
+  background: var(--vr-muted-bg);
+}
+
+/* success and warning need no light/dark text split: darkening the value
+   darkens its own tint with it, and the lightness they carry clears AA on
+   both. Both properties are still set so .badge's `color` always resolves. */
 .badge.clean {
-  background: #22c55e;
-  color: #fff;
+  --vr-sev: var(--vr-success);
+  --vr-sev-text: var(--vr-success);
 }
 
 .findings {
@@ -538,7 +614,7 @@ button:disabled {
 }
 
 .finding-header-clickable:focus-visible {
-  outline: 2px solid var(--vr-primary);
+  outline: 2px solid var(--vr-primary-text);
   outline-offset: 2px;
   border-radius: var(--vr-radius-sm);
 }
@@ -647,8 +723,9 @@ button:disabled {
 }
 
 .export-btn {
-  padding: 3px 8px;
-  border: 1px solid var(--vr-border);
+  min-height: 24px;
+  padding: 3px 10px;
+  border: 1px solid var(--vr-input);
   border-radius: var(--vr-radius-pill);
   background: var(--vr-bg);
   color: var(--vr-text-muted);
@@ -657,8 +734,8 @@ button:disabled {
 }
 
 .export-btn:hover:not(:disabled) {
-  border-color: var(--vr-primary);
-  color: var(--vr-primary);
+  border-color: var(--vr-primary-text);
+  color: var(--vr-primary-text);
 }
 
 .export-btn:disabled {
@@ -723,13 +800,20 @@ button:disabled {
 }
 
 .history-main:focus-visible {
-  outline: 2px solid var(--vr-primary);
+  outline: 2px solid var(--vr-primary-text);
   outline-offset: -2px;
 }
 
+/* Icon-only, so the 24px floor is set on both axes rather than left to the
+   glyph's own metrics (which gave about 13x17px). */
 .history-rescan {
   flex-shrink: 0;
   margin-right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  min-height: 24px;
   padding: 2px 6px;
   border: 1px solid transparent;
   border-radius: var(--vr-radius-sm);
@@ -740,12 +824,12 @@ button:disabled {
 }
 
 .history-item:hover .history-rescan {
-  border-color: var(--vr-border);
+  border-color: var(--vr-input);
 }
 
 .history-rescan:hover:not(:disabled) {
-  color: var(--vr-primary);
-  border-color: var(--vr-primary);
+  color: var(--vr-primary-text);
+  border-color: var(--vr-primary-text);
 }
 
 .history-rescan:disabled {
@@ -798,7 +882,11 @@ button:disabled {
   justify-content: space-between;
 }
 
+/* Real <h2> elements now (SC 1.3.1): the popup had no headings at all, so a
+   screen reader offered no way to skip between "This site" and "Recent scans".
+   The margin reset keeps them looking exactly as the <div>s did. */
 .section-title {
+  margin: 0;
   font-size: 11px;
   font-weight: 600;
   color: var(--vr-text-muted);
@@ -807,8 +895,11 @@ button:disabled {
 }
 
 .section-action {
+  min-height: 24px;
+  padding: 2px 6px;
+  border-radius: var(--vr-radius-sm);
   font-size: 11px;
-  color: var(--vr-primary);
+  color: var(--vr-primary-text);
   font-weight: 500;
 }
 
@@ -843,9 +934,13 @@ button:disabled {
   overflow: hidden;
 }
 
+/* --vr-primary against the track measured 1.47:1 on the light theme. The bar
+   is redundant with the "N remaining / used / limit" line directly above it,
+   so 1.4.11 is not strictly engaged, but the AA-clearing blue costs nothing
+   and makes the fill legible instead of nearly invisible. */
 .rate-bar-fill {
   height: 100%;
-  background: var(--vr-primary);
+  background: var(--vr-primary-text);
   border-radius: 999px;
   transition: width 0.3s ease;
 }
@@ -870,7 +965,7 @@ button:disabled {
 
 .rate-unlimited-icon {
   font-size: 16px;
-  color: var(--vr-primary);
+  color: var(--vr-primary-text);
   line-height: 1;
   font-weight: 600;
 }
@@ -878,15 +973,17 @@ button:disabled {
 .rate-unlimited-label {
   font-size: 12px;
   font-weight: 600;
-  color: var(--vr-primary);
+  color: var(--vr-primary-text);
 }
 
 /* --- Copy report button --- */
 
 .copy-report {
+  flex-shrink: 0;
+  min-height: 24px;
   font-size: 11px;
   padding: 4px 8px;
-  border: 1px solid var(--vr-border);
+  border: 1px solid var(--vr-input);
   border-radius: var(--vr-radius-sm);
   background: var(--vr-card);
   color: var(--vr-text-muted);
@@ -896,8 +993,8 @@ button:disabled {
 }
 
 .copy-report:hover {
-  border-color: var(--vr-primary);
-  color: var(--vr-primary);
+  border-color: var(--vr-primary-text);
+  color: var(--vr-primary-text);
 }
 
 /* --- Empty state --- */
@@ -935,16 +1032,17 @@ button:disabled {
 }
 
 .footer-settings {
+  min-height: 24px;
   font-size: 11px;
-  color: var(--vr-primary);
+  color: var(--vr-primary-text);
   font-weight: 500;
-  padding: 2px 6px;
+  padding: 2px 8px;
   border-radius: var(--vr-radius-sm);
   border: 1px solid transparent;
 }
 
 .footer-settings:hover {
-  border-color: var(--vr-primary);
+  border-color: var(--vr-primary-text);
 }
 
 /* --- Compact mode --- */
@@ -1057,10 +1155,11 @@ button:disabled {
 .target-warning-dismiss {
   font: inherit;
   font-size: 12px;
+  min-height: 24px;
   padding: 4px 10px;
   border-radius: var(--vr-radius);
   cursor: pointer;
-  border: 1px solid var(--vr-border);
+  border: 1px solid var(--vr-input);
   background: var(--vr-card);
   color: var(--vr-text);
 }

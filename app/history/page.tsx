@@ -2,16 +2,11 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { useToast } from "@/components/ui/use-toast";
 import { Header } from "@/components/scanner/header";
 import { Footer } from "@/components/scanner/footer";
 import { IssueDetail } from "@/components/scanner/issue-detail";
@@ -21,7 +16,7 @@ import {
   PaginationControl,
   usePagination,
 } from "@/components/ui/pagination-control";
-import { API, BILLING_HISTORY_RETENTION } from "@/lib/config/constants";
+import { API, BILLING_HISTORY_RETENTION } from "@/lib/config/client-constants";
 import {
   getQueryParam,
   getQueryParamInt,
@@ -46,25 +41,46 @@ import {
   HistoryNotes,
   HistoryTagsCard,
   HistoryViewTabs,
+  getDomain,
 } from "@/components/history";
+import {
+  DEFAULT_HISTORY_QUERY,
+  activeFilterCount,
+  filterHistory,
+  type HistoryQuery,
+} from "@/components/history/history-filter-utils";
 import { HistorySkeleton } from "@/components/history/history-skeleton";
 import { HistoryDetailSkeleton } from "@/components/history/history-detail-skeleton";
+import {
+  createScanParamTracker,
+  type ScanParamTracker,
+} from "@/components/history/scan-param-sync";
 
 /** Same key results-list.tsx / issue-detail.tsx read and write. */
 const FINDING_QUERY_PARAM = "finding";
 
 import type { CrawlInfo } from "@/components/scanner/crawl-pages-info";
+import { InlineAlert } from "@/components/shared/inline-alert";
 
 export default function HistoryPage() {
   const router = useRouter();
   const { me } = useAuth();
+  const { toast } = useToast();
 
   // List state
   const [scans, setScans] = useState<ScanRecord[]>([]);
+  // The list endpoint caps rows at HISTORY_LIST_MAX_ROWS, so scans.length is a
+  // page size. totalScans is the real account total and is what every
+  // user-facing count must use, above all the delete-everything confirmation.
+  const [totalScans, setTotalScans] = useState(0);
   const [loading, setLoading] = useState(true);
   const [clearing, setClearing] = useState(false);
-  const [filter, setFilter] = useState("");
-  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [query, setQuery] = useState<HistoryQuery>(DEFAULT_HISTORY_QUERY);
+  const updateQuery = useCallback(
+    (patch: Partial<HistoryQuery>) =>
+      setQuery((prev) => ({ ...prev, ...patch })),
+    [],
+  );
   const [allTags, setAllTags] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(
     () => getQueryParamInt("page") ?? 1,
@@ -73,6 +89,15 @@ export default function HistoryPage() {
   const [rescanning, setRescanning] = useState<string | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [clearError, setClearError] = useState<string | null>(null);
+  // Clearing history is the one action in the product that can cost a user
+  // everything they have, and there is no soft-delete behind it yet, so the
+  // confirmation asks for the word rather than a second click. Same shape as
+  // the account-deletion guard on the profile Privacy tab.
+  const [clearConfirmText, setClearConfirmText] = useState("");
+  // "The list failed to load" and "you have no scans" are completely
+  // different facts and used to render as the same empty state, so a 500
+  // told a user with 200 scans that they had none. That reads as data loss.
+  const [listError, setListError] = useState<string | null>(null);
 
   // Detail state. selectedScanId is the opaque public_id used for routing and
   // the history/scan routes; scanNumericId is the internal numeric id the
@@ -81,6 +106,7 @@ export default function HistoryPage() {
   const [scanNumericId, setScanNumericId] = useState<number | null>(null);
   const [scanDetail, setScanDetail] = useState<ScanResult | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(
     null,
   );
@@ -120,67 +146,96 @@ export default function HistoryPage() {
   // landing last would render the wrong scan under the selected id. Each call
   // takes a ticket; only the latest applies its result.
   const scanDetailReqRef = useRef(0);
-  const loadScanDetail = useCallback(async (scanId: string) => {
-    const reqId = ++scanDetailReqRef.current;
-    const isStale = () => reqId !== scanDetailReqRef.current;
-    setDetailLoading(true);
-    setCrawlInfo(null);
-    try {
-      const res = await fetch(`${API.HISTORY}/${scanId}`);
-      if (isStale()) return;
-      if (!res.ok) {
-        setSelectedScanId(null);
-        return;
+  // Which scan the URL is on and which one is loaded. handleQueryChange below
+  // compares the two instead of reloading on every URL change, so a findings
+  // filter or an opened finding cannot blank a loaded report behind the
+  // skeleton. It also means a row click (which loads, then pushes ?scan=,
+  // which fires two events) issues one request instead of three.
+  const scanParamRef = useRef<ScanParamTracker | null>(null);
+  scanParamRef.current ??= createScanParamTracker();
+  const scanParam = scanParamRef.current;
+  const loadScanDetail = useCallback(
+    async (scanId: string) => {
+      const reqId = ++scanDetailReqRef.current;
+      const isStale = () => reqId !== scanDetailReqRef.current;
+      scanParam.claim(scanId);
+      setDetailLoading(true);
+      setCrawlInfo(null);
+      // Clear the previous scan's data up front, otherwise a failed switch from
+      // scan A to scan B leaves A's findings in state under B's id.
+      setScanDetail(null);
+      setDetailError(null);
+      try {
+        const res = await fetch(`${API.HISTORY}/${scanId}`);
+        if (isStale()) return;
+        if (!res.ok) {
+          // Keep selectedScanId set. Nulling it here bounced the user straight
+          // back to the list with no message at all, leaving ?scan=<id> in the
+          // address bar and making the designed error state below unreachable
+          // on every failure path: a dead deep link, a deleted scan and a 500
+          // all looked like the click had simply been ignored.
+          setDetailError(
+            res.status === 404
+              ? "This scan could not be found. It may have been deleted, or fallen outside your retention window."
+              : "This scan could not be loaded. The server returned an error.",
+          );
+          return;
+        }
+        const data = await res.json();
+        if (isStale()) return;
+        setScanDetail(mapHistoryDetailResponse(data));
+        // Internal numeric id for the feedback route (keyed on the numeric PK).
+        setScanNumericId(typeof data.id === "number" ? data.id : null);
+        if (data.crawl && data.crawl.pages?.length > 0) {
+          setCrawlInfo(data.crawl);
+        }
+        setScanOwnerId(data.userId || null);
+        setScanNotes(data.notes || "");
+        setScanIsPublic(data.isPublic !== false);
+        setScanDetailTags(Array.isArray(data.tags) ? data.tags : []);
+      } catch {
+        if (!isStale()) {
+          setDetailError("Couldn't reach the server to load this scan.");
+        }
+      } finally {
+        if (!isStale()) setDetailLoading(false);
       }
-      const data = await res.json();
-      if (isStale()) return;
-      setScanDetail(mapHistoryDetailResponse(data));
-      // Internal numeric id for the feedback route (keyed on the numeric PK).
-      setScanNumericId(typeof data.id === "number" ? data.id : null);
-      if (data.crawl && data.crawl.pages?.length > 0) {
-        setCrawlInfo(data.crawl);
-      }
-      setScanOwnerId(data.userId || null);
-      setScanNotes(data.notes || "");
-      setScanIsPublic(data.isPublic !== false);
-      setScanDetailTags(Array.isArray(data.tags) ? data.tags : []);
-    } catch {
-      if (!isStale()) setSelectedScanId(null);
-    } finally {
-      if (!isStale()) setDetailLoading(false);
-    }
-  }, []);
+    },
+    [scanParam],
+  );
 
-  // undefined until the first run, so the initial mount (which may be
-  // loading a deep link like ?scan=5&finding=xyz) is never mistaken for a
-  // "switched scans" transition and doesn't wipe the finding param it was
-  // asked to restore.
-  const prevScanIdRef = useRef<string | null | undefined>(undefined);
-
+  // Runs on mount and then on every URL change, including LOCATION_CHANGE_EVENT,
+  // which fires for ANY history write the app makes and not only for ?scan=.
+  // What a given URL change means for the open scan is decided in
+  // components/history/scan-param-sync.ts, where it is testable; see its
+  // docblock for what reloading unconditionally here used to cost.
   const handleQueryChange = useCallback(() => {
     const id = getQueryParam("scan");
-    const scanChanged =
-      prevScanIdRef.current !== undefined && prevScanIdRef.current !== id;
-    prevScanIdRef.current = id;
+    const { load, clearFinding } = scanParam.next(id);
 
-    if (scanChanged) {
-      // A different scan (or back to the list) invalidates whatever
-      // finding was selected under the previous scan: its findings array
-      // is unrelated, and check ids repeat across scans, so leaving the
-      // param around risks re-selecting an unrelated finding that just
-      // happens to share an id.
-      setSelectedIssue(null);
-      removeQueryParam(FINDING_QUERY_PARAM, { replace: true });
-    }
-
+    // Ordered before the ?finding= write below on purpose: that write re-enters
+    // this handler synchronously through the location bridge, and starting the
+    // load first means the re-entrant pass sees the scan already claimed and
+    // does not fire a duplicate request for it.
     if (id !== null) {
       setSelectedScanId(id);
-      loadScanDetail(id);
+      if (load) loadScanDetail(id);
     } else {
       setSelectedScanId(null);
       setScanDetail(null);
+      scanParam.claim(null);
     }
-  }, [loadScanDetail]);
+
+    if (clearFinding) {
+      setSelectedIssue(null);
+      // Only write when there is actually a param to remove: an unconditional
+      // removeQueryParam still calls replaceState, and so still re-enters this
+      // handler, for a URL that would not change.
+      if (getQueryParam(FINDING_QUERY_PARAM) !== null) {
+        removeQueryParam(FINDING_QUERY_PARAM, { replace: true });
+      }
+    }
+  }, [loadScanDetail, scanParam]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reads the current URL query params (external to React) to seed selected-scan state, then subscribes below for future changes
@@ -223,13 +278,20 @@ export default function HistoryPage() {
     try {
       const res = await fetch(API.HISTORY);
       if (!res.ok) {
-        if (res.status === 401 || res.status === 403) router.push("/login");
+        if (res.status === 401 || res.status === 403) {
+          router.push("/login");
+          return;
+        }
+        setListError("Couldn't load your history.");
         return;
       }
       const data = await res.json();
-      setScans(Array.isArray(data.scans) ? data.scans : []);
+      const rows = Array.isArray(data.scans) ? data.scans : [];
+      setListError(null);
+      setScans(rows);
+      setTotalScans(typeof data.total === "number" ? data.total : rows.length);
     } catch {
-      setScans([]);
+      setListError("Couldn't reach the server to load your history.");
     } finally {
       setLoading(false);
     }
@@ -264,7 +326,15 @@ export default function HistoryPage() {
     updateUrlWithScan(null);
   };
 
+  // POST /api/v3/scan queues a background job and returns immediately, so the
+  // refetch that used to follow it fired milliseconds after the job started
+  // and could never contain the finished scan: the list came back identical
+  // and nothing said a scan had begun, been refused, or been rate-limited.
+  // A rate limit and a success looked the same, and the rational response to
+  // that is to click again and burn another scan off the daily cap. Say what
+  // happened instead.
   const handleRescan = async (scan: ScanRecord) => {
+    if (rescanning) return;
     setRescanning(scan.id);
     try {
       const res = await fetch(API.SCAN, {
@@ -272,19 +342,51 @@ export default function HistoryPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: scan.url }),
       });
-      if (res.ok) await fetchHistory();
-    } catch {}
-    setRescanning(null);
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        toast({
+          title: "Rescan started",
+          description: `${getDomain(scan.url)} is scanning now. It will appear at the top of this list when it finishes, in a minute or so.`,
+        });
+        await fetchHistory();
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Rescan not started",
+          description:
+            data.error ||
+            (res.status === 429
+              ? "You have hit your scan limit for today."
+              : "The scanner refused the request."),
+        });
+      }
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "Rescan not started",
+        description: "Couldn't reach the scanner. Check your connection.",
+      });
+    } finally {
+      setRescanning(null);
+    }
   };
 
   const handleClearHistory = async () => {
+    // Belt and braces: the confirm button is already disabled until the word
+    // is typed, but the handler should not depend on that being true.
+    if (clearConfirmText.trim().toUpperCase() !== "DELETE") return;
     setClearing(true);
     setClearError(null);
     try {
       const res = await fetch(API.HISTORY, { method: "DELETE" });
       if (res.ok) {
         setScans([]);
+        // totalScans drove the "N scans on record" line and the confirmation
+        // copy, and was left at its old value after a successful clear, so the
+        // page still claimed 143 scans over an empty list.
+        setTotalScans(0);
         setShowClearConfirm(false);
+        setClearConfirmText("");
       } else {
         setClearError("Couldn't clear history. Try again.");
       }
@@ -302,31 +404,54 @@ export default function HistoryPage() {
     if (scanId === selectedScanId) setScanDetailTags(tags);
   };
 
-  const handleAddTag = async (scanId: string | number, tag: string) => {
-    if (!tag.trim()) return;
-    const res = await fetch(API.SCAN_TAGS, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scanId, tag: tag.trim() }),
-    });
-    if (res.ok) {
+  // Both return null on success and the message to show on failure. Neither
+  // had a !res.ok branch or a catch, so a rejected or dropped tag write was
+  // completely invisible: the chip row just stayed as it was.
+  const handleAddTag = async (
+    scanId: string | number,
+    tag: string,
+  ): Promise<string | null> => {
+    if (!tag.trim()) return null;
+    try {
+      const res = await fetch(API.SCAN_TAGS, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scanId, tag: tag.trim() }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        return data.error || "Couldn't add that tag.";
+      }
       const data = await res.json();
       applyUpdatedTags(scanId, data.tags);
       if (!allTags.includes(tag.trim().toLowerCase())) {
         setAllTags((prev) => [...prev, tag.trim().toLowerCase()].sort());
       }
+      return null;
+    } catch {
+      return "Couldn't reach the server to add that tag.";
     }
   };
 
-  const handleRemoveTag = async (scanId: string | number, tag: string) => {
-    const res = await fetch(API.SCAN_TAGS, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scanId, tag, action: "remove" }),
-    });
-    if (res.ok) {
+  const handleRemoveTag = async (
+    scanId: string | number,
+    tag: string,
+  ): Promise<string | null> => {
+    try {
+      const res = await fetch(API.SCAN_TAGS, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scanId, tag, action: "remove" }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        return data.error || "Couldn't remove that tag.";
+      }
       const data = await res.json();
       applyUpdatedTags(scanId, data.tags);
+      return null;
+    } catch {
+      return "Couldn't reach the server to remove that tag.";
     }
   };
 
@@ -386,28 +511,36 @@ export default function HistoryPage() {
     [],
   );
 
-  const handleSaveNotes = async (notes: string) => {
-    if (!selectedScanId) return;
-    const res = await fetch(`${API.HISTORY}/${selectedScanId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ notes }),
-    });
-    if (res.ok) setScanNotes(notes);
+  // Returns null on success, the message to show on failure. There was no
+  // !res.ok branch and no catch at all here, so a rejected PATCH was an
+  // unhandled promise rejection and the editor closed as if it had worked.
+  const handleSaveNotes = async (notes: string): Promise<string | null> => {
+    if (!selectedScanId) return "This scan is no longer open.";
+    try {
+      const res = await fetch(`${API.HISTORY}/${selectedScanId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes }),
+      });
+      if (res.ok) {
+        setScanNotes(notes);
+        return null;
+      }
+      const data = await res.json().catch(() => ({}));
+      return data.error || "Couldn't save these notes.";
+    } catch {
+      return "Couldn't reach the server to save these notes.";
+    }
   };
 
   const handlePrivacyChanged = useCallback((isPublic: boolean) => {
     setScanIsPublic(isPublic);
   }, []);
 
-  // Filtering & pagination
-  const filtered = scans.filter((s) => {
-    const matchesUrl =
-      !filter.trim() || s.url.toLowerCase().includes(filter.toLowerCase());
-    const matchesTag =
-      !tagFilter || (s.tags?.some((t) => t.tag === tagFilter) ?? false);
-    return matchesUrl && matchesTag;
-  });
+  // Filtering, ordering & pagination. The predicate and the comparator live
+  // in history-filter-utils.ts as plain .ts so they are unit-testable.
+  const filtered = filterHistory(scans, query);
+  const hasFilters = activeFilterCount(query) > 0;
 
   // Skip the very first run: it fires on mount too, and resetting there
   // would immediately wipe out a deep-linked ?page=N before it ever renders.
@@ -418,7 +551,7 @@ export default function HistoryPage() {
       return;
     }
     handlePageChange(1);
-  }, [filter, tagFilter, handlePageChange]);
+  }, [query, handlePageChange]);
 
   const { totalPages, getPage } = usePagination(filtered, pageSize);
   // Clamp to the current page count. When the list shrinks below currentPage
@@ -556,142 +689,226 @@ export default function HistoryPage() {
             {!detailLoading && !scanDetail && (
               <div className="flex flex-col items-center gap-4 py-16 text-center">
                 <p className="text-sm text-muted-foreground">
-                  This scan could not be loaded. It may have been deleted or
-                  fallen outside your retention window.
+                  {detailError ??
+                    "This scan could not be loaded. It may have been deleted or fallen outside your retention window."}
                 </p>
-                <Button
-                  variant="outline"
-                  onClick={handleBackToList}
-                  className="bg-transparent"
-                >
-                  Back to history
-                </Button>
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  {/* A 404 will not resolve on a retry, so only the server
+                      errors and the network case offer one. */}
+                  {detailError &&
+                    !detailError.startsWith("This scan could not be found") && (
+                      <Button
+                        variant="outline"
+                        onClick={() => loadScanDetail(selectedScanId)}
+                        className="bg-transparent"
+                      >
+                        Retry
+                      </Button>
+                    )}
+                  <Button
+                    variant="outline"
+                    onClick={handleBackToList}
+                    className="bg-transparent"
+                  >
+                    Back to history
+                  </Button>
+                </div>
               </div>
             )}
           </>
         ) : (
           /* List View */
           <>
-            <div aria-label="Scan history" className="mb-1 pb-2 pt-6 sm:pt-8">
-              <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
-                History
-              </h1>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {scans.length} {scans.length === 1 ? "scan" : "scans"} on
-                record, kept for{" "}
-                {retentionDays === -1
-                  ? "as long as your account exists"
-                  : `${retentionDays} days`}
-              </p>
+            {/* Clear All has moved twice. It began as an icon button in the
+                filter row, beside the search input a user touches constantly,
+                which put deleting every scan on the account two clicks from
+                the middle of the workflow. It was then exiled to a labelled
+                danger section below the list, which buried it: with 50 scans
+                and pagination in between, the only control for "get rid of
+                all this" was off the bottom of the page. It sits in the page
+                header now, where a page-level action belongs, and the
+                type-DELETE confirmation added with the danger section is what
+                keeps it from being a one-click mistake. */}
+            <div className="mb-1 flex flex-col gap-3 pb-2 pt-6 sm:flex-row sm:items-start sm:justify-between sm:pt-8">
+              <div aria-label="Scan history">
+                <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
+                  History
+                </h1>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {totalScans} {totalScans === 1 ? "scan" : "scans"} on record
+                  {scans.length < totalScans
+                    ? `, showing the ${scans.length} most recent`
+                    : ""}
+                  , kept for{" "}
+                  {retentionDays === -1
+                    ? "as long as your account exists"
+                    : `${retentionDays} days`}
+                </p>
+              </div>
+
+              {scans.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setClearConfirmText("");
+                    setClearError(null);
+                    setShowClearConfirm(true);
+                  }}
+                  disabled={clearing}
+                  className="shrink-0 self-start border-destructive/40 bg-transparent text-destructive hover:bg-destructive/10 hover:text-destructive"
+                >
+                  <Trash2 aria-hidden className="mr-2 h-4 w-4" />
+                  {clearing ? "Clearing..." : "Clear all history"}
+                </Button>
+              )}
             </div>
 
-            <HistoryStats scans={scans} />
+            {/* A failed load is never the empty state. With no rows to show,
+                this replaces the list outright and says the scans are still
+                there; with rows already on screen (a refetch that failed) it
+                sits above them as a staleness warning instead. */}
+            {listError && scans.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-destructive/30 bg-destructive/5 px-4 py-14 text-center">
+                <AlertTriangle
+                  className="h-6 w-6 text-destructive/70"
+                  aria-hidden="true"
+                />
+                <p className="text-sm font-semibold text-foreground">
+                  {listError}
+                </p>
+                <p className="max-w-xs text-xs text-muted-foreground">
+                  Your scans have not been deleted. This is a problem reading
+                  them, not a change to them.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="bg-transparent"
+                  onClick={() => {
+                    setLoading(true);
+                    fetchHistory();
+                  }}
+                >
+                  Retry
+                </Button>
+              </div>
+            ) : (
+              <>
+                {listError && (
+                  <InlineAlert tone="error">
+                    {listError} These rows are from the last successful load and
+                    may be out of date.
+                  </InlineAlert>
+                )}
 
-            {scans.length > 0 && (
-              <HistoryFilters
-                filter={filter}
-                onFilterChange={setFilter}
-                tagFilter={tagFilter}
-                onTagFilterChange={setTagFilter}
-                allTags={allTags}
-                onClearHistory={() => setShowClearConfirm(true)}
-                clearing={clearing}
-              />
-            )}
+                <HistoryStats scans={scans} />
 
-            <HistoryEmptyState
-              hasScans={scans.length > 0}
-              hasFilters={Boolean(filter || tagFilter)}
-              hasResults={filtered.length > 0}
-              onClearFilters={() => {
-                setFilter("");
-                setTagFilter(null);
-              }}
-            />
+                {scans.length > 0 && (
+                  <HistoryFilters
+                    query={query}
+                    onChange={updateQuery}
+                    allTags={allTags}
+                  />
+                )}
 
-            {paginatedScans.length > 0 && (
-              <HistoryScanList
-                scans={paginatedScans}
-                onViewScan={handleViewScan}
-                onRescan={handleRescan}
-                onAddTag={handleAddTag}
-                onRemoveTag={handleRemoveTag}
-                rescanningScanId={rescanning}
-              />
-            )}
+                {/* Search and tag filtering run over the rows this page loaded,
+                which the API caps at HISTORY_LIST_MAX_ROWS. Saying so is the
+                difference between "no match" and "no match in the part we
+                looked at": without it a scan that is still inside retention
+                simply appears not to exist. Server-side search is the real
+                fix and is tracked separately; until then this at least does
+                not mislead. */}
+                {hasFilters && scans.length < totalScans && (
+                  <p className="rounded-md border border-[hsl(var(--warning))]/25 bg-[hsl(var(--warning))]/5 px-3 py-2 text-xs text-muted-foreground">
+                    Searching the {scans.length} most recent scans, not all{" "}
+                    {totalScans} on this account. An older scan may not appear
+                    here yet.
+                  </p>
+                )}
 
-            {filtered.length > 0 && (
-              <PaginationControl
-                currentPage={effectivePage}
-                totalPages={totalPages}
-                onPageChange={handlePageChange}
-                pageSize={pageSize}
-                onPageSizeChange={(s) => {
-                  setPageSize(s);
-                  handlePageChange(1);
-                }}
-                totalItems={filtered.length}
-              />
+                <HistoryEmptyState
+                  hasScans={scans.length > 0}
+                  hasFilters={hasFilters}
+                  hasResults={filtered.length > 0}
+                  onClearFilters={() => setQuery(DEFAULT_HISTORY_QUERY)}
+                />
+
+                {paginatedScans.length > 0 && (
+                  <HistoryScanList
+                    scans={paginatedScans}
+                    onViewScan={handleViewScan}
+                    onRescan={handleRescan}
+                    onAddTag={handleAddTag}
+                    onRemoveTag={handleRemoveTag}
+                    rescanningScanId={rescanning}
+                  />
+                )}
+
+                {filtered.length > 0 && (
+                  <PaginationControl
+                    currentPage={effectivePage}
+                    totalPages={totalPages}
+                    onPageChange={handlePageChange}
+                    pageSize={pageSize}
+                    onPageSizeChange={(s) => {
+                      setPageSize(s);
+                      handlePageChange(1);
+                    }}
+                    totalItems={filtered.length}
+                  />
+                )}
+              </>
             )}
           </>
         )}
       </main>
 
-      <AlertDialog
+      <ConfirmDialog
         open={showClearConfirm}
-        onOpenChange={(open) => {
-          if (!open && !clearing) {
-            setShowClearConfirm(false);
-            setClearError(null);
-          }
+        danger
+        busy={clearing}
+        error={clearError}
+        title="Clear all scan history?"
+        description={
+          <>
+            This deletes all{" "}
+            <span className="font-medium text-foreground">{totalScans}</span>{" "}
+            {totalScans === 1 ? "scan" : "scans"} on this account, findings and
+            notes included, not just the {scans.length} shown here. This cannot
+            be undone.
+          </>
+        }
+        confirmLabel="Clear history"
+        confirmDisabled={clearConfirmText.trim().toUpperCase() !== "DELETE"}
+        onCancel={() => {
+          setShowClearConfirm(false);
+          setClearError(null);
+          setClearConfirmText("");
         }}
+        onConfirm={handleClearHistory}
       >
-        <AlertDialogContent className="sm:max-w-md">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle
-                className="h-5 w-5 text-destructive shrink-0"
-                aria-hidden="true"
-              />
-              Clear all scan history?
-            </AlertDialogTitle>
-            <AlertDialogDescription className="text-left">
-              This deletes all{" "}
-              <span className="font-medium text-foreground">
-                {scans.length}
-              </span>{" "}
-              {scans.length === 1 ? "scan" : "scans"} on this account, findings
-              and notes included. This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {clearError && (
-            <p className="text-sm text-destructive">{clearError}</p>
-          )}
-          <AlertDialogFooter className="flex-col-reverse sm:flex-row gap-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setShowClearConfirm(false);
-                setClearError(null);
-              }}
-              disabled={clearing}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleClearHistory}
-              disabled={clearing}
-              className="gap-2"
-            >
-              {clearing && (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              )}
-              Clear history
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        <div className="flex flex-col gap-1.5">
+          <label
+            htmlFor="clear-history-confirm"
+            className="text-sm text-muted-foreground"
+          >
+            Type{" "}
+            <span className="font-mono font-medium text-foreground">
+              DELETE
+            </span>{" "}
+            to confirm.
+          </label>
+          <Input
+            id="clear-history-confirm"
+            value={clearConfirmText}
+            onChange={(e) => setClearConfirmText(e.target.value)}
+            autoComplete="off"
+            disabled={clearing}
+            className="font-mono"
+          />
+        </div>
+      </ConfirmDialog>
 
       <Footer />
     </div>

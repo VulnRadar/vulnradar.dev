@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useId, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,8 @@ import {
   ShieldCheck,
   X,
   ListChecks,
+  PauseCircle,
+  PlayCircle,
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -42,6 +44,27 @@ import {
 } from "@/components/admin/shared";
 import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
 import { cn } from "@/lib/ui/utils";
+
+/**
+ * Expiry presets for a new rule. A temporary block is the normal case on this
+ * surface, and the column has always existed (access_rules.expires_at, enforced
+ * in lib/scanner/access-rules.ts), but the form never sent it, so every rule an
+ * admin created was permanent and had to be remembered and deleted by hand.
+ */
+const EXPIRY_OPTIONS: { value: string; label: string; hours: number | null }[] =
+  [
+    { value: "never", label: "Never (permanent)", hours: null },
+    { value: "1h", label: "In 1 hour", hours: 1 },
+    { value: "24h", label: "In 24 hours", hours: 24 },
+    { value: "7d", label: "In 7 days", hours: 24 * 7 },
+    { value: "30d", label: "In 30 days", hours: 24 * 30 },
+  ];
+
+function expiryToIso(preset: string): string | null {
+  const opt = EXPIRY_OPTIONS.find((o) => o.value === preset);
+  if (!opt || opt.hours === null) return null;
+  return new Date(Date.now() + opt.hours * 60 * 60 * 1000).toISOString();
+}
 
 interface AccessRule {
   id: number;
@@ -67,6 +90,8 @@ export function IPRulesManager() {
   );
   const [description, setDescription] = useState("");
   const [reason, setReason] = useState("");
+  const [expiry, setExpiry] = useState("never");
+  const [togglingActive, setTogglingActive] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<AccessRule | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -78,6 +103,15 @@ export function IPRulesManager() {
   const [typeFilter, setTypeFilter] = useState<
     "all" | "whitelist" | "blacklist"
   >("all");
+  const [showPaused, setShowPaused] = useState(false);
+
+  // Stable ids so each <label htmlFor> names its control; the block-rule form
+  // was a run of unnamed edit fields to a screen reader.
+  const valueFieldId = useId();
+  const ruleTypeId = useId();
+  const descriptionId = useId();
+  const reasonId = useId();
+  const expiryId = useId();
 
   const fetchRules = async () => {
     setLoading(true);
@@ -86,7 +120,13 @@ export function IPRulesManager() {
       const res = await fetch("/api/v3/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "list", section: "access_rules" }),
+        body: JSON.stringify({
+          action: "list",
+          section: "access_rules",
+          // Paused rules have to come back or they are unreachable: the panel
+          // is the only place to resume one.
+          include_inactive: true,
+        }),
       });
       if (!res.ok) {
         // A failed fetch must never render as "no rules configured" -- in
@@ -148,6 +188,7 @@ export function IPRulesManager() {
           description:
             description || (valueType === "url" ? "URL Rule" : "IP Rule"),
           reason,
+          expires_at: expiryToIso(expiry),
         }),
       });
 
@@ -158,6 +199,7 @@ export function IPRulesManager() {
       setNewValue("");
       setDescription("");
       setReason("");
+      setExpiry("never");
       await fetchRules();
     } catch (error) {
       // Re-thrown below so SaveConfirmationModal's onConfirm chain (see the
@@ -207,6 +249,41 @@ export function IPRulesManager() {
     }
   };
 
+  /**
+   * Pause or resume a rule. The API has supported is_active on its update
+   * action all along; the panel only ever dispatched create and delete, so a
+   * temporary block could only be removed by deleting it outright.
+   */
+  const handleToggleActive = async (rule: AccessRule) => {
+    setTogglingActive(true);
+    setActionError(null);
+    try {
+      const res = await fetch("/api/v3/admin/features", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update",
+          section: "access_rules",
+          id: rule.id,
+          is_active: !rule.is_active,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to update rule.");
+      }
+      setSelectedRule({ ...rule, is_active: !rule.is_active });
+      await fetchRules();
+    } catch (error) {
+      console.error("Error updating rule:", error);
+      setActionError(
+        error instanceof Error ? error.message : "Failed to update rule.",
+      );
+    } finally {
+      setTogglingActive(false);
+    }
+  };
+
   const addChangeItems: ChangeItem[] = newValue
     ? [
         {
@@ -234,6 +311,14 @@ export function IPRulesManager() {
               },
             ]
           : []),
+        {
+          field: "expires_at",
+          label: "Expires",
+          oldValue: "",
+          newValue:
+            EXPIRY_OPTIONS.find((o) => o.value === expiry)?.label ??
+            "Never (permanent)",
+        },
       ]
     : [];
 
@@ -245,15 +330,20 @@ export function IPRulesManager() {
   ).length;
   const totalHits = rules.reduce((sum, r) => sum + r.hit_count, 0);
 
+  const pausedCount = rules.filter((r) => !r.is_active).length;
+
   const sortedRules = useMemo(() => {
+    // Paused rules are hidden by default (they are not enforced), but they
+    // stay reachable behind the toggle so one can be resumed.
+    const byStatus = showPaused ? rules : rules.filter((r) => r.is_active);
     const filtered =
       typeFilter === "all"
-        ? rules
-        : rules.filter((r) => r.rule_type === typeFilter);
+        ? byStatus
+        : byStatus.filter((r) => r.rule_type === typeFilter);
     if (sortColumn !== "hits" || !sortDirection) return filtered;
     const sorted = [...filtered].sort((a, b) => a.hit_count - b.hit_count);
     return sortDirection === "asc" ? sorted : sorted.reverse();
-  }, [rules, sortColumn, sortDirection, typeFilter]);
+  }, [rules, sortColumn, sortDirection, typeFilter, showPaused]);
 
   const handleSortHits = () => {
     const next = nextSortDirection("hits", sortColumn, sortDirection);
@@ -415,36 +505,64 @@ export function IPRulesManager() {
                 </div>
               </div>
 
-              <div>
-                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-                  Status
-                </p>
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "text-xs px-2 py-0.5 font-medium",
-                    selectedRule.is_active
-                      ? "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20"
-                      : "bg-muted text-muted-foreground border-border",
-                  )}
-                >
-                  {selectedRule.is_active ? "Active" : "Inactive"}
-                </Badge>
-              </div>
-
-              {selectedRule.expires_at && (
+              <div className="flex items-end justify-between gap-3">
                 <div>
                   <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-                    Expires
+                    Status
                   </p>
-                  <p className="text-sm text-foreground">
-                    {new Date(selectedRule.expires_at).toLocaleDateString(
-                      "en-US",
-                      { month: "short", day: "numeric", year: "numeric" },
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "text-xs px-2 py-0.5 font-medium",
+                      selectedRule.is_active
+                        ? "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20"
+                        : "bg-muted text-muted-foreground border-border",
                     )}
-                  </p>
+                  >
+                    {selectedRule.is_active ? "Active" : "Paused"}
+                  </Badge>
                 </div>
-              )}
+                {/* Pausing is reversible in one click, so no confirmation. */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5 border-border/40 shrink-0"
+                  onClick={() => handleToggleActive(selectedRule)}
+                  disabled={togglingActive}
+                >
+                  {selectedRule.is_active ? (
+                    <>
+                      <PauseCircle aria-hidden="true" className="h-3.5 w-3.5" />
+                      Pause rule
+                    </>
+                  ) : (
+                    <>
+                      <PlayCircle aria-hidden="true" className="h-3.5 w-3.5" />
+                      Resume rule
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              <div>
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                  Expires
+                </p>
+                <p className="text-sm text-foreground">
+                  {selectedRule.expires_at
+                    ? new Date(selectedRule.expires_at).toLocaleString(
+                        "en-US",
+                        {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        },
+                      )
+                    : "Never. This rule stays until it is paused or deleted."}
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -557,10 +675,14 @@ export function IPRulesManager() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">
+                  <label
+                    htmlFor={valueFieldId}
+                    className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block"
+                  >
                     {valueType === "ip" ? "IP Address / CIDR" : "Domain"}
                   </label>
                   <Input
+                    id={valueFieldId}
                     placeholder={
                       valueType === "ip"
                         ? "192.168.1.0/24 or 10.0.0.1"
@@ -579,10 +701,14 @@ export function IPRulesManager() {
                   )}
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">
+                  <label
+                    htmlFor={ruleTypeId}
+                    className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block"
+                  >
                     Rule Type
                   </label>
                   <select
+                    id={ruleTypeId}
                     value={ruleType}
                     onChange={(e) =>
                       setRuleType(e.target.value as "whitelist" | "blacklist")
@@ -596,10 +722,14 @@ export function IPRulesManager() {
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">
+                <label
+                  htmlFor={descriptionId}
+                  className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block"
+                >
                   Description (optional)
                 </label>
                 <Input
+                  id={descriptionId}
                   placeholder={
                     valueType === "ip"
                       ? "e.g., Office network"
@@ -612,15 +742,45 @@ export function IPRulesManager() {
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">
+                <label
+                  htmlFor={reasonId}
+                  className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block"
+                >
                   Reason (optional)
                 </label>
                 <Input
+                  id={reasonId}
                   placeholder="e.g., Security policy"
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                   className="bg-background/50 border-border/40"
                 />
+              </div>
+
+              <div>
+                <label
+                  htmlFor={expiryId}
+                  className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block"
+                >
+                  Expires
+                </label>
+                <select
+                  id={expiryId}
+                  value={expiry}
+                  onChange={(e) => setExpiry(e.target.value)}
+                  className="w-full rounded-lg border border-border/40 bg-background/50 px-3 py-2 text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                >
+                  {EXPIRY_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-muted-foreground mt-1.5">
+                  An expired rule stops being enforced on its own. Most blocks
+                  are temporary, so pick a window rather than deleting the rule
+                  by hand later.
+                </p>
               </div>
 
               <Button type="submit" className="w-full" disabled={!newValue}>
@@ -672,6 +832,18 @@ export function IPRulesManager() {
                 />
                 <span className="hidden sm:inline">Refresh</span>
               </Button>
+              {pausedCount > 0 && (
+                <Button
+                  variant={showPaused ? "secondary" : "outline"}
+                  size="sm"
+                  className="h-10 px-3 gap-2 border-border/40"
+                  onClick={() => setShowPaused((v) => !v)}
+                  aria-pressed={showPaused}
+                >
+                  <PauseCircle aria-hidden="true" className="h-4 w-4" />
+                  {showPaused ? "Hide paused" : `Show ${pausedCount} paused`}
+                </Button>
+              )}
             </div>
           </CardHeader>
 
@@ -695,8 +867,16 @@ export function IPRulesManager() {
             ) : sortedRules.length === 0 ? (
               <EmptyState
                 icon={Network}
-                title={`No ${typeFilter} rules`}
-                description="Try a different filter above."
+                title={
+                  typeFilter === "all"
+                    ? "No active rules"
+                    : `No ${typeFilter} rules`
+                }
+                description={
+                  pausedCount > 0 && !showPaused
+                    ? `Every matching rule is paused. Use "Show ${pausedCount} paused" above.`
+                    : "Try a different filter above."
+                }
               />
             ) : (
               <>
@@ -735,10 +915,21 @@ export function IPRulesManager() {
                         )}
                       >
                         {sortedRules.map((rule) => (
+                          /* a11y (SC 2.1.1): row click was the only route to a
+                             rule's detail panel. See the note on the same fix
+                             in components/admin/users/users-tab.tsx. */
                           <TableRow
                             key={rule.id}
-                            className="border-border/40 hover:bg-muted/20 transition-colors group cursor-pointer"
+                            tabIndex={0}
+                            className="border-border/40 hover:bg-muted/20 transition-colors group cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                             onClick={() => setSelectedRule(rule)}
+                            onKeyDown={(e) => {
+                              if (e.target !== e.currentTarget) return;
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                setSelectedRule(rule);
+                              }
+                            }}
                           >
                             <TableCell className="px-5 py-2.5">
                               <div className="flex items-center gap-3">
@@ -780,6 +971,14 @@ export function IPRulesManager() {
                                   ? "Allow"
                                   : "Block"}
                               </Badge>
+                              {!rule.is_active && (
+                                <Badge
+                                  variant="outline"
+                                  className="ml-1.5 text-[10px] px-2 py-0.5 font-medium bg-muted text-muted-foreground border-border"
+                                >
+                                  Paused
+                                </Badge>
+                              )}
                             </TableCell>
                             <TableCell className="px-4 py-2.5">
                               <span className="text-sm font-medium text-foreground">
@@ -801,7 +1000,7 @@ export function IPRulesManager() {
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setSelectedRule(rule);
@@ -816,7 +1015,7 @@ export function IPRulesManager() {
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-8 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive"
+                                  className="h-8 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity text-destructive hover:text-destructive"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setPendingDelete(rule);
@@ -845,10 +1044,24 @@ export function IPRulesManager() {
                   )}
                 >
                   {sortedRules.map((rule) => (
+                    /* a11y (SC 2.1.1 / 4.1.2): the md:hidden mirror of the
+                       table row above, and below md it is the ONLY route to a
+                       rule's detail. It is a plain div, so unlike the <tr> it
+                       can take role="button" without displacing a table
+                       role. */
                     <div
                       key={rule.id}
-                      className="flex items-center gap-3 px-5 py-4 border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors cursor-pointer"
+                      role="button"
+                      tabIndex={0}
+                      className="flex items-center gap-3 px-5 py-4 border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                       onClick={() => setSelectedRule(rule)}
+                      onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget) return;
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setSelectedRule(rule);
+                        }
+                      }}
                     >
                       <div className="p-2 rounded-lg bg-muted/50 shrink-0">
                         {rule.value_type === "url" ? (
@@ -878,6 +1091,14 @@ export function IPRulesManager() {
                           >
                             {rule.rule_type === "whitelist" ? "Allow" : "Block"}
                           </Badge>
+                          {!rule.is_active && (
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] px-1.5 py-0 font-medium shrink-0 bg-muted text-muted-foreground border-border"
+                            >
+                              Paused
+                            </Badge>
+                          )}
                         </div>
                         {rule.description && (
                           <p className="text-xs text-muted-foreground truncate mb-1">

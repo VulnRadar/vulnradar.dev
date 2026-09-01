@@ -31,11 +31,38 @@ export interface VerifiedDomainMatch {
  * verified row when several of the caller's own rows match (can only
  * happen if a user manually verified both a subdomain and its parent).
  */
+/**
+ * Every domain that would cover `host` under the zone-control rule above:
+ * the host itself plus each of its parent suffixes. `a.b.example.com`
+ * yields a.b.example.com, b.example.com, example.com, com.
+ *
+ * This exists so the lookup can be an equality test against a small list
+ * instead of `$1 = domain OR $1 LIKE '%.' || domain`. That predicate builds
+ * its LIKE pattern FROM the column with the parameter on the left, which no
+ * b-tree can serve, so idx_domains_domain_verified was unusable and this
+ * gate scanned every verified domain across all tenants on every
+ * active-probe and port-scan authorization check (AUDIT-012#perf-16).
+ *
+ * It also closes a latent correctness hole: `_` and `%` are LIKE wildcards,
+ * so a stored domain containing an underscore matched hosts it does not
+ * own. Equality has no such reading.
+ */
+export function coveringDomainCandidates(host: string): string[] {
+  const labels = host.split(".").filter(Boolean);
+  const candidates: string[] = [];
+  for (let i = 0; i < labels.length; i++) {
+    candidates.push(labels.slice(i).join("."));
+  }
+  return candidates;
+}
+
 export async function findVerifiedDomainForHost(
   hostname: string,
   userId: number,
 ): Promise<VerifiedDomainMatch | null> {
   const host = hostname.toLowerCase();
+  const candidates = coveringDomainCandidates(host);
+  if (candidates.length === 0) return null;
   const assignableTeamIds = await getAssignableTeamIds(userId);
 
   const result = await pool.query<{
@@ -47,11 +74,11 @@ export async function findVerifiedDomainForHost(
     `SELECT id, domain, user_id, team_id
      FROM domains
      WHERE status = 'verified'
-       AND ($1 = domain OR $1 LIKE '%.' || domain)
+       AND domain = ANY($1::text[])
        AND (user_id = $2 OR team_id = ANY($3::int[]))
      ORDER BY (user_id = $2) DESC, verified_at DESC
      LIMIT 1`,
-    [host, userId, assignableTeamIds],
+    [candidates, userId, assignableTeamIds],
   );
   const row = result.rows[0];
   if (!row) return null;

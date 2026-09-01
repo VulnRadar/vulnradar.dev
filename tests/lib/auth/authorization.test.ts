@@ -459,3 +459,18 @@ describe("getUserTeamRole", () => {
     expect(await getUserTeamRole(1, 2)).toBeNull();
   });
 });
+
+/**
+ * AUDIT-011#drift-18: requireModerator() had zero call sites. Every route
+ * that once used a coarse moderator floor now gates on the specific
+ * STAFF_PERMISSIONS grant via requirePermission(), because the floor both
+ * over-granted admin-only capabilities to moderators and shut out the
+ * specialist roles that sit below moderator yet hold the relevant grant.
+ */
+describe("requireModerator is gone", () => {
+  it("no longer exports a coarse moderator-floor helper", async () => {
+    const mod = await import("@/lib/auth/authorization");
+    expect(Object.keys(mod)).not.toContain("requireModerator");
+    expect(Object.keys(mod)).toContain("requirePermission");
+  });
+});

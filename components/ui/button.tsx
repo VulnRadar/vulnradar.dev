@@ -9,8 +9,21 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default:
-          "bg-primary text-primary-foreground hover:bg-accent hover:text-accent-foreground",
+        // The hover used to be `hover:bg-accent hover:text-accent-foreground`,
+        // from a repo-wide "standardize hover styles to neutral gray accent"
+        // replacement (64b7e06f). That rule is right for outline, secondary
+        // and ghost, which are neutral surfaces that should not acquire the
+        // brand colour on hover. Applied to this variant it inverted: the
+        // button already IS the brand colour, so hovering the product's
+        // highest-traffic controls (Sign in, Start scan, every primary CTA on
+        // the landing page) drained them to the same flat gray as every other
+        // button, which reads as the control going disabled under the cursor.
+        // `destructive` directly below never had this problem because it kept
+        // its own hue and only shifted luminance, which is what this now does:
+        // over --background, /90 lifts the light theme's pale blue and deepens
+        // the dark theme's, so the feedback is visible in both without the
+        // control ever changing what colour it is.
+        default: "bg-primary text-primary-foreground hover:bg-primary/90",
         destructive:
           "bg-destructive text-destructive-foreground hover:bg-destructive/90",
         outline:

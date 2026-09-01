@@ -20,7 +20,7 @@ import { SEVERITY_TONE } from "@/components/scanner/severity-badge";
 import type { Vulnerability } from "@/lib/scanner/types";
 import { cn } from "@/lib/ui/utils";
 import { copyToClipboard } from "@/lib/ui/clipboard";
-import { API, APP_NAME } from "@/lib/config/constants";
+import { API, APP_NAME } from "@/lib/config/client-constants";
 import {
   REMEDIATION_STATUSES,
   REMEDIATION_LABELS,
@@ -185,7 +185,7 @@ function FindingFeedback({
   if (!loaded) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-card px-4 py-3">
+    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
       <span className="text-xs font-medium text-muted-foreground">
         Mark this result:
       </span>
@@ -388,8 +388,10 @@ function RemediationControl({
     }
   }
 
+  // rounded-xl, matching the FindingFeedback card directly above it: both are
+  // panels on the radius ladder, and the two now render as a pair.
   return (
-    <div className="flex flex-col gap-3 rounded-md border border-primary/20 bg-primary/5 px-4 py-3">
+    <div className="flex flex-col gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <span className="text-xs font-semibold text-foreground">
           Your remediation tracking
@@ -561,7 +563,7 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
   }
 
   return (
-    <div className="overflow-hidden rounded-md border border-border bg-muted/40">
+    <div className="overflow-hidden rounded-xl border border-border bg-muted/40">
       <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-1.5">
         <span className="inline-flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
           <Terminal aria-hidden className="h-3 w-3" />
@@ -605,7 +607,7 @@ function Evidence({ evidence }: { evidence: string }) {
     expanded || !overflows ? lines : lines.slice(0, EVIDENCE_PREVIEW_LINES);
 
   return (
-    <div className="overflow-hidden rounded-md border border-border bg-card">
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
       <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-4 py-2">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           What the scanner saw
@@ -660,6 +662,17 @@ export function IssueDetail({
   onRemediationChanged,
 }: IssueDetailProps) {
   const [activeTab, setActiveTab] = useState(0);
+  // This component explicitly supports `issue` changing while mounted (see
+  // the effect keyed on issue.id below, and the key={issue.id} that
+  // RemediationControl was given for the same reason), but activeTab was
+  // never reset. Going from a finding with three code examples with tab 2
+  // open to one with a single example read issue.codeExamples[2].code and
+  // threw, taking out the whole view. Clamping is enough and it also
+  // survives a findings array being replaced in place.
+  const exampleTab = Math.min(
+    activeTab,
+    Math.max(0, issue.codeExamples.length - 1),
+  );
   const tone = SEVERITY_TONE[issue.severity] ?? SEVERITY_TONE.info;
   const verdict = issue.aiVerdict ? AI_VERDICT_COPY[issue.aiVerdict] : null;
   const category = CATEGORY_LABEL[issue.category] || issue.category;
@@ -716,7 +729,7 @@ export function IssueDetail({
       </button>
 
       {/* Header. The severity rail runs the full height so it reads before the text. */}
-      <header className="relative overflow-hidden rounded-md border border-border bg-card">
+      <header className="relative overflow-hidden rounded-xl border border-border bg-card">
         <span
           aria-hidden
           className={cn(
@@ -758,6 +771,23 @@ export function IssueDetail({
                 <span aria-hidden className="h-3 w-px bg-border" />
                 <span className="text-xs tabular-nums text-muted-foreground">
                   {(issue.epssScore * 100).toFixed(1)}% EPSS
+                </span>
+              </>
+            )}
+            {/* The scanner computes a CVSS 3.1 base score from the vector for
+                every finding that has one, and it was rendered nowhere in the
+                product: the score sat in the API response and the SARIF export
+                only. It belongs next to the other two exploitability signals,
+                since together they are what tells a reader what to fix first.
+                The vector is the title so the derivation stays inspectable. */}
+            {issue.cvssScore != null && (
+              <>
+                <span aria-hidden className="h-3 w-px bg-border" />
+                <span
+                  className="text-xs tabular-nums text-muted-foreground"
+                  title={issue.cvssVector}
+                >
+                  CVSS {issue.cvssScore.toFixed(1)}
                 </span>
               </>
             )}
@@ -812,6 +842,18 @@ export function IssueDetail({
         </div>
       )}
 
+      <Evidence evidence={issue.evidence} />
+
+      {/* Triage sits here, directly under the evidence, rather than at the
+          very bottom of the page where it used to live. Both cards are
+          actions about the finding, not a footnote to it: by this point the
+          reader has the severity, the description and the raw evidence, which
+          is everything needed to say "that is real" or "I am on it", and none
+          of it requires first reading the fix guide. Below the evidence rather
+          than above it because judging accuracy before being shown what the
+          scanner saw is guesswork. Feedback (is this finding correct?) comes
+          before remediation tracking (what am I doing about it?), which is the
+          order the two cards' own copy assumes. */}
       {findingUrl && (
         <FindingFeedback
           findingId={issue.id}
@@ -831,10 +873,8 @@ export function IssueDetail({
         />
       )}
 
-      <Evidence evidence={issue.evidence} />
-
       {/* Why it matters: prose with the risk pulled out, not another icon card. */}
-      <section className="grid grid-cols-1 gap-6 rounded-md border border-border bg-card p-4 sm:p-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <section className="grid grid-cols-1 gap-6 rounded-xl border border-border bg-card p-4 sm:p-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="flex flex-col gap-2">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             What this means
@@ -859,7 +899,7 @@ export function IssueDetail({
       </section>
 
       {/* Fix: the reason anyone opened this page. Numbered prose, no badges. */}
-      <section className="rounded-md border border-border bg-card p-4 sm:p-5">
+      <section className="rounded-xl border border-border bg-card p-4 sm:p-5">
         <h3 className="mb-3 text-sm font-semibold text-foreground">
           How to fix it
         </h3>
@@ -891,9 +931,14 @@ export function IssueDetail({
             <h3 className="text-sm font-semibold text-foreground">
               Working example
             </h3>
+            {/* A group of toggle buttons, not a tablist: role="tab" promises
+                a matching role="tabpanel" with aria-controls and arrow-key
+                navigation, none of which this control has, so the promise
+                only misled a screen reader ("tab, 1 of 3" governing nothing).
+                aria-pressed says what these buttons really do. */}
             {issue.codeExamples.length > 1 && (
               <div
-                role="tablist"
+                role="group"
                 aria-label="Code examples"
                 className="flex gap-1 overflow-x-auto rounded-md bg-muted p-1"
               >
@@ -901,13 +946,18 @@ export function IssueDetail({
                   <button
                     key={i}
                     type="button"
-                    role="tab"
-                    aria-selected={activeTab === i}
+                    aria-pressed={exampleTab === i}
                     onClick={() => setActiveTab(i)}
                     className={cn(
-                      "shrink-0 whitespace-nowrap rounded px-2.5 py-1 text-xs font-medium transition-colors",
-                      activeTab === i
-                        ? "bg-card text-foreground shadow-xs"
+                      // Geometry matched to components/ui/tabs.tsx, the
+                      // segmented-control primitive, at its dense size: same
+                      // rounded-sm pill raised on bg-background, so the two
+                      // segmented controls in the product read as one idiom
+                      // even though this one is a toggle group rather than a
+                      // tablist (see the comment above).
+                      "shrink-0 whitespace-nowrap rounded-sm px-2.5 py-1 text-xs font-medium transition-all",
+                      exampleTab === i
+                        ? "bg-background text-foreground shadow-xs"
                         : "text-muted-foreground hover:text-foreground",
                       FOCUS_RING,
                     )}
@@ -919,8 +969,8 @@ export function IssueDetail({
             )}
           </div>
           <CodeBlock
-            code={issue.codeExamples[activeTab].code}
-            language={issue.codeExamples[activeTab].language}
+            code={issue.codeExamples[exampleTab].code}
+            language={issue.codeExamples[exampleTab].language}
           />
         </section>
       )}

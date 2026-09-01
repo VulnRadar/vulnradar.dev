@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -12,17 +12,18 @@ import {
   Terminal,
   TrendingDown,
   TrendingUp,
-  type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { formatRelativeTime } from "@/lib/ui/relative-time";
-import { API, ROUTES } from "@/lib/config/constants";
+import { API, ROUTES } from "@/lib/config/client-constants";
 import {
   SEVERITY_ORDER,
   SEVERITY_TONE,
   severityTone,
 } from "@/components/scanner/severity-badge";
-import { StatIcon, type StatTone } from "@/components/shared/stat-icon";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/shared/empty-state";
+import { StatStrip, StatStripSkeleton } from "@/components/shared/stat-strip";
 import {
   Tooltip,
   TooltipContent,
@@ -91,31 +92,6 @@ function worstSeverity(
   return null;
 }
 
-function StatCell({
-  value,
-  label,
-  icon,
-  tone = "muted",
-}: {
-  value: number;
-  label: string;
-  icon: LucideIcon;
-  /** Icon container color, matching the shared stat-icon standard. */
-  tone?: StatTone;
-}) {
-  return (
-    <div className="flex min-w-0 items-start gap-3 px-4 py-3 bg-card">
-      <StatIcon icon={icon} tone={tone} />
-      <div className="flex min-w-0 flex-col gap-0.5">
-        <span className="text-2xl font-semibold leading-none tabular-nums tracking-tight text-foreground">
-          {value.toLocaleString()}
-        </span>
-        <span className="text-[11px] text-muted-foreground">{label}</span>
-      </div>
-    </div>
-  );
-}
-
 function TrendBadge({
   current,
   previous,
@@ -145,22 +121,12 @@ function TrendBadge({
 export function DashboardSkeleton() {
   return (
     <div className="flex w-full animate-pulse flex-col gap-4 pt-6">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-border overflow-hidden rounded-md border border-border">
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="flex items-center gap-3 px-4 py-3 bg-card">
-            <div className="h-8 w-8 shrink-0 rounded-lg bg-muted" />
-            <div className="flex flex-col gap-2">
-              <div className="h-6 w-12 rounded bg-muted" />
-              <div className="h-2.5 w-16 rounded bg-muted" />
-            </div>
-          </div>
-        ))}
-      </div>
+      <StatStripSkeleton />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
-        <div className="h-72 rounded-md border border-border bg-card" />
+        <div className="h-72 rounded-xl border border-border bg-card" />
         <div className="flex flex-col gap-4">
-          <div className="h-32 rounded-md border border-border bg-card" />
-          <div className="h-36 rounded-md border border-border bg-card" />
+          <div className="h-32 rounded-xl border border-border bg-card" />
+          <div className="h-36 rounded-xl border border-border bg-card" />
         </div>
       </div>
     </div>
@@ -169,7 +135,7 @@ export function DashboardSkeleton() {
 
 function FirstRunPanel() {
   return (
-    <div className="mt-6 rounded-md border border-dashed border-border bg-card/50 p-5 sm:p-6">
+    <div className="mt-6 rounded-xl border border-dashed border-border bg-card/50 p-5 sm:p-6">
       <h2 className="text-base font-semibold text-foreground">
         No scans on this account yet
       </h2>
@@ -207,8 +173,11 @@ function FirstRunPanel() {
 export function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true);
+    setFailed(false);
     fetch(API.DASHBOARD)
       .then((r) => {
         if (!r.ok) {
@@ -220,28 +189,71 @@ export function Dashboard() {
       })
       .then((d) => {
         if (d && d.severityBreakdown) setData(d);
+        else setFailed(true);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => {
+        setFailed(true);
+        setLoading(false);
+      });
   }, []);
 
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires once the request resolves, not synchronously here
+    load();
+  }, [load]);
+
   if (loading) return <DashboardSkeleton />;
-  if (!data) return null;
+  // A failed /api/v3/dashboard used to return null, leaving the scan form
+  // followed by blank space with no message and no way to retry.
+  if (failed || !data) {
+    return (
+      <EmptyState
+        className="mt-6"
+        icon={AlertTriangle}
+        title="Couldn't load your scan activity"
+        description="Your scans are unaffected. This is the summary above the scanner, not the scanner itself."
+        action={
+          <Button
+            variant="outline"
+            size="sm"
+            className="bg-transparent"
+            onClick={load}
+          >
+            Retry
+          </Button>
+        }
+      />
+    );
+  }
   if (data.totalScans === 0) return <FirstRunPanel />;
 
+  // Every array below was read unguarded while only severityBreakdown was
+  // ever checked, so a partial payload (one field missing, an older API, a
+  // truncated proxy response) threw straight into app/dashboard/error.tsx and
+  // took out the whole route. Default each one instead.
+  const severityBreakdown = data.severityBreakdown ?? {};
   const sb: Record<Severity, number> = {
-    critical: Number(data.severityBreakdown.critical) || 0,
-    high: Number(data.severityBreakdown.high) || 0,
-    medium: Number(data.severityBreakdown.medium) || 0,
-    low: Number(data.severityBreakdown.low) || 0,
-    info: Number(data.severityBreakdown.info) || 0,
+    critical: Number(severityBreakdown.critical) || 0,
+    high: Number(severityBreakdown.high) || 0,
+    medium: Number(severityBreakdown.medium) || 0,
+    low: Number(severityBreakdown.low) || 0,
+    info: Number(severityBreakdown.info) || 0,
   };
   const totalIssues = SEVERITY_ORDER.reduce((sum, s) => sum + sb[s], 0);
   const highPlusCritical = sb.critical + sb.high;
-  const apiCount =
-    data.sourceBreakdown.find((s) => s.source === "api")?.count || 0;
+  const sourceBreakdown = Array.isArray(data.sourceBreakdown)
+    ? data.sourceBreakdown
+    : [];
+  const topVulnerabilities = Array.isArray(data.topVulnerabilities)
+    ? data.topVulnerabilities
+    : [];
+  const recentScans = Array.isArray(data.recentScans) ? data.recentScans : [];
+  const apiCount = sourceBreakdown.find((s) => s.source === "api")?.count || 0;
 
-  const activity = data.dailyActivity.map((d) => ({
+  const activity = (
+    Array.isArray(data.dailyActivity) ? data.dailyActivity : []
+  ).map((d) => ({
     ...d,
     scans: Number(d.scans) || 0,
     issues: Number(d.issues) || 0,
@@ -252,38 +264,42 @@ export function Dashboard() {
     .slice(0, midpoint)
     .reduce((s, d) => s + d.scans, 0);
   const maxScans = Math.max(...activity.map((d) => d.scans), 1);
-  const topCount = Math.max(...data.topVulnerabilities.map((v) => v.count), 1);
+  const topCount = Math.max(...topVulnerabilities.map((v) => v.count), 1);
 
   return (
     <div className="flex w-full flex-col gap-4 pt-6">
-      {/* Inline stat bar. One strip, not four cards. */}
-      <div className="overflow-hidden rounded-md border border-border bg-card">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-border">
-          <StatCell
-            value={data.totalScans}
-            label="Scans run"
-            icon={BarChart3}
-            tone="primary"
-          />
-          <StatCell
-            value={data.uniqueSites}
-            label="Hosts covered"
-            icon={Globe}
-            tone="primary"
-          />
-          <StatCell
-            value={highPlusCritical}
-            label="Critical and high"
-            icon={ShieldAlert}
-            tone={highPlusCritical > 0 ? "severity-high" : "muted"}
-          />
-          <StatCell
-            value={apiCount}
-            label="Started from the API"
-            icon={Terminal}
-            tone="purple"
-          />
-        </div>
+      {/* Inline stat bar. One strip, not four cards. Bordered by the card
+          around it, which also carries the activity sparkline below. */}
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
+        <StatStrip
+          bordered={false}
+          items={[
+            {
+              value: data.totalScans,
+              label: "Scans run",
+              icon: BarChart3,
+              iconTone: "primary",
+            },
+            {
+              value: data.uniqueSites,
+              label: "Hosts covered",
+              icon: Globe,
+              iconTone: "primary",
+            },
+            {
+              value: highPlusCritical,
+              label: "Critical and high",
+              icon: ShieldAlert,
+              iconTone: "severity-high",
+            },
+            {
+              value: apiCount,
+              label: "Started from the API",
+              icon: Terminal,
+              iconTone: "purple",
+            },
+          ]}
+        />
 
         {/* 14-day activity, as a slim strip rather than its own card. */}
         {activity.length > 0 && (
@@ -339,13 +355,13 @@ export function Dashboard() {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
         {/* Recent scans: the list people actually click. */}
-        <section className="flex flex-col overflow-hidden rounded-md border border-border bg-card">
+        <section className="flex flex-col overflow-hidden rounded-xl border border-border bg-card">
           <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/30 px-4 py-2.5">
             <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               <Clock aria-hidden className="h-3.5 w-3.5" />
               Recent scans
             </h2>
-            {data.recentScans.length > 0 && (
+            {recentScans.length > 0 && (
               <a
                 href={ROUTES.HISTORY}
                 className="inline-flex items-center gap-1 rounded text-xs font-medium text-primary transition-colors hover:text-primary/80 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
@@ -356,13 +372,13 @@ export function Dashboard() {
             )}
           </div>
 
-          {data.recentScans.length === 0 ? (
+          {recentScans.length === 0 ? (
             <p className="px-4 py-10 text-center text-sm text-muted-foreground">
               Nothing in the last window. Run a scan above and it lands here.
             </p>
           ) : (
             <ul className="flex flex-1 flex-col divide-y divide-border">
-              {data.recentScans.slice(0, 6).map((scan) => {
+              {recentScans.slice(0, 6).map((scan) => {
                 const worst = worstSeverity(scan.summary);
                 const tone = worst ? SEVERITY_TONE[worst] : null;
                 return (
@@ -414,7 +430,7 @@ export function Dashboard() {
 
         <div className="flex flex-col gap-4">
           {/* Severity totals across every scan */}
-          <section className="rounded-md border border-border bg-card">
+          <section className="rounded-xl border border-border bg-card">
             <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/30 px-4 py-2.5">
               <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 <AlertTriangle aria-hidden className="h-3.5 w-3.5" />
@@ -450,20 +466,20 @@ export function Dashboard() {
           </section>
 
           {/* Most common findings, ranked */}
-          <section className="flex flex-col rounded-md border border-border bg-card">
+          <section className="flex flex-col rounded-xl border border-border bg-card">
             <div className="border-b border-border bg-muted/30 px-4 py-2.5">
               <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 <ListOrdered aria-hidden className="h-3.5 w-3.5" />
                 Most common findings
               </h2>
             </div>
-            {data.topVulnerabilities.length === 0 ? (
+            {topVulnerabilities.length === 0 ? (
               <p className="px-4 py-8 text-center text-xs text-muted-foreground">
                 Patterns show up here once a few more scans are on record.
               </p>
             ) : (
               <ol className="flex flex-col px-4 py-2">
-                {data.topVulnerabilities.map((v, i) => {
+                {topVulnerabilities.map((v, i) => {
                   const tone = severityTone(v.severity);
                   return (
                     <li

@@ -29,6 +29,15 @@ import {
   recordDnsRecords,
   hasAnyDnsRecords,
 } from "@/lib/scanner/dns-records";
+import {
+  withDnsMemo,
+  resolveTxtOnce,
+  resolveMxOnce,
+  resolveNsOnce,
+  resolveSoaOnce,
+  resolveCnameOnce,
+  resolveCaaOnce,
+} from "@/lib/scanner/dns-memo";
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
 import { checkReputation } from "@/lib/scanner/reputation-lookup";
 import { checkOsvVulnerableLibraries } from "@/lib/scanner/osv-check";
@@ -88,6 +97,51 @@ function generateId(title: string, url: string): string {
   return `async-${slug}--${fnvHash(url)}`;
 }
 
+/** True for the rejection a probe's own deadline race produces. */
+function isProbeTimeout(codeOrMessage: string): boolean {
+  return /timeout/i.test(codeOrMessage);
+}
+
+/**
+ * The finding a DNS probe emits when its own deadline fired before the
+ * resolver answered.
+ *
+ * A timed-out probe used to `return []`, exactly like a probe that ran and
+ * found nothing wrong, so "this domain's MTA-STS is fine" and "we never found
+ * out" were the same result. That is a false negative presented with full
+ * confidence: a self-hoster scanning a slow, distant, or rate-limiting target
+ * silently loses email/DNS coverage and the report reads as clean.
+ * `ScanResult.incomplete` cannot express it either, because that is per branch
+ * (dns/tls/live-fetch) and these are individual sub-checks inside the dns
+ * branch, so the honest place to say it is the result itself. Info severity:
+ * nothing is known to be wrong, and it only appears when a probe genuinely
+ * failed to answer. ref: AUDIT-014#magic-01
+ */
+function makeProbeIncompleteVuln(
+  url: string,
+  probeName: string,
+  target: string,
+  category: Category,
+): Vulnerability {
+  return makeVuln(
+    url,
+    `${probeName} Check Did Not Complete`,
+    "info",
+    category,
+    `The ${probeName} lookup for ${target} did not return an answer, so this scan cannot say whether the record is present or correct.`,
+    `DNS lookup of ${target} timed out or failed with an error that is not a "no such record" answer.`,
+    "An unanswered check is not a passed check. Treat this area as unverified rather than clean, and re-run the scan.",
+    "A slow, distant, or rate-limiting DNS resolver can leave a probe without an answer inside the scan's time budget. Reporting that is the only way to keep the rest of the result trustworthy.",
+    [
+      `Re-run the scan; a transient resolver timeout usually clears on its own.`,
+      `If it persists, check ${target} resolves from a public resolver.`,
+    ],
+    [],
+    // Deliberately low: this states only that the probe did not answer.
+    50,
+  );
+}
+
 function makeVuln(
   url: string,
   title: string,
@@ -126,7 +180,7 @@ export async function checkSPF(
 ): Promise<Vulnerability[]> {
   const findings: Vulnerability[] = [];
   try {
-    const txtRecords = await withDnsTimeout(dns.resolveTxt(domain));
+    const txtRecords = await withDnsTimeout(resolveTxtOnce(domain));
     const flat = txtRecords.map((r) => r.join(""));
     const spf = flat.find((r) => r.startsWith("v=spf1"));
     if (!spf) {
@@ -259,7 +313,7 @@ async function walkSpfChain(
   try {
     let spf: string | undefined;
     try {
-      const records = await withDnsTimeout(dns.resolveTxt(domain), 2500);
+      const records = await withDnsTimeout(resolveTxtOnce(domain), 2500);
       spf = records.map((r) => r.join("")).find((r) => r.startsWith("v=spf1"));
     } catch {
       return { lookupCount: 0, loop: false };
@@ -379,7 +433,7 @@ export async function checkSPFChain(
  * false-positive "missing".
  */
 async function lookupDmarcTxt(hostname: string): Promise<string | null> {
-  const records = await withDnsTimeout(dns.resolveTxt(`_dmarc.${hostname}`));
+  const records = await withDnsTimeout(resolveTxtOnce(`_dmarc.${hostname}`));
   const flat = records.map((r) => r.join(""));
   return flat.find((r) => r.startsWith("v=DMARC1")) ?? null;
 }
@@ -671,7 +725,7 @@ export async function checkDKIM(
     const dkimHost = `${sel}._domainkey.${domain}`;
     try {
       const records = await Promise.race([
-        dns.resolveTxt(dkimHost),
+        resolveTxtOnce(dkimHost),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error("timeout")), DKIM_QUERY_TIMEOUT_MS),
         ),
@@ -685,7 +739,7 @@ export async function checkDKIM(
     }
     try {
       const cnames = await Promise.race([
-        dns.resolveCname(dkimHost),
+        resolveCnameOnce(dkimHost),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error("timeout")), DKIM_QUERY_TIMEOUT_MS),
         ),
@@ -759,7 +813,7 @@ export async function checkDKIMWeakKey(
     const dkimHost = `${sel}._domainkey.${domain}`;
     try {
       const records = await Promise.race([
-        dns.resolveTxt(dkimHost),
+        resolveTxtOnce(dkimHost),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error("timeout")), DKIM_QUERY_TIMEOUT_MS),
         ),
@@ -897,7 +951,7 @@ export async function checkDNSSEC(
 async function hasCaaRecords(hostname: string): Promise<boolean | null> {
   try {
     const records = await Promise.race([
-      dns.resolveCaa(hostname),
+      resolveCaaOnce(hostname),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("timeout")), 4000),
       ),
@@ -979,7 +1033,7 @@ export async function checkCAAPermissive(
   async function fetchCaa(hostname: string) {
     try {
       const records = await Promise.race([
-        dns.resolveCaa(hostname),
+        resolveCaaOnce(hostname),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error("timeout")), 4000),
         ),
@@ -1080,7 +1134,7 @@ export async function checkNSCount(
 ): Promise<Vulnerability[]> {
   try {
     const records = await Promise.race([
-      dns.resolveNs(domain),
+      resolveNsOnce(domain),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("timeout")), 4000),
       ),
@@ -1131,7 +1185,7 @@ async function checkMTASTS(
     );
   try {
     const records = await Promise.race([
-      dns.resolveTxt(`_mta-sts.${domain}`),
+      resolveTxtOnce(`_mta-sts.${domain}`),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("timeout")), 3000),
       ),
@@ -1152,6 +1206,14 @@ async function checkMTASTS(
     if (code === "ENODATA" || code === "ENOTFOUND" || code === "ENOENT") {
       return [missingVuln()];
     }
+    // The 3s race above rejects with the literal message "timeout", which
+    // used to fall straight through to `return []` and so was indistinguishable
+    // from a domain whose record was checked and found fine.
+    if (isProbeTimeout(code)) {
+      return [
+        makeProbeIncompleteVuln(url, "MTA-STS", `_mta-sts.${domain}`, "email"),
+      ];
+    }
     return [];
   }
 }
@@ -1171,7 +1233,7 @@ async function checkMTASTSPolicyFile(
 ): Promise<Vulnerability[]> {
   try {
     const records = await Promise.race([
-      dns.resolveTxt(`_mta-sts.${domain}`),
+      resolveTxtOnce(`_mta-sts.${domain}`),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("timeout")), 3000),
       ),
@@ -1294,7 +1356,7 @@ async function checkTLSRPT(
     );
   try {
     const records = await Promise.race([
-      dns.resolveTxt(`_smtp._tls.${domain}`),
+      resolveTxtOnce(`_smtp._tls.${domain}`),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("timeout")), 3000),
       ),
@@ -1328,6 +1390,17 @@ async function checkTLSRPT(
     if (code === "ENODATA" || code === "ENOTFOUND" || code === "ENOENT") {
       return [missingVuln()];
     }
+    // Same reasoning as checkMTASTS: a timeout is not a clean negative.
+    if (isProbeTimeout(code)) {
+      return [
+        makeProbeIncompleteVuln(
+          url,
+          "TLS-RPT",
+          `_smtp._tls.${domain}`,
+          "email",
+        ),
+      ];
+    }
     return [];
   }
 }
@@ -1348,7 +1421,7 @@ export async function checkBIMI(
   let record: string | undefined;
   try {
     const records = await Promise.race([
-      dns.resolveTxt(bimiHost),
+      resolveTxtOnce(bimiHost),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("timeout")), 3000),
       ),
@@ -1441,7 +1514,7 @@ export async function checkBIMI(
 async function hasNullMX(domain: string): Promise<boolean> {
   try {
     const records = await Promise.race([
-      dns.resolveMx(domain),
+      resolveMxOnce(domain),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("timeout")), 4000),
       ),
@@ -1462,7 +1535,7 @@ export async function checkMX(
   if (!hasSPF) return [];
   try {
     const records = await Promise.race([
-      dns.resolveMx(domain),
+      resolveMxOnce(domain),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("timeout")), 4000),
       ),
@@ -1510,7 +1583,7 @@ export async function checkBackupMX(
 ): Promise<Vulnerability[]> {
   try {
     const records = await Promise.race([
-      dns.resolveMx(domain),
+      resolveMxOnce(domain),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("timeout")), 4000),
       ),
@@ -1552,7 +1625,7 @@ export async function checkMXHostnameCname(
 ): Promise<Vulnerability[]> {
   try {
     const records = await Promise.race([
-      dns.resolveMx(domain),
+      resolveMxOnce(domain),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("timeout")), 4000),
       ),
@@ -1560,7 +1633,7 @@ export async function checkMXHostnameCname(
     for (const record of records.slice(0, 5)) {
       try {
         const cnames = await Promise.race([
-          dns.resolveCname(record.exchange),
+          resolveCnameOnce(record.exchange),
           new Promise<never>((_, reject) =>
             setTimeout(() => reject(new Error("timeout")), 3000),
           ),
@@ -1600,7 +1673,7 @@ export async function checkSOARefresh(
 ): Promise<Vulnerability[]> {
   try {
     const soa = await Promise.race([
-      dns.resolveSoa(domain),
+      resolveSoaOnce(domain),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("timeout")), 4000),
       ),
@@ -1646,7 +1719,7 @@ export async function checkSOASerialStale(
 ): Promise<Vulnerability[]> {
   try {
     const soa = await Promise.race([
-      dns.resolveSoa(domain),
+      resolveSoaOnce(domain),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("timeout")), 4000),
       ),
@@ -1898,7 +1971,7 @@ async function checkDanglingCNAME(
   try {
     let cnames: string[];
     try {
-      cnames = await withDnsTimeout(dns.resolveCname(domain));
+      cnames = await withDnsTimeout(resolveCnameOnce(domain));
     } catch {
       return []; // No CNAME record — not applicable
     }
@@ -2032,7 +2105,7 @@ async function checkZoneTransfer(
 ): Promise<Vulnerability[]> {
   let nsHosts: string[];
   try {
-    nsHosts = await withDnsTimeout(dns.resolveNs(domain));
+    nsHosts = await withDnsTimeout(resolveNsOnce(domain));
   } catch {
     return [];
   }
@@ -2077,7 +2150,21 @@ async function checkZoneTransfer(
 
 // ── DNS Security (orchestrator: runs all sub-checks in parallel) ───────────
 
-export async function checkDNSSecurity(
+/**
+ * Enters the per-scan DNS memo (lib/scanner/dns-memo.ts) for the duration of
+ * this one fan-out, so the 28 sub-checks below, checks/dns.ts's three, and
+ * the full record-set fetch at the end all share one resolution per record
+ * instead of each asking for it again. A fresh map per call: nothing is
+ * cached between scans. ref: AUDIT-012#perf-09
+ */
+export function checkDNSSecurity(
+  domain: string,
+  url: string,
+): Promise<Vulnerability[]> {
+  return withDnsMemo(() => runDNSSecurityChecks(domain, url));
+}
+
+async function runDNSSecurityChecks(
   domain: string,
   url: string,
 ): Promise<Vulnerability[]> {
@@ -3497,43 +3584,74 @@ async function checkExposedFiles(
     },
   ];
 
-  const results = await Promise.allSettled(
-    probes.map(async (probe) => {
-      const probeUrl = new URL(probe.path, origin).href;
-      // A probe only cares about the final response, so an apex-to-www (or
-      // other same-registered-domain) redirect should be followed rather
-      // than treated as "not exposed".
-      const res = await fetchFollowingSameHostRedirect(
-        probeUrl,
-        {
-          headers: FETCH_OPTS.headers,
-          signal: AbortSignal.timeout(5000),
-        },
-        pinned,
-      );
-      const body = (await res.text()).slice(0, 8192);
-      const ct = res.headers.get("content-type") ?? "";
-      const evidence = probe.verify(res.status, body, ct);
-      if (!evidence) return null;
-      return makeVuln(
-        origin,
-        probe.title,
-        probe.severity,
-        "information-disclosure",
-        probe.description,
-        `Fetched ${probeUrl}: HTTP ${res.status}\n${evidence}`,
-        probe.riskImpact,
-        probe.description,
-        probe.fixSteps,
-      );
-    }),
+  const runProbe = async (probe: FileProbe): Promise<Vulnerability | null> => {
+    const probeUrl = new URL(probe.path, origin).href;
+    // A probe only cares about the final response, so an apex-to-www (or
+    // other same-registered-domain) redirect should be followed rather
+    // than treated as "not exposed".
+    const res = await fetchFollowingSameHostRedirect(
+      probeUrl,
+      {
+        headers: FETCH_OPTS.headers,
+        signal: AbortSignal.timeout(5000),
+      },
+      pinned,
+    );
+    const body = (await res.text()).slice(0, 8192);
+    const ct = res.headers.get("content-type") ?? "";
+    const evidence = probe.verify(res.status, body, ct);
+    if (!evidence) return null;
+    return makeVuln(
+      origin,
+      probe.title,
+      probe.severity,
+      "information-disclosure",
+      probe.description,
+      `Fetched ${probeUrl}: HTTP ${res.status}\n${evidence}`,
+      probe.riskImpact,
+      probe.description,
+      probe.fixSteps,
+    );
+  };
+
+  // Bounded fan-out. Every probe above used to be dispatched at once, so a
+  // single scan opened 23 simultaneous connections to one origin, on top of
+  // whatever robots.txt/security.txt/bucket-listing and the DNS, TLS,
+  // reputation and OSV branches were doing at the same moment. That reads as
+  // a burst to any rate limiter or WAF in front of the target, and the
+  // responses it provokes (429s, blocks) are indistinguishable here from
+  // "the file is not exposed", so the impolite version was also the less
+  // accurate one. Six in flight keeps the whole sweep inside the same
+  // wall-clock budget (each probe's own 5s timeout still bounds it) at a
+  // request rate a normal site does not notice. ref: AUDIT-012#perf-21
+  //
+  // Same index-slot worker-queue shape as execute-crawl-scan.ts's page pool:
+  // workers pull the next index off a shared counter, results are written
+  // back by index, so probe order in the output is unchanged.
+  const PROBE_CONCURRENCY = 6;
+  const slots: Array<Vulnerability | null> = new Array(probes.length).fill(
+    null,
+  );
+  let nextProbeIndex = 0;
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const index = nextProbeIndex++;
+      if (index >= probes.length) return;
+      try {
+        slots[index] = await runProbe(probes[index]);
+      } catch {
+        // A probe that throws (connection refused, timeout, a redirect off
+        // the registered domain) is simply "not exposed" for this path, the
+        // same outcome Promise.allSettled's rejected branch produced before.
+        slots[index] = null;
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(PROBE_CONCURRENCY, probes.length) }, worker),
   );
 
-  const findings: Vulnerability[] = [];
-  for (const r of results) {
-    if (r.status === "fulfilled" && r.value) findings.push(r.value);
-  }
-  return findings;
+  return slots.filter((v): v is Vulnerability => v !== null);
 }
 
 // ── Active CORS Origin Reflection Test ───────────────────────────────────────
@@ -4370,7 +4488,10 @@ export async function checkSecurityTxt(
 // explicit opt-in and domain-ownership check. checkBucketListing stays here:
 // its probes target third-party bucket hosts the page already publicly
 // references, not the scanned origin itself, and it sends no spoofed headers.
-export async function checkLiveFetch(url: string): Promise<Vulnerability[]> {
+export async function checkLiveFetch(
+  url: string,
+  scope: AsyncBranchScope = "all",
+): Promise<Vulnerability[]> {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -4391,26 +4512,29 @@ export async function checkLiveFetch(url: string): Promise<Vulnerability[]> {
 
   const origin = parsed.origin;
 
-  const [
-    robotsResult,
-    securityResult,
-    exposedFilesResult,
-    bucketListingResult,
-  ] = await Promise.allSettled([
-    checkRobotsTxt(origin),
-    checkSecurityTxt(origin),
-    checkExposedFiles(origin, url),
-    checkBucketListing(url),
-  ]);
+  // robots.txt, security.txt and the ~23 exposed-file probes all answer a
+  // question about the ORIGIN; only the bucket-listing check reads this
+  // specific page's body. A crawl runs the host half once and the page half
+  // per page, which is why the split exists at all. `scope` defaults to
+  // "all", so a single-URL scan behaves exactly as before.
+  // ref: AUDIT-012#perf-03
+  const tasks: Promise<Vulnerability[]>[] = [];
+  if (scope !== "page") {
+    tasks.push(
+      checkRobotsTxt(origin),
+      checkSecurityTxt(origin),
+      checkExposedFiles(origin, url),
+    );
+  }
+  if (scope !== "host") {
+    tasks.push(checkBucketListing(url));
+  }
 
+  const settled = await Promise.allSettled(tasks);
   const findings: Vulnerability[] = [];
-  if (robotsResult.status === "fulfilled") findings.push(...robotsResult.value);
-  if (securityResult.status === "fulfilled")
-    findings.push(...securityResult.value);
-  if (exposedFilesResult.status === "fulfilled")
-    findings.push(...exposedFilesResult.value);
-  if (bucketListingResult.status === "fulfilled")
-    findings.push(...bucketListingResult.value);
+  for (const result of settled) {
+    if (result.status === "fulfilled") findings.push(...result.value);
+  }
   return findings;
 }
 
@@ -4429,17 +4553,30 @@ async function boundedBranch(
   label: string,
   promise: Promise<Vulnerability[]>,
 ): Promise<{ label: string; findings: Vulnerability[]; timedOut: boolean }> {
-  // `promise` is already running -- buildBranches invoked the check
-  // function eagerly, before boundedBranch was ever called. Attach a
-  // handler to it synchronously, right here, before the `await` below: if
+  // `promise` is already running -- the caller invoked the branch's `run`
+  // thunk in the argument position, before boundedBranch was entered. Attach
+  // a handler to it synchronously, right here, before the `await` below: if
   // that await takes even one microtask tick and `promise` rejects during
   // it, an unsubscribed promise is an unhandled rejection, even though
   // Promise.race would have subscribed to it a moment later once this
   // function resumes. A rejecting branch contributes no findings, same as
   // a timed-out one.
+  // `timedOut` is really "did not complete", and it is what populates
+  // ScanResult.incomplete downstream. A branch that THREW did not complete
+  // either, so it has to be reported the same way: marking a crashed DNS or
+  // TLS branch as complete made the scan claim that area was checked and
+  // clean, which is the opposite of what happened. The error is also logged
+  // rather than swallowed, so a permanently broken branch is visible instead
+  // of silently degrading every scan.
   const settled = promise.then(
     (findings) => ({ label, findings, timedOut: false }),
-    () => ({ label, findings: NO_FINDINGS, timedOut: false }),
+    (err) => {
+      console.error(
+        `[scanner] async check branch "${label}" failed, reporting it as not checked:`,
+        err,
+      );
+      return { label, findings: NO_FINDINGS, timedOut: true };
+    },
   );
   const branchTimeoutMs = await getSetting("SCANNER_ASYNC_BRANCH_TIMEOUT_MS");
   return Promise.race([
@@ -4457,11 +4594,46 @@ async function boundedBranch(
   ]);
 }
 
+/**
+ * Which half of the async layer to plan.
+ *
+ * "all" is every branch and is what a single-URL scan uses.
+ *
+ * A crawl splits them. "host" is the work that answers a question about the
+ * HOST, not the page: DNS (28 sub-checks, including checkDKIM's 26 selector
+ * probes), the TLS handshake, reputation, and robots.txt / security.txt /
+ * the exposed-file probes. Running that per page meant a 25-page crawl fired
+ * roughly 1,300 DKIM DNS queries at one domain, fetched /.git/config, /.env
+ * and 21 other paths off the same origin 25 times, and performed 25 TLS
+ * handshakes, all to produce 25 identical copies of findings that were then
+ * deduped away. "page" is the work that genuinely differs per page: this
+ * page's client-side libraries, its bucket references, and the active
+ * probes. ref: AUDIT-012#perf-03
+ */
+export type AsyncBranchScope = "all" | "host" | "page";
+
+/**
+ * One planned branch. `run` is a thunk, NOT an already-started promise, and
+ * that is load-bearing: `getPlannedAsyncBranches` below builds the same list
+ * purely to count it, and while these were eager promises that counting call
+ * fired every branch's real network work and then threw the results away.
+ * Every scan therefore resolved DNS, shook hands with TLS, fetched robots.txt
+ * / security.txt / the ~23 exposed-file paths, hit the reputation sources and
+ * queried OSV twice against the target, and a crawl did it once more per page
+ * (execute-crawl-scan.ts sizes each page's denominator the same way). Nothing
+ * consumed the discarded copy, so it was pure duplicate load on somebody
+ * else's site and on this process. ref: AUDIT-011#drift-06
+ */
+type AsyncBranch = { label: string; run: () => Promise<Vulnerability[]> };
+
 function buildBranches(
   url: string,
   categories?: string[] | null,
   signal?: AbortSignal,
-): { label: string; promise: Promise<Vulnerability[]> }[] {
+  scope: AsyncBranchScope = "all",
+): AsyncBranch[] {
+  const wantsHost = scope !== "page";
+  const wantsPage = scope !== "host";
   let hostname: string;
   let origin: string;
   let isHTTPS: boolean;
@@ -4476,18 +4648,22 @@ function buildBranches(
 
   const allowed = categories ? new Set(categories) : null;
   const runAll = !allowed;
-  const branches: { label: string; promise: Promise<Vulnerability[]> }[] = [];
+  const branches: AsyncBranch[] = [];
 
   // DNS checks map to "dns" category (SPF, DMARC, DKIM, DNSSEC)
-  if (runAll || allowed!.has("dns")) {
-    branches.push({ label: "dns", promise: checkDNSSecurity(hostname, url) });
+  if (wantsHost && (runAll || allowed!.has("dns"))) {
+    branches.push({ label: "dns", run: () => checkDNSSecurity(hostname, url) });
   }
 
   // TLS checks map to "ssl" or "tls" category. The `ssl` category
   // groups the most common cert-validity findings (expiry, self-signed,
   // hostname mismatch). The `tls` category covers deeper protocol
   // analysis (cipher suites, protocol version, HSTS preload status).
-  if ((runAll || allowed!.has("ssl") || allowed!.has("tls")) && isHTTPS) {
+  if (
+    wantsHost &&
+    (runAll || allowed!.has("ssl") || allowed!.has("tls")) &&
+    isHTTPS
+  ) {
     const emitCategory: Category =
       allowed?.has("tls") && !allowed?.has("ssl") ? "tls" : "ssl";
     // The deeper TLS probes (checkHttpUpgradeToHttps and friends, from
@@ -4500,16 +4676,17 @@ function buildBranches(
     const httpVariantUrl = `http://${hostname}/`;
     branches.push({
       label: "tls",
-      promise: includeDeepTlsProbes
-        ? Promise.allSettled([
-            checkTLSCert(hostname, url, 443, emitCategory),
-            checkHttpUpgradeToHttps(httpVariantUrl),
-            checkTlsCertChainCompleteness(hostname, url),
-            checkOcspStapling(hostname, url),
-          ]).then((results) =>
-            results.flatMap((r) => (r.status === "fulfilled" ? r.value : [])),
-          )
-        : checkTLSCert(hostname, url, 443, emitCategory),
+      run: () =>
+        includeDeepTlsProbes
+          ? Promise.allSettled([
+              checkTLSCert(hostname, url, 443, emitCategory),
+              checkHttpUpgradeToHttps(httpVariantUrl),
+              checkTlsCertChainCompleteness(hostname, url),
+              checkOcspStapling(hostname, url),
+            ]).then((results) =>
+              results.flatMap((r) => (r.status === "fulfilled" ? r.value : [])),
+            )
+          : checkTLSCert(hostname, url, 443, emitCategory),
     });
   }
 
@@ -4519,7 +4696,13 @@ function buildBranches(
     allowed!.has("configuration") ||
     allowed!.has("information-disclosure")
   ) {
-    branches.push({ label: "live-fetch", promise: checkLiveFetch(url) });
+    // Planned in BOTH crawl scopes: its host half (robots.txt, security.txt,
+    // exposed files) runs once for the crawl, its page half (bucket listing)
+    // runs per page. checkLiveFetch does the splitting.
+    branches.push({
+      label: "live-fetch",
+      run: () => checkLiveFetch(url, scope),
+    });
   }
 
   // Reputation (multi-source threat intel) — planned whenever the reputation
@@ -4529,8 +4712,8 @@ function buildBranches(
   // every deployment. Each source is best-effort, bounded, and cached per
   // host (see lib/scanner/reputation-lookup.ts), so always planning this
   // branch never hammers an external service or slows the scan.
-  if (runAll || allowed!.has("reputation")) {
-    branches.push({ label: "reputation", promise: checkReputation(url) });
+  if (wantsHost && (runAll || allowed!.has("reputation"))) {
+    branches.push({ label: "reputation", run: () => checkReputation(url) });
   }
 
   // OSV.dev live dependency lookup — supplements
@@ -4540,10 +4723,10 @@ function buildBranches(
   // queries a third party, never the target), so it runs by default under
   // "supply-chain" like every other non-active-probes branch above, unlike
   // active-probes' opt-in-only gate.
-  if (runAll || allowed!.has("supply-chain")) {
+  if (wantsPage && (runAll || allowed!.has("supply-chain"))) {
     branches.push({
       label: "osv-libraries",
-      promise: checkOsvVulnerableLibraries(url, signal),
+      run: () => checkOsvVulnerableLibraries(url, signal),
     });
   }
 
@@ -4566,28 +4749,32 @@ function buildBranches(
   // and every probe here threads it into its request so a cancelled scan
   // stops sending payloads to the target immediately.
   const selectedProbes = new Set(resolveSelectedActiveProbes(categories));
-  if (selectedProbes.size > 0) {
-    const tasks: Promise<Vulnerability[]>[] = [];
-    if (selectedProbes.has("xss")) tasks.push(checkActiveProbes(url, signal));
-    if (selectedProbes.has("sqli"))
-      tasks.push(checkSqlInjectionProbe(url, signal));
-    if (selectedProbes.has("ssti")) tasks.push(checkSstiProbe(url, signal));
-    if (selectedProbes.has("command-injection"))
-      tasks.push(checkCommandInjectionProbe(url, signal));
-    if (selectedProbes.has("open-redirect"))
-      tasks.push(checkOpenRedirectProbe(url, signal));
-    if (selectedProbes.has("graphql"))
-      tasks.push(checkGraphQLIntrospection(origin, url));
-    if (selectedProbes.has("cors")) tasks.push(checkActiveCORS(url, signal));
-    if (selectedProbes.has("http-methods"))
-      tasks.push(checkActiveHttpMethods(origin, signal));
-    if (selectedProbes.has("x-forwarded-host"))
-      tasks.push(checkXForwardedHostInjection(url, signal));
+  if (wantsPage && selectedProbes.size > 0) {
     branches.push({
       label: "active-probes",
-      promise: Promise.allSettled(tasks).then((results) =>
-        results.flatMap((r) => (r.status === "fulfilled" ? r.value : [])),
-      ),
+      run: () => {
+        const tasks: Promise<Vulnerability[]>[] = [];
+        if (selectedProbes.has("xss"))
+          tasks.push(checkActiveProbes(url, signal));
+        if (selectedProbes.has("sqli"))
+          tasks.push(checkSqlInjectionProbe(url, signal));
+        if (selectedProbes.has("ssti")) tasks.push(checkSstiProbe(url, signal));
+        if (selectedProbes.has("command-injection"))
+          tasks.push(checkCommandInjectionProbe(url, signal));
+        if (selectedProbes.has("open-redirect"))
+          tasks.push(checkOpenRedirectProbe(url, signal));
+        if (selectedProbes.has("graphql"))
+          tasks.push(checkGraphQLIntrospection(origin, url));
+        if (selectedProbes.has("cors"))
+          tasks.push(checkActiveCORS(url, signal));
+        if (selectedProbes.has("http-methods"))
+          tasks.push(checkActiveHttpMethods(origin, signal));
+        if (selectedProbes.has("x-forwarded-host"))
+          tasks.push(checkXForwardedHostInjection(url, signal));
+        return Promise.allSettled(tasks).then((results) =>
+          results.flatMap((r) => (r.status === "fulfilled" ? r.value : [])),
+        );
+      },
     });
   }
 
@@ -4607,12 +4794,17 @@ export interface AsyncCheckResult {
  * needs to size a progress denominator ahead of time (the scan route) uses
  * this instead of re-deriving `buildBranches`'s gating logic itself, so the
  * planned count can never drift from what actually runs.
+ *
+ * "Without running any of the network work" only became true when the branch
+ * list stopped holding already-started promises -- see AsyncBranch above for
+ * what this call used to fire at the target every time it was asked to count.
  */
 export function getPlannedAsyncBranches(
   url: string,
   categories?: string[] | null,
+  scope: AsyncBranchScope = "all",
 ): string[] {
-  return buildBranches(url, categories).map((b) => b.label);
+  return buildBranches(url, categories, undefined, scope).map((b) => b.label);
 }
 
 /**
@@ -4627,20 +4819,28 @@ export function getPlannedAsyncBranches(
  * contributing. Branches run concurrently, not sequentially, so several
  * "start" events can fire back to back; that is an accurate report of what
  * this function actually does, not an approximation of it.
+ *
+ * `scope` selects half the branch set for a crawl (see AsyncBranchScope).
+ * It defaults to "all", which is every branch: a single-URL scan is
+ * unaffected by the split.
  */
 export async function runAsyncChecksDetailed(
   url: string,
   categories?: string[] | null,
   onProgress?: ScanProgressHook,
   signal?: AbortSignal,
+  scope: AsyncBranchScope = "all",
 ): Promise<AsyncCheckResult> {
-  const branches = buildBranches(url, categories, signal);
+  const branches = buildBranches(url, categories, signal, scope);
   if (branches.length === 0) return { findings: [], incomplete: [] };
 
   const results = await Promise.allSettled(
     branches.map((b) => {
       onProgress?.(b.label, "start");
-      return boundedBranch(b.label, b.promise).then((r) => {
+      // Started HERE, not in buildBranches: every branch still begins in this
+      // same synchronous pass, so they run concurrently exactly as before,
+      // but a caller that only wants the labels never starts any of them.
+      return boundedBranch(b.label, b.run()).then((r) => {
         onProgress?.(b.label, "done");
         return r;
       });

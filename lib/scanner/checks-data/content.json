@@ -254,7 +254,7 @@
   {
     "id": "sensitive-comments",
     "type": "body-pattern",
-    "title": "Sensitive Information in HTML Comments",
+    "title": "Sensitive Keywords in HTML Comments",
     "category": "content",
     "severity": "medium",
     "description": "HTML comments containing potentially sensitive information detected.",
@@ -697,7 +697,7 @@
   {
     "id": "weak-crypto",
     "type": "body-pattern",
-    "title": "Weak or Broken Cryptography Detected",
+    "title": "Deprecated Cipher or Hash Algorithm in Page Code",
     "category": "content",
     "severity": "high",
     "description": "Weak or broken cryptographic algorithms in client-side JavaScript.",
@@ -991,10 +991,10 @@
   {
     "id": "document-write-usage",
     "type": "body-pattern",
-    "title": "document.write() Usage Detected",
+    "title": "document.write() Outside Page Scripts",
     "category": "content",
     "severity": "low",
-    "description": "document.write()/document.writeln() usage found. These are deprecated and can be exploited for XSS.",
+    "description": "document.write()/document.writeln() found in the response body outside a <script> block, typically in an inline event-handler attribute. Calls inside <script> blocks are reported separately by the client-side scan.",
     "evidence": "document.write()/document.writeln() usage.",
     "riskImpact": "document.write() can be hijacked to inject malicious content if any input is attacker-controlled.",
     "explanation": "document.write() is deprecated, blocks HTML parsing, and is a common XSS vector.",
@@ -2060,14 +2060,17 @@
   {
     "id": "stripe-key-exposed",
     "type": "body-pattern",
-    "title": "Stripe Key Exposed",
+    "title": "Stripe Secret Key Exposed",
     "category": "content",
     "severity": "high",
-    "description": "Stripe API key pattern found.",
-    "evidence": "Content-level finding for `content-stripe-key-exposed` on the response body.",
-    "riskImpact": "May allow payment manipulation.",
-    "explanation": "Live Stripe keys can process real payments.",
-    "fixSteps": ["Rotate keys, use publishable keys only in frontend."],
+    "description": "A Stripe secret key (sk_live_ or sk_test_) was found in the response body. Publishable keys (pk_live_/pk_test_) are deliberately not reported here: Stripe's own integration docs require embedding those in client-side code, so they are public by design.",
+    "evidence": "Stripe secret key pattern detected in source.",
+    "riskImpact": "A secret key grants full API access to the Stripe account: reading customer and payment records, creating charges and refunds, and changing account settings. Anyone who can view the page source has it.",
+    "explanation": "sk_live_ and sk_test_ keys are server-only credentials and must never reach the browser. The publishable key (pk_live_/pk_test_) is the one Stripe.js, Checkout, and Elements are meant to use in client-side code, and it is not reported by this check.",
+    "fixSteps": [
+      "Roll the exposed secret key in the Stripe dashboard immediately, then review the account's recent API activity for anything you did not initiate.",
+      "Keep the secret key in a server-side environment variable and use only the publishable key in browser code."
+    ],
     "codeExamples": [
       {
         "label": "Rotate exposed Stripe keys",
@@ -2812,11 +2815,12 @@
     "category": "content",
     "severity": "medium",
     "description": "An <iframe srcdoc=\"...\"> embeds inline HTML directly in the page without a sandbox attribute, giving that inline content full same-origin privileges.",
-    "evidence": "Content-level finding for `content-iframe-third-party-without-sandbox` on the response body.",
-    "riskImpact": "Add sandbox='allow-scripts allow-same-origin allow-forms' to srcdoc iframes, or sandbox=\"\" if no scripting is needed",
+    "evidence": "srcdoc iframe(s) without sandbox attribute.",
+    "riskImpact": "Inline srcdoc markup runs in the parent page's own origin unless it is sandboxed. If any part of that markup is ever built from dynamic or user-influenced data, script inside it can read the page's cookies, storage, and DOM exactly as first-party code could.",
     "explanation": "Unlike a regular src= iframe loading a separate document, srcdoc content is embedded inline -- without sandbox, it runs with the same privileges as the parent page, which matters if the srcdoc value is ever built from dynamic or user-influenced data.",
     "fixSteps": [
-      "Add sandbox='allow-scripts allow-same-origin allow-forms' to third-party iframes"
+      "Add sandbox=\"\" to the srcdoc iframe. That is the maximally restrictive value and is enough for static inline markup.",
+      "Only if the inline content genuinely needs it, add the single narrowest token back (e.g. sandbox=\"allow-scripts\"). Never combine allow-scripts with allow-same-origin: together they let the framed content remove its own sandbox, which defeats the point."
     ],
     "codeExamples": [
       {
@@ -3033,8 +3037,8 @@
     "title": "Form action points to an insecure or external URL",
     "category": "content",
     "severity": "medium",
-    "description": "A form action attribute uses HTTP or points to an external domain, risking credential submission to an untrusted destination.",
-    "evidence": "Form with insecure or external action URL detected at {{url}}.",
+    "description": "A form action attribute uses plain HTTP, or points to a domain that is neither your own site nor a known form/payment processor, risking submission to an untrusted destination. Forms posting to your own site, or to a processor whose documented embed code requires a cross-origin action (Stripe, PayPal, Mailchimp, HubSpot, Jotform, Salesforce Web-to-Lead, and similar), are not reported.",
+    "evidence": "Form with an insecure or third-party action URL detected.",
     "riskImpact": "Forms that submit to HTTP URLs expose credentials in transit. Forms targeting external domains may submit user data to attacker-controlled servers, a common phishing vector.",
     "explanation": "Form actions should always point to HTTPS endpoints on your own domain.",
     "fixSteps": [
@@ -3357,7 +3361,7 @@
   {
     "id": "django-debug-page",
     "type": "body-pattern",
-    "title": "Django debug mode enabled in production",
+    "title": "Django debug page exposing settings and installed apps",
     "category": "content",
     "severity": "critical",
     "description": "Django's DEBUG = True is enabled in production, exposing detailed error pages with source code, local variables, and settings.",

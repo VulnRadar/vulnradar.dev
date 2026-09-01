@@ -1,4 +1,4 @@
-import { APP_NAME, APP_REPO } from "@/lib/config/constants";
+import { APP_NAME, APP_REPO } from "@/lib/config/client-constants";
 
 export function DemoInfo() {
   return (

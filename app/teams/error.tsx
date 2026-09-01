@@ -1,8 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
-import { AlertTriangle, RotateCcw } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { RouteError } from "@/components/shared/route-error";
 
 export default function Error({
   error,
@@ -11,40 +9,13 @@ export default function Error({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  useEffect(() => {
-    console.error("[Teams] Unhandled error:", error);
-  }, [error]);
-
   return (
-    <div
-      className="min-h-[60vh] flex flex-col items-center justify-center px-4"
-      role="alert"
-    >
-      <div className="max-w-md w-full flex flex-col items-center text-center gap-4">
-        <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-destructive/10 border border-destructive/20">
-          <AlertTriangle
-            className="h-7 w-7 text-destructive"
-            aria-hidden="true"
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <h2 className="text-xl font-semibold text-foreground">
-            Couldn&apos;t load teams
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Something went wrong while loading your teams. This has been logged.
-          </p>
-          {error.digest && (
-            <p className="text-[11px] font-mono text-muted-foreground/70 mt-1">
-              ref: {error.digest}
-            </p>
-          )}
-        </div>
-        <Button onClick={reset} className="gap-2">
-          <RotateCcw className="h-4 w-4" aria-hidden="true" />
-          Try again
-        </Button>
-      </div>
-    </div>
+    <RouteError
+      area="Teams"
+      title="Couldn’t load your teams"
+      description="Something went wrong while loading your teams. No membership has changed."
+      error={error}
+      reset={reset}
+    />
   );
 }

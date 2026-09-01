@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { isIP } from "node:net";
-import { getSession } from "@/lib/auth";
+import { getSession, hashSessionId } from "@/lib/auth";
 import { AUTH_SESSION_COOKIE_NAME } from "@/lib/config/constants";
 import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
 import { verifyIpv4Token } from "@/lib/auth/ipv4-echo-token";
@@ -32,12 +32,14 @@ export const POST = withErrorHandling(async (req: NextRequest) => {
   }
 
   const cookieStore = await cookies();
-  const sessionId = cookieStore.get(AUTH_SESSION_COOKIE_NAME)?.value;
-  if (!sessionId) return ApiResponse.unauthorized();
+  const sessionToken = cookieStore.get(AUTH_SESSION_COOKIE_NAME)?.value;
+  if (!sessionToken) return ApiResponse.unauthorized();
 
+  // sessions.id is the digest of the cookie's bearer token, never the token
+  // itself (AUDIT-012#auth-07).
   await pool.query(
     "UPDATE sessions SET ipv4_address = $1 WHERE id = $2 AND user_id = $3",
-    [ip, sessionId, session.userId],
+    [ip, hashSessionId(sessionToken), session.userId],
   );
 
   return NextResponse.json({ success: true, ip });

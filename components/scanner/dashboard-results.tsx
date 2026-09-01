@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { AlertTriangle, Check, Copy, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/shared/empty-state";
 import dynamic from "next/dynamic";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 import type { FindingRemediation } from "@/lib/scanner/remediation";
@@ -11,6 +12,7 @@ import {
   HistoryNotes,
   HistoryTagsCard,
   type ScanTag,
+  type TagMutationResult,
 } from "@/components/history";
 import { AuthenticatedBadge } from "./authenticated-badge";
 import { SubdomainDiscovery } from "./subdomain-discovery";
@@ -37,13 +39,14 @@ interface DashboardResultsProps {
   scanPublicId?: string | null;
   scanNotes: string;
   scanTags: ScanTag[];
-  onAddTag: (scanId: string | number, tag: string) => void;
-  onRemoveTag: (scanId: string | number, tag: string) => void;
+  onAddTag: (scanId: string | number, tag: string) => TagMutationResult;
+  onRemoveTag: (scanId: string | number, tag: string) => TagMutationResult;
   crawlInfo: CrawlInfo | null;
   authReport?: ScanAuthReport | null;
   onReset: () => void;
   onScanSubdomain: (url: string) => void;
-  onSaveNotes: (notes: string) => Promise<void>;
+  /** Resolves to null when saved, or the message to show on failure. */
+  onSaveNotes: (notes: string) => Promise<string | null>;
   onFindingsUpdated?: (findings: Vulnerability[]) => void;
   onVerdictChanged?: () => void;
 }
@@ -266,24 +269,21 @@ export function DashboardResults({
           ) : undefined
         }
         emptyFindings={
-          <div className="flex flex-col items-center gap-2 rounded-md border border-dashed border-border bg-card/50 px-4 py-12 text-center">
-            <p className="text-base font-semibold text-foreground">
-              Zero findings on this host
-            </p>
-            <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
-              Every enabled check ran and none of them fired. Add a note so you
-              know what state the host was in, or scan another target.
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onReset}
-              className="mt-1 h-8 gap-1.5 bg-transparent"
-            >
-              <RotateCcw aria-hidden className="h-3.5 w-3.5" />
-              New scan
-            </Button>
-          </div>
+          <EmptyState
+            title="Zero findings on this host"
+            description="Every enabled check ran and none of them fired. Add a note so you know what state the host was in, or scan another target."
+            action={
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onReset}
+                className="h-8 gap-1.5 bg-transparent"
+              >
+                <RotateCcw aria-hidden className="h-3.5 w-3.5" />
+                New scan
+              </Button>
+            }
+          />
         }
       />
     </div>

@@ -25,7 +25,10 @@ vi.mock("@/lib/database/db", () => ({
 }));
 
 const mockGetClientIp = vi.fn();
-vi.mock("@/lib/api/request-utils", () => ({
+// rateLimitIpKey stays real (importOriginal) so the per-client bucket keys the
+// tests below rely on are the ones the route actually computes.
+vi.mock("@/lib/api/request-utils", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api/request-utils")>()),
   getClientIp: () => mockGetClientIp(),
 }));
 

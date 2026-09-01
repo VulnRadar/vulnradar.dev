@@ -68,6 +68,28 @@ async function getSuppressedFindingIds(userId: number): Promise<Set<string>> {
   return new Set(result.rows.map((r) => r.finding_id));
 }
 
+/**
+ * Ceiling on the distinct URLs one digest considers.
+ *
+ * Applied identically to both the current and the baseline read, and to the
+ * same `ORDER BY url` ordering, so the two always cover the same slice of the
+ * account and the diff between them stays meaningful. Without a cap, an
+ * account with thousands of scanned hosts pulled every one of them into
+ * memory twice per digest, on a worker that runs for every opted-in user.
+ */
+const DIGEST_MAX_URLS = 500;
+
+/** Only the three fields the digest actually reads off a finding. Projected
+ *  in SQL so the fat findings JSONB (every finding's description,
+ *  explanation, fixSteps and codeExamples) stays on disk: the digest needs
+ *  an id to diff on, plus a title and severity to print. */
+const DIGEST_FINDINGS_PROJECTION = `
+  (SELECT COALESCE(jsonb_agg(jsonb_build_object(
+            'id', e->>'id',
+            'title', e->>'title',
+            'severity', e->>'severity')), '[]'::jsonb)
+     FROM jsonb_array_elements(COALESCE(findings, '[]'::jsonb)) e) AS findings`;
+
 /** The latest *completed* scan's findings for each distinct URL this user
  *  has scanned, as of `asOf` (or overall, when omitted). Used twice per
  *  digest: once with no cutoff (the current picture) and once with `asOf`
@@ -78,18 +100,20 @@ async function getLatestFindingsPerUrl(
 ): Promise<Map<string, Vulnerability[]>> {
   const result = asOf
     ? await pool.query<{ url: string; findings: unknown }>(
-        `SELECT DISTINCT ON (url) url, findings
+        `SELECT DISTINCT ON (url) url, ${DIGEST_FINDINGS_PROJECTION}
          FROM scan_history
          WHERE user_id = $1 AND status = 'completed' AND scanned_at <= $2
-         ORDER BY url, scanned_at DESC`,
-        [userId, asOf.toISOString()],
+         ORDER BY url, scanned_at DESC
+         LIMIT $3`,
+        [userId, asOf.toISOString(), DIGEST_MAX_URLS],
       )
     : await pool.query<{ url: string; findings: unknown }>(
-        `SELECT DISTINCT ON (url) url, findings
+        `SELECT DISTINCT ON (url) url, ${DIGEST_FINDINGS_PROJECTION}
          FROM scan_history
          WHERE user_id = $1 AND status = 'completed'
-         ORDER BY url, scanned_at DESC`,
-        [userId],
+         ORDER BY url, scanned_at DESC
+         LIMIT $2`,
+        [userId, DIGEST_MAX_URLS],
       );
 
   const map = new Map<string, Vulnerability[]>();

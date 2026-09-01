@@ -114,9 +114,15 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // their own dedicated history at /repos (app/api/v3/scan/github/history),
   // scoped per-repo instead of mixed into this URL-scan list. See the
   // matching exclusion in this route's DELETE handler below.
+  //
+  // sh.status is projected so the list can distinguish a finished scan from
+  // one that is still pending/running or that failed. The row is inserted as
+  // 'pending' before any work starts, with summary '{}', findings_count 0 and
+  // duration 0, so a scan the user navigated away from used to appear in
+  // History wearing a clean result's clothes: "0 findings in 0.0s".
   const result = await pool.query(
     retentionDays <= 0
-      ? `SELECT sh.public_id AS id, sh.url, sh.summary, sh.findings_count, sh.duration, sh.scanned_at, sh.source,
+      ? `SELECT sh.public_id AS id, sh.url, sh.summary, sh.findings_count, sh.duration, sh.scanned_at, sh.source, sh.status,
          COALESCE(
            (SELECT json_agg(json_build_object('tag', st.tag, 'source', st.source) ORDER BY st.source, st.tag)
             FROM scan_tags st WHERE st.scan_id = sh.id AND st.user_id = $1),
@@ -126,7 +132,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
        WHERE sh.user_id = $1 AND (sh.scan_type IS NULL OR sh.scan_type != 'github')
        ORDER BY sh.scanned_at DESC
        LIMIT $2`
-      : `SELECT sh.public_id AS id, sh.url, sh.summary, sh.findings_count, sh.duration, sh.scanned_at, sh.source,
+      : `SELECT sh.public_id AS id, sh.url, sh.summary, sh.findings_count, sh.duration, sh.scanned_at, sh.source, sh.status,
          COALESCE(
            (SELECT json_agg(json_build_object('tag', st.tag, 'source', st.source) ORDER BY st.source, st.tag)
             FROM scan_tags st WHERE st.scan_id = sh.id AND st.user_id = $1),
@@ -142,12 +148,48 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       : [authedUserId, Math.floor(retentionDays), historyMaxRows],
   );
 
+  // The list above is capped at HISTORY_LIST_MAX_ROWS, so scans.length is a
+  // page size, not an account total. Returning the real count alongside it
+  // stops the client presenting the cap as the total, which is what made the
+  // "delete all history" confirmation understate what the DELETE below
+  // actually removes (the DELETE is deliberately unbounded).
+  // Degrades to the page size rather than failing the request: an operator
+  // losing the exact total is a far better outcome than the whole history
+  // page 500ing, and the count is advisory.
+  let total = result.rows.length;
+  try {
+    const totalRes = await pool.query<{ n: number }>(
+      retentionDays <= 0
+        ? `SELECT COUNT(*)::int AS n
+           FROM scan_history sh
+           WHERE sh.user_id = $1 AND (sh.scan_type IS NULL OR sh.scan_type != 'github')`
+        : `SELECT COUNT(*)::int AS n
+           FROM scan_history sh
+           WHERE sh.user_id = $1 AND (sh.scan_type IS NULL OR sh.scan_type != 'github')
+             AND sh.scanned_at > NOW() - ($2 * INTERVAL '1 day')`,
+      retentionDays <= 0
+        ? [authedUserId]
+        : [authedUserId, Math.floor(retentionDays)],
+    );
+    total = totalRes?.rows?.[0]?.n ?? result.rows.length;
+  } catch (err) {
+    console.error(
+      "[history] total count failed, falling back to page size",
+      err,
+    );
+  }
+
   // Record API key usage
   if (apiKeyId) {
     await recordUsage(apiKeyId);
   }
 
-  return ApiResponse.success({ scans: result.rows });
+  return ApiResponse.success({
+    scans: result.rows,
+    total,
+    limit: historyMaxRows,
+    truncated: total > result.rows.length,
+  });
 });
 
 export const DELETE = withErrorHandling(async (request: NextRequest) => {

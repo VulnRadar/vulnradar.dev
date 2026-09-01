@@ -34,14 +34,29 @@ vi.mock("@/lib/api/api-keys", () => ({
   recordUsage: (...args: unknown[]) => mockRecordUsage(...args),
 }));
 
-const mockGetTeamResourceAccess = vi.fn();
-const mockGetAssignableTeamIds = vi.fn();
-vi.mock("@/lib/auth/team-resource-access", () => ({
-  getTeamResourceAccess: (...args: unknown[]) =>
-    mockGetTeamResourceAccess(...args),
-  getAssignableTeamIds: (...args: unknown[]) =>
-    mockGetAssignableTeamIds(...args),
-}));
+const mockGetScanResourceAccess = vi.fn();
+const mockGetScanTeamAccess = vi.fn();
+const mockGetScanTeamIds = vi.fn();
+const mockAuthorizeScanTeamChange = vi.fn();
+const mockSetScanTeams = vi.fn();
+vi.mock("@/lib/teams/scan-teams", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/teams/scan-teams")>();
+  return {
+    // parseTeamIdsInput stays real: it is pure request parsing that this
+    // route's contract (teamIds, plus the legacy teamId) is defined by, so
+    // faking it would leave the contract untested. Everything replaced below
+    // touches the database and has its own suite.
+    ...actual,
+    getScanResourceAccess: (...args: unknown[]) =>
+      mockGetScanResourceAccess(...args),
+    getScanTeamAccess: (...args: unknown[]) => mockGetScanTeamAccess(...args),
+    getScanTeamIds: (...args: unknown[]) => mockGetScanTeamIds(...args),
+    authorizeScanTeamChange: (...args: unknown[]) =>
+      mockAuthorizeScanTeamChange(...args),
+    setScanTeams: (...args: unknown[]) => mockSetScanTeams(...args),
+  };
+});
 
 const { GET, PATCH, DELETE } = await import("@/app/api/v3/history/[id]/route");
 
@@ -101,13 +116,19 @@ beforeEach(() => {
     resetsAt: new Date().toISOString(),
   });
   mockRecordUsage.mockReset();
-  mockGetTeamResourceAccess.mockReset();
-  mockGetTeamResourceAccess.mockResolvedValue({
+  mockGetScanResourceAccess.mockReset();
+  mockGetScanResourceAccess.mockResolvedValue({
     canRead: true,
     canWrite: true,
   });
-  mockGetAssignableTeamIds.mockReset();
-  mockGetAssignableTeamIds.mockResolvedValue([]);
+  mockGetScanTeamAccess.mockReset();
+  mockGetScanTeamAccess.mockResolvedValue({ canRead: true, canWrite: true });
+  mockGetScanTeamIds.mockReset();
+  mockGetScanTeamIds.mockResolvedValue([]);
+  mockAuthorizeScanTeamChange.mockReset();
+  mockAuthorizeScanTeamChange.mockResolvedValue({ ok: true });
+  mockSetScanTeams.mockReset();
+  mockSetScanTeams.mockResolvedValue(undefined);
 });
 
 describe("GET /api/v3/history/[id]", () => {
@@ -172,6 +193,37 @@ describe("GET /api/v3/history/[id]", () => {
     expect(sqlParams).toEqual(["55", 55]);
   });
 
+  it("reports every team the scan is shared with so the share picker can tick them", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [scanRow({ user_id: 7, team_id: 4 })],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // tags lookup
+    mockGetScanTeamIds.mockResolvedValue([4, 9]);
+
+    const res = await GET(getRequest(), params());
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.teamIds).toEqual([4, 9]);
+    // teamId is the primary team, still reported for clients written against
+    // the original single-team contract.
+    expect(json.teamId).toBe(4);
+  });
+
+  it("reports an empty team set for a personal scan that is not shared with a team", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [scanRow({ user_id: 7, team_id: null })],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // tags lookup
+
+    const res = await GET(getRequest(), params());
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.teamIds).toEqual([]);
+    expect(json.teamId).toBeNull();
+  });
+
   it("reports isPublic false for a scan its owner marked private", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [scanRow({ user_id: 7, is_public: false })],
@@ -185,12 +237,13 @@ describe("GET /api/v3/history/[id]", () => {
     expect(json.isPublic).toBe(false);
   });
 
-  it("returns the scan when team access grants read (scoped to the scan's team_id)", async () => {
+  it("returns the scan when team access grants read (scoped to the scan's own team set)", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [scanRow({ user_id: 99, team_id: 3 })],
     });
     mockQuery.mockResolvedValueOnce({ rows: [] }); // tags lookup (owner's tags)
-    mockGetTeamResourceAccess.mockResolvedValue({
+    mockGetScanTeamIds.mockResolvedValue([3]);
+    mockGetScanTeamAccess.mockResolvedValue({
       canRead: true,
       canWrite: false,
     });
@@ -200,8 +253,10 @@ describe("GET /api/v3/history/[id]", () => {
 
     expect(res.status).toBe(200);
     expect(json.userId).toBe(99);
-    // Access is decided by the scan's own owner + team_id, not a "share any team" join.
-    expect(mockGetTeamResourceAccess).toHaveBeenCalledWith(7, 99, 3);
+    expect(json.teamIds).toEqual([3]);
+    // Access is decided by the scan's own owner + the teams it is actually
+    // shared with, not a "share any team" join.
+    expect(mockGetScanTeamAccess).toHaveBeenCalledWith(7, 99, [3]);
   });
 
   it("returns 404 for a scan that team access does not grant read (e.g. a private personal scan)", async () => {
@@ -209,7 +264,7 @@ describe("GET /api/v3/history/[id]", () => {
       rows: [scanRow({ user_id: 99, team_id: null })],
     });
     mockQuery.mockResolvedValueOnce({ rows: [] }); // tags lookup
-    mockGetTeamResourceAccess.mockResolvedValue({
+    mockGetScanTeamAccess.mockResolvedValue({
       canRead: false,
       canWrite: false,
     });
@@ -289,7 +344,10 @@ describe("PATCH /api/v3/history/[id]", () => {
 
     expect(res.status).toBe(200);
     expect(json.notes).toBe("updated");
-    expect(mockGetTeamResourceAccess).toHaveBeenCalledWith(7, 7, null);
+    expect(mockGetScanResourceAccess).toHaveBeenCalledWith(
+      7,
+      expect.objectContaining({ id: 55, user_id: 7, team_id: null }),
+    );
 
     const [sql, sqlParams] = mockQuery.mock.calls[1];
     expect(sql).toContain("WHERE id = $2");
@@ -312,7 +370,7 @@ describe("PATCH /api/v3/history/[id]", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 55, user_id: 99, team_id: null }],
     }); // SELECT
-    mockGetTeamResourceAccess.mockResolvedValue({
+    mockGetScanResourceAccess.mockResolvedValue({
       canRead: false,
       canWrite: false,
     });
@@ -329,7 +387,7 @@ describe("PATCH /api/v3/history/[id]", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 55, user_id: 99, team_id: 4 }],
     }); // SELECT
-    mockGetTeamResourceAccess.mockResolvedValue({
+    mockGetScanResourceAccess.mockResolvedValue({
       canRead: true,
       canWrite: false,
     });
@@ -346,7 +404,7 @@ describe("PATCH /api/v3/history/[id]", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 55, user_id: 99, team_id: 4 }],
     }); // SELECT
-    mockGetTeamResourceAccess.mockResolvedValue({
+    mockGetScanResourceAccess.mockResolvedValue({
       canRead: true,
       canWrite: true,
     });
@@ -355,7 +413,10 @@ describe("PATCH /api/v3/history/[id]", () => {
     const res = await PATCH(patchRequest({ notes: "updated" }), params());
 
     expect(res.status).toBe(200);
-    expect(mockGetTeamResourceAccess).toHaveBeenCalledWith(7, 99, 4);
+    expect(mockGetScanResourceAccess).toHaveBeenCalledWith(
+      7,
+      expect.objectContaining({ id: 55, user_id: 99, team_id: 4 }),
+    );
   });
 
   it("authenticates via a Bearer API key and records usage", async () => {
@@ -508,7 +569,7 @@ describe("PATCH /api/v3/history/[id]", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 55, user_id: 99, team_id: null }],
     });
-    mockGetTeamResourceAccess.mockResolvedValue({
+    mockGetScanResourceAccess.mockResolvedValue({
       canRead: false,
       canWrite: false,
     });
@@ -519,12 +580,29 @@ describe("PATCH /api/v3/history/[id]", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
-  describe("teamId assignment", () => {
-    it("lets the owner assign the scan to a team they can manage_scans in", async () => {
+  describe("team assignment", () => {
+    it("lets the owner share the scan with several teams at once", async () => {
       mockQuery.mockResolvedValueOnce({
         rows: [{ id: 55, user_id: 7, team_id: null }],
       });
-      mockGetAssignableTeamIds.mockResolvedValue([4, 9]);
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ id: 55, notes: "", is_public: true, team_id: 4 }],
+      }); // readback: a teams-only PATCH has no column to SET
+
+      const res = await PATCH(patchRequest({ teamIds: [4, 9] }), params());
+      const json = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(json.teamIds).toEqual([4, 9]);
+      // The whole set is written at once; teamId reports the primary.
+      expect(mockSetScanTeams).toHaveBeenCalledWith(55, [4, 9]);
+      expect(json.teamId).toBe(4);
+    });
+
+    it("still accepts the original single-valued teamId", async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ id: 55, user_id: 7, team_id: null }],
+      });
       mockQuery.mockResolvedValueOnce({
         rows: [{ id: 55, notes: "", is_public: true, team_id: 4 }],
       });
@@ -533,16 +611,34 @@ describe("PATCH /api/v3/history/[id]", () => {
       const json = await res.json();
 
       expect(res.status).toBe(200);
+      expect(mockSetScanTeams).toHaveBeenCalledWith(55, [4]);
       expect(json.teamId).toBe(4);
-      const [sql, sqlParams] = mockQuery.mock.calls[1];
-      expect(sql).toContain("team_id = $1");
-      expect(sqlParams).toEqual([4, 55]);
+      expect(json.teamIds).toEqual([4]);
     });
 
-    it("lets the owner unassign a scan's team with teamId: null", async () => {
+    it("lets the owner clear every team with teamIds: []", async () => {
       mockQuery.mockResolvedValueOnce({
         rows: [{ id: 55, user_id: 7, team_id: 4 }],
       });
+      mockGetScanTeamIds.mockResolvedValue([4]);
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ id: 55, notes: "", is_public: true, team_id: null }],
+      });
+
+      const res = await PATCH(patchRequest({ teamIds: [] }), params());
+      const json = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(mockSetScanTeams).toHaveBeenCalledWith(55, []);
+      expect(json.teamIds).toEqual([]);
+      expect(json.teamId).toBeNull();
+    });
+
+    it("teamId: null still means the same as clearing every team", async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ id: 55, user_id: 7, team_id: 4 }],
+      });
+      mockGetScanTeamIds.mockResolvedValue([4]);
       mockQuery.mockResolvedValueOnce({
         rows: [{ id: 55, notes: "", is_public: true, team_id: null }],
       });
@@ -550,28 +646,91 @@ describe("PATCH /api/v3/history/[id]", () => {
       const res = await PATCH(patchRequest({ teamId: null }), params());
 
       expect(res.status).toBe(200);
-      expect(mockGetAssignableTeamIds).not.toHaveBeenCalled();
+      expect(mockSetScanTeams).toHaveBeenCalledWith(55, []);
     });
 
-    it("rejects assigning to a team the caller cannot manage_scans in", async () => {
+    it("puts the change past the authorization gate before writing anything", async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ id: 55, user_id: 7, team_id: 4 }],
+      });
+      mockGetScanTeamIds.mockResolvedValue([4]);
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ id: 55, notes: "", is_public: true, team_id: 4 }],
+      });
+
+      await PATCH(patchRequest({ teamIds: [4, 9] }), params());
+
+      // Current set and requested set both, so the gate can see the removals
+      // as well as the additions.
+      expect(mockAuthorizeScanTeamChange).toHaveBeenCalledWith(7, [4], [4, 9]);
+    });
+
+    it("rejects ADDING a team the caller cannot manage_scans in", async () => {
       mockQuery.mockResolvedValueOnce({
         rows: [{ id: 55, user_id: 7, team_id: null }],
       });
-      mockGetAssignableTeamIds.mockResolvedValue([9]);
+      mockGetScanTeamIds.mockResolvedValue([]);
+      mockAuthorizeScanTeamChange.mockResolvedValue({
+        ok: false,
+        error: "You cannot assign scans to that team.",
+      });
 
-      const res = await PATCH(patchRequest({ teamId: 4 }), params());
+      const res = await PATCH(patchRequest({ teamIds: [4] }), params());
       const json = await res.json();
 
       expect(res.status).toBe(400);
       expect(json.error).toContain("cannot assign");
+      expect(mockSetScanTeams).not.toHaveBeenCalled();
       expect(mockQuery).toHaveBeenCalledTimes(1);
+    });
+
+    it("rejects REMOVING a team the caller cannot manage_scans in, even though every id left in the array is one they can", async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ id: 55, user_id: 7, team_id: 4 }],
+      });
+      // Shared with 4 and 9; the request keeps 4 and silently drops 9.
+      mockGetScanTeamIds.mockResolvedValue([4, 9]);
+      mockAuthorizeScanTeamChange.mockResolvedValue({
+        ok: false,
+        error: "You cannot assign scans to that team.",
+      });
+
+      const res = await PATCH(patchRequest({ teamIds: [4] }), params());
+      const json = await res.json();
+
+      expect(res.status).toBe(400);
+      expect(json.error).toContain("cannot assign");
+      // Omitting a team is how you remove it, so the gate has to see the
+      // removal: without it, dropping a team you do not manage would look
+      // exactly like a request that names only teams you do.
+      expect(mockAuthorizeScanTeamChange).toHaveBeenCalledWith(7, [4, 9], [4]);
+      expect(mockSetScanTeams).not.toHaveBeenCalled();
+    });
+
+    it("rejects a request that sends both teamId and teamIds", async () => {
+      const res = await PATCH(
+        patchRequest({ teamId: 4, teamIds: [9] }),
+        params(),
+      );
+      const json = await res.json();
+
+      expect(res.status).toBe(400);
+      expect(json.error).toContain("not both");
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it("rejects a teamIds array that is not an array of positive ints", async () => {
+      const res = await PATCH(patchRequest({ teamIds: [0] }), params());
+
+      expect(res.status).toBe(400);
+      expect(mockQuery).not.toHaveBeenCalled();
     });
 
     it("rejects a team member (non-owner) trying to reassign someone else's scan, even with write access", async () => {
       mockQuery.mockResolvedValueOnce({
         rows: [{ id: 55, user_id: 99, team_id: 4 }],
       });
-      mockGetTeamResourceAccess.mockResolvedValue({
+      mockGetScanResourceAccess.mockResolvedValue({
         canRead: true,
         canWrite: true,
       });
@@ -608,7 +767,10 @@ describe("DELETE /api/v3/history/[id]", () => {
 
     expect(res.status).toBe(200);
     expect(json.success).toBe(true);
-    expect(mockGetTeamResourceAccess).toHaveBeenCalledWith(7, 7, null);
+    expect(mockGetScanResourceAccess).toHaveBeenCalledWith(
+      7,
+      expect.objectContaining({ id: 55, user_id: 7, team_id: null }),
+    );
 
     // The reputation cache is purged first, then the scan row is deleted.
     const [repSql] = mockQuery.mock.calls[1];
@@ -634,7 +796,7 @@ describe("DELETE /api/v3/history/[id]", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 55, user_id: 99, team_id: null }],
     });
-    mockGetTeamResourceAccess.mockResolvedValue({
+    mockGetScanResourceAccess.mockResolvedValue({
       canRead: false,
       canWrite: false,
     });
@@ -651,7 +813,7 @@ describe("DELETE /api/v3/history/[id]", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 55, user_id: 99, team_id: 4 }],
     });
-    mockGetTeamResourceAccess.mockResolvedValue({
+    mockGetScanResourceAccess.mockResolvedValue({
       canRead: true,
       canWrite: false,
     });
@@ -668,7 +830,7 @@ describe("DELETE /api/v3/history/[id]", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 55, user_id: 99, team_id: 4 }],
     });
-    mockGetTeamResourceAccess.mockResolvedValue({
+    mockGetScanResourceAccess.mockResolvedValue({
       canRead: true,
       canWrite: true,
     });
@@ -678,14 +840,17 @@ describe("DELETE /api/v3/history/[id]", () => {
     const res = await DELETE(deleteRequest(), params());
 
     expect(res.status).toBe(200);
-    expect(mockGetTeamResourceAccess).toHaveBeenCalledWith(7, 99, 4);
+    expect(mockGetScanResourceAccess).toHaveBeenCalledWith(
+      7,
+      expect.objectContaining({ id: 55, user_id: 99, team_id: 4 }),
+    );
   });
 
   it("does not grant write on a super_admin-owned team-assigned scan even to an owner-role co-member", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 55, user_id: 99, team_id: 4 }],
     });
-    mockGetTeamResourceAccess.mockResolvedValue({
+    mockGetScanResourceAccess.mockResolvedValue({
       canRead: true,
       canWrite: false,
     });

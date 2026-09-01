@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { ExternalLink, Check, ShieldCheck, AlertCircle } from "lucide-react";
-import { APP_NAME, API } from "@/lib/config/constants";
+import { APP_NAME, API } from "@/lib/config/client-constants";
 import { refreshAuthCache } from "@/components/providers/auth-provider";
 import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
 import { cn } from "@/lib/ui/utils";
@@ -293,7 +293,7 @@ export function TosModal({
                 right above a checkbox that says the same thing -- that
                 checkbox (below) now carries the weight instead. */}
             {isUpdate && termsChangeSummary && (
-              <div className="mt-4 p-3 rounded-lg border border-[hsl(var(--warning)/0.2)] bg-[hsl(var(--warning)/0.05)] flex gap-3">
+              <div className="mt-4 p-3 rounded-lg border border-[hsl(var(--warning))]/20 bg-[hsl(var(--warning))]/5 flex gap-3">
                 <AlertCircle
                   className="h-4 w-4 text-[hsl(var(--warning))] shrink-0 mt-0.5"
                   aria-hidden="true"
@@ -327,8 +327,8 @@ export function TosModal({
                     `tos-item-${i + 1} flex items-start gap-3 cursor-pointer rounded-lg pl-3 pr-3 py-3 -mx-3 border-l-2 transition-colors duration-150 has-focus-visible:ring-2 has-focus-visible:ring-ring`,
                     critical
                       ? checked[key]
-                        ? "border-l-[hsl(var(--warning))] bg-[hsl(var(--warning)/0.07)]"
-                        : "border-l-[hsl(var(--warning)/0.4)] bg-[hsl(var(--warning)/0.03)] hover:bg-[hsl(var(--warning)/0.05)]"
+                        ? "border-l-[hsl(var(--warning))] bg-[hsl(var(--warning))]/5"
+                        : "border-l-[hsl(var(--warning))]/40 bg-[hsl(var(--warning))]/5 hover:bg-[hsl(var(--warning))]/5"
                       : checked[key]
                         ? "border-l-transparent bg-muted/50"
                         : "border-l-transparent hover:bg-muted/30",

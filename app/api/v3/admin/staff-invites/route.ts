@@ -6,6 +6,7 @@ import {
   isSuperAdminRole,
 } from "@/lib/auth/authorization";
 import { getClientIp } from "@/lib/api/request-utils";
+import { verifyPassword } from "@/lib/auth/password-hash";
 import { sendEmail, staffInviteEmail } from "@/lib/email/email";
 import {
   ApiResponse,
@@ -19,7 +20,6 @@ import {
   APP_URL,
 } from "@/lib/config/constants";
 import {
-  ensureStaffInvitesTable,
   generateStaffInviteToken,
   hashStaffInviteToken,
   staffInviteExpiresAt,
@@ -54,7 +54,11 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // return, so both cases read the same to the caller.
   if (!admin) return ApiResponse.unauthorized("Admins only.");
 
-  const parsed = await parseBody<{ email?: string; role?: string }>(request);
+  const parsed = await parseBody<{
+    email?: string;
+    role?: string;
+    currentAdminPassword?: string;
+  }>(request);
   if (!parsed.success) return ApiResponse.badRequest(parsed.error);
 
   const email =
@@ -72,7 +76,33 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     return ApiResponse.badRequest("Invalid staff role.");
   }
 
-  await ensureStaffInvitesTable();
+  // Password re-auth, the same gate PATCH /api/v3/admin applies to set_role
+  // and make_admin (PASSWORD_GATED_ACTIONS in components/admin/config.ts,
+  // which now lists send_staff_invite). This route hands the same privilege
+  // to an arbitrary email address, so it cannot stay the cheap path to it.
+  // Runs after body validation so a malformed request never touches the DB.
+  const currentAdminPassword = parsed.data.currentAdminPassword;
+  if (
+    typeof currentAdminPassword !== "string" ||
+    currentAdminPassword.length === 0
+  ) {
+    return ApiResponse.forbidden(
+      "Re-enter your password to confirm this action.",
+    );
+  }
+  const adminPwRow = await pool.query<{ password_hash: string }>(
+    "SELECT password_hash FROM users WHERE id = $1",
+    [admin.id],
+  );
+  if (
+    !adminPwRow.rows[0] ||
+    !(await verifyPassword(
+      currentAdminPassword,
+      adminPwRow.rows[0].password_hash,
+    ))
+  ) {
+    return ApiResponse.forbidden("Password is incorrect.");
+  }
 
   const existingUser = await pool.query<{ id: number; role: string }>(
     "SELECT id, role FROM users WHERE email = $1",
@@ -174,8 +204,6 @@ export const GET = withErrorHandling(async () => {
   const admin = await requireAdmin();
   if (!admin) return ApiResponse.unauthorized("Admins only.");
 
-  await ensureStaffInvitesTable();
-
   const { rows } = await pool.query<PendingInviteRow>(
     `SELECT si.id, si.email, si.role, si.created_at, si.expires_at,
             u.name AS invited_by_name, u.email AS invited_by_email
@@ -212,8 +240,6 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
   if (!Number.isInteger(id) || id <= 0) {
     return ApiResponse.badRequest("A valid invite id is required.");
   }
-
-  await ensureStaffInvitesTable();
 
   const deleted = await pool.query<{ email: string; role: string }>(
     `DELETE FROM staff_invites

@@ -17,6 +17,7 @@ const rateLimitCounts = new Map<string, number>();
 let sessionRow: Record<string, unknown> | null = null;
 let passwordHashRow: { password_hash: string } | null = null;
 let disableUpdateCalls: unknown[][] = [];
+let deviceTrustDeleteCalls: unknown[][] = [];
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   const s = sql.trim();
@@ -40,6 +41,10 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   }
   if (s.startsWith("UPDATE users SET totp_enabled = false")) {
     disableUpdateCalls.push(params);
+    return { rows: [] };
+  }
+  if (s.startsWith("DELETE FROM device_trust WHERE user_id")) {
+    deviceTrustDeleteCalls.push(params);
     return { rows: [] };
   }
   if (s.includes("FROM notification_preferences WHERE user_id"))
@@ -105,6 +110,7 @@ beforeEach(async () => {
   sessionRow = null;
   passwordHashRow = { password_hash: realPasswordHash };
   disableUpdateCalls = [];
+  deviceTrustDeleteCalls = [];
   invalidateSettingsCache();
 });
 
@@ -142,6 +148,15 @@ describe("POST /api/v3/auth/2fa/disable", () => {
     expect(res.status).toBe(200);
     expect(json.message).toBeTruthy();
     expect(disableUpdateCalls).toEqual([[1]]);
+  });
+
+  it("clears every trusted device so re-enabling 2FA is not silently skipped", async () => {
+    login(1);
+    await POST(req({ password: REAL_PASSWORD }));
+    // A device_trust row is a standing "skip the second factor here" grant.
+    // Leaving them behind meant turning 2FA off and back on re-honoured every
+    // previously trusted browser, an attacker's planted one included.
+    expect(deviceTrustDeleteCalls).toEqual([[1]]);
   });
 
   it("sends a 2FA-disabled notification email", async () => {

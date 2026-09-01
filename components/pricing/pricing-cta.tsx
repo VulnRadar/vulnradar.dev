@@ -1,6 +1,6 @@
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ROUTES, BILLING_PLAN_LIMITS } from "@/lib/config/constants";
+import { ROUTES, BILLING_PLAN_LIMITS } from "@/lib/config/client-constants";
 import { PLANS } from "@/lib/billing/plans";
 import Link from "next/link";
 

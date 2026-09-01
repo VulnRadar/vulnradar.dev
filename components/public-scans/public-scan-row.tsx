@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { User, Clock } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
-import { SEVERITY_LEVELS, STAFF_ROLES } from "@/lib/config/constants";
+import { SEVERITY_LEVELS, STAFF_ROLES } from "@/lib/config/client-constants";
 import { SeverityPill } from "@/components/history/severity-pill";
 import { ScanTags } from "@/components/history/scan-tags";
 import { VERDICT, formatRelativeTime, displayUrl } from "./public-scans-types";
@@ -19,7 +19,7 @@ export function PublicScanRow({ scan }: { scan: PublicScan }) {
   return (
     <Link
       href={`/shared/${scan.token}`}
-      className="group relative flex flex-col gap-2.5 border-l-2 border-transparent py-3.5 pl-4 pr-4 transition-colors hover:bg-muted/30 focus-visible:bg-muted/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:grid sm:grid-cols-[1fr_150px_150px_90px] sm:items-center sm:gap-4"
+      className="group relative flex flex-col gap-2.5 border-l-2 border-transparent py-3.5 pl-4 pr-4 transition-colors hover:bg-muted/30 focus-visible:bg-muted/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring md:grid md:grid-cols-[minmax(0,1fr)_90px_150px_120px] md:items-center md:gap-4"
     >
       <span
         aria-hidden
@@ -74,7 +74,7 @@ export function PublicScanRow({ scan }: { scan: PublicScan }) {
       </div>
 
       {/* Scanned by + when */}
-      <div className="flex items-center justify-between gap-2 sm:flex-col sm:items-end sm:justify-center sm:gap-0.5">
+      <div className="flex items-center justify-between gap-2 md:flex-col md:items-end md:justify-center md:gap-0.5">
         <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
           {scan.scannedByAvatar ? (
             <Image

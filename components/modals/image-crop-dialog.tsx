@@ -205,7 +205,12 @@ export function ImageCropDialog({
             ref={containerRef}
             role="img"
             aria-label="Photo preview. Drag to reposition, use the zoom slider below to resize."
-            className="relative w-[280px] h-[280px] sm:w-[300px] sm:h-[300px] rounded-full overflow-hidden border-2 border-border bg-secondary/20 cursor-grab active:cursor-grabbing touch-none"
+            // a11y (SC 1.4.10): the crop circle was a hard 280px square
+            // inside a dialog that adds its own horizontal padding, so at a
+            // 320px viewport the panel overflowed sideways. min() lets it
+            // shrink to whatever is available and aspect-square keeps it
+            // round; nothing changes above 280px.
+            className="relative w-[min(280px,100%)] aspect-square sm:w-[min(300px,100%)] rounded-full overflow-hidden border-2 border-border bg-secondary/20 cursor-grab active:cursor-grabbing touch-none"
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
@@ -249,7 +254,7 @@ export function ImageCropDialog({
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 shrink-0"
+              className="h-11 w-11 sm:h-8 sm:w-8 shrink-0"
               onClick={handleReset}
               aria-label="Reset zoom and position"
             >

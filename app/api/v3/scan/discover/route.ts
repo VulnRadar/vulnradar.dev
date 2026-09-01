@@ -7,6 +7,11 @@ import {
   API_KEY_SCOPES,
 } from "@/lib/api/api-key-scopes";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import {
+  getDailyLimit,
+  incrementDailyCountCapped,
+} from "@/lib/rate-limiting/daily-limits";
+import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { validateScanTarget } from "@/lib/scanner/safe-fetch";
 import { getSetting } from "@/lib/config/runtime-config";
 import { setDiscoveryStage } from "@/lib/scanner/discovery-progress";
@@ -136,10 +141,42 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // security: the admin blocklist applies to recon exactly as it does to a
+    // scan. Discovery aims real outbound traffic at the target, so a
+    // blocklisted host must not be reachable through this route either.
+    const accessCheck = await checkAccessRules(url);
+    if (!accessCheck.allowed) {
+      return NextResponse.json(
+        { error: accessCheck.reason || "Target blocked by access rules" },
+        { status: 403 },
+      );
+    }
+
     const rootDomain = extractRootDomain(domain);
 
     // Check if force refresh is requested
     const forceRefresh = body.forceRefresh === true;
+
+    // billing: a forced refresh skips the cache and runs the full discovery
+    // engine, which is a 191-prefix DNS brute force plus DNS resolution of up
+    // to 1000 passive entries plus HTTP reachability probing. That is a large
+    // amount of compute and third-party egress, and it was charged to nobody:
+    // the hourly rate limit above was the only bound, so one account could
+    // aim roughly 200,000 DNS lookups a day at targets it does not own. A
+    // cache hit stays free, since it does no outbound work.
+    if (forceRefresh) {
+      const dailyLimit = await getDailyLimit(userId);
+      const charge = await incrementDailyCountCapped(userId, dailyLimit);
+      if (!charge.recorded) {
+        return NextResponse.json(
+          {
+            error:
+              "Daily scan limit reached. Upgrade your plan or wait until midnight UTC for the limit to reset.",
+          },
+          { status: 429 },
+        );
+      }
+    }
 
     // Check cache first (admin-configurable TTL) unless force refresh
     if (!forceRefresh) {

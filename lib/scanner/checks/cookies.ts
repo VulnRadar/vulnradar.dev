@@ -12,26 +12,15 @@ import {
   type EvidenceFn as DetectFn,
 } from "../_helpers";
 
+// "cookie-security" used to have a second, simpler implementation here. It
+// was dead: the check's definition lives in checks-data/headers.json with
+// category "headers", and registry.ts's resolveDetector always prefers the
+// bundle that owns the definition's category, so headers.ts's copy has always
+// been the one that runs. The dead copy was also the worse of the two, since
+// it flagged every cookie rather than only session/auth-shaped ones, which
+// meant a maintainer "fixing" a `_ga` false positive here would have changed
+// nothing at all. ref: AUDIT-009#dup-09
 export const detectors: Record<string, DetectFn> = {
-  "cookie-security": (_url, headers) => {
-    const setCookies = getSetCookies(headers);
-    if (setCookies.length === 0) return null;
-    const issues: string[] = [];
-    for (const cookie of setCookies) {
-      const name = parseCookieName(cookie);
-      if (
-        !cookieHasAttribute(cookie, "httponly") &&
-        !name.startsWith("__Host-")
-      )
-        issues.push(`${name} missing HttpOnly`);
-      if (!cookieHasAttribute(cookie, "secure"))
-        issues.push(`${name} missing Secure`);
-      if (!cookieHasAttribute(cookie, "samesite"))
-        issues.push(`${name} missing SameSite`);
-    }
-    return issues.length > 0 ? issues.slice(0, 5).join("; ") : null;
-  },
-
   "cookie-httponly-missing": (_url, headers) => {
     const cookies = getSetCookies(headers);
     const sensitive = cookies.filter((c) => {

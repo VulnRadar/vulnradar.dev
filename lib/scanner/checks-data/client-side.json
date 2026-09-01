@@ -152,7 +152,7 @@
   {
     "id": "cs-document-write-usage",
     "type": "body-pattern",
-    "title": "document.write() Usage Detected",
+    "title": "document.write() in Page Scripts",
     "category": "client-side",
     "severity": "high",
     "description": "document.write() was found in the page scripts. This function is dangerous because it can overwrite the entire page document, is a primary DOM XSS sink, and is deprecated in modern browsers.",

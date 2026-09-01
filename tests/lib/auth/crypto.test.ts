@@ -1,7 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   encryptApiKey,
   decryptApiKey,
+  decryptApiKeyWithKeyAge,
   isEncryptionConfigured,
 } from "@/lib/auth/crypto";
 
@@ -125,6 +126,90 @@ describe("missing key is fatal at call time", () => {
       if (previous !== undefined) {
         process.env.API_KEY_ENCRYPTION_KEY = previous;
       }
+    }
+  });
+});
+
+/**
+ * Key rotation (AUDIT-007#auth-02). One key protects TOTP seeds, OAuth
+ * tokens, user AI provider keys and API keys, and before this there was no
+ * way to change it without every existing ciphertext becoming unreadable.
+ */
+describe("key rotation via PREVIOUS_API_KEY_ENCRYPTION_KEY", () => {
+  const OLD_KEY = "b".repeat(64);
+  const NEW_KEY = "c".repeat(64);
+
+  function withKeys<T>(
+    current: string,
+    previous: string | null,
+    fn: () => T,
+  ): T {
+    const savedCurrent = process.env.API_KEY_ENCRYPTION_KEY;
+    const savedPrevious = process.env.PREVIOUS_API_KEY_ENCRYPTION_KEY;
+    process.env.API_KEY_ENCRYPTION_KEY = current;
+    if (previous === null) {
+      delete process.env.PREVIOUS_API_KEY_ENCRYPTION_KEY;
+    } else {
+      process.env.PREVIOUS_API_KEY_ENCRYPTION_KEY = previous;
+    }
+    try {
+      return fn();
+    } finally {
+      if (savedCurrent === undefined) delete process.env.API_KEY_ENCRYPTION_KEY;
+      else process.env.API_KEY_ENCRYPTION_KEY = savedCurrent;
+      if (savedPrevious === undefined)
+        delete process.env.PREVIOUS_API_KEY_ENCRYPTION_KEY;
+      else process.env.PREVIOUS_API_KEY_ENCRYPTION_KEY = savedPrevious;
+    }
+  }
+
+  it("still decrypts a value written under the old key", () => {
+    const cipher = withKeys(OLD_KEY, null, () => encryptApiKey("totp-seed"));
+    const plaintext = withKeys(NEW_KEY, OLD_KEY, () => decryptApiKey(cipher));
+    expect(plaintext).toBe("totp-seed");
+  });
+
+  it("reports which key opened the value, so a caller can rewrite it", () => {
+    const oldCipher = withKeys(OLD_KEY, null, () => encryptApiKey("seed"));
+    withKeys(NEW_KEY, OLD_KEY, () => {
+      expect(decryptApiKeyWithKeyAge(oldCipher).usedPreviousKey).toBe(true);
+      const rewritten = encryptApiKey("seed");
+      expect(decryptApiKeyWithKeyAge(rewritten).usedPreviousKey).toBe(false);
+      expect(decryptApiKey(rewritten)).toBe("seed");
+    });
+  });
+
+  it("always encrypts new values with the CURRENT key", () => {
+    const cipher = withKeys(NEW_KEY, OLD_KEY, () => encryptApiKey("fresh"));
+    // Readable with the new key alone, i.e. no dependence on the old one.
+    expect(withKeys(NEW_KEY, null, () => decryptApiKey(cipher))).toBe("fresh");
+  });
+
+  it("still throws when neither key authenticates the ciphertext", () => {
+    const cipher = withKeys("d".repeat(64), null, () => encryptApiKey("x"));
+    expect(() =>
+      withKeys(NEW_KEY, OLD_KEY, () => decryptApiKey(cipher)),
+    ).toThrow();
+  });
+
+  it("ignores a malformed previous key loudly instead of breaking every decrypt", () => {
+    const cipher = withKeys(NEW_KEY, null, () => encryptApiKey("still-fine"));
+    const errors: unknown[] = [];
+    const spy = vi
+      .spyOn(console, "error")
+      .mockImplementation((...args) => void errors.push(args));
+    try {
+      // A current-key value keeps working; only the old-key fallback is lost.
+      expect(withKeys(NEW_KEY, "not-hex", () => decryptApiKey(cipher))).toBe(
+        "still-fine",
+      );
+      const oldCipher = withKeys(OLD_KEY, null, () => encryptApiKey("lost"));
+      expect(() =>
+        withKeys(NEW_KEY, "not-hex", () => decryptApiKey(oldCipher)),
+      ).toThrow();
+      expect(errors.length).toBeGreaterThan(0);
+    } finally {
+      spy.mockRestore();
     }
   });
 });

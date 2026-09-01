@@ -13,8 +13,19 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 // getSetting() -> pool.query() against system_settings. Empty rows (the
 // default here) resolve to the shipped default (true).
 let settingsRows: { key: string; value: string }[] = [];
+// requireAdmin does its own SELECT role, totp_enabled lookup rather than
+// trusting the session object, so the role under test lives here.
+let roleRow: { role: string } | null = { role: "admin" };
 const mockQuery = vi.fn(async (sql: string, params?: unknown[]) => {
   const s = String(sql).trim();
+  if (
+    s.startsWith("SELECT id, role, totp_enabled FROM users") ||
+    s.startsWith("SELECT role, totp_enabled FROM users")
+  ) {
+    return {
+      rows: roleRow ? [{ id: 1, totp_enabled: true, ...roleRow }] : [],
+    };
+  }
   if (s.startsWith("SELECT key, value FROM system_settings")) {
     return { rows: settingsRows };
   }
@@ -45,7 +56,8 @@ beforeEach(() => {
   settingsRows = [];
   invalidateSettingsCache();
   mockGetSession.mockReset();
-  mockGetSession.mockResolvedValue({ userId: 1, role: "admin" });
+  roleRow = { role: "admin" };
+  mockGetSession.mockResolvedValue({ userId: 1 });
   mockGetStripe.mockReset();
   mockGetStripe.mockReturnValue(null);
 });
@@ -76,15 +88,19 @@ function fakeStripe(overrides: {
 }
 
 describe("GET /api/v3/stripe/setup-products", () => {
+  // 403 rather than 401: requireAdmin collapses "no session" and "not an
+  // admin" into null, so the route answers the same to both. Matches
+  // app/api/v3/admin/teams, and tells an anonymous caller nothing.
   it("rejects an unauthenticated caller", async () => {
     mockGetSession.mockResolvedValue(null);
     const res = await GET();
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(403);
     expect(mockGetStripe).not.toHaveBeenCalled();
   });
 
   it("rejects a non-admin caller with 403, never touching Stripe", async () => {
-    mockGetSession.mockResolvedValue({ userId: 2, role: "user" });
+    roleRow = { role: "user" };
+    mockGetSession.mockResolvedValue({ userId: 2 });
     const res = await GET();
     expect(res.status).toBe(403);
     expect(mockGetStripe).not.toHaveBeenCalled();

@@ -49,7 +49,7 @@
       "description": "Open VulnRadar scanner"
     }
   },
-  "host_permissions": ["https://vulnradar.dev/*"],
+  "host_permissions": ["__API_HOST__/*"],
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
@@ -61,11 +61,5 @@
   "options_ui": {
     "page": "options.html",
     "open_in_tab": true
-  },
-  "web_accessible_resources": [
-    {
-      "resources": ["popup.html", "options.html", "welcome.html"],
-      "matches": ["<all_urls>"]
-    }
-  ]
+  }
 }

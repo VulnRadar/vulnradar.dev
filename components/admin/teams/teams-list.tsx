@@ -67,7 +67,7 @@ interface TeamsListProps {
   teamsLoading: boolean;
   teamsSearch: string;
   setTeamsSearch: (search: string) => void;
-  fetchTeams: (page?: number, search?: string) => void;
+  fetchTeams: (page?: number, search?: string, pageSize?: number) => void;
   teamsTotalPages: number;
   teamsPage: number;
   teamsPageSize: number;
@@ -480,7 +480,7 @@ export function TeamsList({
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity"
                                   onClick={() => openTeamModal(team)}
                                   aria-label={`View members of ${team.name}`}
                                 >
@@ -493,7 +493,7 @@ export function TeamsList({
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity"
                                   onClick={() =>
                                     setEditingTeam({
                                       id: team.id,
@@ -511,7 +511,7 @@ export function TeamsList({
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="h-8 w-8 p-0 text-destructive hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                                    className="h-8 w-8 p-0 text-destructive hover:text-destructive opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity"
                                     onClick={() =>
                                       setConfirmDialog({
                                         title: "Delete Team",
@@ -549,20 +549,76 @@ export function TeamsList({
                       className="px-5 py-4 border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors"
                     >
                       <div className="flex items-start justify-between gap-3 mb-3">
-                        <div>
-                          <p className="text-sm font-medium text-foreground">
-                            {team.name}
-                          </p>
-                          <p className="text-xs text-muted-foreground font-mono">
-                            {team.slug}
-                          </p>
-                        </div>
-                        <Badge
-                          variant="secondary"
-                          className="text-xs font-medium shrink-0"
-                        >
-                          {team.member_count} members
-                        </Badge>
+                        {/* The rename editor has to exist in this branch too.
+                            It used to live only in the hidden md:block table,
+                            so tapping Rename on a phone set editingTeam and
+                            then rendered nothing: no way to rename a team. */}
+                        {editingTeam?.id === team.id ? (
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <Input
+                              value={editingTeam.name}
+                              onChange={(e) =>
+                                setEditingTeam({
+                                  ...editingTeam,
+                                  name: e.target.value,
+                                })
+                              }
+                              aria-label="Team name"
+                              className={cn(
+                                "h-8 text-sm min-w-0 flex-1 bg-background/50",
+                                focusRing,
+                              )}
+                              autoFocus
+                            />
+                            <Button
+                              size="sm"
+                              className="h-8 px-2 shrink-0"
+                              onClick={() => {
+                                handleTeamRename(team.id, editingTeam.name);
+                                setEditingTeam(null);
+                              }}
+                              disabled={
+                                actionLoading === `team-rename-${team.id}`
+                              }
+                              aria-label="Save team name"
+                            >
+                              {actionLoading === `team-rename-${team.id}` ? (
+                                <Loader2
+                                  className="h-3 w-3 animate-spin"
+                                  aria-hidden="true"
+                                />
+                              ) : (
+                                <Save className="h-3 w-3" aria-hidden="true" />
+                              )}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 px-2 shrink-0"
+                              onClick={() => setEditingTeam(null)}
+                              aria-label="Cancel rename"
+                            >
+                              <X className="h-3 w-3" aria-hidden="true" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-foreground">
+                                {team.name}
+                              </p>
+                              <p className="text-xs text-muted-foreground font-mono">
+                                {team.slug}
+                              </p>
+                            </div>
+                            <Badge
+                              variant="secondary"
+                              className="text-xs font-medium shrink-0"
+                            >
+                              {team.member_count} members
+                            </Badge>
+                          </>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 mb-3">
                         <UserAvatar
@@ -648,7 +704,9 @@ export function TeamsList({
                       pageSize={teamsPageSize}
                       onPageSizeChange={(s) => {
                         setTeamsPageSize(s);
-                        fetchTeams(1);
+                        // Pass s explicitly: the state update has not committed
+                        // yet, so fetchTeams would still read the old size.
+                        fetchTeams(1, undefined, s);
                       }}
                     />
                   </div>

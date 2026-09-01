@@ -381,17 +381,19 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_team_invites_email ON team_invites(email);
       `);
 
-      // Stripe webhook idempotency: stores the event.id of every webhook
-      // we processed so Stripe retries and dashboard replays are
-      // ignored. Without this, a flaky network lets the user be
-      // plan-upgraded (and badge-granted) twice for the same event.
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS processed_stripe_events (
-          event_id TEXT PRIMARY KEY,
-          event_type TEXT NOT NULL,
-          received_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-        );
-      `);
+      // AUDIT-013 migrate-07: processed_stripe_events was here, and it did
+      // not belong. The registry's v1.0.0 fingerprint is 19 tables and
+      // does not contain it; it is a v3.0.0 addition. Worse, the shape
+      // here was different from every other path (event_id TEXT,
+      // received_at) where instrumentation.ts and the v2->v3 migration
+      // both use event_id VARCHAR(255) and processed_at. Because all
+      // three use CREATE TABLE IF NOT EXISTS, neither later path could
+      // ever repair the column name: `npm run db:create` at 1.0.0 followed
+      // by `npm run db:migrate` produced a database whose
+      // idx_processed_stripe_events_processed_at errored on every boot and
+      // whose admin billing overview permanently reported zero failed
+      // payments. Removed so this snapshot is the v1.0.0 shape it claims
+      // to be; the table is created by 2.0.0-to-3.0.0.mjs, correctly.
 
       console.log(`[${APP_NAME}] Database schema verified successfully.`);
 

@@ -143,7 +143,7 @@ export function ScreenshotPanel({
         feature={PREMIUM_FEATURES.screenshot_recapture}
         currentPlan={userPlan}
       />
-      <div className="overflow-hidden rounded-md border border-border bg-card">
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
         <button
           type="button"
           onClick={() => setExpanded(!expanded)}

@@ -86,8 +86,10 @@ export default async function AccessibilityPage() {
               different screen sizes and zoom levels.
             </>,
             <>
-              <strong>Form Labels:</strong> All form inputs have associated
-              labels for clarity.
+              <strong>Form Labels:</strong> Form inputs carry associated labels
+              or accessible names. A small number of inputs in the API
+              playground are still labelled only by placeholder text; that is
+              tracked as a bug.
             </>,
             <>
               <strong>Skip Links:</strong> Skip navigation links allow users to
@@ -180,22 +182,33 @@ export default async function AccessibilityPage() {
         </p>
       </LegalSection>
 
+      {/* This section used to claim "self-evaluation using automated
+          accessibility testing tools" and, below, that accessibility testing is
+          part of the development process. Neither was true: the repository has
+          no axe, pa11y or Lighthouse dependency and no CI job that runs one. It
+          now describes what is actually done, because an unsupported claim in a
+          published accessibility statement undermines the parts that are true. */}
       <LegalSection id="assessment" title="7. Assessment Approach">
         <p>{APP_NAME} assessed accessibility by:</p>
         <LegalList
           items={[
-            "Self-evaluation using automated accessibility testing tools",
-            "Manual testing with screen readers and keyboard navigation",
-            "Review against WCAG 2.1 success criteria",
+            "Self-evaluation by the maintainers, not by an external auditor",
+            "Manual keyboard-only navigation and screen reader passes over the main flows",
+            "Review of colour contrast and focus visibility against WCAG 2.1 AA",
           ]}
         />
+        <p className="mt-2">
+          We do not currently run an automated accessibility test suite in
+          continuous integration. Adding one is on the roadmap, and this section
+          will be updated when it lands rather than in advance of it.
+        </p>
       </LegalSection>
 
       <LegalSection id="improvement" title="8. Continuous Improvement">
         <p>
-          We are committed to maintaining and improving accessibility. As we
-          develop new features, we incorporate accessibility testing into our
-          development process.
+          We are committed to maintaining and improving accessibility. New
+          features get the same manual keyboard and screen reader pass described
+          above, and reported barriers are treated as bugs rather than requests.
         </p>
       </LegalSection>
 

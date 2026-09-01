@@ -53,11 +53,14 @@ export async function getBrowserbaseCreditBalanceSeconds(
   userId: number,
 ): Promise<number> {
   const result = await pool.query<{
-    browserbase_credit_seconds_balance: number;
+    browserbase_credit_seconds_balance: string | number | null;
   }>("SELECT browserbase_credit_seconds_balance FROM users WHERE id = $1", [
     userId,
   ]);
-  return result.rows[0]?.browserbase_credit_seconds_balance ?? 0;
+  // BIGINT column: node-pg returns it as a string to protect values past
+  // 2^53, so this must be coerced or callers get a string from a
+  // Promise<number>. Balances are bounded far below that, so Number is exact.
+  return Number(result.rows[0]?.browserbase_credit_seconds_balance ?? 0);
 }
 
 /**

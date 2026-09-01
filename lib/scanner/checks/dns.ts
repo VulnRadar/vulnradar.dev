@@ -78,11 +78,20 @@ export const detectors: Record<string, DetectFn> = {
 // entries already above). A second, differently-scored version of the same
 // real-world condition would just double-report it.
 
-import * as dns from "dns/promises";
 import { randomBytes } from "crypto";
 import type { Vulnerability } from "../types";
 import { generateId } from "../_helpers";
 import { extractRootDomain } from "../root-domain";
+// Shared per-scan DNS memo: checkDNSSecurity resolves several of these exact
+// records too, so routing through it collapses the duplicates when this
+// module runs inside a scan. ref: AUDIT-012#perf-09
+import {
+  resolveTxtOnce,
+  resolveMxOnce,
+  resolveNsOnce,
+  resolve4Once,
+  resolve6Once,
+} from "../dns-memo";
 
 function dnsErrorCode(err: unknown): string {
   return err && typeof err === "object" && "code" in err
@@ -137,7 +146,7 @@ function makeDnsVuln(
  */
 async function isNullMx(domain: string): Promise<boolean> {
   try {
-    const records = await withTimeout(dns.resolveMx(domain));
+    const records = await withTimeout(resolveMxOnce(domain));
     return records.length === 1 && /^\.?$/.test(records[0].exchange.trim());
   } catch {
     return false;
@@ -162,7 +171,7 @@ export async function checkNsProviderConcentration(
 ): Promise<Vulnerability[]> {
   let records: string[];
   try {
-    records = await withTimeout(dns.resolveNs(domain));
+    records = await withTimeout(resolveNsOnce(domain));
   } catch {
     return []; // DNS failure, or genuinely no NS -- dns-ns-record-count's job
   }
@@ -213,7 +222,7 @@ export async function checkWildcardDns(
   let recordType: "A" | "AAAA" | null = null;
 
   try {
-    const addrs = await withTimeout(dns.resolve4(probe));
+    const addrs = await withTimeout(resolve4Once(probe));
     if (addrs.length > 0) recordType = "A";
   } catch (err: unknown) {
     const code = dnsErrorCode(err);
@@ -224,7 +233,7 @@ export async function checkWildcardDns(
 
   if (!recordType) {
     try {
-      const addrs6 = await withTimeout(dns.resolve6(probe));
+      const addrs6 = await withTimeout(resolve6Once(probe));
       if (addrs6.length > 0) recordType = "AAAA";
     } catch (err: unknown) {
       const code = dnsErrorCode(err);
@@ -279,7 +288,7 @@ export async function checkNullMxRecommended(
   if (await isNullMx(domain)) return []; // already doing the right thing
 
   try {
-    const records = await withTimeout(dns.resolveMx(domain));
+    const records = await withTimeout(resolveMxOnce(domain));
     if (records.length > 0) return []; // has real MX -- not this check's job
   } catch (err: unknown) {
     const code = dnsErrorCode(err);
@@ -289,7 +298,7 @@ export async function checkNullMxRecommended(
   }
 
   try {
-    const txt = await withTimeout(dns.resolveTxt(domain));
+    const txt = await withTimeout(resolveTxtOnce(domain));
     const hasSpf = txt
       .map((r) => r.join(""))
       .some((r) => r.startsWith("v=spf1"));

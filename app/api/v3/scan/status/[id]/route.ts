@@ -10,6 +10,7 @@ import {
   type ApiKeyScope,
 } from "@/lib/api/api-key-scopes";
 import { requestCancel, finalizeScanFailure } from "@/lib/scanner/scan-jobs";
+import { publicScanErrorMessage } from "@/lib/api/scan-error-message";
 import type { ScanJobStatus, Vulnerability } from "@/lib/scanner/types";
 import { attachRemediation } from "@/lib/scanner/remediation-store";
 
@@ -143,6 +144,13 @@ async function getOwnedScan(
   return row;
 }
 
+/**
+ * Second, independent cap on the in-progress findings list. The writer caps it
+ * too (lib/scanner/scan-jobs.ts), but a poll that runs every 2 seconds must
+ * not grow without bound just because a future writer forgets to.
+ */
+const MAX_PARTIAL_FINDINGS_SENT = 40;
+
 function elapsedMsFor(row: ScanHistoryRow): number {
   if (row.status === "completed" || row.status === "failed") {
     return row.duration ?? 0;
@@ -173,6 +181,29 @@ export async function GET(
     categoriesTotal: row.categories_total,
     elapsedMs: elapsedMsFor(row),
   };
+
+  // Findings discovered SO FAR, live only. The poll used to carry a family
+  // name, two counters and a clock, so for a scan's whole duration the user
+  // was shown none of its output and then all of it at once. The scan engine
+  // now reports each category's findings as it finishes them and the progress
+  // tracker accumulates them (see lib/scanner/scan-jobs.ts), capped and
+  // stripped to severity plus title.
+  //
+  // Deliberately NOT sent on the completed branch: `result.findings` there is
+  // the authoritative, deduplicated list, and dedupeFindings runs after the
+  // last category, so this list can legitimately be LONGER than the final one.
+  // A consumer should label it "found so far" and let the completed result
+  // replace it wholesale. ref: AUDIT-014#scanui-02
+  if (row.status === "pending" || row.status === "running") {
+    const partial = (row.result_meta as { partialFindings?: unknown } | null)
+      ?.partialFindings;
+    if (Array.isArray(partial) && partial.length > 0) {
+      responseBody.partialFindings = partial.slice(
+        0,
+        MAX_PARTIAL_FINDINGS_SENT,
+      );
+    }
+  }
 
   if (row.status === "completed") {
     const meta = row.result_meta ?? {};
@@ -216,7 +247,13 @@ export async function GET(
       ...meta,
     };
   } else if (row.status === "failed") {
-    responseBody.error = row.error_message ?? "The scan failed.";
+    // Never hand back the stored string unmodified: the pipeline persists any
+    // exception's raw `.message`, so this column can hold a pg driver error
+    // naming an internal table or a socket error naming a private IP and port,
+    // and the dashboard renders it verbatim with a "Copy error details"
+    // button. publicScanErrorMessage passes through the reasons the pipeline
+    // writes deliberately and collapses everything else to a fixed sentence.
+    responseBody.error = publicScanErrorMessage(row.error_message);
   }
 
   return NextResponse.json(responseBody);

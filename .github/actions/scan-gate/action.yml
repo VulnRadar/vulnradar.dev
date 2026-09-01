@@ -40,11 +40,18 @@ inputs:
     description: "Seconds to wait between status polls."
     required: false
     default: "5"
+  sarif-file:
+    description: "Where to write the SARIF report. Feed this to github/codeql-action/upload-sarif to get the findings into the repository's Security tab. Set to an empty string to skip the download."
+    required: false
+    default: "vulnradar.sarif"
 
 outputs:
   scan-id:
     description: "The VulnRadar scan id."
     value: ${{ steps.scan.outputs.scan-id }}
+  sarif-file:
+    description: "Path the SARIF report was written to, empty if the download was skipped or failed."
+    value: ${{ steps.scan.outputs.sarif-file }}
   critical:
     description: "Number of critical findings."
     value: ${{ steps.scan.outputs.critical }}
@@ -76,6 +83,7 @@ runs:
         VR_MAX_MEDIUM: ${{ inputs.max-medium }}
         VR_TIMEOUT: ${{ inputs.timeout-seconds }}
         VR_POLL_INTERVAL: ${{ inputs.poll-interval-seconds }}
+        VR_SARIF_FILE: ${{ inputs.sarif-file }}
       run: |
         set -euo pipefail
 
@@ -174,6 +182,31 @@ runs:
         } >> "$GITHUB_STEP_SUMMARY"
 
         echo "Scan complete: critical=$critical high=$high medium=$medium low=$low total=$total"
+
+        # The gate used to stop at these counts, so the findings themselves
+        # never left the log: no annotations on the diff, nothing in the
+        # repository's Security tab, which is where every comparable action
+        # (ZAP, Nuclei, Snyk) puts them. The API already renders SARIF 2.1.0,
+        # so it is one request away. Downloaded BEFORE the threshold check
+        # below deliberately: a failing gate is exactly when you want the
+        # findings uploaded, and a step that exits first never writes the
+        # file. A download failure is a warning, not a gate failure: the
+        # severity thresholds are the contract, the report is the evidence.
+        echo "sarif-file=" >> "$GITHUB_OUTPUT"
+        if [ -n "$VR_SARIF_FILE" ]; then
+          sarif_status=$(curl -sS -o "$VR_SARIF_FILE" -w '%{http_code}' \
+            -H "Authorization: Bearer $VR_API_KEY" \
+            "$VR_API_BASE/history/$scan_id/report?format=sarif" || echo "000")
+          if [ "$sarif_status" = "200" ]; then
+            echo "sarif-file=$VR_SARIF_FILE" >> "$GITHUB_OUTPUT"
+            echo "SARIF report written to $VR_SARIF_FILE"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "SARIF report: \`$VR_SARIF_FILE\` (upload it with github/codeql-action/upload-sarif to populate the Security tab)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            rm -f "$VR_SARIF_FILE"
+            echo "::warning::Could not download the SARIF report (HTTP $sarif_status). The severity gate below still applies."
+          fi
+        fi
 
         fail=false
         if [ "$critical" -gt "$VR_MAX_CRITICAL" ]; then

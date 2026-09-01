@@ -1,0 +1,53 @@
+
+{
+  "id": "AUDIT-013",
+  "title": "Database and migrations, dependencies, tests, consistency and dead code",
+  "scopes": [
+    "db",
+    "migration",
+    "schema",
+    "deps",
+    "supply-chain",
+    "test",
+    "coverage",
+    "cleanup",
+    "duplication"
+  ],
+  "createdAt": "2026-08-28T00:00:00Z",
+  "closedAt": null,
+  "status": "in_progress",
+  "sectionsCovered": [
+    10,
+    11,
+    12,
+    16
+  ],
+  "sectionsOutstanding": [
+    13,
+    14,
+    15,
+    18,
+    19,
+    20
+  ],
+  "sectionsPartialFromPriorRuns": [
+    5,
+    6,
+    7
+  ],
+  "summary": "Third batch of the twenty-section brief, covering the database/dependencies/tests/dead-code cluster. Eight parallel read-only agents. The theme: the safety net, not the product surface. The suite runs 10,158 green tests at 79.35 percent coverage yet measures no .tsx at all, stubs the SSRF guard permanently permissive in every scan-route suite, bounds no execution time, and asserts no quota charge, which is exactly why AUDIT-012 critical ReDoS and its four unmetered scan paths shipped green. Separately the schema has three disagreeing sources: the versioned upgrade path is missing 11 tables and 8 columns that boot-time instrumentation creates, a regression of AUDIT-009 critical migration-01 whose fix comment claims it was closed for good. Zero known CVEs across 813 root and 194 extension packages; 27 unused runtime dependencies; the npm name vulnradar is unclaimed while the docs advertise npx vulnradar.",
+  "sectionsComplete": [
+    10,
+    11,
+    12,
+    16
+  ],
+  "findingsCount": 114,
+  "severityCounts": {
+    "critical": 0,
+    "high": 15,
+    "medium": 41,
+    "low": 47,
+    "info": 11
+  }
+}

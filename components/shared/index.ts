@@ -1,4 +1,6 @@
 export { ThemeToggle } from "./theme-toggle";
+export { InlineAlert, type InlineAlertTone } from "./inline-alert";
+export { ConfirmDialog, type ConfirmDialogProps } from "./confirm-dialog";
 export { ThemedLogo } from "./themed-logo";
 export { NotificationBell, BackupCodesModal } from "./notification-center";
 export { SiteNotificationsWrapper } from "./site-notifications";

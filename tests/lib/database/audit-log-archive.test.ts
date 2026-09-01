@@ -52,20 +52,25 @@ describe("archiveAdminAuditLogBeforePurge", () => {
     vi.clearAllMocks();
   });
 
-  it("ensures the table exists, selects rows older than the cutoff, and archives them as one JSONB batch", async () => {
+  it("selects rows older than the cutoff and archives them as one JSONB batch, running no DDL of its own", async () => {
     const client = fakeClient([sampleRow, { ...sampleRow, id: 2 }]);
 
     const archived = await archiveAdminAuditLogBeforePurge(client, 365);
 
     expect(archived).toBe(2);
-    expect(client.calls[0].sql).toContain("CREATE TABLE IF NOT EXISTS");
+    // instrumentation.ts creates the table at boot (AUDIT-013#schema-02).
+    // This helper used to re-run the CREATE TABLE on every cleanup pass,
+    // which put DDL inside the long cleanup transaction for nothing.
+    expect(client.calls.some((c) => c.sql.includes("CREATE TABLE"))).toBe(
+      false,
+    );
 
-    const selectCall = client.calls[1];
+    const selectCall = client.calls[0];
     expect(selectCall.sql).toContain("FROM admin_audit_log");
     expect(selectCall.sql).toContain("WHERE created_at < NOW()");
     expect(selectCall.params).toEqual([365]);
 
-    const insertCall = client.calls[2];
+    const insertCall = client.calls[1];
     expect(insertCall.sql).toContain(
       "INSERT INTO admin_audit_log_archive (retention_days, row_count, rows)",
     );

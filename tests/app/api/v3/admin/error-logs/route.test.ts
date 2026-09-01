@@ -119,7 +119,12 @@ describe("GET /api/v3/admin/error-logs", () => {
     await GET(getRequest("?search=timeout"));
 
     const countCall = mockQuery.mock.calls[1] as [string, unknown[]];
-    expect(countCall[0]).toContain("WHERE message ILIKE $1 OR detail ILIKE $1");
+    // ESCAPE '\' is required, not cosmetic: without it a literal "_" in the
+    // search matches any character and a bare "%" degrades to a full scan of
+    // system_error_logs. The bound value is escaped to match.
+    expect(countCall[0]).toContain(
+      "WHERE message ILIKE $1 ESCAPE '\\' OR detail ILIKE $1 ESCAPE '\\'",
+    );
     expect(countCall[1]).toEqual(["%timeout%"]);
 
     const selectCall = mockQuery.mock.calls[2] as [string, unknown[]];

@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/ui/utils";
 import { copyToClipboard } from "@/lib/ui/clipboard";
-import { API } from "@/lib/config/constants";
+import { API } from "@/lib/config/client-constants";
 import {
   Plus,
   Trash2,
@@ -61,14 +61,14 @@ function statusMeta(status: DomainStatus) {
         label: "Verified",
         icon: ShieldCheck,
         className:
-          "bg-[hsl(var(--success)/0.1)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.25)]",
+          "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/25",
       };
     case "reverify_failed":
       return {
         label: "Needs re-verification",
         icon: ShieldAlert,
         className:
-          "bg-[hsl(var(--warning)/0.1)] text-[hsl(var(--warning))] border-[hsl(var(--warning)/0.25)]",
+          "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/25",
       };
     case "failed":
       return {
@@ -348,7 +348,10 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-7 gap-1 text-xs"
+                            className="h-10 sm:h-7 gap-1 text-xs"
+                            // a11y (SC 4.1.2): a rotating chevron was the only
+                            // signal that this expands the DNS record block.
+                            aria-expanded={isExpanded}
                             onClick={() =>
                               setExpandedId(isExpanded ? null : d.id)
                             }
@@ -367,7 +370,7 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-7 text-xs text-primary hover:text-primary hover:bg-primary/10"
+                            className="h-10 sm:h-7 text-xs text-primary hover:text-primary hover:bg-primary/10"
                             disabled={verifyingId === d.id}
                             onClick={() => handleVerifyNow(d)}
                           >
@@ -381,7 +384,7 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          className="h-10 w-10 sm:h-7 sm:w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
                           onClick={() => setDeleteTarget(d)}
                           title="Remove domain"
                           aria-label={`Remove domain ${d.domain}`}
@@ -408,7 +411,7 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
                           <Button
                             variant="outline"
                             size="icon"
-                            className="h-8 w-8 shrink-0"
+                            className="h-11 w-11 sm:h-8 sm:w-8 shrink-0"
                             onClick={() =>
                               handleCopy(
                                 `name-${d.id}`,
@@ -437,7 +440,7 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
                               <Button
                                 variant="outline"
                                 size="icon"
-                                className="h-8 w-8 shrink-0"
+                                className="h-11 w-11 sm:h-8 sm:w-8 shrink-0"
                                 onClick={() =>
                                   handleCopy(
                                     `value-${d.id}`,

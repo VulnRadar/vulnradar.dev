@@ -31,11 +31,15 @@ function App(): TemplateResult {
         </p>
       </div>
 
-      <div class="steps">
-        <div class="step">
-          <div class="step-num">1</div>
+      <!-- a11y (SC 1.3.1): the step headings were h3 directly under the h1
+           above, skipping h2, and the big numbered circle beside each one is
+           decorative: the ordered list already conveys the sequence, so
+           reading "1" out loud before every heading is noise. -->
+      <ol class="steps">
+        <li class="step">
+          <div class="step-num" aria-hidden="true">1</div>
           <div class="step-body">
-            <h3>Create an account</h3>
+            <h2>Create an account</h2>
             <p>
               Sign up at
               <a href="${VULNRADAR.apiHost}" target="_blank" rel="noreferrer"
@@ -45,12 +49,12 @@ function App(): TemplateResult {
               day.
             </p>
           </div>
-        </div>
+        </li>
 
-        <div class="step">
-          <div class="step-num">2</div>
+        <li class="step">
+          <div class="step-num" aria-hidden="true">2</div>
           <div class="step-body">
-            <h3>Generate an API key</h3>
+            <h2>Generate an API key</h2>
             <p>
               Go to
               <a
@@ -63,22 +67,24 @@ function App(): TemplateResult {
               <code>vr_live_...</code> value.
             </p>
           </div>
-        </div>
+        </li>
 
-        <div class="step">
-          <div class="step-num">3</div>
+        <li class="step">
+          <div class="step-num" aria-hidden="true">3</div>
           <div class="step-body">
-            <h3>Paste it here</h3>
+            <h2>Paste it here</h2>
             <p>
               Open
-              <button class="link" @click=${openOptions}>Settings</button>
+              <button type="button" class="link" @click=${openOptions}>
+                Settings
+              </button>
               (or right-click the toolbar icon › Options) and paste the key. The
               extension verifies it against
               <code>/api/v3/auth/me</code> before saving.
             </p>
           </div>
-        </div>
-      </div>
+        </li>
+      </ol>
 
       <div class="privacy-callout">
         <strong>Privacy:</strong> the key is stored in
@@ -88,7 +94,9 @@ function App(): TemplateResult {
       </div>
 
       <div class="actions">
-        <button class="btn primary" @click=${openOptions}>Open Settings</button>
+        <button type="button" class="btn primary" @click=${openOptions}>
+          Open Settings
+        </button>
       </div>
     </div>
   `;
@@ -103,6 +111,14 @@ function injectStyles() {
   const s = document.createElement("style");
   s.id = "vr-welcome-styles";
   s.textContent = `
+    /* welcome.html links popup.css for the token variables, and popup.css
+       clamps html/body to a 360-480px toolbar popup. This page is a full
+       browser tab, so without the reset below its 640px column was squeezed
+       into 480px and pinned to the left edge of the window. */
+    html, body {
+      min-width: 0;
+      max-width: none;
+    }
     body {
       background: var(--vr-bg);
       color: var(--vr-text);
@@ -144,6 +160,9 @@ function injectStyles() {
       display: flex;
       flex-direction: column;
       gap: 16px;
+      list-style: none;
+      margin: 0;
+      padding: 0;
     }
     .step {
       display: flex;
@@ -166,7 +185,7 @@ function injectStyles() {
     .step-body {
       flex: 1;
     }
-    .step-body h3 {
+    .step-body h2 {
       font-size: 15px;
       font-weight: 600;
       margin: 0 0 4px;
@@ -186,7 +205,9 @@ function injectStyles() {
     }
     .link {
       font: inherit;
-      color: var(--vr-primary);
+      /* --vr-primary is the button fill and reads 2.0:1 as text on the light
+         theme; --vr-primary-text is the same hue at an AA lightness. */
+      color: var(--vr-primary-text);
       text-decoration: underline;
       background: none;
       border: none;
@@ -219,7 +240,7 @@ function injectStyles() {
       font: inherit;
       padding: 10px 20px;
       border-radius: var(--vr-radius);
-      border: 1px solid var(--vr-border);
+      border: 1px solid var(--vr-input);
       background: var(--vr-bg);
       color: var(--vr-text);
       cursor: pointer;

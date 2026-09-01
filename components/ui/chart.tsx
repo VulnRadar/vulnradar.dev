@@ -1,7 +1,10 @@
 "use client";
 
 import * as React from "react";
-import * as RechartsPrimitive from "recharts";
+// Named imports rather than `import * as RechartsPrimitive`: a namespace
+// import pulls the whole recharts surface into the graph and defeats
+// tree-shaking, and this file only ever touched three of its exports.
+import { Legend, ResponsiveContainer, Tooltip } from "recharts";
 import type { LegendPayload, TooltipPayloadEntry } from "recharts";
 
 import { cn } from "@/lib/ui/utils";
@@ -39,9 +42,7 @@ const ChartContainer = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div"> & {
     config: ChartConfig;
-    children: React.ComponentProps<
-      typeof RechartsPrimitive.ResponsiveContainer
-    >["children"];
+    children: React.ComponentProps<typeof ResponsiveContainer>["children"];
   }
 >(({ id, className, children, config, ...props }, ref) => {
   const uniqueId = React.useId();
@@ -59,9 +60,7 @@ const ChartContainer = React.forwardRef<
         {...props}
       >
         <ChartStyle id={chartId} config={config} />
-        <RechartsPrimitive.ResponsiveContainer>
-          {children}
-        </RechartsPrimitive.ResponsiveContainer>
+        <ResponsiveContainer>{children}</ResponsiveContainer>
       </div>
     </ChartContext.Provider>
   );
@@ -101,11 +100,11 @@ ${colorConfig
   );
 };
 
-const ChartTooltip = RechartsPrimitive.Tooltip;
+const ChartTooltip = Tooltip;
 
 const ChartTooltipContent = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<typeof RechartsPrimitive.Tooltip> &
+  React.ComponentProps<typeof Tooltip> &
     React.ComponentProps<"div"> & {
       hideLabel?: boolean;
       hideIndicator?: boolean;
@@ -263,7 +262,7 @@ const ChartTooltipContent = React.forwardRef<
 );
 ChartTooltipContent.displayName = "ChartTooltip";
 
-const ChartLegend = RechartsPrimitive.Legend;
+const ChartLegend = Legend;
 
 const ChartLegendContent = React.forwardRef<
   HTMLDivElement,

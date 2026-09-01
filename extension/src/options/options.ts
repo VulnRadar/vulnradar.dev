@@ -1,6 +1,6 @@
 // Options page. Loads the user's settings + auth, then renders a
 // sticky sidebar nav + a column of 8 sections (Authentication, Auto-
-// Scan, Scan Families, Service Probes, Notifications, Appearance,
+// Scan, Scan Families, Port Sweep, Notifications, Appearance,
 // Privacy). Every change writes back to chrome.storage.local via the
 // settings:set message in the background.
 //
@@ -12,8 +12,8 @@ import { html, render, type TemplateResult } from "lit-html";
 import browser from "webextension-polyfill";
 import { get, loadAll, saveAll, set } from "../lib/storage";
 import { pasteKey, clear as clearAuth, refreshMe } from "../lib/auth";
-import { applyTheme } from "../lib/theme";
-import { CATEGORIES, PROBES } from "../lib/categories";
+import { applyTheme, watchSystemTheme } from "../lib/theme";
+import { CATEGORIES } from "../lib/categories";
 import { planLabel } from "../lib/plans";
 import { VULNRADAR } from "../lib/constants";
 import { api } from "../lib/api";
@@ -177,8 +177,20 @@ function formatTimeUntil(ts: number, now: number = Date.now()): string {
 }
 
 /** Shared boolean-setting control - a styled switch instead of a raw
- *  browser checkbox, used for every on/off row across the page. */
+ *  browser checkbox, used for every on/off row across the page.
+ *
+ *  `label` is not optional, and that is the point (SC 4.1.2). The <label>
+ *  wrapping the input has only the track and thumb inside it, no text, so
+ *  every one of the six switches on this page announced as "checkbox, not
+ *  checked" with no indication of what it controls: the row title beside it
+ *  is a plain <div> that nothing associated with the input. Making the
+ *  parameter required means a seventh switch cannot be added without one.
+ *  Passed as aria-label rather than by wiring the row's title <div> up with
+ *  aria-labelledby, because the titles are not unique across the page
+ *  ("Sound" would need a generated id) and several read as fragments out of
+ *  their section's context. */
 function Toggle(
+  label: string,
   checked: boolean,
   onChange: (next: boolean) => void,
 ): TemplateResult {
@@ -186,21 +198,132 @@ function Toggle(
     <label class="switch">
       <input
         type="checkbox"
+        aria-label=${label}
         .checked=${checked}
         @change=${(e: Event) => onChange((e.target as HTMLInputElement).checked)}
       />
-      <span class="switch-track"><span class="switch-thumb"></span></span>
+      <span class="switch-track"
+        ><span class="switch-thumb" aria-hidden="true"></span
+      ></span>
     </label>
   `;
 }
 
+// ---- Confirm dialog ----
+//
+// The two destructive actions on this page (Sign out, Clear local cache) used
+// window.confirm(), the only OS-chrome dialogs anywhere in the extension:
+// unstyled, ignoring the theme entirely, and titled with the extension's
+// origin. This is the same prompt in the page's own grammar, resolved as a
+// promise so the call sites still read top to bottom.
+let confirmDialog: {
+  readonly title: string;
+  readonly body: string;
+  readonly confirmLabel: string;
+  readonly danger: boolean;
+  readonly resolve: (ok: boolean) => void;
+  /** What had focus when the dialog opened, so closing can put it back
+   *  (SC 2.4.3). Without this, dismissing the prompt dropped focus on
+   *  <body> and a keyboard user restarted from the top of the page: the
+   *  Sign out button they had just pressed is eight sections down. */
+  readonly returnFocusTo: HTMLElement | null;
+} | null = null;
+
+function askConfirm(opts: {
+  title: string;
+  body: string;
+  confirmLabel: string;
+  danger?: boolean;
+}): Promise<boolean> {
+  // A second prompt opening while one is pending would strand the first
+  // promise forever, so the outgoing one is answered "no" before it is
+  // replaced.
+  const outgoing = confirmDialog;
+  confirmDialog = null;
+  outgoing?.resolve(false);
+  const opener =
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+  return new Promise<boolean>((resolve) => {
+    confirmDialog = {
+      title: opts.title,
+      body: opts.body,
+      confirmLabel: opts.confirmLabel,
+      danger: opts.danger ?? false,
+      resolve,
+      // Chained prompts keep the ORIGINAL opener, not the first dialog's
+      // button, which is gone by the time the second one closes.
+      returnFocusTo: outgoing?.returnFocusTo ?? opener,
+    };
+    scheduleRender();
+    // Runs after the render microtask scheduleRender() queued, so the button
+    // exists. Focusing it is what makes Enter confirm and Escape cancel
+    // without reaching for the mouse, the way window.confirm did.
+    queueMicrotask(() => document.getElementById("confirm-accept")?.focus());
+  });
+}
+
+function closeConfirm(answer: boolean) {
+  const pending = confirmDialog;
+  confirmDialog = null;
+  scheduleRender();
+  // After the render that removes the dialog and clears `inert` from the page
+  // behind it: focusing an element inside an inert subtree silently no-ops.
+  // isConnected guards the case where the opener was itself removed by the
+  // action just confirmed (the Sign out row disappears on sign-out).
+  queueMicrotask(() => {
+    const target = pending?.returnFocusTo;
+    if (target?.isConnected) target.focus();
+  });
+  pending?.resolve(answer);
+}
+
+function ConfirmDialog(): TemplateResult | null {
+  const d = confirmDialog;
+  if (!d) return null;
+  return html`
+    <div
+      class="dialog-backdrop"
+      @click=${(e: Event) => {
+        if (e.target === e.currentTarget) closeConfirm(false);
+      }}
+    >
+      <div
+        class="dialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="confirm-title"
+        aria-describedby="confirm-body"
+      >
+        <div class="dialog-title" id="confirm-title">${d.title}</div>
+        <div class="dialog-body" id="confirm-body">${d.body}</div>
+        <div class="dialog-actions">
+          <button type="button" class="btn" @click=${() => closeConfirm(false)}>
+            Cancel
+          </button>
+          <button
+            id="confirm-accept"
+            type="button"
+            class="btn ${d.danger ? "danger" : "primary"}"
+            @click=${() => closeConfirm(true)}
+          >
+            ${d.confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 async function signOut() {
-  if (
-    !confirm(
-      "Sign out of VulnRadar? You'll need to paste a new API key to scan again.",
-    )
-  )
-    return;
+  const ok = await askConfirm({
+    title: "Sign out of VulnRadar?",
+    body: "You'll need to paste a new API key to scan again.",
+    confirmLabel: "Sign out",
+    danger: true,
+  });
+  if (!ok) return;
   await clearAuth();
   currentAuth = null;
   authConnectionFailed = false;
@@ -235,7 +358,7 @@ const SECTIONS = [
   { id: "auth", label: "Authentication" },
   { id: "auto", label: "Auto-Scan" },
   { id: "families", label: "Scan Families" },
-  { id: "probes", label: "Service Probes" },
+  { id: "port-scan", label: "Port Sweep" },
   { id: "alerts", label: "Site Alerts" },
   { id: "notifications", label: "Notifications" },
   { id: "appearance", label: "Appearance" },
@@ -251,37 +374,50 @@ const NAV_GROUPS: ReadonlyArray<{
   ids: ReadonlyArray<(typeof SECTIONS)[number]["id"]>;
 }> = [
   { label: "Account", ids: ["auth"] },
-  { label: "Scanning", ids: ["auto", "families", "probes"] },
+  { label: "Scanning", ids: ["auto", "families", "port-scan"] },
   { label: "Alerts", ids: ["alerts", "notifications"] },
   { label: "Preferences", ids: ["appearance", "privacy"] },
 ];
 
 function App(): TemplateResult {
+  // `inert` while the confirm dialog is up. window.confirm() was genuinely
+  // modal; an in-page dialog is not, so without this the nav links and every
+  // setting behind the backdrop stay clickable and tab-reachable.
+  const blocked = confirmDialog !== null;
   return html`
-    <aside class="sidebar">
-      <div class="sidebar-title">
+    <!-- a11y (SC 1.3.1/2.4.1): a <nav> landmark, an <h1> and <h2> group
+         headings. This was eight settings sections under an <aside> of bare
+         <a> and <div> elements, so a screen reader had no landmark to jump to
+         and no heading structure to move through - the only way to reach the
+         Privacy section was to arrow through everything above it. The image is
+         decorative beside the wordmark it sits next to, so alt="" rather than
+         repeating "VulnRadar". -->
+    <nav class="sidebar" aria-label="Settings sections" ?inert=${blocked}>
+      <h1 class="sidebar-title">
         <img
           src="icons/icon-32.png"
-          alt="VulnRadar"
+          alt=""
           width="20"
           height="20"
           style="border-radius:4px;display:block;flex-shrink:0"
         />
         VulnRadar
-      </div>
+      </h1>
       <div class="sidebar-version">
         Extension
         v${EXT_VERSION}${appVersion ? html` &middot; VulnRadar v${appVersion}` : null}
       </div>
       ${NAV_GROUPS.map(
         (group) => html`
-          <div class="nav-group-label">${group.label}</div>
+          <h2 class="nav-group-label">${group.label}</h2>
           ${group.ids.map((id) => {
             const s = SECTIONS.find((sec) => sec.id === id)!;
+            const isActive = activeSection === s.id;
             return html`
               <a
-                class="nav-item ${activeSection === s.id ? "active" : ""}"
+                class="nav-item ${isActive ? "active" : ""}"
                 href="#${s.id}"
+                aria-current=${isActive ? "true" : "false"}
                 @click=${(e: Event) => {
                   e.preventDefault();
                   activeSection = s.id;
@@ -296,17 +432,22 @@ function App(): TemplateResult {
           })}
         `,
       )}
-    </aside>
-    <div class="content">
+    </nav>
+    <div class="content" ?inert=${blocked}>
       ${SectionAuth()} ${SectionAutoScan()} ${SectionFamilies()}
       ${SectionProbes()} ${SectionSiteAlerts()} ${SectionNotifications()}
       ${SectionAppearance()} ${SectionPrivacy()}
     </div>
-    ${
-      toast && Date.now() - toast.ts < 3000
-        ? html`<div class="toast">${toast.text}</div>`
-        : null
-    }
+    <!-- Every setting on this page saves silently and confirms only with this
+         toast, so it is the textbook status message (SC 4.1.3). -->
+    <div class="toast-region" role="status" aria-live="polite">
+      ${
+        toast && Date.now() - toast.ts < 3000
+          ? html`<div class="toast">${toast.text}</div>`
+          : null
+      }
+    </div>
+    ${ConfirmDialog()}
   `;
 }
 
@@ -321,14 +462,14 @@ function SectionAuth(): TemplateResult {
 
   if (me && authConnectionFailed) {
     banner = html`
-      <div class="status-banner error">
-        <span>⚠</span>
+      <div class="status-banner error" role="alert">
+        <span aria-hidden="true">⚠</span>
         <div>
           <div>
             Failed to connect to VulnRadar. This looks like a problem with the
             API right now, not your key.
           </div>
-          <div style="font-size:11px;margin-top:2px;opacity:0.8">
+          <div style="font-size:11px;margin-top:2px">
             Last known: <strong>${me.email}</strong> &middot;
             <strong>${planLabel(me.plan)}</strong> plan
           </div>
@@ -337,28 +478,28 @@ function SectionAuth(): TemplateResult {
     `;
   } else if (me) {
     banner = html`
-      <div class="status-banner ok">
-        <span>✓</span>
+      <div class="status-banner ok" role="status">
+        <span aria-hidden="true">✓</span>
         <div>
           <div>
             Connected as <strong>${me.email}</strong> &middot;
             <strong>${planLabel(me.plan)}</strong> plan
           </div>
-          ${keyPrefix ? html`<div style="font-size:11px;margin-top:2px;font-family:var(--vr-mono);opacity:0.7">${keyPrefix}</div>` : null}
+          ${keyPrefix ? html`<div style="font-size:11px;margin-top:2px;font-family:var(--vr-mono)">${keyPrefix}</div>` : null}
         </div>
       </div>
     `;
   } else if (testStatus.kind === "error") {
     banner = html`
-      <div class="status-banner error">
-        <span>⚠</span>
+      <div class="status-banner error" role="alert">
+        <span aria-hidden="true">⚠</span>
         <span>${testStatus.message}</span>
       </div>
     `;
   } else {
     banner = html`
       <div class="status-banner info">
-        <span>ℹ</span>
+        <span aria-hidden="true">ℹ</span>
         <span
           >Generate an API key at
           <a
@@ -375,7 +516,7 @@ function SectionAuth(): TemplateResult {
   return html`
     <section id="auth" class="section">
       <div class="section-header">
-        <div class="section-title">Authentication</div>
+        <h2 class="section-title">Authentication</h2>
         <div class="section-desc">
           The extension authenticates with a VulnRadar API key (Bearer auth).
           Stored in extension storage on this device only, never synced across
@@ -385,14 +526,24 @@ function SectionAuth(): TemplateResult {
       ${banner}
       <div class="row">
         <div class="row-label">
-          <div class="title">API key</div>
-          <div class="desc">Format: vr_live_ followed by 64 hex chars</div>
+          <!-- a11y (SC 1.3.1/4.1.2): a real label element bound with "for",
+               not a styled div. The placeholder was doing all the naming
+               here, and a placeholder is not a label: it disappears the
+               moment you type, and where it is exposed as a name at all it
+               announces the example value rather than what the field is.
+               Same change for the throttle, whitelist, blacklist and
+               mute-pattern fields below, which had no name of any kind. -->
+          <label class="title" for="api-key-input">API key</label>
+          <div class="desc" id="api-key-desc">
+            Format: vr_live_ followed by 64 hex chars
+          </div>
         </div>
         <input
           class="input mono"
           style="min-width:280px"
           placeholder="vr_live_..."
           id="api-key-input"
+          aria-describedby="api-key-desc"
           @keydown=${async (e: KeyboardEvent) => {
             if (e.key === "Enter") {
               const v = (e.target as HTMLInputElement).value.trim();
@@ -510,7 +661,9 @@ function PauseControl(): TemplateResult {
         ${PAUSE_DURATIONS.map(
           (d) => html`
             <button
+              type="button"
               class="btn"
+              aria-label=${`Pause auto-scan for ${d.label}`}
               @click=${() => patch({ pauseUntil: now + d.ms })}
             >
               ${d.label}
@@ -526,14 +679,14 @@ function SectionAutoScan(): TemplateResult {
   return html`
     <section id="auto" class="section">
       <div class="section-header">
-        <div class="section-title">Auto-Scan</div>
+        <h2 class="section-title">Auto-Scan</h2>
         <div class="section-desc">
           When the extension should automatically scan pages in the background.
           Off by default.
         </div>
       </div>
       ${PauseControl()}
-      <div class="subsection-label">Trigger</div>
+      <h3 class="subsection-label">Trigger</h3>
       <div class="grid">
         ${AUTO_MODES.map(
           (m) => html`
@@ -563,11 +716,23 @@ function SectionAutoScan(): TemplateResult {
             toggle always overrides this for a scan you run by hand.
           </div>
         </div>
-        <div class="mode-toggle" style="margin-top:8px">
+        <!-- a11y (SC 4.1.2): these carried no role and no state attribute at
+             all, so which of the two was selected was conveyed only by a fill
+             colour. Same shape and same fix as the popup's Quick/Deep pair:
+             toggle buttons with aria-pressed inside a labelled group, not a
+             tablist, because there are no panels. -->
+        <div
+          class="mode-toggle"
+          style="margin-top:8px"
+          role="group"
+          aria-label="Default scan mode"
+        >
           ${SCAN_MODES.map(
             (m) => html`
               <button
+                type="button"
                 class="${settings.scanMode === m.id ? "active" : ""}"
+                aria-pressed=${settings.scanMode === m.id}
                 @click=${() => patch({ scanMode: m.id })}
               >
                 ${m.label}
@@ -576,11 +741,13 @@ function SectionAutoScan(): TemplateResult {
           )}
         </div>
       </div>
-      <div class="subsection-label">Rate limiting</div>
+      <h3 class="subsection-label">Rate limiting</h3>
       <div class="row">
         <div class="row-label">
-          <div class="title">Throttle (seconds between scans)</div>
-          <div class="desc">
+          <label class="title" for="throttle-input"
+            >Throttle (seconds between scans)</label
+          >
+          <div class="desc" id="throttle-desc">
             Prevents burning through your daily quota on tab switching
           </div>
         </div>
@@ -590,6 +757,8 @@ function SectionAutoScan(): TemplateResult {
           min="0"
           max="3600"
           style="width:96px"
+          id="throttle-input"
+          aria-describedby="throttle-desc"
           .value=${String(settings.autoScanThrottleSeconds)}
           @change=${(e: Event) => {
             const n = Math.max(
@@ -600,20 +769,24 @@ function SectionAutoScan(): TemplateResult {
           }}
         />
       </div>
-      <div class="subsection-label">URL filters</div>
+      <h3 class="subsection-label">URL filters</h3>
       <div class="row">
         <div
           class="row-label"
           style="flex-direction:column;align-items:stretch"
         >
-          <div class="title">Whitelist (one per line, case-insensitive)</div>
-          <div class="desc">
+          <label class="title" for="whitelist-input"
+            >Whitelist (one per line, case-insensitive)</label
+          >
+          <div class="desc" id="whitelist-desc">
             Only auto-scan URLs containing one of these fragments
           </div>
           <textarea
             class="input wide"
             style="margin-top:8px;min-height:64px;font-family:var(--vr-mono);font-size:12px"
             placeholder="https://staging.example.com"
+            id="whitelist-input"
+            aria-describedby="whitelist-desc"
             .value=${settings.whitelist.join("\n")}
             @change=${(e: Event) => {
               const v = (e.target as HTMLTextAreaElement).value;
@@ -631,14 +804,18 @@ function SectionAutoScan(): TemplateResult {
           class="row-label"
           style="flex-direction:column;align-items:stretch"
         >
-          <div class="title">Blacklist (one per line)</div>
-          <div class="desc">
+          <label class="title" for="blacklist-input"
+            >Blacklist (one per line)</label
+          >
+          <div class="desc" id="blacklist-desc">
             Never auto-scan URLs containing one of these fragments
           </div>
           <textarea
             class="input wide"
             style="margin-top:8px;min-height:64px;font-family:var(--vr-mono);font-size:12px"
             placeholder="*.internal.corp"
+            id="blacklist-input"
+            aria-describedby="blacklist-desc"
             .value=${settings.blacklist.join("\n")}
             @change=${(e: Event) => {
               const v = (e.target as HTMLTextAreaElement).value;
@@ -670,7 +847,7 @@ function SectionSiteAlerts(): TemplateResult {
   return html`
     <section id="alerts" class="section">
       <div class="section-header">
-        <div class="section-title">Site Alerts</div>
+        <h2 class="section-title">Site Alerts</h2>
         <div class="section-desc">
           The small card shown on the page itself when you visit a site:
           VulnRadar's last scan of it if there is one, or a one-click offer to
@@ -685,8 +862,10 @@ function SectionSiteAlerts(): TemplateResult {
             scanned before
           </div>
         </div>
-        ${Toggle(settings.showScanResults, (v) =>
-          patch({ showScanResults: v }),
+        ${Toggle(
+          "Show results for scanned sites",
+          settings.showScanResults,
+          (v) => patch({ showScanResults: v }),
         )}
       </div>
       <div class="row">
@@ -697,8 +876,10 @@ function SectionSiteAlerts(): TemplateResult {
             seen before
           </div>
         </div>
-        ${Toggle(settings.showScanPrompts, (v) =>
-          patch({ showScanPrompts: v }),
+        ${Toggle(
+          "Show scan prompt for new sites",
+          settings.showScanPrompts,
+          (v) => patch({ showScanPrompts: v }),
         )}
       </div>
       <div class="row" style="flex-direction:column;align-items:stretch">
@@ -707,15 +888,25 @@ function SectionSiteAlerts(): TemplateResult {
           <div class="desc">Which screen corner the card appears in</div>
         </div>
         <div class="corner-picker" style="margin-top:8px">
-          <div class="corner-picker-screen">
+          <!-- Four empty buttons in a box: they were individually named but
+               nothing said they belonged together, and which one was selected
+               was carried only by a fill colour and a scale bump (SC 4.1.2).
+               aria-pressed states it. -->
+          <div
+            class="corner-picker-screen"
+            role="group"
+            aria-label="Card position"
+          >
             ${CARD_POSITIONS.map(
               (p) => html`
                 <button
+                  type="button"
                   class="corner-btn corner-${p.id} ${
                     settings.cardPosition === p.id ? "active" : ""
                   }"
                   title=${p.label}
                   aria-label=${p.label}
+                  aria-pressed=${settings.cardPosition === p.id}
                   @click=${() => patch({ cardPosition: p.id })}
                 ></button>
               `,
@@ -728,8 +919,10 @@ function SectionSiteAlerts(): TemplateResult {
       </div>
       <div class="row" style="flex-direction:column;align-items:stretch">
         <div class="row-label">
-          <div class="title">Muted URL patterns (${mutedPatterns.length})</div>
-          <div class="desc">
+          <label class="title" for="mute-pattern-input"
+            >Muted URL patterns (${mutedPatterns.length})</label
+          >
+          <div class="desc" id="mute-pattern-desc">
             The card won't show on URLs matching these, even with the toggle
             above on. The card's own "Not this site" button adds an exact-origin
             pattern here too.
@@ -739,6 +932,9 @@ function SectionSiteAlerts(): TemplateResult {
           <input
             class="input wide mono"
             placeholder="https://example.com or https://*.example.com/*"
+            id="mute-pattern-input"
+            aria-describedby="mute-pattern-desc"
+            aria-invalid=${mutePatternError ? "true" : "false"}
             .value=${mutePatternInput}
             @input=${(e: Event) => {
               mutePatternInput = (e.target as HTMLInputElement).value;
@@ -755,8 +951,12 @@ function SectionSiteAlerts(): TemplateResult {
         ${
           mutePatternError
             ? html`
-                <div class="status-banner error" style="margin-top:8px">
-                  <span>⚠</span>
+                <div
+                  class="status-banner error"
+                  style="margin-top:8px"
+                  role="alert"
+                >
+                  <span aria-hidden="true">⚠</span>
                   <span>${mutePatternError}</span>
                 </div>
               `
@@ -771,7 +971,9 @@ function SectionSiteAlerts(): TemplateResult {
                       <div class="muted-host-row">
                         <span class="host">${p}</span>
                         <button
+                          type="button"
                           class="text-btn"
+                          aria-label=${`Remove muted pattern ${p}`}
                           @click=${() => removeMutePattern(p)}
                         >
                           Remove
@@ -809,7 +1011,9 @@ function SectionSiteAlerts(): TemplateResult {
                           >expires ${formatTimeUntil(expiresAt)}</span
                         >
                         <button
+                          type="button"
                           class="text-btn"
+                          aria-label=${`Clear the snooze on ${host}`}
                           @click=${() => clearSnooze(host)}
                         >
                           Clear
@@ -843,7 +1047,12 @@ function SectionSiteAlerts(): TemplateResult {
                     (h) => html`
                       <div class="muted-host-row">
                         <span class="host">${h}</span>
-                        <button class="text-btn" @click=${() => unmuteHost(h)}>
+                        <button
+                          type="button"
+                          class="text-btn"
+                          aria-label=${`Unmute ${h}`}
+                          @click=${() => unmuteHost(h)}
+                        >
                           Unmute
                         </button>
                       </div>
@@ -865,10 +1074,10 @@ function SectionFamilies(): TemplateResult {
   return html`
     <section id="families" class="section">
       <div class="section-header">
-        <div class="section-title">
+        <h2 class="section-title">
           Scan Families
           <span class="count-chip">${enabledCount} / ${CATEGORIES.length}</span>
-        </div>
+        </h2>
         <div class="section-desc">
           Which scanner categories to run. Disable a family to skip those checks
           entirely (faster scan, no rate-limit usage for them).
@@ -902,76 +1111,34 @@ function SectionFamilies(): TemplateResult {
   `;
 }
 
-// ---- Section: Service Probes ----
+// ---- Section: Port Sweep ----
 
 function SectionProbes(): TemplateResult {
-  const enabledCount = Object.values(settings.probes).filter(
-    (p) => p.enabled,
-  ).length;
   return html`
-    <section id="probes" class="section">
+    <section id="port-scan" class="section">
       <div class="section-header">
-        <div class="section-title">
-          Service Probes
-          <span class="count-chip">${enabledCount} / ${PROBES.length}</span>
-        </div>
+        <h2 class="section-title">
+          Port Sweep
+          <span class="count-chip">${settings.portScan ? "on" : "off"}</span>
+        </h2>
         <div class="section-desc">
-          Optional banner-grab probes against non-HTTP services on the scanned
-          host, run alongside the HTTP-based scan families above. Off by default
-          - each one opens a raw TCP connection to the port below.
+          A curated sweep of common ports and the services behind them, run
+          alongside the HTTP checks above. This replaces the old per-service
+          probe list, which the API stopped reading: the extension went on
+          sending it, so nothing you set there ever reached a scan. Off by
+          default, and the API rejects it unless you have verified ownership of
+          the target domain on your ${VULNRADAR.appName} account.
         </div>
       </div>
-      <div class="families-grid">
-        ${PROBES.map(
-          (p) => html`
-            <label
-              class="family-card ${settings.probes[p.id].enabled ? "checked" : ""}"
-            >
-              <div class="family-card-top">
-                <input
-                  type="checkbox"
-                  .checked=${settings.probes[p.id].enabled}
-                  @change=${(e: Event) => {
-                    const next = { ...settings.probes };
-                    next[p.id] = {
-                      ...next[p.id],
-                      enabled: (e.target as HTMLInputElement).checked,
-                    };
-                    patch({ probes: next });
-                  }}
-                />
-                <span class="family-name">${p.label}</span>
-              </div>
-              <span class="family-id">${p.id}</span>
-              <div class="family-desc">${p.description}</div>
-              <div
-                style="display:flex;align-items:center;gap:6px;margin-top:2px"
-                @click=${(e: Event) => e.stopPropagation()}
-              >
-                <span style="font-size:11px;color:var(--vr-text-muted)"
-                  >Port</span
-                >
-                <input
-                  class="input mono"
-                  type="number"
-                  min="1"
-                  max="65535"
-                  style="width:80px;padding:4px 8px;font-size:12px"
-                  .value=${String(settings.probes[p.id].port)}
-                  @change=${(e: Event) => {
-                    const raw = Number((e.target as HTMLInputElement).value);
-                    const port =
-                      Number.isFinite(raw) && raw > 0
-                        ? Math.max(1, Math.min(65535, Math.round(raw)))
-                        : p.defaultPort;
-                    const next = { ...settings.probes };
-                    next[p.id] = { ...next[p.id], port };
-                    patch({ probes: next });
-                  }}
-                />
-              </div>
-            </label>
-          `,
+      <div class="row">
+        <div class="row-label">
+          <div class="title">Run the port and service sweep</div>
+          <div class="desc">
+            Applied to every scan this extension starts, quick or deep.
+          </div>
+        </div>
+        ${Toggle("Run the port and service sweep", settings.portScan, (v) =>
+          patch({ portScan: v }),
         )}
       </div>
     </section>
@@ -1000,7 +1167,7 @@ function SectionNotifications(): TemplateResult {
   return html`
     <section id="notifications" class="section">
       <div class="section-header">
-        <div class="section-title">Notifications</div>
+        <h2 class="section-title">Notifications</h2>
         <div class="section-desc">
           When to show a desktop notification after a scan completes.
         </div>
@@ -1030,7 +1197,11 @@ function SectionNotifications(): TemplateResult {
           <div class="title">Sound</div>
           <div class="desc">Play a sound with the notification</div>
         </div>
-        ${Toggle(settings.notifySound, (v) => patch({ notifySound: v }))}
+        ${Toggle(
+          "Play a sound with the notification",
+          settings.notifySound,
+          (v) => patch({ notifySound: v }),
+        )}
       </div>
       <div class="row">
         <div class="row-label">
@@ -1040,8 +1211,10 @@ function SectionNotifications(): TemplateResult {
             dashboard. Off just dismisses it.
           </div>
         </div>
-        ${Toggle(settings.openDashboardOnNotify, (v) =>
-          patch({ openDashboardOnNotify: v }),
+        ${Toggle(
+          "Open dashboard when a notification is clicked",
+          settings.openDashboardOnNotify,
+          (v) => patch({ openDashboardOnNotify: v }),
         )}
       </div>
     </section>
@@ -1061,7 +1234,7 @@ function SectionAppearance(): TemplateResult {
   return html`
     <section id="appearance" class="section">
       <div class="section-header">
-        <div class="section-title">Appearance</div>
+        <h2 class="section-title">Appearance</h2>
         <div class="section-desc">Theme + density</div>
       </div>
       <div class="row" style="flex-direction:column;align-items:stretch">
@@ -1069,11 +1242,18 @@ function SectionAppearance(): TemplateResult {
           <div class="title">Theme</div>
           <div class="desc">${activeTheme?.desc}</div>
         </div>
-        <div class="mode-toggle" style="margin-top:8px">
+        <div
+          class="mode-toggle"
+          style="margin-top:8px"
+          role="group"
+          aria-label="Theme"
+        >
           ${THEMES.map(
             (t) => html`
               <button
+                type="button"
                 class="${settings.theme === t.id ? "active" : ""}"
+                aria-pressed=${settings.theme === t.id}
                 @click=${() => patch({ theme: t.id })}
               >
                 ${t.label}
@@ -1087,7 +1267,9 @@ function SectionAppearance(): TemplateResult {
           <div class="title">Compact mode</div>
           <div class="desc">Tighter spacing in the popup</div>
         </div>
-        ${Toggle(!!settings.compactMode, (v) => patch({ compactMode: v }))}
+        ${Toggle("Compact mode", !!settings.compactMode, (v) =>
+          patch({ compactMode: v }),
+        )}
       </div>
     </section>
   `;
@@ -1097,12 +1279,13 @@ function SectionAppearance(): TemplateResult {
 
 function SectionPrivacy(): TemplateResult {
   async function clearCache() {
-    if (
-      !confirm(
-        "Clear all locally cached data (API key, settings, scan history)? You will need to paste your API key again. The VulnRadar database is not affected.",
-      )
-    )
-      return;
+    const ok = await askConfirm({
+      title: "Clear all locally cached data?",
+      body: "This wipes the API key, settings and scan history stored on this device. You'll need to paste your API key again. Your VulnRadar account and its scan history are not affected.",
+      confirmLabel: "Clear local cache",
+      danger: true,
+    });
+    if (!ok) return;
     await browser.storage.local.clear();
     currentAuth = null;
     authConnectionFailed = false;
@@ -1114,7 +1297,7 @@ function SectionPrivacy(): TemplateResult {
   return html`
     <section id="privacy" class="section">
       <div class="section-header">
-        <div class="section-title">Privacy</div>
+        <h2 class="section-title">Privacy</h2>
         <div class="section-desc">
           What data leaves your browser, and how to wipe it
         </div>
@@ -1177,6 +1360,18 @@ async function init() {
   mutedPatterns = [...((await get("mutedPatterns")) ?? [])];
   snoozedHosts = (await get("snoozedHosts")) ?? {};
   applyTheme(settings.theme);
+  // applyTheme only resolves "system" once. The options page stays open for a
+  // long time, so without this an OS light/dark flip left it on the old theme
+  // until reload. Reads settings.theme at event time, so switching to or away
+  // from "system" in Appearance needs no re-subscription.
+  watchSystemTheme(() => settings.theme);
+  // Escape cancels the confirm dialog, which window.confirm gave us for free.
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && confirmDialog) {
+      e.preventDefault();
+      closeConfirm(false);
+    }
+  });
   scheduleRender();
   // Set up scroll spy after first render
   queueMicrotask(setupScrollSpy);

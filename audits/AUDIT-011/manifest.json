@@ -1,0 +1,23 @@
+{
+  "id": "AUDIT-011",
+  "title": "Product surface audit — scanning page, UI breakage, design language, QOL, capability drift",
+  "scopes": [
+    "ux",
+    "mobile",
+    "design",
+    "perf",
+    "drift",
+    "api",
+    "admin",
+    "extension",
+    "misc"
+  ],
+  "createdAt": "2026-08-28T00:00:00Z",
+  "closedAt": null,
+  "status": "in_progress",
+  "sectionsCovered": [3, 4, 5, 6, 7, 8],
+  "sectionsOutstanding": [
+    1, 2, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
+  ],
+  "summary": "First audit in this repo to cover the user-facing surface. Ten prior audits all scoped auth/ssrf/crypto/idor/scanner; none scoped UI, design, mobile, or UX. Covers the scanning page latency and rebuild, client-visible breakage, responsive breakage on 71 pages, design-language conformance across every surface, quality-of-life restructuring including the bulk-action inventory, and backend/frontend capability drift across 155 API routes plus schema, config, flags and permissions."
+}

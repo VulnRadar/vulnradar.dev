@@ -1,16 +1,18 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { PublicPageShell } from "@/components/shared/public-page-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { GitCompareArrows, Loader2, Search, ArrowLeft } from "lucide-react";
-import { API } from "@/lib/config/constants";
+import { API } from "@/lib/config/client-constants";
 import {
   clearQueryParams,
+  getQueryParam,
   getQueryParamInt,
   removeQueryParam,
   setQueryParam,
+  setQueryParams,
   LOCATION_CHANGE_EVENT,
 } from "@/lib/ui/url-state";
 import {
@@ -25,6 +27,7 @@ import {
   type DiffResult,
   getDomain,
 } from "@/components/compare";
+import { InlineAlert } from "@/components/shared/inline-alert";
 
 export default function ComparePage() {
   const [scans, setScans] = useState<ScanOption[]>([]);
@@ -34,32 +37,62 @@ export default function ComparePage() {
   const [diffResult, setDiffResult] = useState<DiffResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingScans, setLoadingScans] = useState(true);
+  const [scansFailed, setScansFailed] = useState(false);
+  const [compareError, setCompareError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
+    // A failed history load used to fall through to an empty list, which the
+    // picker renders as "Nothing to compare yet". On a security product that
+    // reads as "you have no scans", so a fetch failure has to look different
+    // from genuinely having nothing.
     fetch(API.HISTORY)
-      .then((r) => r.json())
-      .then((d) => {
+      .then(async (r) => {
+        if (!r.ok) {
+          setScansFailed(true);
+          return;
+        }
+        const d = await r.json();
         const list = Array.isArray(d)
           ? d
           : Array.isArray(d?.scans)
             ? d.scans
             : [];
         setScans(list);
-        setLoadingScans(false);
       })
-      .catch(() => setLoadingScans(false));
+      .catch(() => setScansFailed(true))
+      .finally(() => setLoadingScans(false));
   }, []);
 
   const runCompare = useCallback(async (a: number, b: number) => {
     setLoading(true);
     setDiffResult(null);
+    setCompareError(null);
     try {
       const res = await fetch(`${API.COMPARE}?a=${a}&b=${b}`);
-      const data = await res.json();
-      if (res.ok) setDiffResult(data);
+      const data = (await res.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      if (res.ok) {
+        setDiffResult(data as DiffResult);
+      } else {
+        // Every failure used to land in exactly the same place: the spinner
+        // stopped, no diff appeared, and the picker came back with Compare
+        // live again. A 403 on someone else's scans, a 404 on a deleted one
+        // and a 500 were indistinguishable from nothing having happened.
+        setCompareError(
+          data?.error ||
+            (res.status === 403
+              ? "You do not have access to one of those scans."
+              : res.status === 404
+                ? "One of those scans no longer exists."
+                : "That comparison could not be run. Try again in a moment."),
+        );
+      }
     } catch {
-      /* ignore */
+      setCompareError(
+        "Could not reach the server, so the comparison did not run. Check your connection and try again.",
+      );
     }
     setLoading(false);
   }, []);
@@ -128,6 +161,45 @@ export default function ComparePage() {
       );
   }, [scans]);
 
+  // Arriving from a scan's actions menu as /compare?host=example.com.
+  // Reaching a diff of the host you were just looking at used to be six
+  // interactions (back to the findings list, back to History, Compare in the
+  // nav, find the host in the picker, pick two scans, press Compare) with
+  // nothing preselected. Writing ?a and ?b here is enough to run it: the
+  // syncFromUrl effect above is subscribed to LOCATION_CHANGE_EVENT, which
+  // setQueryParams' pushState fires, so the diff starts from that one write
+  // rather than from a second runCompare call racing it.
+  const hostParamHandledRef = useRef(false);
+  useEffect(() => {
+    if (hostParamHandledRef.current) return;
+    if (loadingScans) return;
+    const host = getQueryParam("host");
+    if (!host) return;
+    hostParamHandledRef.current = true;
+    const group = hostGroups.find((g) => g.host === host);
+    if (group && group.scans.length >= 2) {
+      // Sorted rather than trusting the API's order, the same way
+      // handleSelectHost below does: a diff reads left to right as older then
+      // newer, so the older of the two most recent goes in slot A.
+      const recent = [...group.scans]
+        .sort(
+          (x, y) =>
+            new Date(y.scanned_at).getTime() - new Date(x.scanned_at).getTime(),
+        )
+        .slice(0, 2);
+      const [newer, older] = recent;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot deep-link resolution, gated by hostParamHandledRef so it cannot cascade
+      setSelectedHost(host);
+      setQueryParams({ a: String(older.id), b: String(newer.id), host: null });
+    } else {
+      // Fewer than two scans of this host on the account, so there is nothing
+      // to diff. Filter the picker to it rather than dropping the user on the
+      // full list with no explanation for why they are there.
+      setSearchQuery(host);
+      removeQueryParam("host", { replace: true });
+    }
+  }, [loadingScans, hostGroups]);
+
   const filteredHostGroups = hostGroups.filter((g) =>
     g.host.toLowerCase().includes(searchQuery.toLowerCase()),
   );
@@ -139,6 +211,7 @@ export default function ComparePage() {
   function handleSelectHost(host: string) {
     setSelectedHost(host);
     setDiffResult(null);
+    setCompareError(null);
     const group = hostGroups.find((g) => g.host === host);
     if (group && group.scans.length === 2) {
       // No real choice to make with exactly two scans, so run the diff
@@ -164,6 +237,7 @@ export default function ComparePage() {
     setSelectedHost(null);
     setSelectedA(null);
     setSelectedB(null);
+    setCompareError(null);
     removeQueryParam("a");
     removeQueryParam("b");
   }
@@ -199,6 +273,7 @@ export default function ComparePage() {
 
   function handleReset() {
     setDiffResult(null);
+    setCompareError(null);
     setSelectedHost(null);
     setSelectedA(null);
     setSelectedB(null);
@@ -209,7 +284,7 @@ export default function ComparePage() {
     <PublicPageShell maxWidth="max-w-6xl" padding="py-8 sm:py-10">
       <div className="flex flex-col gap-8">
         <header className="max-w-2xl">
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
             Compare
           </h1>
           <p className="text-muted-foreground mt-2 leading-relaxed">
@@ -218,6 +293,8 @@ export default function ComparePage() {
             closed, and what has been sitting there the whole time.
           </p>
         </header>
+
+        {compareError && <InlineAlert tone="error">{compareError}</InlineAlert>}
 
         {!diffResult && !selectedHost && (
           <div className="flex flex-col gap-6">
@@ -238,6 +315,7 @@ export default function ComparePage() {
             <CompareHostPicker
               hosts={filteredHostGroups}
               loading={loadingScans}
+              loadFailed={scansFailed}
               searchActive={searchQuery.trim().length > 0}
               onSelect={handleSelectHost}
             />
@@ -257,7 +335,12 @@ export default function ComparePage() {
             </Button>
 
             <div>
-              <h2 className="font-mono text-sm font-medium">{selectedHost}</h2>
+              {/* break-all: a hostname is one unbroken token, so a long one
+                  (a deep subdomain on a long registrable domain) set this
+                  block's min width and pushed the page sideways on a phone. */}
+              <h2 className="font-mono text-sm font-medium break-all">
+                {selectedHost}
+              </h2>
               <p className="text-xs text-muted-foreground mt-1">
                 {selectedGroup.scans.length === 2
                   ? "Only two scans of this host exist, comparing them now."

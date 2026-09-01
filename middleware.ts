@@ -1,9 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PUBLIC_PATHS } from "./lib/config/public-paths";
 import { AUTH_SESSION_COOKIE_NAME, ROUTES } from "./lib/config/constants";
+import {
+  MAX_REQUEST_BODY_BYTES,
+  BODY_CARRYING_METHODS,
+} from "./lib/api/request-limits";
 
 /** Server Components read this back via headers() to nonce their own inline scripts. */
 const NONCE_HEADER = "x-nonce";
+
+/**
+ * Per-request correlation id. Spelled out here rather than imported from
+ * lib/database/request-context.ts (which owns the Node-side half) because
+ * this file compiles to the edge bundle and that module imports
+ * node:async_hooks. Same arrangement as NONCE_HEADER above.
+ */
+const REQUEST_ID_HEADER = "x-request-id";
 
 /** 128 bits of entropy, base64-encoded -- the standard CSP nonce shape. */
 function generateNonce(): string {
@@ -48,6 +60,23 @@ function generateNonce(): string {
  *     Non-functional impact only (analytics, not app behavior) -- worth
  *     confirming empirically rather than blocking this change on it.
  */
+/**
+ * Opt-out for a deployment that genuinely has no TLS in front of it: a bare
+ * LAN install behind a plain-HTTP reverse proxy, which docker-compose.yml
+ * documents as supported (HOST_BIND=0.0.0.0) and app/docs/setup tells
+ * operators to configure with NEXT_PUBLIC_APP_URL=http://localhost:3000.
+ * Without it the middleware 301'd every request to https, the CSP sent
+ * `upgrade-insecure-requests` and HSTS pinned the browser to https for two
+ * years, so such an install was simply unreachable and stayed unreachable
+ * after the mistake was undone.
+ *
+ * Off by default, so nothing changes for the hosted instance or for any
+ * self-host that does terminate TLS. Only set it on a trusted internal
+ * network: with it on, traffic to this app is unencrypted and the session
+ * cookie travels in the clear.
+ */
+const ALLOW_INSECURE_HTTP = process.env.ALLOW_INSECURE_HTTP === "1";
+
 function buildSecurityHeaders(nonce: string): Record<string, string> {
   // next dev's webpack runtime (hot reload / fast refresh module loading)
   // calls eval() to evaluate updated modules -- a next-dev-only mechanism,
@@ -123,7 +152,9 @@ function buildSecurityHeaders(nonce: string): Record<string, string> {
       "base-uri 'self'",
       "form-action 'self'",
       "object-src 'none'",
-      "upgrade-insecure-requests",
+      // Would rewrite every same-origin request to https on a deployment that
+      // deliberately has no TLS, breaking it. See ALLOW_INSECURE_HTTP.
+      ...(ALLOW_INSECURE_HTTP ? [] : ["upgrade-insecure-requests"]),
     ].join("; "),
     // Trusted Types: report-only, not enforced. Enforcing
     // require-trusted-types-for blind risks breaking any third-party
@@ -157,7 +188,15 @@ function buildSecurityHeaders(nonce: string): Record<string, string> {
     // this app ran with before this was ever touched.
     "Cross-Origin-Embedder-Policy": "unsafe-none",
     "X-DNS-Prefetch-Control": "off",
-    "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
+    // Two years of forced https, remembered by the browser long after the
+    // header stops being sent, so it must not go out on a deployment that
+    // serves plain HTTP on purpose. See ALLOW_INSECURE_HTTP.
+    ...(ALLOW_INSECURE_HTTP
+      ? {}
+      : {
+          "Strict-Transport-Security":
+            "max-age=63072000; includeSubDomains; preload",
+        }),
     // Monitor-only: no `enforce` (would hard-block a legitimate cert if a
     // CT log had an outage) and no `report-uri` (we have no endpoint to
     // collect those reports). Chrome dropped Expect-CT support entirely in
@@ -173,7 +212,15 @@ function buildSecurityHeaders(nonce: string): Record<string, string> {
 function applySecurityHeaders(
   response: NextResponse,
   nonce: string,
+  requestId: string,
 ): NextResponse {
+  // Echoed on every response, including the redirects and the 413/403 that
+  // never reach a route handler, so the id an operator can see in the
+  // browser is the same one system_error_logs recorded. Set before the
+  // DISABLE_CSP branch below: this is a correlation id, not a security
+  // header, and turning CSP off to debug an embed must not also take away
+  // the thing that makes the resulting errors findable.
+  response.headers.set(REQUEST_ID_HEADER, requestId);
   // Set DISABLE_CSP=1 in .env.local to ship the app without any
   // security headers. Useful when debugging a third-party embed
   // (BrowserBase, Turnstile, etc.) and you want to confirm whether
@@ -216,7 +263,11 @@ export function middleware(request: NextRequest) {
   // https by the time it reaches here), and for a direct/internal request
   // with no proxy in front at all (no header present, nothing to redirect
   // on).
+  // ALLOW_INSECURE_HTTP=1 turns this off for a deployment that has no TLS at
+  // all (see the constant's own comment); without an opt-out, such an install
+  // was redirected to an https URL that nothing was listening on.
   if (
+    !ALLOW_INSECURE_HTTP &&
     request.headers
       .get("x-forwarded-proto")
       ?.split(",")[0]
@@ -243,6 +294,15 @@ export function middleware(request: NextRequest) {
   }
 
   const nonce = generateNonce();
+  // AUDIT-012#obs-07: one correlation id per request. Generated here, never
+  // taken from the inbound header: it is written verbatim into
+  // system_error_logs (an admin-facing table) and is what an operator
+  // filters on, so letting a caller choose it would let anyone plant
+  // arbitrary text there or deliberately collide two unrelated requests.
+  // The forwarded REQUEST header below is how it reaches Node route
+  // handlers -- middleware runs on the Edge runtime, so there is no shared
+  // AsyncLocalStorage to hand it over in (see lib/database/request-context.ts).
+  const requestId = crypto.randomUUID();
   // Server Components (app/layout.tsx) read this back via headers() from
   // next/headers to nonce the one raw inline <script> the app renders
   // itself. Requires rewriting the *request* headers, not just the
@@ -250,6 +310,18 @@ export function middleware(request: NextRequest) {
   // actually threads a value through to the server-rendering pass.
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set(NONCE_HEADER, nonce);
+  // .set, not .append: this overwrites any x-request-id the client sent, so
+  // a route handler can trust the value it reads.
+  requestHeaders.set(REQUEST_ID_HEADER, requestId);
+  // Do NOT also set content-security-policy on requestHeaders. It looks
+  // necessary from Next's source (app-render.js reads the REQUEST header and
+  // feeds it to getScriptNonceFromHeader), but production disproves it: the
+  // live site serves this exact enforcing strict-dynamic policy and Next's
+  // own chunk and flight-payload scripts already carry the matching nonce.
+  // Verified against https://vulnradar.dev/landing, 73 of 77 script tags
+  // nonced; the four without are two ld+json blocks, the app's own inline
+  // script, and Cloudflare's edge-injected email-decode.js (the case the
+  // sha256 entry in scriptSrc exists for).
   const nextWithNonce = () =>
     NextResponse.next({ request: { headers: requestHeaders } });
 
@@ -261,6 +333,47 @@ export function middleware(request: NextRequest) {
       : rawPathname;
   const sessionCookie = request.cookies.get(AUTH_SESSION_COOKIE_NAME);
 
+  // Request-body ceiling for the whole API surface. The 1 MiB cap was written
+  // down as a security property of this API but was only ever enforced inside
+  // parseBody, which 54 of the 73 body-reading routes never call -- the entire
+  // scan surface, teams, support tickets, both contact forms and the
+  // session-less unsubscribe endpoint read their body raw, with nothing
+  // underneath them (Next's App Router has no default body limit, unlike the
+  // Pages Router). Any signed-in account could POST an arbitrarily large body
+  // to any of them and the process buffered it before a single validation ran.
+  // Enforced here, ahead of the CSRF check, so a route cannot opt out by
+  // forgetting to call the helper. ref: AUDIT-013#dup-04
+  //
+  // Content-Length only: middleware cannot measure a chunked body without
+  // consuming the stream the route handler still needs. That is not a hole a
+  // client picks: dropping the header does not remove the cap parseBody-backed
+  // routes still apply, and an unbounded chunked upload is bounded by the
+  // reverse proxy every deployment doc puts in front of this app.
+  if (
+    pathname.startsWith("/api/") &&
+    BODY_CARRYING_METHODS.has(request.method.toUpperCase())
+  ) {
+    const declaredLength = Number.parseInt(
+      request.headers.get("content-length") ?? "",
+      10,
+    );
+    if (
+      Number.isFinite(declaredLength) &&
+      declaredLength > MAX_REQUEST_BODY_BYTES
+    ) {
+      return applySecurityHeaders(
+        NextResponse.json(
+          {
+            error: `Request body exceeds the ${MAX_REQUEST_BODY_BYTES} byte limit.`,
+          },
+          { status: 413 },
+        ),
+        nonce,
+        requestId,
+      );
+    }
+  }
+
   // Check if path is public (exact match for "/" and "/landing", startsWith for others)
   const isPublicPath = PUBLIC_PATHS.some((p) => {
     if (p === ROUTES.HOME || p === ROUTES.LANDING) {
@@ -268,28 +381,6 @@ export function middleware(request: NextRequest) {
     }
     return pathname.startsWith(p);
   });
-
-  // Allow public paths
-  if (isPublicPath) {
-    // If logged in and trying to access login/signup, redirect to dashboard
-    if (
-      sessionCookie &&
-      (pathname === ROUTES.LOGIN || pathname === ROUTES.SIGNUP)
-    ) {
-      return applySecurityHeaders(
-        NextResponse.redirect(new URL(ROUTES.DASHBOARD, request.url)),
-        nonce,
-      );
-    }
-    // If not logged in and on root, redirect to landing
-    if (!sessionCookie && pathname === ROUTES.HOME) {
-      return applySecurityHeaders(
-        NextResponse.redirect(new URL(ROUTES.LANDING, request.url)),
-        nonce,
-      );
-    }
-    return applySecurityHeaders(nextWithNonce(), nonce);
-  }
 
   const hasBearerToken =
     request.headers.get("authorization")?.startsWith("Bearer ") ?? false;
@@ -302,28 +393,66 @@ export function middleware(request: NextRequest) {
   // cross-origin POSTs against VulnRadar on behalf of an
   // authenticated user.
   //
-  // IMPORTANT: CSRF check runs BEFORE the Bearer bypass below.
+  // IMPORTANT: this runs BEFORE the isPublicPath return below, and that
+  // ordering is the point. It used to sit after it, which made PUBLIC_PATHS
+  // the real exemption list rather than the deliberately narrow
+  // isExemptFromCsrf() one: POST /api/v3/auth/login was exempt, so a
+  // cross-site text/plain form could post valid JSON to it and log a victim
+  // into the attacker's account, and POST /api/v3/badge/site (session
+  // authenticated, under the "/api/v3/badge" prefix) was exempt with it
+  // (AUDIT-012#auth-04). Nothing in PUBLIC_PATHS needs the exemption: every
+  // same-origin fetch from this app carries an Origin header.
+  //
+  // IMPORTANT: the CSRF check also runs BEFORE the Bearer bypass below.
   // A fake "Authorization: Bearer anything" header must not suppress
   // Origin validation for session-authenticated routes (AUDIT-005#csrf-01).
   // enforceCsrf() is Bearer-aware: true API clients (Bearer + no Origin)
   // are exempted inside that function, not here.
   //
-  // Webhooks from Stripe and Discord are exempt — they sign their
+  // Webhooks from Stripe and Discord are exempt because they sign their
   // payloads (see app/api/v3/webhooks/stripe/route.ts and
   // app/api/v3/auth/discord/callback/route.ts). The exempt list
-  // below is intentionally narrow: webhook signature verification
-  // is the trust boundary for those endpoints, not the Origin header.
+  // below is intentionally narrow: a signature or a bearer secret in the
+  // URL is the trust boundary for those endpoints, not the Origin header.
   if (pathname.startsWith("/api/v3/") && !isExemptFromCsrf(pathname)) {
     const csrfResponse = enforceCsrf(request, hasBearerToken);
     if (csrfResponse) {
-      return applySecurityHeaders(csrfResponse, nonce);
+      return applySecurityHeaders(csrfResponse, nonce, requestId);
     }
+  }
+
+  // Allow public paths
+  if (isPublicPath) {
+    // If logged in and trying to access login/signup, redirect to dashboard
+    if (
+      sessionCookie &&
+      (pathname === ROUTES.LOGIN || pathname === ROUTES.SIGNUP)
+    ) {
+      return applySecurityHeaders(
+        NextResponse.redirect(new URL(ROUTES.DASHBOARD, request.url)),
+        nonce,
+        requestId,
+      );
+    }
+    // If not logged in and on root, redirect to landing.
+    // 308, not NextResponse.redirect's default 307: the arrangement is not
+    // temporary, and a temporary redirect tells Google to keep evaluating both
+    // "/" and "/landing" as separate URLs instead of consolidating the site's
+    // highest-authority URL onto the page that actually serves the content.
+    if (!sessionCookie && pathname === ROUTES.HOME) {
+      return applySecurityHeaders(
+        NextResponse.redirect(new URL(ROUTES.LANDING, request.url), 308),
+        nonce,
+        requestId,
+      );
+    }
+    return applySecurityHeaders(nextWithNonce(), nonce, requestId);
   }
 
   // Bearer token requests bypass the session-cookie redirect only —
   // API key auth is handled inside each route handler.
   if (hasBearerToken && pathname.startsWith("/api/v3/")) {
-    return applySecurityHeaders(nextWithNonce(), nonce);
+    return applySecurityHeaders(nextWithNonce(), nonce, requestId);
   }
 
   // Protect everything else - redirect to login if no session
@@ -334,10 +463,14 @@ export function middleware(request: NextRequest) {
     if (intended && intended !== ROUTES.DASHBOARD) {
       loginUrl.searchParams.set("redirect", intended);
     }
-    return applySecurityHeaders(NextResponse.redirect(loginUrl), nonce);
+    return applySecurityHeaders(
+      NextResponse.redirect(loginUrl),
+      nonce,
+      requestId,
+    );
   }
 
-  return applySecurityHeaders(nextWithNonce(), nonce);
+  return applySecurityHeaders(nextWithNonce(), nonce, requestId);
 }
 
 /**
@@ -356,8 +489,18 @@ function isExemptFromCsrf(pathname: string): boolean {
   // like every other session-authenticated route (AUDIT-010#security-03).
   // Discord callback: signed via HMAC-signed state token.
   // Demo scan / version / security-txt: unauthenticated or read-only.
+  //
+  // Unsubscribe: this is the RFC 8058 One-Click endpoint named in the
+  // List-Unsubscribe header of every outgoing message (lib/email/email.ts),
+  // so Gmail and Yahoo POST to it from their own servers with no Origin and
+  // no cookie. Its credential is the unguessable token in the query string,
+  // not the session cookie, which is exactly the case CSRF does not apply to:
+  // a cross-site page that does not have the token cannot do anything with
+  // this route. Blocking it would break one-click unsubscribe, which is a
+  // deliverability and compliance failure, not just a broken link.
   return (
     pathname === "/api/v3/webhooks/stripe" ||
+    pathname === "/api/v3/account/unsubscribe" ||
     pathname === "/api/v3/auth/discord/callback" ||
     pathname === "/api/v3/demo-scan" ||
     pathname === "/api/v3/version" ||

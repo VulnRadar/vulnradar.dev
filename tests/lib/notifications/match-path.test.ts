@@ -45,3 +45,44 @@ describe("matchesPathPattern", () => {
     expect(matchesPathPattern("/dashboard", "  /dashboard  ")).toBe(true);
   });
 });
+
+/**
+ * The matcher used to compile the admin's pattern into a regex, replacing
+ * each `*` with `.*`. That is the classic catastrophic-backtracking shape,
+ * and this function runs in every visitor's browser on every route change.
+ * It is now a linear greedy walk, so these pin both the semantics (which
+ * must not change) and the absence of the blow-up.
+ */
+describe("matchesPathPattern: wildcard semantics and cost", () => {
+  it("supports a leading and a middle wildcard", () => {
+    expect(matchesPathPattern("/a/dashboard", "*dashboard")).toBe(true);
+    expect(
+      matchesPathPattern("/dashboard/x/settings", "/dashboard*settings"),
+    ).toBe(true);
+    expect(
+      matchesPathPattern("/dashboard/x/other", "/dashboard*settings"),
+    ).toBe(false);
+  });
+
+  it("keeps both ends anchored", () => {
+    expect(matchesPathPattern("/x/dashboard/y", "/dashboard*")).toBe(false);
+    expect(matchesPathPattern("/x/dashboard/y", "*dashboard")).toBe(false);
+  });
+
+  it("matches a bare wildcard and collapsed wildcards", () => {
+    expect(matchesPathPattern("/anything/at/all", "*")).toBe(true);
+    expect(matchesPathPattern("/a/b/c", "/a**c")).toBe(true);
+  });
+
+  it("does not match when the anchors overlap on a too-short path", () => {
+    expect(matchesPathPattern("/ab", "/abc*/xyz")).toBe(false);
+  });
+
+  it("returns promptly on the pattern shape that used to backtrack exponentially", () => {
+    const evil = "/" + "a*".repeat(20) + "b";
+    const path = "/" + "a".repeat(60);
+    const started = Date.now();
+    expect(matchesPathPattern(path, evil)).toBe(false);
+    expect(Date.now() - started).toBeLessThan(100);
+  });
+});

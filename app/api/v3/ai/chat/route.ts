@@ -1,4 +1,5 @@
 import { buildSystemPrompt, sanitizeUserName } from "@/lib/ai/system-prompt";
+import { SLASH_COMMANDS } from "@/lib/ai/commands";
 import {
   resolveProviderName,
   resolveAiBaseUrl,
@@ -13,11 +14,12 @@ import {
   resolveOpenAiCompatReasoningExtras,
   resolveAnthropicThinkingBudget,
 } from "@/lib/ai/reasoning";
-import { APP_NAME } from "@/lib/config/constants";
+import { APP_NAME, APP_URL } from "@/lib/config/constants";
 import { getSession } from "@/lib/auth";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getSettings } from "@/lib/config/runtime-config";
 import pool from "@/lib/database/db";
+import { getDailyLimit } from "@/lib/rate-limiting/daily-limits";
 import { checkAiUsageQuota, recordAiTokens } from "@/lib/billing/ai-usage";
 import { estimateTokens } from "@/lib/scanner/github-repo-scan";
 
@@ -53,12 +55,10 @@ export async function POST(req: Request) {
   const userRow = await pool.query<{
     ai_chat_banned: boolean;
     plan: string | null;
-    daily_scan_limit: number | null;
     created_at: string;
-  }>(
-    "SELECT ai_chat_banned, plan, daily_scan_limit, created_at FROM users WHERE id = $1",
-    [session.userId],
-  );
+  }>("SELECT ai_chat_banned, plan, created_at FROM users WHERE id = $1", [
+    session.userId,
+  ]);
   if (userRow.rows[0]?.ai_chat_banned) {
     return Response.json(
       {
@@ -147,13 +147,20 @@ export async function POST(req: Request) {
       })
     : null;
 
+  const resolvedDailyLimit = await getDailyLimit(session.userId);
+
   // Use the server-verified session name/role — never trust client-supplied
   // account facts.
   const systemPrompt = buildSystemPrompt({
     name: session.name ? sanitizeUserName(session.name) : "User",
     plan: userRecord?.plan ?? null,
     role: session.role,
-    dailyScanLimit: userRecord?.daily_scan_limit ?? null,
+    // Resolved live rather than read off users.daily_scan_limit, which
+    // nothing has written since the set_scan_limit admin action was
+    // removed, so this was absent for every user.
+    dailyScanLimit: Number.isFinite(resolvedDailyLimit)
+      ? resolvedDailyLimit
+      : "unlimited",
     memberSince,
   });
 
@@ -185,7 +192,23 @@ export async function POST(req: Request) {
   // margin, while still capping a caller who wraps an abusive payload in a
   // <context> tag to defeat the turn budget.
   const MAX_CONTEXT_CHARS = 700_000;
-  const isContextBlock = (content: string) => content.startsWith("<context");
+
+  // security: this used to be `content.startsWith("<context")`, which any
+  // caller could satisfy by typing that literal at the front of a message.
+  // Doing so moved the message off the ~120k turn budget and onto this
+  // 700k one, on a path the code itself describes as free and unmetered:
+  // roughly 12M input tokens an hour per free account, billed to us.
+  //
+  // handleCommand in the chat widget emits exactly `<context cmd="NAME">`
+  // where NAME is one of the fixed slash commands, so require that shape
+  // and check the name against the real command list. A hand-typed
+  // `<context` no longer qualifies and falls back to the turn budget.
+  const CONTEXT_BLOCK_RE = /^<context cmd="([a-z-]{1,32})">/;
+  const VALID_CONTEXT_CMDS = new Set(SLASH_COMMANDS.map((c) => c.cmd));
+  const isContextBlock = (content: string) => {
+    const m = CONTEXT_BLOCK_RE.exec(content);
+    return m !== null && VALID_CONTEXT_CMDS.has(m[1]);
+  };
   const recentMessages = messages
     .filter((m) => m.role === "user" || m.role === "assistant")
     .slice(-MAX_CONVERSATION_MESSAGES)
@@ -274,8 +297,10 @@ export async function POST(req: Request) {
 
       // OpenRouter requires a site URL header.
       if (new URL(baseUrl).hostname.toLowerCase() === "openrouter.ai") {
-        headers["HTTP-Referer"] =
-          process.env.NEXT_PUBLIC_APP_URL ?? "https://vulnradar.dev";
+        // Identify THIS deployment to OpenRouter, not the SaaS: APP_URL already
+        // resolves NEXT_PUBLIC_APP_URL first, so a self-hoster's AI spend is no
+        // longer attributed to vulnradar.dev by a hardcoded fallback.
+        headers["HTTP-Referer"] = APP_URL;
         headers["X-Title"] = APP_NAME;
       }
 

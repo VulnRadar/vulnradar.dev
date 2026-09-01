@@ -68,6 +68,7 @@ import {
   willAutoScanHandleSilently,
 } from "../lib/reputation";
 import { clearBadge, setBadgeForResult, setBadgeForScore } from "../lib/badge";
+import { meetsThreshold } from "../lib/format";
 import { VULNRADAR } from "../lib/constants";
 import { DEFAULT_SETTINGS } from "../lib/types";
 import type {
@@ -126,10 +127,29 @@ browser.runtime.onInstalled.addListener(async (details) => {
 
 browser.runtime.onStartup.addListener(() => {
   void refreshMe().catch(() => {});
+  void clearStaleScanInProgress();
 });
+
+/**
+ * A `scanInProgress` record can only outlive this context if this context
+ * died before its `finally` ran, so anything found at startup is by
+ * definition dead: no scan is running in a worker that has just booted.
+ * Clearing it here is the cheapest catch-all for the browser-restart and
+ * extension-reload cases; the popup has its own deadline for the rest.
+ */
+async function clearStaleScanInProgress(): Promise<void> {
+  try {
+    if ((await get("scanInProgress")) !== null) {
+      await set("scanInProgress", null);
+    }
+  } catch {
+    /* storage unavailable: the popup's own deadline still recovers */
+  }
+}
 
 // Kick off on first SW load (covers Firefox / dev mode)
 void refreshMe().catch(() => {});
+void clearStaleScanInProgress();
 
 // ---- Context menu ----
 
@@ -415,11 +435,23 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
   await maybeAutoScanUrl(changeInfo.url, storage.settings, tabId);
 });
 
-const EXCLUDED_HOSTS = [
-  "sandbox.vulnradar.dev",
-  "vulnradar.dev",
-  "www.vulnradar.dev",
-];
+// Derived from the configured instance rather than listed literally: a build
+// repointed at a self-hosted instance used to auto-scan its own dashboard and
+// still skip vulnradar.dev, which is exactly backwards. The sandbox entry is
+// kept for the hosted build, where it is a real second deployment.
+const EXCLUDED_HOSTS = (() => {
+  const hosts = new Set(["sandbox.vulnradar.dev"]);
+  try {
+    const hostname = new URL(VULNRADAR.apiHost).hostname;
+    hosts.add(hostname);
+    hosts.add(
+      hostname.startsWith("www.") ? hostname.slice(4) : `www.${hostname}`,
+    );
+  } catch {
+    /* a malformed apiHost just means no exclusions beyond the sandbox */
+  }
+  return [...hosts];
+})();
 
 async function maybeAutoScanUrl(
   url: string,
@@ -687,26 +719,9 @@ async function handleSettingsSet(
     ...storage.settings,
     ...patch,
     families: { ...storage.settings.families, ...(patch.families ?? {}) },
-    probes: deepMergeProbes(storage.settings.probes, patch.probes),
   };
   await saveAll({ ...storage, settings: merged });
   return { ok: true };
-}
-
-function deepMergeProbes(
-  base: Readonly<Settings["probes"]>,
-  patch: Readonly<Partial<Settings["probes"]>> | undefined,
-): Settings["probes"] {
-  if (!patch) return { ...base };
-  const out: Record<string, { enabled: boolean; port: number }> = {};
-  for (const [k, v] of Object.entries(base)) {
-    out[k] = { ...v };
-  }
-  for (const [k, v] of Object.entries(patch)) {
-    if (!v) continue;
-    out[k] = { ...(out[k] ?? { enabled: false, port: 0 }), ...v };
-  }
-  return out as Settings["probes"];
 }
 
 async function handleTabUrl(): Promise<{ url: string | null }> {
@@ -743,19 +758,12 @@ async function runAndBadge(
 function shouldNotify(result: ScanResult, settings: Settings): boolean {
   const findings: readonly Vulnerability[] = result.findings;
   if (findings.length === 0) return false;
-  if (settings.notifyThreshold === "off") return false;
-  if (settings.notifyThreshold === "all") return true;
-  const rank: Record<string, number> = {
-    info: 0,
-    low: 1,
-    medium: 2,
-    high: 3,
-    critical: 4,
-  };
-  for (const f of findings) {
-    if (rank[f.severity] >= rank[settings.notifyThreshold]) return true;
-  }
-  return false;
+  // The threshold rule lives in lib/format.ts. This used to re-declare its own
+  // severity rank map here, so the same rule existed twice and a change to one
+  // copy would never reach the other.
+  return findings.some((f) =>
+    meetsThreshold(f.severity, settings.notifyThreshold),
+  );
 }
 
 async function sendScanNotification(

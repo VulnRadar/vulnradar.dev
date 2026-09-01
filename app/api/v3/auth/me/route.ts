@@ -9,7 +9,23 @@ import {
   BEARER_PREFIX,
 } from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
-import { getUserPlanLimits } from "@/lib/billing/plan-limits";
+import { getPlanLimitsForPlan, planRank } from "@/lib/billing/plan-limits";
+import { resolveEffectivePlan } from "@/lib/rate-limiting/daily-limits";
+
+/**
+ * An admin gift must only ever be an upgrade. It used to replace users.plan
+ * outright, so gifting a lower tier to a paying customer reported (and
+ * enforced, via getUserPlan) the lower plan while Stripe kept charging the
+ * higher one. Mirrors the same comparison in getUserPlan and GET /api/v3/billing.
+ */
+function higherPlan(
+  giftedPlan: string | null | undefined,
+  userPlan: string | null | undefined,
+): string {
+  const own = userPlan || "free";
+  if (!giftedPlan) return own;
+  return planRank(giftedPlan) >= planRank(own) ? giftedPlan : own;
+}
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   // Bearer token path: used by the browser extension and API clients.
@@ -37,13 +53,25 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       ),
     ]);
     const user = userResult.rows[0];
-    const effectivePlan = giftResult.rows[0]?.plan || user?.plan || "free";
+    // Higher of the gift and the user's own plan, matching getUserPlan. A gift
+    // used to win outright, silently reporting a downgrade to a paying user.
+    const effectivePlan = higherPlan(giftResult.rows[0]?.plan, user?.plan);
     // Real, admin-configurable limit (lib/billing/plan-limits.ts), not a
     // static copy of the marketing plan table -- the dashboard's bulk-scan
     // form uses this to cap URL entry at what the caller's plan actually
     // allows, so the pricing page's "URLs per bulk request" row can never
     // silently drift from what the UI itself enforces.
-    const keyPlanLimits = await getUserPlanLimits(keyData.userId);
+    //
+    // Resolved from the two rows just read rather than through
+    // getUserPlanLimits, which would re-read the same users row joined
+    // against the same gifted_subscriptions row to reach the same answer.
+    const keyPlanLimits = await getPlanLimitsForPlan(
+      resolveEffectivePlan({
+        plan: user?.plan,
+        role: user?.role,
+        gifted_plan: giftResult.rows[0]?.plan,
+      }),
+    );
     return ApiResponse.success({
       userId: keyData.userId,
       email: keyData.email,
@@ -69,54 +97,62 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // Resolved through the runtime config (database, then env, then the
   // shipped default) rather than the build-time CONFIG_ constant, so an
   // admin's edit to the terms date/summary takes effect on the next request.
-  const [
-    userResult,
-    badgesResult,
-    giftResult,
-    discordResult,
-    termsSettings,
-    planLimits,
-  ] = await Promise.all([
-    pool.query(
-      `SELECT totp_enabled, two_factor_method, onboarding_completed, role, avatar_url,
+  const [userResult, badgesResult, giftResult, discordResult, termsSettings] =
+    await Promise.all([
+      pool.query(
+        `SELECT totp_enabled, two_factor_method, onboarding_completed, role, avatar_url,
                 backup_codes, plan, subscription_status, discord_id,
                 (password_hash IS NOT NULL) AS has_password,
                 google_id, google_email, google_name, google_avatar_url,
                 github_id, github_email, github_name, github_avatar_url, github_login,
                 scans_private_by_default
            FROM users WHERE id = $1`,
-      [session.userId],
-    ),
-    pool.query(
-      `SELECT b.id, b.name, b.display_name, b.description, b.icon, b.color, b.priority, ub.awarded_at
+        [session.userId],
+      ),
+      pool.query(
+        `SELECT b.id, b.name, b.display_name, b.description, b.icon, b.color, b.priority, ub.awarded_at
        FROM user_badges ub JOIN badges b ON ub.badge_id = b.id
        WHERE ub.user_id = $1 ORDER BY b.priority DESC`,
-      [session.userId],
-    ),
-    pool.query(
-      `SELECT plan, expires_at FROM gifted_subscriptions
+        [session.userId],
+      ),
+      pool.query(
+        `SELECT plan, expires_at FROM gifted_subscriptions
        WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > NOW()`,
-      [session.userId],
-    ),
-    pool.query(
-      `SELECT discord_id, discord_username, discord_avatar FROM discord_connections WHERE user_id = $1`,
-      [session.userId],
-    ),
-    getSettings(["TERMS_UPDATED_AT", "TERMS_CHANGE_SUMMARY"] as const),
-    // Real, admin-configurable limit (lib/billing/plan-limits.ts), not a
-    // static copy of the marketing plan table -- the dashboard's
-    // bulk-scan form uses this to cap URL entry at what the caller's
-    // plan actually allows, so the pricing page's "URLs per bulk
-    // request" row can never silently drift from what the UI enforces.
-    getUserPlanLimits(session.userId),
-  ]);
+        [session.userId],
+      ),
+      pool.query(
+        `SELECT discord_id, discord_username, discord_avatar FROM discord_connections WHERE user_id = $1`,
+        [session.userId],
+      ),
+      getSettings(["TERMS_UPDATED_AT", "TERMS_CHANGE_SUMMARY"] as const),
+    ]);
   const user = userResult.rows[0];
   const badges = badgesResult.rows;
   const giftedSubscription = giftResult.rows[0] || null;
   const discordConnection = discordResult.rows[0] || null;
 
-  // Effective plan: gifted takes priority over regular plan
-  const effectivePlan = giftedSubscription?.plan || user?.plan || "free";
+  // Effective plan: the HIGHER of the gift and the user's own plan, not the
+  // gift unconditionally. See higherPlan above.
+  const effectivePlan = higherPlan(giftedSubscription?.plan, user?.plan);
+
+  // Real, admin-configurable limit (lib/billing/plan-limits.ts), not a static
+  // copy of the marketing plan table -- the dashboard's bulk-scan form uses
+  // this to cap URL entry at what the caller's plan actually allows, so the
+  // pricing page's "URLs per bulk request" row can never silently drift from
+  // what the UI enforces.
+  //
+  // Resolved from the two rows already read above. This route runs on every
+  // page load, and going through getUserPlanLimits made it re-read the same
+  // users row joined against the same gifted_subscriptions row (a third read
+  // of that users row, counting getSession's) to compute an answer both rows
+  // were already in hand for.
+  const planLimits = await getPlanLimitsForPlan(
+    resolveEffectivePlan({
+      plan: user?.plan,
+      role: user?.role,
+      gifted_plan: giftedSubscription?.plan,
+    }),
+  );
 
   // Detect if backup codes are old plaintext format (not hashed)
   // Hashed codes contain ":" separator from scrypt format, plaintext codes are like "XXXX-XXXX"

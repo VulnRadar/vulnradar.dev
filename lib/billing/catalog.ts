@@ -1,6 +1,6 @@
 // Billing Catalog (Source of Truth)
 
-import { APP_NAME, AI_USAGE_WINDOW_HOURS } from "@/lib/config/constants";
+import { APP_NAME, AI_USAGE_WINDOW_HOURS } from "@/lib/config/client-constants";
 
 // O4: Previously split across plans.ts and products.ts. Two divergent
 // source-of-truth declarations for the same billing tiers led to
@@ -23,6 +23,17 @@ export interface PlanLimits {
   webhooks: number;
   scheduledScans: number;
   bulkScanUrls: number;
+  /**
+   * Pages ONE crawl may select to scan. Distinct from the deployment-wide
+   * discovery cap (CONFIG_CRAWL_DISCOVER_MAX_PAGES, how many pages the picker
+   * may find and list): a crawl can surface hundreds of pages, this is how
+   * many of them the caller may actually queue. Never -1 (unlimited) at any
+   * tier: an unbounded crawl is a denial-of-service against VulnRadar's own
+   * scan pipeline, not a metered third-party cost. Enforced in
+   * app/api/v3/scan/crawl/route.ts and mirrored by the client picker through
+   * lib/billing/crawl-page-limits.ts.
+   */
+  crawlPages: number;
   /**
    * AI tokens (prompt + completion) allowed per fixed AI_USAGE_WINDOW_HOURS
    * window for GitHub repo AI code review, using VulnRadar's own AI --
@@ -100,17 +111,29 @@ export const PLANS: readonly Plan[] = [
   {
     id: "free",
     name: "Free",
-    description: "For individuals exploring security scanning",
+    description: "25 scans a day. Enough to watch everything you ship.",
+    // copy: these bullets used to be category nouns ("Full vulnerability
+    // detection", "Security headers analysis", "SSL/TLS checks", "API
+    // access") that are true on every plan, so half the free card was spent
+    // on things that are not differentiators, and the one concrete
+    // difference it did state was wrong. Every BILLING_*_RETENTION is -1,
+    // meaning unlimited, on every plan including this one, so "30-day scan
+    // history" here and "90-day scan history" on Core were both false; the
+    // pricing page filtered them out with a /scan history/i regex but
+    // app/checkout/[productId] renders features.slice(0, 5) unfiltered, so
+    // the highest-intent page in the funnel was the one showing it.
+    // Retention is now stated in exactly one place, getRetentionLabel, which
+    // reads the real config value (AUDIT-014#mkt-08).
     priceInCents: 0,
     features: [
-      "Full vulnerability detection",
-      "Security headers analysis",
-      "SSL/TLS checks",
-      "API access",
-      "30-day scan history",
+      "Every check on every plan, nothing held back behind a tier",
+      "25 scans a day, one at a time",
+      "Diff any two runs of the same URL",
       "5 URLs per bulk scan",
       "3 scheduled scans",
       "1 webhook alert",
+      "REST API and one bearer token",
+      "PDF, JSON, SARIF and Markdown export",
     ],
     limits: {
       dailyScans: 25,
@@ -121,6 +144,7 @@ export const PLANS: readonly Plan[] = [
       webhooks: 1,
       scheduledScans: 3,
       bulkScanUrls: 5,
+      crawlPages: 25,
       githubReviewTokensPerWindow: 0,
       aiTokensPerWindow: 80_000,
       browserbaseMinutesPerMonth: 30,
@@ -130,11 +154,10 @@ export const PLANS: readonly Plan[] = [
   {
     id: "core_supporter",
     name: "Core Supporter",
-    description: `Support ${APP_NAME} development + 100 scans/day`,
+    description: `100 scans a day and two at once, for more than one property. Supports ${APP_NAME}.`,
     priceInCents: 500,
     features: [
       "Everything in Free",
-      "90-day scan history",
       "1 webhook alert",
       "5 scheduled scans",
       "10 URLs per bulk scan",
@@ -153,6 +176,7 @@ export const PLANS: readonly Plan[] = [
       webhooks: 1,
       scheduledScans: 5,
       bulkScanUrls: 10,
+      crawlPages: 50,
       githubReviewTokensPerWindow: 200_000,
       aiTokensPerWindow: 400_000,
       browserbaseMinutesPerMonth: 60,
@@ -163,11 +187,14 @@ export const PLANS: readonly Plan[] = [
   {
     id: "pro_supporter",
     name: "Pro Supporter",
-    description: "For power users - 150 scans/day",
+    description:
+      "150 scans a day, a team of three, 5,000 API calls a day. Enough to gate a pipeline.",
     priceInCents: 1000,
     features: [
       "Everything in Core",
-      "Unlimited scan history",
+      // "Unlimited scan history" used to sit here as the headline upgrade
+      // over Core. It is not an upgrade: every plan including Free has
+      // unlimited retention (AUDIT-014#mkt-08).
       "Teams, up to 3 members",
       "10 scheduled scans",
       "5,000 API requests/day",
@@ -185,6 +212,7 @@ export const PLANS: readonly Plan[] = [
       webhooks: 5,
       scheduledScans: 10,
       bulkScanUrls: 25,
+      crawlPages: 100,
       githubReviewTokensPerWindow: 1_000_000,
       aiTokensPerWindow: 2_000_000,
       browserbaseMinutesPerMonth: 150,
@@ -195,7 +223,8 @@ export const PLANS: readonly Plan[] = [
   {
     id: "elite_supporter",
     name: "Elite Supporter",
-    description: "Maximum power - 500 scans/day",
+    description:
+      "500 scans a day, unlimited webhooks and schedules, teams of ten. For an agency or a portfolio.",
     priceInCents: 2000,
     features: [
       "Everything in Pro",
@@ -216,6 +245,7 @@ export const PLANS: readonly Plan[] = [
       webhooks: -1,
       scheduledScans: -1,
       bulkScanUrls: 100,
+      crawlPages: 250,
       // Never -1 (unlimited) for this field, even at the top tier — see
       // the PlanLimits.githubReviewTokensPerWindow doc comment above.
       githubReviewTokensPerWindow: 5_000_000,

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ArrowRight, LayoutDashboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ROUTES } from "@/lib/config/constants";
+import { ROUTES } from "@/lib/config/client-constants";
 import { useAuth } from "@/components/providers/auth-provider";
 import {
   ResponseReadout,
@@ -12,7 +12,7 @@ import {
 
 interface LandingHeroProps {
   /** Real count from the scanner registry, not a marketing label. */
-  checkCount: number;
+  checkCount: string;
   categoryCount: number;
 }
 
@@ -56,7 +56,7 @@ export function LandingHero({ checkCount, categoryCount }: LandingHeroProps) {
   const isLoggedIn = !!me?.userId;
 
   const stats: [string, string][] = [
-    [checkCount.toLocaleString(), "checks"],
+    [checkCount, "checks"],
     [String(categoryCount), "categories"],
     ["<3s", "per scan"],
     ["GPL-3.0", "licensed"],
@@ -73,11 +73,26 @@ export function LandingHero({ checkCount, categoryCount }: LandingHeroProps) {
               for security issues.
             </h1>
 
-            <p className="text-base sm:text-lg text-muted-foreground leading-relaxed mb-8 max-w-xl text-pretty">
-              Paste a URL. The request goes out from our servers, not your
-              browser, and comes back with the response evidence we flagged, a
-              finding ID that does not change between runs, and a fix you can
-              paste straight into your config.
+            {/* Two paragraphs, not one. The first names who this is for,
+                which the page did not answer until section six, and the
+                second answers "why not the free header checkers", which it
+                did not answer at all. */}
+            <p className="text-base sm:text-lg text-muted-foreground leading-relaxed mb-4 max-w-xl text-pretty">
+              For the developer who wants to know whether what they just shipped
+              has a hole in it, and for whoever is responsible for every domain
+              the company owns, including the four nobody remembers. Paste a URL
+              and the request goes out from our servers, not your browser:{" "}
+              {checkCount} checks come back with the response evidence behind
+              each one, a finding ID that does not change between runs, and a
+              config snippet you can paste straight into Nginx, Caddy, Express,
+              or Next.js.
+            </p>
+
+            <p className="text-sm text-muted-foreground leading-relaxed mb-8 max-w-xl text-pretty">
+              The free header checkers give you a letter grade and stop. This
+              gives you the rule that fired, the bytes it fired on, and the fix.
+              The whole engine is GPL-3.0 in the public repo, so you can read
+              every check or run the lot yourself.
             </p>
 
             <div className="flex flex-wrap gap-3 mb-10">
@@ -129,10 +144,17 @@ export function LandingHero({ checkCount, categoryCount }: LandingHeroProps) {
               leadCheckId="csp-missing"
               className="shadow-xs shadow-black/5 dark:shadow-black/20"
             />
+            {/* Was "no rendering, no screenshot, just the response", which
+                described a headers-only scanner and was also untrue: the
+                engine takes page screenshots and drives a real browser for
+                authenticated logins. Naming the breadth is both accurate and
+                the stronger claim, since the free tools this competes with
+                each cover one slice of it. */}
             <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
-              One check out of {checkCount.toLocaleString()}. Every header,
-              cookie, and config gets read the same way: no rendering, no
-              screenshot, just the response.
+              Six lines out of {checkCount} checks. The same request grades the
+              certificate and the TLS handshake, reads SPF, DKIM and DMARC,
+              checks every cookie attribute, and looks through what the page
+              ships for exposed secrets.
             </p>
           </div>
         </div>

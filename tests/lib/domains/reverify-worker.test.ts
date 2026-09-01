@@ -26,6 +26,8 @@ const {
   schedulePeriodicDomainReverify,
   stopPeriodicDomainReverify,
 } = await import("@/lib/domains/reverify-worker");
+const { CONFIG_DOMAIN_REVERIFY_TICK_INTERVAL_MS } =
+  await import("@/lib/config/config-values");
 
 function settings(overrides: Record<string, unknown> = {}) {
   const defaults: Record<string, unknown> = {
@@ -164,15 +166,52 @@ describe("runDomainReverifyPass", () => {
 });
 
 describe("schedulePeriodicDomainReverify / stopPeriodicDomainReverify", () => {
-  it("registers a timer and cleanly cancels it", () => {
+  // `expect(timer).toBeDefined()` was the whole assertion, and a
+  // `setInterval(fn, 0)` satisfies it just as well as the right one. What
+  // matters is the interval actually registered and that stop releases that
+  // same handle rather than leaving a tick running past shutdown.
+  it("registers the interval it was given and clears that exact handle on stop", () => {
     vi.useFakeTimers();
+    const setSpy = vi.spyOn(globalThis, "setInterval");
+    const clearSpy = vi.spyOn(globalThis, "clearInterval");
     try {
       const timer = schedulePeriodicDomainReverify(60_000);
-      expect(timer).toBeDefined();
+
+      expect(setSpy).toHaveBeenCalledTimes(1);
+      expect(setSpy.mock.calls[0][1]).toBe(60_000);
+      expect(setSpy.mock.results[0].value).toBe(timer);
+
       stopPeriodicDomainReverify();
-      // Calling stop twice must not throw.
+      expect(clearSpy).toHaveBeenCalledTimes(1);
+      expect(clearSpy).toHaveBeenCalledWith(timer);
+
+      // Idempotent, not merely non-throwing.
       stopPeriodicDomainReverify();
+      expect(clearSpy).toHaveBeenCalledTimes(1);
     } finally {
+      setSpy.mockRestore();
+      clearSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("falls back to the shipped interval instead of registering a 0 ms timer", () => {
+    vi.useFakeTimers();
+    const setSpy = vi.spyOn(globalThis, "setInterval");
+    try {
+      schedulePeriodicDomainReverify(0);
+      expect(setSpy.mock.calls[0][1]).toBe(
+        CONFIG_DOMAIN_REVERIFY_TICK_INTERVAL_MS,
+      );
+
+      setSpy.mockClear();
+      schedulePeriodicDomainReverify(Number.NaN);
+      expect(setSpy.mock.calls[0][1]).toBe(
+        CONFIG_DOMAIN_REVERIFY_TICK_INTERVAL_MS,
+      );
+    } finally {
+      stopPeriodicDomainReverify();
+      setSpy.mockRestore();
       vi.useRealTimers();
     }
   });

@@ -69,7 +69,7 @@ vi.mock("@/lib/notifications/notifications", () => ({
   sendNotificationEmail: (params: unknown) => mockSendNotificationEmail(params),
 }));
 
-const { passesApiKeyIpBinding, validateApiKey } =
+const { passesApiKeyIpBinding, validateApiKey, __resetLegacyKeyRowCache } =
   await import("@/lib/api/api-keys");
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 
@@ -96,6 +96,7 @@ beforeEach(() => {
   encryptedKeyRow = null;
   currentIp = "unknown";
   process.env.API_KEY_ENCRYPTION_KEY = "a".repeat(64);
+  __resetLegacyKeyRowCache();
   invalidateSettingsCache();
 });
 
@@ -247,6 +248,62 @@ describe("validateApiKey (integration: ip binding is wired into the real lookup)
   });
 });
 
+describe("validateApiKey (integration: account-state gate -- a suspended account's keys stop working)", () => {
+  const RAW_KEY =
+    "vr_live_test1111111111111111111111111111111111111111111111111111";
+
+  function keyRowForUser(extra: Row) {
+    return {
+      key_id: 9,
+      user_id: 3,
+      name: "CI key",
+      daily_limit: 50,
+      revoked_at: null,
+      key_encrypted: `enc:${RAW_KEY}`,
+      bound_ip: null,
+      email: "owner@example.com",
+      user_name: "Owner",
+      tos_accepted_at: new Date().toISOString(),
+      disabled_at: null,
+      ...extra,
+    };
+  }
+
+  it("rejects every key once FEATURE_API_KEYS is turned off, not just new ones", async () => {
+    // Turning the feature off used to gate only key creation, so an operator
+    // reacting to a leaked key found every existing key still working.
+    settingsRows = [{ key: "FEATURE_API_KEYS", value: "false" }];
+    encryptedKeyRow = keyRowForUser({});
+    const result = await validateApiKey(RAW_KEY);
+    expect(result).toBeNull();
+  });
+
+  it("selects the owner's disabled_at so the account state is available to the gate", async () => {
+    encryptedKeyRow = keyRowForUser({});
+    await validateApiKey(RAW_KEY);
+    expect(queries.some((q) => q.sql.includes("u.disabled_at"))).toBe(true);
+  });
+
+  it("returns the key while the owning account is in good standing", async () => {
+    encryptedKeyRow = keyRowForUser({});
+    const result = await validateApiKey(RAW_KEY);
+    expect(result?.keyId).toBe(9);
+  });
+
+  it("returns null once the owning account is suspended, even though the key itself is not revoked", async () => {
+    // The admin 'disable' action wipes sessions but never touches api_keys, and
+    // the cookie path re-checks disabled_at on every getSession(). Without this
+    // gate the Bearer path had no equivalent, so a user banned for abuse kept a
+    // working vr_live_... key: they could go on running scans and reading or
+    // deleting history while the admin panel showed the account as disabled.
+    encryptedKeyRow = keyRowForUser({
+      disabled_at: "2026-08-01T00:00:00.000Z",
+    });
+    const result = await validateApiKey(RAW_KEY);
+    expect(result).toBeNull();
+  });
+});
+
 describe("validateApiKey (integration: terms-of-service gating resolves through the runtime config)", () => {
   const RAW_KEY =
     "vr_live_test2222222222222222222222222222222222222222222222222222";
@@ -356,5 +413,48 @@ describe("validateApiKey (integration: scoping migration -- a pre-existing key w
 
     const result = await validateApiKey(RAW_KEY);
     expect(result?.scopes).toEqual(["scan:read"]);
+  });
+});
+
+/**
+ * An invalid key used to fall from the O(1) locator lookup straight into two
+ * full scans of the un-backfilled rows, one of them running a bcryptjs
+ * compare (cost 12, pure JS, main thread) per row. Since generateApiKey has
+ * always written a locator, the answer on a normal install is "there is
+ * nothing to scan", and that is now checked once and cached.
+ */
+describe("validateApiKey: legacy fallback scans", () => {
+  const RAW =
+    "vr_live_test0000000000000000000000000000000000000000000000000000";
+
+  it("skips both full scans when no locator-less row exists", async () => {
+    encryptedKeyRow = null;
+
+    const result = await validateApiKey(RAW);
+
+    expect(result).toBeNull();
+    const probes = queries.filter((q) => q.sql.includes("SELECT EXISTS"));
+    expect(probes).toHaveLength(1);
+    // Neither full scan of the locator-less rows was issued.
+    expect(
+      queries.filter(
+        (q) =>
+          q.sql.includes("ak.key_locator IS NULL") &&
+          !q.sql.includes("SELECT EXISTS") &&
+          !q.sql.startsWith("UPDATE"),
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("probes only once across repeated invalid keys", async () => {
+    encryptedKeyRow = null;
+
+    await validateApiKey(RAW);
+    await validateApiKey(RAW);
+    await validateApiKey(RAW);
+
+    expect(queries.filter((q) => q.sql.includes("SELECT EXISTS"))).toHaveLength(
+      1,
+    );
   });
 });

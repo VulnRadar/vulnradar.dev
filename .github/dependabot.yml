@@ -37,7 +37,6 @@ updates:
           - "clsx"
       scanning:
         patterns:
-          - "dompurify"
           - "jspdf"
           - "jspdf-autotable"
           - "recharts"
@@ -52,20 +51,30 @@ updates:
           - "input-otp"
           - "date-fns"
           - "server-only"
+      # No "bcrypt" pattern here: only bcryptjs is a dependency, so the bare
+      # name matched nothing and made the group look wider than it was. `jose`
+      # is in its place because it IS on the auth path (session and OAuth
+      # state token signing) and was the one real security dependency this
+      # group did not cover.
       security:
         patterns:
-          - "bcrypt"
           - "bcryptjs"
+          - "jose"
           - "jsonwebtoken"
           - "nodemailer"
           - "@neondatabase/serverless"
           - "pg"
           - "zod"
           - "@hookform/resolvers"
+      # No autoprefixer here: this project runs Tailwind v4's own pipeline
+      # through @tailwindcss/postcss (see postcss.config.mjs) and
+      # autoprefixer is not a dependency in any form, so the pattern only
+      # ever matched nothing. Same reason dompurify left the `scanning`
+      # group: it exists in the tree transitively under jspdf, never as a
+      # declared dependency.
       build:
         patterns:
           - "postcss"
-          - "autoprefixer"
           - "typescript"
           - "@types/*"
           - "tslib"
@@ -77,6 +86,86 @@ updates:
       # (its peer range caps at <6.1.0, so TS 7 breaks lint + typecheck).
       # Revisit when typescript-eslint ships TS 7 support.
       - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+
+  # The browser extension is a separate package with its own lockfile, and
+  # dependabot directories are NOT recursive, so the block above never saw
+  # it: 194 packages with no advisory monitoring of any kind. Note the
+  # absence of `--omit=dev` thinking here. Only 2 of those packages are
+  # runtime deps; the other 191 are vite, rollup, esbuild, sharp and
+  # archiver, which is the toolchain that emits content.js, the IIFE
+  # injected into every page the user visits. For the extension the dev
+  # tree IS the shipped tree, so all of it is watched.
+  #
+  # The other half of that separation, and the one that bites silently: npm
+  # `overrides` are scoped to the manifest that declares them and to that
+  # install tree only. The root package.json `overrides` block (postcss,
+  # sharp, brace-expansion, @typescript-eslint/*) does NOT reach
+  # extension/package-lock.json, and the two trees have already diverged on
+  # exactly that entry: postcss is 8.5.26 at the root, the pinned value, and
+  # 8.5.23 in the extension, which still runs postcss on every build.
+  # Nothing is exploitable at those versions today; the mechanism is the
+  # finding (AUDIT-013#subdeps-05). So: WHEN YOU ADD AN ENTRY TO THE ROOT
+  # `overrides` BLOCK IN REACTION TO AN ADVISORY, MIRROR IT INTO
+  # extension/package.json, or the artifact that ships to users' browsers
+  # keeps the vulnerable version and nothing reports it.
+  - package-ecosystem: "npm"
+    directory: "/extension"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/Chicago"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependabot"
+      - "dependencies"
+      - "extension"
+    groups:
+      extension-build:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Base images: the Dockerfile's node:22.x-alpine (build + runner stages)
+  # and the cosign image, plus postgres:16.x-alpine in both compose files.
+  # Every one of those pins is deliberate and commented "bump intentionally",
+  # but nothing opened the bump PR that assumed a human would remember, so
+  # the pins drifted a year behind published CVE fixes on their own. Patch
+  # and minor bumps land as PRs like any other dependency; majors are held
+  # so a Node or Postgres line change is a decision, not a merge.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/Chicago"
+    labels:
+      - "dependabot"
+      - "docker"
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "postgres"
+        update-types: ["version-update:semver-major"]
+
+  # Compose files are a separate ecosystem from the Dockerfile: the docker
+  # ecosystem above only reads Dockerfiles.
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/Chicago"
+    labels:
+      - "dependabot"
+      - "docker"
+    ignore:
+      - dependency-name: "postgres"
         update-types: ["version-update:semver-major"]
 
   # GitHub Actions themselves

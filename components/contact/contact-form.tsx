@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { API, ROUTES, TURNSTILE_ENABLED } from "@/lib/config/constants";
+import { API, ROUTES, TURNSTILE_ENABLED } from "@/lib/config/client-constants";
 import { CATEGORIES, STAFF_ROLES } from "./contact-types";
 import { TurnstileWidget } from "@/components/shared/turnstile-widget";
 

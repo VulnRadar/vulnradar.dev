@@ -5,6 +5,7 @@ import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronRight, Circle } from "lucide-react";
 
 import { cn } from "@/lib/ui/utils";
+import { toggles } from "@/lib/ui/animations";
 
 const DropdownMenu = DropdownMenuPrimitive.Root;
 
@@ -106,7 +107,10 @@ const DropdownMenuCheckboxItem = React.forwardRef<
     {...props}
   >
     <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
-      <DropdownMenuPrimitive.ItemIndicator>
+      {/* Radix mounts the indicator only while the item is checked, so the
+          tick had no state to transition from and simply blinked into place.
+          Same treatment as components/ui/checkbox.tsx. */}
+      <DropdownMenuPrimitive.ItemIndicator className={toggles.markIn}>
         <Check className="h-4 w-4" />
       </DropdownMenuPrimitive.ItemIndicator>
     </span>
@@ -129,7 +133,7 @@ const DropdownMenuRadioItem = React.forwardRef<
     {...props}
   >
     <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
-      <DropdownMenuPrimitive.ItemIndicator>
+      <DropdownMenuPrimitive.ItemIndicator className={toggles.markIn}>
         <Circle className="h-2 w-2 fill-current" />
       </DropdownMenuPrimitive.ItemIndicator>
     </span>

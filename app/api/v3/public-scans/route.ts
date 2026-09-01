@@ -8,14 +8,18 @@ import {
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
 import type { Vulnerability } from "@/lib/scanner/types";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
-import { getClientIp } from "@/lib/api/request-utils";
+import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
 
 interface PublicScanRow {
   url: string;
   scanned_at: string;
   share_token: string;
   summary: Record<string, number> | null;
-  findings: Vulnerability[] | null;
+  // Not the stored findings array: only the four fields getSafetyRating reads,
+  // projected in SQL. See the SELECT below for why.
+  findings:
+    | Pick<Vulnerability, "title" | "severity" | "aiVerdict" | "aiConfidence">[]
+    | null;
   findings_count: number;
   scanned_by: string | null;
   scanned_by_avatar: string | null;
@@ -46,7 +50,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // + per-row correlated subquery any anonymous visitor can hit.
   const ip = await getClientIp();
   const rateCheck = await checkRateLimit({
-    key: `public-scans:${ip}`,
+    key: `public-scans:${rateLimitIpKey(ip)}`,
     ...RATE_LIMITS.publicScans,
   });
   if (!rateCheck.allowed) {
@@ -74,14 +78,29 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const WHERE = `WHERE sh.share_token IS NOT NULL AND sh.share_publicly_listed = true
      AND (sh.share_expires_at IS NULL OR sh.share_expires_at > NOW())`;
 
-  const countRes = await pool.query<{ count: string }>(
-    `SELECT COUNT(*) FROM scan_history sh ${WHERE}`,
-  );
-  const total = parseInt(countRes.rows[0]?.count || "0", 10);
-  const totalPages = Math.max(1, Math.ceil(total / limit));
-
-  const rowsRes = await pool.query<PublicScanRow>(
-    `SELECT sh.url, sh.scanned_at, sh.share_token, sh.summary, sh.findings, sh.findings_count,
+  // perf: this route used to SELECT sh.findings, the fat TOASTed JSONB holding
+  // every finding object with its description, explanation, fixSteps and
+  // codeExamples, for up to 100 rows -- tens of MB detoasted and JSON-parsed
+  // per page, on an unauthenticated crawler-reachable endpoint, purely to
+  // produce one three-value verdict string per row. getSafetyRating reads only
+  // title, severity, aiVerdict and aiConfidence, so project exactly those four
+  // in SQL and leave the rest on disk. COALESCE guards a NULL findings column.
+  //
+  // The count and the page are also issued together rather than back to back:
+  // they are independent, and this route holds pool connections that every
+  // other request competes for (CONFIG_DB_POOL_MAX is 10).
+  const [countRes, rowsRes] = await Promise.all([
+    pool.query<{ count: string }>(
+      `SELECT COUNT(*) FROM scan_history sh ${WHERE}`,
+    ),
+    pool.query<PublicScanRow>(
+      `SELECT sh.url, sh.scanned_at, sh.share_token, sh.summary, sh.findings_count,
+            (SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                      'title', e->>'title',
+                      'severity', e->>'severity',
+                      'aiVerdict', e->'aiVerdict',
+                      'aiConfidence', e->'aiConfidence')), '[]'::jsonb)
+               FROM jsonb_array_elements(COALESCE(sh.findings, '[]'::jsonb)) e) as findings,
             u.name as scanned_by, u.avatar_url as scanned_by_avatar, u.role as scanned_by_role,
             COALESCE(
               (SELECT json_agg(json_build_object('tag', st.tag, 'source', st.source) ORDER BY st.source, st.tag)
@@ -93,8 +112,11 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
      ${WHERE}
      ORDER BY sh.scanned_at DESC
      LIMIT $1 OFFSET $2`,
-    [limit, offset],
-  );
+      [limit, offset],
+    ),
+  ]);
+  const total = parseInt(countRes.rows[0]?.count || "0", 10);
+  const totalPages = Math.max(1, Math.ceil(total / limit));
 
   const scans = rowsRes.rows.map((row) => ({
     token: row.share_token,

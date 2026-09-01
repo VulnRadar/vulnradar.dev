@@ -23,7 +23,7 @@ import {
   API_KEY_SCOPE_LABELS,
   resolveApiKeyScopes,
   type ApiKeyScope,
-} from "@/lib/config/constants";
+} from "@/lib/config/client-constants";
 import type { ApiKey } from "@/components/profile/types";
 import type { ConfirmAction } from "./types";
 
@@ -185,7 +185,10 @@ export function ApiKeysSection({
         <div
           ref={newKeyPanelRef}
           tabIndex={-1}
-          className="rounded-xl border border-primary/40 bg-primary/5 p-4 sm:p-5 flex flex-col gap-3 outline-hidden"
+          // a11y (SC 2.4.7): focused by script when a new key is revealed;
+          // same fix and same reasoning as the backup-codes panel in
+          // components/profile/tabs/profile-security-tab.tsx.
+          className="rounded-xl border border-primary/40 bg-primary/5 p-4 sm:p-5 flex flex-col gap-3 focus:outline-hidden focus:ring-2 focus:ring-inset focus:ring-ring"
         >
           <div className="flex items-start gap-2.5">
             <Key

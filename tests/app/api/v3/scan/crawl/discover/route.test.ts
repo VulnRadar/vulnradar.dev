@@ -41,6 +41,20 @@ vi.mock("@/lib/scanner/safe-fetch", () => ({
   safeFetch: (...args: unknown[]) => mockSafeFetch(...args),
 }));
 
+// Authenticated discovery (AUDIT-011#drift-21): the login itself and the
+// verified-domain lookup are the two boundaries this route crosses for an
+// `auth` block, so both are stubbed and the route's own gating is real.
+const mockEstablishScanSession = vi.fn();
+vi.mock("@/lib/scanner/auth/login", () => ({
+  establishScanSession: (...args: unknown[]) =>
+    mockEstablishScanSession(...args),
+}));
+
+const mockIsUrlOwnedByUser = vi.fn();
+vi.mock("@/lib/domains/scope", () => ({
+  isUrlOwnedByUser: (...args: unknown[]) => mockIsUrlOwnedByUser(...args),
+}));
+
 const { POST } = await import("@/app/api/v3/scan/crawl/discover/route");
 
 function postRequest(body: unknown, headers: Record<string, string> = {}) {
@@ -78,7 +92,29 @@ beforeEach(() => {
   mockSafeFetch.mockImplementation(async (url: string) =>
     htmlResponse(url, "<html><body>empty</body></html>"),
   );
+  mockEstablishScanSession.mockReset();
+  mockEstablishScanSession.mockResolvedValue({
+    ok: true,
+    session: {
+      origin: "https://example.com",
+      authType: "cookie",
+      lost: false,
+      headersFor: () => ({}),
+    },
+  });
+  mockIsUrlOwnedByUser.mockReset();
+  mockIsUrlOwnedByUser.mockResolvedValue(true);
 });
+
+const COOKIE_AUTH = {
+  method: "cookie",
+  cookies: [{ name: "session_id", value: "abc123" }],
+};
+const FORM_AUTH = {
+  method: "form",
+  username: "tester",
+  password: "hunter2",
+};
 
 describe("POST /api/v3/scan/crawl/discover: auth", () => {
   it("rejects an unauthenticated request before rate limiting or fetching", async () => {
@@ -188,6 +224,88 @@ describe("POST /api/v3/scan/crawl/discover: request validation", () => {
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json.error).toBe("Only http and https URLs are allowed");
+  });
+});
+
+describe("POST /api/v3/scan/crawl/discover: authenticated discovery", () => {
+  it("never signs in when no auth block is supplied", async () => {
+    const res = await POST(postRequest({ url: "https://example.com/" }));
+
+    expect(res.status).toBe(200);
+    expect(mockEstablishScanSession).not.toHaveBeenCalled();
+    // Third positional arg only: no session is threaded into safeFetch.
+    expect(mockSafeFetch).toHaveBeenCalledWith(
+      "https://example.com/",
+      expect.objectContaining({ method: "GET" }),
+      ["example.com"],
+    );
+  });
+
+  it("signs in and threads the session into every discovery fetch", async () => {
+    const res = await POST(
+      postRequest({ url: "https://example.com/", auth: COOKIE_AUTH }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockEstablishScanSession).toHaveBeenCalledTimes(1);
+    expect(mockSafeFetch).toHaveBeenCalledWith(
+      "https://example.com/",
+      expect.objectContaining({ method: "GET" }),
+      ["example.com"],
+      expect.objectContaining({ origin: "https://example.com" }),
+    );
+  });
+
+  it("rejects a form login against a domain the caller has not verified", async () => {
+    mockIsUrlOwnedByUser.mockResolvedValue(false);
+
+    const res = await POST(
+      postRequest({ url: "https://example.com/", auth: FORM_AUTH }),
+    );
+
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.statusCode).toBe("DOMAIN_NOT_VERIFIED");
+    // The credential-stuffing oracle is closed before any login is attempted.
+    expect(mockEstablishScanSession).not.toHaveBeenCalled();
+  });
+
+  it("does not gate header or cookie auth on domain verification", async () => {
+    mockIsUrlOwnedByUser.mockResolvedValue(false);
+
+    const res = await POST(
+      postRequest({ url: "https://example.com/", auth: COOKIE_AUTH }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockEstablishScanSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns 422 with a non-secret reason when the login fails", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: false,
+      reason: "The login page did not accept those credentials.",
+    });
+
+    const res = await POST(
+      postRequest({ url: "https://example.com/", auth: COOKIE_AUTH }),
+    );
+
+    expect(res.status).toBe(422);
+    const json = await res.json();
+    expect(json.statusCode).toBe("AUTH_FAILED");
+    expect(json.error).toContain("did not accept those credentials");
+    expect(JSON.stringify(json)).not.toContain("abc123");
+    expect(mockSafeFetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed auth block before attempting a login", async () => {
+    const res = await POST(
+      postRequest({ url: "https://example.com/", auth: { method: "cookie" } }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(mockEstablishScanSession).not.toHaveBeenCalled();
   });
 });
 

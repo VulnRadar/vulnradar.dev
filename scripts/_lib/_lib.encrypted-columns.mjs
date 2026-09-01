@@ -7,9 +7,10 @@
  * Found by grepping the codebase for every `encryptApiKey(`/
  * `decryptApiKey(` call site (not by guessing): lib/api/api-keys.ts,
  * lib/discord/discord-utils.ts, app/api/v3/auth/discord/callback/route.ts,
- * app/api/v3/account/ai-config/route.ts, plus lib/auth/security-migration.ts
+ * app/api/v3/account/ai-config/route.ts, lib/github/github-connections.ts,
+ * lib/webhooks/secret.ts, plus lib/auth/security-migration.ts
  * and the 2FA routes (users.totp_secret, already owned by
- * scripts/db-diagnose-2fa.mjs / scripts/db-repair-2fa.mjs -- deliberately
+ * scripts/maintenance/db-diagnose-2fa.mjs / scripts/maintenance/db-repair-2fa.mjs -- deliberately
  * NOT listed here to avoid reporting or repairing it twice; see
  * db-diagnose.mjs, which calls into the 2FA tool directly and folds its
  * summary into this tool's report instead of reimplementing it).
@@ -79,5 +80,33 @@ export const ENCRYPTED_COLUMNS = [
     nullable: true,
     repairKind: "clear_column",
     source: "app/api/v3/account/ai-config/route.ts",
+  },
+  {
+    // github_connections.access_token_encrypted was missing from this
+    // registry from the start, so db:diagnose has never inspected it even
+    // though lib/github/github-connections.ts encrypts it with the same
+    // helper as everything else here. NOT NULL (instrumentation.ts:2216),
+    // so clearing is not an option; the precedent for delete_row is the
+    // same as Discord's, a disconnect the user can already perform
+    // themselves (lib/github/github-connections.ts:121 is
+    // `DELETE FROM github_connections WHERE user_id = $1`), and
+    // reconnecting GitHub produces exactly this outcome anyway.
+    table: "github_connections",
+    column: "access_token_encrypted",
+    nullable: false,
+    repairKind: "delete_row",
+    source: "lib/github/github-connections.ts",
+  },
+  {
+    // Added when the webhook signing secret moved from plaintext to
+    // AES-256-GCM. Nullable, and lib/webhooks/delivery.ts already handles a
+    // null secret by delivering the payload unsigned and logging why, so
+    // clearing an undecryptable value degrades exactly as the delivery path
+    // already expects rather than dropping the webhook.
+    table: "webhooks",
+    column: "secret",
+    nullable: true,
+    repairKind: "clear_column",
+    source: "lib/webhooks/secret.ts",
   },
 ];

@@ -18,8 +18,13 @@ import {
   canMakeRequest,
   incrementDailyCountCapped,
 } from "@/lib/rate-limiting/daily-limits";
+import { withInlineScanSlot } from "@/lib/rate-limiting/concurrent-scans";
 import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
 import { logAction } from "@/lib/auth/authorization";
+import {
+  resolveNewScanTeamIds,
+  attachNewScanTeams,
+} from "@/lib/teams/scan-teams";
 import pool from "@/lib/database/db";
 import {
   APP_NAME,
@@ -127,6 +132,16 @@ function buildRequestSchema(opts: {
     // path that does NOT fall back to scan_history.is_public's normal true
     // default or the account-level "scans are private by default" setting.
     isPublic: z.boolean().optional(),
+    // Optional teams to share the resulting scan with. Omitted (or empty)
+    // means a personal scan, which is what every scan-creation path used to
+    // produce unconditionally: none of them wrote scan_history.team_id, so
+    // no team could ever see a member's scans. Validated against the
+    // caller's own assignable teams below, never trusted.
+    //
+    // teamId is the original single-valued form and still works; teamIds is
+    // the multi-team form. Sending both is rejected in resolveNewScanTeamIds.
+    teamId: z.number().int().positive().nullable().optional(),
+    teamIds: z.array(z.number().int().positive()).optional(),
   });
 }
 
@@ -296,6 +311,19 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // reaches host_reputation and the public /host/[hostname] page --
   // never a default, from either direction.
   const requestedIsPublic = parsed.data.isPublic === true;
+  // Both auth branches above either return early or assign authedUserId;
+  // this guard only exists so TypeScript treats it as a plain number from
+  // here on, the same shape POST /api/v3/scan uses.
+  if (authedUserId === null) {
+    return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
+  }
+  const teamAssignment = await resolveNewScanTeamIds(authedUserId, {
+    teamId: parsed.data.teamId,
+    teamIds: parsed.data.teamIds,
+  });
+  if (!teamAssignment.ok) {
+    return ApiResponse.badRequest(teamAssignment.error);
+  }
   // Credential material lives only in this local variable for the rest of
   // the request. It is never assigned anywhere that outlives this handler:
   // not a module-level variable, not a cache, not a return value.
@@ -312,239 +340,274 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     return ApiResponse.forbidden("This target cannot be scanned.");
   }
 
-  // Domain ownership: same gate as POST /api/v3/scan -- see that route's
-  // own comment for why active-probes needs this and the others don't.
-  // Checked before establishScanSession below runs, since an unverified
-  // target should never even get a login attempt for this purpose.
+  // Domain ownership. Two separate reasons to demand it, both checked
+  // before establishScanSession runs so an unverified target never gets a
+  // login attempt:
+  //
+  // 1. Active probing, the same gate POST /api/v3/scan applies (see that
+  //    route's own comment).
+  // 2. Form login. `method: "form"` takes a caller-supplied username and
+  //    password and POSTs them to the target's own login form, scraping the
+  //    CSRF token first, then reports back distinguishably whether the
+  //    credentials were rejected, accepted, or left the login form up. That
+  //    is a credential-stuffing proxy with a built-in success oracle, run
+  //    from this server's IP against a site the caller need never have
+  //    proven any relationship to. Header and cookie auth are excluded: the
+  //    caller is supplying a session or token they already hold, not
+  //    submitting credentials to a login form for validation.
+  const submitsCredentials = auth.method === "form";
+  const wantsActiveProbing = requestsActiveProbing(scanners);
   if (
-    requestsActiveProbing(scanners) &&
-    authedUserId !== null &&
+    (wantsActiveProbing || submitsCredentials) &&
     !(await isUrlOwnedByUser(url, authedUserId))
   ) {
     return NextResponse.json(
       {
-        error:
-          "Active probing requires a verified domain. Verify ownership of this domain (or its parent) in Profile > Domains before requesting active-probes.",
+        error: wantsActiveProbing
+          ? "Active probing requires a verified domain. Verify ownership of this domain (or its parent) in Profile > Domains before requesting active-probes."
+          : "A form login submits the username and password you supply to the target's own login page, so it requires a verified domain. Verify ownership of this domain (or its parent) in Profile > Domains, or use header or cookie authentication with a session you already hold.",
         statusCode: "DOMAIN_NOT_VERIFIED",
       },
       { status: 403 },
     );
   }
 
-  const loginResult = await establishScanSession(auth, url);
-  if (!loginResult.ok) {
-    const authReport: ScanAuthReport = {
-      status: "failed",
-      method: auth.method,
-      reason: loginResult.reason,
-    };
-    return NextResponse.json(
-      {
-        error: `Authenticated scan aborted: ${loginResult.reason}`,
-        status: 422,
-        authReport,
-      },
-      { status: 422 },
-    );
-  }
-  const session = loginResult.session;
-
-  // The authenticated session is established and the target validated, so the
-  // scan is genuinely going ahead now -- charge the daily quota here rather
-  // than up front, capped + atomic so a concurrent scan can't exceed the cap.
-  if (chargeDailyQuota && authedUserId) {
-    await incrementDailyCountCapped(authedUserId, dailyQuotaLimit);
-  }
-
-  const startTime = Date.now();
-  let responseBody = "";
-  let headers = new Headers();
-  let finalScanUrl = url;
-  try {
-    const response = await safeFetch(
-      url,
-      {
-        method: "GET",
-        headers: {
-          "User-Agent": `${APP_NAME}/1.0 (Security Scanner; Authenticated)`,
+  // abuse: take one concurrency slot for the rest of this request. An
+  // authenticated scan runs INLINE and only inserts its scan_history row
+  // once it has finished, already 'completed', so the row-count limiter
+  // every other scan path uses could never see one running: the per-plan
+  // concurrentScans cap simply did not apply here. Taken after the target
+  // and ownership gates so a rejected request never holds a slot.
+  const slotted = await withInlineScanSlot(authedUserId, async () => {
+    const loginResult = await establishScanSession(auth, url);
+    if (!loginResult.ok) {
+      const authReport: ScanAuthReport = {
+        status: "failed",
+        method: auth.method,
+        reason: loginResult.reason,
+      };
+      return NextResponse.json(
+        {
+          error: `Authenticated scan aborted: ${loginResult.reason}`,
+          status: 422,
+          authReport,
         },
-        redirect: "follow",
-        signal: AbortSignal.timeout(fetchTimeoutMs),
-      },
-      [new URL(url).hostname],
-      session,
-    );
-    responseBody = await readCappedBody(response, MAX_BODY_SIZE);
-    headers = response.headers;
-    // safeFetch restricts any redirect it follows to the same host (see its
-    // own comment), so this is never a different site -- only a different
-    // path/query on the one that was requested. Recorded separately from
-    // `url` so every check below keeps running against the URL that was
-    // actually requested; only scan_history's stored identity changes.
-    if (response.url && response.url !== url) {
-      finalScanUrl = response.url;
+        { status: 422 },
+      );
     }
-  } catch (fetchError) {
-    const message =
-      fetchError instanceof Error ? fetchError.message : "Unknown error";
-    return ApiResponse.error(
-      `Could not reach the target URL while authenticated: ${message}`,
-      502,
+    const session = loginResult.session;
+
+    // The authenticated session is established and the target validated, so the
+    // scan is genuinely going ahead now -- charge the daily quota here rather
+    // than up front, capped + atomic so a concurrent scan can't exceed the cap.
+    if (chargeDailyQuota && authedUserId) {
+      await incrementDailyCountCapped(authedUserId, dailyQuotaLimit);
+    }
+
+    const startTime = Date.now();
+    let responseBody = "";
+    let headers = new Headers();
+    let finalScanUrl = url;
+    try {
+      const response = await safeFetch(
+        url,
+        {
+          method: "GET",
+          headers: {
+            "User-Agent": `${APP_NAME}/1.0 (Security Scanner; Authenticated)`,
+          },
+          redirect: "follow",
+          signal: AbortSignal.timeout(fetchTimeoutMs),
+        },
+        [new URL(url).hostname],
+        session,
+      );
+      responseBody = await readCappedBody(response, MAX_BODY_SIZE);
+      headers = response.headers;
+      // safeFetch restricts any redirect it follows to the same host (see its
+      // own comment), so this is never a different site -- only a different
+      // path/query on the one that was requested. Recorded separately from
+      // `url` so every check below keeps running against the URL that was
+      // actually requested; only scan_history's stored identity changes.
+      if (response.url && response.url !== url) {
+        finalScanUrl = response.url;
+      }
+    } catch (fetchError) {
+      const message =
+        fetchError instanceof Error ? fetchError.message : "Unknown error";
+      return ApiResponse.error(
+        `Could not reach the target URL while authenticated: ${message}`,
+        502,
+      );
+    }
+
+    const bodyForChecks =
+      responseBody.length > 1_000_000
+        ? responseBody.slice(0, 1_000_000)
+        : responseBody;
+
+    // Same engine the unauthenticated scan routes use, so an authenticated
+    // scan gets the same PageCheck coverage (JWT inspection, CSP/XFO
+    // contradictions, form security, etc.) instead of only the legacy
+    // header/body checks. This matters more here, not less: the whole point
+    // of authenticating is to see the page a logged-out scan can't reach.
+    const syncResult = runSyncChecks(
+      url,
+      headers,
+      bodyForChecks,
+      (scanners as Category[] | undefined) ?? null,
     );
-  }
+    const syncFindings: Vulnerability[] = syncResult.findings;
 
-  const bodyForChecks =
-    responseBody.length > 1_000_000
-      ? responseBody.slice(0, 1_000_000)
-      : responseBody;
+    let asyncFindings: Vulnerability[] = [];
+    try {
+      asyncFindings = await Promise.race([
+        runAsyncChecks(url, scanners ?? null),
+        new Promise<Vulnerability[]>((resolve) =>
+          setTimeout(() => resolve([]), asyncChecksTimeoutMs),
+        ),
+      ]);
+    } catch {
+      /* non-fatal */
+    }
 
-  // Same engine the unauthenticated scan routes use, so an authenticated
-  // scan gets the same PageCheck coverage (JWT inspection, CSP/XFO
-  // contradictions, form security, etc.) instead of only the legacy
-  // header/body checks. This matters more here, not less: the whole point
-  // of authenticating is to see the page a logged-out scan can't reach.
-  const syncResult = runSyncChecks(
-    url,
-    headers,
-    bodyForChecks,
-    (scanners as Category[] | undefined) ?? null,
-  );
-  const syncFindings: Vulnerability[] = syncResult.findings;
-
-  let asyncFindings: Vulnerability[] = [];
-  try {
-    asyncFindings = await Promise.race([
-      runAsyncChecks(url, scanners ?? null),
-      new Promise<Vulnerability[]>((resolve) =>
-        setTimeout(() => resolve([]), asyncChecksTimeoutMs),
-      ),
-    ]);
-  } catch {
-    /* non-fatal */
-  }
-
-  const findings = [...syncFindings, ...asyncFindings].sort(
-    (a, b) => SEVERITY_PRIORITY[b.severity] - SEVERITY_PRIORITY[a.severity],
-  );
-
-  const summary = {
-    critical: findings.filter((f) => f.severity === SEVERITY_LEVELS.CRITICAL)
-      .length,
-    high: findings.filter((f) => f.severity === SEVERITY_LEVELS.HIGH).length,
-    medium: findings.filter((f) => f.severity === SEVERITY_LEVELS.MEDIUM)
-      .length,
-    low: findings.filter((f) => f.severity === SEVERITY_LEVELS.LOW).length,
-    info: findings.filter((f) => f.severity === SEVERITY_LEVELS.INFO).length,
-    total: findings.length,
-  };
-
-  const duration = Date.now() - startTime;
-  const capturedHeaders: Record<string, string> = {};
-  headers.forEach((value, key) => {
-    capturedHeaders[key] = value;
-  });
-  const redactedHeaders = redactSensitiveResponseHeaders(capturedHeaders);
-
-  const authReport: ScanAuthReport = {
-    status: session.lost ? "lost" : "authenticated",
-    method: auth.method,
-    reason: session.lost ? (session.reason ?? undefined) : undefined,
-  };
-
-  // Headline signals, same as a normal scan (getDangerScore/getEngineConfidence
-  // are pure over the findings). Without these an authenticated scan showed
-  // only duration + scanned time on the summary; they are also stored in
-  // result_meta so the History view of this scan matches every other result.
-  const dangerScore = getDangerScore(findings);
-  const engineConfidence = getEngineConfidence(findings);
-  const resultMeta = { dangerScore, engineConfidence };
-
-  let scanHistoryId: number | null = null;
-  try {
-    // Never a credential_id column, never any credential material: only
-    // the boolean fact that this scan ran authenticated.
-    const insertResult = await pool.query(
-      `INSERT INTO scan_history
-         (user_id, url, summary, findings, findings_count, duration, scanned_at,
-          source, response_headers, notes, authenticated, is_public, result_meta)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8, $9, true, $10, $11)
-       RETURNING id`,
-      [
-        authedUserId,
-        finalScanUrl,
-        JSON.stringify(summary),
-        JSON.stringify(findings),
-        summary.total,
-        duration,
-        isApiKeyAuth ? "api" : "web",
-        JSON.stringify(redactedHeaders),
-        DEFAULT_SCAN_NOTE,
-        requestedIsPublic,
-        JSON.stringify(resultMeta),
-      ],
+    const findings = [...syncFindings, ...asyncFindings].sort(
+      (a, b) => SEVERITY_PRIORITY[b.severity] - SEVERITY_PRIORITY[a.severity],
     );
-    scanHistoryId = insertResult.rows[0]?.id ?? null;
-  } catch (err) {
-    console.error(
-      "[scan/authenticated] Failed to save scan history:",
-      err instanceof Error ? err.message : err,
-    );
-  }
 
-  // Host-level reputation cache for the browser extension's popup and the
-  // public /host/[hostname] page. Authenticated scans write scan_history
-  // directly instead of going through lib/scanner/scan-jobs.ts's
-  // finalizeScanSuccess, so it upserts here too -- skipped for a scan the
-  // caller asked to keep private (scan_history.is_public).
-  if (requestedIsPublic) {
-    void upsertHostReputation({
-      url: finalScanUrl,
+    const summary = {
+      critical: findings.filter((f) => f.severity === SEVERITY_LEVELS.CRITICAL)
+        .length,
+      high: findings.filter((f) => f.severity === SEVERITY_LEVELS.HIGH).length,
+      medium: findings.filter((f) => f.severity === SEVERITY_LEVELS.MEDIUM)
+        .length,
+      low: findings.filter((f) => f.severity === SEVERITY_LEVELS.LOW).length,
+      info: findings.filter((f) => f.severity === SEVERITY_LEVELS.INFO).length,
+      total: findings.length,
+    };
+
+    const duration = Date.now() - startTime;
+    const capturedHeaders: Record<string, string> = {};
+    headers.forEach((value, key) => {
+      capturedHeaders[key] = value;
+    });
+    const redactedHeaders = redactSensitiveResponseHeaders(capturedHeaders);
+
+    const authReport: ScanAuthReport = {
+      status: session.lost ? "lost" : "authenticated",
+      method: auth.method,
+      reason: session.lost ? (session.reason ?? undefined) : undefined,
+    };
+
+    // Headline signals, same as a normal scan (getDangerScore/getEngineConfidence
+    // are pure over the findings). Without these an authenticated scan showed
+    // only duration + scanned time on the summary; they are also stored in
+    // result_meta so the History view of this scan matches every other result.
+    const dangerScore = getDangerScore(findings);
+    const engineConfidence = getEngineConfidence(findings);
+    const resultMeta = { dangerScore, engineConfidence };
+
+    let scanHistoryId: number | null = null;
+    try {
+      // Never a credential_id column, never any credential material: only
+      // the boolean fact that this scan ran authenticated.
+      const insertResult = await pool.query(
+        `INSERT INTO scan_history
+           (user_id, url, summary, findings, findings_count, duration, scanned_at,
+            source, response_headers, notes, authenticated, is_public, result_meta, team_id)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8, $9, true, $10, $11, $12)
+         RETURNING id`,
+        [
+          authedUserId,
+          finalScanUrl,
+          JSON.stringify(summary),
+          JSON.stringify(findings),
+          summary.total,
+          duration,
+          isApiKeyAuth ? "api" : "web",
+          JSON.stringify(redactedHeaders),
+          DEFAULT_SCAN_NOTE,
+          requestedIsPublic,
+          JSON.stringify(resultMeta),
+          teamAssignment.primaryTeamId,
+        ],
+      );
+      scanHistoryId = insertResult.rows[0]?.id ?? null;
+      // The INSERT above carries the primary team; this writes the rest of
+      // the set into scan_history_teams and is a no-op below two teams.
+      if (scanHistoryId !== null) {
+        await attachNewScanTeams(scanHistoryId, teamAssignment.teamIds);
+      }
+    } catch (err) {
+      console.error(
+        "[scan/authenticated] Failed to save scan history:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+
+    // Host-level reputation cache for the browser extension's popup and the
+    // public /host/[hostname] page. Authenticated scans write scan_history
+    // directly instead of going through lib/scanner/scan-jobs.ts's
+    // finalizeScanSuccess, so it upserts here too -- skipped for a scan the
+    // caller asked to keep private (scan_history.is_public).
+    if (requestedIsPublic) {
+      void upsertHostReputation({
+        url: finalScanUrl,
+        findings,
+        summary,
+        responseHeaders: redactedHeaders,
+        scanId: scanHistoryId,
+        scannedAt: new Date().toISOString(),
+      });
+    }
+
+    // Auto tags (lib/tags/auto-tags.ts): unlike host_reputation above, not
+    // gated on requestedIsPublic -- they're personal to the user's own scan
+    // record, not the public reputation cache, so a private authenticated
+    // scan still gets tagged. Fire-and-forget: never blocks or fails the
+    // scan response, matching upsertHostReputation's own contract. Chained
+    // (not a second independent `void` call) so maybeSuggestAiTag only fires
+    // once saveAutoTags' own INSERT has resolved -- by then this route's
+    // scan_history row (written whole, in one INSERT, no pending/running
+    // status flip) is already committed, so it's always safe to fire right
+    // after. See maybeSuggestAiTag's own comment for why that ordering
+    // matters for the job-based scan/crawl routes too.
+    if (scanHistoryId) {
+      const savedScanId = scanHistoryId;
+      void saveAutoTags(savedScanId, authedUserId, findings).then((tags) => {
+        void maybeSuggestAiTag(savedScanId, authedUserId, tags, findings);
+      });
+    }
+
+    // Audit the fact that an authenticated scan ran, never the credential
+    // used to achieve it: no username, no password, no header value, no
+    // cookie value ever reaches this string.
+    await logAction(
+      authedUserId,
+      authedUserId,
+      "scan.authenticated",
+      `Ran an authenticated scan of ${new URL(url).origin} (${auth.method} auth, result: ${authReport.status}).`,
+    );
+
+    return ApiResponse.success({
+      scanHistoryId,
+      url,
+      scannedAt: new Date().toISOString(),
+      duration,
       findings,
       summary,
       responseHeaders: redactedHeaders,
-      scanId: scanHistoryId,
-      scannedAt: new Date().toISOString(),
+      authReport,
+      dangerScore,
+      engineConfidence,
     });
-  }
-
-  // Auto tags (lib/tags/auto-tags.ts): unlike host_reputation above, not
-  // gated on requestedIsPublic -- they're personal to the user's own scan
-  // record, not the public reputation cache, so a private authenticated
-  // scan still gets tagged. Fire-and-forget: never blocks or fails the
-  // scan response, matching upsertHostReputation's own contract. Chained
-  // (not a second independent `void` call) so maybeSuggestAiTag only fires
-  // once saveAutoTags' own INSERT has resolved -- by then this route's
-  // scan_history row (written whole, in one INSERT, no pending/running
-  // status flip) is already committed, so it's always safe to fire right
-  // after. See maybeSuggestAiTag's own comment for why that ordering
-  // matters for the job-based scan/crawl routes too.
-  if (scanHistoryId) {
-    const savedScanId = scanHistoryId;
-    void saveAutoTags(savedScanId, authedUserId, findings).then((tags) => {
-      void maybeSuggestAiTag(savedScanId, authedUserId, tags, findings);
-    });
-  }
-
-  // Audit the fact that an authenticated scan ran, never the credential
-  // used to achieve it: no username, no password, no header value, no
-  // cookie value ever reaches this string.
-  await logAction(
-    authedUserId,
-    authedUserId,
-    "scan.authenticated",
-    `Ran an authenticated scan of ${new URL(url).origin} (${auth.method} auth, result: ${authReport.status}).`,
-  );
-
-  return ApiResponse.success({
-    scanHistoryId,
-    url,
-    scannedAt: new Date().toISOString(),
-    duration,
-    findings,
-    summary,
-    responseHeaders: redactedHeaders,
-    authReport,
-    dangerScore,
-    engineConfidence,
   });
+  if (!slotted.ok) {
+    // Same body shape POST /api/v3/scan returns for the same condition.
+    return NextResponse.json(
+      { error: slotted.check.message, statusCode: "CONCURRENT_SCAN_LIMIT" },
+      { status: 429 },
+    );
+  }
+  return slotted.value;
 });

@@ -3,13 +3,28 @@
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Home, ArrowLeft } from "lucide-react";
+import { useEffect, useState } from "react";
 import { ThemedLogo } from "@/components/shared/themed-logo";
+import { hasCachedSignIn } from "@/components/shared/auth-cache-client";
 import { Button } from "@/components/ui/button";
-import { APP_NAME, ROUTES } from "@/lib/config/constants";
+import { APP_NAME, ROUTES } from "@/lib/config/client-constants";
 import { focus, transitions } from "@/lib/ui/animations";
 
+/**
+ * Shares its composition with app/error.tsx (500) and app/global-error.tsx
+ * (the literal-hex boundary that replaces <html> itself). Change one, change
+ * all three.
+ */
 export default function NotFound() {
   const router = useRouter();
+  // Resolved after mount so the server-rendered HTML and the first client
+  // render agree (localStorage does not exist on the server).
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reads localStorage, which is external to React and unavailable during render
+    setIsLoggedIn(hasCachedSignIn());
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background px-4">
@@ -43,10 +58,14 @@ export default function NotFound() {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3 w-full">
+          {/* The primary action used to be an unconditional link to the
+              dashboard, which for the logged-out visitor who lands here from a
+              dead /checks or /alternatives URL is a bounce straight to the
+              login screen. Send signed-out visitors home instead. */}
           <Button asChild variant="default" className="flex-1 gap-2">
-            <Link href={ROUTES.DASHBOARD}>
+            <Link href={isLoggedIn ? ROUTES.DASHBOARD : ROUTES.HOME}>
               <Home className="h-4 w-4" aria-hidden="true" />
-              Go to Dashboard
+              {isLoggedIn ? "Go to Dashboard" : "Go to the home page"}
             </Link>
           </Button>
           <Button

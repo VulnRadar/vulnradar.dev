@@ -1,6 +1,6 @@
 # VulnRadar Scanner Checks: AI Index (compact)
 
-_Compact index auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-25._
+_Compact index auto-compiled from `lib/scanner/checks-data/*.json` on 2026-09-01._
 
 One line per check. Format: `[severity] check-id - title`.
 Full details (fix steps, code examples, references) live in
@@ -35,10 +35,10 @@ remediation documentation in the docs.
 - [info    ] `api-rest-allow-methods-patch-no-auth` [header] - PATCH method listed in Allow header
 - [low     ] `api-rest-allow-methods-options-exposed` [header] - OPTIONS response exposes full method allowlist
 - [medium  ] `api-graphql-introspection-enabled` [combined] - GraphQL introspection enabled in production
-- [medium  ] `api-graphql-batch-queries` [body-pattern] - GraphQL batch (array) queries accepted
+- [medium  ] `api-graphql-batch-queries` [combined] - GraphQL batch (array) queries accepted
 - [medium  ] `api-graphql-error-stack-trace` [combined] - GraphQL error response leaks stack trace
 - [high    ] `api-openapi-security-scheme-weak` [combined] - OpenAPI security scheme is weak or missing
-- [medium  ] `api-openapi-default-values-sensitive` [body-pattern] - OpenAPI schema declares defaults for sensitive fields
+- [medium  ] `api-openapi-default-values-sensitive` [combined] - OpenAPI schema declares defaults for sensitive fields
 - [critical] `api-jwt-hs256-weak-secret` [body-pattern] - JWT HS256 signed with weak or hard-coded secret
 - [low     ] `api-cors-preflight-cache-over-24h` [header] - CORS preflight cache exceeds 24 hours
 - [medium  ] `api-rate-limit-per-ip-no-auth` [header] - Rate-limit keyed only on client IP, no auth required
@@ -66,7 +66,7 @@ remediation documentation in the docs.
 - [high    ] `postmessage-no-origin-check` [body-pattern] - postMessage Without Origin Validation
 - [high    ] `localstorage-sensitive-data` [body-pattern] - Sensitive Data Stored in localStorage
 - [high    ] `dom-xss-location-hash` [body-pattern] - DOM XSS via location.hash Assignment
-- [high    ] `cs-document-write-usage` [body-pattern] - document.write() Usage Detected
+- [high    ] `cs-document-write-usage` [body-pattern] - document.write() in Page Scripts
 - [high    ] `eval-in-client-script` [body-pattern] - eval() in Client-Side JavaScript
 - [medium  ] `third-party-script-no-sri` [body-pattern] - External Script Without Subresource Integrity
 - [medium  ] `source-map-exposed-production` [body-pattern] - JavaScript Source Map Exposed in Production
@@ -106,7 +106,7 @@ remediation documentation in the docs.
 - [high    ] `ssti-indicators` [body-pattern] - Template Injection Indicators
 - [high    ] `code-xss-template-tag` [body-pattern] - Tagged Template Literal With Interpolation (html/svg)
 - [medium  ] `command-injection-indicators` [body-pattern] - Command Injection Parameter Names
-- [high    ] `eval-usage` [body-pattern] - eval() Usage Detected
+- [high    ] `eval-usage` [body-pattern] - eval() Code Injection Risk
 - [high    ] `function-constructor` [body-pattern] - Function Constructor Usage
 - [medium  ] `settimeout-string` [body-pattern] - setTimeout/setInterval with String
 - [critical] `code-cmdi-exec` [body-pattern] - child_process.exec with concatenated command string
@@ -192,7 +192,7 @@ remediation documentation in the docs.
 - [critical] `code-cloud-aws-hardcoded-credentials` [body-pattern] - Hardcoded AWS credentials in @aws-sdk
 - [high    ] `code-cloud-aws-s3-upload-no-acl` [body-pattern] - S3 upload without ACL restriction
 - [high    ] `code-cloud-azure-blob-upload-no-acl` [body-pattern] - Azure Blob upload with container public access
-- [high    ] `insecure-crypto` [body-pattern] - Weak or broken cryptography detected
+- [high    ] `insecure-crypto` [body-pattern] - Weak cryptography protecting secrets and tokens
 - [critical] `sql-injection-patterns` [body-pattern] - SQL injection pattern in source
 - [high    ] `ssrf-vulnerability` [body-pattern] - Server-Side Request Forgery (SSRF) indicators
 - [high    ] `xml-external-entity` [body-pattern] - XML external entity (XXE) risk
@@ -246,7 +246,7 @@ remediation documentation in the docs.
 - [info    ] `cms-fingerprinting` [combined] - CMS / Technology Fingerprinting
 - [medium  ] `dangerous-inline-js` [body-pattern] - Potentially Dangerous Inline JavaScript
 - [low     ] `version-disclosure` [body-pattern] - Server version disclosed in response header
-- [medium  ] `sensitive-comments` [body-pattern] - Sensitive Information in HTML Comments
+- [medium  ] `sensitive-comments` [body-pattern] - Sensitive Keywords in HTML Comments
 - [high    ] `debug-indicators` [combined] - Debug Mode or Error Information Exposed
 - [medium  ] `insecure-iframes` [combined] - Insecure Iframe Sources on HTTPS Page
 - [high    ] `token-exposure` [body-pattern] - Authentication Tokens Exposed in Page Source
@@ -261,7 +261,7 @@ remediation documentation in the docs.
 - [medium  ] `opengraph-injection` [body-pattern] - Suspicious Content in Open Graph Tags
 - [low     ] `service-worker-scope` [body-pattern] - Service Worker Registered Without a Narrow Scope
 - [medium  ] `window-opener-abuse` [body-pattern] - Window.opener Access Detected
-- [high    ] `weak-crypto` [body-pattern] - Weak or Broken Cryptography Detected
+- [high    ] `weak-crypto` [body-pattern] - Deprecated Cipher or Hash Algorithm in Page Code
 - [medium  ] `verbose-error-messages` [body-pattern] - Application Error Messages Exposed to Users
 - [medium  ] `xxe-server-xml` [body-pattern] - Server-Side XML Parsing Detected
 - [high    ] `ssrf-vectors` [body-pattern] - Potential Server-Side Request Forgery (SSRF) Vectors
@@ -271,7 +271,7 @@ remediation documentation in the docs.
 - [low     ] `form-action-tel-scheme` [body-pattern] - Form action uses tel: scheme
 - [info    ] `viewport-user-scalable-no` [body-pattern] - Viewport Prevents User Zoom
 - [low     ] `internal-ip-exposed` [body-pattern] - Hardcoded IP Addresses in Page Source
-- [low     ] `document-write-usage` [body-pattern] - document.write() Usage Detected
+- [low     ] `document-write-usage` [body-pattern] - document.write() Outside Page Scripts
 - [info    ] `unencrypted-connections` [body-pattern] - Excessive Third-Party Domain Connections
 - [low     ] `sourcemap-reference` [body-pattern] - JavaScript Source Map Reference Found
 - [critical] `aws-metadata-reference` [body-pattern] - AWS Metadata Endpoint Reference
@@ -311,7 +311,7 @@ remediation documentation in the docs.
 - [high    ] `api-key-in-url` [body-pattern] - API Key in URL Parameter
 - [critical] `aws-credentials-exposed` [body-pattern] - AWS Credentials Pattern Detected
 - [critical] `private-key-exposed` [body-pattern] - Private Key Detected in Source
-- [high    ] `stripe-key-exposed` [body-pattern] - Stripe Key Exposed
+- [high    ] `stripe-key-exposed` [body-pattern] - Stripe Secret Key Exposed
 - [low     ] `twilio-credentials-exposed` [body-pattern] - Twilio Account SID Exposed
 - [high    ] `sendgrid-key-exposed` [body-pattern] - SendGrid API Key Exposed
 - [medium  ] `slack-webhook-exposed` [body-pattern] - Slack Webhook URL Exposed
@@ -359,7 +359,7 @@ remediation documentation in the docs.
 - [high    ] `sql-error-in-page` [body-pattern] - SQL error message in page content
 - [medium  ] `php-error-in-page` [body-pattern] - PHP error/warning in page content
 - [medium  ] `asp-error-in-page` [body-pattern] - ASP.NET error details in page content
-- [critical] `django-debug-page` [body-pattern] - Django debug mode enabled in production
+- [critical] `django-debug-page` [body-pattern] - Django debug page exposing settings and installed apps
 - [critical] `laravel-debug-page` [body-pattern] - Laravel debug mode enabled in production
 - [medium  ] `storage-api-usage` [body-pattern] - Sensitive data in Web Storage API
 - [low     ] `geolocation-usage` [body-pattern] - Geolocation API Referenced
@@ -633,7 +633,7 @@ remediation documentation in the docs.
 - [low     ] `privacy-policy-missing` [body-pattern] - Privacy Policy page not found
 - [low     ] `terms-of-service-missing` [body-pattern] - Terms of Service page not found
 - [info    ] `sitemap-missing` [body-pattern] - XML sitemap not found
-- [medium  ] `html-comment-leaks` [body-pattern] - Sensitive information in HTML comments
+- [medium  ] `html-comment-leaks` [body-pattern] - Credentials or keys embedded in HTML comments
 - [high    ] `sql-error-exposure` [body-pattern] - SQL error message in response
 - [info    ] `rails-version-exposure` [header] - Rails default session cookie name reveals framework
 - [medium  ] `django-csrftoken-cookie-exposed` [combined] - Django CSRF token cookie missing security attributes
@@ -641,7 +641,7 @@ remediation documentation in the docs.
 - [medium  ] `express-cookie-exposes` [combined] - Express session cookie missing security attributes
 - [medium  ] `express-error-format-disclosure` [body-pattern] - Express.js error stack trace in response
 - [critical] `flask-debug-page-exposure` [body-pattern] - Flask debug mode enabled in production
-- [critical] `django-debug-page-exposure` [body-pattern] - Django debug mode enabled in production
+- [critical] `django-debug-page-exposure` [body-pattern] - Django technical 500 debug page exposed
 - [critical] `rails-error-page-disclosure` [body-pattern] - Rails exception page accessible in production
 - [high    ] `spring-boot-actuator-exposed` [body-pattern] - Spring Boot Actuator endpoint publicly accessible
 - [low     ] `jenkins-version-exposure` [header] - Jenkins version disclosed in response
@@ -769,7 +769,7 @@ remediation documentation in the docs.
 ### vibe-code (37)
 - [low     ] `vibe-generic-error-message` [body-pattern] - Generic Error Messages Leak No Context
 - [medium  ] `vibe-todo-security-comment` [body-pattern] - TODO/FIXME Security Note in Response
-- [high    ] `vibe-eval-usage` [body-pattern] - eval() Usage Detected
+- [high    ] `vibe-eval-usage` [body-pattern] - eval() Usage in Page Scripts
 - [high    ] `vibe-disabled-ssl-verify` [body-pattern] - SSL Certificate Verification Disabled
 - [high    ] `vibe-weak-random` [body-pattern] - Math.random() Used for Security Tokens
 - [critical] `vibe-placeholder-auth` [body-pattern] - Hardcoded Credential in Authentication Logic
@@ -818,9 +818,9 @@ remediation documentation in the docs.
   - info: 111
   - critical: 98
 - By type:
-  - body-pattern: 425
+  - body-pattern: 423
   - header: 175
-  - combined: 61
+  - combined: 63
   - header-missing: 55
   - url-check: 17
   - header-value: 10

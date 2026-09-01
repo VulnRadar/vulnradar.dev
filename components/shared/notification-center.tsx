@@ -23,12 +23,15 @@ import {
   VERSION_COOKIE_NAME,
   ROUTES,
   API,
-} from "@/lib/config/constants";
+} from "@/lib/config/client-constants";
 import { Sparkles } from "lucide-react";
 import { apiGet, apiPost, apiPatch } from "@/lib/api/client";
 import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
 import { useClientConfig } from "@/lib/hooks/use-client-config";
+import { useVisibleInterval } from "@/lib/hooks/use-visible-interval";
+import { useOnline } from "@/lib/hooks/use-online";
 import { matchesPathPattern } from "@/lib/notifications/match-path";
+import { fetchActiveNotifications } from "@/components/shared/active-notifications";
 
 const STAFF_ROLE_VALUES = Object.values(STAFF_ROLES);
 
@@ -130,7 +133,11 @@ export function BackupCodesModal() {
       >
         <div
           {...dialogProps}
-          className="bg-card border border-border rounded-2xl shadow-2xl overflow-hidden outline-hidden"
+          // max-h + a y scroll: overflow-hidden with no height cap, inside a
+          // centring flex container that does not scroll, put the two-button
+          // footer out of reach on a short viewport. The x axis still clips
+          // so the accent bar stays inside the rounded corners.
+          className="bg-card border border-border rounded-2xl shadow-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto overflow-x-hidden overscroll-contain outline-hidden"
         >
           <div className="h-1 w-full bg-destructive" />
           <div className="flex items-center justify-between px-5 pt-4 pb-0">
@@ -220,14 +227,14 @@ const VARIANT_CONFIG: Record<
   },
   success: {
     icon: <CheckCircle2 className="h-4 w-4" aria-hidden="true" />,
-    bg: "bg-[hsl(var(--success)/0.1)]",
-    border: "border-[hsl(var(--success)/0.3)]",
+    bg: "bg-[hsl(var(--success))]/10",
+    border: "border-[hsl(var(--success))]/30",
     text: "text-[hsl(var(--success))]",
   },
   warning: {
     icon: <AlertTriangle className="h-4 w-4" aria-hidden="true" />,
-    bg: "bg-[hsl(var(--warning)/0.1)]",
-    border: "border-[hsl(var(--warning)/0.3)]",
+    bg: "bg-[hsl(var(--warning))]/10",
+    border: "border-[hsl(var(--warning))]/30",
     text: "text-[hsl(var(--warning))]",
   },
   error: {
@@ -254,11 +261,23 @@ export function NotificationBell() {
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [hydrated, setHydrated] = useState(false);
   const [loading, setLoading] = useState(true);
+  // A failed fetch used to console.error and nothing else, which left the
+  // list empty and fell through to the "All caught up!" branch: a pending team
+  // invite that could not load read as an empty inbox, on an item with an
+  // expiry window. Tracked separately so the panel can say it does not know.
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  const online = useOnline();
   const [showVersionNotif, setShowVersionNotif] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const isStaff =
     me?.role && (STAFF_ROLE_VALUES as readonly string[]).includes(me.role);
+  // Read out once rather than as `me?.userId` inside the callbacks below: the
+  // React Compiler infers the whole `me` object as the dependency when the
+  // property access happens inside, which does not match the declared deps and
+  // makes it skip optimizing this component entirely.
+  const userId = me?.userId;
 
   // Check if there's a new version (cookie-based)
   useEffect(() => {
@@ -286,16 +305,17 @@ export function NotificationBell() {
     }
   }, []);
 
-  // Fetch notifications from API
-  useEffect(() => {
-    async function fetchNotifications() {
+  // Shared with the site-notification banner, which is mounted in the same
+  // root layout and used to issue a byte-identical second request for this
+  // payload on every page view. `force` on the poll ticks so a scheduled
+  // refresh is still a real refresh; only the mount-time pair is collapsed.
+  const fetchNotifications = useCallback(
+    async (force = false) => {
       try {
-        const params = new URLSearchParams({
-          authenticated: me?.userId ? "true" : "false",
-          staff: isStaff ? "true" : "false",
-        });
-        const data = await apiGet<ApiNotification[]>(
-          `/api/v3/notifications/active?${params}`,
+        const data = await fetchActiveNotifications<ApiNotification>(
+          !!userId,
+          !!isStaff,
+          force,
         );
         // Only show "bell" type notifications in the bell dropdown. Page
         // filtering happens below, at render time, so it stays current as
@@ -303,53 +323,72 @@ export function NotificationBell() {
         setNotifications(
           data.filter((n: ApiNotification) => n.type === "bell"),
         );
+        setLoadError(false);
       } catch (err) {
         console.error("Failed to fetch notifications:", err);
+        setLoadError(true);
       } finally {
         setLoading(false);
       }
-    }
+    },
+    [userId, isStaff],
+  );
 
-    fetchNotifications();
-    const interval = setInterval(
-      fetchNotifications,
-      clientConfig.notificationPollIntervalMs,
-    );
-    return () => clearInterval(interval);
-  }, [me?.userId, isStaff, clientConfig.notificationPollIntervalMs]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState runs only in fetchNotifications' async continuation
+    void fetchNotifications();
+  }, [fetchNotifications, reloadKey]);
+
+  // Guards a logout (or account switch) landing mid-flight: the reset branch
+  // below bumps the ticket, so a response for the previous identity can no
+  // longer repopulate the panel after it has been cleared. This is what the
+  // old effect's `cancelled` flag did before the poll moved out of it.
+  const userNotifReqRef = useRef(0);
 
   // Fetch the current user's own notifications (e.g. team invites). Only
   // logged-in users have anything to fetch here.
+  const fetchUserNotifications = useCallback(async () => {
+    if (!userId) return;
+    const reqId = ++userNotifReqRef.current;
+    try {
+      const data = await apiGet<{ notifications: UserNotification[] }>(
+        API.NOTIFICATIONS,
+      );
+      if (reqId !== userNotifReqRef.current) return;
+      setUserNotifications(data.notifications);
+      setLoadError(false);
+    } catch (err) {
+      console.error("Failed to fetch user notifications:", err);
+      // Team invites arrive on this endpoint, so a failure here is the one
+      // that most needs saying out loud rather than showing an empty panel.
+      if (reqId === userNotifReqRef.current) setLoadError(true);
+    }
+  }, [userId]);
+
   useEffect(() => {
-    if (!me?.userId) {
+    if (!userId) {
+      userNotifReqRef.current++;
       // eslint-disable-next-line react-hooks/set-state-in-effect -- resets userNotifications when me.userId changes to logged-out, gated on the dependency array so it only fires on an actual identity change, not every render
       setUserNotifications([]);
       return;
     }
+    void fetchUserNotifications();
+  }, [userId, fetchUserNotifications, reloadKey]);
 
-    let cancelled = false;
-
-    async function fetchUserNotifications() {
-      try {
-        const data = await apiGet<{ notifications: UserNotification[] }>(
-          API.NOTIFICATIONS,
-        );
-        if (!cancelled) setUserNotifications(data.notifications);
-      } catch (err) {
-        console.error("Failed to fetch user notifications:", err);
-      }
-    }
-
-    fetchUserNotifications();
-    const interval = setInterval(
-      fetchUserNotifications,
-      clientConfig.notificationPollIntervalMs,
-    );
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [me?.userId, clientConfig.notificationPollIntervalMs]);
+  // Both of these were bare setInterval calls, so a backgrounded tab kept
+  // issuing two authenticated, database-backed requests every five minutes
+  // forever. Five minutes is already slower than the browser's own hidden-tab
+  // timer throttle, so nothing was slowing them down. They now stop while the
+  // tab is hidden and refresh once on the way back in, which is also the only
+  // moment the result can actually be seen.
+  useVisibleInterval(
+    () => void fetchNotifications(true),
+    clientConfig.notificationPollIntervalMs,
+  );
+  useVisibleInterval(
+    () => void fetchUserNotifications(),
+    userId ? clientConfig.notificationPollIntervalMs : null,
+  );
 
   // Accept a team invite directly from the bell. Uses inviteId, not the
   // emailed link's plaintext token: the token is never stored anywhere
@@ -452,6 +491,11 @@ export function NotificationBell() {
         variant="ghost"
         size="icon"
         onClick={() => setOpen(!open)}
+        // a11y (SC 4.1.2): this opens a hand-rolled panel, not a Radix one,
+        // so nothing was telling assistive tech that the bell controls
+        // anything or whether it is currently open.
+        aria-expanded={open}
+        aria-haspopup="dialog"
         aria-label={
           hydrated
             ? `Notifications${count > 0 ? ` (${count} unread)` : ""}`
@@ -488,6 +532,29 @@ export function NotificationBell() {
               />
               <p className="text-xs text-muted-foreground">Loading...</p>
             </div>
+          ) : loadError && count === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+              <Bell
+                className="h-8 w-8 text-muted-foreground/30 mb-3"
+                aria-hidden="true"
+              />
+              {/* A dropped connection and a server rejection are different
+                  facts and used to read identically here. useOnline() is the
+                  one signal that can tell them apart, so the panel says which
+                  one happened rather than guessing. */}
+              <p className="text-sm font-medium text-foreground">
+                {online
+                  ? "Couldn't load notifications"
+                  : "You are offline, so this could not be checked"}
+              </p>
+              <button
+                type="button"
+                onClick={() => setReloadKey((k) => k + 1)}
+                className="mt-2 text-xs text-primary hover:underline"
+              >
+                Try again
+              </button>
+            </div>
           ) : count === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 px-4">
               <Bell
@@ -495,10 +562,10 @@ export function NotificationBell() {
                 aria-hidden="true"
               />
               <p className="text-sm font-medium text-foreground">
-                All caught up!
+                Nothing waiting
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                You're on top of everything
+                Invites, scan alerts and staff notices land here.
               </p>
             </div>
           ) : (
@@ -570,7 +637,7 @@ export function NotificationBell() {
                       <button
                         onClick={() => dismissUserNotification(n)}
                         disabled={busy}
-                        className="shrink-0 p-1 rounded text-muted-foreground/50 hover:text-foreground transition-colors disabled:opacity-50"
+                        className="shrink-0 rounded flex h-11 w-11 items-center justify-center text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 sm:h-auto sm:w-auto sm:p-1"
                         aria-label={`Dismiss ${n.title}`}
                       >
                         <X className="h-4 w-4" aria-hidden="true" />
@@ -616,7 +683,7 @@ export function NotificationBell() {
                     </div>
                     <button
                       onClick={dismissVersionNotif}
-                      className="shrink-0 p-1 rounded text-muted-foreground/50 hover:text-foreground transition-colors"
+                      className="shrink-0 rounded flex h-11 w-11 items-center justify-center text-muted-foreground hover:text-foreground transition-colors sm:h-auto sm:w-auto sm:p-1"
                       aria-label="Dismiss version notification"
                     >
                       <X className="h-4 w-4" aria-hidden="true" />
@@ -744,7 +811,7 @@ export function NotificationBell() {
                               n.dismiss_duration_hours,
                             )
                           }
-                          className="shrink-0 p-1 rounded text-muted-foreground/50 hover:text-foreground transition-colors"
+                          className="shrink-0 rounded flex h-11 w-11 items-center justify-center text-muted-foreground hover:text-foreground transition-colors sm:h-auto sm:w-auto sm:p-1"
                           aria-label={`Dismiss ${n.title}`}
                         >
                           <X className="h-4 w-4" aria-hidden="true" />

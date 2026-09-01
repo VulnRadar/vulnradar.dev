@@ -55,5 +55,6 @@ export const downgrade = {
     { table: "api_keys", column: "daily_limit" },
     { table: "api_keys", column: "key_encrypted" },
     { table: "api_keys", column: "key_locator" },
+    { table: "email_2fa_codes", column: "code_salt" },
   ],
 };

@@ -6,6 +6,7 @@ import {
   recordPortScan,
 } from "@/lib/scanner/port-scan";
 import { isUrlOwnedByUser } from "@/lib/domains/scope";
+import { getSetting } from "@/lib/config/runtime-config";
 import {
   resolveOwnedScan,
   requireRefreshPlan,
@@ -14,9 +15,19 @@ import {
 } from "@/lib/history/refresh-scan";
 
 export const runtime = "nodejs";
-// scanPorts is internally bounded (12s wall-clock deadline) but the whole
-// route needs headroom above that for auth + the ownership lookup.
+// scanPorts is internally bounded (PORT_SCAN_OVERALL_DEADLINE_MS, an
+// admin-editable wall-clock deadline) but the whole route needs headroom above
+// that for auth + the ownership lookup.
 export const maxDuration = 30;
+
+/**
+ * How far past the sweep's own deadline this route's abort signal sits.
+ *
+ * The signal is a backstop for a sweep that somehow ignores its deadline, not
+ * the mechanism that ends it, so it must always fire LATER: aborting first
+ * would throw away the ports already found.
+ */
+const PORT_SWEEP_ABORT_HEADROOM_MS = 8_000;
 
 /**
  * POST /api/v3/history/[id]/ports
@@ -86,7 +97,18 @@ export async function POST(
   // otherwise re-run the sweep and record it for the next refresh in the window.
   let portScan = readPortScan(hostname);
   if (!portScan) {
-    const fresh = await scanPorts(hostname, AbortSignal.timeout(20_000));
+    // Derived from the sweep's own admin-editable deadline, not a literal.
+    // PORT_SCAN_OVERALL_DEADLINE_MS became a setting, and a hardcoded 20s
+    // outer abort silently capped it: an operator raising the deadline past
+    // that got the request aborted before the sweep it configured could
+    // finish, with no indication why. The headroom is for the abort to land
+    // after the sweep's own deadline, so scanPorts still returns whatever it
+    // collected rather than being cut off mid-run.
+    const sweepDeadlineMs = await getSetting("PORT_SCAN_OVERALL_DEADLINE_MS");
+    const fresh = await scanPorts(
+      hostname,
+      AbortSignal.timeout(sweepDeadlineMs + PORT_SWEEP_ABORT_HEADROOM_MS),
+    );
     if (!fresh) {
       return NextResponse.json(
         {

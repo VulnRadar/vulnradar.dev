@@ -86,7 +86,12 @@ export function GithubScanResultModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="overflow-hidden p-0 sm:max-w-lg">
+      {/* overflow-x-hidden, not overflow-hidden: the shorthand also cancelled
+          DialogContent's own overflow-y-auto, so on a short viewport the
+          wrapped stat row and the two footnote paragraphs below it were cut
+          off with no way to scroll to them. The x axis still clips, which is
+          what keeps the full-bleed rail inside the rounded corners. */}
+      <DialogContent className="overflow-x-hidden p-0 sm:max-w-lg">
         {loading ? (
           <div className="flex items-start gap-3 p-6">
             <Loader2

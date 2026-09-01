@@ -1,0 +1,96 @@
+#!/usr/bin/env node
+// Rasterizes public/og-image.svg -> public/og-image.png (1200x630), the social
+// card referenced by CONFIG_SEO_OG_IMAGE. Run this after editing the SVG:
+//
+//   node scripts/assets/build-og-image.mjs
+//
+// It is intentionally NOT a build hook: the card is a static brand asset that
+// rarely changes, unlike the check-count constants (which compile-checks-
+// knowledge.mjs regenerates on every build).
+//
+// The wordmark and the domain line are substituted from CONFIG_APP_NAME and
+// CONFIG_APP_URL at rasterize time (see the data-og markers in the SVG). The
+// card used to be a third hardcoded copy of the brand, so a renamed fork that
+// changed both config values still unfurled "VulnRadar / vulnradar.dev" on
+// every Twitter, Slack and Discord share of its own domain.
+
+import { readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+// sharp is not a declared dependency of this repo: it resolves today only as
+// an optional transitive of next. An install with --omit=optional, or a next
+// release that stops shipping it, turns this into a bare MODULE_NOT_FOUND at
+// the moment someone is rebranding and least wants to debug a toolchain.
+let sharp;
+try {
+  ({ default: sharp } = await import("sharp"));
+} catch {
+  console.error(
+    "[build-og-image] sharp is not installed. It is not a declared dependency of this repo (it currently resolves as an optional transitive of next). Install it just for this run with `npm i --no-save sharp`, then re-run this script.",
+  );
+  process.exit(1);
+}
+
+function readConfigString(source, name) {
+  const m = source.match(new RegExp(`${name}\\s*=\\s*"([^"]+)"`));
+  return m ? m[1] : null;
+}
+
+function escapeXmlText(value) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/**
+ * Replace the text content of the single <text> node carrying
+ * data-og="<marker>". Throws rather than silently shipping the old brand: a
+ * missing marker means someone edited the SVG and dropped the attribute, and a
+ * card with the wrong name on it is exactly the failure this substitution
+ * exists to prevent.
+ */
+function substituteMarker(svg, marker, value) {
+  const re = new RegExp(
+    `(<text[^>]*data-og="${marker}"[^>]*>)([\\s\\S]*?)(</text>)`,
+  );
+  if (!re.test(svg)) {
+    throw new Error(
+      `public/og-image.svg has no <text data-og="${marker}"> node. Re-add the attribute so the card can be rebranded from config.`,
+    );
+  }
+  return svg.replace(re, (_, open, __, close) => {
+    return `${open}${escapeXmlText(value)}${close}`;
+  });
+}
+
+const configSource = readFileSync(
+  join(root, "lib", "config", "config-values.ts"),
+  "utf8",
+);
+const appName =
+  readConfigString(configSource, "CONFIG_APP_NAME") ?? "VulnRadar";
+const appUrl =
+  readConfigString(configSource, "CONFIG_APP_URL") ?? "https://vulnradar.dev";
+let appHost;
+try {
+  appHost = new URL(appUrl).host;
+} catch {
+  appHost = appUrl;
+}
+
+let svg = readFileSync(join(root, "public", "og-image.svg"), "utf8");
+svg = substituteMarker(svg, "app-name", appName);
+svg = substituteMarker(svg, "app-host", appHost);
+
+await sharp(Buffer.from(svg))
+  .resize(1200, 630)
+  .png()
+  .toFile(join(root, "public", "og-image.png"));
+
+console.log(
+  `[build-og-image] wrote public/og-image.png (1200x630) for "${appName}" / ${appHost}`,
+);

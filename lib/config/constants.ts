@@ -3,16 +3,24 @@
 // This file imports from config-values.ts which contains hardcoded defaults.
 // Self-hosters: Modify lib/config/config-values.ts to customize your deployment.
 
+// SERVER-SIDE SUPERSET. This module is the union of
+// lib/config/client-constants.ts (re-exported wholesale at the bottom) and the
+// values below, which read non-public environment variables or exist only to
+// serve server code. A `"use client"` file must import client-constants.ts
+// instead: importing this one pulls the environment reads into the browser
+// bundle, which is what AUDIT-012#fe-15 found in the committed build (the
+// /layout chunk, on all 311 routes, carried `i.env.SMTP_PASS` and
+// `i.env.BROWSERBASE_API_KEY` as bare expression statements).
+//
+// The SMTP credentials and the Browserbase configured-check that this file
+// used to declare now live in lib/config/server-constants.ts behind an
+// `import "server-only"` guard, so no rename can put them back on the wire.
+// This module will get the same guard once the last client component is
+// migrated off it.
+
 import {
-  CONFIG_APP_NAME,
-  CONFIG_APP_SLUG,
-  CONFIG_APP_VERSION,
   CONFIG_MIN_SCHEMA_VERSION,
-  CONFIG_ENGINE_VERSION,
   CONFIG_APP_DESCRIPTION,
-  CONFIG_TOTAL_CHECKS_LABEL,
-  CONFIG_APP_URL,
-  CONFIG_APP_REPO,
   CONFIG_SUPPORT_EMAIL,
   CONFIG_LEGAL_EMAIL,
   CONFIG_SECURITY_EMAIL,
@@ -35,29 +43,28 @@ import {
   CONFIG_SEO_LANGUAGE,
   CONFIG_SEO_ORG_FOUNDING_YEAR,
   CONFIG_SEO_LICENSE,
-  CONFIG_DISCORD_INVITE_URL,
   CONFIG_CHROME_WEB_STORE_URL,
   CONFIG_FIREFOX_ADDON_URL,
   CONFIG_SESSION_COOKIE_NAME,
   CONFIG_SESSION_MAX_AGE_DAYS,
-  CONFIG_VERSION_COOKIE_NAME,
-  CONFIG_VERSION_COOKIE_MAX_AGE_DAYS,
   CONFIG_DEVICE_TRUST_COOKIE_NAME,
   CONFIG_2FA_PENDING_COOKIE_NAME,
-  CONFIG_2FA_PENDING_MAX_AGE_SECONDS,
-  CONFIG_PASSWORD_RESET_HOURS,
-  CONFIG_EMAIL_VERIFICATION_HOURS,
-  CONFIG_DEVICE_TRUST_DAYS,
-  CONFIG_TOTP_VALIDITY_SECONDS,
   CONFIG_CLEANUP_INTERVAL_MS,
   CONFIG_DB_CLEANUP_INTERVAL_MS,
-  CONFIG_PASSWORD_MIN_LENGTH,
   CONFIG_RATE_LIMIT_LOGIN_ATTEMPTS,
   CONFIG_RATE_LIMIT_LOGIN_WINDOW_MINUTES,
   CONFIG_RATE_LIMIT_SIGNUP_ATTEMPTS,
   CONFIG_RATE_LIMIT_SIGNUP_WINDOW_MINUTES,
   CONFIG_RATE_LIMIT_FORGOT_PASSWORD_ATTEMPTS,
   CONFIG_RATE_LIMIT_FORGOT_PASSWORD_WINDOW_MINUTES,
+  CONFIG_RATE_LIMIT_SIGNUP_EMAIL_ATTEMPTS,
+  CONFIG_RATE_LIMIT_SIGNUP_EMAIL_WINDOW_MINUTES,
+  CONFIG_RATE_LIMIT_FORGOT_PASSWORD_EMAIL_ATTEMPTS,
+  CONFIG_RATE_LIMIT_FORGOT_PASSWORD_EMAIL_WINDOW_MINUTES,
+  CONFIG_RATE_LIMIT_DOMAIN_ADD_ATTEMPTS,
+  CONFIG_RATE_LIMIT_DOMAIN_ADD_WINDOW_MINUTES,
+  CONFIG_RATE_LIMIT_DOMAIN_VERIFY_ATTEMPTS,
+  CONFIG_RATE_LIMIT_DOMAIN_VERIFY_WINDOW_MINUTES,
   CONFIG_RATE_LIMIT_API_REQUESTS,
   CONFIG_RATE_LIMIT_API_WINDOW_MINUTES,
   CONFIG_RATE_LIMIT_SCAN_REQUESTS,
@@ -82,20 +89,10 @@ import {
   CONFIG_RATE_LIMIT_SCAN_TAGS_WINDOW_MINUTES,
   CONFIG_RATE_LIMIT_PUBLIC_SCANS_ATTEMPTS,
   CONFIG_RATE_LIMIT_PUBLIC_SCANS_WINDOW_MINUTES,
-  CONFIG_MAX_URL_LENGTH,
-  CONFIG_MAX_URLS_BULK,
-  CONFIG_SCAN_TIMEOUT_SECONDS,
-  CONFIG_BULK_SCAN_TIMEOUT_SECONDS,
-  CONFIG_CRAWL_SCAN_TIMEOUT_SECONDS,
-  CONFIG_SCAN_STATUS_POLL_INTERVAL_MS,
-  CONFIG_DEFAULT_SEVERITY_THRESHOLD,
   CONFIG_API_KEY_PREFIX,
   CONFIG_DEFAULT_API_KEY_DAILY_LIMIT,
-  CONFIG_API_CURRENT_VERSION,
   CONFIG_BROWSERBASE_MAX_TTL_SECONDS,
   CONFIG_BROWSERBASE_DEFAULT_TTL_SECONDS,
-  CONFIG_BROWSERBASE_LOGS_POLL_INTERVAL_MS,
-  CONFIG_DEMO_SCAN_LIMIT,
   CONFIG_MAX_EMAIL_LENGTH,
   CONFIG_MAX_NAME_LENGTH,
   CONFIG_MAX_DESCRIPTION_LENGTH,
@@ -104,104 +101,61 @@ import {
   CONFIG_PAGINATION_DEFAULT_PAGE_SIZE,
   CONFIG_PAGINATION_MAX_PAGE_SIZE,
   CONFIG_PAGINATION_DEFAULT_PAGE,
-  CONFIG_NOTIFICATION_POLL_INTERVAL_MS,
-  CONFIG_NOTIFICATION_DEFAULT_DISMISS_DAYS,
-  CONFIG_FEATURE_DEMO_MODE,
-  CONFIG_FEATURE_TEAMS,
-  CONFIG_FEATURE_API_KEYS,
-  CONFIG_FEATURE_WEBHOOKS,
-  CONFIG_FEATURE_SCHEDULED_SCANS,
-  CONFIG_FEATURE_BULK_SCANS,
-  CONFIG_FEATURE_PDF_REPORTS,
-  CONFIG_FEATURE_EMAIL_NOTIFICATIONS,
-  CONFIG_BILLING_ENABLED,
-  CONFIG_BILLING_FREE_LIMIT,
-  CONFIG_BILLING_CORE_SUPPORTER_LIMIT,
-  CONFIG_BILLING_PRO_SUPPORTER_LIMIT,
-  CONFIG_BILLING_ELITE_SUPPORTER_LIMIT,
-  CONFIG_BILLING_FREE_RETENTION,
-  CONFIG_BILLING_CORE_SUPPORTER_RETENTION,
-  CONFIG_BILLING_PRO_SUPPORTER_RETENTION,
-  CONFIG_BILLING_ELITE_SUPPORTER_RETENTION,
   CONFIG_BILLING_UNLIMITED_MODE_LIMIT,
   CONFIG_AI_CHAT_MAX_TOKENS,
-  CONFIG_AI_CHAT_HISTORY_DAYS,
-  CONFIG_AI_CHAT_MAX_INPUT_LENGTH,
   CONFIG_AI_VERIFY_MAX_TOKENS,
   CONFIG_AI_VERIFY_CALL_TIMEOUT_MS,
   CONFIG_AI_VERIFY_PROBE_TIMEOUT_MS,
   CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS,
   CONFIG_AI_SUMMARY_MAX_TOKENS,
-  CONFIG_AI_USAGE_WINDOW_HOURS,
-  CONFIG_SCAN_AUTH_ENABLED,
-  CONFIG_SCAN_AUTH_MAX_SECRET_LENGTH,
-  CONFIG_SCAN_AUTH_MAX_COOKIES,
-  CONFIG_SCAN_AUTH_VERIFY_TIMEOUT_MS,
-  CONFIG_SCAN_AUTH_MAX_LOGIN_BODY_BYTES,
-  CONFIG_SCAN_AUTH_MAX_COOKIE_AGE_SECONDS,
-  CONFIG_SCAN_AUTH_BASELINE_DIFF_BYTES,
-  CONFIG_SCAN_AUTH_BROWSER_NAV_TIMEOUT_MS,
-  CONFIG_SCAN_AUTH_BROWSER_SETTLE_MS,
-  CONFIG_SCAN_AUTH_BROWSER_MAX_WAIT_MS,
-  CONFIG_SCAN_AUTH_BROWSER_SESSION_TIMEOUT_SECONDS,
-  CONFIG_SCAN_AUTH_BROWSER_MAX_HTML_CHARS,
   CONFIG_DATA_EXPORT_COOLDOWN_DAYS,
-  CONFIG_BULK_SCAN_CLIENT_URL_LIMIT,
-  CONFIG_MAX_AVATAR_UPLOAD_BYTES,
   CONFIG_RATE_LIMIT_2FA_VERIFY_ATTEMPTS,
   CONFIG_RATE_LIMIT_2FA_VERIFY_WINDOW_MINUTES,
 } from "./config-values";
+// Imported for local use below (LOGO_URL, TOTP_ISSUER, VERSION_CHECK_URL);
+// the same names are re-exported wholesale at the bottom of this file.
+import { APP_NAME, APP_URL, APP_REPO } from "@/lib/config/client-constants";
 
 export const DATA_EXPORT_COOLDOWN_DAYS = CONFIG_DATA_EXPORT_COOLDOWN_DAYS;
-export const BULK_SCAN_CLIENT_URL_LIMIT = CONFIG_BULK_SCAN_CLIENT_URL_LIMIT;
-export const MAX_AVATAR_UPLOAD_BYTES = CONFIG_MAX_AVATAR_UPLOAD_BYTES;
 export const AI_CHAT_MAX_TOKENS = CONFIG_AI_CHAT_MAX_TOKENS;
-export const AI_CHAT_HISTORY_DAYS = CONFIG_AI_CHAT_HISTORY_DAYS;
-export const AI_CHAT_MAX_INPUT_LENGTH = CONFIG_AI_CHAT_MAX_INPUT_LENGTH;
 export const AI_VERIFY_MAX_TOKENS = CONFIG_AI_VERIFY_MAX_TOKENS;
 export const AI_VERIFY_CALL_TIMEOUT_MS = CONFIG_AI_VERIFY_CALL_TIMEOUT_MS;
 export const AI_VERIFY_PROBE_TIMEOUT_MS = CONFIG_AI_VERIFY_PROBE_TIMEOUT_MS;
 export const AI_VERIFY_TOTAL_TIMEOUT_MS = CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS;
 export const AI_SUMMARY_MAX_TOKENS = CONFIG_AI_SUMMARY_MAX_TOKENS;
-export const AI_USAGE_WINDOW_HOURS = CONFIG_AI_USAGE_WINDOW_HOURS;
 
 // APPLICATION METADATA (from config-values.ts -> config.yaml)
-
-export const APP_NAME = CONFIG_APP_NAME;
-export const APP_SLUG = CONFIG_APP_SLUG;
-export const APP_VERSION = CONFIG_APP_VERSION;
-export const MIN_SCHEMA_VERSION = CONFIG_MIN_SCHEMA_VERSION;
-export const ENGINE_VERSION = CONFIG_ENGINE_VERSION;
-export const APP_DESCRIPTION = CONFIG_APP_DESCRIPTION;
-export const TOTAL_CHECKS_LABEL = CONFIG_TOTAL_CHECKS_LABEL;
-// Self-hosters set NEXT_PUBLIC_APP_URL (see the Dockerfile's build ARG and
-// .env.example); read it here so it actually reaches this constant instead
-// of always resolving to the hardcoded CONFIG_APP_URL placeholder. Every
-// consumer of APP_URL below (emails, sitemap.xml, robots.txt, canonical/OG
-// tags, PDF/SARIF reports, webhook payloads, docs) picks this up too.
 //
-// Still fully synchronous, so it has no idea about a database admin
-// override: an admin-panel APP_URL change reaches THIS export -- and
-// therefore every client bundle, since Next.js inlines NEXT_PUBLIC_* at
-// `next build` time -- only after a rebuild and redeploy. Server code that
-// needs the live, no-rebuild-required value (currently only the
-// OAuth/Discord/GitHub sign-in routes, which must get their redirect_uri
-// right on every request) should call resolveAppUrl(request) from
-// lib/config/runtime-config.ts instead.
-export const APP_URL = process.env.NEXT_PUBLIC_APP_URL || CONFIG_APP_URL;
-export const APP_REPO = CONFIG_APP_REPO;
-export const TERMS_UPDATED_AT = CONFIG_TERMS_UPDATED_AT;
+// APP_NAME, APP_SLUG, APP_VERSION, ENGINE_VERSION, TOTAL_CHECKS_LABEL,
+// APP_URL, APP_REPO and DEFAULT_SCAN_NOTE all moved to client-constants.ts
+// (AUDIT-012#fe-15) and are re-exported from here unchanged. Only the values
+// no client component has any business reading are still declared below.
 
-// Scan note with version info
-export const DEFAULT_SCAN_NOTE = `${APP_NAME} v${APP_VERSION} (Detection Engine v${ENGINE_VERSION})`;
+export const MIN_SCHEMA_VERSION = CONFIG_MIN_SCHEMA_VERSION;
+export const APP_DESCRIPTION = CONFIG_APP_DESCRIPTION;
+export const TERMS_UPDATED_AT = CONFIG_TERMS_UPDATED_AT;
 
 export const VERSION_CHECK_URL = `https://api.github.com/repos/${APP_REPO}/releases/latest`;
 export const RELEASES_URL = `https://github.com/${APP_REPO}/releases`;
-export const CHROME_WEB_STORE_URL = CONFIG_CHROME_WEB_STORE_URL;
-export const FIREFOX_ADDON_URL = CONFIG_FIREFOX_ADDON_URL;
+// Extension store listings. The shipped defaults are VulnRadar's own, and
+// components/seo/structured-data.tsx emits them in the JSON-LD Organization
+// node's sameAs array, which claims they are the same organisation's
+// profiles. A fork points these at its own listings with the env vars rather
+// than editing the source (same pattern as the SEO verification tokens
+// below). An empty or unset variable falls back to the compiled default, so
+// a fork with no listing at all blanks CONFIG_* in config-values.ts instead.
+export const CHROME_WEB_STORE_URL =
+  process.env.NEXT_PUBLIC_CHROME_WEB_STORE_URL || CONFIG_CHROME_WEB_STORE_URL;
+export const FIREFOX_ADDON_URL =
+  process.env.NEXT_PUBLIC_FIREFOX_ADDON_URL || CONFIG_FIREFOX_ADDON_URL;
 
 // BRANDING (from config-values.ts)
 
+// Server-side twin of client-constants.ts's LOGO_URL, which resolves to
+// `${APP_URL}${CONFIG_LOGO_URL}`. Only this one honours the bare `LOGO_URL`
+// variable, and it can only be this one: Next inlines NEXT_PUBLIC_* alone
+// into client code, so the same read in a browser bundle is always undefined
+// and does nothing but ship the variable name.
 export const LOGO_URL = process.env.LOGO_URL || `${APP_URL}${CONFIG_LOGO_URL}`;
 export const BRANDING_PRIMARY_COLOR = CONFIG_PRIMARY_COLOR;
 export const BRANDING_BACKGROUND_DARK = CONFIG_BACKGROUND_COLOR_DARK;
@@ -228,49 +182,46 @@ export const SEO_LOCALE = CONFIG_SEO_LOCALE;
 export const SEO_LANGUAGE = CONFIG_SEO_LANGUAGE;
 export const SEO_ORG_FOUNDING_YEAR = CONFIG_SEO_ORG_FOUNDING_YEAR;
 export const SEO_LICENSE = CONFIG_SEO_LICENSE;
-export const DISCORD_INVITE_URL = CONFIG_DISCORD_INVITE_URL;
 
 // COOKIE NAMES AND SETTINGS (from config-values.ts)
-
-// Version notification
-export const VERSION_COOKIE_NAME = CONFIG_VERSION_COOKIE_NAME;
-export const VERSION_COOKIE_MAX_AGE =
-  60 * 60 * 24 * CONFIG_VERSION_COOKIE_MAX_AGE_DAYS;
+//
+// The version-notification cookie moved to client-constants.ts: the banner
+// that sets it renders in the browser.
 
 // Authentication
 export const AUTH_SESSION_COOKIE_NAME = CONFIG_SESSION_COOKIE_NAME;
+// LEGACY DEFAULT ONLY -- no importers, and do not add one. Session lifetime
+// moved to the admin-configurable SESSION_MAX_AGE_DAYS setting; every call
+// site reads getSetting("SESSION_MAX_AGE_DAYS") now. This constant is the
+// compiled fallback the registry seeds that setting from, nothing else.
+// Importing it would freeze one caller at the shipped default while the rest
+// of the app follows the admin's value, with no compiler error to say so
+// (AUDIT-009#drift-01).
 export const AUTH_SESSION_MAX_AGE = 60 * 60 * 24 * CONFIG_SESSION_MAX_AGE_DAYS;
 export const AUTH_CLEANUP_INTERVAL = CONFIG_CLEANUP_INTERVAL_MS;
 export const DB_CLEANUP_INTERVAL = CONFIG_DB_CLEANUP_INTERVAL_MS;
 export const AUTH_2FA_PENDING_COOKIE = CONFIG_2FA_PENDING_COOKIE_NAME;
-export const AUTH_2FA_PENDING_MAX_AGE = CONFIG_2FA_PENDING_MAX_AGE_SECONDS;
+// There is deliberately no compiled AUTH_2FA_PENDING_MAX_AGE export here any
+// more. It existed for exactly one caller, the login route's pending-2FA
+// cookie maxAge, and that was the bug: every route that VALIDATES a pending
+// token reads getSetting("2FA_PENDING_MAX_AGE_SECONDS"), so an admin who
+// widened the window widened the check while the browser still dropped the
+// cookie at the shipped default. The login route now resolves the same live
+// setting the validators do (AUDIT-009#settings-04).
 
 // Device trust
 export const DEVICE_TRUST_COOKIE_NAME = CONFIG_DEVICE_TRUST_COOKIE_NAME;
 
 // TIME INTERVALS (from config-values.ts)
-
-// Authentication timeouts
-export const TOTP_CODE_VALIDITY = CONFIG_TOTP_VALIDITY_SECONDS;
-export const PASSWORD_MIN_LENGTH = CONFIG_PASSWORD_MIN_LENGTH;
-export const PASSWORD_RESET_TOKEN_LIFETIME =
-  60 * 60 * CONFIG_PASSWORD_RESET_HOURS;
-export const EMAIL_VERIFICATION_TOKEN_LIFETIME =
-  60 * 60 * CONFIG_EMAIL_VERIFICATION_HOURS;
-
-// Device trust
-export const DEVICE_TRUST_DURATION = 60 * 60 * 24 * CONFIG_DEVICE_TRUST_DAYS;
+//
+// The auth timings the sign-in and reset forms quote back to the user
+// (TOTP_CODE_VALIDITY, PASSWORD_MIN_LENGTH, the two token lifetimes,
+// DEVICE_TRUST_DURATION) live in client-constants.ts and are re-exported
+// below.
 
 // Rate limiting
 export const RATE_LIMIT_LOGIN_ATTEMPTS = CONFIG_RATE_LIMIT_LOGIN_ATTEMPTS;
 export const RATE_LIMIT_SIGNUP_ATTEMPTS = CONFIG_RATE_LIMIT_SIGNUP_ATTEMPTS;
-
-// NOTIFICATION BELL (from config-values.ts)
-
-export const NOTIFICATION_POLL_INTERVAL_MS =
-  CONFIG_NOTIFICATION_POLL_INTERVAL_MS;
-export const NOTIFICATION_DEFAULT_DISMISS_MAX_AGE =
-  60 * 60 * 24 * CONFIG_NOTIFICATION_DEFAULT_DISMISS_DAYS;
 
 // ERROR MESSAGES
 
@@ -291,12 +242,28 @@ export const ERROR_MESSAGES = {
   // Validation - Clear, actionable messages
   REQUIRED_FIELD: (field: string) => `${field} is required.`,
   INVALID_EMAIL: "Please enter a valid email address.",
-  WEAK_PASSWORD: "Password must be at least 8 characters long.",
+  // Takes the minimum rather than hardcoding it: this used to be a flat
+  // string saying 8, four lines below PASSWORD_MIN_LENGTH, which is 12 and
+  // admin-editable on top of that. Nothing rendered it, so no user ever saw
+  // the wrong number, but the next caller to reach for it would have
+  // shipped one. Pass the resolved minimum, the same way
+  // components/auth/reset-password-form.tsx already interpolates it.
+  WEAK_PASSWORD: (min: number) =>
+    `Password must be at least ${min} characters long.`,
   PASSWORDS_NOT_MATCH: "The passwords you entered do not match.",
 
   // Rate limiting - Informative with timing
+  //
+  // `resource` is the WHOLE noun phrase ("reset attempts", "AI requests",
+  // "tag changes"), not a bare noun the template completes. It used to append
+  // a literal " attempts", and every one of the four live callers already
+  // passed a phrase ending in that word, so the shipped sentence read "Too
+  // many reset attempts attempts." on the forgot-password and signup limits.
+  // Appending it also made the helper unusable for most of the routes that
+  // still hand-roll this sentence, since theirs are "Too many AI requests"
+  // and "Too many domains added recently", not attempts at anything.
   TOO_MANY_ATTEMPTS: (resource: string, minutes: number) =>
-    `Too many ${resource} attempts. Please wait ${minutes} minute${minutes > 1 ? "s" : ""} before trying again.`,
+    `Too many ${resource}. Please wait ${minutes} minute${minutes > 1 ? "s" : ""} before trying again.`,
 
   // Database - User-friendly errors
   DATABASE_ERROR: "A temporary error occurred. Please try again in a moment.",
@@ -334,7 +301,13 @@ export const SUCCESS_MESSAGES = {
 };
 
 // REGEX PATTERNS
-
+//
+// LEGACY DEFAULT ONLY -- zero importers. Validation is done with zod schemas
+// at each route boundary, which is where it belongs; these were the
+// pre-zod shapes. Do not reach for PATTERNS.EMAIL over z.string().email():
+// the regex here accepts addresses zod rejects, so a route validating with
+// this one would let through what the rest of the app will not
+// (AUDIT-011#drift-24).
 export const PATTERNS = {
   EMAIL: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
   URL: /^https?:\/\/.+/i,
@@ -371,6 +344,29 @@ export const RATE_LIMIT_DEFAULTS = {
     maxAttempts: CONFIG_RATE_LIMIT_SIGNUP_ATTEMPTS,
     windowSeconds: 60 * CONFIG_RATE_LIMIT_SIGNUP_WINDOW_MINUTES,
   },
+  // rate-limit: the per-EMAIL companions to the two per-IP auth limits above.
+  // The per-IP bucket is defeated by a residential proxy pool; these are keyed
+  // on the normalized address, so every attempt against one account lands in
+  // the same bucket however the request is routed.
+  signupEmail: {
+    maxAttempts: CONFIG_RATE_LIMIT_SIGNUP_EMAIL_ATTEMPTS,
+    windowSeconds: 60 * CONFIG_RATE_LIMIT_SIGNUP_EMAIL_WINDOW_MINUTES,
+  },
+  forgotPasswordEmail: {
+    maxAttempts: CONFIG_RATE_LIMIT_FORGOT_PASSWORD_EMAIL_ATTEMPTS,
+    windowSeconds: 60 * CONFIG_RATE_LIMIT_FORGOT_PASSWORD_EMAIL_WINDOW_MINUTES,
+  },
+  // rate-limit: per-user caps on domain verification. Adding mints a token and
+  // writes a row; verifying fires a live DNS lookup. Verify is the looser of
+  // the two because a user fixing a typo'd TXT record legitimately retries.
+  domainAdd: {
+    maxAttempts: CONFIG_RATE_LIMIT_DOMAIN_ADD_ATTEMPTS,
+    windowSeconds: 60 * CONFIG_RATE_LIMIT_DOMAIN_ADD_WINDOW_MINUTES,
+  },
+  domainVerify: {
+    maxAttempts: CONFIG_RATE_LIMIT_DOMAIN_VERIFY_ATTEMPTS,
+    windowSeconds: 60 * CONFIG_RATE_LIMIT_DOMAIN_VERIFY_WINDOW_MINUTES,
+  },
   api: {
     maxAttempts: CONFIG_RATE_LIMIT_API_REQUESTS,
     windowSeconds: 60 * CONFIG_RATE_LIMIT_API_WINDOW_MINUTES,
@@ -384,7 +380,7 @@ export const RATE_LIMIT_DEFAULTS = {
     windowSeconds: 60 * CONFIG_RATE_LIMIT_BULK_SCAN_WINDOW_MINUTES,
   },
   // rate-limit: per-user cap on BrowserBase session creation.
-  // BrowserBase is a paid metered service — without this, a
+  // BrowserBase is a paid metered service, so without this a
   // compromised session cookie can rack up real costs.
   browserSession: {
     maxAttempts: CONFIG_RATE_LIMIT_BROWSER_SESSION_ATTEMPTS,
@@ -454,27 +450,12 @@ export const RATE_LIMIT_DEFAULTS = {
   },
 };
 
-// AUTHENTICATED SCANNING (from config-values.ts). Fully ephemeral: see
-// lib/scanner/auth/types.ts and app/api/v3/scan/authenticated/route.ts.
-
-export const SCAN_AUTH = {
-  ENABLED: CONFIG_SCAN_AUTH_ENABLED,
-  MAX_SECRET_LENGTH: CONFIG_SCAN_AUTH_MAX_SECRET_LENGTH,
-  MAX_COOKIES: CONFIG_SCAN_AUTH_MAX_COOKIES,
-  VERIFY_TIMEOUT_MS: CONFIG_SCAN_AUTH_VERIFY_TIMEOUT_MS,
-  MAX_LOGIN_BODY_BYTES: CONFIG_SCAN_AUTH_MAX_LOGIN_BODY_BYTES,
-  MAX_COOKIE_AGE_SECONDS: CONFIG_SCAN_AUTH_MAX_COOKIE_AGE_SECONDS,
-  BASELINE_DIFF_BYTES: CONFIG_SCAN_AUTH_BASELINE_DIFF_BYTES,
-  BROWSER_NAV_TIMEOUT_MS: CONFIG_SCAN_AUTH_BROWSER_NAV_TIMEOUT_MS,
-  BROWSER_SETTLE_MS: CONFIG_SCAN_AUTH_BROWSER_SETTLE_MS,
-  BROWSER_MAX_WAIT_MS: CONFIG_SCAN_AUTH_BROWSER_MAX_WAIT_MS,
-  BROWSER_SESSION_TIMEOUT_SECONDS:
-    CONFIG_SCAN_AUTH_BROWSER_SESSION_TIMEOUT_SECONDS,
-  BROWSER_MAX_HTML_CHARS: CONFIG_SCAN_AUTH_BROWSER_MAX_HTML_CHARS,
-};
-
 // DATABASE CONSTRAINTS (from config-values.ts)
-
+//
+// LEGACY DEFAULT ONLY -- zero importers. The length limits are enforced by
+// each route's own zod schema and by the column widths in instrumentation.ts,
+// not from here. Same caveat as PAGINATION below: read the live setting, not
+// this object (AUDIT-011#drift-24).
 export const DATABASE = {
   MAX_EMAIL_LENGTH: CONFIG_MAX_EMAIL_LENGTH,
   MAX_NAME_LENGTH: CONFIG_MAX_NAME_LENGTH,
@@ -483,20 +464,15 @@ export const DATABASE = {
   MAX_TAGS_PER_SCAN: CONFIG_MAX_TAGS_PER_SCAN,
 };
 
-// SECURITY SCANNING CONSTRAINTS (from config-values.ts)
-
-export const SCANNING = {
-  MAX_URL_LENGTH: CONFIG_MAX_URL_LENGTH,
-  MAX_URLS_IN_BULK: CONFIG_MAX_URLS_BULK,
-  TIMEOUT_SECONDS: CONFIG_SCAN_TIMEOUT_SECONDS,
-  BULK_TIMEOUT_SECONDS: CONFIG_BULK_SCAN_TIMEOUT_SECONDS,
-  CRAWL_TIMEOUT_SECONDS: CONFIG_CRAWL_SCAN_TIMEOUT_SECONDS,
-  STATUS_POLL_INTERVAL_MS: CONFIG_SCAN_STATUS_POLL_INTERVAL_MS,
-  DEFAULT_SEVERITY_THRESHOLD: CONFIG_DEFAULT_SEVERITY_THRESHOLD,
-};
-
 // PAGINATION (from config-values.ts)
-
+//
+// LEGACY DEFAULT ONLY -- zero importers. Every paginated route parses its own
+// `page` / `limit` query params and clamps them locally, so this object is the
+// shipped default the registry seeds PAGINATION_* from and nothing more.
+// Kept rather than deleted because /docs/config documents the CONFIG_ values
+// behind it as self-host knobs; a route that imported this instead of reading
+// the live setting would silently ignore the admin's page-size
+// (AUDIT-009#drift-01, AUDIT-011#drift-24).
 export const PAGINATION = {
   DEFAULT_PAGE_SIZE: CONFIG_PAGINATION_DEFAULT_PAGE_SIZE,
   MAX_PAGE_SIZE: CONFIG_PAGINATION_MAX_PAGE_SIZE,
@@ -504,155 +480,57 @@ export const PAGINATION = {
 };
 
 // BILLING / PREMIUM (from config-values.ts)
+//
+// BILLING_ENABLED, BILLING_PLAN_LIMITS and BILLING_HISTORY_RETENTION are in
+// client-constants.ts (sixteen client components gate CTAs on the first
+// alone) and re-exported below. Only the unlimited-mode sentinel, which no
+// UI reads, is still declared here.
 
-// When BILLING_ENABLED is false, all users get unlimited access
-// Self-hosters can disable this to remove all premium restrictions
-
-export const BILLING_ENABLED = CONFIG_BILLING_ENABLED;
-export const BILLING_PLAN_LIMITS = {
-  free: CONFIG_BILLING_FREE_LIMIT,
-  core_supporter: CONFIG_BILLING_CORE_SUPPORTER_LIMIT,
-  pro_supporter: CONFIG_BILLING_PRO_SUPPORTER_LIMIT,
-  elite_supporter: CONFIG_BILLING_ELITE_SUPPORTER_LIMIT,
-};
-export const BILLING_HISTORY_RETENTION = {
-  free: CONFIG_BILLING_FREE_RETENTION,
-  core_supporter: CONFIG_BILLING_CORE_SUPPORTER_RETENTION,
-  pro_supporter: CONFIG_BILLING_PRO_SUPPORTER_RETENTION,
-  elite_supporter: CONFIG_BILLING_ELITE_SUPPORTER_RETENTION,
-};
 export const BILLING_UNLIMITED_MODE_LIMIT = CONFIG_BILLING_UNLIMITED_MODE_LIMIT;
 
-// TEAM ROLES
-
-// MANAGER and OPERATOR are the two other real combinations of the 4
-// underlying capabilities (manage_team/manage_members/manage_scans, all on
-// top of view_reports, which every role gets) besides the pre-existing
-// ADMIN (members+scans) and MEMBER (scans only): a people/settings admin
-// who isn't a scan operator, and a scan operator who can also adjust team
-// settings but doesn't handle onboarding/offboarding. delete_team is its
-// own permission, owner-only -- deleting a team is a strictly bigger blast
-// radius than renaming it, so it doesn't just ride along with manage_team.
-export const TEAM_ROLES = {
-  OWNER: "owner",
-  ADMIN: "admin",
-  MANAGER: "manager",
-  OPERATOR: "operator",
-  MEMBER: "member",
-  VIEWER: "viewer",
-};
-
-export const TEAM_ROLE_PERMISSIONS = {
-  [TEAM_ROLES.OWNER]: [
-    "manage_team",
-    "delete_team",
-    "manage_members",
-    "manage_scans",
-    "view_reports",
-  ],
-  [TEAM_ROLES.ADMIN]: [
-    "manage_team",
-    "manage_members",
-    "manage_scans",
-    "view_reports",
-  ],
-  [TEAM_ROLES.MANAGER]: ["manage_team", "manage_members", "view_reports"],
-  [TEAM_ROLES.OPERATOR]: ["manage_team", "manage_scans", "view_reports"],
-  [TEAM_ROLES.MEMBER]: ["manage_scans", "view_reports"],
-  [TEAM_ROLES.VIEWER]: ["view_reports"],
-};
-
-// Grammatically correct "as a/an X" phrasing per role -- a plain
-// TEAM_ROLES.MANAGER -> "as an manager" string-concat would read wrong,
-// since the right article depends on the role name's own first sound.
-// Excludes OWNER: never assigned through an invite (see
-// app/api/v3/teams/members/route.ts's INVITABLE_TEAM_ROLES), so no
-// invite-notification copy ever needs to say "as the owner".
-export const TEAM_ROLE_INVITE_LABELS: Record<string, string> = {
-  [TEAM_ROLES.ADMIN]: "an admin",
-  [TEAM_ROLES.MANAGER]: "a manager",
-  [TEAM_ROLES.OPERATOR]: "an operator",
-  [TEAM_ROLES.MEMBER]: "a member",
-  [TEAM_ROLES.VIEWER]: "a viewer",
-};
+// EMAIL ADDRESSES (from config.yaml + env vars)
 
 /**
- * Whether a team role grants a given team permission. Pure and client-safe
- * (no DB import) so both server routes (app/api/v3/teams/route.ts,
- * teams/members/route.ts, lib/auth/team-resource-access.ts) and client
- * components (components/teams/team-members-list.tsx) can share one
- * implementation instead of drifting copies.
+ * Server-side twin of client-constants.ts's SUPPORT_EMAIL, which checks
+ * `NEXT_PUBLIC_SUPPORT_EMAIL` only.
+ *
+ * `SUPPORT_EMAIL` is a plain server variable: it resolves at runtime in
+ * server code (the email templates, which is where most of these live), so an
+ * operator setting it in their environment gets their own address in outgoing
+ * mail without rebuilding.
+ *
+ * That branch cannot work in the browser: Next.js only inlines
+ * `NEXT_PUBLIC_*` there, so the four client components that read this
+ * (contact-quick-links, demo-error, and the two error boundaries) always got
+ * the build-time literal and shipped the bare variable name for nothing. They
+ * import the client twin now, which resolves to exactly the same value.
+ *
+ * `NEXT_PUBLIC_SUPPORT_EMAIL` is the client-side half, matching how APP_URL
+ * already solves the same problem. Set both, or set neither.
  */
-export function hasTeamPermission(
-  role: string | undefined,
-  permission: string,
-): boolean {
-  if (!role) return false;
-  const perms =
-    TEAM_ROLE_PERMISSIONS[role as keyof typeof TEAM_ROLE_PERMISSIONS];
-  return Array.isArray(perms) && perms.includes(permission);
-}
-
-/**
- * Role ceiling: a caller may only grant, or act on, a team role whose
- * permission set is a SUBSET of the caller's own. The team roles are a partial
- * order, not a strict ladder (manager has manage_members but not manage_scans;
- * operator is the reverse), so a plain numeric rank can't express it -- subset
- * is the correct relation. Without this, a manager (manage_members, NOT
- * manage_scans) could promote a member to admin and thereby hand out
- * manage_scans, a capability the manager itself lacks (escalation by proxy), or
- * demote/remove an admin that outranks them. Owner holds every permission, so
- * owner can assign or act on any role; nobody can act on a role that holds a
- * permission they don't (returns false for an unknown role on either side).
- */
-export function canAssignTeamRole(
-  callerRole: string | undefined,
-  otherRole: string | undefined,
-): boolean {
-  if (!callerRole || !otherRole) return false;
-  const callerPerms =
-    TEAM_ROLE_PERMISSIONS[callerRole as keyof typeof TEAM_ROLE_PERMISSIONS];
-  const otherPerms =
-    TEAM_ROLE_PERMISSIONS[otherRole as keyof typeof TEAM_ROLE_PERMISSIONS];
-  if (!Array.isArray(callerPerms) || !Array.isArray(otherPerms)) return false;
-  return otherPerms.every((p) => callerPerms.includes(p));
-}
-
-// VULNERABILITY SEVERITY LEVELS
-
-//
-// SEVERITY_LEVELS lives in lib/config/client-constants.ts (single source).
-// Re-exported here for server-side convenience.
-export { SEVERITY_LEVELS } from "@/lib/config/client-constants";
-
-export const SEVERITY_PRIORITY = {
-  critical: 5,
-  high: 4,
-  medium: 3,
-  low: 2,
-  info: 1,
-};
-
-// EMAIL / SMTP CONFIG (from config.yaml + env vars)
-
-export const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || CONFIG_SUPPORT_EMAIL;
+export const SUPPORT_EMAIL =
+  process.env.NEXT_PUBLIC_SUPPORT_EMAIL ||
+  process.env.SUPPORT_EMAIL ||
+  CONFIG_SUPPORT_EMAIL;
 export const LEGAL_EMAIL = CONFIG_LEGAL_EMAIL;
 export const SECURITY_EMAIL = CONFIG_SECURITY_EMAIL;
 export const ENTERPRISE_EMAIL = CONFIG_ENTERPRISE_EMAIL;
 export const NOREPLY_EMAIL = CONFIG_NOREPLY_EMAIL;
 
-export const SMTP_HOST = process.env.SMTP_HOST || "";
-export const SMTP_PORT = Number(process.env.SMTP_PORT) || 587;
-export const SMTP_USER = process.env.SMTP_USER || "";
-export const SMTP_PASS = process.env.SMTP_PASS || "";
-export const SMTP_FROM =
-  process.env.SMTP_FROM || process.env.SMTP_USER || SMTP_USER;
+// SMTP credentials are NOT here. They read SMTP_PASS and friends, and this
+// module still reaches client bundles through the components that have not
+// been migrated yet, so they live in lib/config/server-constants.ts behind
+// `import "server-only"` (AUDIT-012#fe-15).
 
 // API KEY CONFIGURATION (from config-values.ts)
 
 export const API_KEY_PREFIX = CONFIG_API_KEY_PREFIX;
+// LEGACY DEFAULT ONLY -- no importers, and do not add one. Same shape as
+// AUTH_SESSION_MAX_AGE above: lib/api/api-keys.ts:89 reads
+// getSetting("DEFAULT_API_KEY_DAILY_LIMIT"), so a key created against this
+// compiled value would ignore whatever the admin panel says
+// (AUDIT-009#drift-01).
 export const DEFAULT_API_KEY_DAILY_LIMIT = CONFIG_DEFAULT_API_KEY_DAILY_LIMIT;
-export const API_CURRENT_VERSION = CONFIG_API_CURRENT_VERSION;
 
 // Auth / headers
 export const AUTH_HEADER = "authorization";
@@ -670,31 +548,26 @@ export const TOTP_ISSUER = APP_NAME;
 // that touches email.ts without also mocking @/lib/database/db).
 export const STAFF_INVITE_EXPIRY_DAYS = 7;
 
-// TURNSTILE / CAPTCHA CONFIG
-
-export const TURNSTILE_ENABLED = !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
-
 // BROWSERBASE / LIVE BROWSER VIEWER CONFIG
+//
+// BROWSERBASE_ENABLED is the one that reads the API key, so it moved to
+// lib/config/server-constants.ts. These two are plain numbers and stay.
 
-export const BROWSERBASE_ENABLED = !!(
-  process.env.BROWSERBASE_API_KEY && process.env.BROWSERBASE_PROJECT_ID
-);
 export const BROWSERBASE_MAX_TTL_SECONDS = CONFIG_BROWSERBASE_MAX_TTL_SECONDS;
 export const BROWSERBASE_DEFAULT_TTL_SECONDS =
   CONFIG_BROWSERBASE_DEFAULT_TTL_SECONDS;
-export const BROWSERBASE_LOGS_POLL_INTERVAL_MS =
-  CONFIG_BROWSERBASE_LOGS_POLL_INTERVAL_MS;
 
-// DEMO SCAN LIMITS (from config-values.ts)
-
-export const DEMO_SCAN_LIMIT = CONFIG_DEMO_SCAN_LIMIT;
-
-// STAFF / ADMIN ROLES, ROLE BADGE STYLES, ROUTES, API, API_VERSION
-
-// All client-safe constants live in lib/config/client-constants.ts as
-// the single source of truth. Server-side this module re-exports them
-// so existing imports (`from "@/lib/config/constants"`) keep working
-// unchanged while adding new routes stays a single-file edit.
+// CLIENT-SAFE CONSTANTS
+//
+// All client-safe constants live in lib/config/client-constants.ts as the
+// single source of truth. Server-side this module re-exports them so existing
+// imports (`from "@/lib/config/constants"`) keep working unchanged while
+// adding a new route or a new shared value stays a single-file edit.
+//
+// Client components must import them from client-constants.ts directly. That
+// is not a style preference: this module's own declarations above read
+// non-public environment variables, and every one of them rides along into
+// whatever bundle imports this file (AUDIT-012#fe-15).
 
 export {
   STAFF_ROLES,
@@ -713,75 +586,56 @@ export {
   API_KEY_SCOPE_DESCRIPTIONS,
   resolveApiKeyScopes,
   OG_INSPECT_URL_TEMPLATE,
+  SEVERITY_LEVELS,
+  SEVERITY_PRIORITY,
+  APP_NAME,
+  APP_SLUG,
+  APP_VERSION,
+  ENGINE_VERSION,
+  TOTAL_CHECKS_LABEL,
+  APP_URL,
+  APP_REPO,
+  API_CURRENT_VERSION,
+  DEFAULT_SCAN_NOTE,
+  DISCORD_INVITE_URL,
+  TURNSTILE_ENABLED,
+  VERSION_COOKIE_NAME,
+  VERSION_COOKIE_MAX_AGE,
+  TOTP_CODE_VALIDITY,
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_RESET_TOKEN_LIFETIME,
+  EMAIL_VERIFICATION_TOKEN_LIFETIME,
+  DEVICE_TRUST_DURATION,
+  NOTIFICATION_POLL_INTERVAL_MS,
+  NOTIFICATION_DEFAULT_DISMISS_MAX_AGE,
+  BROWSERBASE_LOGS_POLL_INTERVAL_MS,
+  SCANNING,
+  SCAN_AUTH,
+  BULK_SCAN_CLIENT_URL_LIMIT,
+  MAX_AVATAR_UPLOAD_BYTES,
+  DEMO_SCAN_LIMIT,
+  AI_CHAT_HISTORY_DAYS,
+  AI_CHAT_MAX_INPUT_LENGTH,
+  AI_USAGE_WINDOW_HOURS,
+  GITHUB_REVIEW_FREE_TRIAL_WINDOW_HOURS,
+  BILLING_ENABLED,
+  BILLING_PLAN_LIMITS,
+  BILLING_HISTORY_RETENTION,
+  FEATURES,
+  TEAM_ROLES,
+  TEAM_ROLE_PERMISSIONS,
+  TEAM_ROLE_INVITE_LABELS,
+  hasTeamPermission,
+  canAssignTeamRole,
 } from "@/lib/config/client-constants";
 
-// Additions that only exist on the server side are now in client-constants.ts.
-// (PRICING_ROUTE and GDPR_REQUEST_ROUTE are aliases of ROUTES.PRICING and
-// ROUTES.GDPR_REQUEST respectively.)
-
 // API V3 ENDPOINTS
-
-export const API_V3 = {
-  AUTH: {
-    ME: "/api/v3/auth/me",
-    LOGIN: "/api/v3/auth/login",
-    SIGNUP: "/api/v3/auth/signup",
-    LOGOUT: "/api/v3/auth/logout",
-    UPDATE: "/api/v3/auth/update",
-    FORGOT_PASSWORD: "/api/v3/auth/forgot-password",
-    RESET_PASSWORD: "/api/v3/auth/reset-password",
-    VERIFY_EMAIL: "/api/v3/auth/verify-email",
-    RESEND_VERIFICATION: "/api/v3/auth/resend-verification",
-    ACCEPT_TOS: "/api/v3/auth/accept-tos",
-    ONBOARDING: "/api/v3/auth/onboarding",
-    TWO_FA: {
-      SETUP: "/api/v3/auth/2fa/setup",
-      VERIFY: "/api/v3/auth/2fa/verify",
-      DISABLE: "/api/v3/auth/2fa/disable",
-      EMAIL_SETUP: "/api/v3/auth/2fa/email-setup",
-      EMAIL_SEND: "/api/v3/auth/2fa/email-send",
-      BACKUP_CODES: "/api/v3/auth/2fa/backup-codes",
-    },
-  },
-  SCAN: "/api/v3/scan",
-  SCAN_BULK: "/api/v3/scan/bulk",
-  SCAN_TAGS: "/api/v3/scan/tags",
-  SCAN_DISCOVER: "/api/v3/scan/discover",
-  SCAN_DISCOVER_PROGRESS: (requestId: string) =>
-    `/api/v3/scan/discover/progress/${requestId}`,
-  SCAN_CRAWL_DISCOVER: "/api/v3/scan/crawl/discover",
-  DEMO_SCAN: "/api/v3/demo-scan",
-  HISTORY: "/api/v3/history",
-  DASHBOARD: "/api/v3/dashboard",
-  SHARES: "/api/v3/shares",
-  KEYS: "/api/v3/keys",
-  WEBHOOKS: "/api/v3/webhooks",
-  SCHEDULES: "/api/v3/schedules",
-  DOMAINS: "/api/v3/domains",
-  TEAMS: "/api/v3/teams",
-  TEAMS_MEMBERS: "/api/v3/teams/members",
-  TEAMS_ACCEPT_INVITE: "/api/v3/teams/accept-invite",
-  NOTIFICATIONS: "/api/v3/notifications",
-  CONTACT: "/api/v3/contact",
-  LANDING_CONTACT: "/api/v3/landing-contact",
-  ADMIN: "/api/v3/admin",
-  BADGE_SCANS: "/api/v3/badge/scans",
-  DATA_REQUEST: "/api/v3/data-request",
-  ACCOUNT_DELETE: "/api/v3/account/delete",
-  ACCOUNT_NOTIFICATIONS: "/api/v3/account/notifications",
-  FINDING_TYPES: "/api/v3/finding-types",
-  COMPARE: "/api/v3/compare",
-} as const;
-
-// FEATURE FLAGS (from config-values.ts)
-
-export const FEATURES = {
-  DEMO_MODE: CONFIG_FEATURE_DEMO_MODE,
-  TEAMS: CONFIG_FEATURE_TEAMS,
-  API_KEYS: CONFIG_FEATURE_API_KEYS,
-  WEBHOOKS: CONFIG_FEATURE_WEBHOOKS,
-  SCHEDULED_SCANS: CONFIG_FEATURE_SCHEDULED_SCANS,
-  BULK_SCANS: CONFIG_FEATURE_BULK_SCANS,
-  PDF_REPORTS: CONFIG_FEATURE_PDF_REPORTS,
-  EMAIL_NOTIFICATIONS: CONFIG_FEATURE_EMAIL_NOTIFICATIONS,
-} as const;
+//
+// There is no API_V3 map here any more. It was a second, fully hardcoded copy
+// of the route table above: 55 literal "/api/v3/..." strings sitting directly
+// beneath the comment that says API_VERSION is what switches the API between
+// versions (AUDIT-014#hc-10). Its only two consumers were
+// lib/config/public-paths.ts and one test, both of which now read the same
+// `API` map every other caller uses, so the version appears once in the
+// source instead of twice. If you need a route here, add it to the API map in
+// lib/config/client-constants.ts.

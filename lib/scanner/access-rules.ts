@@ -11,6 +11,76 @@ export interface AccessRuleCheckResult {
 // (normalizeDomain removed in cleanup; access-rules.ts now uses external normalization)
 
 /**
+ * Short-lived per-hostname memo of a completed rule evaluation.
+ *
+ * checkAccessRules always cost two serialized round trips (a blacklist
+ * SELECT, then a whitelist COUNT), and neither predicate is sargable: the
+ * url branch builds its LIKE pattern out of the column, and the ip branch
+ * casts `value::inet`. So both are sequential scans of `access_rules`, on a
+ * table an admin edits maybe once a month. It runs once per scan, once per
+ * URL in a bulk request, and once per selected page before a crawl starts:
+ * a 250-page crawl of ONE host paid 500 sequential scans to answer the same
+ * question 250 times.
+ *
+ * The evaluation depends on nothing but the hostname (the ip branch is
+ * derived from it), so the decision is memoized per hostname. The TTL is
+ * deliberately short: a newly added blocklist rule takes effect within it
+ * without any invalidation hook in the admin write path.
+ *
+ * A fail-closed result from the catch block is NEVER cached: a DB blip must
+ * not pin every scan into "blocked" for the whole TTL after the database
+ * has already recovered.
+ * ref: AUDIT-012#perf-23
+ */
+const RULE_CACHE_TTL_MS = 30_000;
+const RULE_CACHE_MAX_ENTRIES = 500;
+const ruleCache = new Map<
+  string,
+  { result: AccessRuleCheckResult; cachedAt: number }
+>();
+
+/** Drop the memo. Exported for tests and for an admin write path that wants
+ *  a rule change to apply immediately rather than within the TTL. */
+export function clearAccessRulesCache(): void {
+  ruleCache.clear();
+}
+
+function readRuleCache(hostname: string): AccessRuleCheckResult | null {
+  const hit = ruleCache.get(hostname);
+  if (!hit) return null;
+  if (Date.now() - hit.cachedAt >= RULE_CACHE_TTL_MS) {
+    ruleCache.delete(hostname);
+    return null;
+  }
+  return hit.result;
+}
+
+function writeRuleCache(hostname: string, result: AccessRuleCheckResult): void {
+  // Map iterates in insertion order, so the first key is the oldest entry.
+  // Bulk scans can touch many distinct hosts; this keeps the memo bounded.
+  if (ruleCache.size >= RULE_CACHE_MAX_ENTRIES) {
+    const oldest = ruleCache.keys().next().value;
+    if (oldest !== undefined) ruleCache.delete(oldest);
+  }
+  ruleCache.set(hostname, { result, cachedAt: Date.now() });
+}
+
+/** Fire-and-forget hit accounting for a matched blacklist rule. Runs on a
+ *  cached decision too, so the admin panel's hit_count stays a true count of
+ *  how often the rule actually blocked something rather than dropping to one
+ *  per TTL window. */
+function recordBlacklistHit(value: string): void {
+  pool
+    .query(
+      `UPDATE access_rules
+       SET hit_count = hit_count + 1, last_hit_at = NOW()
+       WHERE LOWER(value) = LOWER($1) AND rule_type = 'blacklist'`,
+      [value],
+    )
+    .catch(() => {});
+}
+
+/**
  * Check if a URL or its domain/IP is blocked by access rules.
  * Returns allowed: false if the URL matches an active blacklist rule.
  *
@@ -27,6 +97,18 @@ export async function checkAccessRules(
   try {
     const parsedUrl = new URL(url);
     const hostname = parsedUrl.hostname.toLowerCase();
+
+    const cached = readRuleCache(hostname);
+    if (cached) {
+      if (
+        !cached.allowed &&
+        cached.ruleType === "blacklist" &&
+        cached.matchedValue
+      ) {
+        recordBlacklistHit(cached.matchedValue);
+      }
+      return cached;
+    }
 
     // Extract potential IP address
     const ipMatch = hostname.match(/^(\d{1,3}\.){3}\d{1,3}$/);
@@ -74,15 +156,8 @@ export async function checkAccessRules(
 
     if (blacklistResult.rows.length > 0) {
       const rule = blacklistResult.rows[0];
-      pool
-        .query(
-          `UPDATE access_rules
-           SET hit_count = hit_count + 1, last_hit_at = NOW()
-           WHERE LOWER(value) = LOWER($1) AND rule_type = 'blacklist'`,
-          [rule.value],
-        )
-        .catch(() => {});
-      return {
+      recordBlacklistHit(rule.value);
+      const blocked: AccessRuleCheckResult = {
         allowed: false,
         reason:
           rule.reason ||
@@ -90,6 +165,8 @@ export async function checkAccessRules(
         ruleType: "blacklist",
         matchedValue: rule.value,
       };
+      writeRuleCache(hostname, blocked);
+      return blocked;
     }
 
     // scanner: if any active whitelist rules exist, the URL must
@@ -122,21 +199,27 @@ export async function checkAccessRules(
         queryParams,
       );
       if (whitelistResult.rows.length === 0) {
-        return {
+        const notListed: AccessRuleCheckResult = {
           allowed: false,
           reason: "Target is not on the active whitelist.",
           ruleType: "whitelist",
         };
+        writeRuleCache(hostname, notListed);
+        return notListed;
       }
     }
 
-    return { allowed: true };
+    const allowed: AccessRuleCheckResult = { allowed: true };
+    writeRuleCache(hostname, allowed);
+    return allowed;
   } catch (error) {
     // scanner: fail-CLOSED on DB error. A DB outage used to silently
     // allow every scan through, turning the outage into a blacklist
     // bypass. Now we refuse the scan. The SSRF guard via
     // validateScanTarget still runs, so private-IP targets remain
-    // blocked regardless.
+    // blocked regardless. Deliberately NOT written to the memo above: a
+    // transient outage must stop blocking as soon as the DB is back, not a
+    // TTL later.
     console.error(
       `[${APP_NAME}] Access rules check failed (failing closed):`,
       error instanceof Error ? error.message : error,

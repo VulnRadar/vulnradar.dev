@@ -140,7 +140,7 @@ describe("GET /api/v3/scan/status/:id", () => {
       rows: [
         row({
           status: "failed",
-          error_message: "Could not reach the target URL: ECONNREFUSED.",
+          error_message: "Scan exceeded the 120s time limit.",
           duration: 1500,
         }),
       ],
@@ -150,9 +150,34 @@ describe("GET /api/v3/scan/status/:id", () => {
     const json = await res.json();
 
     expect(json.status).toBe("failed");
-    expect(json.error).toBe("Could not reach the target URL: ECONNREFUSED.");
+    // A reason the pipeline writes deliberately reaches the user unchanged.
+    expect(json.error).toBe("Scan exceeded the 120s time limit.");
     expect(json.elapsedMs).toBe(1500);
     expect(json.result).toBeUndefined();
+  });
+
+  it("does not hand back a raw driver message stored in error_message", async () => {
+    // The pipeline persists any exception's raw `.message`, so this column can
+    // hold a pg or socket error naming an internal table, host or port. The
+    // route sanitizes at the read boundary (lib/api/scan-error-message.ts).
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        row({
+          status: "failed",
+          error_message: 'relation "scan_tags" does not exist',
+          duration: 1500,
+        }),
+      ],
+    });
+
+    const res = await GET(req(), ctx("1"));
+    const json = await res.json();
+
+    expect(json.status).toBe("failed");
+    expect(json.error).not.toContain("scan_tags");
+    expect(json.error).toBe(
+      "The scan could not be completed because of an internal error. Please try again.",
+    );
   });
 
   it("returns 404 for a scan that does not exist", async () => {

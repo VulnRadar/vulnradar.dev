@@ -14,7 +14,9 @@ import {
   STAFF_PERMISSIONS,
   canPerformAction as hasActionPermission,
 } from "@/lib/auth/permissions-client";
-import { hashPassword, verifyPassword } from "@/lib/auth/auth";
+import { hashPassword } from "@/lib/auth/auth";
+import { verifyReauthPassword } from "@/lib/auth/reauth";
+import { analyzePassword } from "@/lib/auth/password-strength";
 import { startImpersonation } from "@/lib/auth/impersonation";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import {
@@ -126,11 +128,67 @@ export async function GET(request: NextRequest) {
   // pattern. Without this, typing "%" returns all users (full table scan).
   const searchEscaped = search.replace(/[\\%_]/g, "\\$&");
 
+  // Server-side sort for the users list. The panel used to sort only the ten
+  // rows it had already fetched while presenting it as a real sort, so
+  // clicking "Joined" on page 1 of 40 gave the oldest of ten, not the oldest
+  // account. Whitelisted column names only: the value is interpolated into
+  // the ORDER BY, so it can never come from the query string directly.
+  const USER_SORT_COLUMNS: Record<string, string> = {
+    name: "COALESCE(NULLIF(u.name, ''), u.email)",
+    joined: "u.created_at",
+  };
+  const sortParam = searchParams.get("sort") || "";
+  const sortExpr = USER_SORT_COLUMNS[sortParam];
+  const sortDir = searchParams.get("dir") === "asc" ? "ASC" : "DESC";
+  // Tie-break on id so paging is stable when two rows share a sort value.
+  const userOrderBy = sortExpr
+    ? `${sortExpr} ${sortDir}, u.id DESC`
+    : "u.created_at DESC";
+
   // Fetch user detail
   if (section === "user-detail") {
+    // auth: this branch used to gate on requireStaff() alone, which passes for
+    // every specialist role (ops/billing/security_analyst/content_manager all
+    // sit at hierarchy 20). It returns email, billing identifiers, linked
+    // social accounts, API-key prefixes and every live session's IP and user
+    // agent, so an ops account -- deliberately scoped away from user data,
+    // holding neither VIEW_USERS nor VIEW_USER_SESSIONS -- could read the
+    // whole user base's PII from one URL regardless of what the UI rendered.
+    // Gated the same way the audit and active-admins sections below already
+    // are, and the session list is now a second, narrower grant.
+    if (!hasStaffPermission(session.role, STAFF_PERMISSIONS.VIEW_USERS)) {
+      return NextResponse.json(
+        { error: ERROR_MESSAGES.FORBIDDEN },
+        { status: 403 },
+      );
+    }
+    const canSeeSessions = hasStaffPermission(
+      session.role,
+      STAFF_PERMISSIONS.VIEW_USER_SESSIONS,
+    );
+    // Two more narrow grants alongside canSeeSessions, for the same reason:
+    // VIEW_ALL_SCANS and VIEW_USER_API_KEYS existed but gated nothing, so the
+    // panel's Recent Scans and API Keys cards rendered for every role that
+    // holds VIEW_USERS. Scan rows are the target's browsing history (the URLs
+    // they scanned), and key rows name and prefix live credentials, so both
+    // are narrower than "may look at accounts": billing and content_manager
+    // hold VIEW_USERS but neither of these, and VIEW_USER_API_KEYS pairs with
+    // REVOKE_USER_API_KEYS, which is admin-only.
+    const canSeeScans = hasStaffPermission(
+      session.role,
+      STAFF_PERMISSIONS.VIEW_ALL_SCANS,
+    );
+    const canSeeApiKeys = hasStaffPermission(
+      session.role,
+      STAFF_PERMISSIONS.VIEW_USER_API_KEYS,
+    );
     const userId = searchParams.get("userId");
     if (!userId)
       return NextResponse.json({ error: "userId required" }, { status: 400 });
+    const detailUserId = Number(userId);
+    if (!Number.isInteger(detailUserId) || detailUserId < 1) {
+      return NextResponse.json({ error: "Invalid userId" }, { status: 400 });
+    }
 
     const [
       userRes,
@@ -153,7 +211,17 @@ export async function GET(request: NextRequest) {
           (SELECT COUNT(*) FROM scan_history WHERE user_id = $1)::int as scan_count,
           (SELECT COUNT(*) FROM api_keys WHERE user_id = $1 AND revoked_at IS NULL)::int as api_key_count,
           (SELECT COUNT(*) FROM sessions WHERE user_id = $1 AND expires_at > NOW())::int as session_count,
-          (u.backup_codes IS NOT NULL AND u.backup_codes != '[]') as has_backup_codes,
+          -- schema: users.backup_codes is TEXT holding a JSON array, so this
+          -- flag is a string comparison rather than a structural one. It used
+          -- to test inequality against the two characters [] exactly, which
+          -- reported "has backup codes" for any serialization that emitted a
+          -- spaced empty array, the word null, or an empty string.
+          -- Trimmed and regex-matched rather than cast to jsonb: a corrupted
+          -- value would make a ::jsonb cast raise and 500 this whole admin
+          -- page, which is the case the 2FA repair scripts exist for.
+          (u.backup_codes IS NOT NULL
+            AND btrim(u.backup_codes) !~ '^\\[\\s*\\]$'
+            AND btrim(u.backup_codes) NOT IN ('', 'null')) as has_backup_codes,
           gs.plan as gifted_plan,
           gs.expires_at as gift_end_date
         FROM users u
@@ -161,14 +229,18 @@ export async function GET(request: NextRequest) {
         WHERE u.id = $1`,
         [userId],
       ),
-      pool.query(
-        "SELECT id, url, findings_count, source, scanned_at FROM scan_history WHERE user_id = $1 ORDER BY scanned_at DESC LIMIT 10",
-        [userId],
-      ),
-      pool.query(
-        "SELECT id, key_prefix, name, daily_limit, created_at, last_used_at, revoked_at FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC",
-        [userId],
-      ),
+      canSeeScans
+        ? pool.query(
+            "SELECT id, url, findings_count, source, scanned_at FROM scan_history WHERE user_id = $1 ORDER BY scanned_at DESC LIMIT 10",
+            [userId],
+          )
+        : Promise.resolve({ rows: [] as unknown[] }),
+      canSeeApiKeys
+        ? pool.query(
+            "SELECT id, key_prefix, name, daily_limit, created_at, last_used_at, revoked_at FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC",
+            [userId],
+          )
+        : Promise.resolve({ rows: [] as unknown[] }),
       pool.query(
         "SELECT id, name, url, type, active FROM webhooks WHERE user_id = $1",
         [userId],
@@ -177,10 +249,15 @@ export async function GET(request: NextRequest) {
         "SELECT id, url, frequency, active, last_run_at, next_run_at FROM scheduled_scans WHERE user_id = $1",
         [userId],
       ),
-      pool.query(
-        "SELECT id, created_at, expires_at, ip_address, user_agent FROM sessions WHERE user_id = $1 AND expires_at > NOW() ORDER BY created_at DESC",
-        [userId],
-      ),
+      // Session rows carry the target's last-known IPs, so they ride on
+      // VIEW_USER_SESSIONS rather than VIEW_USERS. billing and
+      // content_manager hold the latter but not the former.
+      canSeeSessions
+        ? pool.query(
+            "SELECT id, created_at, expires_at, ip_address, user_agent FROM sessions WHERE user_id = $1 AND expires_at > NOW() ORDER BY created_at DESC",
+            [userId],
+          )
+        : Promise.resolve({ rows: [] as unknown[] }),
       pool.query(
         `SELECT b.id, b.name, b.display_name, b.description, b.icon, b.color, b.priority, b.is_limited, ub.awarded_at
          FROM user_badges ub JOIN badges b ON ub.badge_id = b.id
@@ -221,6 +298,28 @@ export async function GET(request: NextRequest) {
     if (!userRes.rows[0])
       return NextResponse.json({ error: "User not found" }, { status: 404 });
 
+    // audit: reads used to leave no trail at all, so a compromised or
+    // insider staff account could page through every account's PII, sessions
+    // and billing identifiers with nothing to reconstruct afterwards
+    // (AUDIT-004/AUDIT-005 #audit-01). Only this branch is logged, not the
+    // paged user list: opening one account's full record is the read that
+    // matters, and logging the list would write a row per keystroke of the
+    // search box. The details string names the target id only -- logAction
+    // redacts embedded emails, and the target_user_id column already joins
+    // back to the account.
+    try {
+      await logAction(
+        session.userId,
+        detailUserId,
+        "view_user_detail",
+        `Viewed the full account record for user #${detailUserId}`,
+        await getClientIp(),
+      );
+    } catch (err) {
+      // A failed audit write must never turn a read into an error page.
+      console.error("[admin] Failed to log user-detail read:", err);
+    }
+
     return NextResponse.json({
       user: userRes.rows[0],
       recentScans: scansRes.rows,
@@ -254,8 +353,13 @@ export async function GET(request: NextRequest) {
     }
     const auditLimit = limit;
     const auditOffset = (page - 1) * auditLimit;
-    const auditRes = await pool.query(
-      `SELECT al.id, al.action, al.details, al.created_at, al.ip_address,
+    // perf: the COUNT scans the whole of admin_audit_log no matter what the
+    // sibling LIMIT is, so it used to double the wall time of every page load
+    // by running strictly after the paged select. Same Promise.all shape as
+    // app/api/v3/ai/conversations/route.ts.
+    const [auditRes, totalRes] = await Promise.all([
+      pool.query(
+        `SELECT al.id, al.action, al.details, al.created_at, al.ip_address,
         al.admin_id, al.target_user_id,
         au.email as admin_email, au.name as admin_name, au.avatar_url as admin_avatar_url,
         tu.email as target_email, tu.name as target_name, tu.avatar_url as target_avatar_url
@@ -264,11 +368,10 @@ export async function GET(request: NextRequest) {
       LEFT JOIN users tu ON al.target_user_id = tu.id
       ORDER BY al.created_at DESC
       LIMIT $1 OFFSET $2`,
-      [auditLimit, auditOffset],
-    );
-    const totalRes = await pool.query(
-      "SELECT COUNT(*)::int as count FROM admin_audit_log",
-    );
+        [auditLimit, auditOffset],
+      ),
+      pool.query("SELECT COUNT(*)::int as count FROM admin_audit_log"),
+    ]);
     return NextResponse.json({
       logs: auditRes.rows,
       total: totalRes.rows[0].count,
@@ -279,6 +382,16 @@ export async function GET(request: NextRequest) {
 
   // All badges list
   if (section === "badges") {
+    // Gate on VIEW_BADGES, the same permission the award/revoke buttons are
+    // gated on client-side. The panel's fetchAllBadges() checks res.ok and
+    // ignores a rejection, so a role without the grant simply gets no badge
+    // catalogue rather than an error.
+    if (!hasStaffPermission(session.role, STAFF_PERMISSIONS.VIEW_BADGES)) {
+      return NextResponse.json(
+        { error: ERROR_MESSAGES.FORBIDDEN },
+        { status: 403 },
+      );
+    }
     const badgesRes = await pool.query(
       "SELECT * FROM badges ORDER BY priority DESC, name ASC",
     );
@@ -322,7 +435,21 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ admins: adminsRes.rows });
   }
 
-  // Default: stats + user list
+  // Default: stats + user list.
+  //
+  // auth: the user list rides on VIEW_USERS, the stats do not. This branch is
+  // fetched once on mount by every staff member who opens the panel, and the
+  // client treats a 403 here as "you have no admin access at all", so a role
+  // without VIEW_USERS (ops) gets the aggregate counters and an empty list
+  // rather than a rejection that would lock it out of the tabs it does hold.
+  // Before this, ops/billing/content_manager received every account's email,
+  // plan and subscription status from a request they make automatically.
+  const canListUsers = hasStaffPermission(
+    session.role,
+    STAFF_PERMISSIONS.VIEW_USERS,
+  );
+  const emptyList = Promise.resolve({ rows: [] as Record<string, unknown>[] });
+  const emptyCount = Promise.resolve({ rows: [{ count: "0" }] });
   const [statsResult, usersResult, totalResult] = await Promise.all([
     pool.query(`
       SELECT
@@ -337,9 +464,11 @@ export async function GET(request: NextRequest) {
         (SELECT COUNT(*) FROM users WHERE disabled_at IS NOT NULL) as disabled_users,
         (SELECT COUNT(*) FROM scan_history WHERE share_token IS NOT NULL) as shared_scans
     `),
-    search
-      ? pool.query(
-          `
+    !canListUsers
+      ? emptyList
+      : search
+        ? pool.query(
+            `
           SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at, u.plan, u.subscription_status,
             (SELECT COUNT(*) FROM scan_history sh WHERE sh.user_id = u.id) as scan_count,
             (SELECT COUNT(*) FROM api_keys ak WHERE ak.user_id = u.id AND ak.revoked_at IS NULL) as api_key_count,
@@ -348,13 +477,13 @@ export async function GET(request: NextRequest) {
           FROM users u
           LEFT JOIN gifted_subscriptions gs ON gs.user_id = u.id AND gs.revoked_at IS NULL AND gs.expires_at > NOW()
           WHERE u.email ILIKE $3 ESCAPE '\\' OR u.name ILIKE $3 ESCAPE '\\'
-          ORDER BY u.created_at DESC
+          ORDER BY ${userOrderBy}
           LIMIT $1 OFFSET $2
         `,
-          [limit, offset, `%${searchEscaped}%`],
-        )
-      : pool.query(
-          `
+            [limit, offset, `%${searchEscaped}%`],
+          )
+        : pool.query(
+            `
           SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at, u.plan, u.subscription_status,
             (SELECT COUNT(*) FROM scan_history sh WHERE sh.user_id = u.id) as scan_count,
             (SELECT COUNT(*) FROM api_keys ak WHERE ak.user_id = u.id AND ak.revoked_at IS NULL) as api_key_count,
@@ -362,17 +491,19 @@ export async function GET(request: NextRequest) {
             gs.expires_at as gift_end_date
           FROM users u
           LEFT JOIN gifted_subscriptions gs ON gs.user_id = u.id AND gs.revoked_at IS NULL AND gs.expires_at > NOW()
-          ORDER BY u.created_at DESC
+          ORDER BY ${userOrderBy}
           LIMIT $1 OFFSET $2
         `,
-          [limit, offset],
-        ),
-    search
-      ? pool.query(
-          "SELECT COUNT(*) FROM users WHERE email ILIKE $1 ESCAPE '\\' OR name ILIKE $1 ESCAPE '\\'",
-          [`%${searchEscaped}%`],
-        )
-      : pool.query("SELECT COUNT(*) FROM users"),
+            [limit, offset],
+          ),
+    !canListUsers
+      ? emptyCount
+      : search
+        ? pool.query(
+            "SELECT COUNT(*) FROM users WHERE email ILIKE $1 ESCAPE '\\' OR name ILIKE $1 ESCAPE '\\'",
+            [`%${searchEscaped}%`],
+          )
+        : pool.query("SELECT COUNT(*) FROM users"),
   ]);
 
   return NextResponse.json({
@@ -403,7 +534,15 @@ function canPerformAction(role: string, action: string): boolean {
     "create_badge",
     "delete_badge",
     "update_name",
-    "update_email",
+    // auth (AUDIT-002#auth-01): "update_email" used to be here, and it was
+    // the moderator tier's account-takeover primitive. A moderator cannot
+    // reset a password, set a password, or impersonate -- but they could
+    // point any regular user's address at one they control, then run
+    // forgot-password and collect the reset link. ROLE_PERMISSION_MAP never
+    // granted a moderator EDIT_USER_EMAIL, so the admin UI already hid the
+    // control; only this hand-maintained list disagreed, and a direct PATCH
+    // reached it anyway. Changing a user's address is now admin-only, which
+    // is what the permission map has always said.
     "notify_account_changes",
     "verify_email",
     "unverify_email",
@@ -477,7 +616,6 @@ export async function PATCH(request: NextRequest) {
     title: notifTitle,
     message: notifMessage,
     type: notifType,
-    limit: scanLimit,
   } = body;
   // Normalize IDs to numbers (client may send as string)
   let userId: number | undefined;
@@ -532,7 +670,7 @@ export async function PATCH(request: NextRequest) {
 
   // Get target user for logging
   const targetRes = await pool.query(
-    "SELECT email, totp_enabled, role, plan, name, unsubscribe_token FROM users WHERE id = $1",
+    "SELECT email, totp_enabled, role, plan, name, unsubscribe_token, ai_chat_banned FROM users WHERE id = $1",
     [userId],
   );
   if (!targetRes.rows[0])
@@ -608,32 +746,36 @@ export async function PATCH(request: NextRequest) {
   // edit the other). "revoke_all_sessions" was a bug: the real action name
   // sent by the UI is "revoke_sessions" (no "all"), so that action was
   // never actually gated.
-  if (PASSWORD_GATED_ACTIONS.has(action)) {
-    const currentAdminPassword = body.currentAdminPassword;
-    if (
-      typeof currentAdminPassword !== "string" ||
-      currentAdminPassword.length === 0
-    ) {
-      return NextResponse.json(
-        { error: "Re-enter your password to confirm this action." },
-        { status: 403 },
-      );
-    }
-    const adminPwRow = await pool.query<{ password_hash: string }>(
-      "SELECT password_hash FROM users WHERE id = $1",
-      [session.userId],
+  //
+  // toggle_ai_ban is directional: banning takes access away and is gated,
+  // un-banning gives it back and is not. Password-gating both directions
+  // meant a purely additive restore demanded re-auth, which is the kind of
+  // mismatch that teaches operators to type their password on reflex.
+  const needsPasswordGate =
+    PASSWORD_GATED_ACTIONS.has(action) &&
+    !(action === "toggle_ai_ban" && targetUser.ai_chat_banned === true);
+  if (needsPasswordGate) {
+    // Shared helper rather than a sixth hand-rolled copy of the same check.
+    // The inline version this replaces read password_hash directly and
+    // treated a NULL hash as a wrong password, so a staff account created
+    // through Google/GitHub/Discord (lib/auth/auth.ts's createOAuthUser
+    // leaves the hash NULL) could not perform ANY password-gated admin
+    // action and was told its password was incorrect. verifyReauthPassword
+    // applies the repo-wide rule instead: with no password on the account,
+    // the signed-in session is the re-auth signal.
+    const reauth = await verifyReauthPassword(
+      session.userId,
+      body.currentAdminPassword,
+      {
+        missing: "Re-enter your password to confirm this action.",
+        wrong: "Password is incorrect.",
+      },
     );
-    if (
-      !adminPwRow.rows[0] ||
-      !(await verifyPassword(
-        currentAdminPassword,
-        adminPwRow.rows[0].password_hash,
-      ))
-    ) {
-      return NextResponse.json(
-        { error: "Password is incorrect." },
-        { status: 403 },
-      );
+    // Pinned to 403 for both the missing and the wrong case, which is what
+    // this route has always returned and what the panel's re-auth dialog
+    // branches on (verifyReauthPassword itself distinguishes 400/403).
+    if (!reauth.ok) {
+      return NextResponse.json({ error: reauth.error }, { status: 403 });
     }
   }
 
@@ -699,6 +841,18 @@ export async function PATCH(request: NextRequest) {
       });
     }
 
+    // make_admin, remove_admin, update_password and export_data have no
+    // button anywhere in the panel: they are reachable only by calling this
+    // endpoint directly. That is deliberate now rather than forgotten.
+    // make_admin/remove_admin predate set_role and do a subset of what it
+    // does (no notification email, no arbitrary role); set_role is what the
+    // UI sends and what new work should use. update_password is the escape
+    // hatch for an account whose owner cannot receive the reset email that
+    // reset_password sends, and it stays button-less on purpose: the
+    // reset_password case below explains why an admin-chosen password is
+    // the worse option. export_data answers a data-subject request from the
+    // staff side. All four are password-gated and rank-gated like every
+    // other action here, and all four write an audit row.
     case "make_admin":
       await pool.query("UPDATE users SET role = 'admin' WHERE id = $1", [
         userId,
@@ -731,9 +885,34 @@ export async function PATCH(request: NextRequest) {
 
     case "update_password": {
       const newPassword = body.newPassword;
-      if (typeof newPassword !== "string" || newPassword.length < 8) {
+      // auth: this branch used to hardcode a length floor of 8 and skip the
+      // strength analyzer, so an admin-set password could be weaker than the
+      // deployment's own configured policy ("Password123" passed). Every
+      // user-facing password write (signup, reset-password, auth/update,
+      // staff-invite accept) resolves PASSWORD_MIN_LENGTH and rejects
+      // analyzePassword(pw).score < 3; this is the fifth path and now shares
+      // that policy instead of undercutting it.
+      const adminPwMinLength = await getSetting("PASSWORD_MIN_LENGTH");
+      if (
+        typeof newPassword !== "string" ||
+        newPassword.length < adminPwMinLength
+      ) {
         return NextResponse.json(
-          { error: "New password must be at least 8 characters." },
+          {
+            error: `New password must be at least ${adminPwMinLength} characters.`,
+          },
+          { status: 400 },
+        );
+      }
+      const adminPwAnalysis = analyzePassword(newPassword);
+      if (adminPwAnalysis.score < 3) {
+        return NextResponse.json(
+          {
+            error:
+              "Password is too weak. " +
+              (adminPwAnalysis.feedback.warnings[0] ||
+                "Use a longer phrase or mix character types."),
+          },
           { status: 400 },
         );
       }
@@ -753,17 +932,12 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
-    case "revoke_all_sessions": {
-      await pool.query("DELETE FROM sessions WHERE user_id = $1", [userId]);
-      await logAction(
-        session.userId,
-        userId,
-        "revoke_all_sessions",
-        `Revoked all sessions for ${targetUser.email}`,
-        ip,
-      );
-      return NextResponse.json({ success: true });
-    }
+    // "revoke_all_sessions" used to live here. It was a strictly worse
+    // duplicate of "revoke_sessions" below (same DELETE, no notification
+    // email) with no UI dispatch, and its name never matched what the panel
+    // actually sends, so it was also the entry that silently escaped the
+    // password gate for years -- see the PASSWORD_GATED_ACTIONS comment in
+    // components/admin/config.ts. Use "revoke_sessions".
 
     case "reset_password": {
       if (targetUser.totp_enabled) {
@@ -1520,26 +1694,18 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
-    case "set_scan_limit": {
-      if (typeof scanLimit !== "number" || scanLimit < 0 || scanLimit > 10000) {
-        return NextResponse.json(
-          { error: "Invalid scan limit (0-10000)" },
-          { status: 400 },
-        );
-      }
-      await pool.query(
-        "UPDATE users SET daily_scan_limit = $1, updated_at = NOW() WHERE id = $2",
-        [scanLimit, userId],
-      );
-      await logAction(
-        session.userId,
-        userId,
-        "set_scan_limit",
-        `Set daily scan limit to ${scanLimit} for ${targetUser.email}`,
-        ip,
-      );
-      return NextResponse.json({ success: true });
-    }
+    // "set_scan_limit" used to live here. It wrote users.daily_scan_limit
+    // and audit-logged "Set daily scan limit to N", but nothing enforced it:
+    // getDailyLimit (lib/rate-limiting/daily-limits.ts) resolves the cap
+    // from the user's plan to a BILLING_* setting and never reads that
+    // column. So the action returned success, wrote an audit row asserting
+    // a change, and changed nothing -- and the AI assistant, which DOES read
+    // the column for context, then quoted the fake number back to the user
+    // as their real limit. It had no UI dispatch either. Removed rather
+    // than wired up, because a per-user override needs a reader in the
+    // limiter, not a second writer here. The column itself and its
+    // remaining readers (app/api/v3/ai/*, lib/ai/system-prompt.ts,
+    // app/api/v3/data-request) still need dropping in the same pass.
 
     case "add_note": {
       if (!note || typeof note !== "string")
@@ -1834,7 +2000,14 @@ export async function PATCH(request: NextRequest) {
       const adminNameE = await getAdminName(session.userId);
       const userNameE = targetUser.name || oldEmail;
 
-      // Notification to OLD email (security alert)
+      // Notification to OLD email. This one is NOT routed through
+      // sendNotificationIfEnabled: it is a security alert, not a courtesy
+      // notice. Changing an account's email is an account-takeover primitive
+      // (it redirects every future password reset), and the old address is
+      // the only channel the real owner still controls, so an admin must not
+      // be able to suppress it by unticking "notify user" in the panel. The
+      // write above also clears email_verified_at, and the action is
+      // password-gated for the calling admin via PASSWORD_GATED_ACTIONS.
       const emailPayloadOld = adminAccountChangeEmail({
         userName: userNameE,
         adminName: adminNameE,
@@ -1843,7 +2016,7 @@ export async function PATCH(request: NextRequest) {
         ],
         timestamp: new Date(),
       });
-      await sendNotificationIfEnabled(notifyUser, oldEmail, emailPayloadOld);
+      sendEmail({ to: oldEmail, ...emailPayloadOld }).catch(console.error);
 
       // Notification to NEW email (welcome/verification)
       const emailPayloadNew = adminAccountChangeEmail({

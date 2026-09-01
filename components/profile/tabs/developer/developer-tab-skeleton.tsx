@@ -16,7 +16,11 @@ export function DeveloperTabSkeleton() {
       aria-live="polite"
       aria-label="Loading developer settings"
     >
-      <div className="flex gap-4 border-b border-border/80 -mx-1 px-1">
+      {/* overflow-x-auto to match the real strip in
+          components/profile/tabs/profile-developer-tab.tsx: without it the
+          four items squashed on a phone and then jumped to a scrolled row the
+          moment the real tabs replaced them. */}
+      <div className="flex gap-4 overflow-x-auto scrollbar-hide border-b border-border/80 -mx-1 px-1">
         {NAV_LABEL_WIDTHS.map((width, i) => (
           <div key={i} className="flex items-center gap-2 px-1 py-2.5">
             <Skeleton className="h-4 w-4 rounded shrink-0" />

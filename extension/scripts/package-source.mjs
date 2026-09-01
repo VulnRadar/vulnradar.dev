@@ -5,6 +5,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(fileURLToPath(import.meta.url), "../..");
+// store-assets/ is the Chrome Web Store / AMO listing screenshots: half a
+// megabyte of PNGs the extension never references and that AMO's source
+// review has no use for. LICENSE and THIRD-PARTY.md are NOT excluded - the
+// source archive is one of the places a reviewer looks for them.
 const EXCLUDE_DIRS = new Set([
   "node_modules",
   "dist-chrome",
@@ -12,6 +16,7 @@ const EXCLUDE_DIRS = new Set([
   "dist-build",
   "dist-tsc",
   "out",
+  "store-assets",
 ]);
 
 const PKG = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));

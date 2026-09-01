@@ -6,11 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
-import { API } from "@/lib/config/client-constants";
 import {
+  API,
   DEVICE_TRUST_DURATION,
   TOTP_CODE_VALIDITY,
-} from "@/lib/config/constants";
+} from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
 import { transitions } from "@/lib/ui/animations";
 import {

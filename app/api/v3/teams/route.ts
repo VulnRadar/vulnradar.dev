@@ -12,6 +12,7 @@ import {
   withinPlanLimit,
   planLimitMessage,
 } from "@/lib/billing/plan-limits";
+import { teamsDisabledResponse } from "@/lib/teams/feature-gate";
 
 // List user's teams
 export async function GET() {
@@ -21,6 +22,9 @@ export async function GET() {
       { error: ERROR_MESSAGES.UNAUTHORIZED },
       { status: 401 },
     );
+
+  const gate = await teamsDisabledResponse();
+  if (gate) return gate;
 
   const result = await pool.query(
     `SELECT t.id, t.name, t.created_at, tm.role,
@@ -54,12 +58,8 @@ export async function POST(request: Request) {
       { status: 401 },
     );
 
-  if (!(await getSetting("FEATURE_TEAMS"))) {
-    return NextResponse.json(
-      { error: "Teams are disabled on this deployment." },
-      { status: 403 },
-    );
-  }
+  const gate = await teamsDisabledResponse();
+  if (gate) return gate;
 
   const { name } = await request.json();
   const maxTeamNameLength = await getSetting("MAX_TEAM_NAME_LENGTH");
@@ -134,6 +134,9 @@ export async function PATCH(request: Request) {
       { status: 401 },
     );
 
+  const gate = await teamsDisabledResponse();
+  if (gate) return gate;
+
   const { teamId, name } = await request.json();
   const maxTeamNameLength = await getSetting("MAX_TEAM_NAME_LENGTH");
   if (
@@ -180,6 +183,9 @@ export async function DELETE(request: Request) {
       { error: ERROR_MESSAGES.UNAUTHORIZED },
       { status: 401 },
     );
+
+  const gate = await teamsDisabledResponse();
+  if (gate) return gate;
 
   const { teamId } = await request.json();
   if (!teamId)

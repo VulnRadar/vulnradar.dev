@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { cn } from "@/lib/ui/utils";
-import { API } from "@/lib/config/constants";
+import { API } from "@/lib/config/client-constants";
 import { refreshAuthCache } from "@/components/providers/auth-provider";
 import {
   useQueryParam,
@@ -121,6 +121,13 @@ function ProfileContent() {
   };
   const [user, setUser] = useState<ProfileUser | null>(null);
   const [loading, setLoading] = useState(true);
+  // A 401/403 sends the user to /login, and the redirect is not instant, so
+  // this keeps the skeleton up in the meantime rather than flashing the
+  // "could not be loaded" screen at someone who is simply signed out.
+  const [redirectingToLogin, setRedirectingToLogin] = useState(false);
+  // Separate from `error` because `error` auto-clears after 8 seconds. This
+  // one describes a page that never loaded at all, so it has to persist.
+  const [loadFailed, setLoadFailed] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   // Stable patcher so a tab (e.g. Security's 2FA toggle) can keep this local
@@ -161,7 +168,12 @@ function ProfileContent() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error);
+        // Fallback string, matching every other save path in this file. A
+        // non-2xx body without an `error` key set this to undefined, which
+        // made the banner condition below falsy, so the upload failed with
+        // no message at all and the crop dialog stayed open as if nothing
+        // had happened.
+        setError(data.error || "Failed to upload profile picture.");
       } else {
         setUser((prev) =>
           prev ? { ...prev, avatarUrl: data.avatarUrl } : prev,
@@ -292,15 +304,49 @@ function ProfileContent() {
         fetch(API.ACCOUNT_POSTURE_DIGEST),
       ]);
 
+      // Only an actual auth failure means "you are signed out". A 500 or a
+      // gateway error on /auth/me used to bounce a perfectly valid session to
+      // the login screen, which reads as the session having been dropped;
+      // anything that is not 401/403 gets an error state instead.
       if (!userRes.ok) {
-        router.push("/login");
+        if (userRes.status === 401 || userRes.status === 403) {
+          setRedirectingToLogin(true);
+          router.push("/login");
+          return;
+        }
+        setLoadFailed(
+          "The server did not return your account. You are still signed in, so this is a problem on our side.",
+        );
         return;
       }
 
       const userData = await userRes.json();
       setUser(userData);
 
-      // Parse developer tab data
+      // Parse developer tab data.
+      //
+      // Each of these substitutes an empty collection when its request fails,
+      // which renders identically to genuinely having none. On this page that
+      // is actively misleading: a user whose keys request failed sees "no API
+      // keys" and may reasonably conclude theirs were revoked, or create a
+      // duplicate. Empty and failed have to look different, so track which
+      // ones failed and say so.
+      const failedSections: string[] = [];
+      if (!keysRes.ok) failedSections.push("API keys");
+      if (!webhooksRes.ok) failedSections.push("webhooks");
+      if (!schedulesRes.ok) failedSections.push("scheduled scans");
+      // The two privacy defaults matter more than the rest: their fallbacks
+      // render as "scans are public by default", so a failed request could
+      // tell someone their scans are public when they are not, or the
+      // reverse. A privacy control must never display a guess.
+      if (!privacyRes.ok) failedSections.push("scan privacy default");
+      if (!sharePrivacyRes.ok) failedSections.push("public listing default");
+      if (failedSections.length > 0) {
+        setError(
+          `Could not load your ${failedSections.join(", ")}. Those sections may look empty or show a default that is not your real setting. Reload to try again.`,
+        );
+      }
+
       const keysData = keysRes.ok ? await keysRes.json() : { keys: [] };
       const webhooksData = webhooksRes.ok
         ? await webhooksRes.json()
@@ -358,11 +404,11 @@ function ProfileContent() {
         setDigestEmailEnabled(Boolean(postureDigestData.digestEmailEnabled));
       }
     } catch {
-      setError("Failed to load profile data.");
+      setLoadFailed("Could not reach the server to load your account.");
     } finally {
       setLoading(false);
     }
-  }, [router, setError, setLoading]);
+  }, [router, setLoadFailed, setLoading]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
@@ -382,6 +428,19 @@ function ProfileContent() {
       const t = setTimeout(() => setError(null), 8000);
       return () => clearTimeout(t);
     }
+  }, [error]);
+
+  // Sticky keeps the banner on screen once it has been scrolled past, but a
+  // failure raised while the user is far below it still needs the page to
+  // come back to it. "nearest" is deliberate: if it is already visible this
+  // is a no-op.
+  const statusBannerRef = React.useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!error) return;
+    statusBannerRef.current?.scrollIntoView({
+      block: "nearest",
+      behavior: "smooth",
+    });
   }, [error]);
 
   // ---- Account handlers ----
@@ -509,12 +568,13 @@ function ProfileContent() {
       // (setUser, setScansPrivateByDefault, ...) -- none of them touch the
       // app-wide useAuth() SWR cache for /api/v3/auth/me, which is what
       // app/dashboard/page.tsx (and the nav, and everything else reading
-      // useAuth().me) actually reads from. That cache has a 5-minute
-      // dedupingInterval and never revalidates on focus, so without this,
-      // a just-saved change (e.g. "scans are private by default", which
-      // seeds the dashboard scan form's "Keep this scan private" toggle)
-      // stayed invisible to every other page for up to 5 minutes after
-      // saving, reading as "the toggle doesn't even seem to be on."
+      // useAuth().me) actually reads from. That cache dedupes for
+      // AUTH_CACHE_DEDUPE_MS (components/providers/auth-provider.tsx) and
+      // never revalidates on focus, so without this, a just-saved change
+      // (e.g. "scans are private by default", which seeds the dashboard
+      // scan form's "Keep this scan private" toggle) stayed invisible to
+      // every other page for that whole window after saving, reading as
+      // "the toggle doesn't even seem to be on."
       refreshAuthCache();
 
       setPendingChanges({});
@@ -558,17 +618,20 @@ function ProfileContent() {
       : []),
     // Include notification preference changes
     ...(pendingChanges.notifications
-      ? Object.entries(
-          pendingChanges.notifications as Record<string, boolean>,
-        ).map(([key, value]) => ({
-          field: key,
-          label: key
-            .replace("email_", "")
-            .replace(/_/g, " ")
-            .replace(/\b\w/g, (c) => c.toUpperCase()),
-          oldValue: value ? "Disabled" : "Enabled",
-          newValue: value ? "Enabled" : "Disabled",
-        }))
+      ? Object.entries(pendingChanges.notifications as Record<string, boolean>)
+          // The Posture Digest switch writes two columns (users.digest_email_enabled
+          // and notification_preferences.email_posture_digest, see the Notifications
+          // tab), so without this the review modal listed the same change twice.
+          .filter(([key]) => key !== "email_posture_digest")
+          .map(([key, value]) => ({
+            field: key,
+            label: key
+              .replace("email_", "")
+              .replace(/_/g, " ")
+              .replace(/\b\w/g, (c) => c.toUpperCase()),
+            oldValue: value ? "Disabled" : "Enabled",
+            newValue: value ? "Enabled" : "Disabled",
+          }))
       : []),
     ...(pendingChanges.scansPrivateByDefault !== undefined
       ? [
@@ -618,8 +681,49 @@ function ProfileContent() {
 
   // ---- Helpers ----
 
-  if (loading) {
+  if (loading || redirectingToLogin) {
     return <ProfileSkeleton />;
+  }
+
+  // Loading finished but the account never arrived: a 5xx or a network fault
+  // on /auth/me. Every tab below reads `user`, so rendering them against null
+  // would show a settings page full of blanks. Say what happened instead, and
+  // give the one action that can fix it.
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <Header />
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 flex flex-col items-center justify-center gap-4 text-center"
+        >
+          <AlertTriangle
+            className="h-6 w-6 text-destructive"
+            aria-hidden="true"
+          />
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">
+            Account settings could not be loaded
+          </h1>
+          <p className="max-w-md text-sm text-muted-foreground">
+            {loadFailed ||
+              "The server did not return your account. You are still signed in."}
+          </p>
+          <Button
+            variant="outline"
+            className="bg-transparent"
+            onClick={() => {
+              setLoading(true);
+              setLoadFailed(null);
+              fetchData();
+            }}
+          >
+            Try again
+          </Button>
+        </main>
+        <Footer />
+      </div>
+    );
   }
 
   const TABS = [
@@ -674,9 +778,12 @@ function ProfileContent() {
         tabIndex={-1}
         className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 flex flex-col gap-6 sm:gap-8 min-w-0"
       >
-        {/* Page Header — top-left pattern (matches Admin / Shared pages) */}
+        {/* Page header, top-left pattern (matches Admin / Shared pages). The
+            H1 is the Tier B in-app scale shared with History, Assets, Shares,
+            Repos and Public scans, so the title does not change size as the
+            user moves between them. */}
         <div className="mb-2">
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
             Account Settings
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -684,16 +791,26 @@ function ProfileContent() {
           </p>
         </div>
 
-        {/* Toast messages */}
+        {/* Status banner. Every tab writes its success/error here, and the
+            tabs are long: the Developer tab alone stacks API keys, webhooks
+            and schedules vertically, so a failed delete near its bottom used
+            to set a message hundreds of pixels above the viewport and the
+            click read as having done nothing. Sticky below the fixed header
+            (which itself shifts down by --vr-banner-h and --vr-imp-banner-h
+            when a site notice or the impersonation banner is up, the same
+            offset the desktop sidebar uses), plus a scroll-into-view
+            on the first render of an error, so the message is always where
+            the user is looking. */}
         {(error || success) && (
           <div
+            ref={statusBannerRef}
             role={error ? "alert" : "status"}
             aria-live={error ? "assertive" : "polite"}
             className={cn(
-              "flex items-center gap-3 px-4 py-3 rounded-xl text-sm border",
+              "sticky top-[calc(4.5rem+var(--vr-banner-h,0px)+var(--vr-imp-banner-h,0px))] z-30 flex items-center gap-3 px-4 py-3 rounded-xl text-sm border backdrop-blur-sm transition-[top] duration-300",
               error
                 ? "bg-destructive/10 text-destructive border-destructive/20"
-                : "bg-[hsl(var(--success)/0.1)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.2)]",
+                : "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20",
             )}
           >
             {error ? (
@@ -719,13 +836,27 @@ function ProfileContent() {
         <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
           {/* Sidebar Navigation */}
           <aside className="lg:w-48 lg:shrink-0">
-            {/* Mobile: Scrollable horizontal tab bar */}
+            {/* Mobile: Scrollable horizontal tab bar.
+                The label used to be `hidden sm:inline`, which below 640px
+                left eight buttons holding nothing but a lucide glyph. lucide
+                marks its SVG aria-hidden whenever no a11y prop is passed, so
+                each button had no accessible name at all and a screen reader
+                announced "button" eight times with nothing to tell them
+                apart. The row already scrolls horizontally, so width was
+                never the constraint that justified hiding the labels: they
+                stay at every width now. type="button" keeps these out of any
+                enclosing form's submit path and aria-current names the one
+                that is showing. */}
             <div className="lg:hidden overflow-x-auto scrollbar-hide -mx-4 px-4 border-b border-border/80">
               <div className="flex gap-0.5 min-w-max">
                 {TABS.map((tab) => (
                   <button
                     key={tab.id}
+                    type="button"
                     onClick={() => handleProfileTabChange(tab.id)}
+                    aria-current={
+                      activeProfileTabSafe === tab.id ? "page" : undefined
+                    }
                     className={cn(
                       "flex items-center gap-2 px-3.5 py-3 text-sm font-medium transition-all whitespace-nowrap border-b-2 -mb-px",
                       activeProfileTabSafe === tab.id
@@ -734,16 +865,17 @@ function ProfileContent() {
                     )}
                   >
                     {tab.icon}
-                    <span className="hidden sm:inline">{tab.label}</span>
+                    <span>{tab.label}</span>
                   </button>
                 ))}
               </div>
             </div>
 
             {/* Desktop: Vertical sidebar — self-start is required for sticky to work in a flex row.
-                top offset grows by --vr-banner-h (site-notifications.tsx) when a banner is
-                showing, since the fixed Header above shifts down to stay below it too. */}
-            <nav className="hidden lg:flex flex-col gap-0.5 sticky top-[calc(5rem+var(--vr-banner-h,0px))] self-start transition-[top] duration-300">
+                top offset grows by --vr-banner-h (site-notifications.tsx) and
+                --vr-imp-banner-h (admin/impersonation-banner.tsx) when either banner is
+                showing, since the fixed Header above shifts down to stay below them too. */}
+            <nav className="hidden lg:flex flex-col gap-0.5 sticky top-[calc(5rem+var(--vr-banner-h,0px)+var(--vr-imp-banner-h,0px))] self-start transition-[top] duration-300">
               {TABS.map((tab) => (
                 <a
                   key={tab.id}
@@ -754,6 +886,12 @@ function ProfileContent() {
                       handleProfileTabChange(tab.id);
                     }
                   }}
+                  // a11y (SC 4.1.2): the mobile tab list already marks the
+                  // active entry; the desktop sidebar carried the state in
+                  // colour and weight only.
+                  aria-current={
+                    activeProfileTabSafe === tab.id ? "page" : undefined
+                  }
                   className={cn(
                     "flex items-center gap-2.5 px-3 py-2.5 text-sm rounded-lg transition-colors",
                     activeProfileTabSafe === tab.id
@@ -800,6 +938,10 @@ function ProfileContent() {
                 success={success}
                 setError={setError}
                 setSuccess={setSuccess}
+                // Lets a disconnect update this page's `user` in place
+                // instead of reloading the document, which used to throw
+                // away the success banner it had just set.
+                onUserPatch={patchUser}
                 onTabChange={handleProfileTabChange}
                 pendingChanges={pendingChanges}
                 setPendingChanges={setPendingChanges}
@@ -919,14 +1061,23 @@ function ProfileContent() {
         </div>
         {/* End Two-column layout */}
 
-        {/* Bottom spacer for floating save bar */}
-        {hasPendingChanges && <div className="h-20" />}
+        {/* Bottom spacer for the floating save bar, plus the cookie notice
+            underneath it when that is showing. */}
+        {hasPendingChanges && (
+          <div className="h-[calc(5rem+var(--vr-cookie-h,0px))]" />
+        )}
       </main>
 
       {/* Floating Save Bar */}
       {hasPendingChanges && (
         <div
-          className="fixed bottom-0 left-0 right-0 z-50 p-4 pointer-events-none"
+          // Sits above the cookie notice rather than under it. That bar is
+          // z-60 and mounted last in the root layout, so at bottom-0 it
+          // covered this one completely: on a phone it is roughly 125px tall
+          // and Save/Discard were unreachable until it was dismissed.
+          // components/shared/cookie-notice.tsx publishes its real height as
+          // --vr-cookie-h for exactly this.
+          className="fixed bottom-(--vr-cookie-h,0px) left-0 right-0 z-50 p-4 pointer-events-none transition-[bottom] duration-300"
           role="status"
         >
           <div className="max-w-lg mx-auto pointer-events-auto">

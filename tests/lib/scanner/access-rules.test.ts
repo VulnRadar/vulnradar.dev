@@ -39,11 +39,15 @@ vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
 }));
 
-const { checkAccessRules, checkAccessRulesMultiple } =
+const { checkAccessRules, checkAccessRulesMultiple, clearAccessRulesCache } =
   await import("@/lib/scanner/access-rules");
 
 beforeEach(() => {
   mockQuery.mockReset();
+  // The module memoizes a completed evaluation per hostname for a short TTL
+  // (AUDIT-012#perf-23). Every test below drives its own query sequence, so
+  // the memo has to start empty or one test's decision answers the next.
+  clearAccessRulesCache();
 });
 
 /** No blacklist match, no whitelist rules active -> allowed. */
@@ -273,6 +277,63 @@ describe("checkAccessRules: fail-closed behaviour", () => {
     const result = await checkAccessRules("not a url at all");
     expect(result.allowed).toBe(false);
     expect(mockQuery).not.toHaveBeenCalled();
+    logged.mockRestore();
+  });
+});
+
+describe("checkAccessRules: per-hostname memo (AUDIT-012#perf-23)", () => {
+  it("answers a repeat check of the same host without re-querying", async () => {
+    mockNoRulesConfigured();
+
+    const first = await checkAccessRules("https://repeat.example.com/one");
+    const second = await checkAccessRules("https://repeat.example.com/two");
+    const third = await checkAccessRules("https://repeat.example.com/three");
+
+    expect(first.allowed).toBe(true);
+    expect(second).toEqual(first);
+    expect(third).toEqual(first);
+    // Two queries total for three checks: the blacklist SELECT and the
+    // whitelist COUNT ran once, not once per URL.
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it("still evaluates a different host on its own", async () => {
+    mockNoRulesConfigured();
+    mockNoRulesConfigured();
+
+    await checkAccessRules("https://one.example.com/");
+    await checkAccessRules("https://two.example.com/");
+
+    expect(mockQuery).toHaveBeenCalledTimes(4);
+  });
+
+  it("keeps counting hits on a cached block so hit_count stays honest", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ value: "blocked.example.com", value_type: "url", reason: "no" }],
+    });
+    mockQuery.mockResolvedValue({ rows: [] }); // every hit_count UPDATE
+
+    const first = await checkAccessRules("https://blocked.example.com/a");
+    const second = await checkAccessRules("https://blocked.example.com/b");
+
+    expect(first.allowed).toBe(false);
+    expect(second.allowed).toBe(false);
+    // 1 blacklist SELECT + 2 hit_count UPDATEs: the second decision came
+    // from the memo but still recorded the hit.
+    expect(mockQuery).toHaveBeenCalledTimes(3);
+    await new Promise((r) => setTimeout(r, 0));
+  });
+
+  it("never memoizes the fail-closed result, so recovery is immediate", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockQuery.mockRejectedValueOnce(new Error("connection terminated"));
+
+    const duringOutage = await checkAccessRules("https://flaky.example.com/");
+    expect(duringOutage.allowed).toBe(false);
+
+    mockNoRulesConfigured();
+    const afterRecovery = await checkAccessRules("https://flaky.example.com/");
+    expect(afterRecovery.allowed).toBe(true);
     logged.mockRestore();
   });
 });

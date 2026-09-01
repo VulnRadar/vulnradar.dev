@@ -7,18 +7,19 @@
  */
 
 import { stripDocBlocks, type EvidenceFn as DetectFn } from "../_helpers";
+import { tagsWith } from "./_tag-scan";
 
 const rawDetectors: Record<string, DetectFn> = {
   "supply-chain-lockfile-exposed": (_url, _headers, body) => {
     // npm/yarn/pnpm lock file fingerprints
     if (/"lockfileVersion"\s*:\s*\d/.test(body)) {
-      return "npm package-lock.json exposed — reveals exact dependency tree with versions.";
+      return "npm package-lock.json exposed: reveals exact dependency tree with versions.";
     }
     if (/^# yarn lockfile/m.test(body) || /^__metadata:$/m.test(body)) {
-      return "yarn.lock exposed — reveals complete dependency tree with exact versions.";
+      return "yarn.lock exposed: reveals complete dependency tree with exact versions.";
     }
     if (/^lockfileVersion:\s*\d/m.test(body)) {
-      return "pnpm-lock.yaml exposed — reveals dependency tree.";
+      return "pnpm-lock.yaml exposed: reveals dependency tree.";
     }
     return null;
   },
@@ -34,32 +35,30 @@ const rawDetectors: Record<string, DetectFn> = {
     }
     // Pipfile
     if (/^\[packages\]/m.test(body) && /^\[dev-packages\]/m.test(body)) {
-      return "Python Pipfile exposed — reveals package dependencies.";
+      return "Python Pipfile exposed: reveals package dependencies.";
     }
     return null;
   },
 
   "supply-chain-gemfile-exposed": (_url, _headers, body) => {
     if (/^GEM\s*$/m.test(body) && /BUNDLED WITH/i.test(body)) {
-      return "Ruby Gemfile.lock exposed — reveals gem versions including transitive dependencies.";
+      return "Ruby Gemfile.lock exposed: reveals gem versions including transitive dependencies.";
     }
     if (
       /^source\s+["']https:\/\/rubygems\.org["']/m.test(body) &&
       /^gem\s+/m.test(body)
     ) {
-      return "Ruby Gemfile exposed — reveals gem dependencies.";
+      return "Ruby Gemfile exposed: reveals gem dependencies.";
     }
     return null;
   },
 
   "supply-chain-sri-external-script": (_url, _headers, body) => {
-    const externalScriptPattern =
-      /<script[^>]+src=["'](https?:\/\/(?!(?:localhost|127\.0\.0\.1))[^"']+)["'][^>]*>/gi;
-    let m: RegExpExecArray | null;
+    const srcRe =
+      /src=["'](https?:\/\/(?!(?:localhost|127\.0\.0\.1))[^"']+)["']/i;
     let found = 0;
-    while ((m = externalScriptPattern.exec(body)) !== null) {
-      const tag = m[0];
-      const url = m[1];
+    for (const tag of tagsWith(body, "script", srcRe)) {
+      const url = srcRe.exec(tag)?.[1] ?? "";
       if (!/integrity\s*=/i.test(tag)) {
         try {
           const host = new URL(url).hostname;
@@ -79,17 +78,18 @@ const rawDetectors: Record<string, DetectFn> = {
       }
     }
     if (found > 0) {
-      return `${found} CDN script(s) loaded without SRI integrity hash — CDN compromise would silently inject malicious code.`;
+      return `${found} CDN script(s) loaded without SRI integrity hash: a CDN compromise would silently inject malicious code.`;
     }
     return null;
   },
 
   "supply-chain-http-script-on-https": (url, _headers, body) => {
     if (!url.startsWith("https://")) return null;
-    const httpScript =
-      /<script[^>]+src=["'](http:\/\/(?!localhost)[^"']+)["']/i.exec(body);
+    const httpSrcRe = /src=["'](http:\/\/(?!localhost)[^"']+)["']/i;
+    const httpScript = tagsWith(body, "script", httpSrcRe)[0];
     if (httpScript) {
-      return `HTTP script src on HTTPS page: ${httpScript[1]} — network attackers can inject malicious code.`;
+      const src = httpSrcRe.exec(httpScript)?.[1] ?? "";
+      return `HTTP script src on HTTPS page: ${src}. Network attackers can inject malicious code.`;
     }
     return null;
   },
@@ -99,11 +99,11 @@ const rawDetectors: Record<string, DetectFn> = {
       /"require"\s*:\s*\{/.test(body) &&
       /"require-dev"\s*:\s*\{/.test(body)
     ) {
-      return "PHP composer.json exposed — reveals package dependencies and dev requirements.";
+      return "PHP composer.json exposed: reveals package dependencies and dev requirements.";
     }
     // composer.lock fingerprint
     if (/"content-hash"\s*:/.test(body) && /"packages"\s*:\s*\[/.test(body)) {
-      return "PHP composer.lock exposed — reveals exact package versions including transitive dependencies.";
+      return "PHP composer.lock exposed: reveals exact package versions including transitive dependencies.";
     }
     return null;
   },
@@ -113,13 +113,13 @@ const rawDetectors: Record<string, DetectFn> = {
       /^FROM\s+\w/m.test(body) &&
       /^(?:RUN|COPY|ADD|ENV|EXPOSE|CMD|ENTRYPOINT)\s/m.test(body)
     ) {
-      return "Dockerfile exposed — reveals base image, build steps, environment variables, and infrastructure details.";
+      return "Dockerfile exposed: reveals base image, build steps, environment variables, and infrastructure details.";
     }
     if (
       /^version:\s*["']\d+(?:\.\d+)?["']$/m.test(body) &&
       /^\s+image:\s+/m.test(body)
     ) {
-      return "docker-compose.yml exposed — reveals service topology and potentially embedded credentials.";
+      return "docker-compose.yml exposed: reveals service topology and potentially embedded credentials.";
     }
     return null;
   },
@@ -143,14 +143,12 @@ const rawDetectors: Record<string, DetectFn> = {
     // Only jsdelivr's npm alias and unpkg resolve an unversioned path to
     // "whatever is newest right now"; cdnjs/googleapis/bootstrapcdn URLs
     // always embed the version as a path segment, so they don't apply here.
-    const scriptPattern =
-      /<script[^>]+src=["'](https?:\/\/(?:cdn\.jsdelivr\.net\/npm\/|unpkg\.com\/)[^"']+)["'][^>]*>/gi;
-    let m: RegExpExecArray | null;
+    const cdnSrcRe =
+      /src=["'](https?:\/\/(?:cdn\.jsdelivr\.net\/npm\/|unpkg\.com\/)[^"']+)["']/i;
     let found = 0;
     let sample = "";
-    while ((m = scriptPattern.exec(body)) !== null) {
-      const tag = m[0];
-      const scriptUrl = m[1];
+    for (const tag of tagsWith(body, "script", cdnSrcRe)) {
+      const scriptUrl = cdnSrcRe.exec(tag)?.[1] ?? "";
       if (/integrity\s*=/i.test(tag)) continue;
       const afterHost = scriptUrl.replace(
         /^https?:\/\/(?:cdn\.jsdelivr\.net\/npm\/|unpkg\.com\/)/i,

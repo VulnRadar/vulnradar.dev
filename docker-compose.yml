@@ -45,20 +45,63 @@ services:
   # VulnRadar Application
   # infra: pin to a specific version tag instead of `:latest`
   # (mutable). Self-hosters should bump intentionally and read the
-  # changelog before pulling. To pin to an immutable digest:
-  #   1. `docker pull ghcr.io/vulnradar/vulnradar:3.0.0`
+  # changelog before pulling.
+  #
+  # The tag MUST carry the leading `v`. docker-publish.yml tags the image
+  # from `github.ref_name`, which is the release tag (`v3.8.0`), so a bare
+  # `3.8.0` has never existed in the registry and fails on `manifest
+  # unknown` before anything else in the stack starts.
+  #
+  # To pin to an immutable digest instead:
+  #   1. `docker pull ghcr.io/vulnradar/vulnradar:v3.8.0`
   #   2. `docker images --digests ghcr.io/vulnradar/vulnradar`
   #   3. Replace the tag below with `ghcr.io/vulnradar/vulnradar@sha256:<digest>`
   app:
-    image: ghcr.io/vulnradar/vulnradar:3.0.0
+    image: ghcr.io/vulnradar/vulnradar:v3.8.0
+    build:
+      # Lets `docker compose build app` work from a source checkout, which is
+      # what the self-hosting upgrade docs tell operators to run. Without a
+      # build context the documented upgrade path is a silent no-op.
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Client components can only read NEXT_PUBLIC_* values, and Next.js
+        # inlines them at build time, so these have to be passed here rather
+        # than as runtime environment.
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+        NEXT_PUBLIC_SUPPORT_EMAIL: ${SUPPORT_EMAIL:-}
+        # Fork/rebrand overrides for the community and extension-store links.
+        # Left empty they fall back to the upstream VulnRadar listings.
+        NEXT_PUBLIC_DISCORD_INVITE_URL: ${NEXT_PUBLIC_DISCORD_INVITE_URL:-}
+        NEXT_PUBLIC_CHROME_WEB_STORE_URL: ${NEXT_PUBLIC_CHROME_WEB_STORE_URL:-}
+        NEXT_PUBLIC_FIREFOX_ADDON_URL: ${NEXT_PUBLIC_FIREFOX_ADDON_URL:-}
     container_name: vulnradar-app
+    # The explicit `environment:` map below only forwards the variables named
+    # in it, which was 11 of the ~48 the app actually reads: everything else
+    # an operator set in .env (OAuth client ids, AI provider keys, Browserbase,
+    # Discord, GitHub App, SEO verification, and so on) was silently dropped,
+    # so those features looked broken with no indication why. The docs already
+    # told operators the app "reads .env via env_file", which was simply not
+    # true. env_file forwards the whole file; the map below then adds the
+    # values that are derived from compose itself (the in-network Postgres URL)
+    # or need a default, and takes precedence where both define a key.
+    env_file:
+      - path: .env
+        required: false
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-vulnradar}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-vulnradar}
       DATABASE_SSL: "false"
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
-      # API key encryption (required for secure API key storage)
-      API_KEY_ENCRYPTION_KEY: ${API_KEY_ENCRYPTION_KEY:-}
+      # API key encryption. Required: lib/config/env.ts refuses to start
+      # without exactly 64 hex chars, and instrumentation.ts validates before
+      # anything else runs. This used to default to an empty string, so the
+      # most commonly missed self-host variable produced the least legible
+      # failure: `docker compose up -d` reported success and the container
+      # crash-looped, indistinguishable at `docker compose ps` from an
+      # unreachable database. `:?` fails at compose parse time instead, and
+      # names the variable and the command that generates one.
+      API_KEY_ENCRYPTION_KEY: ${API_KEY_ENCRYPTION_KEY:?Set API_KEY_ENCRYPTION_KEY in .env to 64 hex chars. Generate one with the node command at the top of this file.}
       # SMTP (optional, for emails)
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
@@ -67,9 +110,30 @@ services:
       SMTP_FROM: ${SMTP_FROM:-}
       # Contact form
       CONTACT_EMAIL: ${CONTACT_EMAIL:-}
+      # Server-side half of the support address (outgoing email). The
+      # client-side half is the NEXT_PUBLIC_SUPPORT_EMAIL build arg above:
+      # both read the same SUPPORT_EMAIL from your .env, so setting it once
+      # covers emails and the UI.
+      SUPPORT_EMAIL: ${SUPPORT_EMAIL:-}
       # Turnstile CAPTCHA (optional)
       NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}
       TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
+    volumes:
+      # Both of these are on the container's throwaway writable layer without
+      # a mount, and the documented upgrade (`docker compose pull && docker
+      # compose up -d`) recreates the container, so every backup and every
+      # legacy avatar file was lost on each update. The Dockerfile creates
+      # both directories owned by the runtime user, so a fresh named volume
+      # inherits that ownership.
+      #
+      # backup_data backs BACKUP_DIR, which defaults to <cwd>/backups for
+      # both the admin Backup button and scripts/backup-db.mjs. Point
+      # BACKUP_DIR somewhere else only if you also mount that path.
+      - backup_data:/app/backups
+      # avatar_data holds the legacy on-disk avatars that
+      # lib/uploads/avatar-migration.ts imports into the database. Keeps them
+      # out of the build-time-baked public/ dir.
+      - avatar_data:/app/data/avatars
     ports:
       # infra: bind to localhost by default. The compose assumes a
       # reverse proxy (nginx / Caddy / Cloudflare Tunnel) is in
@@ -113,6 +177,10 @@ services:
 
 volumes:
   postgres_data:
+    driver: local
+  backup_data:
+    driver: local
+  avatar_data:
     driver: local
 
 networks:

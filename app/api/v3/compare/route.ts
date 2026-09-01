@@ -4,6 +4,7 @@ import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { withErrorHandling } from "@/lib/api/api-utils";
 import { diffFindingsByKey } from "@/lib/scanner/finding-diff";
+import { scanNumericId } from "@/lib/history/resolve-scan";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
@@ -23,13 +24,48 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     );
   }
 
+  // The ids reaching this route are scan_history.public_id: the history list
+  // this page is populated from projects `sh.public_id AS id`
+  // (app/api/v3/history/route.ts). Matching them against the SERIAL primary
+  // key meant a public_id starting with a digit was silently coerced to a
+  // different scan of the caller's own (Postgres casts '7a3f...' no further
+  // than 7 only after the client's parseInt in getQueryParamInt, and the
+  // picker path passed the raw hex straight through, erroring with 22P02).
+  // Every other history subroute already resolves both shapes through
+  // lib/history/resolve-scan.ts; this one was the last that did not.
+  // The user_id gate is unchanged, so this was never a cross-tenant read.
   const result = await pool.query(
-    `SELECT id, url, summary, findings, findings_count, duration, scanned_at, source
+    `SELECT id, public_id, url, summary, findings, findings_count, duration, scanned_at, source
      FROM scan_history
-     WHERE id IN ($1, $2) AND user_id = $3
+     WHERE (public_id = $1 OR ($3::bigint IS NOT NULL AND id = $3)
+         OR public_id = $2 OR ($4::bigint IS NOT NULL AND id = $4))
+       AND user_id = $5
      ORDER BY scanned_at ASC`,
-    [scanAId, scanBId, session.userId],
+    [
+      scanAId,
+      scanBId,
+      scanNumericId(scanAId),
+      scanNumericId(scanBId),
+      session.userId,
+    ],
   );
+
+  if (result.rows.length === 1) {
+    // One row can mean two different things. Usually the second scan simply
+    // is not the caller's, which stays a 404 below. But two DISTINCT params
+    // can also address the same row, one by legacy numeric id and one by
+    // that row's public_id, and telling the user "not found" for a scan that
+    // was found would be a lie.
+    const row = result.rows[0];
+    const addresses = (param: string) =>
+      param === row.public_id || scanNumericId(param) === Number(row.id);
+    if (addresses(scanAId) && addresses(scanBId)) {
+      return NextResponse.json(
+        { error: "Pick two different scans to compare" },
+        { status: 400 },
+      );
+    }
+  }
 
   if (result.rows.length !== 2) {
     return NextResponse.json(

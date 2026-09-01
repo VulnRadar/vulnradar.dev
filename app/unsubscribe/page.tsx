@@ -185,7 +185,12 @@ function UnsubscribeContent() {
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [unsubscribedAll, setUnsubscribedAll] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Last set of preferences the server actually acknowledged. Toggles are
+  // optimistic, so on a failed save we roll back to this rather than leaving a
+  // switch showing a state that was never stored.
+  const serverPrefsRef = useRef<EmailPrefs | null>(null);
 
   useEffect(() => {
     if (!token) {
@@ -203,6 +208,7 @@ function UnsubscribeContent() {
         const data = (await res.json()) as { email: string; prefs: EmailPrefs };
         setEmail(data.email);
         setPrefs(data.prefs);
+        serverPrefsRef.current = data.prefs;
       })
       .catch(() => setInvalid(true))
       .finally(() => setLoading(false));
@@ -213,7 +219,7 @@ function UnsubscribeContent() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       try {
-        await fetch(
+        const res = await fetch(
           `/api/v3/account/unsubscribe?token=${encodeURIComponent(token)}`,
           {
             method: "POST",
@@ -221,9 +227,30 @@ function UnsubscribeContent() {
             body: JSON.stringify({ prefs: updated }),
           },
         );
+        // A non-2xx means the preference was never stored. Showing "Saved."
+        // anyway tells someone their unsubscribe took effect while the mail
+        // keeps arriving, which on this screen is a compliance problem and not
+        // just a UI one. Roll the switch back and say what happened instead.
+        if (!res.ok) {
+          const body = (await res.json().catch(() => null)) as {
+            error?: string;
+          } | null;
+          if (serverPrefsRef.current) setPrefs(serverPrefsRef.current);
+          setSavedAt(null);
+          setSaveError(
+            body?.error || "That change was not saved. Try again in a moment.",
+          );
+          return;
+        }
+        serverPrefsRef.current = updated;
+        setSaveError(null);
         setSavedAt(Date.now());
       } catch {
-        /* ignore */
+        if (serverPrefsRef.current) setPrefs(serverPrefsRef.current);
+        setSavedAt(null);
+        setSaveError(
+          "Could not reach the server, so that change was not saved. Check your connection and try again.",
+        );
       } finally {
         setSaving(false);
       }
@@ -249,10 +276,22 @@ function UnsubscribeContent() {
       if (res.ok) {
         const data = (await res.json()) as { prefs: EmailPrefs };
         setPrefs(data.prefs);
+        serverPrefsRef.current = data.prefs;
+        setSaveError(null);
         setUnsubscribedAll(true);
+        return;
       }
+      const body = (await res.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      setSaveError(
+        body?.error ||
+          "Could not unsubscribe you. Nothing was changed, so please try again.",
+      );
     } catch {
-      /* ignore */
+      setSaveError(
+        "Could not reach the server, so nothing was changed. Check your connection and try again.",
+      );
     } finally {
       setSaving(false);
     }
@@ -290,7 +329,7 @@ function UnsubscribeContent() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1.5">
             You have been unsubscribed from all optional emails for{" "}
-            <span className="font-medium text-foreground">
+            <span className="font-medium text-foreground break-all">
               {redactEmail(email)}
             </span>
             .
@@ -321,7 +360,7 @@ function UnsubscribeContent() {
         </h1>
         <p className="text-sm text-muted-foreground mt-1.5">
           Managing preferences for{" "}
-          <span className="font-medium text-foreground">
+          <span className="font-medium text-foreground break-all">
             {redactEmail(email)}
           </span>
           .
@@ -336,9 +375,17 @@ function UnsubscribeContent() {
             </p>
             <div className="divide-y divide-border/40 rounded-lg border border-border/50 overflow-hidden">
               {group.rows.map(({ key, label, description }) => (
+                // The Switch itself is a 24px-tall target with the row's
+                // padding outside its hit area, which is well under the 44px
+                // touch minimum. The whole row is the target now, and the
+                // Switch stops swallowing pointer events so the two cannot
+                // both fire; it stays focusable, so Tab plus Space still works.
                 <div
                   key={key}
-                  className="flex items-start justify-between gap-4 px-4 py-3 bg-card/30"
+                  onClick={() => {
+                    if (!saving) handleToggle(key, !(prefs?.[key] ?? true));
+                  }}
+                  className="flex items-start justify-between gap-4 px-4 py-3.5 bg-card/30 cursor-pointer transition-colors hover:bg-card/60"
                 >
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground">
@@ -352,7 +399,8 @@ function UnsubscribeContent() {
                     checked={prefs?.[key] ?? true}
                     onCheckedChange={(val) => handleToggle(key, val)}
                     disabled={saving}
-                    className="shrink-0 mt-0.5"
+                    aria-label={label}
+                    className="shrink-0 mt-0.5 pointer-events-none"
                   />
                 </div>
               ))}
@@ -361,7 +409,7 @@ function UnsubscribeContent() {
         ))}
       </div>
 
-      <div className="flex items-center justify-between pt-2">
+      <div className="flex items-start justify-between gap-4 pt-2">
         {/* Check `saving` first: otherwise, once savedAt is set on the first
             save, the "Saving..." indicator never shows again on later saves. */}
         {saving ? (
@@ -369,17 +417,21 @@ function UnsubscribeContent() {
             <Loader2 className="h-3 w-3 animate-spin" />
             <span>Saving...</span>
           </div>
+        ) : saveError ? (
+          <p className="text-xs text-destructive">{saveError}</p>
         ) : savedAt ? (
           <p className="text-xs text-[hsl(var(--success))]">Saved.</p>
         ) : (
           <span />
         )}
 
+        {/* Was a ~16px, 60%-opacity text target. It is the destructive action
+            on this screen, so it gets a real 44px button. */}
         <button
           type="button"
           onClick={handleUnsubscribeAll}
           disabled={saving}
-          className="text-xs text-muted-foreground/60 hover:text-destructive transition-colors disabled:opacity-40"
+          className="shrink-0 inline-flex h-11 items-center rounded-md px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         >
           Unsubscribe from all
         </button>
@@ -390,7 +442,10 @@ function UnsubscribeContent() {
 
 export default function UnsubscribePage() {
   return (
-    <AuthLayout>
+    // 19 preference rows are a list, not a form, and AuthLayout's "wide"
+    // variant exists for exactly this screen: at max-w-sm the rows were
+    // crushed with roughly 1050px empty on either side at 1440px.
+    <AuthLayout width="wide">
       <Suspense fallback={<UnsubscribeSkeleton />}>
         <UnsubscribeContent />
       </Suspense>

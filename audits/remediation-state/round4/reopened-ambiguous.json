@@ -1,0 +1,407 @@
+[
+  {
+    "key": "AUDIT-002#ci-01",
+    "severity": "high",
+    "title": "GH Actions pinned to mutable major tags, not SHA digests",
+    "file": ".github/workflows/ci.yml",
+    "line": null,
+    "description": "All actions/checkout, setup-node, setup-buildx-action, etc. use floating @vN tags. A compromised upstream republish swaps action code on the next CI run.",
+    "recommendation": "Replace each tag with commit SHA + comments block containing the resolved version, e.g. uses: actions/checkout@<sha> # v7.0.0"
+  },
+  {
+    "key": "AUDIT-011#host-01",
+    "severity": "medium",
+    "title": "The host page CTA says 'Scan example.com now' and scans vulnradar.dev instead",
+    "file": "app/host/[hostname]/page.tsx",
+    "line": 170,
+    "description": "app/host/[hostname]/page.tsx:170-175 renders a button linking to ROUTES.DEMO with the label `Scan {data.host} now`. /demo has exactly one action, handleSelfScan, which hardcodes the target at app/demo/page.tsx:38 as `const siteUrl = window.location.origin;`. There is no target parameter.",
+    "recommendation": "Link to `${ROUTES.DASHBOARD}?scan=${encodeURIComponent(data.host)}` - the dashboard already treats a dotted ?scan= value as a target (app/dashboard/page.tsx:70-72, 784-793) - or relabel the button to 'Try the scanner'."
+  },
+  {
+    "key": "AUDIT-009#dup-01",
+    "severity": "high",
+    "title": "RATE_LIMITS split-brain lets 11 routes bypass admin-configured rate limits",
+    "file": "lib/config/constants.ts,lib/rate-limiting/rate-limit.ts,app/api/v3/account/delete/route.ts,app/api/v3/admin/route.ts,app/api/v3/ai/chat/route.ts,app/api/v3/auth/2fa/backup-codes/route.ts,app/api/v3/auth/2fa/disable/route.ts,app/api/v3/auth/2fa/email-setup/route.ts,app/api/v3/auth/2fa/setup/route.ts,app/api/v3/history/[id]/summary/route.ts,app/api/v3/scan/verify/route.ts,app/api/v3/scan/verify-batch/route.ts,app/api/v3/teams/members/route.ts",
+    "line": null,
+    "description": "Two exports named RATE_LIMITS exist: lib/config/constants.ts (static shipped defaults, no resolver awareness) and lib/rate-limiting/rate-limit.ts (resolver-aware, tags each entry with a 'limit' name so checkRateLimit() looks up the live admin override). checkRateLimit() only queries the DB-backed override when config.limit is truthy, so any route importing RATE_LIMITS from constants.ts instead of rate-limit.ts silently always enforces the hardcoded default, ignoring whatever the admin panel says. Confirmed live in app/api/v3/scan/verify/route.ts and 10 other routes: account/delete, admin (adminReauth), ai/chat, auth/2fa/backup-codes, auth/2fa/disable, auth/2fa/email-setup, auth/2fa/setup, history/[id]/summary, scan/verify-batch, teams/members. rate-limit.ts even has an explicit doc comment warning against the constants.ts version.",
+    "recommendation": "Repoint all 11 imports to @/lib/rate-limiting/rate-limit; rename the constants.ts export (e.g. RATE_LIMIT_DEFAULTS) so the name collision can't recur."
+  },
+  {
+    "key": "AUDIT-002#ssrf-01",
+    "severity": "low",
+    "title": "discover route skips validateScanTarget on the user-supplied root URL",
+    "file": "app/api/v3/scan/discover/route.ts",
+    "line": null,
+    "description": "scan/discover parses the user URL into a hostname, then fires DNS queries to ~140 prefix names and crt.sh / hackertarget / subdomain.center / rapiddns BEFORE validateScanTarget is ever called.",
+    "recommendation": "Call validateScanTarget(url) on the user-supplied URL first; reject before any external lookup."
+  },
+  {
+    "key": "AUDIT-001#ssrf-01",
+    "severity": "critical",
+    "title": "safeFetch followed 3xx redirects without re-validating each hop",
+    "file": "lib/scanner/safe-fetch.ts",
+    "line": null,
+    "description": "Node's built-in fetch follows Location: blindly. A target that 302s to 169.254.169.254 (or any private IP) bypassed validateScanTarget after the first hop.",
+    "recommendation": "Manual redirect loop with per-hop validateScanTarget; cross-host redirects rejected outright; same-host redirects capped at 5 hops."
+  },
+  {
+    "key": "AUDIT-011#auth-02",
+    "severity": "high",
+    "title": "2FA 'start over' traps the user in a form that then submits a null userId forever",
+    "file": "app/login/page.tsx",
+    "line": 109,
+    "description": "app/login/page.tsx:109 initialises needs2FA with useState(isThirdPartyPending2FA), a one-time initial value rather than derived state. The reset action calls router.push(\"/login\"), a same-route soft navigation, so the component never remounts and the initial value is never recomputed.",
+    "recommendation": "Derive needs2FA from the current search params on each render, or use window.location.assign(\"/login\") to force a remount."
+  },
+  {
+    "key": "AUDIT-007#auth-02",
+    "severity": "medium",
+    "title": "No encryption key rotation path for AES-256-GCM encrypted values",
+    "file": "lib/auth/crypto.ts",
+    "line": null,
+    "description": "A single API_KEY_ENCRYPTION_KEY protects TOTP seeds, Discord OAuth tokens, and API keys. There is no re-encryption migration mechanism, no key versioning on encrypted rows, and no PREVIOUS_API_KEY_ENCRYPTION_KEY fallback. A key compromise requires manual DB remediation with no tooling support.",
+    "recommendation": "Deferred — requires schema changes (key_version column on encrypted tables) and a migration script. Tracked for AUDIT-008."
+  },
+  {
+    "key": "AUDIT-002#auth-02",
+    "severity": "high",
+    "title": "Profile email change does not reset email_verified_at",
+    "file": "app/api/v3/auth/update/route.ts",
+    "line": null,
+    "description": "PATCH /api/v3/auth/update changes the email in place but leaves email_verified_at pointing at the OLD verification. The new email is implicitly trusted without proof of control.",
+    "recommendation": "Set email_verified_at = NULL on email change; require the user to verify the new email before they can log in."
+  },
+  {
+    "key": "AUDIT-001#auth-02",
+    "severity": "medium",
+    "title": "Login timing oracle leaks registered emails",
+    "file": "app/api/v3/auth/login/route.ts",
+    "line": null,
+    "description": "No-user path returned ~5-20ms; user-exists path ran scrypt (80-200ms). Observable delta.",
+    "recommendation": "No-user path runs verifyPassword against a precomputed dummy hash to equalize timing."
+  },
+  {
+    "key": "AUDIT-011#auth-01",
+    "severity": "critical",
+    "title": "The 'send the verification email again' button is dead: it checks a success field the API envelope never sets",
+    "file": "components/auth/login-form.tsx",
+    "line": 54,
+    "description": "The handler branches on `if (res.ok && data.success)` then `else if (!res.ok)`. lib/api/api-utils.ts:15 defines ApiResponse.success as `NextResponse.json(data, { status })`, which adds no success field. app/api/v3/auth/resend-verification/route.ts returns ApiResponse.success({ message: ... }) at lines 44, 54 and 64, so the body is a bare {message}. On a 200 response data.success is undefined, so the first branch is false and `!res.ok` is also false. Neither branch executes. components/auth/signup-success.tsx:45 and components/auth/verify-email-expired.tsx:46 check res.ok alone and work correctly.",
+    "recommendation": "Delete `&& data.success` from the condition at components/auth/login-form.tsx:54. Match the two sibling components that already do this correctly."
+  },
+  {
+    "key": "AUDIT-008#auth-01",
+    "severity": "medium",
+    "title": "Discord sign-in/sign-up redirect URI never documented for registration",
+    "file": ".env.example",
+    "line": null,
+    "description": "The unified sign-in/sign-up OAuth flow added in app/api/v3/auth/oauth/[provider]/ redirects to /api/v3/auth/oauth/discord/callback for Discord, a distinct URI from the older Profile > Connections linking flow's /api/v3/auth/discord/callback. .env.example (and the operator's own .env.local) only ever documented the older URI for the Discord Developer Portal. A self-hoster (or this SaaS's own Discord app, if registered before the unified flow existed) who followed that doc registers only one of the two required redirect URIs, so the Sign in with Discord / Sign up with Discord buttons on /login and /signup -- which render whenever DISCORD_CLIENT_ID/SECRET are set, per /api/v3/auth/oauth/info -- fail at Discord with a redirect_uri mismatch, while the Profile Connect button keeps working. Same bug class as cc1b1f9f's GitHub repo-connect fix earlier today, but Discord's two flows are intentionally separate (not merged), so the fix is registering both URIs rather than consolidating callbacks.",
+    "recommendation": "Documented both required OAuth2 redirect URLs in the Discord Developer Portal section of .env.example -- confirm the production/sandbox Discord app also has both registered."
+  },
+  {
+    "key": "AUDIT-002#auth-01",
+    "severity": "critical",
+    "title": "Moderator can change any regular user's email without re-auth",
+    "file": "app/api/v3/admin/route.ts",
+    "line": null,
+    "description": "update_email is in modActions; a moderator can target any regular user, change the email to attacker@evil.com, then trigger forgot-password. reset-password doesn't re-check email_verified_at, so the attacker receives the reset link at the new address and takes over the account.",
+    "recommendation": "Require the moderator to re-authenticate (password or TOTP) before update_email; send email verification to the new address and only apply the change after the user confirms via token. Block the forgot-password flow until email_verified_at IS NOT NULL for the new address."
+  },
+  {
+    "key": "AUDIT-001#auth-01",
+    "severity": "high",
+    "title": "startCheckoutSession accepted userId from client (IDOR)",
+    "file": "app/actions/stripe.ts",
+    "line": null,
+    "description": "The userId parameter was stamped into Stripe metadata, letting any logged-in user upgrade a victim's plan by paying.",
+    "recommendation": "Dropped the parameter. userId is now derived server-side from getSession()."
+  },
+  {
+    "key": "AUDIT-009#dup-07",
+    "severity": "medium",
+    "title": "sourcemap-reference triplicated across code.ts, content.ts, information-disclosure.ts -- a prior cleanup pass explicitly reasoned about this ID and still missed it",
+    "file": "lib/scanner/checks/content.ts,lib/scanner/checks/information-disclosure.ts,lib/scanner/checks/code.ts",
+    "line": null,
+    "description": "content.ts wins via category ownership; dead copies remain in information-disclosure.ts and code.ts. information-disclosure.ts has a comment about removing a sibling duplicate that explicitly reasons about sourcemap-reference too, but left this one in place. Separately, a related id source-maps in code.ts has no JSON definition in any category file and can never fire at all.",
+    "recommendation": "Delete sourcemap-reference from information-disclosure.ts and code.ts. Separately, either give source-maps a JSON def or delete the orphaned entry."
+  },
+  {
+    "key": "AUDIT-008#scanner-01",
+    "severity": "high",
+    "title": "hardcoded-secrets check flat-critical across ~30 secret patterns, double-counts Google keys",
+    "file": "lib/scanner/checks/code.ts,lib/scanner/checks-data/code.json",
+    "line": null,
+    "description": "Walmart scan: Google API keys matched by generic hardcoded-secrets (severity critical) pushed the whole scan to unsafe/10, despite two dedicated checks (google-api-key-exposed, secret-google-maps-api-key) already correctly rating the same evidence as medium. Client-exposed-by-design keys (Google/Firebase) should not carry the same severity as server-only secrets (AWS/Stripe/DB URIs).",
+    "recommendation": "Split hardcoded-secrets into 4 severity-tiered check ids (hardcoded-secrets critical / hardcoded-secrets-high-risk high / hardcoded-secrets-client-exposed medium / hardcoded-secrets-low-risk low) in lib/scanner/checks/code.ts + checks-data/code.json. Removed the Google API Key (AIzaSy*) pattern entirely -- google-api-key-exposed (content.json) and secret-google-maps-api-key/secret-firebase-api-key-public (secrets-extended.json) already cover that evidence at medium/low. Also fixed safety-rating.ts's dead 'Hardcoded API Keys' exploitablePatterns entry (never matched any real title) so the new tiers classify as exploitable-at-their-own-severity instead of falling into 'hardening' or being dropped -- merged with scanner-02's independent fix for the same dead pattern (broader regex, kept as-is). Shipped by agent a9eefbf8ba0b78d5c."
+  },
+  {
+    "key": "AUDIT-002#scanner-01",
+    "severity": "medium",
+    "title": "URL-length cap missing in bulk/crawl/discover",
+    "file": "app/api/v3/scan/bulk/route.ts",
+    "line": null,
+    "description": "AUDIT-001#scanner-02 fixed MAX_URL_LENGTH in scan/route.ts but the sibling routes (bulk, crawl, discover, crawl/discover) iterate user URLs through validateScanTarget + safeFetch + DB INSERT without the same length pre-check. A 50MB URL string is accepted.",
+    "recommendation": "Add if (url.length > SCANNING.MAX_URL_LENGTH) return 400 to each handler, OR extract a shared assertUrlLength helper."
+  },
+  {
+    "key": "AUDIT-001#scanner-01",
+    "severity": "medium",
+    "title": "access-rules catch block failed open",
+    "file": "lib/scanner/access-rules.ts",
+    "line": null,
+    "description": "DB error in blacklist query silently allowed every scan through — turning a DB outage into a blacklist bypass.",
+    "recommendation": "Catch block now returns { allowed: false } — fail-closed."
+  },
+  {
+    "key": "AUDIT-011#auth-05",
+    "severity": "high",
+    "title": "The unsubscribe page reports success on failure, which is a compliance exposure",
+    "file": "app/unsubscribe/page.tsx",
+    "line": 214,
+    "description": "app/unsubscribe/page.tsx:214 never checks res.ok and catches with /* ignore */, so a 404 'Invalid token.' still renders the green 'Saved.' confirmation. The unsubscribe-from-all path at :249 has no else branch at all.",
+    "recommendation": "Check res.ok, render data.error or a fallback in the existing message slot, and never set the success state on a non-2xx response."
+  },
+  {
+    "key": "AUDIT-001#db-01",
+    "severity": "medium",
+    "title": "account/delete blocked by FK violation on admin_audit_log",
+    "file": "instrumentation.ts",
+    "line": null,
+    "description": "admin_audit_log.target_user_id and access_rules.created_by had no ON DELETE clause; user self-delete returned 500.",
+    "recommendation": "Self-healing idempotent migration adds fk_admin_audit_target_user ON DELETE SET NULL and fk_access_rules_created_by ON DELETE SET NULL on startup."
+  },
+  {
+    "key": "AUDIT-009#dup-03",
+    "severity": "medium",
+    "title": "Dead revokeApiKey/getUserApiKeys duplicate in db-utils.ts is missing the ownership check the live version has",
+    "file": "lib/database/db-utils.ts,lib/api/api-keys.ts",
+    "line": null,
+    "description": "lib/database/db-utils.ts duplicates getUserApiKeys/revokeApiKey from lib/api/api-keys.ts. The db-utils.ts revokeApiKey(keyId) takes no userId and updates WHERE id = $1 only (an IDOR shape) vs. api-keys.ts's WHERE id = $1 AND user_id = $2. Confirmed dead code: db-utils.ts is imported exactly once anywhere, only for getUserByEmail, so the unsafe revokeApiKey is never actually called, but it's a landmine for the next person who greps for revokeApiKey and finds two candidates.",
+    "recommendation": "Delete the db-utils.ts duplicates; keep lib/api/api-keys.ts as the sole implementation."
+  },
+  {
+    "key": "AUDIT-008#scanner-02",
+    "severity": "high",
+    "title": "Danger score / safety rating ignore AI verification verdicts entirely",
+    "file": "lib/scanner/safety-rating.ts",
+    "line": null,
+    "description": "getSafetyRating/getDangerScore in lib/scanner/safety-rating.ts weight every finding by severity+title pattern only; a finding the AI already flagged possible_fp counts at full weight, defeating the verification pipeline. Confirmed on Walmart scan: several cookie findings marked possible_fp (detector cited a cookie not present in the live probe) still counted at full weight toward the unsafe/10 verdict.",
+    "recommendation": "Extend Finding interface with aiVerdict/aiConfidence, weight accordingly. In progress (agent adf62015a31287147)."
+  },
+  {
+    "key": "AUDIT-002#scanner-02",
+    "severity": "low",
+    "title": "Email regex duplicated with character-class overlap",
+    "file": "lib/scanner/checks/content.ts",
+    "line": null,
+    "description": "The same email regex appears in content.ts, information-disclosure.ts, secrets-extended.ts (3x). [a-zA-Z0-9.-]+ is greedy and overlaps with the trailing \\.[a-zA-Z]{2,}.",
+    "recommendation": "Hoist a single EMAIL_RE constant in lib/scanner/_helpers.ts; replace with anchored pattern."
+  },
+  {
+    "key": "AUDIT-001#scanner-02",
+    "severity": "medium",
+    "title": "No URL length cap at scan API boundary",
+    "file": "app/api/v3/scan/route.ts",
+    "line": null,
+    "description": "CONFIG_MAX_URL_LENGTH was defined but never enforced — a 50MB URL string hit DNS resolution and DB INSERT.",
+    "recommendation": "Reject with 400 before any DNS / DB work when url.length > SCANNING.MAX_URL_LENGTH."
+  },
+  {
+    "key": "AUDIT-008#scanner-03",
+    "severity": "medium",
+    "title": "checkSecurityTxt probes bare apex host, misses www-only security.txt",
+    "file": "lib/scanner/async-checks.ts",
+    "line": null,
+    "description": "Walmart scan reported security.txt missing at both well-known/root paths on walmart.com; user manually confirmed www.walmart.com serves a valid security.txt. Apex/www host mismatch in lib/scanner/async-checks.ts's checkSecurityTxt, likely a redirect-handling or origin-source bug.",
+    "recommendation": "Root-causing redirect/origin handling. In progress (agent a4a7418e77b0d7ded)."
+  },
+  {
+    "key": "AUDIT-001#scanner-03",
+    "severity": "medium",
+    "title": "scan_history.response_headers stored Set-Cookie values",
+    "file": "app/api/v3/scan/route.ts",
+    "line": null,
+    "description": "Scan-target session cookies persisted to DB indefinitely.",
+    "recommendation": "redactSensitiveResponseHeaders strips Set-Cookie / Cookie / Authorization / etc. before insert."
+  },
+  {
+    "key": "AUDIT-008#scanner-04",
+    "severity": "medium",
+    "title": "AI verification timeout/chunk-size too tight for realistic finding counts",
+    "file": "lib/config/config-values.ts,lib/ai/verify-findings.ts",
+    "line": null,
+    "description": "lib/ai/verify-findings.ts's verifyInChunks stops at a 90s total deadline with chunk size 5; only ~35-40 of Walmart's 57 findings received an AI verdict before the deadline hit, the rest silently unverified with no coverage indicator.",
+    "recommendation": "Increasing CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS/CHUNK_SIZE with worst-case arithmetic, checking client-side timeout parity. In progress (agent a567911127be41393)."
+  },
+  {
+    "key": "AUDIT-001#scanner-04",
+    "severity": "medium",
+    "title": "Bulk scan limit hardcoded to 10 instead of MAX_URLS_IN_BULK (100)",
+    "file": "app/api/v3/scan/bulk/route.ts",
+    "line": null,
+    "description": "Self-hosters configuring MAX_URLS_IN_BULK got silent bypass.",
+    "recommendation": "Use SCANNING.MAX_URLS_IN_BULK."
+  },
+  {
+    "key": "AUDIT-008#scanner-05",
+    "severity": "medium",
+    "title": "Duplicate header checks double-count the same evidence at inconsistent severities",
+    "file": "lib/scanner/checks/headers.ts,lib/scanner/checks-data/headers.json,tests/lib/scanner/checks/headers.test.ts",
+    "line": null,
+    "description": "Seven pairs of header detectors fire on the exact same underlying condition under different ids/severities: csp-frame-ancestors is a strict subset of clickjack-missing; x-content-type-options-not-nosniff duplicates nosniff-incorrect (and its own JSON metadata described the wrong 'missing header' scenario, not what it actually detected); corp-missing duplicates cross-origin-resource-policy-report-only-missing; server-timing-sensitive-key-leak duplicates server-timing-exposure and its keyword list flagged the benign, extremely common 'cache;dur=NN' CDN timing value as 'sensitive'; x-frame-options-invalid re-fired on XFO:ALLOWALL despite x-frame-options-allowall already covering it at higher severity; hsts-no-preload double-reported 'missing includeSubDomains' alongside the dedicated strict-transport-security-include-subdomains check; referrer-policy-no-referrer-strict-origin-when-cross-origin double-reported 'unsafe-url'/'no-referrer-when-downgrade' alongside referrer-policy-unsafe. Each pair inflated finding counts and danger-score contributions for one real signal.",
+    "recommendation": "Disabled the redundant/subset detector in each pair (return null with an explanatory comment, matching the file's existing etag-inode-leak convention) or narrowed the broader detector's condition to stop overlapping with the more precise one."
+  },
+  {
+    "key": "AUDIT-008#scanner-10",
+    "severity": "medium",
+    "title": "ratelimit-policy-missing only checks the newest unprefixed header name, missing the still-common legacy convention its own description promises",
+    "file": "lib/scanner/checks/configuration.ts,tests/lib/scanner/checks/configuration.test.ts",
+    "line": null,
+    "description": "The JSON description explicitly says the check looks for 'X-RateLimit-Limit, RateLimit-Limit, Retry-After', but the detector code only ever checked the new, least-adopted IETF-draft 'RateLimit-Limit' (unprefixed). APIs using the still extremely common legacy X-RateLimit-* convention (GitHub, Twitter/X, and many other well-run APIs) or that only emit Retry-After on throttled responses were false-flagged at medium severity as having 'no RateLimit-* family headers' even though they do rate-limit and do expose it.",
+    "recommendation": "Added checks for the legacy x-ratelimit-limit header and retry-after, matching what the description already claimed."
+  },
+  {
+    "key": "AUDIT-008#scanner-20",
+    "severity": "medium",
+    "title": "Three page-checks SRI/sandbox checks repeated the already-fixed 'fires on every ordinary third-party embed' pattern from scanner-07",
+    "file": "lib/scanner/checks/page-checks/scripts.ts,lib/scanner/checks/page-checks/mixed-content.ts",
+    "line": null,
+    "description": "page-script-missing-sri (medium) and page-third-party-script-unconstrained-by-csp (high) fire on any third-party script without SRI regardless of vendor, including Google Analytics/GTM/ads/payment SDKs that cannot practically use SRI because they are continuously updated by the vendor -- the identical false-positive class already found and downgraded for the legacy sri-missing check in headers.json (AUDIT-008 scanner-07), just not yet applied to the newer PageCheck-architecture equivalents in my scope. page-third-party-iframe-no-sandbox (medium) has the same relationship to the already-downgraded iframe-third-party-without-sandbox: it fires on routine legitimate embeds (video players, maps, payment widgets, chat widgets) that omit sandbox because it breaks required functionality.",
+    "recommendation": "Downgraded page-script-missing-sri medium->low, page-third-party-script-unconstrained-by-csp high->medium, and page-third-party-iframe-no-sandbox medium->low, matching the severities scanner-07 already established for the equivalent legacy checks; added a sentence to each riskImpact noting how common the flagged configuration is on legitimate sites."
+  },
+  {
+    "key": "AUDIT-008#scanner-21",
+    "severity": "low",
+    "title": "~15 more api.json entries typed 'header' despite their detectors reading only body/URL, understating regex-guess uncertainty",
+    "file": "lib/scanner/checks-data/api.json",
+    "line": null,
+    "description": "Beyond the mass-assignment and graphql-introspection entries (scanner-16/18), soap-endpoint, xml-rpc, api-graphql-batch-queries, api-graphql-error-stack-trace, api-openapi-default-values-sensitive, api-openapi-server-url-leak, and api-jwt-hs256-weak-secret are pure body regexes with zero header interaction but were typed 'header' (93% confidence); api-graphql-suggestions-enabled, api-graphql-error-stack-trace, api-openapi-security-scheme-weak, api-jsonp-callback, api-soap-wsdl-publicly-accessible, and api-websocket-no-origin-validation read both url and body (no header at all) but were also typed 'header'; api-bearer-header-leak reads only the URL string.",
+    "recommendation": "Corrected each to 'body-pattern' (70% confidence), 'combined' (85%), or 'url-check' (82%) matching what the paired detector in api.ts actually inspects."
+  },
+  {
+    "key": "AUDIT-008#scanner-22",
+    "severity": "low",
+    "title": "api-rate-limit-per-ip-no-auth read an unrelated response header as evidence and overclaimed 'no authentication required'",
+    "file": "lib/scanner/checks/api.ts",
+    "line": null,
+    "description": "One firing branch treated a response carrying x-forwarded-for (a client-IP-forwarding header, rarely present on a response at all) as evidence that rate limiting is 'keyed only on client IP' -- the two facts are unrelated. Separately, the evidence text asserted 'no authentication required' from the scanner's own request lacking an Authorization header, which is true of nearly every passive scan regardless of whether the endpoint actually requires auth; a properly protected endpoint returning 401 with rate-limit headers attached would look identical to this detector.",
+    "recommendation": "Removed the x-forwarded-for branch (kept only the x-ratelimit-limit signal) and reworded evidence to prompt verification of the auth requirement rather than assert its absence. Also softened api-rate-limit-headers-not-enforced-on-paths's evidence, which asserted a X-RateLimit-Remaining absence means the 'cap not enforced' as fact when a server may only emit that header near the limit."
+  },
+  {
+    "key": "AUDIT-008#scanner-24",
+    "severity": "low",
+    "title": "api.ts and supply-chain.ts detectors never excluded doc/tutorial <pre>/<code> blocks, unlike vibe-code.ts's already-fixed equivalent",
+    "file": "lib/scanner/checks/api.ts,lib/scanner/checks/supply-chain.ts",
+    "line": null,
+    "description": "None of api.ts's body-regex detectors (soap-endpoint, xml-rpc, api-jwt-hs256-weak-secret's jwt.sign(...) pattern, etc.) or supply-chain.ts's config-file fingerprint detectors (lockfile/requirements/Gemfile/composer/Dockerfile/.env) excluded <pre>/<code>/<kbd>/<samp> regions before matching, the same gap already fixed for vibe-code.ts (AUDIT-008 vibe-01) because this product's own /docs pages, and any tutorial/blog post, render example payloads and config snippets as literal text in those tags.",
+    "recommendation": "Wrapped every detector in both files with stripDocBlocks() at export time, mirroring vibe-code.ts's existing wrapper pattern exactly. No effect on the primary detection case (a raw exposed file/API response has no HTML tags to strip)."
+  },
+  {
+    "key": "AUDIT-008#scanner-06",
+    "severity": "medium",
+    "title": "Stale/renamed header check ids left title+description describing an unrelated concept",
+    "file": "lib/scanner/checks-data/headers.json",
+    "line": null,
+    "description": "coop-missing, corp-missing (before scanner-05's dedup), charset-meta-missing, and cors-null-origin-allowed all had their real detector logic implemented under an id that used to represent something else entirely: coop-missing's title/description talk about the optional Cross-Origin-Opener-Policy-Report-Only preview variant while the code checks the real enforcing COOP header; charset-meta-missing's metadata was entirely about 'Sec-Fetch-* Request Headers Not Echoed' while the code checks for a missing <meta charset> tag; cors-null-origin-allowed's metadata was entirely about 'COOP unsafe-popups' while the code detects Access-Control-Allow-Origin: null (a real, moderately serious CORS bypass vector exploitable via sandboxed iframes), and was consequently mis-tiered at severity info. The templated 'evidence' field in each JSON entry still contained the original id slug (e.g. headers-coop-report-only-missing, headers-sec-fetch-missing, headers-coop-same-origin-allow-popups), confirming these ids were repointed to existing detectors without updating the rest of the metadata. Users saw a title/description/fix-steps completely unrelated to what was actually found.",
+    "recommendation": "Rewrote title/description/riskImpact/explanation/fixSteps for coop-missing, charset-meta-missing, and cors-null-origin-allowed to match their real detector behavior; bumped cors-null-origin-allowed from info to medium to reflect the real risk (ACAO: null trusted by sandboxed-iframe/data-URI attackers)."
+  },
+  {
+    "key": "AUDIT-009#dup-06",
+    "severity": "medium",
+    "title": "hardcoded-secrets duplicated code.ts/secrets-extended.ts; dead copy reintroduces a bug the live copy's own comment says was deliberately fixed",
+    "file": "lib/scanner/checks/code.ts,lib/scanner/checks/secrets-extended.ts",
+    "line": null,
+    "description": "code.ts has a comment explaining the Google API Key pattern was removed from this check specifically because it triple-counted with two other checks and pushed a normal site's scan to critical severity. secrets-extended.ts's dead duplicate still contains that exact pattern, inert today only because code.ts owns the ID via category ownership -- a landmine for any future dedup that flips which file owns it.",
+    "recommendation": "Delete the hardcoded-secrets entry from lib/scanner/checks/secrets-extended.ts; fold in any uniquely-covered patterns deliberately, not as a second full copy under the same ID."
+  },
+  {
+    "key": "AUDIT-001#secrets-01",
+    "severity": "high",
+    "title": "Discord OAuth tokens stored plaintext at rest",
+    "file": "app/api/v3/auth/discord/callback/route.ts",
+    "line": null,
+    "description": "discord_connections.access_token and refresh_token were plaintext. DB read = Discord account takeover via refresh token.",
+    "recommendation": "Encrypt via encryptApiKey; added getDiscordTokens() helper that decrypts inline; backfill migration on startup."
+  },
+  {
+    "key": "AUDIT-001#session-01",
+    "severity": "high",
+    "title": "Password change did not invalidate other sessions",
+    "file": "app/api/v3/auth/update/route.ts",
+    "line": null,
+    "description": "A stolen session cookie remained valid for the full 7-day TTL even after the legitimate user rotated their password.",
+    "recommendation": "Mirror reset-password: deleteAllSessions + createSession(current)."
+  },
+  {
+    "key": "AUDIT-011#auth-06",
+    "severity": "high",
+    "title": "Turnstile has no failure path, so a user who cannot reach Cloudflare can neither sign up nor contact support",
+    "file": "components/shared/turnstile-widget.tsx",
+    "line": 67,
+    "description": "components/shared/turnstile-widget.tsx:67 registers no error-callback, no timeout and no failure state. If challenges.cloudflare.com is blocked by a corporate proxy, an ad blocker, a regional block or a Cloudflare outage, the widget stays an empty div forever and the gated submit button stays greyed with no explanation. Gated consumers: components/auth/signup-form.tsx:244, components/contact/contact-form.tsx:346, components/contact/support-tickets.tsx:406.",
+    "recommendation": "Wire error-callback and a roughly 10 second timeout to a state that renders 'Verification could not load. Refresh, or contact us at {SUPPORT_EMAIL}.' and either enables the submit or offers a fallback route."
+  },
+  {
+    "key": "AUDIT-011#auth-10",
+    "severity": "medium",
+    "title": "Unsubscribe toggles are 24px tall and the destructive action is a 16px target at 60% opacity",
+    "file": "app/unsubscribe/page.tsx",
+    "line": 378,
+    "description": "The 19 Switch toggles are 24x44px with the row's py-3 outside the hit area. The destructive 'unsubscribe from all' at app/unsubscribe/page.tsx:378 is a roughly 16px target at text-xs and 60% opacity.",
+    "recommendation": "Make the whole row the label and hit area; promote the destructive action to h-11."
+  },
+  {
+    "key": "AUDIT-002#secrets-02",
+    "severity": "medium",
+    "title": "Team invite tokens stored plaintext",
+    "file": "app/api/v3/teams/members/route.ts",
+    "line": null,
+    "description": "team_invites.token is plaintext. No rate limit on accept-invite either.",
+    "recommendation": "Hash tokens at rest; add per-IP rate limit on accept-invite."
+  },
+  {
+    "key": "AUDIT-001#secrets-02",
+    "severity": "medium",
+    "title": "admin_audit_log.details stored raw user emails (365-day retention)",
+    "file": "lib/auth/authorization.ts",
+    "line": null,
+    "description": "Emails leaked in audit log long after the user changed or deleted their address.",
+    "recommendation": "Central logAuditAction helper masks any email-like substring via redactEmailsInDetails before insert."
+  },
+  {
+    "key": "AUDIT-001#infra-03",
+    "severity": "medium",
+    "title": "Audit-log IPs read leftmost X-Forwarded-For (spoofable)",
+    "file": "app/api/v3/auth/update/route.ts",
+    "line": null,
+    "description": "7 routes trusted the client-supplied IP without consulting TRUSTED_PROXY_CIDR.",
+    "recommendation": "Replace with await getClientIp() everywhere."
+  },
+  {
+    "key": "AUDIT-011#auth-03",
+    "severity": "high",
+    "title": "An expired verification link renders 'that link did not verify anything', and the only resend form is unreachable dead code",
+    "file": "app/verify-email/VerifyEmailClient.tsx",
+    "line": 57,
+    "description": "app/verify-email/VerifyEmailClient.tsx:57 branches on `if (data.expired)`, but a repo-wide grep for 'expired: true' returns zero hits and the route sends a plain 400 for an expired token. Expiry therefore falls through to VerifyEmailError. components/auth/verify-email-expired.tsx is 152 lines and is the only screen carrying an inline resend form; no user can reach it.",
+    "recommendation": "Have the route return {expired: true} on token expiry, or branch on the 400's error code client-side, so components/auth/verify-email-expired.tsx becomes reachable."
+  },
+  {
+    "key": "AUDIT-002#auth-03",
+    "severity": "medium",
+    "title": "Signup rate-limited only by IP, not by email",
+    "file": "app/api/v3/auth/signup/route.ts",
+    "line": null,
+    "description": "Per-IP signup throttling only. No per-email cap. Attacker can rotate IPs to enumerate which emails are registered (409 vs success differentiates them) and DoS by flooding signup tables.",
+    "recommendation": "Add per-email throttling (e.g., 5 per hour per email)."
+  },
+  {
+    "key": "AUDIT-001#infra-02",
+    "severity": "medium",
+    "title": "SMTP transport fell back to plaintext",
+    "file": "lib/email/email.ts",
+    "line": null,
+    "description": "secure:false without requireTLS meant misconfigured relays could send password-reset + 2FA codes in cleartext.",
+    "recommendation": "Port 465 -> secure:true. Port 587/25 -> requireTLS:true. Min TLSv1.2."
+  }
+]

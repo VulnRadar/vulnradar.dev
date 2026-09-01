@@ -213,9 +213,33 @@ describe("getDangerScore — regression (no AI verdict at all)", () => {
   });
 
   it("falls back to a default weight for an unrecognized severity string", () => {
-    expect(() =>
+    // The whole body of this test used to be `.not.toThrow()`, which said
+    // nothing about the fallback it names: changing `?? 0.1` to `?? 10` in
+    // getDangerScore left it green while every scan carrying one finding
+    // with an unrecognised severity jumped to the top of the risk scale.
+    // Assert the weight instead, by bracketing it.
+    //
+    // A single such finding rounds to 0, so the comparison needs enough of
+    // them for the weights to separate: at 400 findings the shipped 0.1
+    // fallback lands strictly between info (0.05) and low (0.3), which is
+    // exactly what "a sensible default for something we do not recognise"
+    // means. Every title here is deliberately unremarkable so none of them
+    // match the exploitable or hardening pattern lists.
+    const many = (severity: string) =>
+      Array.from({ length: 400 }, (_, i) => ({
+        severity,
+        title: `Something Odd ${i}`,
+      }));
+
+    const unknown = getDangerScore(many("unknown"));
+    const info = getDangerScore(many("info"));
+    const low = getDangerScore(many("low"));
+
+    expect(unknown).toBeGreaterThan(info);
+    expect(unknown).toBeLessThan(low);
+    expect(
       getDangerScore([{ severity: "unknown", title: "Something Odd" }]),
-    ).not.toThrow();
+    ).toBe(0);
   });
 });
 

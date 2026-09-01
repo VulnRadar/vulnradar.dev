@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Clock, Lock } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
-import { ROUTES, SEVERITY_LEVELS } from "@/lib/config/constants";
+import { ROUTES, SEVERITY_LEVELS } from "@/lib/config/client-constants";
 import { VERDICT } from "@/components/public-scans/public-scans-types";
 import { SeverityPill } from "@/components/history/severity-pill";
 import { formatRelativeTime, formatDate, type AssetRow } from "./assets-types";

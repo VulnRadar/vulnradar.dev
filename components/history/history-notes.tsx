@@ -7,7 +7,10 @@ import { Button } from "@/components/ui/button";
 interface HistoryNotesProps {
   notes: string;
   isOwner: boolean;
-  onSave: (notes: string) => Promise<void>;
+  /** Resolves to the server error on failure, or null when the note saved.
+   *  A void return used to make a failed PATCH indistinguishable from a
+   *  successful one: the editor closed either way and the text was gone. */
+  onSave: (notes: string) => Promise<string | null>;
 }
 
 export function HistoryNotes({
@@ -18,16 +21,25 @@ export function HistoryNotes({
   const [notes, setNotes] = useState(initialNotes);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const handleSave = async () => {
     setSaving(true);
-    await onSave(notes);
+    setSaveError(null);
+    const error = await onSave(notes);
     setSaving(false);
+    if (error) {
+      // Stay in edit mode with the typed text intact. Collapsing the editor
+      // here is what made a lost paragraph of remediation notes read as a
+      // successful save.
+      setSaveError(error);
+      return;
+    }
     setEditing(false);
   };
 
   return (
-    <div className="rounded-md border border-border bg-card p-4">
+    <div className="rounded-xl border border-border bg-card p-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <MessageSquare className="h-4 w-4 text-muted-foreground" />
@@ -53,6 +65,7 @@ export function HistoryNotes({
                   onClick={() => {
                     setEditing(false);
                     setNotes(initialNotes);
+                    setSaveError(null);
                   }}
                   className="h-7 text-xs text-muted-foreground"
                 >
@@ -79,15 +92,23 @@ export function HistoryNotes({
       </div>
 
       {editing && isOwner ? (
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          onKeyDown={(e) => e.stopPropagation()}
-          onKeyUp={(e) => e.stopPropagation()}
-          placeholder="Add notes about this scan..."
-          maxLength={2000}
-          className="w-full min-h-[80px] rounded-lg border border-border bg-background px-3 py-2 text-base sm:text-sm text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-1 focus:ring-ring resize-y"
-        />
+        <>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            onKeyDown={(e) => e.stopPropagation()}
+            onKeyUp={(e) => e.stopPropagation()}
+            placeholder="Add notes about this scan..."
+            aria-label="Scan notes"
+            maxLength={2000}
+            className="w-full min-h-[80px] rounded-lg border border-border bg-background px-3 py-2 text-base sm:text-sm text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-1 focus:ring-ring resize-y"
+          />
+          {saveError && (
+            <p role="alert" className="mt-2 text-xs text-destructive">
+              {saveError} Your text is still here, nothing was saved.
+            </p>
+          )}
+        </>
       ) : notes ? (
         <p className="text-sm text-muted-foreground whitespace-pre-wrap">
           {notes}

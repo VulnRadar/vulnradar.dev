@@ -9,7 +9,7 @@ import {
 } from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
 import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
-import { getClientIp } from "@/lib/api/request-utils";
+import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { safeFetch } from "@/lib/scanner/safe-fetch";
 import {
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
 
     // IP-based rate limiting via database
     const ip = await getClientIp();
-    const rateLimitKey = `demo_scan:${ip}`;
+    const rateLimitKey = `demo_scan:${rateLimitIpKey(ip)}`;
     const rateCheck = await checkRateLimit({
       key: rateLimitKey,
       maxAttempts: DEMO_SCAN_LIMIT,
@@ -211,14 +211,37 @@ export async function POST(request: NextRequest) {
     }).catch(() => {});
 
     let asyncFindings: Vulnerability[] = [];
+    // abuse: the race used to abandon the losing side. When the timeout won,
+    // runAsyncChecks kept executing its whole live-fetch battery (the exposed
+    // -file probes, GraphQL, bucket listing, header probes) against an
+    // anonymous caller's chosen target with nothing left holding a reference
+    // to it and nothing accounting for it; and when the checks won, the
+    // timer was never cleared, so it survived its full window. Both sides are
+    // now cleaned up, the way lib/scanner/execute-scan.ts already does it.
+    const asyncAbort = new AbortController();
+    let asyncTimeoutHandle: NodeJS.Timeout | undefined;
     try {
-      const asyncPromise = runAsyncChecks(url);
-      const timeoutPromise = new Promise<Vulnerability[]>((resolve) =>
-        setTimeout(() => resolve([]), asyncChecksTimeoutMs),
+      const asyncPromise = runAsyncChecks(
+        url,
+        undefined,
+        undefined,
+        asyncAbort.signal,
       );
+      const timeoutPromise = new Promise<Vulnerability[]>((resolve) => {
+        asyncTimeoutHandle = setTimeout(
+          () => resolve([]),
+          asyncChecksTimeoutMs,
+        );
+      });
       asyncFindings = await Promise.race([asyncPromise, timeoutPromise]);
+      // Whichever side won, stop the other one. A rejection from the
+      // abandoned branch must not surface as an unhandled rejection.
+      void asyncPromise.catch(() => {});
     } catch {
       // Non-fatal
+    } finally {
+      if (asyncTimeoutHandle) clearTimeout(asyncTimeoutHandle);
+      asyncAbort.abort();
     }
 
     // Let discovery finish (bounded by its own internal timeout) and read the

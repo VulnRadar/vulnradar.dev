@@ -74,7 +74,13 @@ export function LandingSampleFinding() {
               </div>
             </header>
 
-            <dl className="grid grid-cols-3 divide-x divide-border/60 border-b border-border/60 text-xs">
+            {/* a11y (SC 1.4.10): three fixed columns is about 100px each at a
+                320px viewport, and each value is font-mono + truncate, so the
+                sample finding's metadata simply disappeared at the narrow end
+                and at 200% zoom. One column below sm, three from sm up; the
+                divider flips axis with it so the rule still sits between
+                cells rather than across them. */}
+            <dl className="grid grid-cols-1 divide-y divide-border/60 border-b border-border/60 text-xs sm:grid-cols-3 sm:divide-x sm:divide-y-0">
               {META.map(([label, value]) => (
                 <div key={label} className="px-4 py-3 min-w-0">
                   <dt className="text-muted-foreground mb-1">{label}</dt>

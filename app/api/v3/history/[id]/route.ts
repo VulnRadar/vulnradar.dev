@@ -13,9 +13,13 @@ import {
   API_KEY_SCOPES,
 } from "@/lib/api/api-key-scopes";
 import {
-  getTeamResourceAccess,
-  getAssignableTeamIds,
-} from "@/lib/auth/team-resource-access";
+  getScanResourceAccess,
+  getScanTeamAccess,
+  getScanTeamIds,
+  parseTeamIdsInput,
+  authorizeScanTeamChange,
+  setScanTeams,
+} from "@/lib/teams/scan-teams";
 import { resolveScanRow } from "@/lib/history/resolve-scan";
 import { attachRemediation } from "@/lib/scanner/remediation-store";
 import type { Vulnerability } from "@/lib/scanner/types";
@@ -113,6 +117,13 @@ export async function GET(
   );
   const tags = tagsResult.rows;
 
+  // Every team this scan is shared with. A scan used to carry at most one
+  // (scan_history.team_id); the set now lives in scan_history_teams, with the
+  // column kept in sync as the primary. Read once here so both the owner and
+  // the team-member branch below can report it and the team-member branch can
+  // decide access from it.
+  const scanTeamIds = await getScanTeamIds(scan.id);
+
   // Allow if it's the user's own scan
   if (scan.user_id === authedUserId) {
     // Record API key usage
@@ -147,20 +158,29 @@ export async function GET(
       userId: scan.user_id,
       authenticated: scan.authenticated || false,
       isPublic: scan.is_public !== false,
+      // Which teams this scan is shared with. PATCH has always accepted a
+      // team assignment but nothing ever reported the current value back, so
+      // the scan actions menu had no way to show an existing assignment: it
+      // opened its team picker with nothing selected on a scan that was
+      // already shared. teamId is the primary team, kept for API clients
+      // written against the single-team contract; teamIds is the real set.
+      teamId: scanTeamIds[0] ?? null,
+      teamIds: scanTeamIds,
       tags,
       ...meta,
     });
   }
 
-  // Team access is scoped to the scan's OWN team_id, not "any shared team".
-  // A private personal scan (team_id null) is owner-only even between
-  // teammates -- getTeamResourceAccess returns canRead:false for it. The prior
-  // "do these two users share any team" self-join leaked a teammate's private
-  // personal scans (org-isolation bug, same rule PATCH/DELETE already enforce).
-  const access = await getTeamResourceAccess(
+  // Team access is scoped to the teams this scan is actually shared with, not
+  // "any team the two users happen to share". A private personal scan (no
+  // teams) is owner-only even between teammates -- getScanResourceAccess
+  // returns canRead:false for it. The prior "do these two users share any
+  // team" self-join leaked a teammate's private personal scans (org-isolation
+  // bug, same rule PATCH/DELETE already enforce).
+  const access = await getScanTeamAccess(
     authedUserId,
     scan.user_id,
-    scan.team_id,
+    scanTeamIds,
   );
 
   if (access.canRead) {
@@ -182,6 +202,8 @@ export async function GET(
       userId: scan.user_id,
       authenticated: scan.authenticated || false,
       isPublic: scan.is_public !== false,
+      teamId: scanTeamIds[0] ?? null,
+      teamIds: scanTeamIds,
       tags,
       ...meta,
     });
@@ -264,13 +286,22 @@ export async function PATCH(
 
   const { id } = await params;
   const body = await request.json();
-  const { notes, isPublic, teamId } = body;
+  const { notes, isPublic } = body;
 
   const hasNotes = notes !== undefined;
   const hasIsPublic = isPublic !== undefined;
-  const hasTeamId = teamId !== undefined;
 
-  if (!hasNotes && !hasIsPublic && !hasTeamId) {
+  // Team assignment. `teamIds: number[]` is a full replacement set; the
+  // original `teamId: number | null` is still accepted and means the same as
+  // a one- or zero-element array, since this is a public API route and
+  // clients written against the single-team contract must keep working.
+  const parsedTeams = parseTeamIdsInput(body);
+  if (!parsedTeams.ok) {
+    return NextResponse.json({ error: parsedTeams.error }, { status: 400 });
+  }
+  const hasTeams = parsedTeams.provided;
+
+  if (!hasNotes && !hasIsPublic && !hasTeams) {
     return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
   }
   if (hasNotes && typeof notes !== "string") {
@@ -278,9 +309,6 @@ export async function PATCH(
   }
   if (hasIsPublic && typeof isPublic !== "boolean") {
     return NextResponse.json({ error: "Invalid isPublic" }, { status: 400 });
-  }
-  if (hasTeamId && teamId !== null && !Number.isInteger(teamId)) {
-    return NextResponse.json({ error: "Invalid teamId" }, { status: 400 });
   }
 
   const scan = await resolveScanRow(id);
@@ -295,33 +323,36 @@ export async function PATCH(
   // use the 403-vs-404 split to learn a scan id is real. Only once
   // canRead is true (they already know it exists, e.g. via GET) does a
   // write-permission failure become an informative 403.
-  const access = await getTeamResourceAccess(
-    authedUserId,
-    scan.user_id,
-    scan.team_id,
-  );
+  const access = await getScanResourceAccess(authedUserId, scan);
   if (!access.canRead) {
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }
 
-  // team_id (org isolation, AUDIT-010 #273): only the scan's own owner may
-  // change which team it's assigned to -- a team member with write access
-  // to a team-assigned scan can still edit its notes/visibility, but
+  // Team sharing (org isolation, AUDIT-010 #273): only the scan's own owner
+  // may change which teams it is shared with -- a team member with write
+  // access to a shared scan can still edit its notes/visibility, but
   // re-pointing it at a different team is an ownership decision, not a
   // collaboration one.
-  if (hasTeamId && authedUserId !== scan.user_id) {
+  if (hasTeams && authedUserId !== scan.user_id) {
     return NextResponse.json(
       { error: "Only the scan's owner can change its team assignment." },
       { status: 403 },
     );
   }
-  if (hasTeamId && teamId !== null) {
-    const assignable = await getAssignableTeamIds(authedUserId);
-    if (!assignable.includes(teamId)) {
-      return NextResponse.json(
-        { error: "You cannot assign scans to that team." },
-        { status: 400 },
-      );
+  let currentTeamIds: number[] = [];
+  if (hasTeams) {
+    currentTeamIds = await getScanTeamIds(scan.id);
+    // Both directions are gated. Because teamIds is a replacement set,
+    // omitting a team is how you remove it, so checking only the additions
+    // would let a caller drop a team they do not manage just by leaving it
+    // out of the array.
+    const allowed = await authorizeScanTeamChange(
+      authedUserId,
+      currentTeamIds,
+      parsedTeams.teamIds,
+    );
+    if (!allowed.ok) {
+      return NextResponse.json({ error: allowed.error }, { status: 400 });
     }
   }
 
@@ -330,6 +361,14 @@ export async function PATCH(
       { error: "You do not have permission to modify this scan." },
       { status: 403 },
     );
+  }
+
+  // The team set is not a scan_history column any more, so it is written
+  // separately (setScanTeams rewrites scan_history_teams and re-points the
+  // primary-team column in one statement). Done before the column UPDATE so a
+  // teams-only PATCH still has something to report back below.
+  if (hasTeams) {
+    await setScanTeams(scan.id, parsedTeams.teamIds);
   }
 
   // Built dynamically so a notes-only or isPublic-only PATCH (the toggle
@@ -346,18 +385,21 @@ export async function PATCH(
     setClauses.push(`is_public = $${values.length + 1}`);
     values.push(isPublic);
   }
-  if (hasTeamId) {
-    setClauses.push(`team_id = $${values.length + 1}`);
-    values.push(teamId);
-  }
-  values.push(scan.id);
 
-  const result = await pool.query(
-    `UPDATE scan_history SET ${setClauses.join(", ")}
-     WHERE id = $${values.length}
+  // A teams-only PATCH leaves nothing for the column UPDATE to set, and
+  // `SET ` with an empty clause list is a syntax error rather than a no-op,
+  // so the row is read back instead of written.
+  const result = setClauses.length
+    ? await pool.query(
+        `UPDATE scan_history SET ${setClauses.join(", ")}
+     WHERE id = $${values.length + 1}
      RETURNING id, notes, is_public, team_id`,
-    values,
-  );
+        [...values, scan.id],
+      )
+    : await pool.query(
+        `SELECT id, notes, is_public, team_id FROM scan_history WHERE id = $1`,
+        [scan.id],
+      );
 
   if (result.rows.length === 0) {
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
@@ -382,10 +424,21 @@ export async function PATCH(
     await recordUsage(apiKeyId);
   }
 
+  // teamIds is reported whether or not this PATCH changed it, so a client
+  // never has to work out whether an absent field means "unchanged" or
+  // "shared with nobody". A PATCH that did change it already knows the
+  // answer without going back to the database.
+  const responseTeamIds = hasTeams
+    ? parsedTeams.teamIds
+    : await getScanTeamIds(scan.id);
+
   return NextResponse.json({
     notes: result.rows[0].notes,
     isPublic: result.rows[0].is_public,
-    teamId: result.rows[0].team_id,
+    // teamId stays in the response for clients written against the
+    // single-team contract: it is the primary team, the first of teamIds.
+    teamId: result.rows[0].team_id ?? null,
+    teamIds: responseTeamIds,
   });
 }
 
@@ -468,11 +521,7 @@ export async function DELETE(
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }
 
-  const access = await getTeamResourceAccess(
-    authedUserId,
-    scan.user_id,
-    scan.team_id,
-  );
+  const access = await getScanResourceAccess(authedUserId, scan);
   // anti-enumeration: see the matching comment in PATCH above -- no
   // relationship at all reads as "not found," same as a nonexistent id.
   if (!access.canRead) {

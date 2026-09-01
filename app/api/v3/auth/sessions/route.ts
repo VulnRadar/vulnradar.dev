@@ -20,12 +20,12 @@ import { sessionRevokedEmail } from "@/lib/email/email";
  * with no admin bypass -- staff already have their own view of any user's
  * sessions in app/api/v3/admin/route.ts (section=user-detail).
  *
- * Each session's real `id` (the literal bearer token stored in the
- * httpOnly cookie -- see createSession in lib/auth/auth.ts) is never sent
- * to the client. hashSessionId() gives the response an opaque identifier
- * that DELETE /api/v3/auth/sessions/[id] can resolve back to the real id
+ * Each session's stored `id` (itself the digest of the cookie's bearer
+ * token -- see createSession in lib/auth/auth.ts) is never sent to the
+ * client. hashSessionId() gives the response an opaque identifier that
+ * DELETE /api/v3/auth/sessions/[id] can resolve back to the stored id
  * (still scoped to this same user), without ever exposing a value that
- * could be replayed as a session cookie.
+ * could be used as a WHERE-clause argument against the sessions table.
  */
 export const GET = withErrorHandling(async () => {
   const session = await getSession();
@@ -46,7 +46,13 @@ export const GET = withErrorHandling(async () => {
       device: summarizeUserAgent(s.user_agent),
       createdAt: s.created_at,
       expiresAt: s.expires_at,
-      isCurrent: s.id === currentSessionId,
+      // The cookie holds the raw bearer token and sessions.id holds its
+      // digest, so this comparison has to hash before it compares. It used
+      // to be a direct `s.id === currentSessionId`, which was correct only
+      // while the two were the same string (AUDIT-012#auth-07).
+      isCurrent: currentSessionId
+        ? s.id === hashSessionId(currentSessionId)
+        : false,
     })),
   });
 });

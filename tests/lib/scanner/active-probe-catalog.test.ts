@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   ACTIVE_PROBE_IDS,
+  ACTIVE_PROBE_LIMITS_NOTE,
   ACTIVE_PROBE_OPTIONS,
   ACTIVE_PROBES_CATEGORY,
   activeProbeScanner,
@@ -99,6 +100,18 @@ describe("active-probe catalog", () => {
       expect(requestsActiveProbing([])).toBe(false);
       expect(requestsActiveProbing(null)).toBe(false);
     });
+  });
+
+  // ref: AUDIT-014#comp-11. Every probe decides from the immediate response,
+  // so blind, time-based and out-of-band flaws are undetectable here by
+  // construction. The note exists so the surfaces that render the probe list
+  // state that ceiling instead of leaving a reader to assume ZAP-equivalent
+  // coverage.
+  it("states the detection ceiling in one em-dash-free sentence", () => {
+    expect(ACTIVE_PROBE_LIMITS_NOTE.length).toBeGreaterThan(0);
+    expect(ACTIVE_PROBE_LIMITS_NOTE).not.toContain("—");
+    expect(ACTIVE_PROBE_LIMITS_NOTE).toMatch(/blind/i);
+    expect(ACTIVE_PROBE_LIMITS_NOTE).toMatch(/out-of-band/i);
   });
 
   describe("parse / serialize URL param", () => {

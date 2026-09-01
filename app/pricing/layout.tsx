@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { pageMetadata } from "@/lib/seo/metadata";
-import { FaqStructuredData } from "@/components/seo/structured-data";
+import {
+  FaqStructuredData,
+  SoftwareStructuredData,
+} from "@/components/seo/structured-data";
 import { PRICING_FAQ } from "@/components/pricing/pricing-faq";
 import {
   APP_NAME,
@@ -45,6 +48,23 @@ export default async function Layout({
   return (
     <>
       <FaqStructuredData items={faqItems} nonce={nonce} />
+      {/* SoftwareStructuredData has taken an `offers` prop since it was
+          written and not one of its five call sites passed anything, so the
+          branch that emits prices was dead and no page was eligible for the
+          software rich result's price line. This is the page whose prices
+          are the point, and the offers below are the same catalog the cards
+          on it render, so the structured data cannot advertise a price the
+          page does not show. Gated on BILLING_ENABLED: with billing off,
+          nothing is for sale and publishing prices would be a lie. */}
+      {BILLING_ENABLED && (
+        <SoftwareStructuredData
+          offers={getPaidPlans().map((p) => ({
+            name: p.name,
+            priceInCents: p.priceInCents,
+          }))}
+          nonce={nonce}
+        />
+      )}
       {children}
     </>
   );

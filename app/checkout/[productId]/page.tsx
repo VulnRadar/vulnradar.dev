@@ -10,7 +10,11 @@ import { PLANS } from "@/lib/billing/plans";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "@/lib/billing/subscription-status";
 import { isStaffRole } from "@/lib/auth/permissions-client";
 import Link from "next/link";
-import { ROUTES, BILLING_ENABLED, APP_NAME } from "@/lib/config/constants";
+import {
+  ROUTES,
+  BILLING_ENABLED,
+  APP_NAME,
+} from "@/lib/config/client-constants";
 import { StripeCheckout } from "@/components/billing/stripe-checkout";
 import { CheckoutSkeleton } from "@/components/billing/checkout-skeleton";
 
@@ -58,12 +62,18 @@ export default function CheckoutPage({
           return;
         }
         const meData = await meRes.json();
+        // billing: this read `meData.data?.subscriptionStatus`, but
+        // ApiResponse.success() returns the payload FLAT (lib/api/api-utils.ts:15
+        // is `NextResponse.json(data)`, with no envelope), so `.data` was always
+        // undefined and this always evaluated false. Every existing subscriber
+        // was therefore shown the new-subscription flow instead of the upgrade
+        // one, on the checkout page.
         setHasActiveSubscription(
-          ACTIVE_SUBSCRIPTION_STATUSES.includes(
-            meData.data?.subscriptionStatus,
-          ),
+          ACTIVE_SUBSCRIPTION_STATUSES.includes(meData?.subscriptionStatus),
         );
-        setIsStaffAccount(isStaffRole(meData.data?.role));
+        // Same flat-response bug as subscriptionStatus above: staff were never
+        // detected here, so the staff-account branch was unreachable.
+        setIsStaffAccount(isStaffRole(meData?.role));
       } catch {
         router.push(`${ROUTES.LOGIN}?redirect=/checkout/${productId}`);
       } finally {
@@ -78,7 +88,7 @@ export default function CheckoutPage({
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center max-w-md px-4">
-          <h1 className="text-2xl font-bold mb-2">
+          <h1 className="text-2xl font-semibold tracking-tight text-balance mb-2">
             There is nothing to pay for
           </h1>
           <p className="text-muted-foreground mb-4">
@@ -97,7 +107,7 @@ export default function CheckoutPage({
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center max-w-md px-4">
-          <h1 className="text-2xl font-bold mb-2">
+          <h1 className="text-2xl font-semibold tracking-tight text-balance mb-2">
             There is nothing to pay for
           </h1>
           <p className="text-muted-foreground mb-4">
@@ -117,7 +127,9 @@ export default function CheckoutPage({
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center px-4">
-          <h1 className="text-2xl font-bold mb-2">That plan does not exist</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-balance mb-2">
+            That plan does not exist
+          </h1>
           <p className="text-muted-foreground mb-4">
             The link you followed does not match a current plan. Nothing has
             been charged.
@@ -141,13 +153,15 @@ export default function CheckoutPage({
         role="status"
       >
         <div className="text-center px-4">
-          <div className="w-16 h-16 rounded-full bg-[hsl(var(--success)/0.12)] flex items-center justify-center mx-auto mb-6">
+          <div className="w-16 h-16 rounded-full bg-[hsl(var(--success))]/10 flex items-center justify-center mx-auto mb-6">
             <Check
               className="h-8 w-8 text-[hsl(var(--success))]"
               aria-hidden="true"
             />
           </div>
-          <h1 className="text-2xl font-bold mb-2">You are subscribed</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-balance mb-2">
+            You are subscribed
+          </h1>
           <p className="text-muted-foreground mb-6">
             Your account is on{" "}
             <span className="font-medium text-foreground">{plan.name}</span>{" "}
@@ -164,8 +178,8 @@ export default function CheckoutPage({
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-border bg-card/50 sticky top-(--vr-banner-h,0px) z-10 transition-[top] duration-300">
-        <div className="container max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+      <header className="border-b border-border bg-card/50 sticky top-[calc(var(--vr-banner-h,0px)+var(--vr-imp-banner-h,0px))] z-10 transition-[top] duration-300">
+        <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
           <Link
             href={ROUTES.PRICING}
             className="inline-flex items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
@@ -181,7 +195,7 @@ export default function CheckoutPage({
           pushes it down below a banner is a paint-only shift, so without
           this the header visually overlaps the content below it. */}
       <div
-        className="h-(--vr-banner-h,0px) transition-[height] duration-300"
+        className="h-[calc(var(--vr-banner-h,0px)+var(--vr-imp-banner-h,0px))] transition-[height] duration-300"
         aria-hidden="true"
       />
 
@@ -189,23 +203,36 @@ export default function CheckoutPage({
       <main
         id="main-content"
         tabIndex={-1}
-        className="container max-w-5xl mx-auto px-4 py-8 md:py-12"
+        className="w-full max-w-5xl mx-auto px-4 sm:px-6 py-12 sm:py-16"
       >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 md:items-start">
+        <div
+          className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-x-12 md:items-start"
+          /* The one md: breakpoint left on these pages, deliberately: every
+               other one moved to sm: to match the rest of app/, but this is the
+               split that gives the Stripe payment form its own column, and at
+               640px that column would be about 270px wide. Wide enough to
+               render the card fields, not wide enough to fill them in. */
+        >
+          {/* The heading is its own full-width grid row, so both panels below
+              start on the same grid line whatever the heading wraps to. It
+              used to live inside the left column with a hardcoded
+              md:pt-[120px] pushing the right one down to match, which only
+              lined up at the exact width where the heading happened to be
+              120px tall. */}
+          <div className="md:col-span-2">
+            <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight mb-5 text-balance">
+              {isYearly
+                ? "Switch to yearly billing"
+                : "Start your subscription"}
+            </h1>
+            <p className="text-muted-foreground">
+              {product.name} runs {plan.limits.dailyScans} scans a day, starting
+              the moment payment goes through.
+            </p>
+          </div>
+
           {/* Left column - order summary */}
           <div>
-            <div className="mb-6">
-              <h1 className="text-2xl md:text-3xl font-bold mb-2">
-                {isYearly
-                  ? "Switch to yearly billing"
-                  : "Start your subscription"}
-              </h1>
-              <p className="text-muted-foreground">
-                {product.name} runs {plan.limits.dailyScans} scans a day,
-                starting the moment payment goes through.
-              </p>
-            </div>
-
             <div className="sticky top-24">
               {/* Order Summary */}
               <div className="relative overflow-hidden rounded-xl border border-border bg-card p-5 mb-6">
@@ -254,7 +281,7 @@ export default function CheckoutPage({
                 <div className="flex justify-between items-center">
                   <span className="font-semibold">Total today</span>
                   <div className="text-right">
-                    <span className="text-2xl font-bold">
+                    <span className="text-2xl font-semibold tabular-nums">
                       ${monthlyPrice.toFixed(2)}
                     </span>
                     <p className="text-xs text-muted-foreground">
@@ -273,9 +300,9 @@ export default function CheckoutPage({
 
               {/* Features */}
               <div className="rounded-xl border border-border bg-card p-5">
-                <h3 className="text-sm font-medium text-muted-foreground mb-3">
+                <h2 className="text-sm font-medium text-muted-foreground mb-3">
                   What&apos;s included
-                </h3>
+                </h2>
                 <ul className="space-y-2">
                   {plan.features.slice(0, 5).map((feature, i) => (
                     <li key={i} className="flex items-center gap-2 text-sm">
@@ -303,7 +330,7 @@ export default function CheckoutPage({
           </div>
 
           {/* Right column - payment form */}
-          <div className="md:pt-[120px]">
+          <div>
             <div className="sticky top-24">
               <div className="rounded-xl border border-border bg-card p-6">
                 <h2 className="text-base font-semibold mb-5">

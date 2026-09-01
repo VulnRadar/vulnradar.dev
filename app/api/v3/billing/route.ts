@@ -11,6 +11,11 @@ import { checkAiUsageQuota } from "@/lib/billing/ai-usage";
 import { checkGithubReviewQuota } from "@/lib/billing/github-review-usage";
 import { checkBrowserbaseQuota } from "@/lib/billing/browserbase-usage";
 import { isStaffRole } from "@/lib/auth/permissions-client";
+import { planRank } from "@/lib/billing/plan-limits";
+import {
+  staffPlanFloorCase,
+  STAFF_PLAN_FLOOR_ROLES,
+} from "@/lib/billing/staff-plan";
 
 // GET /api/v3/billing - Get user's billing info and usage
 export async function GET() {
@@ -243,10 +248,15 @@ export async function GET() {
       }
     }
 
-    // Determine the effective plan (gifted takes priority if active)
-    const effectivePlan = giftedSubscription
-      ? giftedSubscription.plan
-      : user.plan || "free";
+    // Effective plan: the HIGHER of the gift and the user's own plan, matching
+    // getUserPlan (lib/rate-limiting/daily-limits.ts). A gift used to win
+    // outright, so a paying Elite customer who was gifted a lower tier saw the
+    // lower plan reported here while still being charged for Elite.
+    const effectivePlan =
+      giftedSubscription &&
+      planRank(giftedSubscription.plan) >= planRank(user.plan || "free")
+        ? giftedSubscription.plan
+        : user.plan || "free";
 
     return NextResponse.json({
       billingEnabled,
@@ -422,12 +432,12 @@ export async function POST(request: Request) {
       // on top of that lands back on that floor, not all the way to free.
       await pool.query(
         `UPDATE users SET
-          plan = CASE WHEN role IN ('admin', 'moderator', 'support') THEN 'pro_supporter' ELSE 'free' END,
+          plan = ${staffPlanFloorCase("$2")},
           subscription_status = 'canceled',
           stripe_subscription_id = NULL,
           billing_interval = NULL
         WHERE id = $1`,
-        [session.userId],
+        [session.userId, STAFF_PLAN_FLOOR_ROLES],
       );
 
       return NextResponse.json({

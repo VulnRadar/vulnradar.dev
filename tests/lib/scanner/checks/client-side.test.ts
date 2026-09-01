@@ -33,6 +33,13 @@ const fixtures: DetectorFixtures = {
       expect: "fire",
       evidenceIncludes: "hardcoded in client-side",
     },
+    {
+      description:
+        "regression: a denylisted docs example key appearing before a real key must not suppress the real one",
+      body: 'const stripeApiKey = "sk_test_4eC39HqLyjWDarjtT1zdp7dc";\nconst stripeSecret = "sk_live_51H8x9zLkjasdlkjalksdjalksjdlkj";',
+      expect: "fire",
+      evidenceIncludes: "compromised",
+    },
   ],
 
   "debug-info-in-page-js": [

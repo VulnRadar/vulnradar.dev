@@ -24,7 +24,12 @@ export const V2_NEW_TABLES = {
       reason VARCHAR(255),
       hit_count INTEGER NOT NULL DEFAULT 0,
       last_hit_at TIMESTAMP WITH TIME ZONE,
-      created_by INTEGER NOT NULL REFERENCES users(id),
+      -- Plain INTEGER, no inline REFERENCES (AUDIT-013 schema-01): an
+      -- inline REFERENCES with no ON DELETE clause creates a NO ACTION
+      -- constraint that blocks deleting any user who created a rule, and
+      -- instrumentation.ts's self-heal adds the real
+      -- fk_access_rules_created_by ... ON DELETE SET NULL separately.
+      created_by INTEGER,
       created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
       expires_at TIMESTAMP WITH TIME ZONE,
       is_active BOOLEAN NOT NULL DEFAULT true,

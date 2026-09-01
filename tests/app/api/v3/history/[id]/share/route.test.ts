@@ -223,6 +223,57 @@ describe("POST /api/v3/history/[id]/share", () => {
     expect(sqlParams).toEqual([json.expiresAt, 55]);
   });
 
+  it("applies publiclyListed to an existing live share instead of silently dropping it", async () => {
+    // The field was validated at the top of the handler and then only used
+    // when creating a brand-new share, so pressing Share again on an existing
+    // link returned 200 with the OLD value while reporting success.
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 55,
+          share_token: "already-there",
+          share_expires_at: null,
+          share_publicly_listed: false,
+          user_id: 7,
+        },
+      ],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE share_publicly_listed
+
+    const res = await POST(postRequest({ publiclyListed: true }), params());
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.publiclyListed).toBe(true);
+    const [sql, sqlParams] = mockQuery.mock.calls[1];
+    expect(sql).toContain("UPDATE scan_history SET share_publicly_listed = $1");
+    expect(sqlParams).toEqual([true, 55]);
+  });
+
+  it("leaves an existing share's listing state alone when publiclyListed is not sent", async () => {
+    // An omitted field must not be re-resolved through the account default:
+    // that would clobber a per-share choice made via
+    // PUT .../share/publicly-listed just by pressing Share again.
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 55,
+          share_token: "already-there",
+          share_expires_at: null,
+          share_publicly_listed: false,
+          user_id: 7,
+        },
+      ],
+    });
+
+    const res = await POST(postRequest({}), params());
+    const json = await res.json();
+
+    expect(json.publiclyListed).toBe(false);
+    // No UPDATE at all: the select is the only query.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
   it("clears an existing token's expiry when expiresInDays is explicitly null", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [
@@ -277,8 +328,9 @@ describe("POST /api/v3/history/[id]/share", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 55, share_token: null, user_id: 99, team_id: 4 }],
     }); // scan (team-assigned)
-    mockQuery.mockResolvedValueOnce({ rows: [{ role: "admin" }] }); // getTeamResourceAccess: caller role on team 4
-    mockQuery.mockResolvedValueOnce({ rows: [{ role: "user" }] }); // getTeamResourceAccess: owner role (not god-mode)
+    mockQuery.mockResolvedValueOnce({ rows: [{ team_id: 4 }] }); // getScanTeamIds: the scan's team set
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "admin" }] }); // getScanTeamAccess: caller role across that set
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "user" }] }); // getScanTeamAccess: owner role (not god-mode)
     mockQuery.mockResolvedValueOnce({
       rows: [{ share_publicly_listed_by_default: false }],
     }); // resolver, scoped to the scan owner (99), not the session admin (7)
@@ -288,15 +340,16 @@ describe("POST /api/v3/history/[id]/share", () => {
     const json = await res.json();
 
     expect(res.status).toBe(200);
-    // Access is scoped to the scan's own team_id (4) + owner (99), via
-    // getTeamResourceAccess, not a "share any team" self-join.
-    const [teamSql, teamParams] = mockQuery.mock.calls[1];
+    // Access is scoped to the teams the scan is actually shared with (4) plus
+    // its owner (99), via getScanResourceAccess, not a "share any team"
+    // self-join.
+    const [teamSql, teamParams] = mockQuery.mock.calls[2];
     expect(teamSql).toContain(
-      "FROM team_members WHERE team_id = $1 AND user_id = $2",
+      "FROM team_members WHERE user_id = $1 AND team_id = ANY($2::int[])",
     );
-    expect(teamParams).toEqual([4, 7]);
+    expect(teamParams).toEqual([7, [4]]);
 
-    const [resolverSql, resolverParams] = mockQuery.mock.calls[3];
+    const [resolverSql, resolverParams] = mockQuery.mock.calls[4];
     expect(resolverSql).toContain("share_publicly_listed_by_default");
     expect(resolverParams).toEqual([99]);
     expect(json.publiclyListed).toBe(false);
@@ -367,7 +420,8 @@ describe("DELETE /api/v3/history/[id]/share", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 55, user_id: 99, team_id: 4 }],
     }); // scan (team-assigned)
-    mockQuery.mockResolvedValueOnce({ rows: [{ role: "owner" }] }); // caller role on team 4
+    mockQuery.mockResolvedValueOnce({ rows: [{ team_id: 4 }] }); // getScanTeamIds: the scan's team set
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "owner" }] }); // caller role across that set
     mockQuery.mockResolvedValueOnce({ rows: [{ role: "user" }] }); // owner role (not god-mode)
     mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE share_token = NULL
 

@@ -11,13 +11,11 @@
  * first, and a mid-transaction failure rolls back both together.
  *
  * Table creation follows instrumentation.ts's CREATE TABLE IF NOT EXISTS
- * pattern but lives in its own file rather than being added directly to
- * instrumentation.ts, a shared file other concurrent work touches.
- * ensureAuditLogArchiveTable() is also called defensively from
- * archiveAdminAuditLogBeforePurge() below before every archive attempt,
- * so archiving works correctly even before someone wires the one-line
- * call into instrumentation.ts's boot sequence -- see that export's
- * doc comment for the exact snippet.
+ * pattern but lives in this file rather than inline in instrumentation.ts;
+ * instrumentation.ts calls ensureAuditLogArchiveTable(pool) once at boot,
+ * and scripts/_lib/_lib.schema-parity.mjs parses the DDL below out of here
+ * as part of the canonical schema, so the table is covered by the
+ * boot/migration parity guard like any inline CREATE TABLE.
  */
 import type { Pool, PoolClient } from "pg";
 
@@ -32,13 +30,11 @@ export interface ArchivedAuditLogRow {
 }
 
 /**
- * Idempotent CREATE TABLE IF NOT EXISTS for the archive table. Safe to call
- * on every boot and on every cleanup pass alike -- add this one-line call
- * to instrumentation.ts's register() near the other CREATE TABLE calls
- * (e.g. right after the admin_audit_log table is created):
- *
- *   const { ensureAuditLogArchiveTable } = await import("./lib/database/audit-log-archive");
- *   await ensureAuditLogArchiveTable(pool);
+ * Idempotent CREATE TABLE IF NOT EXISTS for the archive table. Called once
+ * per boot from instrumentation.ts's STAFF INVITES + ADMIN AUDIT LOG
+ * ARCHIVE block, and from nowhere else: it used to also run from
+ * archiveAdminAuditLogBeforePurge below, which put DDL inside the nightly
+ * cleanup's long transaction on every pass (AUDIT-013 schema-02).
  */
 export async function ensureAuditLogArchiveTable(
   executor: Pool | PoolClient,
@@ -69,13 +65,15 @@ export async function ensureAuditLogArchiveTable(
  * Returns the number of rows archived. Writes nothing when there are no
  * rows to archive -- an empty purge shouldn't leave an empty batch row
  * behind.
+ *
+ * No CREATE TABLE here: instrumentation.ts creates the table at boot, so
+ * running the DDL again would only add a catalog write inside the cleanup
+ * transaction on every pass (AUDIT-013 schema-02).
  */
 export async function archiveAdminAuditLogBeforePurge(
   client: PoolClient,
   retentionDays: number,
 ): Promise<number> {
-  await ensureAuditLogArchiveTable(client);
-
   const { rows } = await client.query<ArchivedAuditLogRow>(
     `SELECT id, admin_id, target_user_id, action, details, ip_address, created_at
      FROM admin_audit_log

@@ -1,15 +1,14 @@
-"use client";
-
-import { useEffect, useRef } from "react";
 import Link from "next/link";
-import { APP_NAME } from "@/lib/config/constants";
+import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/config/constants";
+import { STAFF_ROLE_HIERARCHY } from "@/lib/config/client-constants";
 import {
   EXACT_LEGACY_CHECK_COUNT,
   EXACT_PAGE_CHECK_COUNT,
   EXACT_CHECK_COUNT,
   EXACT_CHECK_CATEGORY_COUNT,
 } from "@/lib/config/check-stats.generated";
-import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
+import type { TocItem } from "@/components/docs/docs-types";
+import { DocsTocSpy } from "../docs-toc-spy";
 import {
   DocsHero,
   DocsSection,
@@ -35,32 +34,9 @@ const tocItems: TocItem[] = [
 ];
 
 export default function ArchitecturePage() {
-  const { setActiveSection, setTocItems } = useDocsContext();
-  const observerRef = useRef<IntersectionObserver | null>(null);
-
-  useEffect(() => {
-    setTocItems(tocItems);
-    return () => setTocItems([]);
-  }, [setTocItems]);
-
-  useEffect(() => {
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) setActiveSection(entry.target.id);
-        });
-      },
-      { rootMargin: "-20% 0px -70% 0px", threshold: 0 },
-    );
-    tocItems.forEach((item) => {
-      const el = document.getElementById(item.id);
-      if (el) observerRef.current?.observe(el);
-    });
-    return () => observerRef.current?.disconnect();
-  }, [setActiveSection]);
-
   return (
     <div className="space-y-16">
+      <DocsTocSpy items={tocItems} />
       <DocsHero
         id="top"
         badge="Internals"
@@ -174,14 +150,19 @@ export default function ArchitecturePage() {
               <strong className="text-foreground">Edit this file.</strong>
             </li>
             <li>
-              <InlineCode>lib/types/config.ts</InlineCode>: typed interfaces +{" "}
-              <InlineCode>DEFAULT_CONFIG</InlineCode> assembled from the
-              constants above
+              <InlineCode>lib/config/registry.ts</InlineCode>:{" "}
+              <InlineCode>SETTINGS_REGISTRY</InlineCode> classifies each
+              constant (type, bounds, admin tab, runtime or build tier)
             </li>
             <li>
-              <InlineCode>lib/config/config.ts</InlineCode>: cached loader (
-              <InlineCode>loadConfig</InlineCode>,{" "}
-              <InlineCode>getConfigValue</InlineCode>)
+              <InlineCode>lib/config/runtime-config.ts</InlineCode>: the
+              resolver. Database value <InlineCode>??</InlineCode> environment
+              override <InlineCode>??</InlineCode> shipped default, behind a 30
+              second cache
+            </li>
+            <li>
+              <InlineCode>lib/config/env.ts</InlineCode>: Zod validation of the
+              required environment variables at boot
             </li>
             <li>
               <InlineCode>lib/config/constants.ts</InlineCode>: re-exports +
@@ -367,7 +348,7 @@ export default function ArchitecturePage() {
               into one survivor. These checks fold into the existing{" "}
               {EXACT_CHECK_CATEGORY_COUNT} categories rather than adding a new
               one; combined with the legacy set, the engine now runs{" "}
-              {EXACT_CHECK_COUNT} checks.
+              {TOTAL_CHECKS_LABEL} checks.
             </li>
             <li>
               <InlineCode>lib/scanner/auth/</InlineCode>: ephemeral
@@ -538,30 +519,62 @@ export default function ArchitecturePage() {
         </DocsSubSection>
 
         <DocsSubSection id="permissions" title="7. Permissions">
-          <p className="text-sm text-muted-foreground">
-            Role hierarchy (defined in{" "}
-            <InlineCode>lib/config/client-constants.ts</InlineCode>):
+          <p className="max-w-[68ch] text-sm text-muted-foreground">
+            Nine roles, defined as <InlineCode>STAFF_ROLE_HIERARCHY</InlineCode>{" "}
+            in <InlineCode>lib/config/client-constants.ts</InlineCode>. The
+            numbers below are read from that table, not typed out here:
           </p>
           <CodeBlock
             language="text"
-            code={`user (0) → support (1) → moderator (2) → admin (3)`}
+            code={Object.entries(STAFF_ROLE_HIERARCHY)
+              .map(([role, level]) => `${role.padEnd(17)} ${level}`)
+              .join("\n")}
           />
-          <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground mt-3">
+          <p className="max-w-[68ch] text-sm text-muted-foreground">
+            The gaps of 10 leave room to insert a role without renumbering, and
+            every comparison goes through a named key rather than a literal. Two
+            things the shape does not show on its own:
+          </p>
+          <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
             <li>
-              <InlineCode>lib/auth/permissions.ts</InlineCode>: server-safe role
-              + permission maps (<InlineCode>ROLES</InlineCode>,{" "}
-              <InlineCode>ROLE_PERMISSIONS</InlineCode>,{" "}
-              <InlineCode>userHasPermission</InlineCode>,
-              <InlineCode>canManageRole</InlineCode>)
+              <strong className="text-foreground">
+                The four roles at level 20 are lateral specialists, not a rung.
+              </strong>{" "}
+              <InlineCode>billing</InlineCode>,{" "}
+              <InlineCode>security_analyst</InlineCode>,{" "}
+              <InlineCode>content_manager</InlineCode> and{" "}
+              <InlineCode>ops</InlineCode> sit at the same level and differ by
+              which permissions they hold, not by seniority. Level alone never
+              decides access: the permission check does.
             </li>
             <li>
-              <InlineCode>lib/auth/permissions-client.ts</InlineCode>: mirror
-              for client components
+              <strong className="text-foreground">
+                <InlineCode>super_admin</InlineCode> is bootstrap-only.
+              </strong>{" "}
+              It is assigned to the first account created on a fresh install (
+              <InlineCode>lib/auth/auth.ts</InlineCode>) and by the 5.5.0 to
+              5.6.0 migration. No UI or API path can grant it:{" "}
+              <InlineCode>app/api/v3/admin/route.ts</InlineCode> filters it out
+              of the assignable roles before validating a{" "}
+              <InlineCode>set_role</InlineCode> request.
+            </li>
+          </ul>
+          <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground mt-3">
+            <li>
+              <InlineCode>lib/auth/permissions-client.ts</InlineCode>: the
+              permission model itself (
+              <InlineCode>STAFF_PERMISSIONS</InlineCode>,{" "}
+              <InlineCode>hasStaffPermission</InlineCode>,{" "}
+              <InlineCode>canManageRole</InlineCode>,{" "}
+              <InlineCode>getRoleLevel</InlineCode>,{" "}
+              <InlineCode>hasGodMode</InlineCode>). Client-safe, and the server
+              imports the same module, so there is no second copy to drift.
             </li>
             <li>
               <InlineCode>lib/auth/authorization.ts</InlineCode>: route-handler
               helpers: <InlineCode>requireStaff(role?)</InlineCode>,{" "}
               <InlineCode>requireAdmin()</InlineCode>,{" "}
+              <InlineCode>requirePermission()</InlineCode>,{" "}
               <InlineCode>verifyOwnership(resource, id)</InlineCode>,{" "}
               <InlineCode>verifyTeamMembership()</InlineCode>,{" "}
               <InlineCode>logAuditAction()</InlineCode>

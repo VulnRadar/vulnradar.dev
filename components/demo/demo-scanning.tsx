@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
-import { TOTAL_CHECKS_LABEL } from "@/lib/config/constants";
+import { TOTAL_CHECKS_LABEL } from "@/lib/config/client-constants";
 
 const STEPS = [
   "Resolving the host and opening the connection",
@@ -23,7 +23,7 @@ export function DemoScanning() {
           Scanning
         </p>
 
-        <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-3">
+        <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight mb-3 text-balance">
           Running {TOTAL_CHECKS_LABEL} checks
         </h1>
         <p className="text-muted-foreground leading-relaxed mb-8">

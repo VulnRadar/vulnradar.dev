@@ -1,8 +1,8 @@
 import { vi, type Mock } from "vitest";
 
 /**
- * Test-only helper for scripts/db-diagnose-2fa.mjs and
- * scripts/db-repair-2fa.mjs. Both take a pg-Pool-shaped object as their
+ * Test-only helper for scripts/maintenance/db-diagnose-2fa.mjs and
+ * scripts/maintenance/db-repair-2fa.mjs. Both take a pg-Pool-shaped object as their
  * first argument (dependency injection), so tests mock at that exact
  * boundary -- a fake pool/client, not the 'pg' module itself -- per this
  * repo's "mock at the database boundary, not below it" rule
@@ -39,9 +39,9 @@ interface MockPoolOptions {
 /**
  * Builds a fake pool whose `.query` branches on recognizable substrings
  * of the SQL text, matching the exact queries
- * scripts/db-diagnose-2fa.mjs / scripts/db-repair-2fa.mjs issue.
+ * scripts/maintenance/db-diagnose-2fa.mjs / scripts/maintenance/db-repair-2fa.mjs issue.
  *
- * `connect` defaults to a mock that throws -- scripts/db-repair-2fa.mjs's
+ * `connect` defaults to a mock that throws -- scripts/maintenance/db-repair-2fa.mjs's
  * dry-run path must never call `pool.connect()` at all, so a test that
  * doesn't override `connect` gets an assertion failure for free the
  * moment it's called unexpectedly. Tests that need a real connect
@@ -91,7 +91,7 @@ export function buildMockPool({
  *
  * `query` always returns a genuine Promise (wrapping queryImpl in an
  * async function), matching the real pg client's contract -- callers in
- * scripts/db-repair-2fa.mjs chain `.catch()` directly off `client.query(...)`,
+ * scripts/maintenance/db-repair-2fa.mjs chain `.catch()` directly off `client.query(...)`,
  * which would throw a TypeError against a mock that returns a plain
  * object instead of a Promise. Wrapping in `async` also means a
  * synchronous throw from queryImpl becomes a rejected Promise, exactly

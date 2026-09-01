@@ -24,6 +24,10 @@ import {
   runPatternSecretsScan,
 } from "@/lib/scanner/github-repo-scan";
 import { runGithubAiReview } from "@/lib/ai/review-source";
+import {
+  resolveNewScanTeamIds,
+  attachNewScanTeams,
+} from "@/lib/teams/scan-teams";
 import { attachCvssScores } from "@/lib/scanner/cvss";
 import {
   checkGithubReviewQuota,
@@ -48,7 +52,7 @@ export async function POST(request: Request) {
     }
     const userId = session.userId;
 
-    let body: { repoFullName?: string; ref?: string };
+    let body: { repoFullName?: string; ref?: string; teamId?: number | null };
     try {
       body = await request.json();
     } catch {
@@ -66,6 +70,17 @@ export async function POST(request: Request) {
       );
     }
     const [owner, repo] = repoFullName.split("/");
+
+    // Optional team assignment, same contract as the URL scan routes.
+    // Omitted means a personal scan: nothing here is shared with a team
+    // unless the request explicitly named ones the caller can manage.
+    const teamAssignment = await resolveNewScanTeamIds(userId, body);
+    if (!teamAssignment.ok) {
+      return NextResponse.json(
+        { error: teamAssignment.error },
+        { status: 400 },
+      );
+    }
 
     // Same request-throttling pattern as every sibling scan/AI endpoint
     // (e.g. scan/authenticated's `scan-authenticated:${userId}` key) --
@@ -249,8 +264,8 @@ export async function POST(request: Request) {
       // away from a share link the way scan_history.is_public otherwise
       // defaults to true.
       const insertResult = await pool.query(
-        `INSERT INTO scan_history (user_id, url, scan_type, summary, findings, findings_count, duration, scanned_at, source, notes, is_public)
-         VALUES ($1, $2, 'github', $3, $4, $5, $6, $7, 'web', $8, FALSE) RETURNING id`,
+        `INSERT INTO scan_history (user_id, url, scan_type, summary, findings, findings_count, duration, scanned_at, source, notes, is_public, team_id)
+         VALUES ($1, $2, 'github', $3, $4, $5, $6, $7, 'web', $8, FALSE, $9) RETURNING id`,
         [
           userId,
           repoFullName,
@@ -260,9 +275,15 @@ export async function POST(request: Request) {
           duration,
           result.scannedAt,
           DEFAULT_SCAN_NOTE,
+          teamAssignment.primaryTeamId,
         ],
       );
       scanHistoryId = insertResult.rows[0]?.id ?? null;
+      // The INSERT above carries the primary team; this writes the rest of
+      // the set into scan_history_teams and is a no-op below two teams.
+      if (scanHistoryId !== null) {
+        await attachNewScanTeams(scanHistoryId, teamAssignment.teamIds);
+      }
     } catch (err) {
       console.error(
         `[${APP_NAME}] Failed to save GitHub repo scan history:`,

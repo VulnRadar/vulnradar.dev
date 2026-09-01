@@ -101,7 +101,12 @@ describe("toElements", () => {
   });
 
   it("does not create an element for an end tag with no matching start", () => {
-    expect(() => toElements(tokenize(`</div><p>ok</p>`))).not.toThrow();
+    // `.not.toThrow()` was the whole assertion here, which is silent about
+    // the thing the title claims: emitting an element for the stray </div>
+    // would have passed, and every page check that counts or walks elements
+    // would then see a phantom node.
+    const els = toElements(tokenize(`</div><p>ok</p>`));
+    expect(els.map((e) => e.tag)).toEqual(["p"]);
   });
 });
 

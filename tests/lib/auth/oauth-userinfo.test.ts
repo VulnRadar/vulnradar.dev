@@ -168,6 +168,34 @@ describe("fetchOAuthUserInfo: github", () => {
     });
   });
 
+  it("caps the GitHub avatar size without clobbering its existing query string", async () => {
+    mockFetch
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 42,
+            login: "ada",
+            name: "Ada Lovelace",
+            email: "ada@example.com",
+            avatar_url: "https://avatars.githubusercontent.com/u/42?v=4",
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([
+            { email: "ada@example.com", primary: true, verified: true },
+          ]),
+          { status: 200 },
+        ),
+      );
+    const info = await fetchOAuthUserInfo("github", "tok");
+    expect(info?.avatarUrl).toBe(
+      "https://avatars.githubusercontent.com/u/42?v=4&s=128",
+    );
+  });
+
   it("captures the @handle (login) separately from the display name", async () => {
     // The display name and the login differ, and only the login forms a
     // valid github.com/<login> URL -- so both must be kept, not just one.
@@ -285,7 +313,11 @@ describe("fetchOAuthUserInfo: discord", () => {
       email: "user@example.com",
       emailVerified: true,
       name: "TestUser",
-      avatarUrl: "https://cdn.discordapp.com/avatars/999/avatarhash.png",
+      // ?size=128 is not cosmetic: images.unoptimized is on, so an uncapped
+      // Discord avatar is served at full resolution and downloaded whole to
+      // paint a 14px circle.
+      avatarUrl:
+        "https://cdn.discordapp.com/avatars/999/avatarhash.png?size=128",
     });
     // Discord has no @handle either: the github-only login field stays absent.
     expect(info?.login).toBeUndefined();

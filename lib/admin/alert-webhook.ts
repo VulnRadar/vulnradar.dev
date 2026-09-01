@@ -32,15 +32,36 @@ export interface AdminAlert {
   context?: Record<string, unknown>;
 }
 
+/** What actually happened to one alert delivery. */
+export type AdminAlertResult =
+  { delivered: true; status: number } | { delivered: false; reason: string };
+
 /**
  * Fire an admin alert. No-op (and no network call at all) when no webhook
  * URL is configured. Never throws -- a failed alert must not be able to
  * fail whatever critical-path code triggered it in the first place.
+ *
+ * Reports a result rather than returning void, so a caller can tell the
+ * operator what happened. Every escalation path in the app routes through
+ * here and the setting ships empty, so someone who pastes in a Slack or
+ * PagerDuty URL had no way to confirm it works: a typo, a revoked webhook,
+ * or a URL validateScanTarget now rejects all produced a silent no-op whose
+ * only trace was a console.error in a log they would have to already be
+ * reading. The first sign of trouble was the incident the alert existed for
+ * (AUDIT-012#obs-11). Existing fire-and-forget callers ignore the return
+ * value and are unaffected.
  */
-export async function sendAdminAlert(alert: AdminAlert): Promise<void> {
+export async function sendAdminAlert(
+  alert: AdminAlert,
+): Promise<AdminAlertResult> {
   try {
     const url = await getSetting("ADMIN_ALERT_WEBHOOK_URL");
-    if (!url) return;
+    if (!url) {
+      return {
+        delivered: false,
+        reason: "No admin alert webhook URL is configured.",
+      };
+    }
 
     // Same SSRF re-validation as every other admin/operator-configured
     // outbound URL in this codebase (lib/webhooks/delivery.ts) -- an admin
@@ -53,7 +74,10 @@ export async function sendAdminAlert(alert: AdminAlert): Promise<void> {
         `[${APP_NAME}] Admin alert webhook URL is no longer safe to reach, skipping delivery:`,
         safety.reason,
       );
-      return;
+      return {
+        delivered: false,
+        reason: `The configured URL was blocked: ${safety.reason || "unsafe target"}`,
+      };
     }
 
     const body = JSON.stringify({
@@ -85,11 +109,18 @@ export async function sendAdminAlert(alert: AdminAlert): Promise<void> {
       console.error(
         `[${APP_NAME}] Admin alert webhook responded with ${res.status}`,
       );
+      return {
+        delivered: false,
+        reason: `The endpoint responded with HTTP ${res.status}.`,
+      };
     }
+    return { delivered: true, status: res.status };
   } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
     console.error(
       `[${APP_NAME}] Failed to deliver admin alert (non-fatal):`,
-      err instanceof Error ? err.message : String(err),
+      reason,
     );
+    return { delivered: false, reason };
   }
 }

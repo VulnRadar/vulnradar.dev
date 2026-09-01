@@ -26,8 +26,9 @@ import {
   FolderGit2,
   ArrowRight,
 } from "lucide-react";
-import { API, ROUTES, DISCORD_INVITE_URL } from "@/lib/config/constants";
+import { API, ROUTES, DISCORD_INVITE_URL } from "@/lib/config/client-constants";
 import { useOAuthProviders } from "@/lib/hooks/use-oauth-providers";
+import { refreshAuthCache } from "@/components/providers/auth-provider";
 import { getQueryParam, setQueryParams } from "@/lib/ui/url-state";
 import type { ProfileTabProps } from "../types";
 
@@ -71,21 +72,19 @@ function OAuthIdentityCard({
   label,
   icon,
   buttonIcon,
-  headerClassName,
-  titleClassName,
-  subtitleClassName,
   connectButtonClassName,
   description,
   identity,
   setError,
   setSuccess,
+  onDisconnected,
   extra,
 }: {
   provider: "google" | "github";
   label: string;
-  /** Rendered in the card header's badge, which always has a white
-   *  background regardless of theme (see the h-10 w-10 bg-white div
-   *  below) -- must be a color that reads on white. */
+  /** Rendered in the card header's plate, which is white in both themes
+   *  (see the h-9 w-9 bg-white div below) -- must be a colour that reads on
+   *  white. */
   icon: React.ReactNode;
   /** Rendered inside the "Continue with X" button, whose background is
    *  connectButtonClassName's own brand color, not white. Defaults to
@@ -94,14 +93,14 @@ function OAuthIdentityCard({
    *  version here since its header badge and its button use opposite
    *  background colors. */
   buttonIcon?: React.ReactNode;
-  headerClassName: string;
-  titleClassName: string;
-  subtitleClassName: string;
   connectButtonClassName: string;
   description: string;
   identity: OAuthIdentity | null;
   setError: (error: string | null) => void;
   setSuccess: (success: string | null) => void;
+  /** Clears this provider off the page's `user` once the DELETE succeeds,
+   *  so the card can drop back to its connect state without a page reload. */
+  onDisconnected: () => void;
   /** Extra content rendered below the identity block, independent of
    *  whether `identity` is connected -- GitHub uses this for the repo-access
    *  grant/revoke row (see GithubRepoAccessSection), which is a separate
@@ -127,8 +126,17 @@ function OAuthIdentityCard({
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
+        // This used to setSuccess() and then immediately reload the
+        // document, which destroyed the banner it had just written: the
+        // user got a full page refresh and no confirmation that the
+        // disconnect had worked at all. Patch the page's own user state
+        // instead and refresh the cached /auth/me the header reads, which
+        // is everything the reload was actually there for.
         setSuccess(`${label} account disconnected.`);
-        window.location.reload();
+        onDisconnected();
+        refreshAuthCache();
+        setDisconnecting(false);
+        setShowDisconnectConfirm(false);
       } else {
         setError(
           data.error || `We could not disconnect your ${label} account.`,
@@ -148,23 +156,30 @@ function OAuthIdentityCard({
   return (
     <section>
       <Card className="overflow-hidden border-border/50 bg-card/50">
-        <div className={headerClassName}>
+        {/* The house card header. These cards used to open with a full-bleed
+            vendor gradient and white type, which made "you can sign in with
+            GitHub" the loudest thing on a page whose real content (2FA, API
+            keys, billing) is quieter, and made the Social tab read as a
+            different design system dropped into a slot. The vendor colour
+            still appears, once per card, on the connect button, which is the
+            one element that should read as the vendor's. */}
+        <div className="border-b border-border/60 px-5 py-4">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="h-10 w-10 rounded-xl bg-white flex items-center justify-center ring-1 ring-black/10 shrink-0">
+              <div className="h-9 w-9 rounded-lg bg-white flex items-center justify-center ring-1 ring-black/10 shrink-0">
                 {icon}
               </div>
               <div className="min-w-0">
-                <h2 className={`text-base font-semibold ${titleClassName}`}>
+                <h2 className="text-base font-semibold text-foreground">
                   {label}
                 </h2>
-                <p className={`text-xs truncate ${subtitleClassName}`}>
+                <p className="text-xs truncate text-muted-foreground">
                   {connected ? displayName : "Sign in without a password"}
                 </p>
               </div>
             </div>
             {connected && (
-              <Badge className="bg-[hsl(var(--success)/0.15)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.3)] shrink-0">
+              <Badge className="bg-[hsl(var(--success))]/15 text-[hsl(var(--success))] border-[hsl(var(--success))]/30 shrink-0">
                 <Check className="h-3 w-3 mr-1" /> Connected
               </Badge>
             )}
@@ -370,7 +385,7 @@ function GithubRepoAccessSection({
         {connected && (
           <Badge
             variant="secondary"
-            className="gap-1 bg-[hsl(var(--success)/0.15)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.3)]"
+            className="gap-1 bg-[hsl(var(--success))]/15 text-[hsl(var(--success))] border-[hsl(var(--success))]/30"
           >
             <Check className="h-3 w-3" aria-hidden="true" /> Granted
           </Badge>
@@ -479,6 +494,7 @@ export function ProfileSocialTab({
   success: _success,
   setError,
   setSuccess,
+  onUserPatch,
 }: ProfileTabProps) {
   const providers = useOAuthProviders();
 
@@ -553,11 +569,24 @@ export function ProfileSocialTab({
     setDisconnecting(true);
     try {
       const res = await fetch("/api/v3/account/discord", { method: "DELETE" });
+      const data = await res.json().catch(() => ({}) as { error?: string });
       if (res.ok) {
+        // Same as the Google/GitHub card above: the old reload wiped the
+        // success banner it had just set.
         setSuccess("Discord account disconnected.");
-        window.location.reload();
+        setDiscordData(null);
+        onUserPatch?.({ discordId: null });
+        refreshAuthCache();
+        setDisconnecting(false);
+        setShowDisconnectConfirm(false);
       } else {
-        setError("We could not disconnect your Discord account. Try again.");
+        // The server says why (still in the Discord server, a stale link, a
+        // password-less account that would be locked out); this threw that
+        // away for a fixed "Try again" that answers none of them.
+        setError(
+          data.error ||
+            "We could not disconnect your Discord account. Try again.",
+        );
         setDisconnecting(false);
         setShowDisconnectConfirm(false);
       }
@@ -600,18 +629,22 @@ export function ProfileSocialTab({
       {/* Discord Integration */}
       <section>
         <Card className="overflow-hidden border-border/50 bg-card/50">
-          {/* Discord-themed gradient header */}
-          <div className="relative bg-linear-to-br from-[#5865F2] via-[#4752C4] to-[#3C45A5] px-6 py-5">
+          {/* Same header as the Google and GitHub cards below. It used to be a
+              full-bleed Discord gradient with a translucent white plate and a
+              white/20 badge: four nested branded surfaces to say "you can sign
+              in with Discord". The brand colour is kept as one element, the
+              plate behind the glyph. */}
+          <div className="border-b border-border/60 px-5 py-4">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0">
-                <div className="h-10 w-10 rounded-xl bg-white/15 backdrop-blur-xs flex items-center justify-center ring-1 ring-white/20 shrink-0">
+                <div className="h-9 w-9 rounded-lg bg-[#5865F2] flex items-center justify-center shrink-0">
                   <DiscordIcon />
                 </div>
                 <div className="min-w-0">
-                  <h2 className="text-base font-semibold text-white">
+                  <h2 className="text-base font-semibold text-foreground">
                     Discord
                   </h2>
-                  <p className="text-xs text-white/70 truncate">
+                  <p className="text-xs text-muted-foreground truncate">
                     {user?.discordId
                       ? user.discordUsername || "Connected"
                       : "Sign in and community"}
@@ -619,7 +652,7 @@ export function ProfileSocialTab({
                 </div>
               </div>
               {user?.discordId && (
-                <Badge className="bg-white/20 text-white border-white/30 backdrop-blur-xs shrink-0">
+                <Badge className="bg-[hsl(var(--success))]/15 text-[hsl(var(--success))] border-[hsl(var(--success))]/30 shrink-0">
                   <Check className="h-3 w-3 mr-1" /> Connected
                 </Badge>
               )}
@@ -747,14 +780,19 @@ export function ProfileSocialTab({
           provider="google"
           label="Google"
           icon={<FcGoogle className="h-5 w-5" aria-hidden="true" />}
-          headerClassName="relative bg-linear-to-br from-muted to-muted/60 px-6 py-5 border-b border-border/50"
-          titleClassName="text-foreground"
-          subtitleClassName="text-muted-foreground"
-          connectButtonClassName="border border-border/60 bg-background hover:bg-muted text-foreground shadow-xs"
+          connectButtonClassName="border border-border/60 bg-background hover:bg-muted text-foreground"
           description="Sign in with Google instead of typing a password. Your Google name and photo are only used if you connect."
           identity={googleIdentity}
           setError={setError}
           setSuccess={setSuccess}
+          onDisconnected={() =>
+            onUserPatch?.({
+              googleId: null,
+              googleName: null,
+              googleEmail: null,
+              googleAvatarUrl: null,
+            })
+          }
         />
       )}
 
@@ -774,14 +812,20 @@ export function ProfileSocialTab({
           buttonIcon={
             <FaGithub className="h-5 w-5 text-white" aria-hidden="true" />
           }
-          headerClassName="relative bg-linear-to-br from-[#24292e] via-[#1b1f23] to-[#0d1117] px-6 py-5"
-          titleClassName="text-white"
-          subtitleClassName="text-white/70"
-          connectButtonClassName="bg-[#181717] hover:bg-[#2b3137] text-white shadow-xs"
+          connectButtonClassName="bg-[#181717] hover:bg-[#2b3137] text-white"
           description="Sign in with GitHub instead of typing a password. Repo access for code scanning is granted separately, below."
           identity={githubIdentity}
           setError={setError}
           setSuccess={setSuccess}
+          onDisconnected={() =>
+            onUserPatch?.({
+              githubId: null,
+              githubName: null,
+              githubEmail: null,
+              githubAvatarUrl: null,
+              githubLogin: null,
+            })
+          }
           extra={
             <GithubRepoAccessSection
               setError={setError}

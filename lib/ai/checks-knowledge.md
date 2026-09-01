@@ -1,6 +1,6 @@
 # VulnRadar Scanner Checks: AI Knowledge
 
-_Auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-25._
+_Auto-compiled from `lib/scanner/checks-data/*.json` on 2026-09-01._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about specific scanner checks:
@@ -27,9 +27,9 @@ in this file and quote the title, description, and fix steps.
   - info: 111
   - critical: 98
 - **By type:**
-  - body-pattern: 425
+  - body-pattern: 423
   - header: 175
-  - combined: 61
+  - combined: 63
   - header-missing: 55
   - url-check: 17
   - header-value: 10
@@ -651,7 +651,7 @@ const yoga = createYoga({
 });
 ```
 
-### `api-graphql-batch-queries` [api / medium / body-pattern]
+### `api-graphql-batch-queries` [api / medium / combined]
 **GraphQL batch (array) queries accepted**
 
 Accepting an array of queries lets a single HTTP request fan out to N independent operations, multiplying rate-limit cost and bypassing per-request throttles.
@@ -765,7 +765,7 @@ paths:
           description: OK
 ```
 
-### `api-openapi-default-values-sensitive` [api / medium / body-pattern]
+### `api-openapi-default-values-sensitive` [api / medium / combined]
 **OpenAPI schema declares defaults for sensitive fields**
 
 Defaults such as isAdmin: false, role: user, or apiKey: REPLACE_ME teach attackers the shape of state and embed credentials in client SDKs.
@@ -1672,7 +1672,7 @@ document.getElementById('content').innerHTML = DOMPurify.sanitize(location.hash.
 ```
 
 ### `cs-document-write-usage` [client-side / high / body-pattern]
-**document.write() Usage Detected**
+**document.write() in Page Scripts**
 
 document.write() was found in the page scripts. This function is dangerous because it can overwrite the entire page document, is a primary DOM XSS sink, and is deprecated in modern browsers.
 
@@ -2748,7 +2748,7 @@ if (!SAFE_PATTERN.test(userInput)) {
 ```
 
 ### `eval-usage` [code / high / body-pattern]
-**eval() Usage Detected**
+**eval() Code Injection Risk**
 
 JavaScript eval() function calls detected.
 
@@ -5144,7 +5144,7 @@ await blob.uploadData(buffer, { blobHTTPHeaders: { blobContentType: mimeType } }
 ```
 
 ### `insecure-crypto` [code / high / body-pattern]
-**Weak or broken cryptography detected**
+**Weak cryptography protecting secrets and tokens**
 
 The code uses deprecated or broken cryptographic algorithms (MD5, SHA1, DES, RC4) that are no longer considered secure.
 
@@ -6583,7 +6583,7 @@ const nextConfig = { poweredByHeader: false };
 ```
 
 ### `sensitive-comments` [content / medium / body-pattern]
-**Sensitive Information in HTML Comments**
+**Sensitive Keywords in HTML Comments**
 
 HTML comments containing potentially sensitive information detected.
 
@@ -6935,7 +6935,7 @@ JavaScript accesses window.opener properties, exploitable for reverse tabnabbing
 ```
 
 ### `weak-crypto` [content / high / body-pattern]
-**Weak or Broken Cryptography Detected**
+**Deprecated Cipher or Hash Algorithm in Page Code**
 
 Weak or broken cryptographic algorithms in client-side JavaScript.
 
@@ -7173,9 +7173,9 @@ const API = process.env.API_URL; // Not a hardcoded IP
 ```
 
 ### `document-write-usage` [content / low / body-pattern]
-**document.write() Usage Detected**
+**document.write() Outside Page Scripts**
 
-document.write()/document.writeln() usage found. These are deprecated and can be exploited for XSS.
+document.write()/document.writeln() found in the response body outside a <script> block, typically in an inline event-handler attribute. Calls inside <script> blocks are reported separately by the client-side scan.
 
 **Risk:** document.write() can be hijacked to inject malicious content if any input is attacker-controlled.
 
@@ -8345,20 +8345,21 @@ Private key pattern found in page.
 ```
 
 ### `stripe-key-exposed` [content / high / body-pattern]
-**Stripe Key Exposed**
+**Stripe Secret Key Exposed**
 
-Stripe API key pattern found.
+A Stripe secret key (sk_live_ or sk_test_) was found in the response body. Publishable keys (pk_live_/pk_test_) are deliberately not reported here: Stripe's own integration docs require embedding those in client-side code, so they are public by design.
 
-**Risk:** May allow payment manipulation.
+**Risk:** A secret key grants full API access to the Stripe account: reading customer and payment records, creating charges and refunds, and changing account settings. Anyone who can view the page source has it.
 
-**Why it matters:** Live Stripe keys can process real payments.
+**Why it matters:** sk_live_ and sk_test_ keys are server-only credentials and must never reach the browser. The publishable key (pk_live_/pk_test_) is the one Stripe.js, Checkout, and Elements are meant to use in client-side code, and it is not reported by this check.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 
 **Fix:**
-- Rotate keys, use publishable keys only in frontend.
+- Roll the exposed secret key in the Stripe dashboard immediately, then review the account's recent API activity for anything you did not initiate.
+- Keep the secret key in a server-side environment variable and use only the publishable key in browser code.
 - **Rotate exposed Stripe keys** (bash):
 ```bash
 # Rotate at: https://dashboard.stripe.com/apikeys
@@ -9168,7 +9169,7 @@ location ~* \.(conf|config|cfg|ini|yaml|yml|toml|json)$ {
 
 An <iframe srcdoc="..."> embeds inline HTML directly in the page without a sandbox attribute, giving that inline content full same-origin privileges.
 
-**Risk:** Add sandbox='allow-scripts allow-same-origin allow-forms' to srcdoc iframes, or sandbox="" if no scripting is needed
+**Risk:** Inline srcdoc markup runs in the parent page's own origin unless it is sandboxed. If any part of that markup is ever built from dynamic or user-influenced data, script inside it can read the page's cookies, storage, and DOM exactly as first-party code could.
 
 **Why it matters:** Unlike a regular src= iframe loading a separate document, srcdoc content is embedded inline -- without sandbox, it runs with the same privileges as the parent page, which matters if the srcdoc value is ever built from dynamic or user-influenced data.
 
@@ -9177,7 +9178,8 @@ An <iframe srcdoc="..."> embeds inline HTML directly in the page without a sandb
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 
 **Fix:**
-- Add sandbox='allow-scripts allow-same-origin allow-forms' to third-party iframes
+- Add sandbox="" to the srcdoc iframe. That is the maximally restrictive value and is enough for static inline markup.
+- Only if the inline content genuinely needs it, add the single narrowest token back (e.g. sandbox="allow-scripts"). Never combine allow-scripts with allow-same-origin: together they let the framed content remove its own sandbox, which defeats the point.
 - **Add sandbox to srcdoc iframes** (html):
 ```html
 <iframe
@@ -9382,7 +9384,7 @@ An iframe element is present without a sandbox attribute, giving the embedded co
 ### `open-form-action` [content / medium / body-pattern]
 **Form action points to an insecure or external URL**
 
-A form action attribute uses HTTP or points to an external domain, risking credential submission to an untrusted destination.
+A form action attribute uses plain HTTP, or points to a domain that is neither your own site nor a known form/payment processor, risking submission to an untrusted destination. Forms posting to your own site, or to a processor whose documented embed code requires a cross-origin action (Stripe, PayPal, Mailchimp, HubSpot, Jotform, Salesforce Web-to-Lead, and similar), are not reported.
 
 **Risk:** Forms that submit to HTTP URLs expose credentials in transit. Forms targeting external domains may submit user data to attacker-controlled servers, a common phishing vector.
 
@@ -9696,7 +9698,7 @@ ASP.NET error details including stack traces or YSOD (Yellow Screen of Death) ar
 ```
 
 ### `django-debug-page` [content / critical / body-pattern]
-**Django debug mode enabled in production**
+**Django debug page exposing settings and installed apps**
 
 Django's DEBUG = True is enabled in production, exposing detailed error pages with source code, local variables, and settings.
 
@@ -17010,7 +17012,7 @@ No XML sitemap was found at /sitemap.xml or referenced in robots.txt. A sitemap 
 ```
 
 ### `html-comment-leaks` [information-disclosure / medium / body-pattern]
-**Sensitive information in HTML comments**
+**Credentials or keys embedded in HTML comments**
 
 HTML comments in the page source contain potentially sensitive information such as developer notes, internal paths, or debug data.
 
@@ -17250,7 +17252,7 @@ if __name__ == "__main__":
 ```
 
 ### `django-debug-page-exposure` [information-disclosure / critical / body-pattern]
-**Django debug mode enabled in production**
+**Django technical 500 debug page exposed**
 
 A Django debug error page (yellow screen) is visible, indicating DEBUG=True in the production environment.
 
@@ -20785,9 +20787,9 @@ git diff origin/main -- '*.ts' '*.js' | grep -i 'TODO.*\(auth\|security\|validat
 ```
 
 ### `vibe-eval-usage` [vibe-code / high / body-pattern]
-**eval() Usage Detected**
+**eval() Usage in Page Scripts**
 
-An eval() call was found in the HTTP response body. eval() executes arbitrary JavaScript strings and is a common AI-generated mistake when dynamically constructing logic.
+An eval() call was found inside the page's <script> blocks. eval() executes arbitrary JavaScript strings and is a common AI-generated mistake when dynamically constructing logic.
 
 **Risk:** If any user-controlled data reaches eval(), it enables full JavaScript code execution in the browser or server context. Even when input is not directly user-controlled, eval() breaks static analysis and makes the application unauditable.
 

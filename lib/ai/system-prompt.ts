@@ -40,7 +40,13 @@ export interface SystemPromptUserFacts {
   /** users.role — omit for a guest/unauthenticated context. */
   role?: string | null;
   /** users.daily_scan_limit — omit for a guest/unauthenticated context. */
-  dailyScanLimit?: number | null;
+  /**
+   * Resolved daily scan cap. 'unlimited' is a real value here, not a
+   * missing one: lib/rate-limiting/daily-limits.ts returns Infinity for an
+   * uncapped account and Infinity does not survive JSON, so callers send
+   * the string instead.
+   */
+  dailyScanLimit?: number | "unlimited" | null;
   /** Pre-formatted for display, e.g. "March 2026". */
   memberSince?: string | null;
 }
@@ -79,7 +85,10 @@ export function buildSystemPrompt(user: SystemPromptUserFacts): string {
   const plan = user.plan ? sanitizeField(String(user.plan)) : null;
   const role = user.role ? sanitizeField(String(user.role)) : null;
   const dailyScanLimit =
-    typeof user.dailyScanLimit === "number" ? user.dailyScanLimit : null;
+    typeof user.dailyScanLimit === "number" ||
+    user.dailyScanLimit === "unlimited"
+      ? user.dailyScanLimit
+      : null;
   const memberSince = user.memberSince ? sanitizeField(user.memberSince) : null;
 
   // Only the cheap, small, universally-useful account facts are baked in
@@ -206,7 +215,7 @@ Auth: Bearer token in Authorization header, or session cookie.
 Get keys at: Profile → API Keys. Max 3 active keys. Prefix: vr_live_
 
 POST   /scan                    Run a single scan
-POST   /scan/bulk               Up to 100 URLs in one call (each counts as 1 quota unit)
+POST   /scan/bulk               Queue up to 100 URLs in one call, returns a scan id per URL to poll on /scan/status/{id} (each counts as 1 quota unit)
 POST   /scan/crawl              Crawl + scan up to 15 pages within same origin
 POST   /scan/crawl/discover     Preview crawl URLs without scanning (up to 20)
 POST   /scan/discover           Enumerate subdomains (crt.sh, HackerTarget, brute-force DNS, cached 24h)

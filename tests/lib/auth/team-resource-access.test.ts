@@ -14,8 +14,11 @@ vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
 }));
 
-const { getTeamResourceAccess, getAssignableTeamIds } =
-  await import("@/lib/auth/team-resource-access");
+const {
+  getTeamResourceAccess,
+  getAssignableTeamIds,
+  resolveNewResourceTeamId,
+} = await import("@/lib/auth/team-resource-access");
 
 beforeEach(() => {
   mockQuery.mockReset();
@@ -113,4 +116,51 @@ describe("getAssignableTeamIds", () => {
     const result = await getAssignableTeamIds(7);
     expect(result).toEqual([]);
   });
+});
+
+describe("resolveNewResourceTeamId", () => {
+  it("treats an omitted teamId as a personal resource, with no membership lookup", async () => {
+    expect(await resolveNewResourceTeamId(7, undefined)).toEqual({
+      ok: true,
+      teamId: null,
+    });
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("treats an explicit null the same way", async () => {
+    expect(await resolveNewResourceTeamId(7, null)).toEqual({
+      ok: true,
+      teamId: null,
+    });
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("accepts a team the caller can assign scans to", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ team_id: 2, role: "admin" }] });
+    expect(await resolveNewResourceTeamId(7, 2)).toEqual({
+      ok: true,
+      teamId: 2,
+    });
+  });
+
+  it("rejects a team the caller only views, so a viewer cannot publish scans into it", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ team_id: 2, role: "viewer" }] });
+    const result = await resolveNewResourceTeamId(7, 2);
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects a team the caller is not a member of at all", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    const result = await resolveNewResourceTeamId(7, 99);
+    expect(result.ok).toBe(false);
+  });
+
+  it.each([0, -1, 1.5, "2", true, {}])(
+    "rejects %p as a team id without querying",
+    async (bad) => {
+      const result = await resolveNewResourceTeamId(7, bad);
+      expect(result.ok).toBe(false);
+      expect(mockQuery).not.toHaveBeenCalled();
+    },
+  );
 });

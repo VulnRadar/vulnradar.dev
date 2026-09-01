@@ -70,8 +70,16 @@ const TableHead = React.forwardRef<
   HTMLTableCellElement,
   React.ThHTMLAttributes<HTMLTableCellElement>
 >(({ className, ...props }, ref) => (
+  // a11y (SC 1.3.1): scope defaults here rather than at the call sites. Not
+  // one of the 83 <TableHead> usages across the admin tables passed it, so
+  // every one of those tables shipped header cells with no programmatic
+  // link to the data cells under them, and a screen reader reading a row
+  // announced values with no column names. `{...props}` stays after it, so a
+  // table that genuinely needs scope="row" or scope="colgroup" can still say
+  // so and override the default.
   <th
     ref={ref}
+    scope="col"
     className={cn(
       "h-12 px-4 text-left align-middle font-medium text-muted-foreground has-[[role=checkbox]]:pr-0",
       className,

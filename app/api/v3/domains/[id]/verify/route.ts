@@ -3,7 +3,7 @@ import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
-import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getTeamResourceAccess } from "@/lib/auth/team-resource-access";
 import { checkDnsVerification } from "@/lib/domains/verification";
 
@@ -36,10 +36,11 @@ export async function POST(
     return NextResponse.json({ error: "Invalid domain id." }, { status: 400 });
   }
 
+  // Named so the cap the API docs quote is the cap the admin panel edits,
+  // rather than a compiled number the docs can drift from (AUDIT-014#magic-08).
   const rl = await checkRateLimit({
     key: `domain-verify:${session.userId}`,
-    maxAttempts: 30,
-    windowSeconds: 3600,
+    ...RATE_LIMITS.domainVerify,
   });
   if (!rl.allowed) {
     return NextResponse.json(

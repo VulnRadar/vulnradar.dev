@@ -21,6 +21,61 @@ function getEncryptionKey(): Buffer {
 }
 
 /**
+ * The key a previous deployment used, kept readable during a rotation.
+ *
+ * One key protects TOTP seeds, Discord and GitHub OAuth tokens, user AI
+ * provider keys and API keys, and rotating it used to be impossible without
+ * hand-editing the database: every existing ciphertext became garbage the
+ * moment the environment variable changed, and there was no second key to
+ * fall back to (AUDIT-007#auth-02).
+ *
+ * GCM is what makes the fallback safe and unambiguous. The auth tag means a
+ * decrypt under the wrong key fails rather than returning wrong plaintext,
+ * so "try the current key, then the previous one" cannot silently mis-decode
+ * a value, and no key_version column or migration script is needed to tell
+ * the two apart. Writes always use the CURRENT key, so every value that gets
+ * rewritten for any other reason (a rotated API key, a re-linked OAuth
+ * account, a re-enrolled TOTP seed) migrates itself.
+ *
+ * Operator procedure: set PREVIOUS_API_KEY_ENCRYPTION_KEY to the old value,
+ * set API_KEY_ENCRYPTION_KEY to the new one, restart. Remove the previous
+ * key once everything has been rewritten under the new one.
+ */
+function getPreviousEncryptionKey(): Buffer | null {
+  const hex = process.env.PREVIOUS_API_KEY_ENCRYPTION_KEY;
+  if (!hex) return null;
+  if (hex.length !== 64 || !/^[0-9a-fA-F]+$/.test(hex)) {
+    // Loud but non-fatal: an operator mid-rotation has explicitly set this,
+    // so staying silent would present as "some accounts mysteriously cannot
+    // log in". Throwing instead would be swallowed by the callers that treat
+    // a decrypt failure as "wrong key" (lib/api/api-keys.ts), which is worse.
+    console.error(
+      "[crypto] PREVIOUS_API_KEY_ENCRYPTION_KEY is set but is not a 64-character hex string; ignoring it. Values encrypted with the old key will not decrypt.",
+    );
+    return null;
+  }
+  return Buffer.from(hex, "hex");
+}
+
+function decryptWith(key: Buffer, encryptedBase64: string): string {
+  const combined = Buffer.from(encryptedBase64, "base64");
+
+  const iv = combined.subarray(0, IV_LENGTH);
+  const tag = combined.subarray(combined.length - TAG_LENGTH);
+  const ciphertext = combined.subarray(IV_LENGTH, combined.length - TAG_LENGTH);
+
+  const decipher = createDecipheriv(ALGORITHM, key, iv);
+  decipher.setAuthTag(tag);
+
+  const decrypted = Buffer.concat([
+    decipher.update(ciphertext),
+    decipher.final(),
+  ]);
+
+  return decrypted.toString("utf8");
+}
+
+/**
  * Encrypt a plaintext string using AES-256-GCM.
  * Returns a combined string: base64(iv + ciphertext + authTag)
  */
@@ -44,24 +99,46 @@ export function encryptApiKey(plaintext: string): string {
 /**
  * Decrypt an AES-256-GCM encrypted string.
  * Expects the format from encryptApiKey: base64(iv + ciphertext + authTag)
+ *
+ * Falls back to PREVIOUS_API_KEY_ENCRYPTION_KEY when the current key does
+ * not authenticate the ciphertext, so a key rotation does not orphan
+ * everything already encrypted. Throws when neither key works, exactly as
+ * before, so every caller's existing "this is not valid ciphertext"
+ * handling is unchanged.
  */
 export function decryptApiKey(encryptedBase64: string): string {
-  const key = getEncryptionKey();
-  const combined = Buffer.from(encryptedBase64, "base64");
+  return decryptApiKeyWithKeyAge(encryptedBase64).plaintext;
+}
 
-  const iv = combined.subarray(0, IV_LENGTH);
-  const tag = combined.subarray(combined.length - TAG_LENGTH);
-  const ciphertext = combined.subarray(IV_LENGTH, combined.length - TAG_LENGTH);
-
-  const decipher = createDecipheriv(ALGORITHM, key, iv);
-  decipher.setAuthTag(tag);
-
-  const decrypted = Buffer.concat([
-    decipher.update(ciphertext),
-    decipher.final(),
-  ]);
-
-  return decrypted.toString("utf8");
+/**
+ * decryptApiKey, plus which key actually opened the value.
+ *
+ * `usedPreviousKey` is the signal a lazy re-encryption pass needs: a caller
+ * that already has the row in hand can write `encryptApiKey(plaintext)` back
+ * when it is true, and the value is then migrated to the current key without
+ * any bulk migration script. Nothing is forced to do that; the fallback
+ * above keeps everything working either way.
+ */
+export function decryptApiKeyWithKeyAge(encryptedBase64: string): {
+  plaintext: string;
+  usedPreviousKey: boolean;
+} {
+  try {
+    return {
+      plaintext: decryptWith(getEncryptionKey(), encryptedBase64),
+      usedPreviousKey: false,
+    };
+  } catch (err) {
+    const previous = getPreviousEncryptionKey();
+    // Rethrow the ORIGINAL error when there is no previous key, so the
+    // message a caller sees is still the current key's failure rather than a
+    // confusing one about a key that is not configured.
+    if (!previous) throw err;
+    return {
+      plaintext: decryptWith(previous, encryptedBase64),
+      usedPreviousKey: true,
+    };
+  }
 }
 
 /**

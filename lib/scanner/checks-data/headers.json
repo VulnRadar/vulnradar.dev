@@ -1289,7 +1289,7 @@
     "category": "headers",
     "severity": "info",
     "description": "No Cross-Origin-Opener-Policy header is set. The detector checks for the real, enforcing header, not the optional Report-Only preview variant.",
-    "evidence": "Header absent or misconfigured for `headers-coop-report-only-missing`. Response observed headers: {{observed_headers}}.",
+    "evidence": "No Cross-Origin-Opener-Policy header in the response at {{url}}.",
     "riskImpact": "Without COOP, cross-origin windows opened by or opening this page can retain a reference via window.opener, which weakens isolation and can enable Spectre-style side-channel attacks.",
     "explanation": "Cross-Origin-Opener-Policy: same-origin isolates the page's browsing context from cross-origin windows it opens or that open it. Combined with COEP, it enables cross-origin isolation (SharedArrayBuffer, high-resolution timers).",
     "fixSteps": [
@@ -1319,7 +1319,7 @@
     "category": "headers",
     "severity": "info",
     "description": "Disabled: exact duplicate of cross-origin-resource-policy-report-only-missing, which checks the same real Cross-Origin-Resource-Policy header (CORP has no separate Report-Only variant).",
-    "evidence": "Header absent or misconfigured for `headers-corp-report-only-missing`. Response observed headers: {{observed_headers}}.",
+    "evidence": "Disabled: see cross-origin-resource-policy-report-only-missing.",
     "riskImpact": "See cross-origin-resource-policy-report-only-missing.",
     "explanation": "See cross-origin-resource-policy-report-only-missing.",
     "fixSteps": [
@@ -1347,7 +1347,7 @@
     "category": "headers",
     "severity": "info",
     "description": "The HTML document does not declare a character set via <meta charset>. Without an explicit charset, older browsers could be tricked into an encoding (e.g. UTF-7) that enables reflected content to execute as script.",
-    "evidence": "Header absent or misconfigured for `headers-sec-fetch-missing`. Response observed headers: {{observed_headers}}.",
+    "evidence": "No <meta charset> tag in the HTML at {{url}}, and no charset parameter on the Content-Type header.",
     "riskImpact": "Largely historical: modern browsers no longer support UTF-7 auto-detection, so the practical XSS risk is minimal. Still worth declaring for correctness and to avoid mojibake rendering.",
     "explanation": "Declare <meta charset=\"utf-8\"> within the first 1024 bytes of the document, or set charset via the Content-Type header.",
     "fixSteps": [
@@ -1399,7 +1399,7 @@
     "category": "headers",
     "severity": "medium",
     "description": "Access-Control-Allow-Origin is set to the literal string 'null'. The 'null' origin is sent by sandboxed iframes, data: URIs, and some file:// contexts, so trusting it lets attacker-controlled sandboxed content bypass the intended origin restriction.",
-    "evidence": "Header absent or misconfigured for `headers-coop-same-origin-allow-popups`. Response observed headers: {{observed_headers}}.",
+    "evidence": "Access-Control-Allow-Origin is set to the literal value 'null' in the response at {{url}}.",
     "riskImpact": "An attacker can host a sandboxed iframe (sandbox without allow-same-origin) that sends the Origin: null header, which this configuration trusts, granting the attacker's page cross-origin access it should never have.",
     "explanation": "Never explicitly allow 'null' as an origin. Validate the incoming Origin header against an allowlist and never return 'null' or reflect an origin that wasn't matched.",
     "fixSteps": [

@@ -26,6 +26,7 @@ const PLAN_LIMIT_KEYS: Record<PlanId, Record<keyof PlanLimits, SettingKey>> = {
     webhooks: "BILLING_FREE_WEBHOOKS",
     scheduledScans: "BILLING_FREE_SCHEDULED_SCANS",
     bulkScanUrls: "BILLING_FREE_BULK_SCAN_URLS",
+    crawlPages: "BILLING_FREE_CRAWL_PAGES",
     githubReviewTokensPerWindow: "BILLING_FREE_GITHUB_REVIEW_TOKENS_PER_WINDOW",
     aiTokensPerWindow: "BILLING_FREE_AI_TOKENS_PER_WINDOW",
     browserbaseMinutesPerMonth: "BILLING_FREE_BROWSERBASE_MINUTES_PER_MONTH",
@@ -40,6 +41,7 @@ const PLAN_LIMIT_KEYS: Record<PlanId, Record<keyof PlanLimits, SettingKey>> = {
     webhooks: "BILLING_CORE_SUPPORTER_WEBHOOKS",
     scheduledScans: "BILLING_CORE_SUPPORTER_SCHEDULED_SCANS",
     bulkScanUrls: "BILLING_CORE_SUPPORTER_BULK_SCAN_URLS",
+    crawlPages: "BILLING_CORE_SUPPORTER_CRAWL_PAGES",
     githubReviewTokensPerWindow:
       "BILLING_CORE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW",
     aiTokensPerWindow: "BILLING_CORE_SUPPORTER_AI_TOKENS_PER_WINDOW",
@@ -56,6 +58,7 @@ const PLAN_LIMIT_KEYS: Record<PlanId, Record<keyof PlanLimits, SettingKey>> = {
     webhooks: "BILLING_PRO_SUPPORTER_WEBHOOKS",
     scheduledScans: "BILLING_PRO_SUPPORTER_SCHEDULED_SCANS",
     bulkScanUrls: "BILLING_PRO_SUPPORTER_BULK_SCAN_URLS",
+    crawlPages: "BILLING_PRO_SUPPORTER_CRAWL_PAGES",
     githubReviewTokensPerWindow:
       "BILLING_PRO_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW",
     aiTokensPerWindow: "BILLING_PRO_SUPPORTER_AI_TOKENS_PER_WINDOW",
@@ -72,6 +75,7 @@ const PLAN_LIMIT_KEYS: Record<PlanId, Record<keyof PlanLimits, SettingKey>> = {
     webhooks: "BILLING_ELITE_SUPPORTER_WEBHOOKS",
     scheduledScans: "BILLING_ELITE_SUPPORTER_SCHEDULED_SCANS",
     bulkScanUrls: "BILLING_ELITE_SUPPORTER_BULK_SCAN_URLS",
+    crawlPages: "BILLING_ELITE_SUPPORTER_CRAWL_PAGES",
     githubReviewTokensPerWindow:
       "BILLING_ELITE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW",
     aiTokensPerWindow: "BILLING_ELITE_SUPPORTER_AI_TOKENS_PER_WINDOW",
@@ -92,8 +96,26 @@ export async function getUserPlanLimits(
 ): Promise<PlanLimits | null> {
   const billingEnabled = await getSetting("BILLING_ENABLED");
   if (!billingEnabled) return null;
+  return getPlanLimitsForPlan(await getUserPlan(userId));
+}
 
-  const plan = await getUserPlan(userId);
+/**
+ * The limits half of getUserPlanLimits, for a plan the caller has already
+ * resolved. GET /api/v3/auth/me runs on every page load and already reads
+ * both the users row and the gifted_subscriptions row it would take to
+ * resolve the plan; going through getUserPlanLimits made it read both a
+ * second time (a third time counting getSession's own users read) purely to
+ * arrive at the same answer.
+ *
+ * Returns null when billing is disabled, the same convention
+ * getUserPlanLimits uses, so a caller can treat the two identically.
+ */
+export async function getPlanLimitsForPlan(
+  plan: Awaited<ReturnType<typeof getUserPlan>>,
+): Promise<PlanLimits | null> {
+  const billingEnabled = await getSetting("BILLING_ENABLED");
+  if (!billingEnabled) return null;
+
   // Staff are capped at the Pro Supporter plan's limits, not unlimited --
   // substitute the real plan id and resolve it like a real account.
   const effectivePlan: PlanId = plan === "staff" ? "pro_supporter" : plan;
@@ -114,6 +136,7 @@ export async function getUserPlanLimits(
     webhooks: Number(resolved[keys.webhooks]),
     scheduledScans: Number(resolved[keys.scheduledScans]),
     bulkScanUrls: Number(resolved[keys.bulkScanUrls]),
+    crawlPages: Number(resolved[keys.crawlPages]),
     githubReviewTokensPerWindow: Number(
       resolved[keys.githubReviewTokensPerWindow],
     ),

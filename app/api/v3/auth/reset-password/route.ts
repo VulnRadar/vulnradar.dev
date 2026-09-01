@@ -1,5 +1,4 @@
 import { NextRequest } from "next/server";
-import { createHash } from "node:crypto";
 import pool from "@/lib/database/db";
 import { hashPassword } from "@/lib/auth";
 import {
@@ -7,6 +6,7 @@ import {
   checkPasswordRequirements,
   passwordRequirementsMet,
   unmetRequirementLabels,
+  meetsMinimumPasswordScore,
 } from "@/lib/auth/password-strength";
 import { passwordChangedEmail } from "@/lib/email/email";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
@@ -18,12 +18,14 @@ import {
   withErrorHandling,
 } from "@/lib/api/api-utils";
 import { getSetting } from "@/lib/config/runtime-config";
+import { authTokenHashCandidates } from "@/lib/auth/token-hash";
 
-// auth: hash the incoming token with the same function used at
-// generation time so we never compare raw tokens against the DB.
-function hashToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
-}
+// auth: hash the incoming token with the same function used at generation
+// time so we never compare raw tokens against the DB. The candidate list is
+// the HMAC digest plus the pre-HMAC sha256 one, so a reset link already
+// sitting in someone's inbox when the switch to HMAC shipped still works
+// (AUDIT-002#secrets-03). Both are derived from the presented token, so
+// this widens nothing.
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const ip = await getClientIp();
@@ -44,7 +46,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // auth: catch common / low-entropy passwords that pass the length floor
   // but crack in seconds ("Password123!"). Same rule as signup.
   const pwAnalysis = analyzePassword(password);
-  if (pwAnalysis.score < 3) {
+  if (!meetsMinimumPasswordScore(pwAnalysis.score)) {
     return ApiResponse.badRequest(
       "Password is too weak. " +
         (pwAnalysis.feedback.warnings[0] ||
@@ -52,7 +54,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     );
   }
 
-  const tokenHash = hashToken(token);
+  const tokenHashes = authTokenHashCandidates(token);
 
   // Find valid token - atomic check and mark as used in single transaction
   const client = await pool.connect();
@@ -63,9 +65,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       `SELECT prt.id, prt.user_id, prt.expires_at, u.email, u.name, u.totp_enabled
        FROM password_reset_tokens prt
        JOIN users u ON prt.user_id = u.id
-       WHERE prt.token_hash = $1 AND prt.used_at IS NULL
+       WHERE prt.token_hash = ANY($1::text[]) AND prt.used_at IS NULL
        FOR UPDATE`,
-      [tokenHash],
+      [tokenHashes],
     );
 
     if (tokenRes.rows.length === 0) {

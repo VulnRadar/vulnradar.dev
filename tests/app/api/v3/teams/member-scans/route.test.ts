@@ -21,6 +21,16 @@ vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
 }));
 
+// FEATURE_TEAMS is the deployment-wide kill switch every /api/v3/teams
+// handler now checks (lib/teams/feature-gate.ts). Mocked at the settings
+// resolver so it doesn't consume an entry from this suite's ordered
+// pool.query queue.
+const mockFeatureTeams = vi.fn();
+vi.mock("@/lib/config/runtime-config", () => ({
+  getSetting: async (key: string) =>
+    key === "FEATURE_TEAMS" ? mockFeatureTeams() : undefined,
+}));
+
 const { GET } = await import("@/app/api/v3/teams/member-scans/route");
 
 function getRequest(params: Record<string, string>): NextRequest {
@@ -34,9 +44,20 @@ beforeEach(() => {
   mockQuery.mockReset();
   mockGetSession.mockReset();
   mockGetSession.mockResolvedValue({ userId: 42 });
+  mockFeatureTeams.mockReset();
+  mockFeatureTeams.mockResolvedValue(true);
 });
 
 describe("GET /api/v3/teams/member-scans", () => {
+  it("returns 403 and touches no data when FEATURE_TEAMS is off", async () => {
+    mockFeatureTeams.mockResolvedValue(false);
+
+    const res = await GET(getRequest({ teamId: "3", userId: "99" }));
+
+    expect(res.status).toBe(403);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
   it("requires authentication", async () => {
     mockGetSession.mockResolvedValue(null);
 
@@ -117,32 +138,48 @@ describe("GET /api/v3/teams/member-scans", () => {
         },
       ],
     });
+    mockQuery.mockResolvedValueOnce({ rows: [{ total: 7 }] });
 
     const res = await GET(getRequest({ teamId: "3", userId: "99" }));
     const json = await res.json();
 
     expect(res.status).toBe(200);
     expect(json.scans).toHaveLength(1);
-    expect(mockQuery).toHaveBeenCalledTimes(3);
+    // Three reads plus the count that backs the reported total.
+    expect(mockQuery).toHaveBeenCalledTimes(4);
 
     const [sql, params] = mockQuery.mock.calls[2];
     expect(sql).toContain("FROM scan_history");
     // Scoped to the target userId AND the team, so a member's private personal
-    // scans (team_id null) never surface in the team view.
-    expect(sql).toContain("WHERE user_id = $1 AND team_id = $2");
-    expect(sql).toContain("LIMIT 50");
-    expect(params).toEqual(["99", "3"]);
+    // scans never surface in the team view. A scan can be shared with several
+    // teams at once, so the team half of the filter is the scan_history_teams
+    // join; it still matches the legacy team_id column, so a scan written by a
+    // path that only knows that column does not vanish from the team's view.
+    expect(sql).toContain("sh.user_id = $1");
+    expect(sql).toContain("FROM scan_history_teams sht");
+    expect(sql).toContain("sht.team_id = $2");
+    expect(sql).toContain("sh.team_id = $2");
+    expect(params).toEqual(["99", "3", 50]);
+
+    // The 50-row cap used to be invisible: the panel drove its paginator from
+    // the returned array's length, so it reported the truncated count as the
+    // total (AUDIT-014#magic-20).
+    expect(json.limit).toBe(50);
+    expect(json.total).toBe(7);
   });
 
   it("does not leak the requester's own scans when they request another member's history", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ role: "owner" }] });
     mockQuery.mockResolvedValueOnce({ rows: [{ role: "member" }] });
     mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ total: 0 }] });
 
     await GET(getRequest({ teamId: "3", userId: "99" }));
 
     const [, params] = mockQuery.mock.calls[2];
     expect(params).not.toEqual([42]);
-    expect(params).toEqual(["99", "3"]);
+    expect(params).toEqual(["99", "3", 50]);
+    // The count that backs the reported total is scoped identically.
+    expect(mockQuery.mock.calls[3][1]).toEqual(["99", "3"]);
   });
 });

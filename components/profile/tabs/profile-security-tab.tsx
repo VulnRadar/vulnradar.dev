@@ -28,13 +28,14 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { copyToClipboard } from "@/lib/ui/clipboard";
-import { API, ROUTES, APP_NAME, APP_SLUG } from "@/lib/config/constants";
+import { API, ROUTES, APP_NAME, APP_SLUG } from "@/lib/config/client-constants";
 import { downloadBlob } from "@/lib/ui/download";
 import {
   refreshAuthCache,
   clearAuthCache,
 } from "@/components/providers/auth-provider";
 import type { ProfileTabProps } from "@/components/profile/types";
+import { InlineAlert } from "@/components/shared/inline-alert";
 
 // The API issues this many backup codes per set. Kept as one named value so
 // the copy and the progress readout cannot drift apart.
@@ -116,7 +117,7 @@ function StatusPill({
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium shrink-0",
         tone === "on"
-          ? "bg-[hsl(var(--success)/0.12)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.3)]"
+          ? "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/30"
           : "bg-muted text-muted-foreground border-border",
       )}
     >
@@ -451,7 +452,14 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
       <div
         ref={backupPanelRef}
         tabIndex={-1}
-        className="rounded-xl border border-primary/30 bg-primary/4 p-5 sm:p-6 flex flex-col gap-5 outline-hidden"
+        // a11y (SC 2.4.7): this panel is focused by script the moment backup
+        // codes are revealed, and `outline-hidden` killed the native outline
+        // while the global :focus-visible rule in app/globals.css explicitly
+        // skips [tabindex="-1"], so the keyboard user was moved somewhere
+        // with no indication of where. focus: (not focus-visible:) because
+        // the focus here is programmatic, which the :focus-visible heuristic
+        // does not always honour.
+        className="rounded-xl border border-primary/30 bg-primary/4 p-5 sm:p-6 flex flex-col gap-5 focus:outline-hidden focus:ring-2 focus:ring-inset focus:ring-ring"
       >
         <div className="flex items-start gap-3">
           <KeyRound
@@ -593,16 +601,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
         ) : (
           <div className="rounded-xl border border-border bg-card p-4 sm:p-5 flex flex-col gap-4">
             {passwordError && (
-              <p
-                role="alert"
-                className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-              >
-                <AlertTriangle
-                  className="h-4 w-4 shrink-0 mt-0.5"
-                  aria-hidden="true"
-                />
-                <span>{passwordError}</span>
-              </p>
+              <InlineAlert tone="error">{passwordError}</InlineAlert>
             )}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {hasPassword && (
@@ -909,7 +908,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                     Turn off the authenticator app
                   </button>
                 ) : (
-                  <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/6 p-4">
+                  <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4">
                     <div>
                       <p className="text-sm font-semibold text-foreground">
                         Turn off two-step verification?
@@ -1109,16 +1108,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                     </div>
 
                     {enrolError && (
-                      <p
-                        role="alert"
-                        className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-                      >
-                        <AlertTriangle
-                          className="h-4 w-4 shrink-0 mt-0.5"
-                          aria-hidden="true"
-                        />
-                        <span>{enrolError}</span>
-                      </p>
+                      <InlineAlert tone="error">{enrolError}</InlineAlert>
                     )}
 
                     <div className="flex flex-col sm:flex-row gap-4">
@@ -1307,7 +1297,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                     Turn off email codes
                   </button>
                 ) : (
-                  <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/6 p-4">
+                  <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4">
                     <div>
                       <p className="text-sm font-semibold text-foreground">
                         Turn off two-step verification?
@@ -1665,7 +1655,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
       </Section>
 
       {/* ─────────── Danger zone ─────────── */}
-      <section className="rounded-xl border border-destructive/25 bg-destructive/3 p-4 sm:p-5">
+      <section className="rounded-xl border border-destructive/25 bg-destructive/5 p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0 max-w-xl">
             <h2 className="text-base font-semibold tracking-tight text-foreground flex items-center gap-2">

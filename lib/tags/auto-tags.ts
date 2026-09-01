@@ -711,7 +711,15 @@ interface PromotedAutoTagRuleRow {
   min_count: number | null;
 }
 
-async function loadPromotedRules(): Promise<AutoTagRule[]> {
+/**
+ * Exported so a caller holding no pool connection can warm the cache before
+ * it takes one. lib/scanner/scan-jobs.ts runs the tag pass inside a
+ * pool.connect() block, and a cache miss there asks the pool for a SECOND
+ * connection while the first is still held, which deadlocks once the pool is
+ * saturated. Calling this first turns that into an ordinary cache hit
+ * (AUDIT-012#perf-25).
+ */
+export async function loadPromotedRules(): Promise<AutoTagRule[]> {
   const now = Date.now();
   if (dbRulesCache && now - dbRulesCache.loadedAt < DB_RULES_CACHE_TTL_MS) {
     return dbRulesCache.rules;

@@ -1,53 +1,36 @@
-import { cn } from "@/lib/ui/utils";
+"use client";
 
-interface LegalCalloutProps {
-  variant?: "warning" | "danger" | "info";
-  title: string;
-  children: React.ReactNode;
-  className?: string;
-}
+import { Callout } from "@/components/shared/callout";
 
-const variants = {
-  warning: {
-    border: "border-[hsl(var(--severity-medium))]/30",
-    bg: "bg-[hsl(var(--severity-medium))]/5",
-    title: "text-[hsl(var(--severity-medium))]",
-  },
-  danger: {
-    border: "border-destructive/30",
-    bg: "bg-destructive/5",
-    title: "text-destructive",
-  },
-  info: {
-    border: "border-primary/30",
-    bg: "bg-primary/5",
-    title: "text-primary",
-  },
-};
-
+/**
+ * The legal pages' aside, now the same component the docs use.
+ *
+ * It used to be its own implementation: rounded-xl, border-2 (a width used on
+ * no other non-decorative element in the product), no icon, no coloured rule,
+ * an <h3> title inside sections that already have their own h3s, and a
+ * `warning` variant painted with --severity-medium where the docs callout used
+ * --warning. Two grammars for the same aside, and the same word meaning two
+ * colours. `danger` is retired in favour of `error`, which is what it always
+ * was; it is still accepted so an existing page keeps working.
+ */
 export function LegalCallout({
   variant = "info",
   title,
   children,
   className,
-}: LegalCalloutProps) {
-  const styles = variants[variant];
-
+}: {
+  variant?: "warning" | "danger" | "error" | "info" | "success";
+  title: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <div
-      className={cn(
-        "max-w-prose rounded-xl border-2 p-5",
-        styles.border,
-        styles.bg,
-        className,
-      )}
+    <Callout
+      variant={variant === "danger" ? "error" : variant}
+      title={title}
+      className={className ?? "max-w-prose"}
     >
-      <h3 className={cn("mb-2 text-base font-semibold", styles.title)}>
-        {title}
-      </h3>
-      <div className="text-sm leading-relaxed text-foreground/90">
-        {children}
-      </div>
-    </div>
+      {children}
+    </Callout>
   );
 }

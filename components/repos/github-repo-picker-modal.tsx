@@ -13,7 +13,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Loader2, Lock, Search, RotateCcw } from "lucide-react";
-import { API } from "@/lib/config/constants";
+import { API } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
 import type { GithubRepo } from "./types";
 

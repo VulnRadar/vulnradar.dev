@@ -4,18 +4,49 @@
 
 # VulnRadar
 
-Open-source web vulnerability scanner. Paste a URL, get a structured security
-report in under 3 seconds. No agent to install.
+Open-source web vulnerability scanner. Paste a URL and get 795+ deterministic
+checks back, each with the response evidence behind it, a finding ID that does
+not change between runs, and the config line that fixes it. No agent to
+install. GPL-3.0 and self-hostable.
+
+**[Scan a URL with no account](https://vulnradar.dev/demo)** ·
+**[Docs](https://vulnradar.dev/docs)** ·
+**[Self-host](https://vulnradar.dev/docs/self-hosting)** ·
+**[Changelog](https://vulnradar.dev/changelog)**
+
+[![Secured by VulnRadar](https://vulnradar.dev/api/v3/badge/9e5fb4e1fe33513bf6799a588fe9831b844f1cfbdedde844e5fafdd379f6a51c)](https://vulnradar.dev/shared/9e5fb4e1fe33513bf6799a588fe9831b844f1cfbdedde844e5fafdd379f6a51c)
+[![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
+[![CI](https://github.com/VulnRadar/vulnradar.dev/actions/workflows/ci.yml/badge.svg)](https://github.com/VulnRadar/vulnradar.dev/actions/workflows/ci.yml)
 
 </div>
 
-**Deterministic checks across 18 categories** covering security headers,
-TLS and certificates, cookies, DNS and email records, exposed secrets, server
-misconfiguration, information disclosure, client-side risks, supply chain
-exposure, and common AI-generated code antipatterns. Same URL, same findings,
-same stable IDs every run.
+## What it does
 
-[![Secured by VulnRadar](https://vulnradar.dev/api/v3/badge/9e5fb4e1fe33513bf6799a588fe9831b844f1cfbdedde844e5fafdd379f6a51c)](https://vulnradar.dev/shared/9e5fb4e1fe33513bf6799a588fe9831b844f1cfbdedde844e5fafdd379f6a51c)
+- **Stable finding IDs**, so two runs can be diffed and a CI job can fail on
+  exactly the finding you care about instead of a severity count
+- **Evidence with every finding**: the header, the certificate field, or the
+  response body fragment that triggered it, not just a rule name
+- **18 categories** covering security headers, TLS and certificates, cookies,
+  DNS and email records, exposed secrets, server misconfiguration, information
+  disclosure, client-side risks, supply chain exposure, and common
+  AI-generated code antipatterns
+- **A CLI and a GitHub Action** that poll a scan to completion and exit
+  non-zero when findings cross a threshold you set
+- **A self-updating embed badge**: generate it once and it always shows that
+  URL's most recent completed scan, with no new embed code to paste
+- **Scan diffing and shareable report links**, so a fix can be shown to have
+  landed rather than asserted
+- **Scheduled scans, bulk scanning, and signed webhooks** that fire when a
+  background scan actually finishes, not when the API call returned
+- **Exports** to PDF, JSON, SARIF, Markdown, or a compliance crosswalk, so
+  findings go into the tool your team already uses
+- **A browser extension** for Chrome and Firefox that scans the tab you are on
+- **Runs on your own hardware** under GPL-3.0, with no telemetry. The only
+  outbound call it makes on its own behalf is the admin-triggered update check
+  against the GitHub releases API
+
+Auth, teams, billing, the admin panel and the AI triage assistant are all
+covered in the [docs](https://vulnradar.dev/docs).
 
 ## Quick Links
 
@@ -24,26 +55,6 @@ same stable IDs every run.
 - **[Report a Bug](https://github.com/VulnRadar/vulnradar.dev/issues)** - help us improve
 - **[Security Advisories](https://github.com/VulnRadar/vulnradar.dev/security/advisories/new)** - privately report a vulnerability
 - **[Support VulnRadar](https://vulnradar.dev/donate)** - pays for hosting the public instance and the time spent chasing false positives out of the detection engine
-
-## Features
-
-- Deterministic checks across 18 categories, run in parallel
-- Stable finding IDs, so results can be diffed between runs and gated in CI
-- Scan history, comparison between two scans, and shareable report links
-- Self-updating embed badge: generate it once, it always shows the latest scan
-- Scheduled scans, bulk scanning, and webhooks
-- REST API with token authentication, plus an interactive API playground with code samples in 8 languages
-- Command-line tool to run a scan and gate CI builds on the findings
-- GitHub repository scanning with AI-assisted code review
-- AI assistant for triage and remediation questions, with optional bring-your-own-key
-- Two-factor authentication (TOTP or email) with backup codes
-- Teams with role-based access
-- CVSS 3.1 base scores computed for every finding
-- Admin password resets go out as an emailed link; admins never see a user's password
-- Admin email delivery log, with links/tokens/codes redacted before display
-- Export to PDF, JSON, SARIF, Markdown, or a compliance crosswalk
-- Browser extension for Chrome and Firefox
-- Self-hostable under GPL-3.0
 
 ## Embeddable Badge
 
@@ -72,8 +83,10 @@ cd vulnradar.dev
 
 # 2. Configure
 cp .env.example .env
-# Set DATABASE_URL and API_KEY_ENCRYPTION_KEY in .env, then edit
-# lib/config/config-values.ts for app name, URL, emails, and feature flags.
+# Set DATABASE_URL and API_KEY_ENCRYPTION_KEY in .env. App name, URL, emails
+# and branding are build-tier: edit lib/config/config-values.ts and rebuild.
+# Rate limits, feature flags and billing limits are runtime-tier: change them
+# in Admin -> Settings after the first sign-in, no rebuild needed.
 
 # 3. Build and run
 docker compose up -d
@@ -87,23 +100,31 @@ secrets rather than falling back to plaintext.
 
 ## Configuration
 
-VulnRadar has **two configuration layers** (see the
-[Config Reference](https://vulnradar.dev/docs/config) for every value):
+Every setting resolves as **database ?? environment ?? shipped default** (see
+the [Config Reference](https://vulnradar.dev/docs/config) for every value):
 
-| Layer                 | File                                 | Purpose                                                                                           |
-| --------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| **Static app config** | `lib/config/config-values.ts`        | App name, URL, emails, SEO metadata, rate limits, feature flags, billing plans. Edit and rebuild. |
-| **Runtime secrets**   | `.env` (or `docker-compose.yml` env) | `DATABASE_URL`, `API_KEY_ENCRYPTION_KEY`, `STRIPE_SECRET_KEY`, SMTP credentials, Discord OAuth.   |
+| Layer               | Where                                | Purpose                                                                                                                         |
+| ------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| **Database**        | Admin -> Settings                    | Wins over everything else. No restart, no rebuild: a change reaches every running instance within the 30 second resolver cache. |
+| **Environment**     | `.env` (or `docker-compose.yml` env) | A variable named exactly like the registry key pins a value without a database write. Also where secrets live.                  |
+| **Shipped default** | `lib/config/config-values.ts`        | The `CONFIG_*` constant the repo ships with. Edit and rebuild.                                                                  |
 
-**Single source of truth:** `lib/config/config-values.ts` exports the raw
-`CONFIG_*` constants. `lib/types/config.ts` derives the typed `DEFAULT_CONFIG`
-from them, and `lib/config/constants.ts` re-exports them under the conventional
-names (`APP_NAME`, `ROUTES`, `API`, `ERROR_MESSAGES`) used throughout the app.
-Self-hosters edit `config-values.ts` and nothing else.
+Of the 268 settings in `lib/config/registry.ts`, 239 are runtime tier and take
+effect as soon as they are saved. The remaining 29 are build tier (app name,
+branding, SEO metadata) and are baked into statically generated pages, so those
+need a rebuild before the change is visible.
 
-Values that differ per deployment rather than per fork, such as search engine
-verification tokens, read from environment variables first. See the SEO section
-of `.env.example`.
+Secrets are environment-only and have no admin control: `DATABASE_URL`,
+`API_KEY_ENCRYPTION_KEY`, `STRIPE_SECRET_KEY`, SMTP credentials, Discord OAuth.
+
+**How a value gets read:** `lib/config/config-values.ts` exports the raw
+`CONFIG_*` constants. `lib/config/registry.ts` classifies each one into
+`SETTINGS_REGISTRY` (type, bounds, admin tab, tier).
+`lib/config/runtime-config.ts` resolves it in the order above, and
+`lib/config/constants.ts` / `client-constants.ts` re-export the results under
+the conventional names (`APP_NAME`, `ROUTES`, `API`, `ERROR_MESSAGES`) used
+throughout the app. `lib/config/env.ts` validates the required environment
+variables with Zod at boot.
 
 ## Architecture
 
@@ -124,22 +145,30 @@ releases such as 21 and 23 are unsupported by `vitest@4`, see `.nvmrc`) and
 PostgreSQL 14+.
 
 ```bash
-npm install
+npm ci
 cp .env.example .env
 npm run dev
 ```
 
-| Script                  | Purpose                                         |
-| ----------------------- | ----------------------------------------------- |
-| `npm run dev`           | Development server                              |
-| `npm run build`         | Production build                                |
-| `npm run typecheck`     | `tsc --noEmit`                                  |
-| `npm run lint`          | ESLint, including type-aware rules on auth code |
-| `npm run format`        | Prettier                                        |
-| `npm test`              | Vitest suite                                    |
-| `npm run test:coverage` | Vitest with per-file coverage thresholds        |
-| `npm run db:migrate`    | Apply schema migrations                         |
-| `npm run db:create`     | Create a fresh database                         |
+Use `npm ci`, not `npm install`. Regenerating `package-lock.json` on Windows
+or macOS drops the Linux native bindings and breaks CI and the Docker build.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+| Script                    | Purpose                                                      |
+| ------------------------- | ------------------------------------------------------------ |
+| `npm run dev`             | Development server                                           |
+| `npm run build`           | Production build                                             |
+| `npm run typecheck`       | `tsc --noEmit`                                               |
+| `npm run lint`            | ESLint, including type-aware rules on auth code              |
+| `npm run format`          | Prettier                                                     |
+| `npm run format:check`    | Prettier in check mode. CI gates on this                     |
+| `npm test`                | Vitest suite                                                 |
+| `npm run test:coverage`   | Vitest with per-file coverage thresholds                     |
+| `npm run build:knowledge` | Regenerate `lib/ai/` from the docs, changelog, checks, legal |
+| `npm run db:migrate`      | Apply schema migrations                                      |
+| `npm run db:create`       | Create a fresh database                                      |
+| `npm run db:diagnose`     | Read-only database corruption report. `db:repair` fixes      |
+| `npm run db:backup`       | Full dump. `db:restore` puts one back                        |
 
 Tests live in `tests/`, mirroring the source tree. See
 [tests/README.md](tests/README.md) for the layout and conventions.

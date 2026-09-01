@@ -3,10 +3,67 @@
 @config '../tailwind.config.mjs';
 
 /* Role badge styles - generated dynamically via ROLE_BADGE_STYLES lookup
-   object (defined in lib/config, which is outside the content globs), so
-   they must be safelisted. v4 replaces the JS `safelist` config option with
-   this `@source inline(...)` directive. */
-@source inline("bg-blue-500/10 text-blue-500 border-blue-500/20 border-blue-500/50 bg-emerald-500/10 text-emerald-400 text-emerald-500 border-emerald-500/20 border-emerald-500/30 bg-amber-500/10 text-amber-500 border-amber-500/20");
+   object (defined in lib/config/client-constants.ts, which is outside the
+   content globs in tailwind.config.mjs), so they must be safelisted. v4
+   replaces the JS `safelist` config option with this `@source inline(...)`
+   directive.
+
+   This list has to mirror ROLE_BADGE_STYLES exactly. It had drifted in both
+   directions: it still safelisted border-blue-500/50, text-emerald-400,
+   border-emerald-500/30 and the amber trio, none of which ROLE_BADGE_STYLES
+   uses any more (the amber classes are written literally in components/admin,
+   so the scanner already picks them up), while the violet (super_admin), rose
+   (security_analyst) and indigo (content_manager) triples and ops' border were
+   never listed at all. Those four appear NOWHERE inside the content globs, so
+   Tailwind emitted no rule for them and three staff role badges rendered with
+   no background, no text colour and no border. Only classes that exist solely
+   in lib/ belong here; anything written literally in app/ or components/ is
+   found by the scanner and must not be duplicated. */
+@source inline("bg-violet-500/10 text-violet-500 border-violet-500/20 bg-emerald-500/10 text-emerald-500 border-emerald-500/20 bg-rose-500/10 text-rose-500 border-rose-500/20 bg-indigo-500/10 text-indigo-500 border-indigo-500/20 bg-orange-500/10 text-orange-500 border-orange-500/20 bg-blue-500/10 text-blue-500 border-blue-500/20");
+
+/*
+   Same trap, different file. lib/ui/animations.ts composes its recipes from
+   Tailwind tokens, and active:scale-[0.98] is an arbitrary value that appears
+   NOWHERE under app/ or components/. So hovers.button and hovers.buttonOutline
+   asked for a press effect that was never compiled: every button using them
+   has been rendering with no press feedback at all. animations.ts documents
+   the constraint at the top of the file; this is the other half of it.
+*/
+@source inline("active:scale-[0.98]");
+
+/* MEASURED, and read it before adding anything to either list above or
+   acting on the warnings they reference.
+
+   Tailwind v4's automatic source detection scans the whole project from the
+   CSS file's package root, and `@config` pointing at a legacy config does not
+   switch that off: the `content` array in tailwind.config.mjs no longer
+   narrows anything. So lib/ IS scanned, and the v3-era "a class that only
+   appears in lib/ generates no CSS" trap no longer exists. Proven with a
+   sentinel: a unique class written only into lib/ui/animations.ts, on no
+   safelist, compiles.
+
+   The two lists above are therefore NOT equivalent, and the difference is the
+   point. Compiling this file with every `@source inline(...)` stripped:
+
+     bg-violet-500 / text-rose-500 / border-indigo-500   EMITTED
+     scale-[0.98]                                        MISSING
+
+   The role-badge list is inert. Those utilities are extracted from
+   lib/config/client-constants.ts on their own, so the badges were never
+   rendering colourless and that entry fixes nothing. Kept only because it
+   documents which strings are load-bearing without a literal call site.
+
+   The `active:scale-[0.98]` entry is NOT inert. An arbitrary value carrying
+   brackets and a decimal point is not reliably extracted from a TypeScript
+   string literal even in a scanned file, so that one really is doing work.
+   Do not delete it on the assumption that the list above generalises.
+
+   The practical rule: "the class was not generated" is usually the WRONG
+   diagnosis for a control that looks unstyled, so check the compiled CSS
+   before reaching for a safelist. `active:scale-[0.98]` is also the worked
+   example of the other failure mode: it compiles, and no button presses,
+   because `hovers.button` and `hovers.buttonOutline` have zero consumers
+   anywhere in app/ or components/. A class can be present and still unused. */
 
 /*
   The default border color has changed to `currentcolor` in Tailwind CSS v4,
@@ -43,7 +100,27 @@
   }
 }
 
-/* Animation utilities */
+/* Animation utilities.
+
+   Read this before touching the four below. `animate-in`, `animate-out` and
+   `fade-in` are ALSO defined by tailwindcss-animate (loaded as a plugin in
+   tailwind.config.mjs), which is what every real call site in the product is
+   actually written against: `animate-in fade-in-0 zoom-in-95` in tooltip.tsx,
+   `animate-in slide-in-from-top-1` in the audit log, `toggles.markIn` in
+   lib/ui/animations.ts. Those modifiers only set the --tw-enter-* custom
+   properties that the plugin's `enter` keyframes read, so they mean nothing to
+   the shorthand rules here.
+
+   Both definitions are single-class selectors in the same layer, so the winner
+   is decided purely by source order. In the current build the plugin's copy is
+   emitted last and wins, which is why those call sites behave correctly today.
+   That is a cascade accident, not a design: these four are effectively dead,
+   and the only thing they still contribute is the `ease-out` timing function
+   that the plugin does not set. Removing them is the right cleanup, but it is
+   a visible easing change across every popover, tooltip, select and sheet at
+   once, so it belongs in its own change rather than riding along with an
+   unrelated one. The @keyframes further down are NOT dead: app/unsubscribe
+   references `fade-in` by name from an inline style. */
 
 @utility animate-in {
   animation: animate-in 0.2s ease-out;
@@ -69,6 +146,26 @@
   /* Smooth scroll behavior for anchor links */
   html {
     scroll-behavior: smooth;
+    /* a11y (SC 2.4.11 Focus Not Obscured). The app header is `fixed`, 4rem
+       tall, shifted down by whichever banners are showing (see
+       components/scanner/header.tsx), and the cookie notice is fixed to the
+       bottom. Sequential focus navigation scrolls the focused element to the
+       very edge of the scrollport, so tabbing UP a page parked each control
+       underneath the header and tabbing DOWN parked the last few underneath
+       the cookie bar: focus was there, and invisible.
+
+       scroll-padding on the scrolling element is the property the browser
+       already consults for that scroll, so one declaration covers every page
+       rather than needing scroll-mt-* on each anchor. Six components carry
+       their own scroll-margin today (docs and legal only), and those still
+       win where they are set; this is the floor for everywhere else. The
+       calc mirrors the header's own top offset exactly so the two cannot
+       drift. --vr-cookie-h is published by components/shared/cookie-notice
+       .tsx and is 0px once the notice is dismissed. */
+    scroll-padding-top: calc(
+      4rem + var(--vr-banner-h, 0px) + var(--vr-imp-banner-h, 0px)
+    );
+    scroll-padding-bottom: calc(var(--vr-cookie-h, 0px) + 1rem);
     /* iOS Safari rounds subpixel widths differently than Chrome/Android, so a
      handful of grid/flex layouts (dashboard stat strip, recent scans list)
      end up a fraction of a pixel wider than the viewport there and nowhere
@@ -183,17 +280,89 @@
        --primary-foreground below was already a near-black for the
        same reason. */
     --primary-foreground: 220 20% 10%;
+    /* a11y: --primary serves two jobs. As a BUTTON FILL it works: this
+       theme pairs it with a near-black --primary-foreground at 7.06:1, which
+       is a deliberate light-blue-button design. As TEXT on the page
+       (text-primary, ~478 usages including the links inside the
+       accessibility statement itself) the same value measures 1.99:1.
+       Darkening --primary would fix the text and break the button design, so
+       text gets its own token, applied by the .text-primary override further
+       down. Same hue and saturation, lightness lowered to clear AA: 4.56:1 on
+       --background, 5.15:1 on --card. Dark mode needs no such split, where
+       --primary already measures 7.65:1 as text. */
+    --primary-text: 213 94% 42%;
     --secondary: 213 20% 87%;
     --secondary-foreground: 220 15% 15%;
     --muted: 213 18% 85%;
-    --muted-foreground: 220 10% 42%;
+    /* a11y: 42% measured 4.44:1 on --background, just under AA, and 41%
+       cleared the page background (4.61:1) but not the surfaces this token is
+       most often painted on: bg-muted and text-muted-foreground appear on the
+       same element 119 times across app/ and components/, and there it
+       measured 4.08:1, 4.29:1 on --secondary and 3.67:1 on --accent. Secondary
+       text is most of the copy in this UI (table meta, timestamps, hint lines,
+       empty states, every input placeholder), so it has to clear AA on the
+       surfaces it actually sits on, not just the page. 35% measures 5.84:1 on
+       --background, 5.17:1 on --muted and 4.65:1 on --accent, and stays 2.4x
+       lighter than --foreground so the hierarchy still reads. */
+    --muted-foreground: 220 12% 35%;
     --accent: 213 18% 81%;
     --accent-foreground: 220 15% 12%;
-    --destructive: 0 84% 60%;
+    /* a11y: same reasoning as --severity-* and --success/--warning below. At
+       60% lightness this was a dark-theme red reused on a light theme: white
+       on it measured 3.78:1 on every destructive Button (delete account,
+       delete scan, remove member, cancel subscription), and as text on the
+       page it measured 2.98:1. Hue preserved, lightness lowered: white now
+       sits at 5.96:1 on the fill and the same value reads 4.70:1 as text. */
+    --destructive: 0 74% 44%;
     --destructive-foreground: 0 0% 100%;
+    /* The two edge tokens divide the work by WHAT the edge is, not by how
+       strong it looks, and the split is the whole reason both exist.
+
+       --border is a CONTAINER edge: a card, a modal panel, a section rule, a
+       table divider. SC 1.4.11 does not reach it. The criterion asks for 3:1
+       on "visual information required to identify user interface components
+       and their states", and a panel is not a component you operate; it is
+       already separated by its own surface colour, a shadow, or a scrim.
+       Holding it to 3:1 puts a hard rule around every container in the
+       product for no conformance gain, which is exactly what happened once
+       and had to be undone. Measured at 1.36:1 on --background and 1.54:1 on
+       --card, and that is correct for the job.
+
+       --input is a CONTROL edge: the thing that tells you a text field, a
+       select, a checkbox or an outline button is there and where it ends.
+       That IS 1.4.11, so it carries a real floor. */
     --border: 213 16% 78%;
-    --input: 213 16% 78%;
-    --ring: 213 94% 68%;
+    /* a11y (SC 1.4.11): --input used to be byte-identical to --border, so at
+       78% lightness every input, textarea, select and outline button on this
+       theme read as a faint suggestion of a box: about 1.5:1 against the card
+       behind it.
+
+       55% was the first attempt and it did not actually clear the bar either.
+       It was measured against --card alone (3.13:1) and passed, but controls
+       do not only sit on cards: on the page itself it measured 2.77:1, on
+       bg-muted 2.45:1, on bg-secondary 2.57:1. The value has to clear 3:1 on
+       every RESTING surface a bordered control is placed on in this codebase,
+       and the binding one is the darkest of them, bg-muted.
+
+       48% measures 3.54:1 on --background, 4.00:1 on --card and --popover,
+       3.13:1 on --muted, 3.29:1 on --secondary, 3.73:1 on --surface-2 and
+       3.38:1 on --surface-3. Hue and saturation unchanged.
+
+       Residual, measured and deliberate: an outline button hovered to
+       bg-accent puts this border at 2.82:1 against the fill INSIDE it. The
+       outer edge is what defines the button against the page and that stays
+       at 3.54:1, and 1.4.11 measures a boundary against its adjacent colours,
+       so the control is still identified. Clearing 3:1 on --accent as well
+       needs 46% here and 53% in the dark block, which is a visibly heavier
+       line on every secondary button in the product for a hover-only state. */
+    --input: 213 16% 48%;
+    /* a11y: --ring used to be byte-identical to --primary, and the only focus
+       style in the app is an INSET ring, so keyboard focus on any primary
+       button was a 1.00:1 ring drawn on its own fill: invisible on Sign in,
+       Sign up and Start scan. A darker blue keeps the brand hue while
+       clearing 3:1 against both the page (5.97:1) and the primary fill
+       (3.00:1), so the indicator is visible wherever it lands. */
+    --ring: 213 90% 35%;
     --chart-1: 190 90% 42%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
@@ -201,22 +370,74 @@
     --chart-5: 340 75% 55%;
     --radius: 0.5rem;
 
-    --severity-critical: 0 84% 60%;
-    --severity-high: 25 95% 53%;
-    --severity-medium: 45 93% 47%;
-    --severity-low: 210 90% 56%;
-    --severity-info: 220 10% 46%;
+    /* a11y: light and dark used to share one value per severity, tuned for
+       the dark background. Used as TEXT on this theme's light surfaces they
+       measured 2.98:1 (critical), 2.19 (high), 1.56 (medium) and 2.62 (low)
+       against --background, all far below WCAG AA's 4.5:1, on a product whose
+       entire output is severity-coded and which publishes an AA conformance
+       claim at /legal/accessibility.
+
+       Hue and saturation are unchanged, so the palette still reads as the
+       same colour system; only lightness drops, which is what a light theme
+       normally does rather than reusing dark-theme values. Every value below
+       clears 4.5:1 on both --background and --card, and the solid badge fills
+       carry white text at 5.8:1 or better. Dark mode keeps its own values
+       further down.
+
+       SECOND PASS, and the reason critical and high are darker than the AA
+       fix left them. That fix darkened each severity to just clear 4.5:1 and
+       stopped, which landed every one of them on the SAME luminance: measured
+       against --background they came out 4.59 (critical), 4.55 (high), 4.56
+       (medium), 4.69 (low) and 4.62 (info), and the contrast of each severity
+       against the NEXT one was 1.003:1 to 1.028:1. A severity scale whose
+       steps differ by 1.003:1 in value is carrying its entire meaning in hue,
+       at low chroma, in the 25deg band where red-green colour vision
+       deficiency has the least to work with. Printed, screenshotted in
+       greyscale, or read by a deuteranope, light-mode critical, high and
+       medium were one colour.
+
+       Severity is an ORDERED scale, so it has to be ordered along a channel
+       everyone can see, and on a light theme that channel is darkness: more
+       severe reads as darker ink. Critical and high are pushed well below the
+       AA ceiling rather than resting on it, which restores a visible ramp
+       (critical/high now 1.118:1, high/medium 1.322:1) and raises their text
+       contrast to 6.74:1 and 6.03:1 as a side effect. Medium, low and info are
+       unchanged: they are already at the ceiling and are the quiet end of the
+       scale, which is where they belong.
+
+       What this still does NOT fix is that 45deg at 26% lightness reads as
+       olive rather than as caution amber. That is not tunable: on a light
+       ground no amber clears 4.5:1 as text or even 3:1 as a fill. The fix is
+       to split the token the way --primary / --primary-text already is in this
+       file, so the pale TINT behind a badge comes from the true amber while
+       the text on it comes from this darkened value. That needs the `text:`
+       entries in SEVERITY_TONE (components/scanner/severity-badge.tsx) to move
+       to the new token, so it is a coordinated change, not a colour edit. */
+    --severity-critical: 0 84% 33%;
+    --severity-high: 25 95% 28%;
+    --severity-medium: 45 93% 26%;
+    --severity-low: 210 90% 39%;
+    --severity-info: 220 10% 41%;
 
     /* Surface layers */
     --surface-1: 213 22% 95%;
     --surface-2: 213 20% 92%;
     --surface-3: 213 18% 88%;
 
-    /* Success/Warning */
-    --success: 142 76% 36%;
+    /* Success/Warning. Same reasoning as the severity tokens above: as text
+       on this theme these measured 1.81:1 (success) and 1.68:1 (warning).
+       Hue and saturation preserved, lightness lowered to clear AA.
+
+       27% is not kept for --success because it landed on 4.51:1 against
+       --background, which is AA with nothing to spare: any future nudge to a
+       surface token silently drops it under. 24% measures 5.38:1 on
+       --background, 6.08:1 on --card and 4.76:1 on --muted, so it now clears
+       the surface --warning and the severity tokens beside it do not.
+       --warning stays at 28% (4.74:1) and is the next one to watch. */
+    --success: 142 71% 24%;
     --success-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 0 0% 9%;
+    --warning: 38 92% 28%;
+    --warning-foreground: 0 0% 100%;
   }
 
   .dark {
@@ -229,16 +450,43 @@
     --popover-foreground: 210 20% 95%;
     --primary: 213 94% 68%;
     --primary-foreground: 224 20% 6%;
+    /* Dark mode needs no light/dark split for text: --primary already
+       measures 7.65:1 against this background. Defined so the .text-primary
+       override below resolves in both themes. */
+    --primary-text: 213 94% 68%;
     --secondary: 220 10% 14%;
     --secondary-foreground: 220 10% 92%;
     --muted: 220 10% 16%;
-    --muted-foreground: 220 8% 55%;
+    /* a11y: 55% cleared the page background (5.51:1) but not the raised
+       surfaces: 4.25:1 on --muted, 4.32:1 on --surface-3 and 3.43:1 on
+       --accent, all at or under AA. 65% clears every surface (5.90:1 on
+       --muted, 4.76:1 on --accent) and is still 2.25x darker than
+       --foreground. Same change as the light block above. */
+    --muted-foreground: 220 8% 65%;
     --accent: 220 8% 22%;
     --accent-foreground: 220 10% 92%;
     --destructive: 0 91% 71%;
-    --destructive-foreground: 0 0% 100%;
+    /* a11y: white on this fill measured 2.75:1, below AA for text and below
+       3:1 even as a UI component, on the one control that confirms deleting an
+       account or cancelling a subscription. The fill itself is right here (it
+       reads 7.03:1 as text on this background), so the foreground flips to
+       near-black at 6.53:1, the same treatment --warning below already uses. */
+    --destructive-foreground: 0 0% 9%;
+    /* Container edge. Same job as the light theme's --border: 1.28:1 on
+       --background, 1.21:1 on --card, and no 1.4.11 floor applies to it. */
     --border: 224 15% 16%;
-    --input: 224 15% 16%;
+    /* a11y (SC 1.4.11), same reasoning as the light block. 38% was the first
+       attempt and it MISSED in both directions: 2.87:1 on --background and
+       2.71:1 on --card, so the visual cost of a lighter control edge was paid
+       and the criterion was still not met.
+
+       48% measures 4.11:1 on --background, 3.89:1 on --card and --popover,
+       3.17:1 on --muted and 3.22:1 on --surface-3, the binding surfaces.
+       Deliberately the same lightness as the light theme's value so the two
+       themes carry the same weight of control edge rather than one reading
+       heavier than the other. The hover-on---accent residual documented in
+       the light block applies here too (2.56:1 inside, 4.11:1 outside). */
+    --input: 224 12% 48%;
     --ring: 213 94% 68%;
     --chart-1: 190 90% 50%;
     --chart-2: 160 60% 45%;
@@ -257,9 +505,10 @@
     --surface-2: 224 18% 12%;
     --surface-3: 224 15% 16%;
 
-    /* Success/Warning */
+    /* Success/Warning. White on this green measured 2.32:1; near-black gives
+       7.72:1, which is what --warning beside it already does. */
     --success: 142 70% 45%;
-    --success-foreground: 0 0% 100%;
+    --success-foreground: 0 0% 9%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 9%;
   }
@@ -371,6 +620,80 @@
     @apply outline-hidden ring-2 ring-ring ring-inset;
   }
 
+  /* a11y: an INSET ring is drawn on the element's own fill, so on a
+     primary-coloured button it was a ring in --ring over a background in
+     --primary. Those two variables held byte-identical values, making
+     keyboard focus a 1.00:1 ring on Sign in, Sign up and Start scan: the
+     highest-traffic controls in the product, and a direct contradiction of
+     the conformance claim at /legal/accessibility.
+
+     Rather than swap the whole app to an offset ring (which the comment
+     above explains was deliberately abandoned, because an offset ring bleeds
+     past the clipped edge of tightly-padded containers), re-point --ring for
+     these elements only. --primary-foreground is by definition the colour
+     already chosen to be legible on --primary, in both themes, so the ring
+     inherits that guarantee instead of needing its own tuned value.
+
+     The selector list was `.bg-primary`, `[data-variant="default"]` and
+     `button[type="submit"].bg-primary`. The second matches nothing (no
+     component in the repo sets data-variant, verified repo-wide) and the
+     third is a strict subset of the first, so both were noise; `.bg-primary`
+     alone matches every Button rendering the default variant.
+
+     --destructive gets the same treatment for the same measured reason: the
+     inset ring in --ring landed on the destructive fill at 1.27:1 in light
+     mode and 1.09:1 in dark, so keyboard focus was invisible on Delete
+     account, Cancel subscription and every other confirm-destructive button.
+     --destructive-foreground measures 5.96:1 and 6.53:1 on that fill. */
+  .bg-primary:focus-visible {
+    --ring: var(--primary-foreground);
+  }
+  .bg-destructive:focus-visible {
+    --ring: var(--destructive-foreground);
+  }
+
+  /* a11y (SC 2.4.7). Same inset-ring-on-its-own-fill problem, third shape.
+     A switch has no fill of its own to spare: the ring is drawn inside a
+     44x24 pill whose entire surface is either --input (off) or the brand
+     blue (on). Measured, --ring landed at 1.69:1 and 1.86:1 on the off track
+     and 3.00:1 / 1.00:1 on the on track, so keyboard focus on the
+     notification, 2FA and privacy toggles was somewhere between faint and
+     absent. --primary-foreground is a near-black in both themes, which is
+     the one value that reads on all four of those fills (3.08:1 at worst,
+     7.65:1 at best).
+
+     [data-state] narrows this to Radix switches, and that qualifier is
+     load-bearing: components/shared/theme-toggle.tsx is a hand-rolled
+     role="switch" whose track is --muted, where the DEFAULT --ring already
+     measures 5.28:1 and 5.90:1 and a near-black ring would drop to about
+     1.5:1 in dark mode. Only the controls whose track is --input or the
+     brand blue need the remap.
+
+     A checked checkbox needs the same rescue and does NOT get it from the
+     .bg-primary rule above, which is the subtle part: the class token Radix
+     carries is `data-[state=checked]:bg-primary`, so the compiled selector is
+     `.data-\[state\=checked\]\:bg-primary`, and `.bg-primary` never matches
+     it. Measured, a focused checked checkbox drew --ring over --primary at
+     1.00:1 in dark mode. The attribute selector matches what Radix actually
+     stamps on the element rather than what Tailwind named the class. It is
+     deliberately scoped to [role="checkbox"] and not to [data-state=checked]
+     alone: menu checkbox-items and toggle-group items also carry that
+     attribute and sit on --accent, where a near-black ring measures 1.9:1. */
+  [role="switch"][data-state]:focus-visible,
+  [role="checkbox"][data-state="checked"]:focus-visible {
+    --ring: var(--primary-foreground);
+  }
+
+  /* a11y: route the text utility at --primary-text instead of --primary.
+     One rule fixes every text-primary call site (~478 of them) without
+     touching bg-primary, border-primary or the ring, so button fills and the
+     brand's look are unchanged while text clears AA in light mode. In dark
+     mode --primary-text is the same value --primary already had, so this is
+     a no-op there. */
+  .text-primary {
+    color: hsl(var(--primary-text));
+  }
+
   /* Selection - neutral gray for consistent highlight */
   ::selection {
     background-color: hsl(220 10% 50% / 0.3);
@@ -479,41 +802,17 @@
   box-shadow: 0 0 10px -3px hsl(var(--primary) / 0.2);
 }
 
-/**
- * Universal hover surface utilities
- * A standardized neutral gray hover that ensures text stays legible.
- * Use .hover-surface on any interactive element for consistent hover feedback.
- */
-.hover-surface {
-  transition: background-color 0.15s ease;
-}
-.hover-surface:hover,
-.hover-surface:focus-visible,
-.hover-surface[data-highlighted] {
-  background-color: hsl(220 10% 88% / 0.95) !important;
-  color: hsl(220 15% 12%) !important;
-}
-.dark .hover-surface:hover,
-.dark .hover-surface:focus-visible,
-.dark .hover-surface[data-highlighted] {
-  background-color: hsl(220 8% 24% / 0.95) !important;
-  color: hsl(220 10% 92%) !important;
-}
-
-/* Alternative: a subtler hover that doesn't override text color */
-.hover-surface-subtle {
-  transition: background-color 0.15s ease;
-}
-.hover-surface-subtle:hover,
-.hover-surface-subtle:focus-visible,
-.hover-surface-subtle[data-highlighted] {
-  background-color: hsl(220 10% 85% / 0.5);
-}
-.dark .hover-surface-subtle:hover,
-.dark .hover-surface-subtle:focus-visible,
-.dark .hover-surface-subtle[data-highlighted] {
-  background-color: hsl(220 8% 28% / 0.5);
-}
+/* .hover-surface, .hover-surface-subtle, .scanner-selected,
+   .scanner-selected-hover and .scanner-hover used to live here: ninety-five
+   lines of hover and selection rules built from thirteen literal HSL colours
+   and a pile of !important, hand-maintained in parallel with the theme
+   tokens they duplicated. A repo-wide search for all five class names
+   (app/, components/, lib/, extension/) returns nothing but this file, so
+   not one of them had a consumer, and every surface they were written for
+   now paints from bg-muted / bg-accent instead. Deleted rather than
+   re-tokenised: keeping a second, literal-coloured hover vocabulary around
+   is how the drift started. The Radix menu-item block below is the live
+   part of this section and stays. */
 
 /**
  * Global Radix UI menu item hover styling
@@ -533,43 +832,4 @@
 .dark [data-radix-collection-item][data-highlighted] {
   background-color: hsl(220 8% 24% / 0.95);
   color: hsl(220 10% 92%);
-}
-
-/**
- * Scanner selection states
- * Used for protocol picker, scanner category toggles, and any
- * interactive scanner element that has a selected/active state.
- * Uses neutral gray for consistent hover experience.
- * Uses !important to override shadcn's focus:bg-accent styles.
- */
-.scanner-selected,
-.scanner-selected:focus,
-.scanner-selected[data-highlighted] {
-  background-color: hsl(220 10% 75% / 0.55) !important;
-}
-.dark .scanner-selected,
-.dark .scanner-selected:focus,
-.dark .scanner-selected[data-highlighted] {
-  background-color: hsl(220 8% 30% / 0.55) !important;
-}
-.scanner-selected-hover:hover,
-.scanner-selected-hover:focus,
-.scanner-selected-hover[data-highlighted] {
-  background-color: hsl(220 10% 70% / 0.7) !important;
-}
-.dark .scanner-selected-hover:hover,
-.dark .scanner-selected-hover:focus,
-.dark .scanner-selected-hover[data-highlighted] {
-  background-color: hsl(220 8% 35% / 0.65) !important;
-}
-/* Unselected items: subtle gray hover */
-.scanner-hover:hover,
-.scanner-hover:focus,
-.scanner-hover[data-highlighted] {
-  background-color: hsl(220 10% 50% / 0.12) !important;
-}
-.dark .scanner-hover:hover,
-.dark .scanner-hover:focus,
-.dark .scanner-hover[data-highlighted] {
-  background-color: hsl(220 8% 70% / 0.1) !important;
 }

@@ -1,0 +1,14 @@
+[
+  {
+    "icon": "Bug",
+    "label": "Correct Iframe Origin Matching On IPv6 Targets",
+    "desc": "The unsandboxed-iframe check decided whether an embedded frame was first-party or third-party by pattern-matching the site's address, which fell apart when a site was scanned by its raw IPv6 address. A self-hosted or internal site's own frames were reported as untrusted third-party embeds, and some addresses made the check fail outright and quietly report nothing at all. Frame origins are now compared directly, so the finding only appears for genuinely external embeds. The check also now reads the real src attribute only, so a lazy-loading placeholder attribute can no longer be mistaken for the frame the browser actually loads.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Search",
+    "label": "Debug Toolbar And Broken Redirect Checks No Longer Stop At The First Match",
+    "desc": "Two checks looked at only the first thing they found on a page and then judged the whole page on it. If a page showed a Django Debug Toolbar or Laravel Debugbar snippet inside a code sample near the top, the scanner treated that as documentation and stopped, missing the live debugger actually loaded further down. The broken meta-refresh check had the same shape: an ordinary auto-reload tag at the top hid a genuinely broken redirect below it. Both now examine every occurrence on the page, so a harmless example no longer conceals a real problem.",
+    "category": "fixed"
+  }
+]

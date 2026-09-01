@@ -314,7 +314,17 @@ describe("createUser", () => {
       "first@example.com",
       expect.any(String),
       "First User",
+      // Fourth param drives email_verified_at. Email is not configured in the
+      // test environment, and on an instance that cannot send mail a
+      // verification requirement is an inescapable lockout rather than a
+      // stricter posture (AUDIT-014#host-04), so the account is created
+      // already verified. With SMTP configured this is false and verification
+      // is still required.
+      true,
     ]);
+    expect(insertCall!.sql).toContain(
+      "CASE WHEN $4::boolean THEN NOW() ELSE NULL END",
+    );
   }, 20000);
 
   it("returns the role reported back by the database (server-decided, not client-decided)", async () => {
@@ -388,14 +398,14 @@ describe("createOAuthUser", () => {
 describe("createSession", () => {
   it("records the IP and user agent for later comparison", async () => {
     cookieStore.set.mockClear();
-    const id = await createSession(7, "203.0.113.5", "test-ua");
-    expect(typeof id).toBe("string");
+    const token = await createSession(7, "203.0.113.5", "test-ua");
+    expect(typeof token).toBe("string");
 
     const insertCall = queries.find((q) =>
       q.sql.startsWith("INSERT INTO sessions"),
     );
     expect(insertCall?.params).toEqual([
-      id,
+      hashSessionId(token),
       7,
       expect.any(Date),
       "203.0.113.5",
@@ -403,9 +413,37 @@ describe("createSession", () => {
     ]);
     expect(cookieStore.set).toHaveBeenCalledWith(
       AUTH_SESSION_COOKIE_NAME,
-      id,
+      token,
       expect.objectContaining({ httpOnly: true }),
     );
+  });
+
+  // AUDIT-012#auth-07: sessions were the only credential class in this
+  // codebase stored verbatim, so any read of the table (a backup, a replica,
+  // a blind SQLi) handed out ready-to-paste cookies. The cookie and the
+  // primary key must never be the same string again.
+  it("never writes the cookie's bearer token into the database", async () => {
+    queries.length = 0;
+    const token = await createSession(7, "203.0.113.5", "test-ua");
+    const insertCall = queries.find((q) =>
+      q.sql.startsWith("INSERT INTO sessions"),
+    );
+    expect(insertCall?.params[0]).not.toBe(token);
+    expect(insertCall?.params[0]).toBe(hashSessionId(token));
+    // sha256 hex is exactly the width of the existing VARCHAR(64) column.
+    expect(String(insertCall?.params[0])).toHaveLength(64);
+  });
+
+  it("looks a session up by the digest of the cookie, not the cookie itself", async () => {
+    const token = "a".repeat(64);
+    cookieStore.get.mockReturnValue({
+      name: AUTH_SESSION_COOKIE_NAME,
+      value: token,
+    });
+    queries.length = 0;
+    await getSession();
+    const selectCall = queries.find((q) => q.sql.includes("FROM sessions s"));
+    expect(selectCall?.params).toEqual([hashSessionId(token)]);
   });
 
   /**

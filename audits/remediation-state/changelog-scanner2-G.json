@@ -1,0 +1,44 @@
+[
+  {
+    "icon": "Zap",
+    "label": "Crawl Scans Stopped Repeating Themselves",
+    "desc": "A crawl used to re-run every host-level check on every single page it visited. Scanning 25 pages of one site meant more than a thousand duplicate DNS lookups, 25 identical TLS handshakes, and the same 23 sensitive file paths requested 25 times, all to produce copies of findings that were then thrown away as duplicates. Those checks now run once for the whole crawl, and pages are scanned a few at a time instead of strictly one after another, so a deep crawl finishes far sooner and is much less likely to look like an attack to the site being scanned.",
+    "category": "performance"
+  },
+  {
+    "icon": "ShieldCheck",
+    "label": "Wider Internal IPv6 Address Blocking",
+    "desc": "The scanner refuses to connect to internal and private addresses. Three of the IPv6 rules were narrower than intended and only covered the first slice of the range they were meant to block, so some private and link-local addresses used by container and overlay networks were not caught. The full ranges are now blocked, and there are tests pinning each boundary.",
+    "category": "security"
+  },
+  {
+    "icon": "Shield",
+    "label": "Address Checks Now Verify The Protocol Too",
+    "desc": "The safety check that every part of the scanner uses before making a request looked at the address but never at the protocol, so a redirect could hand it something that was not a web address at all. Web addresses are now the only thing it will accept, and every redirect step is re-checked against the same rule as the original URL rather than only the first one.",
+    "category": "security"
+  },
+  {
+    "icon": "Network",
+    "label": "Subdomain Discovery Sources Are Guarded",
+    "desc": "Subdomain discovery pulls from nine free public services. Those requests used to follow redirects blindly and read whatever came back with no size limit, so an outage or hijack at one of those services could have redirected the scanner somewhere internal, or streamed a huge response into memory. Every one of those requests now re-checks each redirect against the same safety rules the rest of the scanner uses, and responses are capped.",
+    "category": "security"
+  },
+  {
+    "icon": "Eye",
+    "label": "Screenshots Refuse Redirected Pages",
+    "desc": "The optional page screenshot only checked the address you asked for. If the page then redirected the browser somewhere the scanner would never have been allowed to visit, the screenshot was still taken and saved. The capture is now discarded when the page navigates off the target to an address that fails the same safety check.",
+    "category": "security"
+  },
+  {
+    "icon": "Gauge",
+    "label": "Faster Blocklist Checks On Bulk And Crawl Scans",
+    "desc": "Every scan asked the database twice whether the target was on the admin blocklist, and a bulk or crawl request repeated both questions for every single URL. A 250-page crawl of one site made 500 round trips to answer the same question. The answer is now remembered for a short window per host, so repeat checks are free while a newly added rule still takes effect within seconds.",
+    "category": "performance"
+  },
+  {
+    "icon": "Settings",
+    "label": "The Scheduled Scans Switch Now Actually Stops Them",
+    "desc": "Turning scheduled scans off in the admin settings only blocked new schedules from being created. Every schedule that already existed kept firing on its normal cadence, so an operator turning the feature off to shed load or to stop hitting a target saw no change. The background worker now checks the setting too and claims nothing while the feature is off.",
+    "category": "fixed"
+  }
+]

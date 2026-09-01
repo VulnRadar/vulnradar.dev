@@ -12,9 +12,14 @@ vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
 }));
 
-vi.mock("@/lib/api/request-utils", () => ({
-  getClientIp: vi.fn(async () => "127.0.0.1"),
+// rateLimitIpKey is left REAL (importOriginal): the bucket key it produces is
+// what the assertions below check, so mocking it away would hide a regression
+// that reverted IPv6 buckets to the raw address.
+vi.mock("@/lib/api/request-utils", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api/request-utils")>()),
+  getClientIp: vi.fn(async () => mockClientIp),
 }));
+let mockClientIp = "127.0.0.1";
 
 const mockCheckRateLimit = vi.fn();
 vi.mock("@/lib/rate-limiting/rate-limit", async (importOriginal) => {
@@ -67,6 +72,23 @@ describe("GET /api/v3/public-scans — rate limiting", () => {
       expect.objectContaining({ key: "public-scans:127.0.0.1" }),
     );
   });
+
+  it("buckets every address in one IPv6 /64 together, not one bucket per address", async () => {
+    // Without this, anyone with a routed /64 gets 2^64 fresh buckets, which is
+    // no rate limit at all on an unauthenticated route.
+    mockQuery.mockResolvedValue({ rows: [] });
+    mockClientIp = "2001:db8:abcd:1234::1";
+    await GET(getRequest());
+    const firstKey = mockCheckRateLimit.mock.calls[0][0].key;
+
+    mockClientIp = "2001:db8:abcd:1234:dead:beef:cafe:1";
+    await GET(getRequest());
+    const secondKey = mockCheckRateLimit.mock.calls[1][0].key;
+
+    expect(secondKey).toBe(firstKey);
+    expect(firstKey).not.toContain("2001:db8:abcd:1234::1");
+    mockClientIp = "127.0.0.1";
+  });
 });
 
 describe("GET /api/v3/public-scans", () => {
@@ -87,6 +109,26 @@ describe("GET /api/v3/public-scans", () => {
     expect(rowsSql).toContain("JOIN users u ON sh.user_id = u.id");
     expect(rowsSql).toContain("ORDER BY sh.scanned_at DESC");
     expect(rowsSql).toContain("FROM scan_tags st WHERE st.scan_id = sh.id");
+  });
+
+  it("projects only the four fields the verdict needs instead of the whole findings JSONB", async () => {
+    // The stored findings array carries description, explanation, fixSteps and
+    // codeExamples per finding. Selecting it for a page of 100 rows detoasted
+    // tens of MB on an unauthenticated route to produce 100 verdict strings.
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: "0" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await GET(getRequest());
+
+    const [rowsSql] = mockQuery.mock.calls[1];
+    // The raw column is gone from the top-level projection list (it survives
+    // only inside the jsonb_array_elements subquery below).
+    expect(rowsSql).not.toContain("sh.summary, sh.findings,");
+    expect(rowsSql).toContain("jsonb_array_elements");
+    expect(rowsSql).toContain("'title', e->>'title'");
+    expect(rowsSql).toContain("'severity', e->>'severity'");
+    expect(rowsSql).toContain("'aiVerdict', e->'aiVerdict'");
+    expect(rowsSql).toContain("'aiConfidence', e->'aiConfidence'");
   });
 
   it("does not require authentication", async () => {

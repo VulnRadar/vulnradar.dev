@@ -218,6 +218,52 @@ describe("POST /api/v3/auth/login", () => {
     expect(cookieState.get(AUTH_SESSION_COOKIE_NAME)).toBeTruthy();
   });
 
+  it("forgives the account's failed-login counter once the password is proved", async () => {
+    userRow = baseUser();
+    userInfoRow = baseUserInfo({ totp_enabled: false });
+
+    await POST(
+      postLogin({ email: "user@example.com", password: REAL_PASSWORD }),
+    );
+
+    // resetRateLimit issues an unconditional single-parameter DELETE; the
+    // housekeeping delete inside checkRateLimit takes two (key + cutoff).
+    const resets = queries.filter(
+      (q) =>
+        q.sql.startsWith("DELETE FROM rate_limits WHERE key = $1") &&
+        q.params.length === 1,
+    );
+    expect(resets.map((q) => q.params[0])).toContain("login-fail:1");
+    // The per-IP bucket is deliberately NOT cleared: it throttles the source
+    // address, so a valid login must not reset one address's own quota.
+    expect(resets.map((q) => q.params[0])).not.toContain("login:unknown");
+  });
+
+  it("gives the per-account lockout its own, larger window than the per-IP gate", async () => {
+    userRow = baseUser();
+    userInfoRow = baseUserInfo({ totp_enabled: false });
+
+    await POST(
+      postLogin({ email: "user@example.com", password: REAL_PASSWORD }),
+    );
+
+    // Bucket boundaries are quantized to the window, so the window each gate
+    // uses is readable straight off the peek/upsert parameters. Sharing one
+    // bucket size was the bug: an attacker IP's whole per-IP allowance was
+    // exactly enough to fill the account bucket and lock the owner out.
+    const accountPeek = queries.find(
+      (q) =>
+        q.sql.startsWith('SELECT "count" FROM rate_limits') &&
+        q.params[0] === "login-fail:1",
+    );
+    expect(accountPeek).toBeDefined();
+    const accountBucket = (accountPeek!.params[1] as Date).getTime();
+    const FIFTEEN_MIN = 15 * 60 * 1000;
+    // The per-IP gate uses the 15-minute login window; the account gate uses
+    // four of them, so its boundary lands on an hour.
+    expect(accountBucket % (4 * FIFTEEN_MIN)).toBe(0);
+  });
+
   it("fails with the wrong password without revealing whether the account exists", async () => {
     userRow = baseUser();
 

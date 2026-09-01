@@ -5,13 +5,39 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { LoginForm, Login2FAForm } from "@/components/auth";
 import { AuthSplitLayout } from "@/components/auth/auth-split-layout";
 import { AuthHeading, AuthSteps } from "@/components/auth/auth-shell";
-import { APP_NAME, ROUTES } from "@/lib/config/constants";
+import { Skeleton } from "@/components/ui/skeleton";
+import { APP_NAME, ROUTES } from "@/lib/config/client-constants";
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-background" />}>
+    <Suspense fallback={<AuthFormSkeleton />}>
       <LoginPageContent />
     </Suspense>
+  );
+}
+
+/**
+ * The fallback is what a phone paints first and what a crawler receives for
+ * the indexable /login, because everything below it depends on
+ * useSearchParams. It used to be one empty full-height div, so first paint was
+ * a blank page. Rendering the real shell means the wordmark, the pitch rail
+ * and the form's own frame are all there before hydration, and only the
+ * fields themselves swap in.
+ */
+function AuthFormSkeleton() {
+  return (
+    <AuthSplitLayout>
+      <div className="mb-6">
+        <Skeleton className="h-8 w-40" />
+        <Skeleton className="mt-3 h-4 w-full max-w-xs" />
+      </div>
+      <div className="space-y-4">
+        <Skeleton className="h-11 w-full" />
+        <Skeleton className="h-11 w-full" />
+        <Skeleton className="h-11 w-full" />
+        <Skeleton className="h-4 w-32" />
+      </div>
+    </AuthSplitLayout>
   );
 }
 
@@ -53,7 +79,18 @@ function LoginPageContent() {
       return "That Discord login took too long and expired. Start it again.";
     if (authError === "invalid_token")
       return "That link is missing its token, so there is nothing to verify. Sign in and request a new verification email.";
-    if (authError === "discord_token_failed" || authError === "discord_failed")
+    if (authError === "discord_not_configured")
+      return "Discord sign-in is not set up on this instance yet.";
+    if (
+      authError === "discord_invalid_state" ||
+      authError === "discord_invalid"
+    )
+      return "That Discord login could not be verified. Start it again from this page.";
+    if (
+      authError === "discord_token_failed" ||
+      authError === "discord_failed" ||
+      authError === "discord_user_failed"
+    )
       return "Discord rejected the connection. If you run this instance, check that DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, and the OAuth2 redirect URL match the Discord developer portal.";
     // Google/GitHub/Discord sign-up-or-sign-in (app/api/v3/auth/oauth/),
     // separate from the discord_* codes above, which belong to the
@@ -85,6 +122,13 @@ function LoginPageContent() {
       authError === "oauth_invalid"
     )
       return "That sign-in did not go through. Try again.";
+    if (authError === "session_expired")
+      return "Your session expired. Sign in again to continue.";
+    // Catch-all: the OAuth callbacks emit codes this mapper does not know
+    // (discord_invalid, discord_user_failed, and anything added later). Without
+    // this, an unmapped code rendered an empty string and the user got a normal
+    // looking login form with no hint that their sign-in had failed.
+    if (authError) return "Sign-in failed. Try again, or use another method.";
     return "";
   };
 
@@ -92,7 +136,18 @@ function LoginPageContent() {
   const isOAuth2FA = oauth2FA === "pending";
   const isThirdPartyPending2FA = isDiscord2FA || isOAuth2FA;
 
-  const [needs2FA, setNeeds2FA] = useState(isThirdPartyPending2FA);
+  // Only the password flow's challenge is state. The third-party one is
+  // derived from the query string on every render, because it lives there.
+  //
+  // This used to be a single `useState(isThirdPartyPending2FA)`, a one-time
+  // initial value. "Start over" is router.push("/login"), a same-route soft
+  // navigation, so the component never remounted and that initial value was
+  // never recomputed: the query string lost discord_2fa=pending, but the
+  // challenge form stayed on screen with pendingUserId reset to null, and
+  // every subsequent submit posted a null userId. There was no way out of it
+  // short of a hard reload.
+  const [passwordNeeds2FA, setPasswordNeeds2FA] = useState(false);
+  const needs2FA = isThirdPartyPending2FA || passwordNeeds2FA;
   const [twoFactorMethod, setTwoFactorMethod] = useState<string>(
     thirdPartyMethod || "app",
   );
@@ -100,23 +155,23 @@ function LoginPageContent() {
   const [maskedEmail, setMaskedEmail] = useState("");
 
   function handleRequires2FA(userId: number, method: string, email?: string) {
-    setNeeds2FA(true);
+    setPasswordNeeds2FA(true);
     setPendingUserId(userId);
     setTwoFactorMethod(method);
     if (email) setMaskedEmail(email);
   }
 
   function handleCancel2FA() {
-    // A third-party (Discord-link or OAuth) challenge is driven by the
-    // query string, so the only way back to a clean first step is a fresh
-    // /login.
-    if (isThirdPartyPending2FA) {
-      router.push("/login");
-      return;
-    }
-    setNeeds2FA(false);
+    setPasswordNeeds2FA(false);
     setPendingUserId(null);
     setMaskedEmail("");
+    setTwoFactorMethod("app");
+    // A third-party (Discord-link or OAuth) challenge is driven by the query
+    // string, so clearing the state is not enough: the params have to go too
+    // or `needs2FA` above resolves back to true on the next render.
+    if (isThirdPartyPending2FA) {
+      router.push("/login");
+    }
   }
 
   const title = needs2FA

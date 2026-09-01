@@ -13,6 +13,8 @@ import {
   type EvidenceFn as DetectFn,
 } from "../_helpers";
 import { safeFetch } from "../safe-fetch";
+import { safeReadBody } from "../read-bounded-body";
+import { hasTagWith, openingTagOf, tagElements, tagsWith } from "./_tag-scan";
 
 /**
  * True when a "data" JSON key and an "errors" JSON key both appear within a
@@ -32,6 +34,76 @@ function hasGraphQLResponseEnvelope(body: string): boolean {
   return Math.abs((dataMatch.index ?? 0) - (errorsMatch.index ?? 0)) < 400;
 }
 
+/**
+ * True when two hostnames belong to the same site: identical, or one is a
+ * subdomain of the other (example.com <-> www.example.com, shop.example.com).
+ * Deliberately no public-suffix list: this is only used to stop a page's own
+ * absolute self-referencing URLs from being read as "third party", and an
+ * unrelated host is never a suffix of the scanned page's host.
+ */
+function isSameSite(hostname: string, pageHost: string): boolean {
+  if (!pageHost || !hostname) return false;
+  return (
+    hostname === pageHost ||
+    hostname.endsWith("." + pageHost) ||
+    pageHost.endsWith("." + hostname)
+  );
+}
+
+/**
+ * Hosts whose own published, copy-paste integration snippet sets
+ * `<form action="https://<host>/...">` on the customer's page. A form posting
+ * to one of these is the vendor's documented integration, not an exfiltration
+ * sink, so open-form-action must not report it.
+ *
+ * Three groups, each justified by the same rule (the vendor tells you to point
+ * your form action at them):
+ *
+ *  - Payments: the merchant page posts card/checkout data straight to the
+ *    processor precisely so it never touches the merchant's own server.
+ *    stripe.com, paypal.com, braintreegateway.com (Braintree transparent
+ *    redirect), squareup.com, authorize.net (Simple Checkout / SIM posts to
+ *    secure.authorize.net).
+ *  - Newsletter / marketing: the embed snippet the vendor hands you is
+ *    literally a cross-origin <form>. list-manage.com (Mailchimp),
+ *    hsforms.com + hubspot.com (HubSpot), createsend.com (Campaign Monitor),
+ *    constantcontact.com, aweber.com, convertkit.com + kit.com,
+ *    mailerlite.com.
+ *  - Form backends, surveys, and CRM web-to-lead, where "point your form
+ *    action here" IS the product: formspree.io, jotform.com, wufoo.com,
+ *    typeform.com, surveymonkey.com, salesforce.com (Web-to-Lead posts to
+ *    webto.salesforce.com), pardot.com (form handlers), google.com (Google
+ *    Forms posts to docs.google.com/forms/.../formResponse, and site search
+ *    posts to google.com).
+ *
+ * Intentionally NOT a general "reputable SaaS" list: a host earns a place here
+ * only by publishing a cross-origin form action as its normal integration.
+ */
+const FORM_PROCESSOR_HOSTS = [
+  "stripe.com",
+  "paypal.com",
+  "braintreegateway.com",
+  "squareup.com",
+  "authorize.net",
+  "list-manage.com",
+  "hsforms.com",
+  "hubspot.com",
+  "createsend.com",
+  "constantcontact.com",
+  "aweber.com",
+  "convertkit.com",
+  "kit.com",
+  "mailerlite.com",
+  "formspree.io",
+  "jotform.com",
+  "wufoo.com",
+  "typeform.com",
+  "surveymonkey.com",
+  "salesforce.com",
+  "pardot.com",
+  "google.com",
+];
+
 export const detectors: Record<string, DetectFn> = {
   // ── iframes ──────────────────────────────────────────────────────────────
 
@@ -42,18 +114,18 @@ export const detectors: Record<string, DetectFn> = {
     // is far beyond any real tag's attribute length, so every legitimate
     // match is preserved while the O(n^2) backtracking on a body of many
     // unclosed tags (e.g. "<form " repeated with no ">") is eliminated.
-    const httpIframes =
-      body.match(
-        /<iframe[^>]{1,2000}src=["']http:\/\/[^"']+["'][^>]{0,2000}>/gi,
-      ) || [];
+    const httpIframes = tagsWith(
+      body,
+      "iframe",
+      /src=["']http:\/\/[^"']+["']/i,
+    );
     return httpIframes.length > 0
       ? `Found ${httpIframes.length} iframe(s) loading HTTP content on HTTPS page.`
       : null;
   },
 
   "iframe-sandbox-missing": (_url, _headers, body) => {
-    const iframes =
-      body.match(/<iframe[^>]{0,2000}src=["'][^"']+["'][^>]{0,2000}>/gi) || [];
+    const iframes = tagsWith(body, "iframe", /src=["'][^"']+["']/i);
     // Skip well-known trusted embed providers, which never carry a sandbox
     // attribute in their own embed code (sandboxing would break required
     // permissions) -- same allowlist idea open-form-action already uses.
@@ -88,42 +160,76 @@ export const detectors: Record<string, DetectFn> = {
   // ── Forms ────────────────────────────────────────────────────────────────
 
   "form-target-blank": (_url, _headers, body) => {
-    const forms =
-      body.match(/<form[^>]{0,2000}target=["']_blank["'][^>]{0,2000}>/gi) || [];
+    const forms = tagsWith(body, "form", /target=["']_blank["']/i);
     return forms.length > 0
       ? `Found ${forms.length} form(s) with target="_blank".`
       : null;
   },
 
-  "open-form-action": (_url, _headers, body) => {
-    const forms =
-      body.match(
-        /<form[^>]{0,2000}action=["']https?:\/\/[^"']+["'][^>]{0,2000}>/gi,
-      ) || [];
+  "open-form-action": (url, _headers, body) => {
+    // Match the form's opening tag only, then read the action out of it in the
+    // loop below. The previous single pattern spliced the action match between
+    // two `[^>]{0,2000}` runs, and on markup where the tag never closes (a
+    // page that emits `<form action="https://` over and over) every one of the
+    // action hits inside the first run made the second run scan its full 2000
+    // characters and back looking for a `>` that is not there: 1.5 seconds on
+    // a 24 KB body, roughly a minute at the 1 MB body cap execute-scan allows
+    // from any scanned page. `<form\b[^>]{0,2000}>` has no such splice point,
+    // so its worst case is one bounded scan per tag. Same defect class as the
+    // detectors guarded by tests/lib/scanner/_perf-budget.test.ts.
+    const forms = body.match(/<form\b[^>]{0,2000}>/gi) || [];
     if (forms.length === 0) return null;
-    const external = forms.filter((f) => {
+    // An absolute action URL back to the page's own site
+    // (action="https://www.example.com/subscribe" on https://example.com/) is
+    // ordinary CMS-rendered markup, not a third-party submission at all. The
+    // old code compared only against a three-host allowlist, so every one of
+    // those reported as "submitting to external domains".
+    let pageHost = "";
+    try {
+      pageHost = new URL(url).hostname.toLowerCase();
+    } catch {
+      // Malformed scan URL: fall back to processor-allowlist filtering alone.
+    }
+    let insecure = 0;
+    let thirdParty = 0;
+    for (const f of forms) {
       const match = f.match(/action=["'](https?:\/\/[^"'/]+)/i);
-      if (!match) return false;
-      try {
-        const hostname = new URL(match[1].toLowerCase()).hostname;
-        const allowed = ["stripe.com", "paypal.com", "google.com"];
-        return !allowed.some(
-          (host) => hostname === host || hostname.endsWith("." + host),
-        );
-      } catch {
-        return true;
+      if (!match) continue;
+      // A plain-http action puts the submission on the wire in cleartext no
+      // matter whose host it points at, so the same-site and processor
+      // exemptions below apply only to https actions.
+      if (/^http:/i.test(match[1])) {
+        insecure++;
+        continue;
       }
-    });
-    return external.length > 0
-      ? `Found ${external.length} form(s) submitting to external domains.`
-      : null;
+      let hostname: string;
+      try {
+        hostname = new URL(match[1].toLowerCase()).hostname;
+      } catch {
+        thirdParty++;
+        continue;
+      }
+      if (isSameSite(hostname, pageHost)) continue;
+      if (
+        FORM_PROCESSOR_HOSTS.some(
+          (host) => hostname === host || hostname.endsWith("." + host),
+        )
+      )
+        continue;
+      thirdParty++;
+    }
+    const parts: string[] = [];
+    if (insecure > 0)
+      parts.push(`${insecure} form(s) submitting over plain HTTP`);
+    if (thirdParty > 0)
+      parts.push(`${thirdParty} form(s) submitting to a third-party domain`);
+    return parts.length > 0 ? `Found ${parts.join(" and ")}.` : null;
   },
 
   "sensitive-form-no-csrf": (_url, _headers, body) => {
-    const postForms =
-      body.match(
-        /<form[^>]{0,2000}method=["']post["'][^>]{0,2000}>[\s\S]*?<\/form>/gi,
-      ) || [];
+    const postForms = tagElements(body, "form").filter((f) =>
+      /method=["']post["']/i.test(openingTagOf(f)),
+    );
     // Forms that submit to a different origin (newsletter signups via
     // Mailchimp/HubSpot/Typeform, search widgets, etc.) aren't protected by
     // *your* CSRF tokens anyway -- your backend never receives the
@@ -197,13 +303,12 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "autocomplete-sensitive": (_url, _headers, body) => {
-    const pwFields =
-      body.match(/<input[^>]{0,2000}type=["']password["'][^>]{0,2000}>/gi) ||
-      [];
-    const ccFields =
-      body.match(
-        /<input[^>]{0,2000}(?:name|id)=["'][^"']*\b(?:card[-_]?number|cc[-_]?number|credit[-_]?card|cvv|cvc)\b[^"']*["'][^>]{0,2000}>/gi,
-      ) || [];
+    const pwFields = tagsWith(body, "input", /type=["']password["']/i);
+    const ccFields = tagsWith(
+      body,
+      "input",
+      /(?:name|id)=["'][^"']*\b(?:card[-_]?number|cc[-_]?number|credit[-_]?card|cvv|cvc)\b[^"']*["']/i,
+    );
     const noAC = [...pwFields, ...ccFields].filter(
       (f) => !/autocomplete\s*=/i.test(f),
     );
@@ -217,9 +322,7 @@ export const detectors: Record<string, DetectFn> = {
     // alone is already fully covered by autocomplete-sensitive, so keeping
     // it here too meant every password field missing both attributes
     // produced two findings for one underlying defect.
-    const pwInputs =
-      body.match(/<input[^>]{0,2000}type=["']password["'][^>]{0,2000}>/gi) ||
-      [];
+    const pwInputs = tagsWith(body, "input", /type=["']password["']/i);
     const noName = pwInputs.filter((t) => !/name\s*=\s*["']/i.test(t));
     return noName.length > 0
       ? `Found ${noName.length} password field(s) missing name attribute.`
@@ -233,8 +336,11 @@ export const detectors: Record<string, DetectFn> = {
     // strong 12-char minimum as "weak, under 6 characters" (fired on
     // VulnRadar's own /signup, which actually requires 12).
     if (
-      /<input[^>]{0,2000}type=["']?password[^>]{0,2000}minlength=["']?([1-5])(?!\d)["']?/i.test(
+      hasTagWith(
         body,
+        "input",
+        /type=["']?password/i,
+        /minlength=["']?[1-5](?!\d)["']?/i,
       )
     ) {
       return "Password field with weak minlength constraint (< 6 characters).";
@@ -245,15 +351,14 @@ export const detectors: Record<string, DetectFn> = {
   // ── HTML structure / accessibility ───────────────────────────────────────
 
   "viewport-user-scalable-no": (_url, _headers, body) => {
+    const viewports = tagsWith(body, "meta", /name=["']viewport["']/i);
     if (
-      /<meta[^>]{0,2000}name=["']viewport["'][^>]{0,2000}content=["'][^"']*user-scalable\s*=\s*no/i.test(
-        body,
-      )
+      viewports.some((t) => /content=["'][^"']*user-scalable\s*=\s*no/i.test(t))
     )
       return "Viewport sets user-scalable=no.";
     if (
-      /<meta[^>]{0,2000}name=["']viewport["'][^>]{0,2000}content=["'][^"']*maximum-scale\s*=\s*1(?:\.0)?/i.test(
-        body,
+      viewports.some((t) =>
+        /content=["'][^"']*maximum-scale\s*=\s*1(?:\.0)?/i.test(t),
       )
     )
       return "Viewport sets maximum-scale=1.";
@@ -282,10 +387,12 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "opengraph-injection": (_url, _headers, body) => {
-    const ogTags =
-      body.match(
-        /<meta[^>]{0,2000}property=["']og:[^"']+["'][^>]{0,2000}content=["']([^"']+)["']/gi,
-      ) || [];
+    const ogTags = tagsWith(
+      body,
+      "meta",
+      /property=["']og:[^"']+["']/i,
+      /content=["'][^"']+["']/i,
+    );
     const suspicious = ogTags.filter((t) =>
       /javascript:|(?:^|[\s"'])data:(?:text\/html)?|(?:^|[\s"'])on\w+\s*=/i.test(
         t,
@@ -297,11 +404,14 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "meta-refresh": (_url, _headers, body) => {
-    const metaRefresh = body.match(
-      /<meta[^>]{0,2000}http-equiv=["']refresh["'][^>]{0,2000}content=["']([^"']+)["']/i,
-    );
+    const metaRefresh = tagsWith(
+      body,
+      "meta",
+      /http-equiv=["']refresh["']/i,
+      /content=["'][^"']+["']/i,
+    )[0];
     if (!metaRefresh) return null;
-    const content = metaRefresh[1];
+    const content = /content=["']([^"']+)["']/i.exec(metaRefresh)?.[1] ?? "";
     if (content.toLowerCase().includes("url="))
       return `Meta refresh redirect detected: ${content}`;
     return null;
@@ -318,10 +428,12 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "sensitive-meta-tags": (_url, _headers, body) => {
-    const metas =
-      body.match(
-        /<meta[^>]{0,2000}(?:name|property)=["'][^"']*["'][^>]{0,2000}content=["'][^"']+["'][^>]{0,2000}>/gi,
-      ) || [];
+    const metas = tagsWith(
+      body,
+      "meta",
+      /(?:name|property)=["'][^"']*["']/i,
+      /content=["'][^"']+["']/i,
+    );
     const sensitiveNames = [
       "csrf",
       "token",
@@ -371,8 +483,7 @@ export const detectors: Record<string, DetectFn> = {
     // FPs from body text mentioning library names (e.g. documentation pages,
     // changelogs). jQuery/Angular have dedicated src-scoped detectors below;
     // keep Lodash, Bootstrap, and Moment.js here scoped to src= only.
-    const scripts =
-      body.match(/<script[^>]{1,2000}src=["'][^"']*["'][^>]{0,2000}>/gi) || [];
+    const scripts = tagsWith(body, "script", /src=["'][^"']*["']/i);
     const srcBlock = scripts.join("\n");
     const libs: { name: string; pattern: RegExp; maxSafe: string }[] = [
       {
@@ -416,10 +527,7 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "outdated-jquery": (_url, _headers, body) => {
-    const scripts =
-      body.match(
-        /<script[^>]{1,2000}src=["'][^"']*jquery[^"']*["'][^>]{0,2000}>/gi,
-      ) || [];
+    const scripts = tagsWith(body, "script", /src=["'][^"']*jquery[^"']*["']/i);
     for (const s of scripts) {
       const m = s.match(/jquery[-.v]?(\d+)\.(\d+)\.?(\d*)/i);
       if (m) {
@@ -435,8 +543,10 @@ export const detectors: Record<string, DetectFn> = {
 
   "outdated-angular": (_url, _headers, body) => {
     if (
-      /<script[^>]{1,2000}src=["'][^"']*angular(?:\.min)?\.js[^"']*["'][^>]{0,2000}>/i.test(
+      hasTagWith(
         body,
+        "script",
+        /src=["'][^"']*angular(?:\.min)?\.js[^"']*["']/i,
       ) &&
       !/angular\/\d{2}\./i.test(body)
     ) {
@@ -447,9 +557,7 @@ export const detectors: Record<string, DetectFn> = {
 
   "prototype-js-outdated": (_url, _headers, body) => {
     if (
-      /<script[^>]{1,2000}src=["'][^"']*prototype(?:\.js)?[^"']*["'][^>]{0,2000}>/i.test(
-        body,
-      )
+      hasTagWith(body, "script", /src=["'][^"']*prototype(?:\.js)?[^"']*["']/i)
     ) {
       return "Prototype.js loaded via script src — outdated library with known vulnerabilities.";
     }
@@ -457,21 +565,18 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "mootools-outdated": (_url, _headers, body) => {
-    if (
-      /<script[^>]{1,2000}src=["'][^"']*mootools[^"']*["'][^>]{0,2000}>/i.test(
-        body,
-      )
-    ) {
+    if (hasTagWith(body, "script", /src=["'][^"']*mootools[^"']*["']/i)) {
       return "MooTools loaded via script src — outdated library with potential security issues.";
     }
     return null;
   },
 
   "cdn-fallback-missing": (_url, _headers, body) => {
-    const cdnScripts =
-      body.match(
-        /<script[^>]{0,2000}src=["'][^"']*(?:cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|unpkg\.com)[^"']*["'][^>]{0,2000}>/gi,
-      ) || [];
+    const cdnScripts = tagsWith(
+      body,
+      "script",
+      /src=["'][^"']*(?:cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|unpkg\.com)[^"']*["']/i,
+    );
     if (cdnScripts.length > 0 && !/onerror\s*=/i.test(body)) {
       return `${cdnScripts.length} CDN script(s) without fallback mechanism.`;
     }
@@ -482,9 +587,15 @@ export const detectors: Record<string, DetectFn> = {
 
   "cms-fingerprinting": (_url, headers, body) => {
     const found: string[] = [];
-    const generator = body.match(
-      /<meta[^>]{0,2000}name=["']generator["'][^>]{0,2000}content=["']([^"']+)["']/i,
-    );
+    const generatorTag = tagsWith(
+      body,
+      "meta",
+      /name=["']generator["']/i,
+      /content=["'][^"']+["']/i,
+    )[0];
+    const generator = generatorTag
+      ? /content=["']([^"']+)["']/i.exec(generatorTag)
+      : null;
     if (generator) found.push(`Generator: ${generator[1]}`);
     const powered = headers.get("x-powered-by");
     if (powered) found.push(`X-Powered-By: ${powered}`);
@@ -518,7 +629,7 @@ export const detectors: Record<string, DetectFn> = {
     // many <a> tags with no date and no closing </pre> drove it into
     // catastrophic backtracking (measured tens of seconds on ~18KB), letting a
     // scanned page hang the shared scan worker. This shape is linear.
-    const preBlockRe = /<pre[^>]*>([\s\S]*?)<\/pre>/gi;
+    const preBlockRe = /<pre[^>]{0,2000}>([\s\S]*?)<\/pre>/gi;
     let m: RegExpExecArray | null;
     while ((m = preBlockRe.exec(body)) !== null) {
       const inner = m[1];
@@ -646,7 +757,7 @@ export const detectors: Record<string, DetectFn> = {
   "wp-login-exposed": (_url, _headers, body) => {
     if (
       /wp-login\.php|wp-admin\//i.test(body) &&
-      /<meta[^>]{0,2000}generator[^>]{0,2000}wordpress/i.test(body)
+      hasTagWith(body, "meta", /generator/i, /wordpress/i)
     ) {
       return "WordPress admin/login page paths exposed with WordPress generator tag.";
     }
@@ -760,14 +871,21 @@ export const detectors: Record<string, DetectFn> = {
     return `Found ${wsConnections.length} WebSocket connection(s) without apparent origin validation.`;
   },
 
-  "postmessage-origin": (_url, _headers, body) => {
-    const listeners =
-      body.match(/addEventListener\s*\(\s*["']message["']/g) || [];
-    if (listeners.length === 0) return null;
-    const originCheck = /event\.origin|e\.origin|msg\.origin/i.test(body);
-    if (originCheck) return null;
-    return `Found ${listeners.length} message event listener(s) without apparent origin validation.`;
-  },
+  // Always null: a strict duplicate of client-side.ts's
+  // postmessage-no-origin-check, which fires on the same evidence (an
+  // addEventListener("message", ...) handler with no origin comparison) at
+  // the same "high" severity, so a single unvalidated listener was scored
+  // twice. That version is also the better detector: it bounds the
+  // origin search to each handler's own following region and matches any
+  // identifier's `.origin`, where this one tested the WHOLE body for only
+  // the literal names event/e/msg -- so an unrelated `location.origin`
+  // anywhere on the page suppressed it (false negative) and a handler
+  // naming its parameter `evt` or `ev` did not (false positive).
+  // Kept as a null stub rather than deleted so content.json's entry (and
+  // its /checks catalog page) still resolves a detector, the same
+  // stub-in-the-sync-map pattern sourcemap-sourcescontent-exposed uses.
+  // ref: AUDIT-008#content-09
+  "postmessage-origin": () => null,
 
   "postmessage-star-origin": (_url, _headers, body) => {
     if (/\.postMessage\s*\([^)]*,\s*["']\*["']\s*\)/.test(body)) {
@@ -1121,10 +1239,14 @@ export const detectors: Record<string, DetectFn> = {
       /jaVasCript:/gi,
       /<script[^>]{0,2000}>[^<]*(?:document\.cookie|eval\(|alert\(|fetch\([^)]*document)/gi,
     ];
+    // Judge EVERY occurrence at its own offset, not just the first. The old
+    // form took html.match(p)[0] (the first match) and html.indexOf of that
+    // string, so a single documentation-context occurrence early in the page
+    // made the whole pattern `continue` -- a genuinely reflected payload
+    // further down the same page reported clean.
     for (const p of dangerousPatterns) {
-      const match = html.match(p);
-      if (match) {
-        const idx = html.indexOf(match[0]);
+      for (const m of html.matchAll(p)) {
+        const idx = m.index ?? 0;
         const before = html.slice(Math.max(0, idx - 300), idx).toLowerCase();
         if (
           /<code|<pre|```|class=["'][^"']*(?:code|syntax|highlight)|documentation|example/i.test(
@@ -1242,16 +1364,18 @@ export const detectors: Record<string, DetectFn> = {
   // ── Meta-referrer unsafe ────────────────────────────────────────────────
 
   "meta-referrer-unsafe": (_url, _headers, body) => {
-    const meta = body.match(
-      /<meta[^>]{0,2000}name\s*=\s*["']referrer["'][^>]{0,2000}content\s*=\s*["']([^"']*)["'][^>]{0,2000}>/i,
-    );
-    if (!meta) return null;
+    const metaTag = tagsWith(
+      body,
+      "meta",
+      /name\s*=\s*["']referrer["']/i,
+      /content\s*=\s*["'][^"']*["']/i,
+    )[0];
+    if (!metaTag) return null;
+    const value = /content\s*=\s*["']([^"']*)["']/i.exec(metaTag)?.[1] ?? "";
     if (
-      ["unsafe-url", "no-referrer-when-downgrade"].includes(
-        meta[1].toLowerCase(),
-      )
+      ["unsafe-url", "no-referrer-when-downgrade"].includes(value.toLowerCase())
     ) {
-      return `Meta referrer tag set to '${meta[1]}', leaking full URL as referrer.`;
+      return `Meta referrer tag set to '${value}', leaking full URL as referrer.`;
     }
     return null;
   },
@@ -1346,7 +1470,9 @@ export const detectors: Record<string, DetectFn> = {
     // domain name (e.g. legitimate non-Latin-script domains) — it isn't a
     // brand-lookalike signal on its own, so it's excluded from this alternation.
     const homoglyphs =
-      /[a-z0-9-]+\.(?:аpple|googIe|paypaI|microsft|amazom|faceb00k|app1e)/i;
+      // Left-anchored: without it the leading class is retried from every
+      // offset of a long run, which is quadratic. ref: AUDIT-012#inj-03
+      /(?<![a-z0-9-])[a-z0-9-]+\.(?:аpple|googIe|paypaI|microsft|amazom|faceb00k|app1e)/i;
     const m = body.match(homoglyphs);
     return m ? `Lookalike / homoglyph domain reference: ${m[0]}` : null;
   },
@@ -1426,10 +1552,7 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "password-no-paste": (url, _headers, body) => {
-    const fields =
-      body.match(
-        /<input[^>]{0,2000}type\s*=\s*["']password["'][^>]{0,2000}>/gi,
-      ) || [];
+    const fields = tagsWith(body, "input", /type\s*=\s*["']password["']/i);
     const blocksPaste = fields.filter((f) =>
       /onpaste\s*=\s*["'][^"']*(?:return\s+false|preventDefault)/i.test(f),
     );
@@ -1493,17 +1616,22 @@ export const detectors: Record<string, DetectFn> = {
     // uppercase-with-underscores, so this keeps genuine leaks while
     // dropping the single most common false positive on documentation
     // pages that show an example Authorization header.
-    const match = body.match(/Bearer\s+([A-Za-z0-9._\-+/=]{20,})/i);
+    //
     // A long run of one repeated character (xxxx..., 0000...) is a
     // placeholder convention too, not just the ALL-CAPS style excluded
     // above -- e.g. our own API docs show
     // "Bearer vr_live_xxxxxxxxxxxxxxxxxxxxxxxx".
-    if (
-      match &&
-      !/^[A-Z0-9_]+$/.test(match[1]) &&
-      !/(.)\1{9,}/.test(match[1])
-    ) {
-      return "Bearer token found in page source.";
+    //
+    // Iterate EVERY "Bearer ..." on the page, not just the first: a
+    // non-global body.match returned only the first occurrence, so a page
+    // that shows a placeholder in its docs header and leaks a real token
+    // lower down reported clean.
+    const isPlaceholderToken = (token: string) =>
+      /^[A-Z0-9_]+$/.test(token) || /(.)\1{9,}/.test(token);
+    for (const m of body.matchAll(/Bearer\s+([A-Za-z0-9._\-+/=]{20,})/gi)) {
+      if (!isPlaceholderToken(m[1])) {
+        return "Bearer token found in page source.";
+      }
     }
     const auth = headers.get("authorization");
     if (auth && /^Bearer\s+/i.test(auth)) {
@@ -1523,15 +1651,21 @@ export const detectors: Record<string, DetectFn> = {
     // Exclude AWS's own official example credentials (AKIAIOSFODNN7EXAMPLE /
     // wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY), reproduced verbatim across
     // AWS SDK docs, Terraform provider docs, and countless S3/IAM tutorials.
-    const akMatch = body.match(/\bAKIA[0-9A-Z]{16}\b/);
-    if (akMatch && !/EXAMPLE/i.test(akMatch[0])) {
-      return "AWS access key ID pattern detected in source.";
+    // Both loops walk EVERY occurrence rather than testing only the first
+    // match: the documentation example is exactly the value most likely to
+    // appear first on a page that also leaks a real key, and the old
+    // non-global body.match let it suppress the check entirely.
+    for (const m of body.matchAll(/\bAKIA[0-9A-Z]{16}\b/g)) {
+      if (!/EXAMPLE/i.test(m[0])) {
+        return "AWS access key ID pattern detected in source.";
+      }
     }
-    const skMatch = body.match(
-      /\baws_secret_access_key\s*[:=]\s*["']([A-Za-z0-9/+=]{40})["']/i,
-    );
-    if (skMatch && !/EXAMPLE/i.test(skMatch[1])) {
-      return "AWS secret access key pattern detected in source.";
+    for (const m of body.matchAll(
+      /\baws_secret_access_key\s*[:=]\s*["']([A-Za-z0-9/+=]{40})["']/gi,
+    )) {
+      if (!/EXAMPLE/i.test(m[1])) {
+        return "AWS secret access key pattern detected in source.";
+      }
     }
     return null;
   },
@@ -1553,16 +1687,21 @@ export const detectors: Record<string, DetectFn> = {
     // placeholder verbatim.
     const html = stripExampleContent(body);
     const patterns = [
-      /(?:postgres|postgresql|mysql|mongodb|redis|mssql):\/\/[^\s"']+:[^\s"']+@[^\s"']+/i,
-      /Server=[\w.-]+;Database=[\w.-]+;User\s*Id=[\w.-]+;Password=[\w.-]+/i,
-      /DATA\s+SOURCE=[^;]+;USER\s+ID=[^;]+;PASSWORD=[^;]+/i,
+      /(?:postgres|postgresql|mysql|mongodb|redis|mssql):\/\/[^\s"']+:[^\s"']+@[^\s"']+/gi,
+      /Server=[\w.-]+;Database=[\w.-]+;User\s*Id=[\w.-]+;Password=[\w.-]+/gi,
+      /DATA\s+SOURCE=[^;]+;USER\s+ID=[^;]+;PASSWORD=[^;]+/gi,
     ];
     const placeholder =
       /myserveraddress|mydatabase|myusername|mypassword|user:pass(?:word)?@/i;
+    // Every occurrence, not just the first: the old non-global html.match
+    // judged only match[0], so a "postgresql://user:password@host/db" getting-
+    // started example near the top of a page masked a real connection string
+    // with live credentials further down it.
     for (const p of patterns) {
-      const m = html.match(p);
-      if (m && !placeholder.test(m[0]))
-        return "Database connection string pattern detected.";
+      for (const m of html.matchAll(p)) {
+        if (!placeholder.test(m[0]))
+          return "Database connection string pattern detected.";
+      }
     }
     return null;
   },
@@ -1619,16 +1758,31 @@ export const detectors: Record<string, DetectFn> = {
     // documentation redaction convention (e.g. "ghp_" + 36 literal 'x'
     // characters) is deliberately shown at the real token's exact length,
     // so the format regex alone can't tell it apart from a real token.
+    //
+    // Each pattern iterates every occurrence rather than testing only the
+    // first: the redacted example is the value most likely to appear first on
+    // a page that also leaks a real token, and the old non-global body.match
+    // let it suppress that pattern entirely.
     const isPlaceholder = (token: string) => /^(.)\1+$/.test(token);
-    const ghp = body.match(/\bghp_([A-Za-z0-9]{36})\b/);
-    if (ghp && !isPlaceholder(ghp[1]))
-      return "GitHub PAT (ghp_) detected in source.";
-    const finePat = body.match(/\bgithub_pat_([A-Za-z0-9_]{82})\b/);
-    if (finePat && !isPlaceholder(finePat[1]))
-      return "GitHub fine-grained PAT detected in source.";
-    const gho = body.match(/\bgho_([A-Za-z0-9]{36})\b/);
-    if (gho && !isPlaceholder(gho[1]))
-      return "GitHub OAuth token detected in source.";
+    const tokenPatterns: { re: RegExp; evidence: string }[] = [
+      {
+        re: /\bghp_([A-Za-z0-9]{36})\b/g,
+        evidence: "GitHub PAT (ghp_) detected in source.",
+      },
+      {
+        re: /\bgithub_pat_([A-Za-z0-9_]{82})\b/g,
+        evidence: "GitHub fine-grained PAT detected in source.",
+      },
+      {
+        re: /\bgho_([A-Za-z0-9]{36})\b/g,
+        evidence: "GitHub OAuth token detected in source.",
+      },
+    ];
+    for (const { re, evidence } of tokenPatterns) {
+      for (const m of body.matchAll(re)) {
+        if (!isPlaceholder(m[1])) return evidence;
+      }
+    }
     return null;
   },
 
@@ -1756,20 +1910,14 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "srcdoc-iframe": (url, _headers, body) => {
-    const iframes =
-      body.match(
-        /<iframe[^>]{0,2000}srcdoc\s*=\s*["'][^"']+["'][^>]{0,2000}>/gi,
-      ) || [];
+    const iframes = tagsWith(body, "iframe", /srcdoc\s*=\s*["'][^"']+["']/i);
     if (iframes.length > 0)
       return `Found ${iframes.length} iframe(s) using srcdoc attribute.`;
     return null;
   },
 
   "sandbox-allow-scripts": (url, _headers, body) => {
-    const iframes =
-      body.match(
-        /<iframe[^>]{0,2000}sandbox\s*=\s*["']([^"']+)["'][^>]{0,2000}>/gi,
-      ) || [];
+    const iframes = tagsWith(body, "iframe", /sandbox\s*=\s*["'][^"']+["']/i);
     const bad = iframes.filter((f) => /\ballow-scripts\b/.test(f));
     if (bad.length > 0)
       return `Found ${bad.length} sandboxed iframe(s) with allow-scripts.`;
@@ -1787,20 +1935,14 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "data-uri-script": (url, _headers, body) => {
-    const matches =
-      body.match(
-        /<script[^>]{0,2000}src\s*=\s*["']data:[^"']+["'][^>]{0,2000}>/gi,
-      ) || [];
+    const matches = tagsWith(body, "script", /src\s*=\s*["']data:[^"']+["']/i);
     if (matches.length > 0)
       return `Found ${matches.length} <script> tag(s) with data: URI source.`;
     return null;
   },
 
   "blob-url-script": (url, _headers, body) => {
-    const matches =
-      body.match(
-        /<script[^>]{0,2000}src\s*=\s*["']blob:[^"']+["'][^>]{0,2000}>/gi,
-      ) || [];
+    const matches = tagsWith(body, "script", /src\s*=\s*["']blob:[^"']+["']/i);
     if (matches.length > 0)
       return `Found ${matches.length} <script> tag(s) loaded from blob: URL.`;
     return null;
@@ -1815,10 +1957,7 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "input-maxlength-short": (url, _headers, body) => {
-    const fields =
-      body.match(
-        /<input[^>]{0,2000}type\s*=\s*["']password["'][^>]{0,2000}>/gi,
-      ) || [];
+    const fields = tagsWith(body, "input", /type\s*=\s*["']password["']/i);
     const short = fields.filter((f) => {
       const m = f.match(/maxlength\s*=\s*["']?(\d+)["']?/i);
       return m && parseInt(m[1], 10) < 12;
@@ -1829,10 +1968,7 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "hidden-password-field": (url, _headers, body) => {
-    const fields =
-      body.match(
-        /<input[^>]{0,2000}type\s*=\s*["']password["'][^>]{0,2000}>/gi,
-      ) || [];
+    const fields = tagsWith(body, "input", /type\s*=\s*["']password["']/i);
     const hidden = fields.filter(
       (f) =>
         /type\s*=\s*["']hidden["']/i.test(f) ||
@@ -1846,9 +1982,7 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "password-visible-default": (url, _headers, body) => {
-    const matches =
-      body.match(/<input[^>]{0,2000}type\s*=\s*["']text["'][^>]{0,2000}>/gi) ||
-      [];
+    const matches = tagsWith(body, "input", /type\s*=\s*["']text["']/i);
     const labeled = matches.filter((f) =>
       /(?:name|id)\s*=\s*["'][^"']*(?:password|passwd|pwd)[^"']*["']/i.test(f),
     );
@@ -1872,9 +2006,7 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "file-upload-no-restrictions": (url, _headers, body) => {
-    const inputs =
-      body.match(/<input[^>]{0,2000}type\s*=\s*["']file["'][^>]{0,2000}>/gi) ||
-      [];
+    const inputs = tagsWith(body, "input", /type\s*=\s*["']file["']/i);
     const unrestricted = inputs.filter((f) => !/\baccept\s*=/i.test(f));
     if (unrestricted.length > 0)
       return `Found ${unrestricted.length} file upload(s) without accept attribute.`;
@@ -1905,50 +2037,42 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "form-formnovalidate-bypass": (url, _headers, body) => {
-    const buttons =
-      body.match(
-        /<button[^>]{0,2000}formnovalidate[^>]{0,2000}>|<input[^>]{0,2000}formnovalidate[^>]{0,2000}>/gi,
-      ) || [];
+    const buttons = [
+      ...tagsWith(body, "button", /formnovalidate/i),
+      ...tagsWith(body, "input", /formnovalidate/i),
+    ];
     if (buttons.length > 0)
       return `Found ${buttons.length} submit control(s) with formnovalidate attribute.`;
     return null;
   },
 
   "form-action-javascript-scheme": (url, _headers, body) => {
-    const forms =
-      body.match(
-        /<form[^>]{0,2000}action\s*=\s*["']javascript:[^"']+["'][^>]{0,2000}>/gi,
-      ) || [];
+    const forms = tagsWith(
+      body,
+      "form",
+      /action\s*=\s*["']javascript:[^"']+["']/i,
+    );
     if (forms.length > 0)
       return `Found ${forms.length} form(s) using javascript: action scheme.`;
     return null;
   },
 
   "form-action-mailto-scheme": (url, _headers, body) => {
-    const forms =
-      body.match(
-        /<form[^>]{0,2000}action\s*=\s*["']mailto:[^"']+["'][^>]{0,2000}>/gi,
-      ) || [];
+    const forms = tagsWith(body, "form", /action\s*=\s*["']mailto:[^"']+["']/i);
     if (forms.length > 0)
       return `Found ${forms.length} form(s) using mailto: action scheme.`;
     return null;
   },
 
   "form-action-tel-scheme": (url, _headers, body) => {
-    const forms =
-      body.match(
-        /<form[^>]{0,2000}action\s*=\s*["']tel:[^"']+["'][^>]{0,2000}>/gi,
-      ) || [];
+    const forms = tagsWith(body, "form", /action\s*=\s*["']tel:[^"']+["']/i);
     if (forms.length > 0)
       return `Found ${forms.length} form(s) using tel: action scheme.`;
     return null;
   },
 
   "iframe-srcdoc-no-sandbox": (url, _headers, body) => {
-    const iframes =
-      body.match(
-        /<iframe[^>]{0,2000}srcdoc\s*=\s*["'][^"']+["'][^>]{0,2000}>/gi,
-      ) || [];
+    const iframes = tagsWith(body, "iframe", /srcdoc\s*=\s*["'][^"']+["']/i);
     const noSandbox = iframes.filter((f) => !/\bsandbox\s*=/i.test(f));
     if (noSandbox.length > 0)
       return `Found ${noSandbox.length} srcdoc iframe(s) without sandbox attribute.`;
@@ -1956,10 +2080,7 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "iframe-allow-scripts-allow-same-origin": (url, _headers, body) => {
-    const iframes =
-      body.match(
-        /<iframe[^>]{0,2000}sandbox\s*=\s*["']([^"']+)["'][^>]{0,2000}>/gi,
-      ) || [];
+    const iframes = tagsWith(body, "iframe", /sandbox\s*=\s*["'][^"']+["']/i);
     const bad = iframes.filter(
       (f) => /allow-scripts/.test(f) && /allow-same-origin/.test(f),
     );
@@ -2207,25 +2328,34 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "script-loaded-from-raw-ip": (_url, _headers, body) => {
-    const matches =
-      body.match(
-        /<script[^>]{1,2000}src=["']https?:\/\/(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\/[^"']*["'][^>]{0,2000}>/gi,
-      ) || [];
+    const matches = tagsWith(
+      body,
+      "script",
+      /src=["']https?:\/\/(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\/[^"']*["']/i,
+    );
     if (matches.length === 0) return null;
     return `${matches.length} <script> tag(s) load code from a raw IP address instead of a domain name — unusual and often indicates compromise or malvertising.`;
   },
 
   "clipboard-hijack-pattern": (_url, _headers, body) => {
+    // Lazy {0,200}? so each match stops at the NEAREST setData call. Greedy
+    // let one match span from the first copy listener past a second listener
+    // to a setData 200 chars away, hiding that second listener from the
+    // iteration below entirely.
     const pattern =
-      /addEventListener\s*\(\s*["']copy["'][^)]*\)[\s\S]{0,200}(?:clipboardData\.setData|setData\s*\(\s*["']text)/i;
-    const m = pattern.exec(body);
-    if (!m) return null;
+      /addEventListener\s*\(\s*["']copy["'][^)]*\)[\s\S]{0,200}?(?:clipboardData\.setData|setData\s*\(\s*["']text)/gi;
     // Common "Read more at <url>" copy-attribution snippets match this same
     // shape but pass the original getSelection() text into setData; a real
     // hijack discards the selection and substitutes a static attacker string.
-    const setDataArgs = body.slice(m.index, m.index + m[0].length + 300);
-    if (/getSelection|\bselection\b/i.test(setDataArgs)) return null;
-    return "Copy event listener rewrites clipboard content — matches a pattern used for clipboard-hijacking attacks (e.g. swapping copied crypto addresses).";
+    // Judged per listener, not once for the whole page: a single attribution
+    // snippet used to clear the check for every other copy listener on it.
+    for (const m of body.matchAll(pattern)) {
+      const idx = m.index ?? 0;
+      const setDataArgs = body.slice(idx, idx + m[0].length + 300);
+      if (/getSelection|\bselection\b/i.test(setDataArgs)) continue;
+      return "Copy event listener rewrites clipboard content: matches a pattern used for clipboard-hijacking attacks (e.g. swapping copied crypto addresses).";
+    }
+    return null;
   },
 };
 
@@ -2289,7 +2419,15 @@ export async function checkSourceMapSourcesExposed(
     if (!res.ok) return null;
     const contentLength = Number(res.headers.get("content-length") || 0);
     if (contentLength > MAX_SOURCE_MAP_BYTES) return null;
-    const text = await res.text();
+    // The content-length check above only helps when the target sends one. A
+    // chunked reply has none, so `Number(null || 0) === 0` sailed past it and
+    // the old `await res.text()` buffered the whole body into the heap before
+    // the length comparison below could ever run, on a URL the scanned page
+    // itself chose. safeReadBody stops at the cap and, just as importantly,
+    // stops after its own read timeout: a .map endpoint that answers with
+    // headers and then trickles the body used to hold the entire scan open
+    // until the 300s watchdog. ref: AUDIT-012#perf-02
+    const text = await safeReadBody(res, MAX_SOURCE_MAP_BYTES, 6000);
     if (text.length > MAX_SOURCE_MAP_BYTES) return null;
 
     let parsed: unknown;

@@ -212,83 +212,79 @@ export const VERSIONS = [
     // fingerprint.
     fingerprint: {
       tables: new Set([
-        // v1 core (19)
-        "users",
-        "sessions",
-        "api_keys",
-        "api_usage",
-        "scan_history",
-        "scan_tags",
-        "webhooks",
-        "scheduled_scans",
-        "data_requests",
-        "admin_audit_log",
-        "password_reset_tokens",
-        "email_verification_tokens",
-        "notification_preferences",
-        "email_2fa_codes",
-        "rate_limits",
-        "device_trust",
-        "teams",
-        "team_members",
-        "team_invites",
-        // v2 tables (15)
-        "billing_history",
+        // AUDIT-013 migrate-01 / migrate-09: this list is no longer
+        // maintained by hand. It is the exact set
+        // buildMigrationSchema() derives from the v1 baseline plus every
+        // version file, and tests/scripts/migrate/schema-parity.test.ts
+        // fails if the two ever differ, in either direction. Regenerate
+        // it rather than editing it: the parity test names every table
+        // that is missing or extra.
         "access_rules",
+        "admin_audit_log",
+        "admin_audit_log_archive",
         "admin_notifications",
         "admin_user_notes",
+        "ai_conversations",
+        "ai_credit_purchases",
+        "ai_usage",
+        "api_keys",
+        "api_usage",
+        "auto_tag_dismissals",
         "badges",
+        "billing_history",
         "billing_verification_codes",
         "broadcast_messages",
         "broadcast_recipients",
-        "discord_connections",
-        "gifted_subscriptions",
-        "security_alerts",
-        "staff_activity",
-        "subdomain_cache",
-        "system_settings",
-        "user_badges",
-        // v3.0.0 additions (7 original + 4 added by AUDIT-009 migration-01)
-        "ai_conversations",
         "browser_sessions",
-        "scan_finding_feedback",
-        // Per-finding remediation status lifecycle (open / in_progress /
-        // fixed / accepted_risk / wont_fix), keyed on the stable finding_id
-        // so it persists across rescans. Folded into this same squashed step
-        // for the same "schema v3.0.0 never shipped" reason as the tables
-        // below it.
-        "finding_remediation",
-        "user_notifications",
-        "host_reputation",
-        "host_badges",
-        "github_connections",
-        "github_review_usage",
-        "processed_stripe_events",
-        "user_ai_configs",
+        "browserbase_credit_purchases",
+        "browserbase_usage",
         "cve_kev_cache",
-        "webhook_deliveries",
-        // Unified AI usage tracking (chat/verify/summary), folded into this
-        // same squashed step for the same reason the AUDIT-009 additions
-        // above were -- see scripts/migrate/versions/2.0.0-to-3.0.0.mjs's
-        // header comment.
-        "ai_usage",
-        // System error log capture (Admin > System > Error Logs), folded
-        // into this same squashed step for the same reason.
-        "system_error_logs",
-        // Auto tag dismissals (Admin > Engine Feedback's per-auto-tag-rule
-        // dismissal rate), folded into this same squashed step for the
-        // same reason -- see scripts/migrate/versions/2.0.0-to-3.0.0.mjs's
-        // header comment.
-        "auto_tag_dismissals",
-        // Admin-promoted auto-tag rules (Admin > Engine Feedback > AI Tag
-        // Candidates -> "Promote"), folded into this same squashed step
-        // for the same reason.
+        "data_requests",
+        "device_trust",
+        "discord_connections",
+        "domains",
+        "email_2fa_codes",
+        "email_logs",
+        "email_verification_tokens",
+        "finding_remediation",
+        "gifted_subscriptions",
+        "github_connections",
+        "github_credit_purchases",
+        "github_review_usage",
+        "host_badges",
+        "host_reputation",
+        "notification_preferences",
+        "password_reset_tokens",
+        "processed_stripe_events",
         "promoted_auto_tag_rules",
-        // AI credit purchase idempotency ledger, keyed by Stripe
-        // PaymentIntent id -- folded into this same squashed step for the
-        // same reason. See scripts/migrate/versions/2.0.0-to-3.0.0.mjs's
-        // header comment.
-        "ai_credit_purchases",
+        "rate_limits",
+        "scan_finding_feedback",
+        "scan_history",
+        "scan_history_teams",
+        "scan_screenshots",
+        "scan_tags",
+        "scheduled_scans",
+        "security_alerts",
+        "sessions",
+        "staff_activity",
+        "staff_invites",
+        "subdomain_cache",
+        "support_ticket_messages",
+        "support_ticket_shares",
+        "support_tickets",
+        "system_error_logs",
+        "system_settings",
+        "team_invites",
+        "team_members",
+        "teams",
+        "user_ai_configs",
+        "user_avatars",
+        "user_badges",
+        "user_notifications",
+        "users",
+        "webhook_deliveries",
+        "webhooks",
+        "worker_failure_state",
       ]),
       columns: {
         users: new Set([
@@ -315,7 +311,12 @@ export const VERSIONS = [
           "totp_enabled",
           "two_factor_method",
           "backup_codes",
-          "email_session_revoked",
+          // email_session_revoked is deliberately absent here and present in
+          // the 2.0.0 fingerprint above: the 2.0.0 -> 3.0.0 step drops it
+          // (AUDIT-011 drift-17, a legacy duplicate of the real preference
+          // on notification_preferences), so a v3 database does not have it
+          // and a fingerprint claiming otherwise would disqualify every real
+          // v3 database from detection.
           // v3.0.0 additions
           "unsubscribe_token",
           "totp_last_counter",
@@ -457,6 +458,12 @@ export const VERSIONS = [
           "tokens_used",
           "updated_at",
         ]),
+        // request_id (AUDIT-012 obs-07) is deliberately not listed. A
+        // fingerprint column is a DISQUALIFIER in _detect.mjs: a live v3
+        // database that has not rebooted since the column was added would
+        // stop matching 3.0.0 and be detected as 2.0.0, which is a worse
+        // failure than an under-described fingerprint. instrumentation.ts
+        // ALTERs the column in on the next boot either way.
         system_error_logs: new Set(["id", "message", "detail", "created_at"]),
         auto_tag_dismissals: new Set([
           "id",

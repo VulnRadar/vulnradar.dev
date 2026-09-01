@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, LayoutDashboard } from "lucide-react";
-import { BILLING_ENABLED, ROUTES } from "@/lib/config/constants";
+import { BILLING_ENABLED, ROUTES } from "@/lib/config/client-constants";
 import { useAuth } from "@/components/providers/auth-provider";
 
 export function DemoCTA() {

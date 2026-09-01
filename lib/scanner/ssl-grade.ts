@@ -43,6 +43,14 @@
 // HTTPS on the probed path is never mislabeled as having a failing certificate.
 // ════════════════════════════════════════════════════════════════════════════
 
+import {
+  CONFIG_SSL_GRADE_A_PLUS_MIN_SCORE,
+  CONFIG_SSL_GRADE_A_MIN_SCORE,
+  CONFIG_SSL_GRADE_B_MIN_SCORE,
+  CONFIG_SSL_GRADE_C_MIN_SCORE,
+  CONFIG_SSL_GRADE_D_MIN_SCORE,
+} from "@/lib/config/config-values";
+
 export interface SslGradeInput {
   /** Was a TLS handshake actually completed? If false, there is no grade. */
   reachedTls: boolean;
@@ -227,12 +235,17 @@ export function computeSslGrade(input: SslGradeInput): SslGradeResult | null {
 
   score = Math.max(0, Math.min(100, Math.round(score)));
 
+  // The five cutoffs were bare literals here until AUDIT-014#magic-07. They
+  // now live in lib/config/config-values.ts, the documented self-hoster edit
+  // point, next to the safety-verdict thresholds they are the sibling of; see
+  // the NEVER_CONFIGURABLE entries in lib/config/registry.ts for why they are
+  // build-tier rather than admin-editable. Values are unchanged.
   let letter: Letter;
-  if (score >= 95) letter = "A+";
-  else if (score >= 80) letter = "A";
-  else if (score >= 65) letter = "B";
-  else if (score >= 50) letter = "C";
-  else if (score >= 35) letter = "D";
+  if (score >= CONFIG_SSL_GRADE_A_PLUS_MIN_SCORE) letter = "A+";
+  else if (score >= CONFIG_SSL_GRADE_A_MIN_SCORE) letter = "A";
+  else if (score >= CONFIG_SSL_GRADE_B_MIN_SCORE) letter = "B";
+  else if (score >= CONFIG_SSL_GRADE_C_MIN_SCORE) letter = "C";
+  else if (score >= CONFIG_SSL_GRADE_D_MIN_SCORE) letter = "D";
   else letter = "F";
 
   return { grade: worse(letter, cap), score, reasons };

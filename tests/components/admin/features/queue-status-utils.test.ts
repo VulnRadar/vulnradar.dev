@@ -1,6 +1,6 @@
 /**
  * Unit tests for the pure helpers in
- * components/admin/features/queue-status-utils.ts (formatAge,
+ * components/admin/features/queue-status-utils.ts (formatAgeMs,
  * computeBackedUp), consumed by queue-status-manager.tsx. The manager
  * itself is a polling "use client" fetch/render component with no other
  * business logic to exercise, and this project has no DOM-rendering test
@@ -12,7 +12,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
-  formatAge,
+  formatAgeMs,
   computeBackedUp,
 } from "@/components/admin/features/queue-status-utils";
 
@@ -25,15 +25,15 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("formatAge", () => {
+describe("formatAgeMs", () => {
   it("returns null for a null age", () => {
-    expect(formatAge(null)).toBeNull();
+    expect(formatAgeMs(null)).toBeNull();
   });
 
   it("reads as a duration, not a timestamp with 'ago' suffix", () => {
-    expect(formatAge(5_000)).toBe("just now");
-    expect(formatAge(3 * 60_000)).toBe("3m");
-    expect(formatAge(2 * 60 * 60_000)).toBe("2h");
+    expect(formatAgeMs(5_000)).toBe("just now");
+    expect(formatAgeMs(3 * 60_000)).toBe("3m");
+    expect(formatAgeMs(2 * 60 * 60_000)).toBe("2h");
   });
 });
 

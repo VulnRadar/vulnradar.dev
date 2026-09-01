@@ -1,11 +1,97 @@
 // CLIENT-ONLY CONSTANTS (Source of Truth for Client-Safe Values)
 
 // These constants are safe to use in client components and don't depend
-// on server-only config loading. Role definitions, routes, and UI styles.
+// on server-only config loading. Role definitions, routes, UI styles, and
+// every compiled config value a browser is allowed to see.
 //
-// NOTE: constants.ts re-exports these values for convenience. If you need
-// client-safe constants in client components, import from here directly
-// to avoid potential bundling issues with server-only code.
+// THIS IS THE ONLY CONFIG MODULE A `"use client"` FILE MAY IMPORT.
+// lib/config/constants.ts is its server-side superset: it re-exports
+// everything here and adds the values that read non-public environment
+// variables (SMTP_*, the server-resolved SUPPORT_EMAIL/LOGO_URL overrides).
+// A client component that imports constants.ts drags those reads into the
+// browser bundle, which is exactly what AUDIT-012#fe-15 measured: the
+// committed build had `i.env.SMTP_PASS` and `i.env.BROWSERBASE_API_KEY` as
+// bare expression statements in the /layout chunk, on all 311 routes. No
+// secret leaked (Next only inlines NEXT_PUBLIC_*, so they evaluate to
+// undefined) but the read sites shipped, one careless rename away from
+// being real.
+//
+// The rule for adding something here: it may read `process.env.NEXT_PUBLIC_*`
+// and nothing else. Anything that consults a bare server variable belongs in
+// constants.ts or lib/config/server-constants.ts instead.
+//
+// The CONFIG_* values below come from lib/config/config-values.ts, which is
+// pure data with no environment reads of its own. config-values.ts must not
+// import from this file (see CONFIG_API_VERSION there): the dependency runs
+// one way only, or the two deadlock at module init.
+
+import {
+  CONFIG_API_VERSION,
+  CONFIG_APP_NAME,
+  CONFIG_APP_SLUG,
+  CONFIG_APP_VERSION,
+  CONFIG_APP_URL,
+  CONFIG_APP_REPO,
+  CONFIG_ENGINE_VERSION,
+  CONFIG_TOTAL_CHECKS_LABEL,
+  CONFIG_SUPPORT_EMAIL,
+  CONFIG_LOGO_URL,
+  CONFIG_DISCORD_INVITE_URL,
+  CONFIG_VERSION_COOKIE_NAME,
+  CONFIG_VERSION_COOKIE_MAX_AGE_DAYS,
+  CONFIG_TOTP_VALIDITY_SECONDS,
+  CONFIG_PASSWORD_MIN_LENGTH,
+  CONFIG_PASSWORD_RESET_HOURS,
+  CONFIG_EMAIL_VERIFICATION_HOURS,
+  CONFIG_DEVICE_TRUST_DAYS,
+  CONFIG_NOTIFICATION_POLL_INTERVAL_MS,
+  CONFIG_NOTIFICATION_DEFAULT_DISMISS_DAYS,
+  CONFIG_MAX_URL_LENGTH,
+  CONFIG_MAX_URLS_BULK,
+  CONFIG_SCAN_TIMEOUT_SECONDS,
+  CONFIG_BULK_SCAN_TIMEOUT_SECONDS,
+  CONFIG_CRAWL_SCAN_TIMEOUT_SECONDS,
+  CONFIG_SCAN_STATUS_POLL_INTERVAL_MS,
+  CONFIG_DEFAULT_SEVERITY_THRESHOLD,
+  CONFIG_BILLING_ENABLED,
+  CONFIG_BILLING_FREE_LIMIT,
+  CONFIG_BILLING_CORE_SUPPORTER_LIMIT,
+  CONFIG_BILLING_PRO_SUPPORTER_LIMIT,
+  CONFIG_BILLING_ELITE_SUPPORTER_LIMIT,
+  CONFIG_BILLING_FREE_RETENTION,
+  CONFIG_BILLING_CORE_SUPPORTER_RETENTION,
+  CONFIG_BILLING_PRO_SUPPORTER_RETENTION,
+  CONFIG_BILLING_ELITE_SUPPORTER_RETENTION,
+  CONFIG_API_CURRENT_VERSION,
+  CONFIG_BROWSERBASE_LOGS_POLL_INTERVAL_MS,
+  CONFIG_DEMO_SCAN_LIMIT,
+  CONFIG_AI_CHAT_HISTORY_DAYS,
+  CONFIG_AI_CHAT_MAX_INPUT_LENGTH,
+  CONFIG_AI_USAGE_WINDOW_HOURS,
+  CONFIG_GITHUB_REVIEW_FREE_TRIAL_WINDOW_HOURS,
+  CONFIG_MAX_AVATAR_UPLOAD_BYTES,
+  CONFIG_BULK_SCAN_CLIENT_URL_LIMIT,
+  CONFIG_SCAN_AUTH_ENABLED,
+  CONFIG_SCAN_AUTH_MAX_SECRET_LENGTH,
+  CONFIG_SCAN_AUTH_MAX_COOKIES,
+  CONFIG_SCAN_AUTH_VERIFY_TIMEOUT_MS,
+  CONFIG_SCAN_AUTH_MAX_LOGIN_BODY_BYTES,
+  CONFIG_SCAN_AUTH_MAX_COOKIE_AGE_SECONDS,
+  CONFIG_SCAN_AUTH_BASELINE_DIFF_BYTES,
+  CONFIG_SCAN_AUTH_BROWSER_NAV_TIMEOUT_MS,
+  CONFIG_SCAN_AUTH_BROWSER_SETTLE_MS,
+  CONFIG_SCAN_AUTH_BROWSER_MAX_WAIT_MS,
+  CONFIG_SCAN_AUTH_BROWSER_SESSION_TIMEOUT_SECONDS,
+  CONFIG_SCAN_AUTH_BROWSER_MAX_HTML_CHARS,
+  CONFIG_FEATURE_DEMO_MODE,
+  CONFIG_FEATURE_TEAMS,
+  CONFIG_FEATURE_API_KEYS,
+  CONFIG_FEATURE_WEBHOOKS,
+  CONFIG_FEATURE_SCHEDULED_SCANS,
+  CONFIG_FEATURE_BULK_SCANS,
+  CONFIG_FEATURE_PDF_REPORTS,
+  CONFIG_FEATURE_EMAIL_NOTIFICATIONS,
+} from "./config-values";
 
 // STAFF / ADMIN ROLES
 
@@ -61,7 +147,22 @@ export const STAFF_ROLE_LABELS: Record<string, string> = {
 };
 
 // ROLE BADGE STYLES (used across admin, shared, staff pages)
-
+//
+// WARNING, and this has already cost three badges: THIS FILE IS NOT SCANNED
+// BY TAILWIND. tailwind.config.mjs's `content` globs cover pages/,
+// components/, app/ and root-level files only, not lib/, so a utility class
+// that appears ONLY in this object generates no CSS at all. The failure is
+// silent in every direction: the class name is still in the DOM, the build
+// succeeds, nothing warns, and the badge simply renders with no background,
+// no text colour and no border. That is exactly what happened to
+// super_admin (violet-500), security_analyst (rose-500) and content_manager
+// (indigo-500), none of which appear anywhere under app/ or components/.
+//
+// So: any class string added or changed here must also be listed in the
+// `@source inline(...)` safelist at the top of app/globals.css. Classes
+// built from CSS variables (bg-primary, text-muted-foreground, the
+// hsl(var(--severity-*)) forms) are exempt only because they are used
+// elsewhere in scanned files; do not assume a new one is.
 export const ROLE_BADGE_STYLES: Record<string, string> = {
   // super-admin: a distinct color from admin's (not a reuse) so the badge
   // stands out at a glance in the users list, user detail panel, and the
@@ -78,9 +179,11 @@ export const ROLE_BADGE_STYLES: Record<string, string> = {
   user: "bg-muted text-muted-foreground border-border",
 };
 
-// API VERSION - Change this to switch all API calls between versions
+// API VERSION - Change CONFIG_API_VERSION in config-values.ts to switch all
+// API calls between versions; every entry of the API map below is built from
+// it.
 
-export const API_VERSION = "v3";
+export const API_VERSION = CONFIG_API_VERSION;
 
 // API ENDPOINTS (dynamically versioned)
 
@@ -100,6 +203,13 @@ export const API = {
     OAUTH_INFO: `/api/${API_VERSION}/auth/oauth/info`,
     OAUTH_START: (provider: string) =>
       `/api/${API_VERSION}/auth/oauth/${provider}`,
+    /** One staff invite, addressed by its token: GET reads the invite back
+     *  (role, inviter, expiry) so the page can render it, POST accepts it and
+     *  creates the account. Token-authenticated, no session: the invitee does
+     *  not have an account yet, which is why "/staff-invite" and this route
+     *  are both in lib/config/public-paths.ts. */
+    STAFF_INVITE: (token: string) =>
+      `/api/${API_VERSION}/auth/staff-invite/${token}`,
     STAFF_OIDC_INFO: `/api/${API_VERSION}/auth/staff-oidc/info`,
     STAFF_OIDC_START: `/api/${API_VERSION}/auth/staff-oidc`,
     IMPERSONATION_STOP: `/api/${API_VERSION}/auth/impersonation-stop`,
@@ -224,6 +334,9 @@ export const API = {
   /** Apply one remediation change (status + optional assignee/due) to many
    *  findings at once (the results-list bulk bar). POST only. */
   SCAN_REMEDIATION_BULK: `/api/${API_VERSION}/scan/remediation/bulk`,
+  /** Public, unauthenticated: the whole check catalogue (id, type, title,
+   *  category, severity, description) plus per-category counts. */
+  FINDING_TYPES: `/api/${API_VERSION}/finding-types`,
   AI_INFO: `/api/${API_VERSION}/ai/info`,
   ACCOUNT: `/api/${API_VERSION}/account/delete`,
   COMPARE: `/api/${API_VERSION}/compare`,
@@ -301,13 +414,12 @@ export const SEVERITY_LEVELS = {
   INFO: "info",
 } as const;
 
-export const SEVERITY_COLORS = {
-  critical: "hsl(var(--severity-critical))",
-  high: "hsl(var(--severity-high))",
-  medium: "hsl(var(--severity-medium))",
-  low: "hsl(var(--severity-low))",
-  info: "hsl(var(--severity-info))",
-};
+// A fifth severity colour map used to live here with no importers at all,
+// while components/scanner/severity-badge.tsx (SEVERITY_TONE),
+// components/docs/docs-types.ts, lib/seo/seo-ui.tsx and lib/reports/
+// pdf-report.ts each kept their own. Removed rather than left as a tempting
+// "shared" table for someone to consolidate onto, since three of those four
+// encode severity order under mutually incompatible numeric conventions.
 
 // API KEY SCOPES
 //
@@ -375,3 +487,303 @@ export function resolveApiKeyScopes(scopes: unknown): ApiKeyScope[] {
  */
 export const OG_INSPECT_URL_TEMPLATE: string =
   "https://www.opengraph.xyz/url/{url}";
+
+// APPLICATION METADATA (from config-values.ts -> config.yaml)
+//
+// These moved down from constants.ts (AUDIT-012#fe-15). Thirty-seven client
+// components read APP_NAME alone, and every one of them was importing the
+// server config module to get a string literal. constants.ts re-exports the
+// whole block, so server callers are unaffected.
+
+export const APP_NAME = CONFIG_APP_NAME;
+export const APP_SLUG = CONFIG_APP_SLUG;
+export const APP_VERSION = CONFIG_APP_VERSION;
+export const ENGINE_VERSION = CONFIG_ENGINE_VERSION;
+export const TOTAL_CHECKS_LABEL = CONFIG_TOTAL_CHECKS_LABEL;
+export const APP_REPO = CONFIG_APP_REPO;
+export const API_CURRENT_VERSION = CONFIG_API_CURRENT_VERSION;
+
+// Self-hosters set NEXT_PUBLIC_APP_URL (see the Dockerfile's build ARG and
+// .env.example); read it here so it actually reaches this constant instead
+// of always resolving to the hardcoded CONFIG_APP_URL placeholder. Every
+// consumer of APP_URL (emails, sitemap.xml, robots.txt, canonical/OG tags,
+// PDF/SARIF reports, webhook payloads, docs) picks this up too.
+//
+// Still fully synchronous, so it has no idea about a database admin
+// override: an admin-panel APP_URL change reaches THIS export -- and
+// therefore every client bundle, since Next.js inlines NEXT_PUBLIC_* at
+// `next build` time -- only after a rebuild and redeploy. Server code that
+// needs the live, no-rebuild-required value (currently only the
+// OAuth/Discord/GitHub sign-in routes, which must get their redirect_uri
+// right on every request) should call resolveAppUrl(request) from
+// lib/config/runtime-config.ts instead.
+export const APP_URL = process.env.NEXT_PUBLIC_APP_URL || CONFIG_APP_URL;
+
+// Scan note with version info
+export const DEFAULT_SCAN_NOTE = `${APP_NAME} v${APP_VERSION} (Detection Engine v${ENGINE_VERSION})`;
+
+/**
+ * The browser half of the support address.
+ *
+ * constants.ts declares its own SUPPORT_EMAIL that also honours the bare
+ * `SUPPORT_EMAIL` server variable, so an operator gets their own address in
+ * outgoing mail without a rebuild. That branch cannot work here: Next only
+ * inlines `NEXT_PUBLIC_*` into client code, so a bare `process.env.SUPPORT_EMAIL`
+ * read in a browser bundle is always `undefined` and only ever shipped the
+ * variable name. The two declarations therefore resolve to exactly the same
+ * value they always did on each side; the difference is that this one no
+ * longer carries a dead server-variable read into every page.
+ *
+ * Self-hosters set both, or neither.
+ */
+export const SUPPORT_EMAIL =
+  process.env.NEXT_PUBLIC_SUPPORT_EMAIL || CONFIG_SUPPORT_EMAIL;
+
+// Same split as SUPPORT_EMAIL above: constants.ts layers the bare `LOGO_URL`
+// server variable on top of this for email templates and report headers,
+// which is a read the browser can never satisfy. Client code gets the
+// deployment's own APP_URL joined to the shipped logo path.
+export const LOGO_URL = `${APP_URL}${CONFIG_LOGO_URL}`;
+
+// Same reasoning as the extension store URLs in constants.ts: this is
+// VulnRadar's own server and it lands in the JSON-LD sameAs array, the
+// footer, and llms.txt.
+export const DISCORD_INVITE_URL =
+  process.env.NEXT_PUBLIC_DISCORD_INVITE_URL || CONFIG_DISCORD_INVITE_URL;
+
+// TURNSTILE / CAPTCHA
+//
+// Site key, not secret key: NEXT_PUBLIC_ by design, since the widget itself
+// renders in the browser. The secret half (TURNSTILE_SECRET_KEY) is read
+// only by the verification helper on the server and never appears here.
+export const TURNSTILE_ENABLED = !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+
+// VERSION NOTIFICATION COOKIE
+
+export const VERSION_COOKIE_NAME = CONFIG_VERSION_COOKIE_NAME;
+export const VERSION_COOKIE_MAX_AGE =
+  60 * 60 * 24 * CONFIG_VERSION_COOKIE_MAX_AGE_DAYS;
+
+// AUTH TIMINGS SHOWN IN THE UI
+//
+// These are the compiled defaults the auth forms quote back to the user
+// ("the link expires in N hours", "codes rotate every N seconds"). The
+// enforcing checks read the live admin setting; these only render copy.
+
+export const TOTP_CODE_VALIDITY = CONFIG_TOTP_VALIDITY_SECONDS;
+export const PASSWORD_MIN_LENGTH = CONFIG_PASSWORD_MIN_LENGTH;
+export const PASSWORD_RESET_TOKEN_LIFETIME =
+  60 * 60 * CONFIG_PASSWORD_RESET_HOURS;
+export const EMAIL_VERIFICATION_TOKEN_LIFETIME =
+  60 * 60 * CONFIG_EMAIL_VERIFICATION_HOURS;
+export const DEVICE_TRUST_DURATION = 60 * 60 * 24 * CONFIG_DEVICE_TRUST_DAYS;
+
+// NOTIFICATION BELL
+
+export const NOTIFICATION_POLL_INTERVAL_MS =
+  CONFIG_NOTIFICATION_POLL_INTERVAL_MS;
+export const NOTIFICATION_DEFAULT_DISMISS_MAX_AGE =
+  60 * 60 * 24 * CONFIG_NOTIFICATION_DEFAULT_DISMISS_DAYS;
+
+// BROWSER SESSION VIEWER
+//
+// Only the poll interval is client-side; the TTL ceilings that actually cap
+// a session live in constants.ts next to the Browserbase credential check.
+export const BROWSERBASE_LOGS_POLL_INTERVAL_MS =
+  CONFIG_BROWSERBASE_LOGS_POLL_INTERVAL_MS;
+
+// SCAN LIMITS SHOWN IN THE UI
+
+export const SCANNING = {
+  MAX_URL_LENGTH: CONFIG_MAX_URL_LENGTH,
+  MAX_URLS_IN_BULK: CONFIG_MAX_URLS_BULK,
+  TIMEOUT_SECONDS: CONFIG_SCAN_TIMEOUT_SECONDS,
+  BULK_TIMEOUT_SECONDS: CONFIG_BULK_SCAN_TIMEOUT_SECONDS,
+  CRAWL_TIMEOUT_SECONDS: CONFIG_CRAWL_SCAN_TIMEOUT_SECONDS,
+  STATUS_POLL_INTERVAL_MS: CONFIG_SCAN_STATUS_POLL_INTERVAL_MS,
+  DEFAULT_SEVERITY_THRESHOLD: CONFIG_DEFAULT_SEVERITY_THRESHOLD,
+};
+
+export const BULK_SCAN_CLIENT_URL_LIMIT = CONFIG_BULK_SCAN_CLIENT_URL_LIMIT;
+export const MAX_AVATAR_UPLOAD_BYTES = CONFIG_MAX_AVATAR_UPLOAD_BYTES;
+export const DEMO_SCAN_LIMIT = CONFIG_DEMO_SCAN_LIMIT;
+
+// AUTHENTICATED SCANNING (fully ephemeral: see lib/scanner/auth/types.ts and
+// app/api/v3/scan/authenticated/route.ts). The client form reads the same
+// caps the server enforces so it can validate before submitting.
+
+export const SCAN_AUTH = {
+  ENABLED: CONFIG_SCAN_AUTH_ENABLED,
+  MAX_SECRET_LENGTH: CONFIG_SCAN_AUTH_MAX_SECRET_LENGTH,
+  MAX_COOKIES: CONFIG_SCAN_AUTH_MAX_COOKIES,
+  VERIFY_TIMEOUT_MS: CONFIG_SCAN_AUTH_VERIFY_TIMEOUT_MS,
+  MAX_LOGIN_BODY_BYTES: CONFIG_SCAN_AUTH_MAX_LOGIN_BODY_BYTES,
+  MAX_COOKIE_AGE_SECONDS: CONFIG_SCAN_AUTH_MAX_COOKIE_AGE_SECONDS,
+  BASELINE_DIFF_BYTES: CONFIG_SCAN_AUTH_BASELINE_DIFF_BYTES,
+  BROWSER_NAV_TIMEOUT_MS: CONFIG_SCAN_AUTH_BROWSER_NAV_TIMEOUT_MS,
+  BROWSER_SETTLE_MS: CONFIG_SCAN_AUTH_BROWSER_SETTLE_MS,
+  BROWSER_MAX_WAIT_MS: CONFIG_SCAN_AUTH_BROWSER_MAX_WAIT_MS,
+  BROWSER_SESSION_TIMEOUT_SECONDS:
+    CONFIG_SCAN_AUTH_BROWSER_SESSION_TIMEOUT_SECONDS,
+  BROWSER_MAX_HTML_CHARS: CONFIG_SCAN_AUTH_BROWSER_MAX_HTML_CHARS,
+};
+
+// AI CHAT / AI USAGE (values the UI quotes back to the user)
+
+export const AI_CHAT_HISTORY_DAYS = CONFIG_AI_CHAT_HISTORY_DAYS;
+export const AI_CHAT_MAX_INPUT_LENGTH = CONFIG_AI_CHAT_MAX_INPUT_LENGTH;
+export const AI_USAGE_WINDOW_HOURS = CONFIG_AI_USAGE_WINDOW_HOURS;
+
+// Shipped default only, for the /pricing comparison table's "1 free review /
+// Nhr" cell. The enforcement path resolves the live setting
+// (getSetting("GITHUB_REVIEW_FREE_TRIAL_WINDOW_HOURS") in
+// lib/billing/github-review-usage.ts); that whole table is documented as
+// showing what this deployment ships with, not what an admin has since
+// edited, exactly like AI_USAGE_WINDOW_HOURS above.
+export const GITHUB_REVIEW_FREE_TRIAL_WINDOW_HOURS =
+  CONFIG_GITHUB_REVIEW_FREE_TRIAL_WINDOW_HOURS;
+
+// BILLING / PREMIUM
+//
+// When BILLING_ENABLED is false, all users get unlimited access.
+// Self-hosters can disable this to remove all premium restrictions.
+
+export const BILLING_ENABLED = CONFIG_BILLING_ENABLED;
+export const BILLING_PLAN_LIMITS = {
+  free: CONFIG_BILLING_FREE_LIMIT,
+  core_supporter: CONFIG_BILLING_CORE_SUPPORTER_LIMIT,
+  pro_supporter: CONFIG_BILLING_PRO_SUPPORTER_LIMIT,
+  elite_supporter: CONFIG_BILLING_ELITE_SUPPORTER_LIMIT,
+};
+export const BILLING_HISTORY_RETENTION = {
+  free: CONFIG_BILLING_FREE_RETENTION,
+  core_supporter: CONFIG_BILLING_CORE_SUPPORTER_RETENTION,
+  pro_supporter: CONFIG_BILLING_PRO_SUPPORTER_RETENTION,
+  elite_supporter: CONFIG_BILLING_ELITE_SUPPORTER_RETENTION,
+};
+
+// FEATURE FLAGS
+
+export const FEATURES = {
+  DEMO_MODE: CONFIG_FEATURE_DEMO_MODE,
+  TEAMS: CONFIG_FEATURE_TEAMS,
+  API_KEYS: CONFIG_FEATURE_API_KEYS,
+  WEBHOOKS: CONFIG_FEATURE_WEBHOOKS,
+  SCHEDULED_SCANS: CONFIG_FEATURE_SCHEDULED_SCANS,
+  BULK_SCANS: CONFIG_FEATURE_BULK_SCANS,
+  PDF_REPORTS: CONFIG_FEATURE_PDF_REPORTS,
+  EMAIL_NOTIFICATIONS: CONFIG_FEATURE_EMAIL_NOTIFICATIONS,
+} as const;
+
+// VULNERABILITY SEVERITY ORDER
+//
+// The sort key the results list and the report renderers share. Note that
+// this is one of several severity orderings in the tree under mutually
+// incompatible numeric conventions; do not consolidate the others onto it
+// without checking each one's direction first.
+export const SEVERITY_PRIORITY = {
+  critical: 5,
+  high: 4,
+  medium: 3,
+  low: 2,
+  info: 1,
+};
+
+// TEAM ROLES
+//
+// Client-side too: the members list, the invite form and the scan actions
+// menu all gate controls on hasTeamPermission, and they must agree with the
+// server checks in app/api/v3/teams/**, which is why there is one table.
+//
+// MANAGER and OPERATOR are the two other real combinations of the 4
+// underlying capabilities (manage_team/manage_members/manage_scans, all on
+// top of view_reports, which every role gets) besides the pre-existing
+// ADMIN (members+scans) and MEMBER (scans only): a people/settings admin
+// who isn't a scan operator, and a scan operator who can also adjust team
+// settings but doesn't handle onboarding/offboarding. delete_team is its
+// own permission, owner-only -- deleting a team is a strictly bigger blast
+// radius than renaming it, so it doesn't just ride along with manage_team.
+export const TEAM_ROLES = {
+  OWNER: "owner",
+  ADMIN: "admin",
+  MANAGER: "manager",
+  OPERATOR: "operator",
+  MEMBER: "member",
+  VIEWER: "viewer",
+};
+
+export const TEAM_ROLE_PERMISSIONS = {
+  [TEAM_ROLES.OWNER]: [
+    "manage_team",
+    "delete_team",
+    "manage_members",
+    "manage_scans",
+    "view_reports",
+  ],
+  [TEAM_ROLES.ADMIN]: [
+    "manage_team",
+    "manage_members",
+    "manage_scans",
+    "view_reports",
+  ],
+  [TEAM_ROLES.MANAGER]: ["manage_team", "manage_members", "view_reports"],
+  [TEAM_ROLES.OPERATOR]: ["manage_team", "manage_scans", "view_reports"],
+  [TEAM_ROLES.MEMBER]: ["manage_scans", "view_reports"],
+  [TEAM_ROLES.VIEWER]: ["view_reports"],
+};
+
+// Grammatically correct "as a/an X" phrasing per role -- a plain
+// TEAM_ROLES.MANAGER -> "as an manager" string-concat would read wrong,
+// since the right article depends on the role name's own first sound.
+// Excludes OWNER: never assigned through an invite (see
+// app/api/v3/teams/members/route.ts's INVITABLE_TEAM_ROLES), so no
+// invite-notification copy ever needs to say "as the owner".
+export const TEAM_ROLE_INVITE_LABELS: Record<string, string> = {
+  [TEAM_ROLES.ADMIN]: "an admin",
+  [TEAM_ROLES.MANAGER]: "a manager",
+  [TEAM_ROLES.OPERATOR]: "an operator",
+  [TEAM_ROLES.MEMBER]: "a member",
+  [TEAM_ROLES.VIEWER]: "a viewer",
+};
+
+/**
+ * Whether a team role grants a given team permission. Pure and client-safe
+ * (no DB import) so both server routes (app/api/v3/teams/route.ts,
+ * teams/members/route.ts, lib/auth/team-resource-access.ts) and client
+ * components (components/teams/team-members-list.tsx) can share one
+ * implementation instead of drifting copies.
+ */
+export function hasTeamPermission(
+  role: string | undefined,
+  permission: string,
+): boolean {
+  if (!role) return false;
+  const perms =
+    TEAM_ROLE_PERMISSIONS[role as keyof typeof TEAM_ROLE_PERMISSIONS];
+  return Array.isArray(perms) && perms.includes(permission);
+}
+
+/**
+ * Role ceiling: a caller may only grant, or act on, a team role whose
+ * permission set is a SUBSET of the caller's own. The team roles are a partial
+ * order, not a strict ladder (manager has manage_members but not manage_scans;
+ * operator is the reverse), so a plain numeric rank can't express it -- subset
+ * is the correct relation. Without this, a manager (manage_members, NOT
+ * manage_scans) could promote a member to admin and thereby hand out
+ * manage_scans, a capability the manager itself lacks (escalation by proxy), or
+ * demote/remove an admin that outranks them. Owner holds every permission, so
+ * owner can assign or act on any role; nobody can act on a role that holds a
+ * permission they don't (returns false for an unknown role on either side).
+ */
+export function canAssignTeamRole(
+  callerRole: string | undefined,
+  otherRole: string | undefined,
+): boolean {
+  if (!callerRole || !otherRole) return false;
+  const callerPerms =
+    TEAM_ROLE_PERMISSIONS[callerRole as keyof typeof TEAM_ROLE_PERMISSIONS];
+  const otherPerms =
+    TEAM_ROLE_PERMISSIONS[otherRole as keyof typeof TEAM_ROLE_PERMISSIONS];
+  if (!Array.isArray(callerPerms) || !Array.isArray(otherPerms)) return false;
+  return otherPerms.every((p) => callerPerms.includes(p));
+}

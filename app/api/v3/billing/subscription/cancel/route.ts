@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { getStripe } from "@/lib/billing/stripe";
+import {
+  staffPlanFloorCase,
+  STAFF_PLAN_FLOOR_ROLES,
+} from "@/lib/billing/staff-plan";
 import { isStaffRole } from "@/lib/auth/permissions-client";
 
 // POST /api/v3/billing/subscription/cancel - Cancel user's subscription
@@ -71,12 +75,12 @@ export async function POST(request: NextRequest) {
       // themselves) lands back on that floor, not all the way to free.
       await pool.query(
         `UPDATE users SET
-          plan = CASE WHEN role IN ('admin', 'moderator', 'support') THEN 'pro_supporter' ELSE 'free' END,
+          plan = ${staffPlanFloorCase("$2")},
           subscription_status = 'canceled',
           stripe_subscription_id = NULL,
           billing_interval = NULL
         WHERE id = $1`,
-        [session.userId],
+        [session.userId, STAFF_PLAN_FLOOR_ROLES],
       );
     } else {
       // Cancel at period end

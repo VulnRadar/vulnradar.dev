@@ -8,8 +8,9 @@ import { ListOrdered, RefreshCw, AlertTriangle, Clock } from "lucide-react";
 import { StatBar, StatBarSkeleton, Toast } from "@/components/admin/shared";
 import type { ToastState } from "@/components/admin/types";
 import { cn } from "@/lib/ui/utils";
+import { useVisibleInterval } from "@/lib/hooks/use-visible-interval";
 import {
-  formatAge,
+  formatAgeMs,
   computeBackedUp,
   STALE_PENDING_MS,
   STALE_RUNNING_MS,
@@ -34,7 +35,10 @@ export function QueueStatusManager() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Without this a failed load left the skeleton up forever, which reads as
+  // "still loading" rather than "this never arrived". The toast that fires
+  // alongside it is gone after five seconds.
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const fetchStatus = useCallback(async (isInitial = false) => {
     if (isInitial) setLoading(true);
@@ -43,13 +47,16 @@ export function QueueStatusManager() {
       const res = await fetch("/api/v3/admin/queue-status");
       if (res.ok) {
         setData(await res.json());
+        setLoadFailed(false);
       } else {
+        setLoadFailed(true);
         setToast({
           message: "Failed to load scanner queue status.",
           type: "error",
         });
       }
     } catch {
+      setLoadFailed(true);
       setToast({
         message: "Failed to load scanner queue status.",
         type: "error",
@@ -62,17 +69,18 @@ export function QueueStatusManager() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
     fetchStatus(true);
-    pollRef.current = setInterval(() => fetchStatus(false), POLL_INTERVAL_MS);
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Nothing is in flight here, so a backgrounded admin tab has no reason to
+  // keep querying the queue every 45 seconds. Stops while hidden and catches
+  // up once on return.
+  useVisibleInterval(() => fetchStatus(false), POLL_INTERVAL_MS);
+
   const backedUp = computeBackedUp(data);
 
-  const oldestPending = data ? formatAge(data.oldestPendingAgeMs) : null;
-  const oldestRunning = data ? formatAge(data.oldestRunningAgeMs) : null;
+  const oldestPending = data ? formatAgeMs(data.oldestPendingAgeMs) : null;
+  const oldestRunning = data ? formatAgeMs(data.oldestRunningAgeMs) : null;
 
   return (
     <div className="space-y-6">
@@ -133,7 +141,18 @@ export function QueueStatusManager() {
         </CardHeader>
 
         <CardContent className="px-5 pb-5 pt-0 space-y-4">
-          {loading || !data ? (
+          {!data && loadFailed ? (
+            <div className="flex items-start gap-3 p-4 rounded-lg border border-destructive/30 bg-destructive/10">
+              <AlertTriangle
+                className="h-4 w-4 text-destructive shrink-0 mt-0.5"
+                aria-hidden="true"
+              />
+              <p className="text-sm text-destructive">
+                Couldn&apos;t load the scanner queue. This is not an all-clear:
+                the queue state is unknown. Use Refresh to try again.
+              </p>
+            </div>
+          ) : loading || !data ? (
             <StatBarSkeleton segments={4} />
           ) : (
             <>

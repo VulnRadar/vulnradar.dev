@@ -14,6 +14,7 @@ import {
   type EvidenceFn as DetectFn,
 } from "../_helpers";
 import { SRI_EXEMPT_HOSTS } from "./client-side";
+import { hasTagWith, openingTagOf, tagElements, tagsWith } from "./_tag-scan";
 
 const h = getHeader;
 
@@ -704,10 +705,9 @@ export const detectors: Record<string, DetectFn> = {
     // flag a POST form that also collects a genuinely sensitive field.
     const sensitiveFieldRe =
       /<input[^>]{0,2000}(?:name|id)\s*=\s*["'][^"']*(?:card|ssn|cvv|account[-_]?number)[^"']*["']/i;
-    const postForms =
-      body.match(
-        /<form\b[^>]{0,2000}method\s*=\s*["']?post[^>]{0,2000}>[\s\S]*?<\/form\s*>/gi,
-      ) || [];
+    const postForms = tagElements(body, "form").filter((f) =>
+      /method\s*=\s*["']?post/i.test(openingTagOf(f)),
+    );
     const hasSensitiveForm = postForms.some((f) => sensitiveFieldRe.test(f));
     if (!hasSensitiveForm) return null;
     return "Cache-Control: public set on page containing sensitive forms.";
@@ -747,10 +747,7 @@ export const detectors: Record<string, DetectFn> = {
 
   "form-action-http": (url, _headers, body) => {
     if (!url.startsWith("https://")) return null;
-    const httpForms =
-      body.match(
-        /<form[^>]{0,2000}action=["']http:\/\/[^"']+["'][^>]{0,2000}>/gi,
-      ) || [];
+    const httpForms = tagsWith(body, "form", /action=["']http:\/\/[^"']+["']/i);
     return httpForms.length > 0
       ? `Found ${httpForms.length} form(s) submitting over HTTP.`
       : null;
@@ -759,10 +756,11 @@ export const detectors: Record<string, DetectFn> = {
   // ── SRI ──────────────────────────────────────────────────────────────────
 
   "sri-missing": (_url, _headers, body) => {
-    const externalScripts =
-      body.match(
-        /<script[^>]{1,2000}src=["']https?:\/\/[^"']+["'][^>]{0,2000}>/gi,
-      ) || [];
+    const externalScripts = tagsWith(
+      body,
+      "script",
+      /src=["']https?:\/\/[^"']+["']/i,
+    );
     const noSRI = externalScripts.filter((t) => {
       if (t.toLowerCase().includes("integrity=")) return false;
       // Analytics/payment/CAPTCHA vendors serve these scripts mutable and
@@ -781,10 +779,12 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "sri-stylesheet-missing": (_url, _headers, body) => {
-    const extStyles =
-      body.match(
-        /<link[^>]{1,2000}rel=["']stylesheet["'][^>]{1,2000}href=["']https?:\/\/[^"']+["'][^>]{0,2000}>/gi,
-      ) || [];
+    const extStyles = tagsWith(
+      body,
+      "link",
+      /rel=["']stylesheet["']/i,
+      /href=["']https?:\/\/[^"']+["']/i,
+    );
     const noSRI = extStyles.filter((t) => {
       if (t.toLowerCase().includes("integrity=")) return false;
       // Google Fonts (and similar UA-negotiated stylesheet CDNs) serve
@@ -1249,34 +1249,41 @@ export const detectors: Record<string, DetectFn> = {
   },
   "meta-redirect-no-url": (_url, _headers, body) => {
     if (!body) return null;
-    const m = body.match(/<meta\s+http-equiv=["\']?refresh[^>]{0,2000}>/i);
-    if (!m) return null;
-    const content = m[0].match(/content=["\']?([^"'>]*)["\']?/i)?.[1]?.trim();
-    if (content === undefined) return null;
-    // A plain interval-only content (e.g. content="30") with no url=
-    // segment at all is the standard self-refresh idiom (auto-reloading
-    // dashboards, queue/status pages) -- not a broken redirect. Only flag
-    // when the content is empty, or a url= segment is present but its
-    // target is empty.
-    if (content === "") {
-      return "<meta http-equiv=refresh> found with empty content (broken redirect).";
-    }
-    if (/;\s*url=\s*$/i.test(content)) {
-      return "<meta http-equiv=refresh> found with empty URL target (broken redirect).";
+    // Every refresh tag on the page is judged, not just the first. Reading
+    // only the first match let the ordinary interval-only self-reload idiom
+    // at the top of a page hide a genuinely broken redirect further down.
+    const tags =
+      body.match(/<meta\s+http-equiv=["\']?refresh[^>]{0,2000}>/gi) || [];
+    for (const tag of tags) {
+      const content = tag.match(/content=["\']?([^"'>]*)["\']?/i)?.[1]?.trim();
+      if (content === undefined) continue;
+      // A plain interval-only content (e.g. content="30") with no url=
+      // segment at all is the standard self-refresh idiom (auto-reloading
+      // dashboards, queue/status pages) -- not a broken redirect. Only flag
+      // when the content is empty, or a url= segment is present but its
+      // target is empty.
+      if (content === "") {
+        return "<meta http-equiv=refresh> found with empty content (broken redirect).";
+      }
+      if (/;\s*url=\s*$/i.test(content)) {
+        return "<meta http-equiv=refresh> found with empty URL target (broken redirect).";
+      }
     }
     return null;
   },
   "autocomplete-username": (_url, _headers, body) => {
     if (!body) return null;
-    const forms = body.match(/<form\b[^>]{0,2000}>[\s\S]*?<\/form\s*>/gi) || [];
+    const forms = tagElements(body, "form");
     for (const form of forms) {
       // Only meaningful inside an actual login form: a username/email
       // input on its own (newsletter signup, contact form) has no
       // password manager autofill role to hint at.
-      if (!/<input[^>]{0,2000}type\s*=\s*["']?password/i.test(form)) continue;
-      const userInput = form.match(
-        /<input[^>]{0,2000}(?:name|id)\s*=\s*["']?(?:username|user|login|email)[^>]{0,2000}>/i,
-      )?.[0];
+      if (!hasTagWith(form, "input", /type\s*=\s*["']?password/i)) continue;
+      const userInput = tagsWith(
+        form,
+        "input",
+        /(?:name|id)\s*=\s*["']?(?:username|user|login|email)/i,
+      )[0];
       if (userInput && !/autocomplete\s*=\s*["']?username/i.test(userInput)) {
         return 'Login input found without autocomplete="username".';
       }
@@ -1302,8 +1309,11 @@ export const detectors: Record<string, DetectFn> = {
   },
   "open-graph-image-not-https": (_url, _headers, body) => {
     if (!body) return null;
-    const m = body.match(
-      /<meta[^>]{1,2000}property=["\']?og:image["\']?[^>]{0,2000}content=["\']?http:\/\//i,
+    const m = hasTagWith(
+      body,
+      "meta",
+      /property=["']?og:image["']?/i,
+      /content=["']?http:\/\//i,
     );
     if (m)
       return "OG image is HTTP (will fail social previews on HTTPS sites).";
@@ -1342,9 +1352,7 @@ export const detectors: Record<string, DetectFn> = {
   },
   "target-blank-no-noopener": (_url, _headers, body) => {
     if (!body) return null;
-    const links =
-      body.match(/<a\b[^>]{0,2000}target=["\']?_blank["\']?[^>]{0,2000}>/gi) ||
-      [];
+    const links = tagsWith(body, "a", /target=["']?_blank["']?/i);
     // noreferrer implies noopener (severs window.opener too, plus omits the
     // Referer header) -- a link with rel="noreferrer" and no literal
     // "noopener" token is not vulnerable, so it must not be flagged.
@@ -1413,25 +1421,33 @@ export const detectors: Record<string, DetectFn> = {
 
   "iframe-third-party-without-sandbox": (_url, _headers, body) => {
     if (!body) return null;
-    let host = "";
+    let pageHost = "";
     try {
-      host = new URL(_url).host;
+      pageHost = new URL(_url).host.toLowerCase();
     } catch {
       return null;
     }
     const iframes = body.match(/<iframe\b[^>]{0,2000}>/gi) || [];
-    const thirdParty = iframes.filter(
-      (t) =>
-        /src=["\']?https?:\/\//i.test(t) &&
-        !new RegExp(`^https?://${host}`, "i").test(
-          t.match(/src=["\']?([^"']+)/i)?.[1] || "",
-        ),
-    );
-    const noSandbox = thirdParty
-      .filter((t) => !/\bsandbox\s*=/i.test(t))
-      .filter(
-        (t) => !isSandboxExemptEmbed(t.match(/src=["\']?([^"']+)/i)?.[1] || ""),
-      );
+    const noSandbox = iframes.filter((tag) => {
+      const src = getTagSrc(tag);
+      if (!src || !/^https?:\/\//i.test(src)) return false;
+      // Compare parsed hosts instead of interpolating the scanned URL's host
+      // into a regex. An IPv6 target's host is the literal "[::1]:8080", so
+      // `^https?://[::1]:8080` compiled "[::1]" as a character class and the
+      // same-origin test silently inverted: a self-hosted site's own frames
+      // were reported as unsandboxed third-party embeds. A host carrying an
+      // unbalanced bracket threw instead, and the throw is swallowed by
+      // runSyncChecks, dropping the whole check. ref: AUDIT-012#inj-05
+      let srcHost: string;
+      try {
+        srcHost = new URL(src, _url).host.toLowerCase();
+      } catch {
+        return false;
+      }
+      if (srcHost === pageHost) return false;
+      if (/\bsandbox\s*=/i.test(tag)) return false;
+      return !isSandboxExemptEmbed(src);
+    });
     if (noSandbox.length > 0) {
       return `${noSandbox.length} third-party <iframe>(s) lack sandbox attribute.`;
     }
@@ -1569,6 +1585,20 @@ const IFRAME_SANDBOX_EXEMPT_HOSTS = new Set([
   "www.paypal.com",
   "challenges.cloudflare.com",
 ]);
+
+/**
+ * Read a tag's real `src` attribute value, quoted or not. Requiring the
+ * attribute-name boundary (leading whitespace) keeps a lazy-load
+ * `data-src=` from being mistaken for the src the browser actually loads,
+ * and stopping an unquoted value at whitespace/`>` keeps the following
+ * attributes out of the captured URL.
+ */
+function getTagSrc(tag: string): string | null {
+  const m = tag.match(/\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i);
+  if (!m) return null;
+  const value = (m[1] ?? m[2] ?? m[3] ?? "").trim();
+  return value || null;
+}
 
 function isSandboxExemptEmbed(src: string): boolean {
   const host = hostnameOf(src);

@@ -727,6 +727,102 @@ describe("checkDNSSecurity", () => {
     expect(findings).toEqual([]);
   });
 
+  // AUDIT-014#magic-01: a probe whose own deadline fires returned [], exactly
+  // like a probe that ran and found nothing, so a slow resolver silently
+  // turned into "this domain's MTA-STS and TLS-RPT are fine".
+  it("reports MTA-STS and TLS-RPT as not completed when their lookup times out", async () => {
+    dnsMock.resolveMx.mockResolvedValue([
+      { exchange: "mail.example.com", priority: 10 },
+    ]);
+    dnsMock.resolveTxt.mockImplementation(async (name: string) => {
+      if (
+        typeof name === "string" &&
+        (name.startsWith("_mta-sts.") || name.startsWith("_smtp._tls."))
+      ) {
+        throw new Error("timeout");
+      }
+      throw dnsError("ENOTFOUND");
+    });
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      json: () => Promise.resolve({ AD: false }),
+    });
+
+    const findings = await checkDNSSecurity(
+      "example.com",
+      "https://example.com",
+    );
+    const titles = findings.map((f) => f.title);
+    expect(titles).toContain("MTA-STS Check Did Not Complete");
+    expect(titles).toContain("TLS-RPT Check Did Not Complete");
+    // ...and it must not ALSO claim the record is missing, which it does not
+    // know: the lookup never answered.
+    expect(titles).not.toContain("MTA-STS Record Missing");
+    expect(titles).not.toContain("TLS-RPT Record Missing");
+  });
+
+  // AUDIT-012#perf-09: the 28 sub-checks each resolved the same records
+  // independently (resolveMx(domain) four times, resolveSoa/resolveNs twice
+  // each, _mta-sts.<domain> twice, and checkDKIMWeakKey re-probing ten of the
+  // selector hosts checkDKIM had just probed). The per-scan memo collapses
+  // each record to one query for the length of this one fan-out.
+  it("resolves each DNS record once per scan instead of once per sub-check", async () => {
+    dnsMock.resolveMx.mockResolvedValue([
+      { exchange: "mail.example.com", priority: 10 },
+    ]);
+    dnsMock.resolveSoa.mockRejectedValue(dnsError("ENOTFOUND"));
+    dnsMock.resolveTxt.mockImplementation(async (name: string) => {
+      if (typeof name === "string" && name.includes("._domainkey."))
+        return [["v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCg"]];
+      throw dnsError("ENOTFOUND");
+    });
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      json: () => Promise.resolve({ AD: false }),
+    });
+
+    await checkDNSSecurity("example.com", "https://example.com");
+
+    const mxCalls = dnsMock.resolveMx.mock.calls.filter(
+      (c) => c[0] === "example.com",
+    );
+    expect(mxCalls).toHaveLength(1);
+    const soaCalls = dnsMock.resolveSoa.mock.calls.filter(
+      (c) => c[0] === "example.com",
+    );
+    expect(soaCalls).toHaveLength(1);
+    const mtaStsCalls = dnsMock.resolveTxt.mock.calls.filter(
+      (c) => c[0] === "_mta-sts.example.com",
+    );
+    expect(mtaStsCalls).toHaveLength(1);
+    // checkDKIM and checkDKIMWeakKey both probe default._domainkey.<domain>.
+    const dkimDefaultCalls = dnsMock.resolveTxt.mock.calls.filter(
+      (c) => c[0] === "default._domainkey.example.com",
+    );
+    expect(dkimDefaultCalls).toHaveLength(1);
+  });
+
+  // The memo is scoped to one checkDNSSecurity call, not cached globally: a
+  // second scan of the same domain must re-resolve rather than replay the
+  // first scan's answers.
+  it("does not carry the memo across separate scans", async () => {
+    dnsMock.resolveMx.mockResolvedValue([
+      { exchange: "mail.example.com", priority: 10 },
+    ]);
+    dnsMock.resolveTxt.mockRejectedValue(dnsError("ENOTFOUND"));
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      json: () => Promise.resolve({ AD: false }),
+    });
+
+    await checkDNSSecurity("example.com", "https://example.com");
+    const afterFirst = dnsMock.resolveMx.mock.calls.filter(
+      (c) => c[0] === "example.com",
+    ).length;
+    await checkDNSSecurity("example.com", "https://example.com");
+    const afterSecond = dnsMock.resolveMx.mock.calls.filter(
+      (c) => c[0] === "example.com",
+    ).length;
+    expect(afterSecond).toBe(afterFirst * 2);
+  });
+
   it("suppresses DKIM/MTA-STS/TLS-RPT findings on a null-MX domain", async () => {
     dnsMock.resolveMx.mockResolvedValue([{ exchange: ".", priority: 0 }]);
     dnsMock.resolveTxt.mockRejectedValue(dnsError("ENOTFOUND"));
@@ -1259,6 +1355,114 @@ describe("checkLiveFetch", () => {
     expect(titles.some((t) => /trace|connect method/i.test(t))).toBe(false);
     expect(titles.some((t) => /host header injection/i.test(t))).toBe(false);
   });
+
+  // AUDIT-012#perf-03: robots.txt, security.txt and the 23 exposed-file
+  // probes are all questions about the ORIGIN; only the bucket-listing check
+  // reads this page's own body. A crawl runs the first three once and the
+  // fourth per page, so the split has to actually hold.
+  describe("branch scope", () => {
+    function fetchedPaths() {
+      return vi
+        .mocked(fetch as unknown as ReturnType<typeof vi.fn>)
+        .mock.calls.map(([input]) =>
+          typeof input === "string" ? input : String(input),
+        );
+    }
+
+    it("fetches only the origin-level paths in the host scope", async () => {
+      vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+        { ok: false, status: 404 },
+      );
+
+      await checkLiveFetch("https://example.com/deep/page", "host");
+      const paths = fetchedPaths();
+
+      expect(paths.some((p) => p.includes("robots.txt"))).toBe(true);
+      expect(paths.some((p) => p.includes("security.txt"))).toBe(true);
+      expect(paths.some((p) => p.includes("/.env"))).toBe(true);
+      // The page itself is only fetched by the bucket-listing check, which
+      // is the page-scoped half.
+      expect(paths.some((p) => p.endsWith("/deep/page"))).toBe(false);
+    });
+
+    // AUDIT-012#perf-21: all 23 exposed-file probes were dispatched at once,
+    // so one scan opened 23 simultaneous connections to a single origin. The
+    // burst reads as abuse to a rate limiter, and the 429 it provokes is
+    // indistinguishable here from "the file is not exposed".
+    it("keeps the exposed-file probes to a bounded number in flight", async () => {
+      let inFlight = 0;
+      let peakProbeConcurrency = 0;
+      const probePaths = new Set([
+        "/.git/config",
+        "/.git/HEAD",
+        "/.env",
+        "/.env.local",
+        "/.env.production",
+        "/.htpasswd",
+        "/phpinfo.php",
+        "/info.php",
+        "/docker-compose.yml",
+        "/phpmyadmin/",
+        "/adminer.php",
+        "/backup.sql",
+        "/terraform.tfstate",
+        "/wp-json/wp/v2/users",
+        "/metrics",
+        "/.npmrc",
+        "/web.config",
+        "/debug.log",
+        "/package-lock.json",
+        "/jenkins/",
+        "/consul/",
+        "/minio/",
+        "/rabbitmq/",
+      ]);
+      vi.mocked(
+        fetch as unknown as ReturnType<typeof vi.fn>,
+      ).mockImplementation(async (input: unknown) => {
+        const href = typeof input === "string" ? input : String(input);
+        const isProbe = probePaths.has(new URL(href).pathname);
+        if (isProbe) {
+          inFlight++;
+          peakProbeConcurrency = Math.max(peakProbeConcurrency, inFlight);
+        }
+        // Yield twice so several probes are genuinely overlapping rather
+        // than each resolving before the next is dispatched.
+        await Promise.resolve();
+        await Promise.resolve();
+        if (isProbe) inFlight--;
+        return { ok: false, status: 404, text: async () => "" };
+      });
+
+      await checkLiveFetch("https://example.com", "host");
+
+      // At least a few probes ran (the guard would pass trivially otherwise).
+      expect(peakProbeConcurrency).toBeGreaterThan(1);
+      expect(peakProbeConcurrency).toBeLessThanOrEqual(6);
+    });
+
+    it("fetches only the page itself in the page scope", async () => {
+      vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+        { ok: false, status: 404 },
+      );
+
+      await checkLiveFetch("https://example.com/deep/page", "page");
+      const paths = fetchedPaths();
+
+      expect(paths.some((p) => p.includes("robots.txt"))).toBe(false);
+      expect(paths.some((p) => p.includes("security.txt"))).toBe(false);
+      expect(paths.some((p) => p.includes("/.env"))).toBe(false);
+    });
+
+    it("never reports a missing security.txt from the page scope (it never looked)", async () => {
+      vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+        { ok: false, status: 404 },
+      );
+
+      const findings = await checkLiveFetch("https://example.com", "page");
+      expect(findings.some((f) => /security\.txt/i.test(f.title))).toBe(false);
+    });
+  });
 });
 
 // ── checkActiveCORS / checkActiveHttpMethods / checkXForwardedHostInjection ──
@@ -1677,6 +1881,76 @@ describe("getPlannedAsyncBranches", () => {
 
   it("returns nothing for an unparseable URL", () => {
     expect(getPlannedAsyncBranches("not a url")).toEqual([]);
+  });
+
+  /**
+   * Regression: the branch list used to hold already-started promises, so
+   * merely COUNTING the branches ran every one of them -- a full second set
+   * of DNS lookups, a TLS handshake, the robots/security.txt/exposed-file
+   * fetches, the reputation sources and the OSV query, all discarded. The
+   * scan route, the scheduled worker and the crawl (once per page) all call
+   * this purely to size a progress denominator. ref: AUDIT-011#drift-06
+   */
+  it("starts no network work at all: it plans, it does not run", () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    dnsMock.resolveTxt.mockClear();
+    dnsMock.resolveNs.mockClear();
+    tlsMock.connect.mockClear();
+
+    const planned = getPlannedAsyncBranches("https://example.com", [
+      "dns",
+      "ssl",
+      "configuration",
+      "reputation",
+      "supply-chain",
+      "active-probes",
+    ]);
+
+    expect(planned.length).toBeGreaterThan(0);
+    expect(dnsMock.resolveTxt).not.toHaveBeenCalled();
+    expect(dnsMock.resolveNs).not.toHaveBeenCalled();
+    expect(tlsMock.connect).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    vi.unstubAllGlobals();
+  });
+
+  // AUDIT-012#perf-03: a crawl splits the branch set so the host-level work
+  // (DNS, the TLS handshake, reputation, robots/security.txt, the 23
+  // exposed-file probes) runs once for the whole crawl instead of once per
+  // page. "all" -- what every single-URL scan uses -- must stay the union.
+  describe("branch scope (crawl host/page split)", () => {
+    it("puts the host-level branches in the host scope", () => {
+      expect(
+        getPlannedAsyncBranches("https://example.com", null, "host"),
+      ).toEqual(["dns", "tls", "live-fetch", "reputation"]);
+    });
+
+    it("puts the per-page branches in the page scope", () => {
+      expect(
+        getPlannedAsyncBranches("https://example.com", null, "page"),
+      ).toEqual(["live-fetch", "osv-libraries"]);
+    });
+
+    it("plans active probes only in the page scope, never the host one", () => {
+      const selectors = ["active-probes:xss"];
+      expect(
+        getPlannedAsyncBranches("https://example.com", selectors, "page"),
+      ).toContain("active-probes");
+      expect(
+        getPlannedAsyncBranches("https://example.com", selectors, "host"),
+      ).not.toContain("active-probes");
+    });
+
+    it("keeps the default scope identical to the union of the two halves", () => {
+      const all = getPlannedAsyncBranches("https://example.com");
+      const split = new Set([
+        ...getPlannedAsyncBranches("https://example.com", null, "host"),
+        ...getPlannedAsyncBranches("https://example.com", null, "page"),
+      ]);
+      expect(new Set(all)).toEqual(split);
+    });
   });
 
   describe("reputation branch (multi-source; runs with no API key)", () => {

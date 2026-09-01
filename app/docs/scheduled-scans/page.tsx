@@ -1,9 +1,7 @@
-"use client";
-
-import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
-import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
+import type { TocItem } from "@/components/docs/docs-types";
+import { DocsTocSpy } from "../docs-toc-spy";
 import {
   DocsHero,
   DocsSection,
@@ -36,14 +34,16 @@ const listEndpoint: Endpoint = {
   title: "List your schedules",
   description:
     "Returns every schedule you own plus any schedule assigned to a team you belong to, newest first. Session-authenticated only: this route reads the logged-in user from the session cookie and does not accept a Bearer API key.",
-  responseExample: `[
+  responseExample: `{
+  "schedules": [
 ${scheduleRow
   .split("\n")
-  .map((l) => "  " + l)
+  .map((l) => "    " + l)
   .join("\n")}
-]`,
+  ]
+}`,
   notes: [
-    "Rows come back as stored: snake_case columns, times in UTC, next_run_at as an ISO-8601 instant.",
+    "Rows come back as stored under a schedules key: snake_case columns, times in UTC, next_run_at as an ISO-8601 instant.",
     "You see your own schedules and any on a team you are a member of. There is no way to see another user's personal schedules.",
   ],
   errors: [{ code: 401, description: "No session cookie" }],
@@ -162,35 +162,13 @@ const tocItems: TocItem[] = [
   { id: "control", label: "Pausing, teams, auto-disable" },
   { id: "api", label: "The schedules API" },
   { id: "worker", label: "How runs are triggered" },
+  { id: "bulk", label: "Bulk scanning" },
 ];
 
 export default function ScheduledScansDocsPage() {
-  const { setActiveSection, setTocItems } = useDocsContext();
-  const observerRef = useRef<IntersectionObserver | null>(null);
-
-  useEffect(() => {
-    setTocItems(tocItems);
-    return () => setTocItems([]);
-  }, [setTocItems]);
-
-  useEffect(() => {
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) setActiveSection(entry.target.id);
-        });
-      },
-      { rootMargin: "-20% 0px -70% 0px", threshold: 0 },
-    );
-    tocItems.forEach((item) => {
-      const el = document.getElementById(item.id);
-      if (el) observerRef.current?.observe(el);
-    });
-    return () => observerRef.current?.disconnect();
-  }, [setActiveSection]);
-
   return (
     <div className="space-y-16">
+      <DocsTocSpy items={tocItems} />
       <DocsHero
         id="top"
         badge="Automation"
@@ -586,6 +564,82 @@ export default function ScheduledScansDocsPage() {
             The poll interval, the number of rows claimed per tick, and the
             batch concurrency are all admin settings, so an operator can dial
             the worker up or down for their deployment without a code change.
+          </p>
+        </DocsCallout>
+      </DocsSection>
+
+      <DocsSection id="bulk" title="Bulk scanning">
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          A schedule repeats one URL over time. A bulk scan is the other axis:
+          many URLs, once. Paste a list into the scan form, or{" "}
+          <InlineCode>POST /api/v3/scan/bulk</InlineCode> with an array. Either
+          way you get a scan id per URL back immediately and the batch drains in
+          the background, so you can close the tab and read the results from
+          your history later.
+        </p>
+
+        <DocsSubSection title="How many URLs">
+          <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+            The cap per batch is a plan limit, listed alongside the others on
+            the{" "}
+            <Link
+              href="/docs/billing"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              Plans and Billing
+            </Link>{" "}
+            page. Going over it is refused outright rather than silently
+            truncated, so you always know which URLs were accepted. How often
+            you may submit a batch is capped separately, per account, on the{" "}
+            <Link
+              href="/docs/rate-limits"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              Rate Limits
+            </Link>{" "}
+            page.
+          </p>
+        </DocsSubSection>
+
+        <DocsSubSection title="What happens to each URL">
+          <ul className="list-disc space-y-2 pl-6 text-sm text-muted-foreground">
+            <li>
+              Every URL is validated and checked against the blocklist{" "}
+              <strong className="text-foreground">before</strong> it is charged
+              a scan, so an unscannable URL in the middle of your list costs you
+              nothing and does not stop the rest of the batch.
+            </li>
+            <li>
+              Each accepted URL gets its own scan row and its own entry in the
+              response, marked either queued with an id or refused with a
+              reason. Read the response rather than assuming the whole list went
+              through.
+            </li>
+            <li>
+              URLs run{" "}
+              <strong className="text-foreground">one at a time</strong>,
+              deliberately: this runs as a single process with no job queue, so
+              a batch of 100 must not become 100 simultaneous scans.
+            </li>
+            <li>
+              Each URL runs the same engine, the same watchdog and the same
+              progress reporting as a single scan, and lands in your history the
+              same way. There is no second, weaker bulk scanner.
+            </li>
+            <li>
+              The whole batch has its own wall-clock budget. If it runs out,
+              URLs that never started are closed as failed rather than left
+              sitting as pending forever.
+            </li>
+          </ul>
+        </DocsSubSection>
+
+        <DocsCallout variant="info" title="Bulk plus scheduled">
+          <p>
+            The two compose: bulk-scan a list once to find out which of your
+            sites need attention, then put a schedule on the handful that
+            matter. A schedule per site is far cheaper on quota than
+            re-submitting a large batch every day.
           </p>
         </DocsCallout>
       </DocsSection>

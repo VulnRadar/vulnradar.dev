@@ -1,7 +1,5 @@
-"use client";
-
-import { useEffect, useRef } from "react";
-import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
+import type { TocItem } from "@/components/docs/docs-types";
+import { DocsTocSpy } from "../docs-toc-spy";
 import {
   DocsHero,
   DocsSection,
@@ -45,32 +43,9 @@ const tocItems: TocItem[] = [
 ];
 
 export default function ConfigPage() {
-  const { setActiveSection, setTocItems } = useDocsContext();
-  const observerRef = useRef<IntersectionObserver | null>(null);
-
-  useEffect(() => {
-    setTocItems(tocItems);
-    return () => setTocItems([]);
-  }, [setTocItems]);
-
-  useEffect(() => {
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) setActiveSection(entry.target.id);
-        });
-      },
-      { rootMargin: "-20% 0px -70% 0px", threshold: 0 },
-    );
-    tocItems.forEach((item) => {
-      const el = document.getElementById(item.id);
-      if (el) observerRef.current?.observe(el);
-    });
-    return () => observerRef.current?.disconnect();
-  }, [setActiveSection]);
-
   return (
     <div className="space-y-16">
+      <DocsTocSpy items={tocItems} />
       <DocsHero
         id="top"
         badge="Self-Hosting"
@@ -100,8 +75,9 @@ export default function ConfigPage() {
           ]}
           data={[
             {
-              what: "App name, URL, emails, branding",
-              where: "lib/config/config-values.ts",
+              what: "App name, URL, emails, branding, SEO",
+              where:
+                "lib/config/config-values.ts (or the NEXT_PUBLIC_* env var named in the field's help), then rebuild. Saving these in Admin -> Settings records the value but does not change what the app renders.",
             },
             {
               what: "Rate limits, feature flags, billing plans, retention",
@@ -126,34 +102,49 @@ export default function ConfigPage() {
           language="text"
           code={`lib/config/
 ├── config-values.ts        ← SOURCE OF TRUTH (raw CONFIG_* constants)
+├── registry.ts             ← SETTINGS_REGISTRY: type, bounds, admin tab, tier
+├── runtime-config.ts       ← Resolver for runtime-tier keys:
+│                             database ?? environment ?? default
 ├── constants.ts            ← Re-exports + derived route/error maps
 ├── client-constants.ts     ← Client-safe subset (no server-only values)
-├── config.ts               ← Cached loader (loadConfig, getConfigValue)
-└── public-paths.ts         ← Middleware public-path allowlist
-
-lib/types/
-└── config.ts                ← Type definitions + DEFAULT_CONFIG
-                              (DERIVED from config-values.ts)`}
+├── env.ts                  ← Zod validation of required env vars at boot
+├── brand.ts                ← Logo, colours, and other branding derivations
+├── check-stats.generated.ts← Generated check counts (npm run checks:compile)
+└── public-paths.ts         ← Middleware public-path allowlist`}
         />
         <p className="max-w-[68ch] text-sm text-muted-foreground">
           <strong className="text-foreground">Single source of truth:</strong>{" "}
           <InlineCode>lib/config/config-values.ts</InlineCode> exports raw{" "}
-          <InlineCode>CONFIG_*</InlineCode> constants. Everything else (types,
-          derived objects, route maps) is built from those constants. Edit{" "}
-          <InlineCode>config-values.ts</InlineCode> to customize your
-          deployment.
+          <InlineCode>CONFIG_*</InlineCode> constants.{" "}
+          <InlineCode>registry.ts</InlineCode> classifies each one into a{" "}
+          <strong className="text-foreground">runtime</strong> or{" "}
+          <strong className="text-foreground">build</strong> tier. A runtime key
+          is read through <InlineCode>runtime-config.ts</InlineCode> on every
+          use, which resolves it as database <InlineCode>??</InlineCode>{" "}
+          environment <InlineCode>??</InlineCode> shipped default. A build key
+          is compiled in: the running app reads the{" "}
+          <InlineCode>CONFIG_*</InlineCode> constant (or its{" "}
+          <InlineCode>NEXT_PUBLIC_*</InlineCode> env override) and never looks
+          at the database row at all. Everything else (derived objects, route
+          maps, client-safe subsets) is built from that. Edit{" "}
+          <InlineCode>config-values.ts</InlineCode> to change any shipped
+          default; use the admin Settings tab to change a <em>runtime-tier</em>{" "}
+          value on a running deployment.
         </p>
       </DocsSection>
 
       <DocsSection id="layer-1" title="Layer 1: Static App Config">
         <p className="max-w-[68ch] text-sm text-muted-foreground">
           Edit <InlineCode>lib/config/config-values.ts</InlineCode> to change
-          the shipped default for any of these. Whether that edit needs a
-          restart depends on the setting&rsquo;s tier: General, Branding, and
-          SEO values are baked into the build and need a rebuild either way, but
-          most of the rest (rate limits, feature flags, billing, scan timeouts,
-          auth windows, and more) can also be overridden at runtime, without
-          touching source, from the{" "}
+          the shipped default for any of these. What that edit costs you depends
+          on the setting&rsquo;s tier. General, Branding, and SEO values are
+          build tier: editing the constant (or the{" "}
+          <InlineCode>NEXT_PUBLIC_*</InlineCode> env var named in the
+          field&rsquo;s help text) and rebuilding is the{" "}
+          <strong className="text-foreground">only</strong> way to change them.
+          Most of the rest (rate limits, feature flags, billing, scan timeouts,
+          auth windows, and more) are runtime tier and can also be overridden
+          without touching source, from the{" "}
           <a
             href="#admin-settings"
             className="text-primary underline-offset-2 hover:underline"
@@ -575,7 +566,9 @@ lib/types/
           &rsquo;s Settings tab, sign in as an admin to reach it. The tab list
           there ({SETTINGS_TABS.join(", ")}) and every field on it is generated
           from the same registry that generates the reference tables below, so
-          the two cannot drift apart.
+          the two cannot drift apart. Read the next subsection before you rely
+          on a value you saved there: a control existing on that page does not
+          mean the running app reads it.
         </p>
 
         <DocsSubSection title="Runtime vs. build tier">
@@ -593,18 +586,64 @@ lib/types/
               other running instance within the cache TTL.
             </li>
             <li>
-              <strong className="text-foreground">Build</strong>: General,
-              Branding, and SEO fields (app name, logo, colours, tagline,
-              keywords, and similar). These are baked into statically generated
-              pages and client bundles at build time. Saving one updates the
-              database right away, but the change is only visible after the next
-              build and deploy, the Settings page shows a banner on these tabs
-              saying so.
+              <strong className="text-foreground">Build</strong>: the 29
+              General, Branding, and SEO fields (app name, slug, description,
+              app URL, repo, logo, colours, footer text, the 13{" "}
+              <InlineCode>SEO_*</InlineCode> keys, and a couple of client-side
+              limits). These are compiled into the app. Saving one writes the
+              database row and the admin panel shows it back to you, but{" "}
+              <strong className="text-foreground">
+                nothing reads that row
+              </strong>
+              : the running app keeps using the{" "}
+              <InlineCode>CONFIG_*</InlineCode> constant or its{" "}
+              <InlineCode>NEXT_PUBLIC_*</InlineCode> environment override. The
+              Settings page shows a banner on these tabs saying so.
             </li>
           </ul>
+          <DocsCallout
+            variant="warning"
+            title="A rebuild does not pick up a saved build-tier value"
+          >
+            <p>
+              This page used to say build-tier changes &ldquo;show up after the
+              next build and deploy&rdquo;. That is false and it is worth being
+              blunt about, because it is the kind of thing an operator only
+              finds out after a deploy that changed nothing. No build step reads{" "}
+              <InlineCode>system_settings</InlineCode>:{" "}
+              <InlineCode>prebuild</InlineCode> only compiles the knowledge
+              files, and <InlineCode>next build</InlineCode> compiles the
+              literals in <InlineCode>lib/config/config-values.ts</InlineCode>.
+              So a rebuild reads the source constant again and the saved row
+              stays ignored, forever. To change a build-tier value for real,
+              edit <InlineCode>config-values.ts</InlineCode> (or set the{" "}
+              <InlineCode>NEXT_PUBLIC_*</InlineCode> variable named in that
+              field&rsquo;s help text) and rebuild.
+            </p>
+            <p>
+              <InlineCode>APP_URL</InlineCode> is the single exception.{" "}
+              <InlineCode>resolveAppUrl()</InlineCode> in{" "}
+              <InlineCode>lib/config/runtime-config.ts</InlineCode> reads the
+              saved row live when it builds the OAuth{" "}
+              <InlineCode>redirect_uri</InlineCode> for the GitHub, Google, and
+              Discord sign-in routes, so an edit there does take effect for that
+              one use with no rebuild. Canonical URLs, social cards, and email
+              links still read the compiled value.
+            </p>
+          </DocsCallout>
+          <p className="max-w-[68ch] text-sm text-muted-foreground">
+            A build-tier registry entry is therefore a reference record of a
+            compiled value: it documents the constant, validates what an admin
+            types, and stores it. If a value has to be admin-editable, it needs
+            a <InlineCode>getSetting()</InlineCode> reader and a{" "}
+            <InlineCode>runtime</InlineCode> tier, not a build-tier row.
+          </p>
         </DocsSubSection>
 
         <DocsSubSection title="Resolution order and propagation">
+          <p className="max-w-[68ch] text-sm text-muted-foreground">
+            For a <strong className="text-foreground">runtime-tier</strong> key:
+          </p>
           <CodeBlock
             language="text"
             code={`resolve(key) = database value  ??  environment override  ??  shipped default`}
@@ -618,12 +657,24 @@ lib/types/
             <InlineCode>system_settings</InlineCode> table behaves exactly as it
             does today.
           </p>
+          <p className="max-w-[68ch] text-sm text-muted-foreground">
+            This chain does <strong className="text-foreground">not</strong>{" "}
+            apply to build-tier keys. Nothing calls the resolver for them, so
+            the first term is inert: they are the compiled constant, or its{" "}
+            <InlineCode>NEXT_PUBLIC_*</InlineCode> environment override, and
+            nothing else. The one place the chain does run for a build key is{" "}
+            <InlineCode>resolveAppUrl()</InlineCode> reading{" "}
+            <InlineCode>APP_URL</InlineCode> for OAuth redirects, described
+            above.
+          </p>
           <DocsCallout variant="info" title="~30 second propagation">
             The resolver caches the whole table for 30 seconds so a value read
             on every request (like a rate limit) does not hit Postgres every
             time. The admin who makes a change sees it immediately (the write
             clears that process&rsquo;s cache); every other running instance
             picks it up the next time its own 30 second cache expires.
+            Build-tier keys have no propagation story at all: they change when
+            you ship a new build.
           </DocsCallout>
         </DocsSubSection>
 
@@ -987,10 +1038,25 @@ lib/types/
         <DocsSubSection title="Contact / support overrides">
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
-              <InlineCode>CONTACT_EMAIL</InlineCode>,{" "}
-              <InlineCode>SUPPORT_EMAIL</InlineCode>: override the addresses
-              used by contact/support emails (defaults come from{" "}
-              <InlineCode>CONFIG_*</InlineCode>).
+              <InlineCode>SUPPORT_EMAIL</InlineCode> (or{" "}
+              <InlineCode>NEXT_PUBLIC_SUPPORT_EMAIL</InlineCode> for the
+              client-side half): overrides the support address shown in the UI
+              and used in support mail. Falls back to{" "}
+              <InlineCode>CONFIG_SUPPORT_EMAIL</InlineCode>.
+            </li>
+            <li>
+              <InlineCode>CONTACT_EMAIL</InlineCode>: parsed and validated by{" "}
+              <InlineCode>lib/config/env.ts</InlineCode> but{" "}
+              <strong className="text-foreground">read by nothing</strong>.
+              Setting it changes no behaviour. This entry used to be paired with{" "}
+              <InlineCode>SUPPORT_EMAIL</InlineCode> as if both worked, which
+              made the no-op look like a bug. The contact form delivers to{" "}
+              <InlineCode>SMTP_FROM</InlineCode>, then{" "}
+              <InlineCode>SMTP_USER</InlineCode>, then the{" "}
+              <InlineCode>NOREPLY_EMAIL</InlineCode> setting; set one of those
+              instead. The variable is still accepted so an existing{" "}
+              <InlineCode>.env</InlineCode> or compose file does not fail
+              validation.
             </li>
           </ul>
         </DocsSubSection>
@@ -1165,17 +1231,26 @@ lib/types/
 
       <DocsSection id="validation" title="Validation">
         <p className="text-sm text-muted-foreground">
-          The config system has three validation gates, each catching a
-          different class of mistake:
+          The config system has four validation gates, each catching a different
+          class of mistake:
         </p>
         <ol className="list-decimal pl-6 space-y-2 text-sm text-muted-foreground">
           <li>
             <strong className="text-foreground">Build time:</strong>{" "}
-            <InlineCode>npm run typecheck</InlineCode> exercises every{" "}
-            <InlineCode>CONFIG_*</InlineCode> through the typed{" "}
-            <InlineCode>DEFAULT_CONFIG</InlineCode> in{" "}
-            <InlineCode>lib/types/config.ts</InlineCode>. Renaming or removing a
-            constant fails typecheck.
+            <InlineCode>npm run typecheck</InlineCode>.{" "}
+            <InlineCode>lib/config/registry.ts</InlineCode> and{" "}
+            <InlineCode>lib/config/constants.ts</InlineCode> import each{" "}
+            <InlineCode>CONFIG_*</InlineCode> constant by name, so renaming or
+            removing one fails typecheck at its import site.
+          </li>
+          <li>
+            <strong className="text-foreground">Write time:</strong>{" "}
+            <InlineCode>validateSettingValue</InlineCode> builds a Zod schema
+            from each registry entry&rsquo;s type and bounds and runs every
+            admin-submitted value through it before the row is written. An
+            out-of-range rate limit, a malformed URL, or the string{" "}
+            <InlineCode>&quot;false&quot;</InlineCode> for a boolean is rejected
+            rather than stored.
           </li>
           <li>
             <strong className="text-foreground">Server startup:</strong>{" "}

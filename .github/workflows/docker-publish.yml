@@ -5,6 +5,14 @@ on:
     tags:
       - "v*"
 
+# release: two tags pushed close together used to race on `:latest`,
+# so whichever build finished last won regardless of which version it was.
+# Serialise the whole workflow. cancel-in-progress stays false: a cancelled
+# run would leave a pushed version tag with no signature and no SBOM.
+concurrency:
+  group: docker-publish
+  cancel-in-progress: false
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -18,6 +26,16 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # Full history + tags: the ":latest" decision below compares this
+          # tag against every other release tag in the repository.
+          fetch-depth: 0
+
+      # release: QEMU provides the linux/arm64 emulation the build below
+      # needs. Without it `docker buildx build --platform linux/arm64` on an
+      # amd64 runner fails outright.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
@@ -35,6 +53,26 @@ jobs:
         # reproducible and tamper-evident.
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
+      # release: nothing used to check that the tag being published agreed
+      # with the version the code reports. A tag pushed without the matching
+      # bump produces an image that permanently reports itself "behind":
+      # app/api/version/route.ts serves CONFIG_APP_VERSION, the self-updater
+      # compares that against the newest GitHub tag, so every instance is
+      # offered the update it already has, forever. Fail here instead, before
+      # anything is pushed or signed.
+      - name: Assert the tag matches the version in the code
+        run: |
+          set -euo pipefail
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          TAG_VERSION="${TAG_VERSION%%-*}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          CFG_VERSION=$(grep -m1 -oE 'CONFIG_APP_VERSION = "[^"]+"' lib/config/config-values.ts | sed 's/.*"\(.*\)"/\1/')
+          echo "tag=${TAG_VERSION} package.json=${PKG_VERSION} CONFIG_APP_VERSION=${CFG_VERSION}"
+          if [ "${TAG_VERSION}" != "${PKG_VERSION}" ] || [ "${TAG_VERSION}" != "${CFG_VERSION}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match package.json (${PKG_VERSION}) and CONFIG_APP_VERSION (${CFG_VERSION}). Bump both, commit, then re-tag."
+            exit 1
+          fi
+
       - name: Extract version from tag
         id: vars
         run: echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_ENV
@@ -42,38 +80,94 @@ jobs:
       - name: Convert owner to lowercase
         run: echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
 
-      - name: Build and Push Docker Image
+      # release: `:latest` used to move on ANY v* tag. The repository
+      # already carries tags like v1.9.4-patch.1, and app/api/version reads
+      # the GitHub "latest release", so cutting a release candidate or a
+      # backport for an older line republished it as the newest version and
+      # every self-hosted updater offered it as an upgrade. Only a clean
+      # vMAJOR.MINOR.PATCH that is also the highest such tag may move
+      # `:latest` now; anything else publishes its own version tag only.
+      - name: Decide whether this tag becomes :latest
+        id: latest
+        run: |
+          if [[ ! "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::${GITHUB_REF_NAME} is a prerelease or suffixed tag, so :latest is left where it is."
+            exit 0
+          fi
+          HIGHEST=$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+          if [ "${HIGHEST}" = "${GITHUB_REF_NAME}" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::${GITHUB_REF_NAME} is older than ${HIGHEST}, so :latest is left where it is."
+          fi
+
+      - name: Assemble image tags
+        id: tags
+        env:
+          PUBLISH_LATEST: ${{ steps.latest.outputs.publish }}
         run: |
           IMAGE=ghcr.io/${OWNER_LC}/vulnradar
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+          {
+            echo "list<<EOF"
+            echo "${IMAGE}:${VERSION}"
+            if [ "${PUBLISH_LATEST}" = "true" ]; then echo "${IMAGE}:latest"; fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
-          docker build \
-            -t $IMAGE:${VERSION} \
-            -t $IMAGE:latest .
-
-          docker push $IMAGE:${VERSION}
-          docker push $IMAGE:latest
+      # release: this was a plain `docker build`, so the buildx setup step
+      # above did nothing and the published manifest was single-platform
+      # amd64. Anyone self-hosting on ARM64 (a Pi, Apple Silicon, a Graviton
+      # or Ampere VPS) got "no matching manifest for linux/arm64" from
+      # `docker compose up -d`. buildx builds both and pushes one image
+      # index. The arm64 leg runs under QEMU emulation and is slow, which is
+      # acceptable on a tag-only workflow.
+      - name: Build and push image index
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.list }}
+          # release: a cosign signature attests WHO signed, not what went
+          # into the artifact. `mode=max` makes buildkit attach a full SLSA
+          # provenance attestation to the pushed index (source repo, commit,
+          # the build steps and their materials), so a consumer can check
+          # that this image really came from this workflow on this commit
+          # and not just that someone with the right OIDC identity signed
+          # it. Verify with
+          # `cosign verify-attestation --type slsaprovenance ...` or
+          # `docker buildx imagetools inspect --format '{{ json .Provenance }}'`.
+          provenance: mode=max
+          build-args: |
+            NEXT_PUBLIC_APP_URL=${{ vars.NEXT_PUBLIC_APP_URL || 'https://vulnradar.dev' }}
+          # Next.js inlines NEXT_PUBLIC_* at build time, so the published
+          # image is hard-coded to the URL above. A self-hoster who wants
+          # their own origin in the client bundles has to build the image
+          # themselves (`docker compose build app`), which is why
+          # docker-compose.yml carries a build context. See .env.example.
 
       - name: Sign image with cosign (keyless)
         # release: keyless signing via Sigstore Fulcio + Rekor. No
-        # long-lived private key to manage. The signature is published
-        # alongside the image tag; consumers verify with
-        # `cosign verify --certificate-identity ... ghcr.io/...:${VERSION}`.
+        # long-lived private key to manage. Sign the image index BY DIGEST,
+        # not by tag: one signature then covers every tag pointing at it
+        # (:VERSION and, when it moved, :latest) and cannot be invalidated
+        # by a later tag move. Consumers still verify by tag, since
+        # `cosign verify ...:v3.8.0` resolves the tag to this digest.
         #
         # infra: use OWNER_LC (set above), not github.repository_owner
         # directly -- OCI references must be lowercase and the raw
         # context value mirrors the org's display casing, which is not
         # guaranteed to be lowercase.
         env:
-          IMAGE: ghcr.io/${{ env.OWNER_LC }}/vulnradar
-          VERSION: ${{ github.ref_name }}
+          IMAGE: ${{ steps.tags.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
         run: |
-          cosign sign --yes \
-            "${IMAGE}:${VERSION}"
-
-      - name: Sign :latest with cosign
-        env:
-          IMAGE: ghcr.io/${{ env.OWNER_LC }}/vulnradar
-        run: cosign sign --yes "${IMAGE}:latest"
+          cosign sign --yes "${IMAGE}@${DIGEST}"
 
       - name: Generate SBOM (CycloneDX, JSON)
         # release: CycloneDX SBOM is the most widely consumed format.

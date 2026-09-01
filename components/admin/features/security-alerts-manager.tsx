@@ -364,7 +364,7 @@ export function SecurityAlertsManager() {
                               action: "manual_review",
                             })
                           }
-                          className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity border-border/40"
+                          className="h-8 gap-1.5 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 md:focus-visible:opacity-100 transition-opacity border-border/40"
                         >
                           <CheckCircle2
                             className="h-3 w-3"
@@ -379,7 +379,7 @@ export function SecurityAlertsManager() {
                           onClick={() =>
                             setPendingResolve({ alert, action: "block_user" })
                           }
-                          className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity text-destructive border-border/40"
+                          className="h-8 gap-1.5 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 md:focus-visible:opacity-100 transition-opacity text-destructive border-border/40"
                         >
                           <Ban className="h-3 w-3" aria-hidden="true" />
                           <span className="hidden sm:inline">Block</span>

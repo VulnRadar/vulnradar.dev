@@ -1,11 +1,12 @@
 import { NextRequest } from "next/server";
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import pool from "@/lib/database/db";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
-import { getClientIp } from "@/lib/api/request-utils";
+import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
 import { ERROR_MESSAGES, APP_URL } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import { sendEmail, passwordResetEmail } from "@/lib/email/email";
+import { hashAuthToken } from "@/lib/auth/token-hash";
 import {
   ApiResponse,
   parseBody,
@@ -13,17 +14,16 @@ import {
   Validate,
 } from "@/lib/api/api-utils";
 
-// auth: hash the token before storage so a DB dump doesn't yield
-// working reset tokens. The verify route hashes the incoming
-// token with the same function before lookup.
-function hashToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
-}
+// auth: hash the token before storage so a DB dump doesn't yield working
+// reset tokens. Now HMAC-SHA256 keyed with the server secret, via the one
+// shared hasher in lib/auth/token-hash.ts rather than a local copy of the
+// same sha256 line that lived in five files (AUDIT-002#secrets-03). The
+// verify route matches against the same function's candidate list.
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const ip = await getClientIp();
   const rl = await checkRateLimit({
-    key: `forgot:${ip}`,
+    key: `forgot:${rateLimitIpKey(ip)}`,
     ...RATE_LIMITS.forgotPassword,
   });
   if (!rl.allowed) {
@@ -46,10 +46,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // rate-limit: per-email rate limit on top of the per-IP limit.
   // Stops a residential NAT or botnet from spamming password
   // resets for many distinct addresses from a single source.
+  // Named (not inline numbers) so an operator responding to a reset flood can
+  // tighten this bucket from the admin panel like every other limiter, rather
+  // than being stuck with the compiled value (AUDIT-014#magic-08).
   const emailRl = await checkRateLimit({
     key: `forgot-email:${normalizedEmail}`,
-    maxAttempts: 3,
-    windowSeconds: 60 * 60,
+    ...RATE_LIMITS.forgotPasswordEmail,
   });
   if (!emailRl.allowed) {
     return ApiResponse.tooManyRequests(
@@ -84,7 +86,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   // Generate a secure token (raw token is emailed; we store the hash)
   const token = randomBytes(32).toString("hex");
-  const tokenHash = hashToken(token);
+  const tokenHash = hashAuthToken(token);
   const passwordResetHours = await getSetting("PASSWORD_RESET_HOURS");
   const expiresAt = new Date(Date.now() + passwordResetHours * 60 * 60 * 1000);
 

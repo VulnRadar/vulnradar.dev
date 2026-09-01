@@ -2,7 +2,7 @@
 
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { SUPPORT_EMAIL } from "@/lib/config/constants";
+import { SUPPORT_EMAIL } from "@/lib/config/client-constants";
 
 interface DemoErrorProps {
   error: string;
@@ -20,7 +20,7 @@ export function DemoError({ error, details, onRetry }: DemoErrorProps) {
           {isBlocked ? "Target refused" : "Scan failed"}
         </p>
 
-        <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-3 text-balance">
+        <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight mb-3 text-balance">
           {isBlocked ? "That target is off limits" : "The scan did not finish"}
         </h1>
 

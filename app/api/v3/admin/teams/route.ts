@@ -13,8 +13,10 @@ import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 // List all teams with stats
 export async function GET(request: Request) {
   // VIEW_ALL_TEAMS is an admin-only grant (moderators don't hold it), so use
-  // the granular permission rather than the coarse requireModerator floor,
-  // which over-granted the cross-tenant team list to moderators.
+  // the granular permission rather than a coarse moderator-tier floor, which
+  // over-granted the cross-tenant team list to moderators. (The
+  // requireModerator() helper that floor came from has since been deleted: it
+  // had no call sites left once every route moved to requirePermission.)
   const admin = await requirePermission(STAFF_PERMISSIONS.VIEW_ALL_TEAMS);
   if (!admin)
     return NextResponse.json(
@@ -32,14 +34,17 @@ export async function GET(request: Request) {
   );
   const offset = (page - 1) * limit;
 
+  // audit: this GET is not written to admin_audit_log, matching the paged
+  // user list in app/api/v3/admin/route.ts. Both are browse surfaces the
+  // panel refetches on every keystroke of the search box, so logging them
+  // would bury the reads that matter under a row per page load. The reads
+  // that do get logged are the ones that open a single record
+  // (view_user_detail) and the exports.
   // Count total teams
   const countQuery = search
     ? `SELECT COUNT(*) FROM teams WHERE LOWER(name) LIKE LOWER($1) ESCAPE '\\'`
     : `SELECT COUNT(*) FROM teams`;
   const countParams = search ? [`%${searchEscaped}%`] : [];
-  const countRes = await pool.query(countQuery, countParams);
-  const totalTeams = parseInt(countRes.rows[0].count, 10);
-  const totalPages = Math.ceil(totalTeams / limit);
 
   // Fetch teams with owner info and member count
   const teamsQuery = `
@@ -62,13 +67,28 @@ export async function GET(request: Request) {
   const teamsParams = search
     ? [`%${searchEscaped}%`, limit, offset]
     : [limit, offset];
-  const teamsRes = await pool.query(teamsQuery, teamsParams);
 
+  // perf: COUNT(*) scans the whole matching set whatever the sibling LIMIT
+  // is, so awaiting it before the page query doubled the wall time of every
+  // load for nothing. The two are independent. Every other admin list route
+  // already pairs them this way.
+  const [countRes, teamsRes] = await Promise.all([
+    pool.query<{ count: string }>(countQuery, countParams),
+    pool.query(teamsQuery, teamsParams),
+  ]);
+  const total = parseInt(countRes.rows[0].count, 10);
+  const totalPages = Math.ceil(total / limit);
+
+  // Named `total`, like every other paginated admin list (content,
+  // email-logs, error-logs). It used to be `totalTeams`, which is the same
+  // concept under a name no shared reader looks for: the panel's generic
+  // "N total" footer reads `data.total`, so against this endpoint it silently
+  // rendered 0 and the teams list dropped its count entirely.
   return NextResponse.json({
     teams: teamsRes.rows,
     page,
     totalPages,
-    totalTeams,
+    total,
   });
 }
 
@@ -132,7 +152,7 @@ export async function PATCH(request: Request) {
 // Delete team (admin override)
 export async function DELETE(request: Request) {
   // Only full admins (or the super admin) can delete teams -- requireAdmin
-  // (not requireModerator) enforces that stricter hierarchy floor.
+  // enforces that stricter hierarchy floor.
   const admin = await requireAdmin();
   if (!admin)
     return NextResponse.json(

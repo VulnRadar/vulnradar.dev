@@ -5,8 +5,14 @@ import {
   checkPasswordRequirements,
   passwordRequirementsMet,
   unmetRequirementLabels,
+  meetsMinimumPasswordScore,
 } from "@/lib/auth/password-strength";
-import { sendEmail, emailVerificationEmail } from "@/lib/email/email";
+import {
+  sendEmail,
+  emailVerificationEmail,
+  signupAttemptOnExistingAccountEmail,
+} from "@/lib/email/email";
+import { hashAuthToken } from "@/lib/auth/token-hash";
 import {
   ApiResponse,
   Validate,
@@ -14,13 +20,14 @@ import {
   withErrorHandling,
 } from "@/lib/api/api-utils";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
-import { getClientIp } from "@/lib/api/request-utils";
+import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
 import { getSettings } from "@/lib/config/runtime-config";
 import pool from "@/lib/database/db";
 import crypto from "crypto";
 import {
   APP_URL,
   ERROR_MESSAGES,
+  ROUTES,
   SUCCESS_MESSAGES,
   TURNSTILE_ENABLED,
 } from "@/lib/config/constants";
@@ -86,7 +93,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Catches common passwords ("password123"), sequences ("abcdef"),
   // and low-entropy strings that pass the length floor but crack in seconds.
   const pwAnalysis = analyzePassword(password);
-  if (pwAnalysis.score < 3) {
+  if (!meetsMinimumPasswordScore(pwAnalysis.score)) {
     return ApiResponse.badRequest(
       "Password is too weak. " +
         (pwAnalysis.feedback.warnings[0] ||
@@ -111,7 +118,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   // auth: per-IP rate limit (existing).
   const rl = await checkRateLimit({
-    key: `signup:${ip}`,
+    key: `signup:${rateLimitIpKey(ip)}`,
     ...RATE_LIMITS.signup,
   });
   if (!rl.allowed) {
@@ -126,11 +133,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // registered (409 "already in use" vs 200 success differentiates
   // them) and flood the email_verification_tokens table. We use the
   // normalized email so casing variants don't bypass.
+  // Named (not inline numbers) so an operator responding to a signup flood can
+  // tighten the one bucket that actually stops it from the admin panel
+  // (AUDIT-014#magic-08).
   const normalizedEmailForRateLimit = email.trim().toLowerCase();
   const emailRl = await checkRateLimit({
     key: `signup-email:${normalizedEmailForRateLimit}`,
-    maxAttempts: 5,
-    windowSeconds: 60 * 60, // 5 attempts per hour per email
+    ...RATE_LIMITS.signupEmail,
   });
   if (!emailRl.allowed) {
     const minutes = Math.ceil(emailRl.retryAfterSeconds / 60);
@@ -143,10 +152,48 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     );
   }
 
-  // Check if user already exists
+  // auth: a registered address gets the SAME 200 body an unregistered one
+  // gets, and an email instead of a row.
+  //
+  // This used to answer 409 DUPLICATE_EMAIL, which is a free enumeration
+  // oracle: one request per address tells an attacker exactly which of a
+  // scraped list has accounts here, and the per-email rate limit above does
+  // not help at all because the FIRST request already answers the question.
+  // Every other route on this surface refuses to leak the same fact (login
+  // returns one generic 401 for both no-user and wrong-password, and burns a
+  // dummy hash to equalize timing; forgot-password and resend-verification
+  // always return the same string), so signup was nullifying all of it.
+  //
+  // The response is now identical either way and the real disambiguation
+  // happens in the inbox, which only the address owner can read. Sending the
+  // mail is not optional: a 200 with no mail would strand a real person who
+  // forgot they already had an account (AUDIT-012#auth-09).
   const existing = await getUserByEmail(email);
   if (existing) {
-    return ApiResponse.conflict(ERROR_MESSAGES.DUPLICATE_EMAIL);
+    const loginLink = `${APP_URL}${ROUTES.LOGIN}`;
+    const resetLink = `${APP_URL}${ROUTES.FORGOT_PASSWORD}`;
+    const noticeContent = signupAttemptOnExistingAccountEmail(
+      (existing.name ?? "").trim(),
+      loginLink,
+      resetLink,
+    );
+    setImmediate(() => {
+      sendEmail({
+        to: existing.email,
+        subject: noticeContent.subject,
+        text: noticeContent.text,
+        html: noticeContent.html,
+      }).catch((err) => {
+        console.error(
+          "[Email Error] Failed to send duplicate-signup notice:",
+          err,
+        );
+      });
+    });
+    return ApiResponse.success({
+      message: SUCCESS_MESSAGES.SIGNUP,
+      requiresVerification: true,
+    });
   }
 
   // Create user
@@ -175,9 +222,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   // Generate verification token (raw token is emailed; we store the hash)
   const token = crypto.randomBytes(32).toString("hex");
-  // auth: hash the token before storage so a DB dump doesn't yield
-  // working verification tokens.
-  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  // auth: hash the token before storage so a DB dump doesn't yield working
+  // verification tokens. Shared HMAC hasher, see lib/auth/token-hash.ts
+  // (AUDIT-002#secrets-03).
+  const tokenHash = hashAuthToken(token);
   const expiresAt = new Date(
     Date.now() + emailVerificationHours * 60 * 60 * 1000,
   );

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Check, FileJson, FileSpreadsheet, Link2 } from "lucide-react";
 import { PageActionsMenu, type PageActionEntry } from "@/components/shared";
-import { APP_SLUG } from "@/lib/config/constants";
+import { APP_SLUG } from "@/lib/config/client-constants";
 import { copyToClipboard } from "@/lib/ui/clipboard";
 import { downloadBlob, escapeCsv } from "@/lib/ui/download";
 import { displayUrl, type DiffResult } from "./compare-types";

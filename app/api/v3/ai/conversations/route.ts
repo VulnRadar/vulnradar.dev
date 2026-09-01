@@ -3,7 +3,7 @@ import pool from "@/lib/database/db";
 import { getSession } from "@/lib/auth";
 import { requireStaff } from "@/lib/auth/authorization";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
-import { getClientIp } from "@/lib/api/request-utils";
+import { getClientIp, rateLimitIpKey } from "@/lib/api/request-utils";
 
 // A chat conversation blob is capped at 100 KB; reject anything materially
 // larger before we even parse it, so a hostile caller can't force a big JSON
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   // can spam unbounded rows keyed on random UUIDs.
   const ip = await getClientIp();
   const rl = await checkRateLimit({
-    key: `ai-conversation:${userId ?? ip}`,
+    key: `ai-conversation:${userId ?? rateLimitIpKey(ip)}`,
     ...RATE_LIMITS.aiChat,
   });
   if (!rl.allowed) {

@@ -70,9 +70,35 @@ describe("getUserPlan", () => {
     expect(await getUserPlan(3)).toBe("staff");
   });
 
-  it("prefers an active gifted plan over the user's own plan", async () => {
+  it("prefers an active gifted plan when it is an upgrade on the user's own plan", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ plan: "free", role: "user", gifted_plan: "pro_supporter" }],
+    });
+    expect(await getUserPlan(4)).toBe("pro_supporter");
+  });
+
+  it("keeps the user's own paid plan when the gift is a LOWER tier", async () => {
+    // A gift used to win outright with no rank comparison, so an admin
+    // gifting Core Supporter to a paying Elite customer silently dropped them
+    // to the lower tier's limits while Stripe kept charging the Elite price.
+    // A gift may only ever be an upgrade.
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          plan: "elite_supporter",
+          role: "user",
+          gifted_plan: "core_supporter",
+        },
+      ],
+    });
+    expect(await getUserPlan(4)).toBe("elite_supporter");
+  });
+
+  it("keeps the gift when it matches the user's own tier exactly", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { plan: "pro_supporter", role: "user", gifted_plan: "pro_supporter" },
+      ],
     });
     expect(await getUserPlan(4)).toBe("pro_supporter");
   });

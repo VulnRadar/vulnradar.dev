@@ -1,14 +1,14 @@
 "use client";
 
-import type { ScanRecord } from "./history-types";
+import type { ScanRecord, TagMutationResult } from "./history-types";
 import { HistoryScanRow } from "./history-scan-row";
 
 interface HistoryScanListProps {
   scans: ScanRecord[];
   onViewScan: (scan: ScanRecord) => void;
   onRescan: (scan: ScanRecord) => void;
-  onAddTag: (scanId: string | number, tag: string) => void;
-  onRemoveTag: (scanId: string | number, tag: string) => void;
+  onAddTag: (scanId: string | number, tag: string) => TagMutationResult;
+  onRemoveTag: (scanId: string | number, tag: string) => TagMutationResult;
   rescanningScanId: string | null;
 }
 
@@ -21,7 +21,7 @@ export function HistoryScanList({
   rescanningScanId,
 }: HistoryScanListProps) {
   return (
-    <div className="rounded-md border border-border bg-card overflow-hidden">
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
       {/* Table header - desktop only */}
       <div className="hidden sm:grid sm:grid-cols-[auto_1fr_auto_auto_auto_auto] gap-4 px-4 py-2.5 border-b border-border bg-muted/30 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         <span className="w-9" aria-hidden></span>

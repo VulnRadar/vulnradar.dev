@@ -1,6 +1,3 @@
-"use client";
-
-import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { CheckCircle, AlertTriangle } from "lucide-react";
@@ -13,7 +10,8 @@ import {
   APP_REPO,
   APP_SLUG,
 } from "@/lib/config/constants";
-import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
+import type { TocItem } from "@/components/docs/docs-types";
+import { DocsTocSpy } from "../docs-toc-spy";
 import {
   DocsHero,
   DocsSection,
@@ -39,48 +37,25 @@ const tocItems: TocItem[] = [
 ];
 
 export default function SetupPage() {
-  const { setActiveSection, setTocItems } = useDocsContext();
-  const observerRef = useRef<IntersectionObserver | null>(null);
-
-  useEffect(() => {
-    setTocItems(tocItems);
-    return () => setTocItems([]);
-  }, [setTocItems]);
-
-  useEffect(() => {
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setActiveSection(entry.target.id);
-          }
-        });
-      },
-      { rootMargin: "-20% 0px -70% 0px", threshold: 0 },
-    );
-
-    tocItems.forEach((item) => {
-      const el = document.getElementById(item.id);
-      if (el) observerRef.current?.observe(el);
-    });
-
-    return () => observerRef.current?.disconnect();
-  }, [setActiveSection]);
-
   return (
     <div className="space-y-16">
+      <DocsTocSpy items={tocItems} />
       <DocsHero
         badge="Self-Hosting"
         title="Setup Guide"
         description={`Install and configure ${APP_NAME} locally or in production. Three deployment paths: local Node, Docker, or a generic Node host.`}
       />
 
-      <div className="grid grid-cols-3 gap-2 sm:gap-4">
+      {/* grid-cols-1 below sm: at 375px three tiles get ~109px each and the
+        two-word labels ("systemd / PM2", "5 min deploy") wrap, leaving the
+        row uneven. This was the only multi-column grid in the content
+        surface with no responsive prefix. */}
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-4">
         <a
           href="#installation"
           className="p-2.5 sm:p-4 rounded-lg bg-card border border-border/40 hover:border-accent transition-colors"
         >
-          <div className="text-sm sm:text-lg font-bold text-primary mb-0.5 sm:mb-1">
+          <div className="text-sm sm:text-lg font-semibold text-primary mb-0.5 sm:mb-1">
             Local Dev
           </div>
           <div className="text-[10px] sm:text-xs text-muted-foreground">
@@ -91,7 +66,7 @@ export default function SetupPage() {
           href="#docker"
           className="p-2.5 sm:p-4 rounded-lg bg-card border border-border/40 hover:border-accent transition-colors"
         >
-          <div className="text-sm sm:text-lg font-bold text-primary mb-0.5 sm:mb-1">
+          <div className="text-sm sm:text-lg font-semibold text-primary mb-0.5 sm:mb-1">
             Docker
           </div>
           <div className="text-[10px] sm:text-xs text-muted-foreground">
@@ -102,7 +77,7 @@ export default function SetupPage() {
           href="#deployment"
           className="p-2.5 sm:p-4 rounded-lg bg-card border border-border/40 hover:border-accent transition-colors"
         >
-          <div className="text-sm sm:text-lg font-bold text-primary mb-0.5 sm:mb-1">
+          <div className="text-sm sm:text-lg font-semibold text-primary mb-0.5 sm:mb-1">
             Bare Node
           </div>
           <div className="text-[10px] sm:text-xs text-muted-foreground">
@@ -145,7 +120,7 @@ export default function SetupPage() {
             <div key={i} className="flex items-start gap-3">
               <CheckCircle className="h-5 w-5 text-primary shrink-0 mt-0.5" />
               <div className="flex-1">
-                <h4 className="text-sm font-semibold mb-1">{item.title}</h4>
+                <h3 className="text-sm font-semibold mb-1">{item.title}</h3>
                 <p className="text-sm text-muted-foreground">
                   {item.desc}.
                   {item.link && (
@@ -421,11 +396,16 @@ npm start`}
               3. Promote to admin
             </h3>
             <p className="text-sm text-muted-foreground mb-2">
-              Connect to Postgres and set the role:
+              The first account on a fresh instance is already{" "}
+              <InlineCode>super_admin</InlineCode>, so there is nothing to run.
+              The command below promotes a <em>later</em> account to{" "}
+              <InlineCode>admin</InlineCode>, which is one level lower. Running
+              it against the first account demotes it, and nothing in the
+              product can restore <InlineCode>super_admin</InlineCode>.
             </p>
             <CodeBlock
               code={`docker compose exec postgres psql -U vulnradar -d vulnradar -c \\
-  "UPDATE users SET role = 'admin' WHERE email = 'you@example.com'"`}
+  "UPDATE users SET role = 'admin' WHERE email = 'a-colleague@example.com'"`}
               language="bash"
             />
           </div>

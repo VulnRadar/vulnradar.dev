@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readFileSync, existsSync } from "fs";
-import { join } from "path";
+import { readKnowledgeFile } from "@/lib/ai/knowledge-files";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
+import { getDailyLimit } from "@/lib/rate-limiting/daily-limits";
 import { buildHelpText } from "@/lib/ai/commands";
 import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/config/constants";
 
@@ -14,16 +14,6 @@ type ContextResult = {
   summary: string;
   content: string;
 };
-
-function readKnowledgeFile(...segments: string[]): string {
-  const p = join(process.cwd(), ...segments);
-  if (!existsSync(p)) return "";
-  try {
-    return readFileSync(p, "utf8");
-  } catch {
-    return "";
-  }
-}
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
@@ -39,7 +29,7 @@ export async function GET(request: NextRequest) {
   const id = searchParams.get("id") || "";
 
   try {
-    return await handleContext(cmd, id, request);
+    return await handleContext(cmd, id, request, session);
   } catch (err) {
     console.error("[ai/context] unhandled error:", err);
     return NextResponse.json(
@@ -53,6 +43,10 @@ async function handleContext(
   cmd: string,
   id: string,
   _request: NextRequest,
+  // Resolved once by GET above and threaded through. Each branch used to call
+  // getSession() again, so the history / me / stats commands paid two session
+  // queries per request for the same row.
+  session: NonNullable<Awaited<ReturnType<typeof getSession>>>,
 ): Promise<Response> {
   let result: ContextResult;
 
@@ -112,14 +106,6 @@ async function handleContext(
     }
 
     case "history": {
-      const session = await getSession();
-      if (!session) {
-        return NextResponse.json(
-          { error: "Sign in to access your scan history." },
-          { status: 401 },
-        );
-      }
-
       if (id) {
         // Single scan by ID
         const scanId = parseInt(id, 10);
@@ -227,16 +213,8 @@ async function handleContext(
     }
 
     case "me": {
-      const session = await getSession();
-      if (!session) {
-        return NextResponse.json(
-          { error: "Sign in to load your account info." },
-          { status: 401 },
-        );
-      }
-
       const res = await pool.query(
-        `SELECT name, email, plan, role, created_at, daily_scan_limit
+        `SELECT name, email, plan, role, created_at
            FROM users WHERE id = $1`,
         [session.userId],
       );
@@ -246,6 +224,13 @@ async function handleContext(
       }
 
       const u = res.rows[0];
+      // Live cap: users.daily_scan_limit is never written, so it always read
+      // as "plan default" no matter what the account actually gets.
+      const resolvedLimit = await getDailyLimit(session.userId);
+      const dailyLimitLabel = Number.isFinite(resolvedLimit)
+        ? String(resolvedLimit)
+        : "Unlimited";
+
       const joined = new Date(u.created_at).toLocaleDateString("en-US", {
         year: "numeric",
         month: "long",
@@ -258,7 +243,7 @@ async function handleContext(
         `**Email:** ${u.email}\n` +
         `**Plan:** ${u.plan || "free"}\n` +
         `**Role:** ${u.role || "user"}\n` +
-        `**Daily scan limit:** ${u.daily_scan_limit ?? "plan default"}\n` +
+        `**Daily scan limit:** ${dailyLimitLabel}\n` +
         `**Member since:** ${joined}\n`;
 
       result = {
@@ -324,14 +309,6 @@ async function handleContext(
     }
 
     case "stats": {
-      const session = await getSession();
-      if (!session) {
-        return NextResponse.json(
-          { error: "Sign in to view your scan statistics." },
-          { status: 401 },
-        );
-      }
-
       const res = await pool.query(
         `SELECT
            COUNT(*)::int AS total_scans,

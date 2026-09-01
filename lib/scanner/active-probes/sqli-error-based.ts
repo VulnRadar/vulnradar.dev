@@ -1,4 +1,4 @@
-import { randomBytes } from "crypto";
+import { randomBytes } from "node:crypto";
 import { safeFetch } from "../safe-fetch";
 import type { Vulnerability } from "../types";
 import {

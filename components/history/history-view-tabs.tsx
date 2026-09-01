@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ROUTES } from "@/lib/config/constants";
+import { ROUTES } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
+import { toggles } from "@/lib/ui/animations";
 
 const TABS = [
   { href: ROUTES.HISTORY, label: "My History" },
@@ -26,24 +27,40 @@ export function HistoryViewTabs() {
   const pathname = usePathname();
 
   return (
-    <div className="flex gap-1 border-b border-border/50">
-      {TABS.map((tab) => {
-        const active = pathname === tab.href;
-        return (
-          <Link
-            key={tab.href}
-            href={tab.href}
-            className={cn(
-              "-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors",
-              active
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {tab.label}
-          </Link>
-        );
-      })}
+    /* The four labels need roughly 409px and a 390px phone offers about 358.
+       With no overflow-x-auto and no whitespace-nowrap the flex children were
+       floored at their min-content width, so every multi-word label wrapped
+       ("Attack / Surface") and the border-b baseline came apart across four
+       top-level pages. Scroll instead of wrap, and py-3 brings the target to
+       44px. -mx-4 px-4 lets the scroll run edge to edge inside the page's own
+       px-4 container, copying the profile page's mobile strip. */
+    <div className="-mx-4 overflow-x-auto scrollbar-hide px-4 sm:mx-0 sm:px-0">
+      {/* w-max + min-w-full: as wide as the tabs need when they overflow, but
+          still full width otherwise so the bottom rule spans the page. */}
+      <div className="flex w-max min-w-full gap-1 border-b border-border/50">
+        {TABS.map((tab) => {
+          const active = pathname === tab.href;
+          return (
+            <Link
+              key={tab.href}
+              href={tab.href}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-medium",
+                // The underline is a border colour, so the shared toggle
+                // timing carries it; without a duration it inherited
+                // Tailwind's default and drifted from every other toggle.
+                toggles.control,
+                active
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {tab.label}
+            </Link>
+          );
+        })}
+      </div>
     </div>
   );
 }

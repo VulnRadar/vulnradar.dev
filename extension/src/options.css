@@ -49,7 +49,7 @@ main#app {
 .sidebar-title {
   font-size: 17px;
   font-weight: 700;
-  margin-bottom: 2px;
+  margin: 0 0 2px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -63,13 +63,17 @@ main#app {
   padding-left: 2px;
 }
 
+/* A real <h2> now (SC 1.3.1). The margin reset keeps the visual identical to
+   the <div> it replaced. The opacity is gone for the same reason as
+   .empty-url-sub in popup.css: fading a token chosen to clear 4.5:1 dropped
+   this to 3.41:1 on the light theme. */
 .nav-group-label {
+  margin: 0;
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--vr-text-muted);
-  opacity: 0.75;
   padding: 14px 12px 4px;
 }
 
@@ -98,7 +102,9 @@ main#app {
 
 .nav-item.active {
   background: color-mix(in srgb, var(--vr-primary) 12%, transparent);
-  color: var(--vr-primary);
+  /* On its own 12% tint the brand blue measured 1.85:1. --vr-primary-text on
+     the same tint is 4.71:1. */
+  color: var(--vr-primary-text);
   font-weight: 600;
 }
 
@@ -110,16 +116,14 @@ main#app {
   bottom: 20%;
   width: 2px;
   border-radius: 2px;
-  background: var(--vr-primary);
+  background: var(--vr-primary-text);
 }
 
-.nav-item:focus-visible,
-.btn:focus-visible,
-.input:focus-visible,
-.text-btn:focus-visible,
-.switch input:focus-visible + .switch-track,
-.corner-btn:focus-visible {
-  outline: 2px solid var(--vr-primary);
+/* popup.css already gives every focusable element a ring; this adds the one
+   case a plain :focus-visible selector cannot reach, where the real control is
+   a visually hidden <input> and the ring has to be drawn on its sibling. */
+.switch input:focus-visible + .switch-track {
+  outline: 2px solid var(--vr-primary-text);
   outline-offset: 2px;
 }
 
@@ -151,7 +155,11 @@ main#app {
   gap: 5px;
 }
 
+/* <h2> and <h3> (SC 1.3.1). Eight settings sections had no heading structure
+   at all, so a screen reader user had no way to jump between them. Margins
+   reset so the headings render exactly as the <div>s they replaced. */
 .section-title {
+  margin: 0;
   font-size: 17px;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -161,6 +169,7 @@ main#app {
 }
 
 .subsection-label {
+  margin: 0;
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
@@ -225,7 +234,7 @@ main#app {
 .input {
   font: inherit;
   padding: 6px 10px;
-  border: 1px solid var(--vr-border);
+  border: 1px solid var(--vr-input);
   border-radius: var(--vr-radius-sm);
   background: var(--vr-bg);
   color: var(--vr-text);
@@ -233,7 +242,7 @@ main#app {
 }
 
 .input:focus {
-  border-color: var(--vr-primary);
+  border-color: var(--vr-primary-text);
 }
 
 .input.mono {
@@ -253,9 +262,10 @@ textarea.input {
 
 .btn {
   font: inherit;
+  min-height: 24px;
   padding: 8px 14px;
   border-radius: var(--vr-radius-sm);
-  border: 1px solid var(--vr-border);
+  border: 1px solid var(--vr-input);
   background: var(--vr-bg);
   color: var(--vr-text);
   cursor: pointer;
@@ -294,7 +304,7 @@ textarea.input {
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  border: 1px solid var(--vr-border);
+  border: 1px solid var(--vr-input);
   border-radius: var(--vr-radius-sm);
   background: var(--vr-bg);
   cursor: pointer;
@@ -304,11 +314,13 @@ textarea.input {
 }
 
 .checkbox:hover {
-  border-color: var(--vr-primary);
+  border-color: var(--vr-primary-text);
 }
 
+/* The selected-state edge is what 1.4.11 asks about, and --vr-primary is
+   2.0:1 against the page on the light theme. --vr-primary-text is 4.56:1. */
 .checkbox.checked {
-  border-color: var(--vr-primary);
+  border-color: var(--vr-primary-text);
   background: color-mix(in srgb, var(--vr-primary) 8%, transparent);
 }
 
@@ -358,7 +370,7 @@ textarea.input {
   flex-direction: column;
   gap: 5px;
   padding: 12px 14px;
-  border: 1px solid var(--vr-border);
+  border: 1px solid var(--vr-input);
   border-radius: var(--vr-radius-sm);
   background: var(--vr-bg);
   cursor: pointer;
@@ -368,11 +380,11 @@ textarea.input {
 }
 
 .family-card:hover {
-  border-color: var(--vr-primary);
+  border-color: var(--vr-primary-text);
 }
 
 .family-card.checked {
-  border-color: var(--vr-primary);
+  border-color: var(--vr-primary-text);
   background: color-mix(in srgb, var(--vr-primary) 6%, transparent);
 }
 
@@ -405,7 +417,9 @@ textarea.input {
   font-weight: 700;
   padding: 2px 6px;
   border-radius: 4px;
-  background: var(--vr-border);
+  /* --vr-border as a fill put this at 4.28:1 on the light theme; --vr-muted-bg
+     is the surface token and measures 6.28:1 at the same visual weight. */
+  background: var(--vr-muted-bg);
   color: var(--vr-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -452,10 +466,19 @@ textarea.input {
   color: var(--vr-warning);
 }
 
-.toast {
+/* The live region has to be in the DOM before the text changes for the change
+   to be announced, so the wrapper is always rendered and only its contents
+   come and go. Fixed (rather than the toast itself) so an always-present empty
+   element never opens a grid row in main#app's layout. */
+.toast-region {
   position: fixed;
   bottom: 16px;
   right: 16px;
+  z-index: 999;
+  pointer-events: none;
+}
+
+.toast {
   padding: 10px 14px;
   border-radius: var(--vr-radius);
   background: var(--vr-text);
@@ -512,9 +535,14 @@ textarea.input {
   font: inherit;
   background: none;
   border: none;
-  color: var(--vr-primary);
+  color: var(--vr-primary-text);
   cursor: pointer;
-  padding: 0;
+  /* Inline-looking, but still a button: the 24px floor applies (SC 2.5.5).
+     Horizontal padding rather than a width, so the label still sets the box. */
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 4px;
   flex-shrink: 0;
 }
 
@@ -532,6 +560,10 @@ textarea.input {
   align-items: center;
   cursor: pointer;
   flex-shrink: 0;
+  /* The label IS the hit target and the track is only 20px tall, so the whole
+     control was under the 24px floor (SC 2.5.5). The track stays 20px; the
+     label grows around it. */
+  min-height: 24px;
 }
 
 .switch input {
@@ -549,9 +581,13 @@ textarea.input {
   width: 36px;
   height: 20px;
   padding: 2px;
-  border: 1px solid var(--vr-border);
+  /* Off state, SC 1.4.11: --vr-border put the whole control at 1.53:1 against
+     the card behind it and the thumb at 1.36:1 against the track, so an
+     "off" switch was very nearly invisible on the light theme. --vr-input is
+     the control-edge token with the 3:1 floor: 4.02:1 and 3.56:1 respectively. */
+  border: 1px solid var(--vr-input);
   border-radius: 999px;
-  background: var(--vr-border);
+  background: var(--vr-input);
   transition:
     background 0.15s,
     border-color 0.15s;
@@ -566,9 +602,12 @@ textarea.input {
   transition: transform 0.15s;
 }
 
+/* On state: the fill stays the brand blue (it is a fill, and the thumb reads
+   7:1 on it), but the boundary that identifies the control against the card
+   behind it takes --vr-primary-text, since --vr-primary is 2.26:1 there. */
 .switch input:checked + .switch-track {
   background: var(--vr-primary);
-  border-color: var(--vr-primary);
+  border-color: var(--vr-primary-text);
 }
 
 .switch input:checked + .switch-track .switch-thumb {
@@ -596,7 +635,7 @@ textarea.input {
   position: relative;
   width: 100px;
   height: 66px;
-  border: 1.5px dashed var(--vr-border);
+  border: 1.5px dashed var(--vr-input);
   border-radius: 8px;
   background: var(--vr-bg);
   flex-shrink: 0;
@@ -607,7 +646,7 @@ textarea.input {
   width: 16px;
   height: 16px;
   padding: 0;
-  border: 1px solid var(--vr-border);
+  border: 1px solid var(--vr-input);
   border-radius: 4px;
   background: var(--vr-card);
   cursor: pointer;
@@ -617,13 +656,28 @@ textarea.input {
     transform 0.12s;
 }
 
-.corner-btn:hover {
-  border-color: var(--vr-primary);
+/* SC 2.5.5. These are 16px squares by design: the point of the picker is that
+   it is a small literal "screen" with a dot in each corner, and growing the
+   dots to 24px would make it a different control. The pseudo-element grows the
+   HIT AREA to 24x24 around each dot instead, leaving the drawing alone.
+   Centred with a negative inset rather than width/height so it stays square
+   whatever the button's own box does. */
+.corner-btn::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
 }
 
+.corner-btn:hover {
+  border-color: var(--vr-primary-text);
+}
+
+/* The selected corner, SC 1.4.11: the brand blue fill measured 2.0:1 against
+   the picker's own background, so the state was carried almost entirely by the
+   scale bump. --vr-primary-text is 4.56:1. */
 .corner-btn.active {
-  background: var(--vr-primary);
-  border-color: var(--vr-primary);
+  background: var(--vr-primary-text);
+  border-color: var(--vr-primary-text);
   transform: scale(1.15);
 }
 
@@ -687,4 +741,58 @@ textarea.input {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+}
+
+/* --- Confirm dialog: replaces the two window.confirm() calls (Sign out,
+   Clear local cache). Those were the only OS-chrome dialogs left in the
+   extension, drawn in the browser's own styling above a page that otherwise
+   controls every pixel and follows the user's theme. --- */
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.dialog {
+  width: 100%;
+  max-width: 420px;
+  padding: 18px 20px 16px;
+  border: 1px solid var(--vr-border);
+  border-radius: var(--vr-radius);
+  background: var(--vr-card);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+}
+
+.dialog-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--vr-text);
+}
+
+.dialog-body {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--vr-text-muted);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+/* The destructive confirm is the primary action in the dialog, so it gets a
+   tint the page's plain .btn.danger (used inline beside other controls) does
+   not. Kept as a tint rather than a filled red: white on #ef4444 lands around
+   3.3:1, below the 4.5:1 this text size needs. */
+.dialog .btn.danger {
+  background: color-mix(in srgb, var(--vr-danger) 12%, transparent);
 }

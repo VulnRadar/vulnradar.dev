@@ -235,6 +235,41 @@ export async function getClientIp(): Promise<string> {
 }
 
 /**
+ * Bits of an IPv6 address that identify the customer rather than the host.
+ * A residential or hosting IPv6 allocation is a /64 at minimum (often a /48 or
+ * /56), so every address inside one /64 belongs to the same subscriber.
+ * Not admin-configurable, unlike the session/API-key binding prefixes: this is
+ * an abuse-control bucket width, and widening it at runtime would hand an
+ * attacker the bypass back.
+ */
+const RATE_LIMIT_IPV6_PREFIX_BITS = 64;
+
+/**
+ * Bucket key for an IP-keyed rate limit.
+ *
+ * checkRateLimit treats its key as an opaque string, so using the raw address
+ * gave anyone with a routed IPv6 block 2^64 independent buckets in it: the
+ * login, signup, forgot-password, resend-verification, contact, demo-scan and
+ * public-scans limiters were all effectively unlimited from a single cheap VPS
+ * allocation. Collapsing IPv6 to its /64 makes one subscriber one bucket.
+ *
+ * IPv4 is returned unchanged: a v4 address is already close to one subscriber,
+ * and masking it would merge unrelated users behind a carrier NAT into a
+ * shared bucket, which locks out bystanders. "unknown" passes through so the
+ * existing single shared bucket for un-resolvable IPs is unaffected.
+ *
+ * Deliberately separate from getClientIp(), which keeps returning the exact
+ * address: audit logs, session binding and login-alert emails all need it.
+ */
+export function rateLimitIpKey(ip: string): string {
+  if (isIP(ip) !== 6) return ip;
+  const asInt = ipv6ToBigInt(ip);
+  if (asInt === null) return ip;
+  const shift = BigInt(128 - RATE_LIMIT_IPV6_PREFIX_BITS);
+  return `${(asInt >> shift).toString(16)}::/${RATE_LIMIT_IPV6_PREFIX_BITS}`;
+}
+
+/**
  * Get user agent from request
  */
 export async function getUserAgent(): Promise<string> {

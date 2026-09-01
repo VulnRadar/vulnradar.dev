@@ -19,7 +19,7 @@ export default function ChangelogPage() {
           shell width. */}
       <div className="mx-auto max-w-3xl">
         <header className="mb-10">
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground mb-2">
+          <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight mb-5 text-balance text-foreground">
             Changelog
           </h1>
           <p className="text-muted-foreground leading-relaxed">

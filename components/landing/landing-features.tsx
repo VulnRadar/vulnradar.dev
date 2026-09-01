@@ -1,11 +1,15 @@
 const SUPPORTING = [
   {
     title: "Nothing to install",
-    desc: "No agent, no browser extension, no sidecar container, no YAML. The scanner runs on our infrastructure against a URL you give it.",
+    desc: "No agent, no sidecar container, no YAML. The scanner runs on our infrastructure against a URL you give it. A browser extension exists if you want one, but nothing has to be installed.",
   },
   {
     title: "Fixes, not lectures",
     desc: "Each finding ships with a config snippet for Nginx, Caddy, Express, and Next.js. Copy it, deploy, rescan, watch it disappear.",
+  },
+  {
+    title: "The report an auditor asks for",
+    desc: "Export the same scan as SARIF for the GitHub Security tab, or as a PCI DSS, SOC 2, ISO 27001, ASVS, HIPAA and GDPR crosswalk. Both on the free tier, and the crosswalk says which findings it could not map rather than forcing them into a control.",
   },
   {
     title: "The UI has no special API",

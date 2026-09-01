@@ -153,6 +153,7 @@ export interface AuditEntry {
   admin_email: string;
   admin_name: string | null;
   admin_avatar_url: string | null;
+  target_user_id: number | null;
   target_email: string | null;
   target_name: string | null;
   target_avatar_url: string | null;
@@ -202,12 +203,15 @@ export interface TeamMember {
 }
 
 export interface TeamDetail {
-  team: {
-    id: number;
-    name: string;
-    owner_email: string;
-    owner_name: string | null;
-  };
+  /**
+   * The whole team row, not a subset. GET /api/v3/admin/teams/[id] selects
+   * id, name, slug, created_at, owner_id, owner_email, owner_name and
+   * owner_avatar_url, which is exactly `Team`. This used to declare a
+   * four-field shape (id, name, owner_email, owner_name) that no caller and
+   * no route ever agreed with, which is the drift AdminTeamDetailResponse
+   * exists to catch.
+   */
+  team: Team;
   members: TeamMember[];
 }
 

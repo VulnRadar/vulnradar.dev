@@ -35,6 +35,8 @@ const { runScheduledBackupPass, schedulePeriodicBackup, stopPeriodicBackup } =
   await import("@/lib/backup/scheduled-backup-worker");
 const { createJob, getActiveJobId, getLatestJob, __resetForTests } =
   await import("@/lib/backup/job-store");
+const { CONFIG_SCHEDULED_BACKUP_INTERVAL_MS } =
+  await import("@/lib/config/config-values");
 
 interface FakeChild extends EventEmitter {
   stdout: EventEmitter;
@@ -87,6 +89,27 @@ describe("runScheduledBackupPass", () => {
     expect(latest?.status).toBe("success");
   });
 
+  it("returns 'failed' (not 'started') when the pg_dump exits non-zero", async () => {
+    // Regression for AUDIT-012 obs-02: runBackupJob never rejects, so the pass
+    // used to return "started" for a backup that failed on every run and the
+    // interval below reported a clean pass to the failure escalator. A broken
+    // backup must be distinguishable from a working one.
+    mockGetSetting.mockResolvedValue(true);
+    const child = fakeChild();
+    mockSpawn.mockReturnValue(child);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const promise = runScheduledBackupPass();
+      await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalled());
+      child.emit("close", 1);
+      expect(await promise).toBe("failed");
+      expect(getLatestJob()?.status).toBe("failed");
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it("skips (does not spawn a second pg_dump) when a job is already active", async () => {
     mockGetSetting.mockResolvedValue(true);
     // An admin's manual run is already occupying the single-flight slot.
@@ -99,15 +122,51 @@ describe("runScheduledBackupPass", () => {
 });
 
 describe("schedulePeriodicBackup / stopPeriodicBackup", () => {
-  it("registers a timer and cleanly cancels it", () => {
+  // These used to assert `expect(timer).toBeDefined()`, which any
+  // `setInterval(fn, 0)` also satisfies. The contract worth pinning is the
+  // interval the worker actually registers and the fact that stopping it
+  // clears that same handle: a worker that silently registers a 0 ms timer
+  // spawns pg_dump in a tight loop, and one whose stop clears a different
+  // handle leaks a timer that keeps firing after shutdown.
+  it("registers the interval it was given and clears that exact handle on stop", () => {
     vi.useFakeTimers();
+    const setSpy = vi.spyOn(globalThis, "setInterval");
+    const clearSpy = vi.spyOn(globalThis, "clearInterval");
     try {
       const timer = schedulePeriodicBackup(60_000);
-      expect(timer).toBeDefined();
+
+      expect(setSpy).toHaveBeenCalledTimes(1);
+      expect(setSpy.mock.calls[0][1]).toBe(60_000);
+      expect(setSpy.mock.results[0].value).toBe(timer);
+
       stopPeriodicBackup();
-      // Calling stop twice must not throw.
+      expect(clearSpy).toHaveBeenCalledTimes(1);
+      expect(clearSpy).toHaveBeenCalledWith(timer);
+
+      // Idempotent, not merely non-throwing: the second stop must find the
+      // handle already released rather than clear it again.
       stopPeriodicBackup();
+      expect(clearSpy).toHaveBeenCalledTimes(1);
     } finally {
+      setSpy.mockRestore();
+      clearSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("falls back to the shipped interval instead of registering a 0 ms timer", () => {
+    vi.useFakeTimers();
+    const setSpy = vi.spyOn(globalThis, "setInterval");
+    try {
+      schedulePeriodicBackup(0);
+      expect(setSpy.mock.calls[0][1]).toBe(CONFIG_SCHEDULED_BACKUP_INTERVAL_MS);
+
+      setSpy.mockClear();
+      schedulePeriodicBackup(Number.NaN);
+      expect(setSpy.mock.calls[0][1]).toBe(CONFIG_SCHEDULED_BACKUP_INTERVAL_MS);
+    } finally {
+      stopPeriodicBackup();
+      setSpy.mockRestore();
       vi.useRealTimers();
     }
   });

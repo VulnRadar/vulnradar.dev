@@ -23,8 +23,10 @@ import {
   StatBar,
   StatBarSkeleton,
   DataTableSkeleton,
+  TableScrollArea,
   Toast,
 } from "@/components/admin/shared";
+import { formatTimestamp } from "@/components/admin/utils";
 import type { ToastState } from "@/components/admin/types";
 import { cn } from "@/lib/ui/utils";
 import { getPlanById } from "@/lib/billing/catalog";
@@ -75,16 +77,6 @@ function formatCents(cents: number): string {
     style: "currency",
     currency: "USD",
     minimumFractionDigits: cents % 100 === 0 ? 0 : 2,
-  });
-}
-
-function formatTimestamp(iso: string): string {
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
   });
 }
 
@@ -234,41 +226,86 @@ export function BillingOverviewManager() {
             <div className="p-4 sm:p-5">
               <DataTableSkeleton rows={4} />
             </div>
+          ) : !data ? (
+            // Without this the failed fetch rendered a header-only table,
+            // which reads as "no plans" rather than "nothing loaded".
+            <EmptyState
+              icon={AlertTriangle}
+              title="Couldn't load billing overview"
+              description="The request failed. Use Refresh above to try again."
+            />
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Plan</TableHead>
-                  <TableHead className="text-right">Price / mo</TableHead>
-                  <TableHead className="text-right">Users</TableHead>
-                  <TableHead className="text-right">Paying</TableHead>
-                  <TableHead className="text-right">MRR</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data?.planMix.map((plan) => (
-                  <TableRow key={plan.planId}>
-                    <TableCell className="font-medium text-foreground">
-                      {plan.planName}
-                    </TableCell>
-                    <TableCell className="text-right text-muted-foreground">
-                      {plan.priceInCents === 0
-                        ? "Free"
-                        : formatCents(plan.priceInCents)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {plan.totalUsers.toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {plan.activeUsers.toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums font-medium">
-                      {formatCents(plan.mrrCents)}
-                    </TableCell>
-                  </TableRow>
+            <>
+              {/* Desktop table plus an md:hidden card list: five numeric
+                  columns do not fit a phone. */}
+              <div className="hidden md:block">
+                {/* TableScrollArea + min-w: this was the last bare <Table> in
+                    the admin panel. Without them a narrow desktop window
+                    compressed the five numeric columns instead of scrolling
+                    them, which is what the min-w exists to prevent. */}
+                <TableScrollArea maxHeight="28rem">
+                  <Table className="min-w-[560px]">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Plan</TableHead>
+                        <TableHead className="text-right">Price / mo</TableHead>
+                        <TableHead className="text-right">Users</TableHead>
+                        <TableHead className="text-right">Paying</TableHead>
+                        <TableHead className="text-right">MRR</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data?.planMix.map((plan) => (
+                        <TableRow key={plan.planId}>
+                          <TableCell className="font-medium text-foreground">
+                            {plan.planName}
+                          </TableCell>
+                          <TableCell className="text-right text-muted-foreground">
+                            {plan.priceInCents === 0
+                              ? "Free"
+                              : formatCents(plan.priceInCents)}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {plan.totalUsers.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {plan.activeUsers.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums font-medium">
+                            {formatCents(plan.mrrCents)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableScrollArea>
+              </div>
+
+              {/* Mobile cards */}
+              <div className="md:hidden divide-y divide-border/40">
+                {data.planMix.map((plan) => (
+                  <div key={plan.planId} className="px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium text-foreground">
+                        {plan.planName}
+                      </p>
+                      <p className="text-sm font-medium tabular-nums">
+                        {formatCents(plan.mrrCents)}
+                      </p>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      <span>
+                        {plan.priceInCents === 0
+                          ? "Free"
+                          : `${formatCents(plan.priceInCents)} / mo`}
+                      </span>
+                      <span>{plan.totalUsers.toLocaleString()} users</span>
+                      <span>{plan.activeUsers.toLocaleString()} paying</span>
+                    </div>
+                  </div>
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -295,46 +332,58 @@ export function BillingOverviewManager() {
             <div className="p-4 sm:p-5">
               <DataTableSkeleton rows={3} />
             </div>
-          ) : data && data.failedPayments.pastDueUsers.length === 0 ? (
+          ) : !data ? (
+            <EmptyState
+              icon={AlertTriangle}
+              title="Couldn't load failed payments"
+              description="The request failed. Use Refresh above to try again."
+            />
+          ) : data.failedPayments.pastDueUsers.length === 0 ? (
             <EmptyState
               icon={CreditCard}
               title="No accounts past due"
               description="Nobody is currently sitting in a failed-payment retry window."
             />
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Account</TableHead>
-                  <TableHead>Plan</TableHead>
-                  <TableHead className="text-right">Period end</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data?.failedPayments.pastDueUsers.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell>
-                      <div className="text-sm text-foreground">
-                        {user.name || user.email}
-                      </div>
-                      {user.name && (
-                        <div className="text-xs text-muted-foreground">
-                          {user.email}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {getPlanById(user.plan)?.name || user.plan}
-                    </TableCell>
-                    <TableCell className="text-right text-muted-foreground">
-                      {user.currentPeriodEnd
-                        ? formatTimestamp(user.currentPeriodEnd)
-                        : "-"}
-                    </TableCell>
+            /* This was a bare <Table> with no scroll container, so on a phone
+               the three columns compressed into each other instead of
+               scrolling. min-w on the table is what makes the wrapper scroll
+               rather than shrink. */
+            <TableScrollArea maxHeight="28rem">
+              <Table className="min-w-[520px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Account</TableHead>
+                    <TableHead>Plan</TableHead>
+                    <TableHead className="text-right">Period end</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {data?.failedPayments.pastDueUsers.map((user) => (
+                    <TableRow key={user.id}>
+                      <TableCell>
+                        <div className="text-sm text-foreground">
+                          {user.name || user.email}
+                        </div>
+                        {user.name && (
+                          <div className="text-xs text-muted-foreground">
+                            {user.email}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {getPlanById(user.plan)?.name || user.plan}
+                      </TableCell>
+                      <TableCell className="text-right text-muted-foreground">
+                        {user.currentPeriodEnd
+                          ? formatTimestamp(user.currentPeriodEnd)
+                          : "-"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableScrollArea>
           )}
 
           {!loading && data && data.failedPayments.recentEvents.length > 0 && (

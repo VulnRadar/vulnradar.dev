@@ -208,7 +208,6 @@ export async function loadAll(): Promise<StorageShape> {
       ...DEFAULT_SETTINGS,
       ...rawSettings,
       families: { ...DEFAULT_SETTINGS.families, ...rawSettings.families },
-      probes: { ...DEFAULT_SETTINGS.probes, ...rawSettings.probes },
     };
   }
   return merged;

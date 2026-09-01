@@ -23,6 +23,7 @@
 import dns from "dns/promises";
 import pool from "@/lib/database/db";
 import { safeFetch, validateScanTarget } from "@/lib/scanner/safe-fetch";
+import { safeReadBody } from "@/lib/scanner/read-bounded-body";
 import { getSetting } from "@/lib/config/runtime-config";
 import { setDiscoveryStage } from "@/lib/scanner/discovery-progress";
 import { APP_NAME } from "@/lib/config/constants";
@@ -433,21 +434,94 @@ export async function discoverSubdomainsForRoot(
 
 // ─── Data Sources ──────────────────────────────────────────
 
+// ssrf: every source below is a free, unauthenticated, third-party endpoint
+// VulnRadar does not control, called on behalf of a user-supplied domain.
+// They used to go through the global `fetch` directly, which meant fetch's
+// default redirect: "follow" and an uncapped res.json()/res.text(). If one of
+// these services is hijacked, expires, or is DNS-poisoned, a
+// `302 Location: http://169.254.169.254/latest/meta-data/` was followed with
+// no guard at all and the answer parsed for hostnames, turning a third-party
+// outage into a metadata read on VulnRadar's own host. fetchPassiveSource
+// walks the redirects itself and runs the same DNS-resolving guard the rest
+// of the scanner uses on every hop. ref: AUDIT-012#ssrf-08
+const PASSIVE_SOURCE_MAX_BYTES = 8_000_000;
+const PASSIVE_SOURCE_MAX_REDIRECT_HOPS = 3;
+
+/**
+ * Fetch one passive source with per-hop SSRF validation.
+ *
+ * Unlike safeFetch this deliberately DOES allow a cross-host redirect: the
+ * Anubis source is published on jldc.me, which 301s to jonlu.ca, and other
+ * free endpoints move hosts without notice. What it will not do is follow a
+ * hop to something validateScanTarget refuses: a private, loopback,
+ * link-local or cloud-metadata address, or (since AUDIT-012#ssrf-07) a
+ * non-http(s) scheme. Returns null when the initial URL or a hop is refused;
+ * callers treat that exactly like an unreachable source.
+ */
+async function fetchPassiveSource(
+  url: string,
+  timeoutMs: number,
+  extraHeaders: Record<string, string> = {},
+): Promise<Response | null> {
+  const signal = AbortSignal.timeout(timeoutMs);
+  const headers = { "User-Agent": DISCOVERY_USER_AGENT, ...extraHeaders };
+  let currentUrl = url;
+
+  for (let hop = 0; hop <= PASSIVE_SOURCE_MAX_REDIRECT_HOPS; hop++) {
+    const safety = await validateScanTarget(currentUrl);
+    if (!safety.safe) return null;
+
+    const res = await fetch(currentUrl, {
+      signal,
+      headers,
+      redirect: "manual",
+    });
+    if (!(res.status >= 300 && res.status < 400)) return res;
+
+    const location = res.headers.get("location");
+    if (!location || hop === PASSIVE_SOURCE_MAX_REDIRECT_HOPS) return res;
+    try {
+      currentUrl = new URL(location, currentUrl).href;
+    } catch {
+      return res;
+    }
+  }
+  return null;
+}
+
+/**
+ * Read a passive source's body with a hard byte cap instead of buffering
+ * whatever the endpoint decides to send. A 10-15 second window at any
+ * reasonable bandwidth is hundreds of megabytes into a single string, and up
+ * to nine sources run per discovery.
+ *
+ * A response that exposes no readable stream has nothing to bound (an empty
+ * body), so it falls through to the built-in parser.
+ */
+async function readPassiveJson(res: Response): Promise<unknown> {
+  if (!res.body) return res.json();
+  return JSON.parse(await safeReadBody(res, PASSIVE_SOURCE_MAX_BYTES, 15_000));
+}
+
+async function readPassiveText(res: Response): Promise<string> {
+  if (!res.body) return res.text();
+  return safeReadBody(res, PASSIVE_SOURCE_MAX_BYTES, 15_000);
+}
+
 async function fetchCrtSh(domain: string): Promise<string[]> {
   try {
-    const res = await fetch(
+    const res = await fetchPassiveSource(
       `https://crt.sh/?q=%25.${encodeURIComponent(domain)}&output=json`,
-      {
-        signal: AbortSignal.timeout(15000),
-        headers: {
-          "User-Agent": DISCOVERY_USER_AGENT,
-          Accept: "application/json",
-        },
-      },
+      15000,
+      { Accept: "application/json" },
     );
-    if (!res.ok) return [];
+    if (!res?.ok) return [];
 
-    const data = await res.json();
+    const data = (await readPassiveJson(res)) as {
+      common_name?: string;
+      name_value?: string;
+    }[];
+    if (!Array.isArray(data)) return [];
     const names = new Set<string>();
 
     for (const entry of data) {
@@ -470,16 +544,13 @@ async function fetchCrtSh(domain: string): Promise<string[]> {
 
 async function fetchHackerTarget(domain: string): Promise<string[]> {
   try {
-    const res = await fetch(
+    const res = await fetchPassiveSource(
       `https://api.hackertarget.com/hostsearch/?q=${encodeURIComponent(domain)}`,
-      {
-        signal: AbortSignal.timeout(10000),
-        headers: { "User-Agent": DISCOVERY_USER_AGENT },
-      },
+      10000,
     );
-    if (!res.ok) return [];
+    if (!res?.ok) return [];
 
-    const text = await res.text();
+    const text = await readPassiveText(res);
     if (text.startsWith("error") || text.includes("API count exceeded"))
       return [];
 
@@ -498,16 +569,13 @@ async function fetchHackerTarget(domain: string): Promise<string[]> {
 
 async function fetchSubdomainCenter(domain: string): Promise<string[]> {
   try {
-    const res = await fetch(
+    const res = await fetchPassiveSource(
       `https://api.subdomain.center/?domain=${encodeURIComponent(domain)}`,
-      {
-        signal: AbortSignal.timeout(10000),
-        headers: { "User-Agent": DISCOVERY_USER_AGENT },
-      },
+      10000,
     );
-    if (!res.ok) return [];
+    if (!res?.ok) return [];
 
-    const data = await res.json();
+    const data = await readPassiveJson(res);
     if (!Array.isArray(data)) return [];
 
     return data
@@ -520,16 +588,13 @@ async function fetchSubdomainCenter(domain: string): Promise<string[]> {
 
 async function fetchRapidDns(domain: string): Promise<string[]> {
   try {
-    const res = await fetch(
+    const res = await fetchPassiveSource(
       `https://rapiddns.io/subdomain/${encodeURIComponent(domain)}?full=1`,
-      {
-        signal: AbortSignal.timeout(10000),
-        headers: { "User-Agent": DISCOVERY_USER_AGENT },
-      },
+      10000,
     );
-    if (!res.ok) return [];
+    if (!res?.ok) return [];
 
-    const html = await res.text();
+    const html = await readPassiveText(res);
     // Properly escape all regex special characters in domain
     const escapedDomain = domain.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const regex = new RegExp(`([a-z0-9._-]+\\.${escapedDomain})`, "gi");
@@ -553,19 +618,16 @@ async function fetchRapidDns(domain: string): Promise<string[]> {
  */
 async function fetchAlienVault(domain: string): Promise<string[]> {
   try {
-    const res = await fetch(
+    const res = await fetchPassiveSource(
       `https://otx.alienvault.com/api/v1/indicators/domain/${encodeURIComponent(domain)}/passive_dns`,
-      {
-        signal: AbortSignal.timeout(10000),
-        headers: {
-          "User-Agent": DISCOVERY_USER_AGENT,
-          Accept: "application/json",
-        },
-      },
+      10000,
+      { Accept: "application/json" },
     );
-    if (!res.ok) return [];
+    if (!res?.ok) return [];
 
-    const data = await res.json();
+    const data = (await readPassiveJson(res)) as {
+      passive_dns?: { hostname?: unknown }[];
+    } | null;
     const records = data?.passive_dns;
     if (!Array.isArray(records)) return [];
 
@@ -585,24 +647,21 @@ async function fetchAlienVault(domain: string): Promise<string[]> {
 
 /**
  * Anubis (jldc.me) subdomain DB. Response shape: a flat JSON array of
- * hostname strings. The host 301-redirects (jldc.me -> jonlu.ca); Node's
- * fetch follows that automatically.
+ * hostname strings. The host 301-redirects (jldc.me -> jonlu.ca), which
+ * fetchPassiveSource follows after re-validating the destination -- this is
+ * the source that makes a blanket cross-host redirect refusal the wrong rule
+ * for these endpoints.
  */
 async function fetchAnubis(domain: string): Promise<string[]> {
   try {
-    const res = await fetch(
+    const res = await fetchPassiveSource(
       `https://jldc.me/anubis-db/subdomains/${encodeURIComponent(domain)}`,
-      {
-        signal: AbortSignal.timeout(10000),
-        headers: {
-          "User-Agent": DISCOVERY_USER_AGENT,
-          Accept: "application/json",
-        },
-      },
+      10000,
+      { Accept: "application/json" },
     );
-    if (!res.ok) return [];
+    if (!res?.ok) return [];
 
-    const data = await res.json();
+    const data = await readPassiveJson(res);
     if (!Array.isArray(data)) return [];
 
     const names = new Set<string>();
@@ -626,23 +685,18 @@ async function fetchAnubis(domain: string): Promise<string[]> {
  */
 async function fetchCertSpotter(domain: string): Promise<string[]> {
   try {
-    const res = await fetch(
+    const res = await fetchPassiveSource(
       `https://api.certspotter.com/v1/issuances?domain=${encodeURIComponent(domain)}&include_subdomains=true&expand=dns_names`,
-      {
-        signal: AbortSignal.timeout(10000),
-        headers: {
-          "User-Agent": DISCOVERY_USER_AGENT,
-          Accept: "application/json",
-        },
-      },
+      10000,
+      { Accept: "application/json" },
     );
-    if (!res.ok) return [];
+    if (!res?.ok) return [];
 
-    const data = await res.json();
+    const data = await readPassiveJson(res);
     if (!Array.isArray(data)) return [];
 
     const names = new Set<string>();
-    for (const issuance of data) {
+    for (const issuance of data as { dns_names?: unknown }[]) {
       const dnsNames = issuance?.dns_names;
       if (!Array.isArray(dnsNames)) continue;
       for (const n of dnsNames) {
@@ -664,19 +718,16 @@ async function fetchCertSpotter(domain: string): Promise<string[]> {
  */
 async function fetchUrlscan(domain: string): Promise<string[]> {
   try {
-    const res = await fetch(
+    const res = await fetchPassiveSource(
       `https://urlscan.io/api/v1/search/?q=domain:${encodeURIComponent(domain)}`,
-      {
-        signal: AbortSignal.timeout(10000),
-        headers: {
-          "User-Agent": DISCOVERY_USER_AGENT,
-          Accept: "application/json",
-        },
-      },
+      10000,
+      { Accept: "application/json" },
     );
-    if (!res.ok) return [];
+    if (!res?.ok) return [];
 
-    const data = await res.json();
+    const data = (await readPassiveJson(res)) as {
+      results?: { page?: { domain?: unknown }; task?: { domain?: unknown } }[];
+    } | null;
     const results = data?.results;
     if (!Array.isArray(results)) return [];
 
@@ -702,19 +753,14 @@ async function fetchUrlscan(domain: string): Promise<string[]> {
  */
 async function fetchWayback(domain: string): Promise<string[]> {
   try {
-    const res = await fetch(
+    const res = await fetchPassiveSource(
       `https://web.archive.org/cdx/search/cdx?url=*.${encodeURIComponent(domain)}/*&output=json&fl=original&collapse=urlkey&limit=10000`,
-      {
-        signal: AbortSignal.timeout(12000),
-        headers: {
-          "User-Agent": DISCOVERY_USER_AGENT,
-          Accept: "application/json",
-        },
-      },
+      12000,
+      { Accept: "application/json" },
     );
-    if (!res.ok) return [];
+    if (!res?.ok) return [];
 
-    const data = await res.json();
+    const data = await readPassiveJson(res);
     if (!Array.isArray(data)) return [];
 
     const names = new Set<string>();

@@ -1,0 +1,164 @@
+[
+  {
+    "icon": "Users",
+    "label": "Team Scan Sharing Actually Saves The Team",
+    "desc": "Scans could be assigned to a team in theory, but nothing that started a scan ever recorded which team it belonged to, so a team's shared scan view was always empty no matter how many scans members ran. Every way of starting a scan (single URL, crawl, bulk, authenticated, GitHub repo) now accepts a team and stores it, and the team is checked against the teams you are actually allowed to publish into. Scans stay personal unless you pick a team.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Settings",
+    "label": "Feature Switches Now Reach The Whole Feature",
+    "desc": "Turning a feature off in the admin panel only ever blocked part of it. PDF reports stayed downloadable by direct link after being switched off, and webhook deliveries kept firing to registered endpoints. Both now honour the switch, and all nine feature switches are readable by the app itself so disabled features can be hidden instead of failing at the last step.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Zap",
+    "label": "Faster Start For Every Scan",
+    "desc": "Starting a scan used to wait on a chain of separate database and DNS lookups one after another, and it counted your running scans twice. The independent checks now run at the same time and the duplicate count is gone, so the scan is acknowledged noticeably sooner. Nothing about which scans are allowed has changed.",
+    "category": "performance"
+  },
+  {
+    "icon": "Search",
+    "label": "SQL Injection Detection No Longer Misses Repeated Queries",
+    "desc": "When a page showed a SQL query as an example and then built the same query for real in a script, the scanner scored the real one against the example's surroundings and reported nothing. It now checks every occurrence where it actually appears, so a genuine SQL injection pattern is still reported even if the same query text also appears as sample content elsewhere on the page.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Search",
+    "label": "AI-Code Checks Now Look At Every Match, Not Just The First",
+    "desc": "Two vibe-code checks stopped after examining the first thing they found. A harmless comment such as \"password: minimum 8 characters\" near the top of a file hid a real leftover password further down, and a friendly error string embedded as translation data hid the same string sitting inside real error-handling code. Both checks now review every occurrence, so these findings are no longer silently dropped.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Bug",
+    "label": "Correct Iframe Origin Matching On IPv6 Targets",
+    "desc": "The unsandboxed-iframe check decided whether an embedded frame was first-party or third-party by pattern-matching the site's address, which fell apart when a site was scanned by its raw IPv6 address. A self-hosted or internal site's own frames were reported as untrusted third-party embeds, and some addresses made the check fail outright and quietly report nothing at all. Frame origins are now compared directly, so the finding only appears for genuinely external embeds. The check also now reads the real src attribute only, so a lazy-loading placeholder attribute can no longer be mistaken for the frame the browser actually loads.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Search",
+    "label": "Debug Toolbar And Broken Redirect Checks No Longer Stop At The First Match",
+    "desc": "Two checks looked at only the first thing they found on a page and then judged the whole page on it. If a page showed a Django Debug Toolbar or Laravel Debugbar snippet inside a code sample near the top, the scanner treated that as documentation and stopped, missing the live debugger actually loaded further down. The broken meta-refresh check had the same shape: an ordinary auto-reload tag at the top hid a genuinely broken redirect below it. Both now examine every occurrence on the page, so a harmless example no longer conceals a real problem.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Filter",
+    "label": "Fewer False Alarms On Embedded Forms",
+    "desc": "The external form action check flagged any form posting to an absolute URL, including your own site written out in full and the newsletter or contact forms that Mailchimp, HubSpot, Jotform, Formspree, Salesforce and similar services tell you to embed. Those are now recognised and left alone, so an ordinary marketing page no longer collects a page of warnings for doing exactly what the vendor documented. Forms posting to a genuinely unknown domain are still reported, and a form posting over plain HTTP is now called out separately as the cleartext problem it actually is.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Search",
+    "label": "Secrets Hidden Behind An Example No Longer Missed",
+    "desc": "Several secret checks looked at only the first match on a page before deciding whether it was a real credential or a documentation placeholder. If a page showed a sample token near the top, a genuine leaked one further down was never reported. Bearer tokens, AWS keys, GitHub tokens, database connection strings, reflected script payloads and clipboard-hijacking scripts are now each judged individually, so a placeholder can no longer hide a real finding behind it.",
+    "category": "security"
+  },
+  {
+    "icon": "Key",
+    "label": "Clearer Stripe Key Finding",
+    "desc": "The Stripe key finding was titled and worded as though any Stripe key in your page were a leak, while its own fix advice said publishable keys are safe in browsers. It only ever reports secret keys now, so the title, description and remediation steps say so plainly and tell you to roll the key and review recent account activity. Publishable keys, which Stripe requires you to put in client-side code, are no longer described as a payment risk.",
+    "category": "fixed"
+  },
+  {
+    "icon": "CheckCheck",
+    "label": "postMessage Issue No Longer Counted Twice",
+    "desc": "A page with a message listener that does not validate the sender's origin produced two separate high-severity findings for the same line of code, inflating the risk score. The weaker of the two duplicate checks has been retired, so the issue is reported once, by the version that inspects each listener individually instead of scanning the whole page.",
+    "category": "fixed"
+  },
+  {
+    "icon": "FileText",
+    "label": "Corrected Inline Iframe Finding Text",
+    "desc": "The finding for an inline srcdoc iframe without a sandbox showed a fix instruction where the risk explanation should have been, and its remediation advised a sandbox setting that a different check flags as unsafe, because the two options together let framed content escape the sandbox entirely. The risk is now explained properly and the fix steps recommend the restrictive setting first, adding permissions back only where genuinely needed.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Lock",
+    "label": "Session Cookie Checks No Longer Stop At The First Safe Cookie",
+    "desc": "The Django, Laravel, and Express cookie checks looked at the cookies in a response one at a time and stopped as soon as they found one that was configured correctly. On a Laravel site that sets a properly hardened CSRF cookie first, that meant a session cookie missing HttpOnly further down the list was never examined and the scan came back clean. Each cookie is now judged on its own, so a correctly configured cookie only clears itself.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Key",
+    "label": "Hardcoded API Key Check Now Scans The Whole Page",
+    "desc": "The check for API keys left in client-side JavaScript ignores keys that vendors publish in their own documentation, since those are inert examples. It was only looking at the first key-shaped value on the page, so a page that opened with one of those documented example keys was reported clean even when a real credential appeared further down the same file. It now checks every match on the page instead of stopping at the first one.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Search",
+    "label": "GraphQL Field Suggestions Are Detected Again",
+    "desc": "The check that spots GraphQL servers leaking field-name suggestions was only matching the message when it appeared as plain page text, not as it actually arrives inside a real JSON error response. That meant it quietly found nothing on the exact case it exists for. It now matches both forms, so a GraphQL endpoint handing attackers free schema hints gets reported.",
+    "category": "fixed"
+  },
+  {
+    "icon": "ShieldAlert",
+    "label": "A Harmless First Match No Longer Hides A Real One",
+    "desc": "Four API checks looked at only the first thing they found on a page and then dismissed the whole page if that one match turned out to be innocent. A tutorial mention near the top of a page, an empty placeholder field, or a short throwaway URL parameter could therefore hide a genuine exposed XML-RPC endpoint, leaked stack trace, internal file path, or access token further down. Each check now weighs every occurrence on its own.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Gauge",
+    "label": "More Honest Confidence On Two API Checks",
+    "desc": "The GraphQL batching and OpenAPI sensitive-defaults checks were labelled as plain response-body pattern matches even though they now also require the request URL or document type to line up. Their reported confidence and detection method were understating what they actually verify, so both now show the combined analysis they really perform.",
+    "category": "changed"
+  },
+  {
+    "icon": "FileText",
+    "label": "Clearer Wording On GraphQL Introspection And Exposed Files",
+    "desc": "The GraphQL introspection finding claimed a full schema dump had been returned when the scan had only seen introspection keywords referenced by the endpoint. It now says what was actually observed and asks you to confirm the server resolves the query. Supply-chain findings about exposed lockfiles, Dockerfiles, and .env files also had their punctuation cleaned up to match the rest of the product.",
+    "category": "changed"
+  },
+  {
+    "icon": "ShieldAlert",
+    "label": "Mixed Content No Longer Hidden By A Code Sample",
+    "desc": "The mixed-content check skips resource tags that appear inside a code sample, since a documented example is not a real insecure load. It was matching the sample and the live tag to the same spot on the page, so a site that showed an example and then loaded that exact same resource insecurely further down was reported as clean. Each occurrence is now judged where it actually sits, so the real insecure load is reported and the code sample is still ignored.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Search",
+    "label": "Enumerable ID Check No Longer Stops At The First Match",
+    "desc": "The check that spots easily guessable record numbers in a URL only looked at the first number it found. If that one was too large to be worth guessing, it stopped there and never looked at the rest of the address, so a small, easily guessable order or invoice number later in the same URL was missed entirely. It now checks every candidate in the address instead of giving up after the first.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Zap",
+    "label": "Crawl Scans Stopped Repeating Themselves",
+    "desc": "A crawl used to re-run every host-level check on every single page it visited. Scanning 25 pages of one site meant more than a thousand duplicate DNS lookups, 25 identical TLS handshakes, and the same 23 sensitive file paths requested 25 times, all to produce copies of findings that were then thrown away as duplicates. Those checks now run once for the whole crawl, and pages are scanned a few at a time instead of strictly one after another, so a deep crawl finishes far sooner and is much less likely to look like an attack to the site being scanned.",
+    "category": "performance"
+  },
+  {
+    "icon": "ShieldCheck",
+    "label": "Wider Internal IPv6 Address Blocking",
+    "desc": "The scanner refuses to connect to internal and private addresses. Three of the IPv6 rules were narrower than intended and only covered the first slice of the range they were meant to block, so some private and link-local addresses used by container and overlay networks were not caught. The full ranges are now blocked, and there are tests pinning each boundary.",
+    "category": "security"
+  },
+  {
+    "icon": "Shield",
+    "label": "Address Checks Now Verify The Protocol Too",
+    "desc": "The safety check that every part of the scanner uses before making a request looked at the address but never at the protocol, so a redirect could hand it something that was not a web address at all. Web addresses are now the only thing it will accept, and every redirect step is re-checked against the same rule as the original URL rather than only the first one.",
+    "category": "security"
+  },
+  {
+    "icon": "Network",
+    "label": "Subdomain Discovery Sources Are Guarded",
+    "desc": "Subdomain discovery pulls from nine free public services. Those requests used to follow redirects blindly and read whatever came back with no size limit, so an outage or hijack at one of those services could have redirected the scanner somewhere internal, or streamed a huge response into memory. Every one of those requests now re-checks each redirect against the same safety rules the rest of the scanner uses, and responses are capped.",
+    "category": "security"
+  },
+  {
+    "icon": "Eye",
+    "label": "Screenshots Refuse Redirected Pages",
+    "desc": "The optional page screenshot only checked the address you asked for. If the page then redirected the browser somewhere the scanner would never have been allowed to visit, the screenshot was still taken and saved. The capture is now discarded when the page navigates off the target to an address that fails the same safety check.",
+    "category": "security"
+  },
+  {
+    "icon": "Gauge",
+    "label": "Faster Blocklist Checks On Bulk And Crawl Scans",
+    "desc": "Every scan asked the database twice whether the target was on the admin blocklist, and a bulk or crawl request repeated both questions for every single URL. A 250-page crawl of one site made 500 round trips to answer the same question. The answer is now remembered for a short window per host, so repeat checks are free while a newly added rule still takes effect within seconds.",
+    "category": "performance"
+  },
+  {
+    "icon": "Settings",
+    "label": "The Scheduled Scans Switch Now Actually Stops Them",
+    "desc": "Turning scheduled scans off in the admin settings only blocked new schedules from being created. Every schedule that already existed kept firing on its normal cadence, so an operator turning the feature off to shed load or to stop hitting a target saw no change. The background worker now checks the setting too and claims nothing while the feature is off.",
+    "category": "fixed"
+  }
+]

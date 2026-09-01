@@ -122,7 +122,12 @@ describe("GET /api/v3/admin/email-logs", () => {
     await GET(getRequest("?search=alice"));
 
     const countCall = mockQuery.mock.calls[1] as [string, unknown[]];
-    expect(countCall[0]).toContain("(recipient ILIKE $1 OR subject ILIKE $1)");
+    // ESCAPE '\' is required, not cosmetic: without it a literal "_" in the
+    // search matches any character and a bare "%" degrades to a full scan of
+    // email_logs. The bound value is escaped to match.
+    expect(countCall[0]).toContain(
+      "(recipient ILIKE $1 ESCAPE '\\' OR subject ILIKE $1 ESCAPE '\\')",
+    );
     expect(countCall[1]).toEqual(["%alice%"]);
 
     const selectCall = mockQuery.mock.calls[2] as [string, unknown[]];
@@ -162,7 +167,7 @@ describe("GET /api/v3/admin/email-logs", () => {
 
     const countCall = mockQuery.mock.calls[1] as [string, unknown[]];
     expect(countCall[0]).toContain(
-      "(recipient ILIKE $1 OR subject ILIKE $1) AND status = $2",
+      "(recipient ILIKE $1 ESCAPE '\\' OR subject ILIKE $1 ESCAPE '\\') AND status = $2",
     );
     expect(countCall[1]).toEqual(["%alice%", "sent"]);
   });

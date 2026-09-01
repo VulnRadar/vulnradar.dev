@@ -15,6 +15,14 @@ export const QUERY_CHANGE_EVENT = "vr:query-change";
  * /history?scan=X) updates the URL via history.pushState but fires neither
  * popstate nor our own event, and the page component does not remount, so a
  * query-driven sub-view (the open scan) would otherwise never reset.
+ *
+ * Because it is a catch-all it carries no key, and a listener therefore fires
+ * for URL writes that have nothing to do with it, including its own page's
+ * other controls. A subscriber that does real work (a refetch above all) MUST
+ * diff the value it cares about and bail when that value has not moved.
+ * app/history/page.tsx reloaded the open scan on every one of these events,
+ * so each findings filter toggle blanked a loaded report behind the skeleton;
+ * see components/history/scan-param-sync.ts.
  */
 export const LOCATION_CHANGE_EVENT = "vr:location-change";
 

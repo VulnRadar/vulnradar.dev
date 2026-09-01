@@ -4,7 +4,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
-import { CodeBlock, InlineCode } from "./docs-code-block";
+import { CodeBlock } from "./docs-code-block";
+import { ParamTable } from "./docs-table";
 import { type Endpoint, METHOD_COLORS } from "./docs-types";
 
 export function EndpointCard({
@@ -49,61 +50,33 @@ export function EndpointCard({
       </p>
 
       <div className="space-y-6">
-        {/* Path Parameters */}
+        {/* Path and query parameters. These used to be hand-written flex rows
+            here while components/docs/docs-table.tsx exported a purpose-built
+            ParamTable that took this exact EndpointParam[] and no page ever
+            rendered. Two rendering paths for the same data meant a styling or
+            accessibility fix applied to the table never reached /docs/api, and
+            the hand-rolled version dropped the default column entirely. */}
         {pathParams && pathParams.length > 0 && (
           <div>
             <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
               Path Parameters
             </h4>
-            <div className="space-y-2">
-              {pathParams.map((param) => (
-                <div
-                  key={param.name}
-                  className="flex items-start gap-3 text-sm"
-                >
-                  <InlineCode>{param.name}</InlineCode>
-                  <span className="text-muted-foreground text-xs">
-                    {param.type}
-                  </span>
-                  <span className="text-muted-foreground text-xs flex-1">
-                    {param.description}
-                  </span>
-                </div>
-              ))}
-            </div>
+            <ParamTable
+              params={pathParams}
+              caption={`Path parameters for ${method} ${path}`}
+            />
           </div>
         )}
 
-        {/* Query Parameters */}
         {queryParams && queryParams.length > 0 && (
           <div>
             <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
               Query Parameters
             </h4>
-            <div className="space-y-2">
-              {queryParams.map((param) => (
-                <div
-                  key={param.name}
-                  className="flex items-start gap-3 text-sm"
-                >
-                  <InlineCode>{param.name}</InlineCode>
-                  <span className="text-muted-foreground text-xs">
-                    {param.type}
-                  </span>
-                  {param.required && (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] px-1.5 py-0"
-                    >
-                      required
-                    </Badge>
-                  )}
-                  <span className="text-muted-foreground text-xs flex-1">
-                    {param.description}
-                  </span>
-                </div>
-              ))}
-            </div>
+            <ParamTable
+              params={queryParams}
+              caption={`Query parameters for ${method} ${path}`}
+            />
           </div>
         )}
 

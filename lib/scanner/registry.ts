@@ -70,11 +70,20 @@ import { pageChecks } from "./checks/page-checks";
 // (id, title, severity, evidence, fix steps) when the detector matched, or
 // null otherwise. Most of the work happens in `buildCheck` below.
 
-export type CheckFn = (
+export type CheckFn = ((
   url: string,
   headers: Headers,
   body: string,
-) => Vulnerability | null;
+) => Vulnerability | null) & {
+  /**
+   * The check id this function was built from. Carried on the function itself
+   * because the engine only ever holds the callable, not the def: when a
+   * detector throws, this is what lets the scan name the culprit instead of
+   * logging an anonymous stack out of 310+ checks. Optional so a hand-written
+   * CheckFn (tests) still satisfies the type. ref: AUDIT-012#obs-01
+   */
+  checkId?: string;
+};
 
 // ── CheckDef schema (matches the JSON files) ───────────────────────────────
 
@@ -204,7 +213,41 @@ const legacyCheckDefs: CheckDef[] = BUNDLES.flatMap((b) => b.defs);
 const bundleByCategory = new Map<Category, CategoryBundle>();
 for (const bundle of BUNDLES) bundleByCategory.set(bundle.category, bundle);
 
+/**
+ * Check IDs whose implementation deliberately lives outside the category file
+ * their definition names, mapped to the bundle that actually owns the code.
+ *
+ * All eleven below are secret/PII scanners defined in checks-data/content.json
+ * (so they stay in the "content" group users see) but implemented once, in
+ * checks/secrets-extended.ts, alongside the ~50 sibling `secret-*` detectors
+ * that share its placeholder-masking pipeline. Without this map they resolved
+ * through the loop underneath, which walks BUNDLES in declaration order and
+ * lands on secrets-extended only because no earlier bundle happens to define
+ * the same id. Dozens of same-name collisions already exist in this codebase
+ * (see the note above), so declaration order is not something to rely on: add
+ * one copy-pasted `credit-card-pattern` to, say, api.ts and the resolution
+ * would silently move to a different implementation. ref: AUDIT-009#dup-11
+ */
+const DETECTOR_HOME: Record<string, Category> = {
+  "token-exposure": "secrets-extended",
+  "jwt-in-url": "secrets-extended",
+  "jwt-in-html": "secrets-extended",
+  "internal-ip-exposed": "secrets-extended",
+  "aws-metadata-reference": "secrets-extended",
+  "base64-credentials": "secrets-extended",
+  "s3-bucket-exposed": "secrets-extended",
+  "firebase-config-exposed": "secrets-extended",
+  "credit-card-pattern": "secrets-extended",
+  "ssn-pattern": "secrets-extended",
+  "phone-number-leak": "secrets-extended",
+};
+
 function resolveDetector(def: CheckDef): EvidenceFn | undefined {
+  const home = DETECTOR_HOME[def.id];
+  if (home) {
+    const fn = bundleByCategory.get(home)?.detectors[def.id];
+    if (fn) return fn as EvidenceFn;
+  }
   const owner = bundleByCategory.get(def.category);
   const ownFn = owner?.detectors[def.id];
   if (ownFn) return ownFn as EvidenceFn;
@@ -214,6 +257,11 @@ function resolveDetector(def: CheckDef): EvidenceFn | undefined {
   }
   return undefined;
 }
+
+/** Exported so the registry test can assert the map has not gone stale: every
+ *  id here must still be implemented in the bundle it names, and the bundle
+ *  named must actually be the one whose detector runs. */
+export const detectorHomes: Readonly<Record<string, Category>> = DETECTOR_HOME;
 
 const detectorMap: Record<string, EvidenceFn> = {};
 for (const def of legacyCheckDefs) {
@@ -341,11 +389,13 @@ export function buildVulnerabilityFromEvidence(
 function buildCheck(def: CheckDef): CheckFn | null {
   const detect = detectorMap[def.id];
   if (!detect) return null;
-  return (url, headers, body): Vulnerability | null => {
+  const fn: CheckFn = (url, headers, body): Vulnerability | null => {
     const evidence = detect(url, headers, body);
     if (!evidence) return null;
     return buildVulnerabilityFromEvidence(def, url, evidence);
   };
+  fn.checkId = def.id;
+  return fn;
 }
 
 // All synchronous checks (def + detector present). The async modules

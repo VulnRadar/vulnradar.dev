@@ -50,21 +50,44 @@ function toRelease(raw: RawGithubRelease): GithubRelease {
   };
 }
 
-async function githubJson(url: string): Promise<RawGithubRelease | null> {
+/**
+ * How a caller wants this particular lookup fetched.
+ *
+ * The updater always wants the live answer (an admin who clicked "check for
+ * updates" must not be shown a cached one), but GET /api/version is a public
+ * endpoint hit on ordinary page loads and has always cached for an hour so it
+ * does not spend a GitHub rate-limit slot per visitor. That difference is why
+ * the version route kept its own duplicate fetch, and why the two then
+ * drifted on timeout and on the release-url key name. Making it a parameter
+ * lets both share this code instead.
+ */
+export interface ReleaseFetchOptions {
+  /** Seconds to cache the response for. Omitted means `cache: "no-store"`. */
+  revalidateSeconds?: number;
+  /** Request timeout. Defaults to 10s, the updater's own budget. */
+  timeoutMs?: number;
+}
+
+async function githubJson(
+  url: string,
+  options: ReleaseFetchOptions = {},
+): Promise<RawGithubRelease | null> {
   const res = await fetch(url, {
-    signal: AbortSignal.timeout(10_000),
+    signal: AbortSignal.timeout(options.timeoutMs ?? 10_000),
     headers: { Accept: "application/vnd.github+json" },
-    // Never serve a stale cached release when the admin explicitly asked
-    // to check for or apply an update.
-    cache: "no-store",
+    ...(options.revalidateSeconds === undefined
+      ? { cache: "no-store" as const }
+      : { next: { revalidate: options.revalidateSeconds } }),
   });
   if (!res.ok) return null;
   return (await res.json()) as RawGithubRelease;
 }
 
 /** GET /releases/latest */
-export async function fetchLatestRelease(): Promise<GithubRelease | null> {
-  const raw = await githubJson(`${GITHUB_API_BASE}/releases/latest`);
+export async function fetchLatestRelease(
+  options?: ReleaseFetchOptions,
+): Promise<GithubRelease | null> {
+  const raw = await githubJson(`${GITHUB_API_BASE}/releases/latest`, options);
   return raw ? toRelease(raw) : null;
 }
 

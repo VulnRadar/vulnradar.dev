@@ -15,7 +15,7 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { TeamJoinForm } from "@/components/teams/team-join-form";
 import { TeamJoinSuccess } from "@/components/teams/team-join-success";
 import { TeamJoinInvalid } from "@/components/teams/team-join-invalid";
-import { APP_NAME } from "@/lib/config/constants";
+import { APP_NAME } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
 
 function LoadingState({ label = "Checking your invitation" }) {

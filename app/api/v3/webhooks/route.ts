@@ -18,6 +18,7 @@ import {
   planLimitMessage,
 } from "@/lib/billing/plan-limits";
 import { detectWebhookType } from "@/lib/webhooks/detect-type";
+import { encryptWebhookSecret } from "@/lib/webhooks/secret";
 import { getTeamResourceAccess } from "@/lib/auth/team-resource-access";
 
 export async function GET() {
@@ -39,7 +40,10 @@ export async function GET() {
      ORDER BY created_at DESC`,
     [session.userId],
   );
-  return NextResponse.json(result.rows);
+  // Named-key envelope, matching every other collection endpoint. See the
+  // same note on GET /api/v3/schedules: a bare array cannot carry a count or
+  // a truncation flag later without breaking its callers.
+  return NextResponse.json({ webhooks: result.rows });
 }
 
 export async function POST(request: NextRequest) {
@@ -119,9 +123,18 @@ export async function POST(request: NextRequest) {
   // same "shown once" contract as an API key's raw_key.
   const secret = randomBytes(32).toString("hex");
 
+  // The column stores ciphertext (AUDIT-009#webhook-01), so the plaintext is
+  // attached to the response here instead of coming back through RETURNING:
+  // a RETURNING secret would hand the caller the ciphertext.
   const result = await pool.query(
-    "INSERT INTO webhooks (user_id, url, name, type, secret) VALUES ($1, $2, $3, $4, $5) RETURNING id, url, name, type, active, created_at, secret",
-    [session.userId, url, webhookName, webhookType, secret],
+    "INSERT INTO webhooks (user_id, url, name, type, secret) VALUES ($1, $2, $3, $4, $5) RETURNING id, url, name, type, active, created_at",
+    [
+      session.userId,
+      url,
+      webhookName,
+      webhookType,
+      encryptWebhookSecret(secret),
+    ],
   );
 
   // Send notification email
@@ -144,7 +157,7 @@ export async function POST(request: NextRequest) {
     console.error("Failed to send webhook created notification:", err),
   );
 
-  return NextResponse.json(result.rows[0], { status: 201 });
+  return NextResponse.json({ ...result.rows[0], secret }, { status: 201 });
 }
 
 // Test a webhook by sending a test payload

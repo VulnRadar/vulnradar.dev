@@ -662,6 +662,32 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
+  // ── Cookies (live copy: the definition's category is "headers") ──────
+  //
+  // cookies.ts used to carry a second, dead implementation of this id that
+  // flagged every cookie. It was deleted, and these fixtures moved here so the
+  // detector that actually runs is the one under test. ref: AUDIT-009#dup-09
+
+  "cookie-security": [
+    {
+      description: "session cookie missing HttpOnly/Secure/SameSite",
+      cookies: ["session=abc"],
+      expect: "fire",
+      evidenceIncludes: "HttpOnly",
+    },
+    {
+      description: "session cookie with all three attributes",
+      cookies: ["session=abc; HttpOnly; Secure; SameSite=Lax"],
+      expect: "skip",
+    },
+    {
+      description:
+        "third-party analytics cookie missing the attributes is not a session-hijacking risk",
+      cookies: ["_ga=GA1.1.1234567890.1700000000; Path=/"],
+      expect: "skip",
+    },
+  ],
+
   // ── Clear-site-data / Critical ──────────────────────────────────────
 
   "clear-site-data-missing": [
@@ -1274,6 +1300,33 @@ const fixtures: DetectorFixtures = {
       body: '<html><body><iframe src="https://www.google.com/some/other/embed"></iframe></body></html>',
       expect: "fire",
     },
+    {
+      // ref: AUDIT-012#inj-05. An IPv6 target's host is the literal
+      // "[::1]:8080"; interpolated into a regex that became a character
+      // class, so the site's own same-origin frames were classified as
+      // third-party embeds on every self-hosted IPv6 target.
+      description:
+        "IPv6 target framing its own same-origin page is not third-party",
+      url: "http://[::1]:8080/dashboard",
+      body: '<html><body><iframe src="http://[::1]:8080/panel"></iframe></body></html>',
+      expect: "skip",
+    },
+    {
+      description:
+        "IPv6 target framing a genuine cross-origin embed still fires",
+      url: "http://[::1]:8080/dashboard",
+      body: '<html><body><iframe src="https://widget.chat-example.com/embed"></iframe></body></html>',
+      expect: "fire",
+    },
+    {
+      // The src the browser loads is same-origin; only the lazy-load
+      // data-src attribute points elsewhere, and it is never rendered.
+      description:
+        "same-origin iframe whose data-src points at a third party is not flagged",
+      url: "https://example.com/",
+      body: '<html><body><iframe data-src="https://widget.chat-example.com/embed" src="https://example.com/frame"></iframe></body></html>',
+      expect: "skip",
+    },
   ],
 
   "image-protocol-relative": [
@@ -1325,6 +1378,16 @@ const fixtures: DetectorFixtures = {
       url: "https://example.com/",
       body: '<html><head><meta http-equiv="refresh" content="5"></head></html>',
       expect: "skip",
+    },
+    {
+      // Reading only the first refresh tag let a benign self-reload at the
+      // top of the document hide a broken redirect further down.
+      description:
+        "benign self-refresh first, broken empty-url refresh second - still fires",
+      url: "https://example.com/",
+      body: '<html><head><meta http-equiv="refresh" content="30"><meta http-equiv="refresh" content="0;url="></head></html>',
+      expect: "fire",
+      evidenceIncludes: "empty URL target",
     },
   ],
 

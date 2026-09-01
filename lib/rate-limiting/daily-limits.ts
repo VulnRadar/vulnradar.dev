@@ -9,6 +9,7 @@ import pool from "@/lib/database/db";
 import { BILLING_PLAN_LIMITS } from "@/lib/config/constants";
 import type { SettingKey } from "@/lib/config/registry";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
+import { PLANS } from "@/lib/billing/catalog";
 
 // Staff roles that get resolved to the "staff" plan tag below (see
 // getUserPlan) -- NOT unlimited access. getDailyLimit resolves that tag to
@@ -67,7 +68,60 @@ export async function isBillingEnabled(): Promise<boolean> {
 }
 
 /**
- * Get user's current subscription plan (from users table, checking gifted subscriptions first)
+ * Rank a plan id by the catalog's own ordering (free < core < pro < elite).
+ * An unknown or absent id ranks below every real plan.
+ *
+ * Deliberately a local copy of lib/billing/plan-limits.ts's planRank rather
+ * than an import: that module imports getUserPlan from this one, so importing
+ * back would close a cycle. PLANS comes straight from the catalog, which is the
+ * same source planRank reads, so the two can never disagree.
+ */
+function planRankLocal(planId: unknown): number {
+  if (typeof planId !== "string" || !planId) return -1;
+  return PLANS.findIndex((p) => p.id === planId);
+}
+
+/**
+ * The plan policy itself, over a row that already holds the three inputs.
+ *
+ * Split out of getUserPlan so a caller that has ALREADY read the users row
+ * and the gifted_subscriptions row (GET /api/v3/auth/me reads both, on every
+ * page load) can resolve the plan without a third read of the same data,
+ * and without re-implementing the staff tag and the gift-ranking rule and
+ * risking a divergent copy.
+ */
+export function resolveEffectivePlan(row: {
+  plan?: string | null;
+  role?: string | null;
+  gifted_plan?: string | null;
+}): PlanType {
+  // Staff roles are tagged "staff" -- callers (getDailyLimit,
+  // getUserPlanLimits, userMeetsScheduleFrequency) resolve that tag to
+  // the Pro Supporter plan's real limits, not unlimited.
+  if (row?.role && STAFF_ROLES.includes(row.role)) {
+    return "staff";
+  }
+
+  // Whichever of the gifted plan and the paid plan is HIGHER wins, not the
+  // gift unconditionally. A gift used to replace users.plan outright with no
+  // rank comparison, so an admin gifting Core Supporter to an Elite
+  // Supporter silently dropped that paying customer to the lower tier's
+  // limits (100 scans/day instead of 500, plus every other cap) while their
+  // card kept being charged the Elite price. A gift should only ever be an
+  // upgrade.
+  const effectivePlan =
+    planRankLocal(row?.gifted_plan) >= planRankLocal(row?.plan)
+      ? row?.gifted_plan || row?.plan
+      : row?.plan;
+  if (effectivePlan && effectivePlan !== "free") {
+    return effectivePlan as PlanType;
+  }
+  return "free";
+}
+
+/**
+ * Get user's current subscription plan. Resolves the higher of the user's own
+ * plan and any active gifted subscription (see resolveEffectivePlan).
  */
 export async function getUserPlan(userId: number): Promise<PlanType> {
   try {
@@ -81,21 +135,7 @@ export async function getUserPlan(userId: number): Promise<PlanType> {
        WHERE u.id = $1`,
       [userId],
     );
-    const row = result.rows[0];
-
-    // Staff roles are tagged "staff" -- callers (getDailyLimit,
-    // getUserPlanLimits, userMeetsScheduleFrequency) resolve that tag to
-    // the Pro Supporter plan's real limits, not unlimited.
-    if (row?.role && STAFF_ROLES.includes(row.role)) {
-      return "staff";
-    }
-
-    // Gifted plan takes priority over regular plan
-    const effectivePlan = row?.gifted_plan || row?.plan;
-    if (effectivePlan && effectivePlan !== "free") {
-      return effectivePlan as PlanType;
-    }
-    return "free";
+    return resolveEffectivePlan(result.rows[0] ?? {});
   } catch (error) {
     console.error("[DailyLimits] Error getting user plan:", error);
     return "free";

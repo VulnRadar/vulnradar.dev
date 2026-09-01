@@ -127,6 +127,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // when its source scan is flipped to private -- see that table's callers and
   // GET /api/v3/host/[hostname]). So it exposes nothing that isn't already
   // public at /host/[hostname]; a caller's own private scans never appear here.
+  // That claim only holds because scanned_url is NOT selected below: it is the
+  // one column here that /host/[hostname] never returns.
   if (request.nextUrl.searchParams.get("scope") === "all") {
     const res = await pool.query<{
       host: string;
@@ -134,9 +136,16 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       findings: Vulnerability[] | null;
       last_scanned_at: string | Date;
       source_scan_id: number | null;
-      scanned_url: string | null;
     }>(
-      `SELECT host, severity_counts, findings, last_scanned_at, source_scan_id, scanned_url
+      // Deliberately NOT selecting scanned_url (AUDIT-009#reputation-01, and
+      // the same null-out already applied at app/api/v3/scan/reputation).
+      // host_reputation.scanned_url is the scanned URL verbatim, query string
+      // included, and this branch has no owner predicate at all: returning it
+      // would hand every signed-in caller the full URL of the latest public
+      // scan of every host on file, tokens and all (a magic-login link, a
+      // password-reset URL, a presigned S3 URL). The host itself is already
+      // public at /host/[hostname]; the exact URL is not.
+      `SELECT host, severity_counts, findings, last_scanned_at, source_scan_id
        FROM host_reputation
        ORDER BY last_scanned_at DESC
        LIMIT $1`,
@@ -156,7 +165,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         // count, so this is the single latest public scan.
         scanCount: 1,
         latestScanId: r.source_scan_id ?? 0,
-        latestUrl: r.scanned_url || `https://${r.host}`,
+        latestUrl: `https://${r.host}`,
         latestScannedAt: new Date(r.last_scanned_at).toISOString(),
         findingsCount,
         summary: counts,

@@ -13,10 +13,22 @@ import {
   stripExampleContent,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
+import { openTags, hasTagWith, tagsWith } from "./_tag-scan";
+
+/**
+ * The leading run of `text` up to the first line terminator, matching what a
+ * regex `.` (which never crosses a line break without the `s` flag) would have
+ * been able to span. Used where a wildcard gap had to be replaced by an
+ * explicit bounded window, so the window keeps the old single-line scope.
+ */
+function splitAtLineBreak(text: string): string {
+  const end = text.search(/[\n\r]/);
+  return end === -1 ? text : text.slice(0, end);
+}
 
 function inlineScriptContent(body: string): string {
   const matches = body.matchAll(
-    /<script(?![^>]*\bsrc\s*=)(?![^>]*\btype\s*=\s*["']application\/(?:json|ld\+json)["'])[^>]*>([\s\S]*?)<\/script>/gi,
+    /<script(?![^>]{0,2000}\bsrc\s*=)(?![^>]{0,2000}\btype\s*=\s*["']application\/(?:json|ld\+json)["'])[^>]{0,2000}>([\s\S]*?)<\/script>/gi,
   );
   // Next.js's RSC streaming pushes (self.__next_f.push(...)) carry
   // arbitrary serialized page text as a JS string literal -- not an
@@ -90,7 +102,15 @@ const CRITICAL_SECRET_PATTERNS: SecretPattern[] = [
   },
   {
     name: "Discord Bot Token",
-    pattern: /[MN][A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{38,}/g,
+    // (?<![A-Za-z\d]) left-anchors the token to the start of an alphanumeric
+    // run. Without it every M or N inside a long unbroken run was a candidate
+    // start, and the unbounded [A-Za-z\d]{23,} then scanned that whole run and
+    // backtracked looking for a '.' that never comes: quadratic, measured at
+    // 4x the cost for 2x the input on a body of repeated AKIA-shaped text. A
+    // real token always starts after a quote, space, or delimiter, so no
+    // genuine match is lost. Same fix as the three detectors named in
+    // tests/lib/scanner/_perf-budget.test.ts.
+    pattern: /(?<![A-Za-z\d])[MN][A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{38,}/g,
   },
   // Bare SID, no adjacent auth token match — genuinely low-value on its
   // own, but kept critical per explicit product guidance: a leaked SID is
@@ -465,7 +485,8 @@ export const detectors: Record<string, DetectFn> = {
   // ── Eval / function / setTimeout strings ────────────────────────────────
 
   "eval-in-scripts": (_url, _headers, body) => {
-    const scripts = body.match(/<script[^>]*>[\s\S]*?<\/script[^>]*>/gi) || [];
+    const scripts =
+      body.match(/<script[^>]{0,2000}>[\s\S]*?<\/script[^>]{0,2000}>/gi) || [];
     for (const s of scripts) {
       if (/\beval\s*\(/.test(s) && !s.includes("JSON.parse")) {
         return "eval() usage detected in inline scripts.";
@@ -493,7 +514,8 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "dangerous-inline-js": (_url, _headers, body) => {
-    const scripts = body.match(/<script[^>]*>[\s\S]*?<\/script[^>]*>/gi) || [];
+    const scripts =
+      body.match(/<script[^>]{0,2000}>[\s\S]*?<\/script[^>]{0,2000}>/gi) || [];
     const dangerousPatterns = [
       /eval\s*\(/i,
       /document\.write\s*\(/i,
@@ -666,34 +688,81 @@ export const detectors: Record<string, DetectFn> = {
   // ── SQL / command / SSRF / XXE / path / SSTI / LDAP ──────────────────────
 
   "sql-injection-patterns": (_url, _headers, body) => {
-    const patterns = [
-      /(?:SELECT|INSERT|UPDATE|DELETE)\s+.*(?:FROM|INTO|SET)\s+\w+.*(?:WHERE|VALUES)/gi,
-      /(?:UNION\s+ALL\s+SELECT|OR\s+1\s*=\s*1|AND\s+1\s*=\s*1|'\s*OR\s*')/gi,
-    ];
     const found: string[] = [];
-    for (const [patternIndex, p] of patterns.entries()) {
-      const matches = body.match(p) || [];
-      const inScripts = matches.filter((m) => {
-        const idx = body.indexOf(m);
-        const before = body.slice(Math.max(0, idx - 200), idx);
-        if (!/<script/i.test(before) || /<code|<pre|```/i.test(before))
-          return false;
-        // The full-query pattern (index 0) alone matches a bare SQL string
-        // constant used as sample/demo text (e.g. a SQL playground's saved
-        // query preview) -- require a concatenation/interpolation signal
-        // nearby, same gate the code-sqli-* checks below already use, so a
-        // query has to actually be BUILT from something else to count.
-        if (patternIndex === 0) {
-          const around = body.slice(
-            Math.max(0, idx - 80),
-            Math.min(body.length, idx + m.length + 80),
-          );
-          if (!/\+|\$\{/.test(around)) return false;
-        }
-        return true;
-      });
-      if (inScripts.length > 0) found.push(...inScripts.slice(0, 2));
+
+    // Every hit below is judged at ITS OWN offset. body.match() returns only
+    // the matched text, and the old body.indexOf(text) lookup collapsed every
+    // repeat of the same query onto the FIRST occurrence: a page that prints a
+    // query as a <pre> example and then genuinely concatenates the identical
+    // query inside a script had the script copy scored against the <pre>
+    // copy's surroundings and silently dropped.
+
+    // ── Full statement (verb ... FROM/INTO/SET table ... WHERE/VALUES) ──
+    //
+    // This was one regex with two unbounded gaps:
+    //   /(?:SELECT|INSERT|UPDATE|DELETE)\s+.*(?:FROM|INTO|SET)\s+\w+.*(?:WHERE|VALUES)/gi
+    // On a body that repeats a SQL verb and never supplies the WHERE/VALUES
+    // tail ("SELECT * FROM " over and over), every candidate FROM inside the
+    // first `.*` makes the second `.*` rescan to end of line and back, so the
+    // cost explodes with body length: measured 184 SECONDS on a 24 KB body,
+    // against the 1 MB body cap execute-scan allows from any scanned page,
+    // reachable unauthenticated through the demo scan. Same defect class as
+    // the three quadratic detectors caught by tests/lib/scanner/
+    // _perf-budget.test.ts, so it is fixed the same way: no wildcard gap that
+    // can be re-split. Walk the verbs once and test a bounded window after
+    // each, which makes every step linear in the window and the detector
+    // linear in the body.
+    const STATEMENT_WINDOW = 240;
+    const statements: string[] = [];
+    for (const verb of body.matchAll(/(?:SELECT|INSERT|UPDATE|DELETE)\s+/gi)) {
+      const idx = verb.index;
+      // Context gates first: they reject nearly every candidate for the cost
+      // of one 200-char slice, before any window work happens.
+      const before = body.slice(Math.max(0, idx - 200), idx);
+      if (!/<script/i.test(before) || /<code|<pre|```/i.test(before)) continue;
+      // The old `.*` never matched a newline (no `s` flag), so the statement
+      // has to stay on one line here too.
+      const line = splitAtLineBreak(body.slice(idx, idx + STATEMENT_WINDOW));
+      const afterVerb = line.slice(verb[0].length);
+      const table = /(?:FROM|INTO|SET)\s+\w/i.exec(afterVerb);
+      if (!table) continue;
+      const tailStart = table.index + table[0].length;
+      const term = /WHERE|VALUES/i.exec(afterVerb.slice(tailStart));
+      if (!term) continue;
+      const text = line.slice(
+        0,
+        verb[0].length + tailStart + term.index + term[0].length,
+      );
+      // A bare SQL string constant used as sample/demo text (a SQL
+      // playground's saved query preview) is not a finding -- require a
+      // concatenation/interpolation signal nearby, the same gate the
+      // code-sqli-* checks below use, so the query has to actually be BUILT
+      // from something else to count.
+      const around = body.slice(
+        Math.max(0, idx - 80),
+        Math.min(body.length, idx + text.length + 80),
+      );
+      if (!/\+|\$\{/.test(around)) continue;
+      statements.push(text);
+      if (statements.length >= 2) break;
     }
+    found.push(...statements);
+
+    // ── Tautology / UNION payloads ──
+    // Literal alternatives joined by \s+ / \s* only: no gap for a match to be
+    // re-split across, so this one was already linear and keeps its shape.
+    const payloads: string[] = [];
+    for (const m of body.matchAll(
+      /(?:UNION\s+ALL\s+SELECT|OR\s+1\s*=\s*1|AND\s+1\s*=\s*1|'\s*OR\s*')/gi,
+    )) {
+      const idx = m.index;
+      const before = body.slice(Math.max(0, idx - 200), idx);
+      if (!/<script/i.test(before) || /<code|<pre|```/i.test(before)) continue;
+      payloads.push(m[0]);
+      if (payloads.length >= 2) break;
+    }
+    found.push(...payloads);
+
     return found.length > 0
       ? `SQL patterns in inline scripts: ${found
           .slice(0, 2)
@@ -769,7 +838,7 @@ export const detectors: Record<string, DetectFn> = {
 
   "xml-external-entity": (_url, _headers, body) => {
     const xxePattern =
-      /<!DOCTYPE[^>]*\[[\s\S]*?<!ENTITY[^>]*(?:SYSTEM|PUBLIC)/i;
+      /<!DOCTYPE[^>]{0,2000}\[[\s\S]*?<!ENTITY[^>]{0,2000}(?:SYSTEM|PUBLIC)/i;
     if (xxePattern.test(body)) {
       const match = body.match(xxePattern);
       if (match) {
@@ -919,8 +988,11 @@ export const detectors: Record<string, DetectFn> = {
   // ── SRI / external assets (sast-ish for <script src>) ───────────────────
 
   "sri-missing": (_url, _headers, body) => {
-    const externalScripts =
-      body.match(/<script[^>]+src=["']https?:\/\/[^"']+["'][^>]*>/gi) || [];
+    const externalScripts = tagsWith(
+      body,
+      "script",
+      /src=["']https?:\/\/[^"']+["']/i,
+    );
     const noSRI = externalScripts.filter(
       (t) => !t.toLowerCase().includes("integrity="),
     );
@@ -933,8 +1005,7 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "external-script-no-sri": (_url, _headers, body) => {
-    const scripts =
-      body.match(/<script[^>]*src\s*=\s*["'][^"']*["'][^>]*>/gi) || [];
+    const scripts = tagsWith(body, "script", /src\s*=\s*["'][^"']*["']/i);
     let missing = 0;
     for (const s of scripts) {
       if (/src\s*=\s*["']https?:\/\//i.test(s) && !s.includes("integrity"))
@@ -1014,19 +1085,15 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── Source-map / debug paths in code ────────────────────────────────────
 
-  "sourcemap-reference": (_url, _headers, body) => {
-    if (/\/\/[#@]\s*sourceMappingURL\s*=\s*\S+\.map/i.test(body)) {
-      return "JavaScript source map URL reference found. Source maps expose original source code.";
-    }
-    return null;
-  },
-
-  "source-maps": (_url, _headers, body) => {
-    const mapRefs = body.match(/\/\/[#@]\s*sourceMappingURL=[^\s]+/g) || [];
-    const mapFiles = body.match(/\.js\.map/g) || [];
-    const total = mapRefs.length + mapFiles.length;
-    return total > 0 ? `Found ${total} source map reference(s).` : null;
-  },
+  // "sourcemap-reference" used to have an identical copy here (and a third in
+  // information-disclosure.ts). Its definition lives in checks-data/
+  // content.json with category "content", so registry.ts's resolveDetector has
+  // always run content.ts's copy and both others were dead.
+  //
+  // "source-maps" was removed with it: no category file defines that id, and
+  // registry.ts only builds a detector for ids that have a JSON definition, so
+  // it could never produce a finding no matter what it returned. Its behaviour
+  // is covered by sourcemap-reference anyway. ref: AUDIT-009#dup-07
 
   // ── Hardcoded secrets (SAST) ────────────────────────────────────────────
   //
@@ -1098,7 +1165,7 @@ export const detectors: Record<string, DetectFn> = {
   // ── Form / page semantics (no-prefix, JSON category=code) ────────────────
 
   "insecure-form-submission": (_url, _headers, body) => {
-    if (/<form[^>]+action\s*=\s*["']http:\/\//i.test(body)) {
+    if (hasTagWith(body, "form", /action\s*=\s*["']http:\/\//i)) {
       return "Form posts data over insecure HTTP.";
     }
     // Removed: "HTML form present - verify all form actions use HTTPS."
@@ -1864,7 +1931,7 @@ export const detectors: Record<string, DetectFn> = {
   // ── Clickjacking (code-clickjack-*) ──────────────────────────────────────
 
   "code-clickjack-target-blank-js-href": (_url, _headers, body) => {
-    const tags = body.match(/<a\b[^>]*>/gi) || [];
+    const tags = openTags(body, "a");
     for (const tag of tags) {
       // Inert idioms (javascript:void(0), javascript:;, javascript:"") execute
       // nothing and are the standard no-op click-handler-only anchor pattern.
@@ -2169,7 +2236,9 @@ export const detectors: Record<string, DetectFn> = {
     // being assigned directly to a dangerous DOM sink in an inline script.
     // Avoid matching normal script bundles by restricting to inline-only scripts.
     const inlineScripts = [
-      ...body.matchAll(/<script\b(?![^>]*\bsrc\b)[^>]*>([\s\S]*?)<\/script>/gi),
+      ...body.matchAll(
+        /<script\b(?![^>]{0,2000}\bsrc\b)[^>]{0,2000}>([\s\S]*?)<\/script>/gi,
+      ),
     ].map((m) => m[1]);
 
     for (const script of inlineScripts) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ChevronDown,
@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/ui/utils";
-import { API } from "@/lib/config/constants";
+import { API, APP_NAME } from "@/lib/config/client-constants";
 import {
   DocsHero,
   DocsSection,
@@ -170,7 +170,7 @@ export default function ApiPlaygroundPage() {
       <DocsHero
         badge="v3 API"
         title="API Playground"
-        description="Send real requests to the VulnRadar API from your browser and copy the same call as ready-to-run code in your language. Driven by the live OpenAPI spec, so it never drifts from the real API."
+        description={`Send real requests to the ${APP_NAME} API from your browser and copy the same call as ready-to-run code in your language. Driven by the live OpenAPI spec, so it never drifts from the real API.`}
       />
 
       <DocsSection id="setup" title="Setup">
@@ -287,6 +287,9 @@ function OperationCard({
     null,
   );
   const [sendError, setSendError] = useState<string | null>(null);
+  // Every card renders its own body textarea, so the label's htmlFor needs an
+  // id unique to this card rather than a shared literal.
+  const bodyId = useId();
 
   const pathP = op.params.filter((p) => p.in === "path");
   const queryP = op.params.filter((p) => p.in === "query");
@@ -338,6 +341,7 @@ function OperationCard({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
         className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left transition-colors hover:bg-muted/40"
       >
         <span
@@ -400,10 +404,14 @@ function OperationCard({
 
               {hasBody && (
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-muted-foreground">
+                  <label
+                    htmlFor={bodyId}
+                    className="text-xs font-medium text-muted-foreground"
+                  >
                     Request body (JSON)
                   </label>
                   <textarea
+                    id={bodyId}
                     value={body}
                     onChange={(e) => setBody(e.target.value)}
                     spellCheck={false}
@@ -417,8 +425,14 @@ function OperationCard({
 
           {/* Code sample, in the shared language selection. */}
           <div className="flex flex-col gap-1.5">
+            {/* a11y (SC 4.1.2): this was role="tablist" / role="tab" /
+                aria-selected, but there is no role="tabpanel" anywhere in the
+                file and no aria-controls, so the tab contract was announced
+                and never honoured: assistive tech offered tab navigation into
+                panels that do not exist. It is a set of toggle buttons that
+                re-render one code block, so it is described as one. */}
             <div
-              role="tablist"
+              role="group"
               aria-label="Code sample language"
               className="flex flex-wrap gap-1"
             >
@@ -426,8 +440,7 @@ function OperationCard({
                 <button
                   key={l.id}
                   type="button"
-                  role="tab"
-                  aria-selected={lang === l.id}
+                  aria-pressed={lang === l.id}
                   onClick={() => onLangChange(l.id)}
                   className={cn(
                     "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
@@ -506,17 +519,29 @@ function ParamField({
   onChange: (v: string) => void;
   hint?: string;
 }) {
+  // a11y: an expanded endpoint card stacks four or five of these, so a label
+  // with no htmlFor left a screen-reader user hearing that many unnamed text
+  // boxes. useId() because the component renders once per parameter per card
+  // and a static id would collide across all of them.
+  const id = useId();
+  const hintId = `${id}-hint`;
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-xs font-medium text-muted-foreground">
+      <label htmlFor={id} className="text-xs font-medium text-muted-foreground">
         {label}
       </label>
       <Input
+        id={id}
+        aria-describedby={hint ? hintId : undefined}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="h-8 text-xs"
       />
-      {hint && <p className="text-[11px] text-muted-foreground/70">{hint}</p>}
+      {hint && (
+        <p id={hintId} className="text-[11px] text-muted-foreground/70">
+          {hint}
+        </p>
+      )}
     </div>
   );
 }

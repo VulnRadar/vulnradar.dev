@@ -12,8 +12,11 @@ import {
   XCircle,
   Clock,
   HardDrive,
+  AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
+import { useVisibleInterval } from "@/lib/hooks/use-visible-interval";
+import { formatBytes, formatTimestamp } from "@/components/admin/utils";
 
 interface BackupJob {
   id: string;
@@ -36,28 +39,6 @@ interface BackupStatus {
   lastBackupAt: string | null;
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ["KB", "MB", "GB", "TB"];
-  let value = bytes / 1024;
-  let unitIndex = 0;
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex += 1;
-  }
-  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unitIndex]}`;
-}
-
-function formatTimestamp(iso: string): string {
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 /**
  * Admin > System > Backups. Triggers scripts/backup-db.mjs (pg_dump ->
  * gzip -> optional encryption/offsite upload, see that script's own
@@ -73,7 +54,7 @@ export function BackupManager() {
   const [refreshing, setRefreshing] = useState(false);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -81,9 +62,15 @@ export function BackupManager() {
       if (res.ok) {
         const data = (await res.json()) as BackupStatus;
         setStatus(data);
+        setLoadFailed(false);
+      } else {
+        setLoadFailed(true);
       }
     } catch {
-      /* ignore, retry on next poll tick / manual refresh */
+      // Surfaced rather than swallowed: with status still null the panel
+      // reads "Last backup: Never", which tells an operator they have no
+      // backups when they may have many.
+      setLoadFailed(true);
     }
     setLoading(false);
   }, []);
@@ -95,19 +82,13 @@ export function BackupManager() {
 
   const jobRunning = status?.job?.status === "running";
 
-  useEffect(() => {
-    if (!jobRunning) {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-      return;
-    }
-    pollRef.current = setInterval(fetchStatus, 2000);
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, [jobRunning, fetchStatus]);
+  // Only polls while a backup job is actually running, and keeps polling at a
+  // slower period when the tab is hidden rather than stopping: the point of
+  // this timer is to notice the job finishing, which it should still do if the
+  // admin switched tabs to wait it out.
+  useVisibleInterval(fetchStatus, jobRunning ? 2000 : null, {
+    hiddenDelayMs: 10_000,
+  });
 
   const handleManualRefresh = async () => {
     setRefreshing(true);
@@ -190,6 +171,18 @@ export function BackupManager() {
         </div>
 
         <CardContent className="p-4 sm:p-5 space-y-5">
+          {!status && loadFailed && (
+            <div className="flex items-start gap-3 p-3 rounded-lg border border-destructive/30 bg-destructive/10">
+              <AlertTriangle
+                className="h-4 w-4 text-destructive shrink-0 mt-0.5"
+                aria-hidden="true"
+              />
+              <p className="text-sm text-destructive">
+                Couldn&apos;t load backup status. The figures below are unknown,
+                not zero. Use Refresh to try again.
+              </p>
+            </div>
+          )}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">

@@ -6,15 +6,20 @@
 
 import { html, render, type TemplateResult } from "lit-html";
 import browser from "webextension-polyfill";
-import { get, loadAll, onChanged } from "../lib/storage";
+import { get, loadAll, onChanged, set } from "../lib/storage";
+import {
+  isScanInProgressStale,
+  scanInProgressTimeLeftMs,
+} from "../lib/scan-lifecycle";
 import type { LastScanCompletion } from "../lib/storage";
 import { refreshMe } from "../lib/auth";
 import { api } from "../lib/api";
-import { getHistory, refreshHistoryFromServer } from "../lib/scan";
+import { fetchHistoryFromServer, getHistory } from "../lib/scan";
 import type { ScanOutcome } from "../lib/scan";
 import { classifyScanTarget } from "../lib/scan-target";
-import { applyTheme } from "../lib/theme";
+import { applyTheme, watchSystemTheme } from "../lib/theme";
 import { VULNRADAR } from "../lib/constants";
+import { CLEAN_SOLID } from "../lib/tokens";
 import { sendTabMessage, TabMessageTimeoutError } from "../lib/messaging";
 import {
   formatCount,
@@ -100,6 +105,9 @@ interface State {
   // buttons can show progress and not be double-fired.
   exportingFormat: ReportFormat | null;
   exportError: string | null;
+  // Distinguishes "you have not scanned anything yet" from "the history
+  // request failed", which an empty array alone cannot.
+  historyLoadFailed: boolean;
 }
 
 const state: State = {
@@ -121,6 +129,7 @@ const state: State = {
   expandedFindings: new Set<string>(),
   exportingFormat: null,
   exportError: null,
+  historyLoadFailed: false,
 };
 
 let renderQueued = false;
@@ -173,22 +182,27 @@ function App(): TemplateResult {
       onModeChange: setMode,
       onCopyUrl: copyUrl,
     })}
+    ${LiveStatus()}
     ${
       state.targetWarning
         ? html`
-            <div class="target-warning">
+            <div class="target-warning" role="alert">
               <div class="target-warning-text">
-                <span class="target-warning-icon">&#9888;</span>
+                <span class="target-warning-icon" aria-hidden="true"
+                  >&#9888;</span
+                >
                 <span>${state.targetWarning}</span>
               </div>
               <div class="target-warning-actions">
                 <button
+                  type="button"
                   class="target-warning-proceed"
                   @click=${() => triggerScan(true)}
                 >
                   Scan anyway
                 </button>
                 <button
+                  type="button"
                   class="target-warning-dismiss"
                   @click=${() => {
                     state.targetWarning = null;
@@ -206,8 +220,8 @@ function App(): TemplateResult {
     ${
       state.error
         ? html`
-            <div class="error-banner">
-              <span>&#9888;</span>
+            <div class="error-banner" role="alert">
+              <span aria-hidden="true">&#9888;</span>
               <span>${state.error}</span>
             </div>
           `
@@ -218,7 +232,7 @@ function App(): TemplateResult {
         ? html`
             <div class="section">
               <div class="section-header">
-                <div class="section-title">This site</div>
+                <h2 class="section-title">This site</h2>
               </div>
               <div class="history">
                 ${withPrevious(siteHistory.slice(0, 5), state.history).map(
@@ -234,7 +248,7 @@ function App(): TemplateResult {
         ? html`
             <div class="section">
               <div class="section-header">
-                <div class="section-title">Recent scans</div>
+                <h2 class="section-title">Recent scans</h2>
               </div>
               <div class="history">
                 ${withPrevious(otherHistory.slice(0, 5), state.history).map(
@@ -245,6 +259,7 @@ function App(): TemplateResult {
           `
         : null
     }
+    ${HistoryEmptyState()}
     <div class="popup-footer">
       <span
         >v${EXT_VERSION}${state.appVersion ? html` &middot; VulnRadar v${state.appVersion}` : null}</span
@@ -253,7 +268,11 @@ function App(): TemplateResult {
         ${
           isHttpUrl(state.url)
             ? html`
-                <button class="footer-settings" @click=${showSiteAlertAgain}>
+                <button
+                  type="button"
+                  class="footer-settings"
+                  @click=${showSiteAlertAgain}
+                >
                   Show site alert
                 </button>
               `
@@ -264,6 +283,7 @@ function App(): TemplateResult {
             ? null
             : html`
                 <button
+                  type="button"
                   class="footer-settings"
                   @click=${openInTab}
                   title="Open this view in a resizable browser tab"
@@ -272,7 +292,73 @@ function App(): TemplateResult {
                 </button>
               `
         }
-        <button class="footer-settings" @click=${openOptions}>Settings</button>
+        <button type="button" class="footer-settings" @click=${openOptions}>
+          Settings
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * The one live region in the popup (SC 4.1.3).
+ *
+ * A scan takes seconds to minutes and its whole progression is conveyed
+ * visually: the button label changes to "Scanning...", then a result panel
+ * appears somewhere else in the document. Neither is announced. A disabled
+ * button in particular is skipped by most screen readers, so the "Scanning..."
+ * label a sighted user watches is exactly the feedback a screen reader user
+ * never gets.
+ *
+ * Deliberately ONE region rendered in a fixed position rather than
+ * aria-live sprinkled on each panel: a live region that appears and
+ * disappears from the DOM is unreliable (it has to be present before the text
+ * changes for the change to be announced), and several competing polite
+ * regions interrupt each other.
+ */
+function LiveStatus(): TemplateResult {
+  let message = "";
+  if (state.copyConfirm) {
+    // Transient (1.5s) and always the most recent thing the user did, so it
+    // outranks the scan state underneath it.
+    message = "Findings copied to the clipboard.";
+  } else if (state.isScanning) {
+    message = "Scan running.";
+  } else if (state.error) {
+    message = `Scan failed. ${state.error}`;
+  } else if (state.result) {
+    const r = state.result;
+    message = `Scan finished. Danger score ${r.dangerScore ?? 0} out of 10, ${r.findings.length} ${r.findings.length === 1 ? "finding" : "findings"}.`;
+  }
+  return html`<p class="sr-only" role="status">${message}</p>`;
+}
+
+/**
+ * First-run and failed-load states for the history block.
+ *
+ * The two history sections were each wrapped in a `length > 0` guard and
+ * nothing else, so a freshly installed extension rendered the connect pill,
+ * the scan button and the footer, with nothing to say what the panel would
+ * hold once you scanned. It also could not tell an empty history from a
+ * history request that failed.
+ */
+function HistoryEmptyState(): TemplateResult | null {
+  if (state.history.length > 0 || state.initializing || !state.me) return null;
+  if (state.historyLoadFailed) {
+    return html`
+      <div class="section">
+        <div class="empty-state">
+          Could not load your scan history. Your past scans are safe: this is
+          only the list. Reopen the popup to try again.
+        </div>
+      </div>
+    `;
+  }
+  return html`
+    <div class="section">
+      <div class="empty-state">
+        No scans yet. Hit Scan this page and the result lands here, with a trend
+        arrow once you scan the same site twice.
       </div>
     </div>
   `;
@@ -286,7 +372,7 @@ function RateLimitBar(): TemplateResult {
   if (rl.limit < 0 || rl.limit >= 99999) {
     return html`
       <div class="rate-limit rate-limit-unlimited">
-        <span class="rate-unlimited-icon">&#8734;</span>
+        <span class="rate-unlimited-icon" aria-hidden="true">&#8734;</span>
         <span class="rate-unlimited-label">Unlimited scans</span>
       </div>
     `;
@@ -309,17 +395,23 @@ function RateLimitBar(): TemplateResult {
 }
 
 function ResultPanel(r: ScanResult, isStale: boolean): TemplateResult {
+  // A branch that ran out of time budget was NOT checked, so a zero-finding
+  // result alongside one is not an all-clear. The "Clean" chip is a positive
+  // assertion and must not be rendered from an absence.
+  const incomplete = r.incomplete ?? [];
   const score = r.dangerScore ?? 0;
+  // Rungs read off the shared severity ramp rather than a fifth hand-written
+  // colour list, so a severity retune reaches this too.
   const scoreColor =
     score >= 8
-      ? "#ef4444"
+      ? severityHex("critical")
       : score >= 5
-        ? "#f97316"
+        ? severityHex("high")
         : score >= 3
-          ? "#eab308"
+          ? severityHex("medium")
           : score >= 1
-            ? "#3b82f6"
-            : "#22c55e";
+            ? severityHex("low")
+            : CLEAN_SOLID;
   const riskLabel =
     score >= 8
       ? "High risk"
@@ -345,7 +437,9 @@ function ResultPanel(r: ScanResult, isStale: boolean): TemplateResult {
         r.redirect
           ? html`
               <div class="result-redirect">
-                <span class="target-warning-icon">&#9888;</span>
+                <span class="target-warning-icon" aria-hidden="true"
+                  >&#9888;</span
+                >
                 <div>
                   <div class="result-redirect-title">
                     ${
@@ -378,8 +472,27 @@ function ResultPanel(r: ScanResult, isStale: boolean): TemplateResult {
                 ? html`<span class="badge ${s}">${n}&thinsp;${s}</span>`
                 : null;
             })}
-            ${r.summary.total === 0 ? html`<span class="badge clean">Clean</span>` : null}
+            ${
+              r.summary.total === 0 && !incomplete.length
+                ? html`<span class="badge clean">Clean</span>`
+                : null
+            }
+            ${
+              incomplete.length > 0
+                ? html`<span class="badge warn-incomplete"
+                    >${incomplete.length}&thinsp;unfinished</span
+                  >`
+                : null
+            }
           </div>
+          ${
+            incomplete.length > 0
+              ? html`<div class="incomplete-note">
+                  ${incomplete.join(", ")} did not finish, so this scan does not
+                  cover ${incomplete.length === 1 ? "it" : "them"}.
+                </div>`
+              : null
+          }
           <div class="result-sub-row">
             <span class="result-timing"
               >${formatRelative(r.scannedAt)} &middot;
@@ -388,10 +501,17 @@ function ResultPanel(r: ScanResult, isStale: boolean): TemplateResult {
             ${isStale ? html`<span class="stale-chip">cached</span>` : null}
           </div>
         </div>
+        <!-- "Copy" on its own does not say what it copies. The confirmation is
+             announced by LiveStatus rather than by an aria-live on this
+             button, because a live region that also carries an aria-label is
+             announced inconsistently: some screen readers read the label
+             instead of the changed text. -->
         <button
+          type="button"
           class="copy-report"
           @click=${copyReport}
           title="Copy findings to clipboard"
+          aria-label="Copy findings to clipboard"
         >
           ${state.copyConfirm ? "Copied!" : "Copy"}
         </button>
@@ -412,7 +532,9 @@ function ResultPanel(r: ScanResult, isStale: boolean): TemplateResult {
                 }
               </div>
             `
-          : html`<div class="no-findings">No vulnerabilities detected.</div>`
+          : html`<div class="no-findings">
+              No findings from the checks that ran.
+            </div>`
       }
       ${r.scanHistoryId ? ExportBar(r) : null}
       <div class="result-footer">
@@ -427,7 +549,7 @@ function ResultPanel(r: ScanResult, isStale: boolean): TemplateResult {
             openHistoryDetail(r.scanHistoryId ?? 0);
           }}
         >
-          Full report &rarr;
+          Full report <span aria-hidden="true">&rarr;</span>
         </a>
       </div>
     </div>
@@ -452,14 +574,16 @@ function ExportBar(r: ScanResult): TemplateResult {
   const busy = state.exportingFormat !== null;
   return html`
     <div class="export-bar">
-      <span class="export-label">Export</span>
-      <div class="export-buttons">
+      <span class="export-label" id="export-label">Export</span>
+      <div class="export-buttons" role="group" aria-labelledby="export-label">
         ${EXPORT_FORMATS.map(
           ({ format, label }) => html`
             <button
+              type="button"
               class="export-btn"
               ?disabled=${busy}
               title=${`Download this scan as ${label}`}
+              aria-label=${`Download this scan as ${label}`}
               @click=${() => exportReport(r, format)}
             >
               ${state.exportingFormat === format ? "…" : label}
@@ -470,7 +594,9 @@ function ExportBar(r: ScanResult): TemplateResult {
     </div>
     ${
       state.exportError
-        ? html`<div class="export-error">${state.exportError}</div>`
+        ? html`<div class="export-error" role="alert">
+            ${state.exportError}
+          </div>`
         : null
     }
   `;
@@ -507,33 +633,32 @@ function FindingRow(v: Vulnerability): TemplateResult {
       class="finding"
       style="border-left: 3px solid ${severityHex(v.severity)}"
     >
-      <div
-        class="finding-header ${hasDetail ? "finding-header-clickable" : ""}"
-        role=${hasDetail ? "button" : "presentation"}
-        tabindex=${hasDetail ? "0" : "-1"}
-        aria-expanded=${hasDetail ? String(isOpen) : "false"}
-        aria-label=${
-          hasDetail
-            ? `${isOpen ? "Hide" : "Show"} details for ${v.title}`
-            : v.title
-        }
-        @click=${hasDetail ? toggle : null}
-        @keydown=${hasDetail ? onActivate(toggle) : null}
-      >
-        <span
-          class="badge ${v.severity}"
-          style="font-size:9px;padding:1px 5px;flex-shrink:0"
-          >${v.severity}</span
-        >
-        <span class="finding-title">${v.title}</span>
-        ${
-          hasDetail
-            ? html`<span class="finding-chevron ${isOpen ? "open" : ""}"
-                >&#9662;</span
-              >`
-            : null
-        }
-      </div>
+      <!-- a11y (SC 4.1.2): a finding with no extra detail is not a control and
+           is now marked as nothing at all. It used to carry
+           role="presentation" together with aria-label, aria-expanded="false"
+           and tabindex="-1", which is three contradictions in one element:
+           role="presentation" is ignored outright on an element with a global
+           ARIA attribute, so the row fell back to generic while still
+           announcing a collapsed-expandable state it did not have, and
+           aria-label on a generic element is not exposed either. Only the rows
+           that really do expand get the button contract. -->
+      ${
+        hasDetail
+          ? html`<div
+              class="finding-header finding-header-clickable"
+              role="button"
+              tabindex="0"
+              aria-expanded=${String(isOpen)}
+              aria-label=${`${isOpen ? "Hide" : "Show"} details for ${v.title}`}
+              @click=${toggle}
+              @keydown=${onActivate(toggle)}
+            >
+              ${FindingHeaderContent(v, true, isOpen)}
+            </div>`
+          : html`<div class="finding-header">
+              ${FindingHeaderContent(v, false, isOpen)}
+            </div>`
+      }
       ${
         v.description
           ? html`<div class="finding-desc">${v.description}</div>`
@@ -541,6 +666,33 @@ function FindingRow(v: Vulnerability): TemplateResult {
       }
       ${isOpen ? FindingDetail(v) : null}
     </div>
+  `;
+}
+
+/** Severity chip + title + (when the row expands) the chevron. Split out only
+ *  so FindingRow can render the same contents inside either the button-role
+ *  wrapper or a plain one. */
+function FindingHeaderContent(
+  v: Vulnerability,
+  hasDetail: boolean,
+  isOpen: boolean,
+): TemplateResult {
+  return html`
+    <span
+      class="badge ${v.severity}"
+      style="font-size:9px;padding:1px 5px;flex-shrink:0"
+      >${v.severity}</span
+    >
+    <span class="finding-title">${v.title}</span>
+    ${
+      hasDetail
+        ? html`<span
+            class="finding-chevron ${isOpen ? "open" : ""}"
+            aria-hidden="true"
+            >&#9662;</span
+          >`
+        : null
+    }
   `;
 }
 
@@ -646,6 +798,14 @@ function onActivate(fn: () => void) {
  * offered inline: re-running the exact url you are looking at was previously
  * a trip through the dashboard.
  */
+/** The trend chip is a coloured arrow plus a bare number, which a screen
+ *  reader reads as "black down-pointing triangle 3". role="img" plus this
+ *  label replaces that with the sentence the arrow is standing in for. */
+function trendLabel(delta: number): string {
+  const n = Math.abs(delta);
+  return `${n} ${n === 1 ? "finding" : "findings"} ${delta < 0 ? "fewer" : "more"} than the previous scan of this URL`;
+}
+
 function HistoryRow(
   row: ScanHistoryRow,
   previous?: ScanHistoryRow,
@@ -677,7 +837,9 @@ function HistoryRow(
           delta !== null && delta !== 0
             ? html`<span
                 class="trend ${delta < 0 ? "trend-better" : "trend-worse"}"
-                title=${`${Math.abs(delta)} ${delta < 0 ? "fewer" : "more"} findings than the previous scan of this URL`}
+                role="img"
+                title=${trendLabel(delta)}
+                aria-label=${trendLabel(delta)}
                 >${delta < 0 ? "▼" : "▲"}${Math.abs(delta)}</span
               >`
             : null
@@ -686,13 +848,14 @@ function HistoryRow(
         <span class="when">${formatRelative(row.scanned_at)}</span>
       </div>
       <button
+        type="button"
         class="history-rescan"
         ?disabled=${state.isScanning}
         title=${`Rescan ${row.url}`}
         aria-label=${`Rescan ${row.url}`}
         @click=${() => rescanUrl(row.url)}
       >
-        &#8635;
+        <span aria-hidden="true">&#8635;</span>
       </button>
     </div>
   `;
@@ -936,18 +1099,29 @@ function applyScanCompletion(completion: LastScanCompletion): void {
   }
 }
 
+/** Shown when a scan's background context died before it could report back. */
+const INTERRUPTED_SCAN_MESSAGE =
+  "That scan was interrupted and its result was lost. Run it again.";
+
 /**
  * Called when init() finds a scan already in flight for the current tab's
  * URL (started by a popup instance that has since been torn down). Watches
  * storage for the background clearing scanInProgress, then applies
  * whatever it finished with instead of leaving a spinner that would
  * otherwise never resolve on its own in this fresh popup instance.
+ *
+ * `timeLeftMs` is the rest of that scan's own ceiling. Without it, a popup
+ * opened just inside the window waits on an onChanged event that never fires
+ * when the background has already been killed.
  */
-function watchInProgressScan(url: string): void {
+function watchInProgressScan(url: string, timeLeftMs: number): void {
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+
   const unsubscribe = onChanged((changes) => {
     if (!("scanInProgress" in changes)) return;
     if (changes.scanInProgress.newValue != null) return; // still running
     unsubscribe();
+    if (deadline !== undefined) clearTimeout(deadline);
     void (async () => {
       state.isScanning = false;
       const completion = await get("lastScanCompletion");
@@ -962,6 +1136,18 @@ function watchInProgressScan(url: string): void {
       scheduleRender();
     })();
   });
+
+  deadline = setTimeout(() => {
+    unsubscribe();
+    void (async () => {
+      const current = await get("scanInProgress");
+      if (current?.url !== url) return; // it finished; nothing to recover
+      await set("scanInProgress", null);
+      state.isScanning = false;
+      state.error = INTERRUPTED_SCAN_MESSAGE;
+      scheduleRender();
+    })();
+  }, timeLeftMs);
 }
 
 /**
@@ -1032,6 +1218,10 @@ async function init() {
 
   // Apply theme before first render to prevent flash
   applyTheme(state.settings.theme);
+  // The full-tab view (IS_FULLTAB) can sit open across an OS theme flip, which
+  // applyTheme's one-shot resolve of "system" would miss. Harmless in the
+  // popup, which is torn down long before the OS theme changes under it.
+  watchSystemTheme(() => state.settings.theme);
   // Use attribute presence (not "true"/"false" string) for compact mode
   if (state.settings.compactMode) {
     document.documentElement.setAttribute("data-compact", "");
@@ -1051,7 +1241,13 @@ async function init() {
   // Prefer local cache (no rate-limit cost). Fall back to a single server
   // fetch only when the cache is empty (e.g. fresh install or cleared storage).
   const cached = await getHistory();
-  state.history = cached.length > 0 ? cached : await refreshHistoryFromServer();
+  if (cached.length > 0) {
+    state.history = cached;
+  } else {
+    const fetched = await fetchHistoryFromServer();
+    state.history = fetched.rows;
+    state.historyLoadFailed = !fetched.ok;
+  }
 
   if (IS_FULLTAB) {
     // In the full-tab view the active tab IS this page, so tabs.query would
@@ -1083,10 +1279,21 @@ async function init() {
   // URL match is required in every branch so an unrelated in-flight or
   // just-finished scan for some other tab never bleeds into this popup.
   const tabUrl = state.url;
-  if (tabUrl && storage.scanInProgress?.url === tabUrl) {
+  const inProgress =
+    tabUrl && storage.scanInProgress?.url === tabUrl
+      ? storage.scanInProgress
+      : null;
+  if (inProgress && isScanInProgressStale(inProgress)) {
+    // The background died before its `finally` could clear this (browser
+    // restart, extension reload, worker crash). Left alone it pins the popup
+    // on "Scanning..." with the Scan button disabled forever, on exactly the
+    // site the user is trying to check.
+    await set("scanInProgress", null);
+    state.error = INTERRUPTED_SCAN_MESSAGE;
+  } else if (inProgress && tabUrl) {
     state.isScanning = true;
-    state.mode = storage.scanInProgress.mode;
-    watchInProgressScan(tabUrl);
+    state.mode = inProgress.mode;
+    watchInProgressScan(tabUrl, scanInProgressTimeLeftMs(inProgress));
   } else if (
     tabUrl &&
     storage.lastScanCompletion?.url === tabUrl &&

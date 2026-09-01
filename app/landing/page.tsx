@@ -50,11 +50,11 @@ const PAID_RETENTION_CLAUSE =
 // up as an FAQPage from the same array, so the structured data can never
 // describe content the visitor cannot see. The first item leads with a crisp,
 // self-contained definition an answer engine can quote directly.
-function buildFaq(checkCount: number, categoryCount: number): FaqItem[] {
+function buildFaq(checkCount: string, categoryCount: number): FaqItem[] {
   return [
     {
       question: `What is ${APP_NAME}?`,
-      answer: `${APP_NAME} is an open-source web vulnerability scanner. You paste a URL and it runs ${checkCount.toLocaleString()} deterministic checks across ${categoryCount} categories from our servers: security headers, TLS and certificates, cookie flags, DNS and email records, exposed secrets, server misconfiguration, information disclosure, client-side and supply-chain risks, and the gaps common in AI-generated code. An opt-in active-probing mode additionally tests for SQL injection, cross-site scripting (XSS), template injection, and command injection. Every finding comes back with a severity, the response evidence behind it, and a concrete fix. It is GPL-3.0 licensed and can be self-hosted.`,
+      answer: `${APP_NAME} is an open-source web vulnerability scanner. You paste a URL and it runs ${checkCount} deterministic checks across ${categoryCount} categories from our servers: security headers, TLS and certificates, cookie flags, DNS and email records, exposed secrets, server misconfiguration, information disclosure, client-side and supply-chain risks, and the gaps common in AI-generated code. An opt-in active-probing mode additionally tests for SQL injection, cross-site scripting (XSS), template injection, and command injection. Every finding comes back with a severity, the response evidence behind it, and a concrete fix. It is GPL-3.0 licensed and can be self-hosted.`,
     },
     {
       question: `Is ${APP_NAME} open source?`,
@@ -69,7 +69,7 @@ function buildFaq(checkCount: number, categoryCount: number): FaqItem[] {
     {
       question: "Do I need to install anything?",
       answer:
-        "No. Scans run from our servers against a URL you provide. There is no agent, no browser extension, and nothing to deploy alongside your application.",
+        "No. Scans run from our servers against a URL you provide: no agent, no sidecar container, and nothing to deploy alongside your application. There is an optional browser extension for Chrome and Firefox if you want to scan the page you are looking at, but nothing needs installing to use the product.",
     },
     {
       question: "How long does a scan take?",
@@ -100,7 +100,10 @@ function buildFaq(checkCount: number, categoryCount: number): FaqItem[] {
 export default async function LandingPage() {
   const nonce = (await headers()).get("x-nonce") ?? "";
   const counts = getCategoryCounts();
-  const checkCount = Object.values(counts).reduce((a, b) => a + b, 0);
+  // Display uses the rounded label, never the live exact total: the owner
+  // wants the non-exact form everywhere. The label rounds down, so it is
+  // always a number we can back up.
+  const checkCount = TOTAL_CHECKS_LABEL;
   const categoryCount = Object.keys(counts).length;
   const faq = buildFaq(checkCount, categoryCount);
 

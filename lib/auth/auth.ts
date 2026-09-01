@@ -13,7 +13,7 @@ import {
 } from "@/lib/api/request-utils";
 import { getSettings } from "@/lib/config/runtime-config";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
-import { newLoginEmail } from "@/lib/email/email";
+import { newLoginEmail, isEmailConfigured } from "@/lib/email/email";
 
 const SESSION_COOKIE = AUTH_SESSION_COOKIE_NAME;
 const CLEANUP_INTERVAL = AUTH_CLEANUP_INTERVAL;
@@ -29,6 +29,25 @@ export {
 } from "@/lib/auth/password-hash";
 
 // Session management
+//
+// The value in the cookie and the value in the database are NOT the same
+// string. `generateSessionId` mints the bearer token that goes in the
+// cookie; `hashSessionId` (below) derives the sessions.id primary key from
+// it. Sessions used to be the one credential class in this codebase stored
+// verbatim: password-reset tokens, email-verification tokens, staff-invite
+// tokens, share tokens and email 2FA codes are all hashed before storage
+// precisely so a database read cannot be replayed, while a read of the
+// sessions table handed out ready-to-paste cookies for every signed-in
+// user, admins included (AUDIT-012#auth-07). sha256 rather than a password
+// hash is the right primitive here: the token is 32 CSPRNG bytes, so there
+// is no guessable input to slow down, only a stored value to make
+// non-replayable.
+//
+// sha256 hex is 64 characters, exactly the width of the existing
+// VARCHAR(64) column, so no schema change is needed. Session rows written
+// before this shipped no longer match their cookie, so those users are
+// signed out once and log back in; the orphaned rows age out through the
+// ordinary expires_at cleanup.
 function generateSessionId(): string {
   return randomBytes(32).toString("hex");
 }
@@ -38,7 +57,8 @@ export async function createSession(
   ipAddress?: string,
   userAgent?: string,
 ): Promise<string> {
-  const sessionId = generateSessionId();
+  const sessionToken = generateSessionId();
+  const sessionId = hashSessionId(sessionToken);
 
   // auth: two distinct, independently admin-configurable lifetimes.
   // SESSION_TIMEOUT_DAYS is how long the session stays valid server-side
@@ -59,7 +79,7 @@ export async function createSession(
   );
 
   const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE, sessionId, {
+  cookieStore.set(SESSION_COOKIE, sessionToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
@@ -67,7 +87,11 @@ export async function createSession(
     maxAge: cookieMaxAgeSeconds,
   });
 
-  return sessionId;
+  // The RAW token, not the stored id: callers that set the cookie
+  // themselves (app/api/v3/auth/update/route.ts after a password or email
+  // change) need the bearer value, and the stored id is derivable from it
+  // but not the other way round.
+  return sessionToken;
 }
 
 export async function getSession(): Promise<{
@@ -91,9 +115,12 @@ export async function getSession(): Promise<{
   }
 
   const cookieStore = await cookies();
-  const sessionId = cookieStore.get(SESSION_COOKIE)?.value;
+  const sessionToken = cookieStore.get(SESSION_COOKIE)?.value;
 
-  if (!sessionId) return null;
+  if (!sessionToken) return null;
+
+  // The cookie carries the bearer token; the table is keyed on its digest.
+  const sessionId = hashSessionId(sessionToken);
 
   const result = await pool.query(
     `SELECT s.user_id, s.expires_at, s.ip_address, s.impersonated_by, u.email, u.name, u.tos_accepted_at, u.disabled_at, u.role
@@ -250,10 +277,12 @@ async function notifySessionIpMismatch(params: {
 
 export async function destroySession(): Promise<void> {
   const cookieStore = await cookies();
-  const sessionId = cookieStore.get(SESSION_COOKIE)?.value;
+  const sessionToken = cookieStore.get(SESSION_COOKIE)?.value;
 
-  if (sessionId) {
-    await pool.query("DELETE FROM sessions WHERE id = $1", [sessionId]);
+  if (sessionToken) {
+    await pool.query("DELETE FROM sessions WHERE id = $1", [
+      hashSessionId(sessionToken),
+    ]);
     cookieStore.delete(SESSION_COOKIE);
   }
 }
@@ -278,13 +307,24 @@ export async function createUser(
   // that pins the role to whichever row ends up with MIN(id), covering
   // both that theoretical race and upgrading an existing production
   // database that already has users.
+  // Email verification proves control of an address by sending to it. On a
+  // deployment with no SMTP configured that proof is impossible, so requiring
+  // it is not a stricter posture, it is a permanent lockout: the account is
+  // created, the verification mail throws, email_verified_at stays NULL, and
+  // login refuses forever. A self-hoster following our own setup guide hit
+  // exactly that, and the documented recovery needed a session they could not
+  // get. Where the instance CAN send mail, nothing changes and verification is
+  // still required.
+  const autoVerify = !isEmailConfigured();
+
   const result = await pool.query(
-    `INSERT INTO users (email, password_hash, name, plan, beta_access, role, auth_provider)
+    `INSERT INTO users (email, password_hash, name, plan, beta_access, role, auth_provider, email_verified_at)
        VALUES ($1, $2, $3, 'free', false,
          CASE WHEN NOT EXISTS (SELECT 1 FROM users) THEN 'super_admin' ELSE 'user' END,
-         'password')
+         'password',
+         CASE WHEN $4::boolean THEN NOW() ELSE NULL END)
        RETURNING id, email, name, plan, beta_access, role`,
-    [email.toLowerCase().trim(), passwordHash, name || null],
+    [email.toLowerCase().trim(), passwordHash, name || null, autoVerify],
   );
 
   return result.rows[0];
@@ -403,17 +443,20 @@ export async function deleteAllSessions(userId: number): Promise<void> {
 }
 
 /**
- * sha256 hex digest of a session id, used as the opaque identifier for
- * GET /api/v3/auth/sessions and DELETE /api/v3/auth/sessions/[id] (the
- * account-owner-facing session list -- see
- * app/api/v3/auth/sessions/route.ts). The `id` column is not a surrogate
- * key: it is the literal bearer token stored in the httpOnly session
- * cookie (see createSession above), so returning it verbatim in a JSON
- * response would hand any XSS on the page a live, hijackable token for
- * every device the user is signed into -- exactly what marking the
- * cookie httpOnly is meant to prevent. The digest can't be reversed back
- * into a usable cookie value, so it carries none of that risk while still
- * letting the client tell sessions apart and target one for revocation.
+ * sha256 hex digest. Used for two distinct jobs, in this order:
+ *
+ *  1. createSession/getSession derive the sessions.id primary key from the
+ *     cookie's bearer token with it, so the database never holds a value
+ *     that can be pasted back into a cookie (AUDIT-012#auth-07).
+ *  2. GET /api/v3/auth/sessions and DELETE /api/v3/auth/sessions/[id] apply
+ *     it AGAIN, to the stored id, to produce the opaque identifier the
+ *     account-owner-facing session list hands to the client.
+ *
+ * The second layer is not redundant. The stored id is no longer a bearer
+ * token, but it is still the value every ownership check in this file keys
+ * on, so publishing it would leak a working WHERE-clause argument into any
+ * XSS on the page. Hashing once more keeps the client's identifier stable
+ * and comparable without it being usable against the table.
  */
 export function hashSessionId(id: string): string {
   return createHash("sha256").update(id).digest("hex");

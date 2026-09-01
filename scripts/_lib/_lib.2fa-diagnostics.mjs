@@ -2,8 +2,8 @@
  * VulnRadar — 2FA data-integrity classification.
  *
  * Single source of truth for "what counts as broken 2FA data", shared by
- * both scripts/db-diagnose-2fa.mjs (read-only report) and
- * scripts/db-repair-2fa.mjs (the opt-in repair). Neither script decides
+ * both scripts/maintenance/db-diagnose-2fa.mjs (read-only report) and
+ * scripts/maintenance/db-repair-2fa.mjs (the opt-in repair). Neither script decides
  * on its own what qualifies as a problem -- they both call the functions
  * here, so the two can never disagree about what "broken" means.
  *

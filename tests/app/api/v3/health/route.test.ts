@@ -5,6 +5,7 @@
  * comparison and required-table gap detection run against it.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { REQUIRED_TABLES } from "@/lib/database/required-tables";
 
 const mockClientQuery = vi.fn();
 const mockRelease = vi.fn();
@@ -23,16 +24,11 @@ function tablesRows(present: string[]) {
   return { rows: present.map((table_name) => ({ table_name })) };
 }
 
-const ALL_REQUIRED = [
-  "users",
-  "scan_history",
-  "api_keys",
-  "host_reputation",
-  "host_badges",
-  "webhooks",
-  "scan_finding_feedback",
-  "system_error_logs",
-];
+// Imported, not restated. This used to be a hardcoded copy of the list, so
+// adding a table to REQUIRED_TABLES (AUDIT-013#schema-06 added seven) made
+// the suite fail against a fix rather than confirm it. Reading the real list
+// means the next addition is covered automatically.
+const ALL_REQUIRED = [...REQUIRED_TABLES];
 
 beforeEach(() => {
   mockClientQuery.mockReset();
@@ -123,7 +119,8 @@ describe("GET /api/v3/health", () => {
         "system_error_logs",
       ]),
     );
-    expect(json.database.missing_tables).toHaveLength(6);
+    // Everything except the two seeded as present.
+    expect(json.database.missing_tables).toHaveLength(ALL_REQUIRED.length - 2);
   });
 
   it("returns 503/unhealthy when the database connection fails, without leaking the driver error", async () => {

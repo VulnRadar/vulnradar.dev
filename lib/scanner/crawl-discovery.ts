@@ -20,6 +20,7 @@
  * to link-crawling only and never throws.
  */
 import { safeFetch } from "./safe-fetch";
+import { safeReadBody } from "./read-bounded-body";
 import { APP_NAME } from "@/lib/config/constants";
 import type { ScanSessionBinding } from "./auth/types";
 
@@ -113,41 +114,6 @@ function isSameOriginPageUrl(resolved: URL, entryHostname: string): boolean {
 /** Drop the hash, keep origin + path + query. */
 function normalizePageUrl(u: URL): string {
   return u.origin + u.pathname + u.search;
-}
-
-async function readBoundedText(
-  response: Response,
-  maxBytes: number,
-): Promise<string> {
-  const reader = response.body?.getReader();
-  if (!reader) return "";
-  const decoder = new TextDecoder("utf-8", { fatal: false });
-  const chunks: string[] = [];
-  let totalBytes = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      totalBytes += value.byteLength;
-      if (totalBytes > maxBytes) {
-        const overshoot = totalBytes - maxBytes;
-        const trimmed = value.slice(0, value.byteLength - overshoot);
-        if (trimmed.byteLength > 0)
-          chunks.push(decoder.decode(trimmed, { stream: false }));
-        break;
-      }
-      chunks.push(decoder.decode(value, { stream: true }));
-    }
-  } catch {
-    /* return partial */
-  } finally {
-    try {
-      reader.cancel();
-    } catch {
-      /* ignore */
-    }
-  }
-  return chunks.join("");
 }
 
 /**
@@ -265,15 +231,37 @@ function matchesRobotsRule(pathname: string, rule: string): boolean {
   if (!core.includes("*")) {
     return anchored ? pathname === core : pathname.startsWith(core);
   }
-  const pattern = core
-    .split("*")
-    .map((s) => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
-    .join(".*");
-  try {
-    return new RegExp("^" + pattern + (anchored ? "$" : "")).test(pathname);
-  } catch {
-    return false;
+  // security: this used to compile each `*` to `.*` and hand the result to
+  // RegExp. That is exponential on a crafted rule, because every `.*` can
+  // backtrack against every other: measured 45ms at 5 wildcards, 1.5s at 7,
+  // 9s at 8, and 35 MINUTES at 10 wildcards against a 61-character path.
+  // The rule comes from the scanned site's own robots.txt, so any target
+  // could freeze the scan worker's event loop, and isPathDisallowed runs the
+  // whole rule set per discovered URL. (The same hazard is noted a few lines
+  // below for the anchor regex, where it was already fixed.)
+  //
+  // Glob matching needs no backtracking: match the first segment as a
+  // prefix, then take the leftmost occurrence of each middle segment, then
+  // check the tail. Leftmost is optimal here because `*` matches anything
+  // including nothing, so an earlier match never rules out a later one.
+  const parts = core.split("*");
+
+  if (!pathname.startsWith(parts[0])) return false;
+  let pos = parts[0].length;
+
+  for (let i = 1; i < parts.length - 1; i++) {
+    const seg = parts[i];
+    if (!seg) continue;
+    const idx = pathname.indexOf(seg, pos);
+    if (idx === -1) return false;
+    pos = idx + seg.length;
   }
+
+  const tail = parts[parts.length - 1];
+  if (!tail) return true; // rule ends in `*`: anything left over matches
+  return anchored
+    ? pathname.endsWith(tail) && pathname.length - tail.length >= pos
+    : pathname.indexOf(tail, pos) !== -1;
 }
 
 export function isPathDisallowed(
@@ -304,7 +292,7 @@ async function readRobots(
     );
     if (new URL(res.url).hostname !== entryHostname) return empty;
     if (!res.ok) return empty;
-    const text = await readBoundedText(res, SITEMAP_BODY_MAX_BYTES);
+    const text = await safeReadBody(res, SITEMAP_BODY_MAX_BYTES);
     return parseRobots(text, CRAWLER_UA);
   } catch {
     return empty;
@@ -379,7 +367,7 @@ export async function collectSitemapUrls(
       if (new URL(res.url).hostname !== entryHostname) continue;
       if (!res.ok) continue;
       finalUrl = res.url;
-      text = await readBoundedText(res, SITEMAP_BODY_MAX_BYTES);
+      text = await safeReadBody(res, SITEMAP_BODY_MAX_BYTES);
     } catch {
       continue;
     }
@@ -533,7 +521,7 @@ export async function discoverPages(
       const contentType = res.headers.get("content-type") || "";
       if (!contentType.includes("text/html")) continue;
 
-      const body = await readBoundedText(res, maxBodySize);
+      const body = await safeReadBody(res, maxBodySize);
 
       let enqueuedFromThisPage = 0;
       // Gap before href= is bounded ({0,2000}, not *) so a body of many "<a "

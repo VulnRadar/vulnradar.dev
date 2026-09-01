@@ -1,6 +1,13 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback, useId } from "react";
+import {
+  useState,
+  useMemo,
+  useEffect,
+  useCallback,
+  useId,
+  useRef,
+} from "react";
 import {
   ChevronRight,
   ArrowDownWideNarrow,
@@ -28,18 +35,29 @@ import {
   type FindingRemediation,
 } from "@/lib/scanner/remediation";
 import { cn } from "@/lib/ui/utils";
-import { SEVERITY_PRIORITY, API } from "@/lib/config/constants";
-import { CATEGORY_META } from "@/lib/scanner/category-meta";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/shared/empty-state";
+import { SEVERITY_PRIORITY, API } from "@/lib/config/client-constants";
+import { categoryLabel, findingMatchesQuery } from "./finding-search";
+import { pruneSelectionToVisible } from "./finding-selection";
 import { useTeammates } from "./use-teammates";
 import {
   getQueryParam,
   setQueryParam,
+  useQueryParam,
   QUERY_CHANGE_EVENT,
   LOCATION_CHANGE_EVENT,
 } from "@/lib/ui/url-state";
 
 /** Query param that mirrors the selected finding, e.g. ?finding=missing-csp-header. */
 const FINDING_QUERY_PARAM = "finding";
+
+/** Filter state, mirrored into the URL so Back and a shared link both work. */
+const SEV_QUERY_PARAM = "sev";
+const CAT_QUERY_PARAM = "cat";
+const SORT_QUERY_PARAM = "sort";
+const GROUP_QUERY_PARAM = "group";
+const SEARCH_QUERY_PARAM = "q";
 
 /**
  * Where the list was scrolled to when a finding was opened. IssueDetail
@@ -64,13 +82,6 @@ let savedListKey: string | null = null;
 
 function listKey(findings: Vulnerability[]): string {
   return `${findings.length}:${findings[0]?.id ?? ""}`;
-}
-
-function categoryLabel(cat: string) {
-  return (
-    CATEGORY_META[cat as keyof typeof CATEGORY_META]?.label ||
-    cat.replace(/-/g, " ")
-  );
 }
 
 const AI_VERDICT: Record<
@@ -111,13 +122,99 @@ export function ResultsList({
   onSelectIssue,
   scanUrl,
 }: ResultsListProps) {
-  const [activeSeverities, setActiveSeverities] = useState<Set<Severity>>(
-    new Set(SEVERITY_ORDER),
+  // Every filter is URL-backed. They used to be plain useState, and selecting
+  // a finding swaps this whole list out for IssueDetail on both host pages, so
+  // pressing Back remounted ResultsList with every filter reset to its default
+  // while the scroll position was faithfully restored: you landed at an
+  // arbitrary offset in a longer list, on every single finding. Params are
+  // written with { replace: true } so changing a filter does not pile up
+  // history entries; only the ?finding= param pushes, which is what makes Back
+  // mean "close this finding". Each param is omitted at its default value, so
+  // a clean scan URL stays clean and a filtered view is linkable.
+  const [sevParam] = useQueryParam(SEV_QUERY_PARAM, "");
+  const [catParam] = useQueryParam(CAT_QUERY_PARAM, "all");
+  const [sortParam] = useQueryParam<string>(SORT_QUERY_PARAM, "");
+  const [groupParam] = useQueryParam<string>(GROUP_QUERY_PARAM, "");
+  const [searchQuery] = useQueryParam<string>(SEARCH_QUERY_PARAM, "");
+
+  // The search box types into local state and lands in the URL on a short
+  // delay. Writing the param per keystroke would be one history.replaceState
+  // per character, which Safari rate-limits (roughly 100 calls per 30
+  // seconds) and then starts dropping, so a fast typist would lose the tail
+  // of their query from the URL. Filtering still reads the param, so this
+  // only affects when the URL catches up, not what the list shows.
+  const [searchInput, setSearchInput] = useState(searchQuery);
+  const searchInputRef = useRef(searchInput);
+  searchInputRef.current = searchInput;
+
+  const activeSeverities = useMemo(() => {
+    const wanted = sevParam
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s): s is Severity =>
+        (SEVERITY_ORDER as readonly string[]).includes(s),
+      );
+    // An empty or unparseable value means "everything", never "nothing":
+    // a hand-edited URL must not be able to hide the whole report.
+    return wanted.length > 0 ? new Set(wanted) : new Set(SEVERITY_ORDER);
+  }, [sevParam]);
+  const activeCategory = catParam as Category | "all";
+  const sortAsc = sortParam === "asc";
+  const grouped = groupParam !== "flat";
+
+  const setFilterParam = useCallback((name: string, value: string | null) => {
+    setQueryParam(name, value, { replace: true });
+  }, []);
+  const setSearchQuery = useCallback(
+    (value: string) => {
+      setSearchInput(value);
+      setFilterParam(SEARCH_QUERY_PARAM, value || null);
+    },
+    [setFilterParam],
   );
-  const [activeCategory, setActiveCategory] = useState<Category | "all">("all");
-  const [sortAsc, setSortAsc] = useState(false);
-  const [grouped, setGrouped] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
+
+  // Debounced write of the typed query. Clearing the box or restoring a
+  // filter from history goes through setSearchQuery / the param sync above
+  // instead, so this only ever runs behind live typing.
+  useEffect(() => {
+    if (searchInput === searchQuery) return;
+    const t = setTimeout(
+      () => setFilterParam(SEARCH_QUERY_PARAM, searchInput || null),
+      250,
+    );
+    return () => clearTimeout(t);
+  }, [searchInput, searchQuery, setFilterParam]);
+
+  // A Back/Forward or a shared link changes the param without going through
+  // the box: mirror it back so the input never disagrees with what is filtered.
+  useEffect(() => {
+    if (searchQuery !== searchInputRef.current) {
+      setSearchInput(searchQuery);
+    }
+  }, [searchQuery]);
+  const setActiveCategory = useCallback(
+    (value: Category | "all") =>
+      setFilterParam(CAT_QUERY_PARAM, value === "all" ? null : value),
+    [setFilterParam],
+  );
+  const setActiveSeverities = useCallback(
+    (next: Set<Severity>) =>
+      setFilterParam(
+        SEV_QUERY_PARAM,
+        next.size === SEVERITY_ORDER.length
+          ? null
+          : SEVERITY_ORDER.filter((s) => next.has(s)).join(","),
+      ),
+    [setFilterParam],
+  );
+  const setSortAsc = useCallback(
+    (asc: boolean) => setFilterParam(SORT_QUERY_PARAM, asc ? "asc" : null),
+    [setFilterParam],
+  );
+  const setGrouped = useCallback(
+    (on: boolean) => setFilterParam(GROUP_QUERY_PARAM, on ? null : "flat"),
+    [setFilterParam],
+  );
 
   // Bulk remediation (owner scan only). `selected` holds finding ids; `overlay`
   // lets a bulk change repaint row badges immediately without a parent refetch
@@ -170,10 +267,10 @@ export function ResultsList({
   }
 
   async function applyBulk() {
-    if (!scanUrl || selected.size === 0 || bulkBusy) return;
+    if (!scanUrl || visibleSelected.size === 0 || bulkBusy) return;
     setBulkBusy(true);
     setBulkError(false);
-    const ids = [...selected];
+    const ids = [...visibleSelected];
     try {
       const body: {
         items: { findingId: string; findingUrl: string }[];
@@ -307,15 +404,15 @@ export function ResultsList({
   }, [findings]);
 
   function toggleSeverity(severity: Severity) {
-    setActiveSeverities((prev) => {
-      const next = new Set(prev);
-      if (next.has(severity)) {
-        if (next.size > 1) next.delete(severity);
-      } else {
-        next.add(severity);
-      }
-      return next;
-    });
+    const next = new Set(activeSeverities);
+    if (next.has(severity)) {
+      // Never let the last severity be turned off: an empty filter set is a
+      // blank report with no obvious way back.
+      if (next.size > 1) next.delete(severity);
+    } else {
+      next.add(severity);
+    }
+    setActiveSeverities(next);
   }
 
   const filtered = useMemo(() => {
@@ -324,17 +421,38 @@ export function ResultsList({
       result = result.filter((f) => f.category === activeCategory);
     }
     if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(
-        (f) =>
-          f.title.toLowerCase().includes(query) ||
-          f.description.toLowerCase().includes(query),
-      );
+      // The predicate (title, description, check id, category key and label)
+      // lives in ./finding-search so it can be tested without a DOM.
+      result = result.filter((f) => findingMatchesQuery(f, searchQuery));
     }
     return [...result].sort((a, b) => {
       const orderA = SEVERITY_PRIORITY[a.severity] ?? 0;
       const orderB = SEVERITY_PRIORITY[b.severity] ?? 0;
       if (orderA !== orderB) return sortAsc ? orderA - orderB : orderB - orderA;
+
+      // Within a severity band, rank by how exploitable the issue actually
+      // is. The scanner already computes all three of these signals and the
+      // list previously ignored every one of them, falling straight through
+      // to an alphabetical tie-break: a CVE under active exploitation sorted
+      // no higher than a theoretical one with a similar title. A security
+      // report's job is to say what to fix first, so order by:
+      //   1. presence in CISA KEV (known exploited in the wild)
+      //   2. EPSS (probability of exploitation in the next 30 days)
+      //   3. CVSS base score
+      // and only then by title, so the order stays stable when nothing
+      // distinguishes two findings.
+      const kevA = a.inKev ? 1 : 0;
+      const kevB = b.inKev ? 1 : 0;
+      if (kevA !== kevB) return kevB - kevA;
+
+      const epssA = a.epssScore ?? -1;
+      const epssB = b.epssScore ?? -1;
+      if (epssA !== epssB) return epssB - epssA;
+
+      const cvssA = a.cvssScore ?? -1;
+      const cvssB = b.cvssScore ?? -1;
+      if (cvssA !== cvssB) return cvssB - cvssA;
+
       return a.title.localeCompare(b.title);
     });
   }, [findings, activeSeverities, activeCategory, sortAsc, searchQuery]);
@@ -350,6 +468,24 @@ export function ResultsList({
       }))
       .filter((g) => g.items.length > 0);
   }, [filtered, grouped, sortAsc]);
+
+  // What the bulk bar counts and what Apply writes to: the selection narrowed
+  // to the findings currently on screen. `selected` used to be used directly,
+  // and it ignored the filters, so narrowing to Critical left the High picks
+  // in it: the bar still counted them and Apply changed findings the reader
+  // could no longer see or review. Derived rather than pruned in an effect so
+  // widening a filter brings a pick back instead of having silently destroyed
+  // it, and so the count can never lag a render behind the list.
+  // Not wrapped in useMemo: pruneSelectionToVisible returns the input set
+  // unchanged when nothing was hidden, and the React Compiler refuses to
+  // preserve a manual memo whose result is not a fresh allocation, which
+  // makes it skip optimizing this whole component. Plain, it is one Set walk
+  // over at most a few hundred ids per render, and the compiler memoizes it
+  // itself.
+  const visibleSelected = pruneSelectionToVisible(
+    selected,
+    filtered.map((f) => f.id),
+  );
 
   const categories = useMemo(
     () => Array.from(categoryCounts.keys()),
@@ -371,16 +507,16 @@ export function ResultsList({
           />
           <input
             type="search"
-            placeholder="Filter by title or description"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            aria-label="Filter findings by keyword"
+            placeholder="Search findings or paste a check id"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            aria-label="Search findings by keyword, check id or category"
             className={cn(
               "w-full h-9 pl-9 pr-9 rounded-md border border-border bg-card text-base sm:text-sm text-foreground placeholder:text-muted-foreground",
               "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
             )}
           />
-          {searchQuery && (
+          {searchInput && (
             <button
               type="button"
               onClick={() => setSearchQuery("")}
@@ -395,7 +531,13 @@ export function ResultsList({
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* flex-wrap, and none of the three buttons is shrink-0. The labels
+            add up to roughly 390px, wider than the ~343px of content width a
+            375px phone has, and with shrink-0 on every child the row pushed
+            straight out of the card and scrolled the whole document
+            sideways. Wrapping to a second line costs nothing and is the only
+            thing that keeps the page from scrolling horizontally. */}
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setSortAsc(!sortAsc)}
@@ -405,7 +547,7 @@ export function ResultsList({
                 : "Sort by severity, least severe first"
             }
             className={cn(
-              "inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-md border border-border bg-card text-xs font-medium text-muted-foreground hover:text-foreground transition-colors shrink-0",
+              "inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-md border border-border bg-card text-xs font-medium text-muted-foreground hover:text-foreground transition-colors",
               FOCUS_RING,
             )}
           >
@@ -422,7 +564,7 @@ export function ResultsList({
             onClick={() => setGrouped(!grouped)}
             aria-pressed={grouped}
             className={cn(
-              "inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-md border text-xs font-medium transition-colors shrink-0",
+              "inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-md border text-xs font-medium transition-colors",
               grouped
                 ? "border-primary/20 bg-primary/10 text-primary"
                 : "border-border bg-card text-muted-foreground hover:text-foreground",
@@ -445,7 +587,7 @@ export function ResultsList({
               }
               aria-pressed={selectMode}
               className={cn(
-                "inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-md border text-xs font-medium transition-colors shrink-0",
+                "inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-md border text-xs font-medium transition-colors",
                 selectMode
                   ? "border-primary/20 bg-primary/10 text-primary"
                   : "border-border bg-card text-muted-foreground hover:text-foreground",
@@ -460,7 +602,7 @@ export function ResultsList({
       </div>
 
       {/* Severity filter. Doubles as the legend: colour, name and count together. */}
-      <div className="flex overflow-x-auto rounded-md border border-border bg-card divide-x divide-border">
+      <div className="flex overflow-x-auto rounded-xl border border-border bg-card divide-x divide-border">
         {SEVERITY_ORDER.map((sev) => {
           const count = severityCounts[sev] || 0;
           const active = activeSeverities.has(sev);
@@ -472,7 +614,13 @@ export function ResultsList({
               onClick={() => toggleSeverity(sev)}
               aria-pressed={active}
               className={cn(
-                "group relative flex-1 min-w-[76px] px-3 py-2 text-left transition-colors",
+                // 64px wide below sm rather than 76px. Five severities at
+                // 76px need 380px, against roughly 358px of usable width on
+                // a 390px phone, so the primary triage control started the
+                // page already scrolled sideways and "Critical" was the cell
+                // that fell off the edge. 5 x 64 fits, and the label still
+                // has room at text-[11px].
+                "group relative flex-1 min-w-[64px] px-2 py-2 text-left transition-colors sm:min-w-[76px] sm:px-3",
                 active ? "bg-transparent" : "bg-muted/40",
                 "hover:bg-muted/60",
                 FOCUS_RING,
@@ -519,7 +667,7 @@ export function ResultsList({
             onClick={() => setActiveCategory("all")}
             aria-pressed={activeCategory === "all"}
             className={cn(
-              "inline-flex shrink-0 items-center gap-1.5 h-7 rounded-full border px-2.5 text-xs font-medium transition-colors",
+              "inline-flex shrink-0 items-center gap-1.5 h-9 sm:h-7 rounded-full border px-3 sm:px-2.5 text-xs font-medium transition-colors",
               activeCategory === "all"
                 ? "border-primary/20 bg-primary/10 text-primary"
                 : "border-border bg-card text-muted-foreground hover:text-foreground",
@@ -538,7 +686,7 @@ export function ResultsList({
                 onClick={() => setActiveCategory(isActive ? "all" : cat)}
                 aria-pressed={isActive}
                 className={cn(
-                  "inline-flex shrink-0 items-center gap-1.5 h-7 rounded-full border px-2.5 text-xs font-medium transition-colors",
+                  "inline-flex shrink-0 items-center gap-1.5 h-9 sm:h-7 rounded-full border px-3 sm:px-2.5 text-xs font-medium transition-colors",
                   isActive
                     ? "border-primary/20 bg-primary/10 text-primary"
                     : "border-border bg-card text-muted-foreground hover:text-foreground",
@@ -595,36 +743,32 @@ export function ResultsList({
 
       {/* Findings */}
       {filtered.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-md border border-dashed border-border bg-card/50 px-4 py-12 text-center">
-          <p className="text-sm font-medium text-foreground">
-            Nothing matches those filters
-          </p>
-          <p className="max-w-xs text-xs text-muted-foreground">
-            {findings.length} {findings.length === 1 ? "finding" : "findings"}{" "}
-            {findings.length === 1 ? "is" : "are"} hidden. Clear the search box
-            or turn a severity back on.
-          </p>
-          <button
-            type="button"
-            onClick={() => {
-              setSearchQuery("");
-              setActiveCategory("all");
-              setActiveSeverities(new Set(SEVERITY_ORDER));
-            }}
-            className={cn(
-              "mt-1 inline-flex h-8 items-center rounded-md border border-border bg-card px-3 text-xs font-medium text-foreground hover:bg-muted transition-colors",
-              FOCUS_RING,
-            )}
-          >
-            Reset filters
-          </button>
-        </div>
+        <EmptyState
+          icon={Search}
+          size="sm"
+          title="Nothing matches those filters"
+          description={`${findings.length} ${findings.length === 1 ? "finding" : "findings"} ${findings.length === 1 ? "is" : "are"} hidden. Clear the search box or turn a severity back on.`}
+          action={
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 bg-transparent text-xs"
+              onClick={() => {
+                setSearchQuery("");
+                setActiveCategory("all");
+                setActiveSeverities(new Set(SEVERITY_ORDER));
+              }}
+            >
+              Reset filters
+            </Button>
+          }
+        />
       ) : (
         <div className="flex flex-col gap-3">
           {groups.map((group) => (
             <div
               key={group.severity ?? "all"}
-              className="overflow-hidden rounded-md border border-border bg-card"
+              className="overflow-hidden rounded-xl border border-border bg-card"
             >
               {group.severity && (
                 <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-3 py-2">
@@ -649,30 +793,38 @@ export function ResultsList({
                 </div>
               )}
               <ul className="divide-y divide-border">
+                {/* The checkbox is drawn inside the row, not beside it. It
+                    used to be a bare <input> in a sibling div, so in select
+                    mode every row grew a floating square in the left margin,
+                    outside the row's own hover/selected surface and pushing
+                    the severity rail off the card edge. The row is one control
+                    either way: a link out to the finding normally, a checkbox
+                    in select mode. */}
                 {group.items.map((issue) => (
-                  <li
-                    key={issue.id}
-                    className={
-                      showCheckboxes ? "flex items-stretch" : undefined
-                    }
-                  >
-                    {showCheckboxes && (
-                      <div className="flex items-center pl-3">
-                        <input
-                          type="checkbox"
-                          checked={selected.has(issue.id)}
-                          onChange={() => toggleSelect(issue.id)}
-                          aria-label={`Select finding: ${issue.title}`}
-                          className="h-4 w-4 cursor-pointer accent-primary"
-                        />
-                      </div>
-                    )}
+                  <li key={issue.id}>
                     <FindingRow
                       issue={issue}
                       showSeverity={!group.severity}
-                      onSelect={handleSelectIssue}
+                      // In select mode the row toggles selection instead of
+                      // opening the finding. It used to navigate: opening a
+                      // finding unmounts this whole list (see the docblock on
+                      // handleSelectIssue's scroll save), and `selected` is
+                      // local state with nowhere to persist, so one mis-tap on
+                      // a long list silently threw the whole selection away.
+                      // "Done" is the way out of select mode and back to
+                      // opening findings.
+                      onSelect={
+                        showCheckboxes
+                          ? (i) => toggleSelect(i.id)
+                          : handleSelectIssue
+                      }
+                      selectable={showCheckboxes}
+                      selected={
+                        showCheckboxes
+                          ? visibleSelected.has(issue.id)
+                          : undefined
+                      }
                       remediation={effectiveRemediation(issue)}
-                      className={showCheckboxes ? "flex-1" : undefined}
                     />
                   </li>
                 ))}
@@ -682,10 +834,18 @@ export function ResultsList({
         </div>
       )}
 
-      {showCheckboxes && selected.size > 0 && (
-        <div className="sticky bottom-3 z-20 mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-card/95 px-3 py-2.5 shadow-lg backdrop-blur">
+      {showCheckboxes && visibleSelected.size > 0 && (
+        <div
+          // The sticky offset adds --vr-cookie-h: the cookie notice is fixed
+          // at the bottom, z-60 against this bar's z-20, and roughly 125px
+          // tall on a phone, so a first-time visitor doing bulk triage had
+          // the whole bar parked behind it. A sticky bottom offset is
+          // measured from the viewport edge, same as a fixed one, so the
+          // variable works here.
+          className="sticky bottom-[calc(0.75rem+var(--vr-cookie-h,0px))] z-20 mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-card/95 px-3 py-2.5 shadow-lg backdrop-blur transition-[bottom] duration-300"
+        >
           <span className="text-xs font-semibold text-foreground">
-            {selected.size} selected
+            {visibleSelected.size} selected
           </span>
           <select
             aria-label="Set status for selected findings"
@@ -776,16 +936,22 @@ function FindingRow({
   issue,
   showSeverity,
   onSelect,
+  selectable,
+  selected,
   remediation: remediationProp,
-  className,
 }: {
   issue: Vulnerability;
   showSeverity: boolean;
   onSelect: (issue: Vulnerability) => void;
+  /** Bulk-select mode: the row becomes a checkbox (it draws its own box and
+   *  reports role="checkbox") instead of a link into the finding. */
+  selectable?: boolean;
+  /** Selection state in bulk-select mode. `undefined` outside select mode, so
+   *  the row stays a plain button with no checked state. */
+  selected?: boolean;
   /** Effective remediation for the badge. `null` means explicitly open, so it
    *  overrides issue.remediation; undefined falls back to issue.remediation. */
   remediation?: FindingRemediation | null;
-  className?: string;
 }) {
   const tone = SEVERITY_TONE[issue.severity] ?? SEVERITY_TONE.info;
   const verdict = issue.aiVerdict ? AI_VERDICT[issue.aiVerdict] : null;
@@ -811,11 +977,22 @@ function FindingRow({
     <button
       type="button"
       onClick={() => onSelect(issue)}
+      // role="checkbox" only in select mode: the row really is a checkbox
+      // there, and aria-pressed (what this used to send) describes a toggle
+      // button, which is not what a screen reader should announce for a row
+      // whose state a bulk action is about to act on.
+      role={selectable ? "checkbox" : undefined}
+      aria-checked={selectable ? !!selected : undefined}
       className={cn(
-        "group relative flex w-full items-start gap-3 py-3 pl-4 pr-3 text-left transition-colors hover:bg-muted/40",
-        "focus-visible:outline-hidden focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+        "group relative flex w-full items-start gap-3 py-3 pl-4 pr-3 text-left transition-colors",
+        "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+        // The hover tint is picked here rather than layered, because two
+        // hover:bg-* utilities on one element resolve by stylesheet order,
+        // not by the order they are written in.
+        selected
+          ? "bg-primary/10 ring-1 ring-inset ring-primary/30 hover:bg-primary/15"
+          : "hover:bg-muted/40 focus-visible:bg-muted/40",
         demoted && "opacity-70 hover:opacity-100 focus-visible:opacity-100",
-        className,
       )}
     >
       <span
@@ -826,6 +1003,20 @@ function FindingRow({
           tone.emphasis === "quiet" && "opacity-40",
         )}
       />
+
+      {selectable && (
+        <span
+          aria-hidden
+          className={cn(
+            "mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md border transition-colors",
+            selected
+              ? "border-primary bg-primary text-primary-foreground"
+              : "border-border bg-background group-hover:border-primary/60",
+          )}
+        >
+          {selected && <Check className="h-3 w-3" strokeWidth={3} />}
+        </span>
+      )}
 
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -884,10 +1075,14 @@ function FindingRow({
         </div>
       </div>
 
-      <ChevronRight
-        aria-hidden
-        className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5 group-hover:text-foreground"
-      />
+      {/* No chevron in select mode: the row does not navigate there, and an
+          arrow pointing off the card said it did. */}
+      {!selectable && (
+        <ChevronRight
+          aria-hidden
+          className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5 group-hover:text-foreground"
+        />
+      )}
     </button>
   );
 }

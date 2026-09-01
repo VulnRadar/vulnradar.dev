@@ -2,13 +2,13 @@
 
 import { Tag } from "lucide-react";
 import { ScanTags } from "./scan-tags";
-import type { ScanTag } from "./history-types";
+import type { ScanTag, TagMutationResult } from "./history-types";
 
 interface HistoryTagsCardProps {
   scanId: string | number;
   tags: ScanTag[];
-  onAdd: (scanId: string | number, tag: string) => void;
-  onRemove: (scanId: string | number, tag: string) => void;
+  onAdd: (scanId: string | number, tag: string) => TagMutationResult;
+  onRemove: (scanId: string | number, tag: string) => TagMutationResult;
   /** Hides the "+ Add tag" control -- for a viewer who isn't this scan's
    *  owner. When readOnly and there are no tags, the whole card is hidden
    *  rather than shown empty, same as HistoryNotes on a public page. */
@@ -32,7 +32,7 @@ export function HistoryTagsCard({
   if (readOnly && tags.length === 0) return null;
 
   return (
-    <div className="rounded-md border border-border bg-card p-4">
+    <div className="rounded-xl border border-border bg-card p-4">
       <div className="mb-3 flex items-center gap-2">
         <Tag className="h-4 w-4 text-muted-foreground" aria-hidden />
         <h3 className="text-sm font-medium text-foreground">Tags</h3>

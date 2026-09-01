@@ -30,9 +30,18 @@ import {
   escapeHtml,
   generateEmailPreviewHtml,
 } from "@/components/admin/shared";
+import { formatTimestamp as formatAdminTimestamp } from "@/components/admin/utils";
 import type { ToastState } from "@/components/admin/types";
 import { cn } from "@/lib/ui/utils";
-import { APP_NAME, APP_URL } from "@/lib/config/constants";
+import {
+  APP_NAME,
+  APP_URL,
+  LOGO_URL,
+  SUPPORT_EMAIL,
+} from "@/lib/config/client-constants";
+
+// Log views want second precision; the shared formatter defaults to minutes.
+const formatTimestamp = (iso: string) => formatAdminTimestamp(iso, true);
 
 type EmailLogStatus = "sent" | "failed" | "skipped_not_configured";
 
@@ -75,17 +84,6 @@ const STATUS_META: Record<
     cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20",
   },
 };
-
-function formatTimestamp(iso: string): string {
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}
 
 /** redacted_preview is plain text, not HTML -- escape it and turn blank
  * lines into paragraph breaks before handing it to the branded template. */
@@ -287,6 +285,9 @@ export function EmailLogsManager() {
                   key={f.value || "all"}
                   type="button"
                   onClick={() => handleStatusFilter(f.value)}
+                  // a11y (SC 4.1.2): which filter is applied was carried in
+                  // colour alone.
+                  aria-pressed={status === f.value}
                   className={cn(
                     "text-xs font-medium px-2.5 py-1 rounded-full border transition-colors",
                     status === f.value
@@ -418,6 +419,8 @@ export function EmailLogsManager() {
                   : "<p>No content preview was stored for this email.</p>",
                 appName: APP_NAME,
                 appUrl: APP_URL,
+                logoSrc: LOGO_URL,
+                supportEmail: SUPPORT_EMAIL,
               })}
               sandbox=""
               className="w-full h-[600px] border border-border/50 rounded-lg"

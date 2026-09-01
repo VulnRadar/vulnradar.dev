@@ -62,6 +62,15 @@ vi.mock("@/lib/rate-limiting/daily-limits", () => ({
   getUserPlan: (...args: unknown[]) => mockGetUserPlan(...args),
 }));
 
+// Key creation is rate limited (AUDIT-012#auth-08). Mocked so the limiter's
+// own pool.query calls don't consume entries from this suite's ordered queue;
+// the limit itself is asserted in its own tests below.
+const mockCheckRateLimit = vi.fn();
+vi.mock("@/lib/rate-limiting/rate-limit", () => ({
+  checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
+  RATE_LIMITS: { login: { limit: "login" } },
+}));
+
 const { GET, POST } = await import("@/app/api/v3/keys/route");
 
 function postRequest(body: unknown) {
@@ -93,6 +102,12 @@ function existingKeyRow(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
+  mockCheckRateLimit.mockReset();
+  mockCheckRateLimit.mockResolvedValue({
+    allowed: true,
+    remaining: 4,
+    retryAfterSeconds: 0,
+  });
   mockQuery.mockReset();
   mockGetSession.mockReset();
   mockGetSession.mockResolvedValue({ userId: 7, email: "owner@example.com" });
@@ -128,6 +143,38 @@ describe("GET /api/v3/keys", () => {
     const [sql, params] = mockQuery.mock.calls[0];
     expect(sql).toContain("ak.user_id = $1");
     expect(params).toEqual([7]);
+  });
+});
+
+describe("POST /api/v3/keys - creation rate limit", () => {
+  // AUDIT-012#auth-08: an API key outlives the session that minted it (both
+  // "sign out everywhere" and a password change clear sessions and
+  // device_trust and neither touches api_keys), and minting one had no
+  // limiter at all.
+  it("refuses with 429 and mints nothing once the limiter trips", async () => {
+    mockCheckRateLimit.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 300,
+    });
+
+    const res = await POST(postRequest({ name: "CI" }));
+
+    expect(res.status).toBe(429);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("keys the limiter on the user and the client IP", async () => {
+    mockGetUserPlan.mockResolvedValue("free");
+    mockQuery.mockResolvedValue({ rows: [] });
+
+    await POST(postRequest({ name: "CI" }));
+
+    expect(mockCheckRateLimit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: expect.stringContaining("keys-create:7"),
+      }),
+    );
   });
 });
 

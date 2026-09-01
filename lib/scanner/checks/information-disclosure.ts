@@ -17,6 +17,7 @@ import {
   stripExampleContent,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
+import { hasTagWith, tagsWith } from "./_tag-scan";
 
 export const detectors: Record<string, DetectFn> = {
   // ── Private / internal IPs / email / PII — moved to secrets-extended.ts ──────────────────────────────
@@ -150,15 +151,13 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── Source maps / debug paths ────────────────────────────────────────────
 
-  "sourcemap-reference": (_url, _headers, body) => {
-    if (/\/\/[#@]\s*sourceMappingURL\s*=\s*\S+\.map/i.test(body)) {
-      return "JavaScript source map URL reference found. Source maps expose original source code.";
-    }
-    return null;
-  },
-
-  // "source-maps" is a duplicate of "sourcemap-reference"; both JSON defs are in content.json.
-  // Removing from here restores content.ts as the handler for both IDs.
+  // "sourcemap-reference" used to have a third, character-for-character
+  // identical copy here. The definition lives in checks-data/content.json with
+  // category "content", so registry.ts's resolveDetector has always run
+  // content.ts's copy: this one and code.ts's were both dead, and a maintainer
+  // tuning the regex here would have changed nothing at all. The note that
+  // used to sit below (claiming "source-maps" had a def in content.json too)
+  // was wrong: no category file defines that id. ref: AUDIT-009#dup-07
 
   "git-directory-exposed": (_url, _headers, body) => {
     if (/\/?\.git\/(HEAD|config|objects|refs)/i.test(body)) {
@@ -193,7 +192,7 @@ export const detectors: Record<string, DetectFn> = {
   "wp-login-exposed": (_url, _headers, body) => {
     if (
       /wp-login\.php|wp-admin\//i.test(body) &&
-      /<meta[^>]*generator[^>]*wordpress/i.test(body)
+      hasTagWith(body, "meta", /generator/i, /wordpress/i)
     ) {
       return "WordPress admin/login page paths exposed with WordPress generator tag.";
     }
@@ -243,9 +242,15 @@ export const detectors: Record<string, DetectFn> = {
     // Only report version-specific fingerprints (not framework presence alone).
     // Next.js, Nuxt.js, and bare WordPress are too common to flag without version info.
     const found: string[] = [];
-    const generator = body.match(
-      /<meta[^>]*name=["']generator["'][^>]*content=["']([^"']+)["']/i,
-    );
+    const generatorTag = tagsWith(
+      body,
+      "meta",
+      /name=["']generator["']/i,
+      /content=["'][^"']+["']/i,
+    )[0];
+    const generator = generatorTag
+      ? /content=["']([^"']+)["']/i.exec(generatorTag)
+      : null;
     if (generator) found.push(`Generator: ${generator[1]}`);
     // Only flag X-Powered-By if it exposes a version string (e.g. "PHP/8.1.2")
     const powered = headers.get("x-powered-by");
@@ -379,14 +384,14 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "prototype-js-outdated": (_url, _headers, body) => {
-    if (/<script[^>]+src=["'][^"']*prototype/i.test(body)) {
+    if (hasTagWith(body, "script", /src=["'][^"']*prototype/i)) {
       return "Prototype.js detected as a loaded script — outdated library with known vulnerabilities.";
     }
     return null;
   },
 
   "mootools-outdated": (_url, _headers, body) => {
-    if (/<script[^>]+src=["'][^"']*mootools/i.test(body)) {
+    if (hasTagWith(body, "script", /src=["'][^"']*mootools/i)) {
       return "MooTools detected as a loaded script — outdated library with potential security issues.";
     }
     return null;
@@ -570,7 +575,11 @@ export const detectors: Record<string, DetectFn> = {
       if (!/secure/i.test(c)) missing.push("Secure");
       if (!/samesite/i.test(c)) missing.push("SameSite");
       if (isSessionCookie && !/httponly/i.test(c)) missing.push("HttpOnly");
-      if (missing.length === 0) return null;
+      // continue, not return null: a correctly-flagged cookie only clears
+      // itself. Returning here made the first matching cookie decide for the
+      // whole response, so a hardened csrftoken hid a session cookie that was
+      // genuinely missing attributes later in the same Set-Cookie list.
+      if (missing.length === 0) continue;
       return `Cookie '${name}' (Django default name) is missing ${missing.join(", ")} — set CSRF_COOKIE_SECURE / SESSION_COOKIE_SECURE = True and SESSION_COOKIE_HTTPONLY = True in settings.`;
     }
     return null;
@@ -592,7 +601,11 @@ export const detectors: Record<string, DetectFn> = {
       if (!/secure/i.test(c)) missing.push("Secure");
       if (!/samesite/i.test(c)) missing.push("SameSite");
       if (isSessionCookie && !/httponly/i.test(c)) missing.push("HttpOnly");
-      if (missing.length === 0) return null;
+      // continue, not return null: Laravel sets XSRF-TOKEN *and* the
+      // *_session cookie on the same response, so returning on the first
+      // clean one let a hardened XSRF-TOKEN mask a laravel_session that was
+      // still missing HttpOnly.
+      if (missing.length === 0) continue;
       return `Cookie '${name}' (Laravel default name) is missing ${missing.join(", ")} — set the corresponding options in config/session.php.`;
     }
     return null;
@@ -609,7 +622,9 @@ export const detectors: Record<string, DetectFn> = {
       if (!/secure/i.test(c)) missing.push("Secure");
       if (!/httponly/i.test(c)) missing.push("HttpOnly");
       if (!/samesite/i.test(c)) missing.push("SameSite");
-      if (missing.length === 0) return null;
+      // continue, not return null: same reason as the two detectors above, a
+      // clean cookie clears only itself and must not end the scan early.
+      if (missing.length === 0) continue;
       return `Cookie 'connect.sid' (default express-session name) is missing ${missing.join(", ")} — pass { secure: true, httpOnly: true, sameSite: 'lax' } as the session cookie option.`;
     }
     return null;
@@ -631,14 +646,18 @@ export const detectors: Record<string, DetectFn> = {
   // ── Public config / env exposure ─────────────────────────────────────────
 
   "config-js-leaked": (_url, _headers, body) => {
-    if (/<script[^>]+src=["'][^"']*(?:config|settings)\.js["']/i.test(body)) {
+    if (
+      hasTagWith(body, "script", /src=["'][^"']*(?:config|settings)\.js["']/i)
+    ) {
       return "Public config.js/settings.js loaded as a script — verify it contains no API keys or credentials.";
     }
     return null;
   },
 
   "env-js-leaked": (_url, _headers, body) => {
-    if (/<script[^>]+src=["'][^"']*(?:env|environment)\.js["']/i.test(body)) {
+    if (
+      hasTagWith(body, "script", /src=["'][^"']*(?:env|environment)\.js["']/i)
+    ) {
       return "Public env.js/environment.js loaded as a script — never serve environment files from public paths.";
     }
     return null;
@@ -905,8 +924,8 @@ export const detectors: Record<string, DetectFn> = {
     // sit inside an actual <script src> tag, and exclude doc/example
     // context, mirroring the xml-external-entity check in code.ts.
     const patterns = [
-      /<script[^>]+src=["'][^"']*\/@vite\/client["']/i,
-      /<script[^>]+src=["'][^"']*\/@fs\//i,
+      /<script\b[^>]{0,2000}src=["'][^"']*\/@vite\/client["']/i,
+      /<script\b[^>]{0,2000}src=["'][^"']*\/@fs\//i,
       /\bvite\/hmr\b/i,
     ];
     for (const p of patterns) {
@@ -976,7 +995,15 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "ruby-backtrace-exposed": (_url, _headers, body) => {
-    const frames = body.match(/[\w./-]+\.rb:\d+:in `[^']+'/g) || [];
+    // The leading class overlaps the `.rb` that follows it, so without a
+    // left anchor a long run of word characters is re-attempted from every
+    // offset: quadratic, measured at ~4.6s on 50KB, which extrapolates to
+    // roughly half an hour against the 1MB body cap execute-scan.ts applies.
+    // A scanned page controls this body, and every scan timeout is a
+    // setTimeout, which cannot fire while a regex holds the event loop.
+    // The lookbehind makes only the first position of a run eligible.
+    // ref: AUDIT-012#inj-03
+    const frames = body.match(/(?<![\w./-])[\w./-]+\.rb:\d+:in `[^']+'/g) || [];
     if (frames.length >= 2) {
       return `Ruby exception backtrace exposed in response (${frames.length} frame(s), e.g. '${frames[0]}') — leaks source file paths.`;
     }

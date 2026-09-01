@@ -14,11 +14,6 @@ export function looksLikeApiKey(input: string): boolean {
   return VULNRADAR.apiKeyPattern.test(input.trim());
 }
 
-export async function loadAuth(): Promise<AuthMe | null> {
-  const auth = await get("auth");
-  return auth?.me ?? null;
-}
-
 export async function pasteKey(rawKey: string): Promise<AuthMe> {
   const key = rawKey.trim();
   if (!looksLikeApiKey(key)) {

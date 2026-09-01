@@ -2,12 +2,20 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/ui/utils";
-import { API, APP_NAME } from "@/lib/config/constants";
+import { API, APP_NAME } from "@/lib/config/client-constants";
 import { AI_MODEL_CATALOG, getModelSpec } from "@/lib/ai/model-catalog";
 import { Loader2, Eye, EyeOff, RotateCcw, Power } from "lucide-react";
 import { AiSettingsTabSkeleton } from "./ai-settings-tab-skeleton";
@@ -50,6 +58,7 @@ export function ProfileAiSettingsTab({
   // Action state
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
 
   useEffect(() => {
     if (loading) return;
@@ -149,7 +158,15 @@ export function ProfileAiSettingsTab({
     }
   }
 
+  // Confirmed, because this is the only irreversible action on the page that
+  // destroys something the user supplied rather than something we generated:
+  // the provider API key is never rendered back (only apiKeyLast4 is stored
+  // for display), so once it is deleted the only way to restore it is to go
+  // and reissue one with the provider. Both triggers, the outline button and
+  // the 12px text link at the bottom of the form, went straight through with
+  // no warning.
   async function handleReset() {
+    setConfirmReset(false);
     setResetting(true);
     setError(null);
     try {
@@ -305,7 +322,7 @@ export function ProfileAiSettingsTab({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={handleReset}
+                    onClick={() => setConfirmReset(true)}
                     disabled={resetting}
                     className="shrink-0 gap-2"
                   >
@@ -483,7 +500,7 @@ export function ProfileAiSettingsTab({
                 {config && !config.useVulnradarAi && (
                   <button
                     type="button"
-                    onClick={handleReset}
+                    onClick={() => setConfirmReset(true)}
                     disabled={resetting}
                     className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
                   >
@@ -515,6 +532,45 @@ export function ProfileAiSettingsTab({
           </Card>
         )}
       </section>
+
+      <AlertDialog
+        open={confirmReset}
+        onOpenChange={(open) => {
+          if (!open && !resetting) setConfirmReset(false);
+        }}
+      >
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove your AI provider config?</AlertDialogTitle>
+            <AlertDialogDescription className="text-left">
+              Your {config?.provider ? `${config.provider} ` : ""}API key and
+              model choice are deleted. We never show a saved key back, so you
+              will have to paste it again from your provider to set this up once
+              more. Scans go back to using {APP_NAME} AI.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col-reverse sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setConfirmReset(false)}
+              disabled={resetting}
+            >
+              Keep my provider
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleReset}
+              disabled={resetting}
+              className="gap-2"
+            >
+              {resetting && (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              )}
+              Remove and use {APP_NAME} AI
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

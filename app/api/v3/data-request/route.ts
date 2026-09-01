@@ -7,6 +7,48 @@ import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { dataRequestCreatedEmail } from "@/lib/email/email";
 
+/**
+ * How many of the export's table reads run at once.
+ *
+ * The GDPR export used to hand all 25 queries to a single Promise.all, which
+ * asked for 25 connections from a pool whose max is 10 (CONFIG_DB_POOL_MAX):
+ * one request queued on itself for fifteen of them AND monopolised every
+ * connection every other request in the process was waiting for, including
+ * logins and in-flight scans' progress writes. Batching keeps the export
+ * parallel enough to stay fast while leaving most of the pool free.
+ */
+const EXPORT_QUERY_CONCURRENCY = 4;
+
+/**
+ * Ceiling on the number of scans whose full findings blob is inlined.
+ *
+ * The scan_history read is the one query here that selects a fat JSONB
+ * column for an unbounded row set, and the result is buffered in the Node
+ * heap, stringified, written to data_requests.data and returned in the
+ * response body, so a single export of a very large account can OOM the
+ * process that also runs every in-flight scan (AUDIT-012#perf-19).
+ *
+ * Set well above any real account rather than as a data reduction: the
+ * highest shipped plan allows 500 scans a day, so this is roughly three
+ * weeks of continuously maxing out the largest plan. If it is ever reached
+ * the export says so explicitly rather than silently handing back a subset,
+ * because an incomplete copy presented as complete is the failure mode that
+ * actually matters for a subject-access export.
+ */
+const EXPORT_MAX_SCANS = 10000;
+
+/** Run thunks in fixed-size batches, preserving input order in the result. */
+async function runInBatches<T>(
+  tasks: (() => Promise<T>)[],
+  size = EXPORT_QUERY_CONCURRENCY,
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let i = 0; i < tasks.length; i += size) {
+    out.push(...(await Promise.all(tasks.slice(i, i + size).map((t) => t()))));
+  }
+  return out;
+}
+
 export async function GET() {
   const session = await getSession();
   if (!session) {
@@ -120,256 +162,282 @@ export async function POST(_request: NextRequest) {
       aiConversationsData,
       githubConnectionData,
       securityAlertsData,
-    ] = await Promise.all([
+    ] = await runInBatches([
       // Core user data (excluding password_hash, totp_secret, backup_codes for security)
-      pool.query(
-        `
+      () =>
+        pool.query(
+          `
         SELECT id, email, name, avatar_url, discord_id, role, plan, 
                stripe_customer_id, subscription_status, current_period_end, cancel_at_period_end,
                beta_access, daily_scan_limit, email_verified_at, tos_accepted_at, disabled_at,
                onboarding_completed, totp_enabled, two_factor_method, created_at, updated_at
         FROM users WHERE id = $1
       `,
-        [session.userId],
-      ),
+          [session.userId],
+        ),
 
       // Sessions
-      pool.query(
-        `
+      () =>
+        pool.query(
+          `
         SELECT id, ip_address, user_agent, expires_at, created_at
         FROM sessions WHERE user_id = $1 ORDER BY created_at DESC
       `,
-        [session.userId],
-      ),
+          [session.userId],
+        ),
 
       // API Keys (excluding key_hash and key_encrypted for security)
-      pool.query(
-        `
+      () =>
+        pool.query(
+          `
         SELECT id, key_prefix, name, daily_limit, created_at, last_used_at, revoked_at
         FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC
       `,
-        [session.userId],
-      ),
+          [session.userId],
+        ),
 
       // API Usage
-      pool.query(
-        `
+      () =>
+        pool.query(
+          `
         SELECT au.id, au.used_at, ak.key_prefix, ak.name as key_name
         FROM api_usage au
         JOIN api_keys ak ON au.api_key_id = ak.id
         WHERE ak.user_id = $1
         ORDER BY au.used_at DESC
       `,
-        [session.userId],
-      ),
+          [session.userId],
+        ),
 
       // Scan History (full data including findings)
-      pool.query(
-        `
-        SELECT id, url, summary, findings, findings_count, duration, source, 
+      () =>
+        pool.query(
+          `
+        SELECT id, url, summary, findings, findings_count, duration, source,
                share_token, response_headers, notes, scanned_at
         FROM scan_history WHERE user_id = $1 ORDER BY scanned_at DESC
+        LIMIT $2
       `,
-        [session.userId],
-      ),
+          [session.userId, EXPORT_MAX_SCANS],
+        ),
 
       // Scan Tags (source distinguishes an auto tag lib/tags/auto-tags.ts
       // derived from the scan's findings from one this user typed in)
-      pool.query(
-        `
+      () =>
+        pool.query(
+          `
         SELECT st.id, st.scan_id, st.tag, st.source, sh.url as scan_url
         FROM scan_tags st
         JOIN scan_history sh ON st.scan_id = sh.id
         WHERE st.user_id = $1 ORDER BY st.id DESC
       `,
-        [session.userId],
-      ),
+          [session.userId],
+        ),
 
       // Scheduled Scans
-      pool.query(
-        `
+      () =>
+        pool.query(
+          `
         SELECT id, url, frequency, active, last_run_at, next_run_at, created_at
         FROM scheduled_scans WHERE user_id = $1 ORDER BY created_at DESC
       `,
-        [session.userId],
-      ),
+          [session.userId],
+        ),
 
       // Webhooks
-      pool.query(
-        `
+      () =>
+        pool.query(
+          `
         SELECT id, url, name, type, active, created_at
         FROM webhooks WHERE user_id = $1 ORDER BY created_at DESC
       `,
-        [session.userId],
-      ),
+          [session.userId],
+        ),
 
       // User Badges
-      pool.query(
-        `
+      () =>
+        pool.query(
+          `
         SELECT ub.awarded_at, b.name as badge_name, b.display_name, b.description, b.icon, b.color
         FROM user_badges ub
         JOIN badges b ON ub.badge_id = b.id
         WHERE ub.user_id = $1 ORDER BY ub.awarded_at DESC
       `,
-        [session.userId],
-      ),
+          [session.userId],
+        ),
 
       // Billing History
-      pool.query(
-        `
+      () =>
+        pool.query(
+          `
         SELECT id, stripe_invoice_id, stripe_payment_intent_id, amount_cents, currency, 
                status, description, invoice_pdf_url, created_at
         FROM billing_history WHERE user_id = $1 ORDER BY created_at DESC
       `,
-        [session.userId],
-      ),
+          [session.userId],
+        ),
 
       // Discord Connection (excluding tokens for security)
-      pool.query(
-        `
+      () =>
+        pool.query(
+          `
         SELECT discord_id, discord_username, discord_discriminator, discord_avatar, 
                discord_email, guild_joined, connected_at, updated_at
         FROM discord_connections WHERE user_id = $1
       `,
-        [session.userId],
-      ),
+          [session.userId],
+        ),
 
       // Device Trust
-      pool.query(
-        `
+      () =>
+        pool.query(
+          `
         SELECT id, device_fingerprint, device_name, ip_address, user_agent, 
                last_used_at, created_at, expires_at
         FROM device_trust WHERE user_id = $1 ORDER BY last_used_at DESC
       `,
-        [session.userId],
-      ),
+          [session.userId],
+        ),
 
       // Notification Preferences
-      pool.query(
-        `
+      () =>
+        pool.query(
+          `
         SELECT * FROM notification_preferences WHERE user_id = $1
       `,
-        [session.userId],
-      ),
+          [session.userId],
+        ),
 
       // Team Memberships
-      pool.query(
-        `
+      () =>
+        pool.query(
+          `
         SELECT tm.role, tm.joined_at, t.name as team_name, t.slug as team_slug
         FROM team_members tm
         JOIN teams t ON tm.team_id = t.id
         WHERE tm.user_id = $1 ORDER BY tm.joined_at DESC
       `,
-        [session.userId],
-      ),
+          [session.userId],
+        ),
 
       // Teams Owned
-      pool.query(
-        `
+      () =>
+        pool.query(
+          `
         SELECT id, name, slug, created_at
         FROM teams WHERE owner_id = $1 ORDER BY created_at DESC
       `,
-        [session.userId],
-      ),
+          [session.userId],
+        ),
 
       // Team Invites Sent
-      pool.query(
-        `
+      () =>
+        pool.query(
+          `
         SELECT ti.email, ti.role, ti.expires_at, ti.accepted_at, ti.created_at, t.name as team_name
         FROM team_invites ti
         JOIN teams t ON ti.team_id = t.id
         WHERE ti.invited_by = $1 ORDER BY ti.created_at DESC
       `,
-        [session.userId],
-      ),
+          [session.userId],
+        ),
 
       // Gifted Subscriptions Received
-      pool.query(
-        `
+      () =>
+        pool.query(
+          `
         SELECT gs.plan, gs.reason, gs.expires_at, gs.revoked_at, gs.created_at,
                u.email as gifted_by_email
         FROM gifted_subscriptions gs
         LEFT JOIN users u ON gs.gifted_by = u.id
         WHERE gs.user_id = $1 ORDER BY gs.created_at DESC
       `,
-        [session.userId],
-      ),
+          [session.userId],
+        ),
 
       // Admin Notes on User (user should see notes about them)
-      pool.query(
-        `
+      () =>
+        pool.query(
+          `
         SELECT aun.note, aun.created_at, u.email as admin_email
         FROM admin_user_notes aun
         LEFT JOIN users u ON aun.admin_id = u.id
         WHERE aun.user_id = $1 ORDER BY aun.created_at DESC
       `,
-        [session.userId],
-      ),
+          [session.userId],
+        ),
 
       // AI Provider Config (excluding api_key_encrypted for security)
-      pool.query(
-        `
+      () =>
+        pool.query(
+          `
         SELECT use_vulnradar_ai, ai_disabled, provider, model_id, base_url, created_at, updated_at
         FROM user_ai_configs WHERE user_id = $1
       `,
-        [session.userId],
-      ),
+          [session.userId],
+        ),
 
       // Scan Finding Feedback (verdicts on individual findings)
-      pool.query(
-        `
+      () =>
+        pool.query(
+          `
         SELECT id, scan_history_id, finding_id, finding_url, verdict, notes, created_at
         FROM scan_finding_feedback WHERE user_id = $1 ORDER BY created_at DESC
       `,
-        [session.userId],
-      ),
+          [session.userId],
+        ),
 
       // In-App Notifications (notification bell)
-      pool.query(
-        `
+      () =>
+        pool.query(
+          `
         SELECT id, type, title, message, action_label, action_url,
                related_type, related_id, read_at, created_at
         FROM user_notifications WHERE user_id = $1 ORDER BY created_at DESC
       `,
-        [session.userId],
-      ),
+          [session.userId],
+        ),
 
       // Browser Sessions (live scan viewer / authenticated-scan sessions)
-      pool.query(
-        `
+      () =>
+        pool.query(
+          `
         SELECT id, created_at, expires_at
         FROM browser_sessions WHERE user_id = $1 ORDER BY created_at DESC
       `,
-        [session.userId],
-      ),
+          [session.userId],
+        ),
 
       // AI Chat Conversations (placed last alongside scan history: can be large)
-      pool.query(
-        `
+      () =>
+        pool.query(
+          `
         SELECT id, session_id, messages, created_at, last_message_at
         FROM ai_conversations WHERE user_id = $1 ORDER BY created_at DESC
       `,
-        [session.userId],
-      ),
+          [session.userId],
+        ),
 
       // GitHub Connection (excluding access_token_encrypted for security,
       // same redaction precedent as discordConnection's tokens above and
       // aiConfig's api_key_encrypted)
-      pool.query(
-        `
+      () =>
+        pool.query(
+          `
         SELECT github_user_id, github_username, scopes, selected_repos,
                connected_at, updated_at
         FROM github_connections WHERE user_id = $1
       `,
-        [session.userId],
-      ),
+          [session.userId],
+        ),
 
       // Security Alerts (the subject's own IP/user-agent history behind
       // each alert raised on their account; resolved_by is surfaced as an
       // email, same transparency pattern as adminNotesOnUserData above,
       // rather than a bare internal user id)
-      pool.query(
-        `
+      () =>
+        pool.query(
+          `
         SELECT sa.id, sa.alert_type, sa.severity, sa.description, sa.details,
                sa.ip_address, sa.user_agent, sa.resolved_at, sa.created_at,
                sa.action_taken, u.email as resolved_by_email
@@ -377,8 +445,8 @@ export async function POST(_request: NextRequest) {
         LEFT JOIN users u ON sa.resolved_by = u.id
         WHERE sa.user_id = $1 ORDER BY sa.created_at DESC
       `,
-        [session.userId],
-      ),
+          [session.userId],
+        ),
     ]);
 
     // Remove user_id from notification_preferences for cleaner export
@@ -435,6 +503,13 @@ export async function POST(_request: NextRequest) {
 
       // Scan History and AI Chat History (placed last: potentially large)
       scanHistory: scanHistoryData.rows,
+      // Only present when the cap above was actually reached, so an ordinary
+      // export is not littered with a note about a limit it never met.
+      ...(scanHistoryData.rows.length >= EXPORT_MAX_SCANS
+        ? {
+            scanHistoryNote: `Only the ${EXPORT_MAX_SCANS} most recent scans are included in this file. Contact support to receive the remainder.`,
+          }
+        : {}),
       aiConversations: aiConversationsData.rows,
     };
 

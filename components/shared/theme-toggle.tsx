@@ -12,14 +12,24 @@ export function ThemeToggle() {
   const isDark = (resolvedTheme ?? "dark") === "dark";
 
   return (
+    /* a11y (SC 4.1.2). This is drawn as a switch -- a pill with a track and a
+       sliding thumb -- but it was exposed as a plain button, so assistive tech
+       could announce the action and never the current value: a screen-reader
+       user could not tell which theme was on without changing it. role/
+       aria-checked give it the value. The name goes static with it: an
+       action-phrase name ("Switch to light mode") on a control that also
+       reports checked state reads as a contradiction, so the name says what
+       the control IS and aria-checked says where it sits. */
     <button
       type="button"
+      role="switch"
+      aria-checked={isDark}
       onClick={() => setTheme(isDark ? "light" : "dark")}
       className={cn(
         "relative flex items-center h-8 w-16 rounded-full border border-border transition-colors duration-300 px-1",
         isDark ? "bg-muted" : "bg-primary/10",
       )}
-      aria-label={`Switch to ${isDark ? "light" : "dark"} mode`}
+      aria-label="Dark mode"
     >
       {/* Icons on both sides */}
       <Sun

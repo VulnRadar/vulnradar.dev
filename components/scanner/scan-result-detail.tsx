@@ -3,8 +3,9 @@
 import type { ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { AlertTriangle, Share2, ExternalLink } from "lucide-react";
-import { OG_INSPECT_URL_TEMPLATE } from "@/lib/config/constants";
+import { OG_INSPECT_URL_TEMPLATE } from "@/lib/config/client-constants";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
+import { EmptyState } from "@/components/shared/empty-state";
 import { ScanSummary } from "./scan-summary";
 import { ResultsList } from "./results-list";
 import {
@@ -44,13 +45,6 @@ export interface ScanResultDetailProps {
   crawlInfo?: CrawlInfo | null;
   /** Host report only: its `duration` is synthetic, so hide the "in Ns" line. */
   hideDuration?: boolean;
-  /**
-   * The full "More about this host" panel set (screenshot, DNS, ports, threat
-   * intel, software inventory, plus the subdomain/footer slots). Defaults on.
-   * The host-aggregate report sets this false: its data source only carries
-   * response headers, so it shows just those under the same heading.
-   */
-  extendedPanels?: boolean;
   /** Rendered right after the verdict summary. Host report uses it for the trend chart. */
   afterSummary?: ReactNode;
   /** Screenshot image URL. Combined with `result.screenshot`, gates the panel. */
@@ -58,7 +52,11 @@ export interface ScanResultDetailProps {
   /** Owner only: enables the screenshot re-capture control. */
   screenshotRefreshScanId?: string | number;
   onScreenshotRefreshed?: (screenshot: ScanResult["screenshot"]) => void;
-  /** Owner only: enables the DNS + port on-demand fetch/refresh controls. */
+  /** Owner only: enables the DNS + port on-demand fetch/refresh controls,
+   *  including on a scan that carries neither yet (a scan run without the
+   *  port-scan option, or one whose DNS cache was cold). Both panels render
+   *  nothing at all when this is absent, which is what the public /host and
+   *  /shared views want. */
   refreshScanId?: string | number;
   onDnsRefreshed?: (records: ScanResult["dnsRecords"]) => void;
   onPortRefreshed?: (portScan: ScanResult["portScan"]) => void;
@@ -93,7 +91,6 @@ export function ScanResultDetail({
   onSelectIssue,
   crawlInfo,
   hideDuration,
-  extendedPanels = true,
   afterSummary,
   screenshotSrc,
   screenshotRefreshScanId,
@@ -108,6 +105,18 @@ export function ScanResultDetail({
 }: ScanResultDetailProps) {
   const hasResponseHeaders =
     !!result.responseHeaders && Object.keys(result.responseHeaders).length > 0;
+
+  // Branch keys the scanner records in ScanResult.incomplete, mapped to
+  // words a user recognises. Anything unrecognised falls through as-is
+  // rather than being dropped, so a new branch still surfaces.
+  const INCOMPLETE_LABELS: Record<string, string> = {
+    dns: "DNS records",
+    tls: "TLS and certificate checks",
+    "live-fetch": "Live page fetch",
+  };
+  const incompleteAreas = (result.incomplete ?? []).map(
+    (area) => INCOMPLETE_LABELS[area] ?? area,
+  );
 
   return (
     <>
@@ -143,78 +152,80 @@ export function ScanResultDetail({
 
       {afterSummary}
 
+      {/* Context first, findings second, on every surface. An earlier pass had
+          this the other way round (findings straight under the summary, the
+          panels last) on the theory that infrastructure detail is trivia in
+          front of the security result. The owner reads a report the opposite
+          way: what the host is, then what is wrong with it. Because all four
+          result surfaces render through this one component, the order only
+          has to be right here. The panels are all collapsed by default, so
+          this costs roughly one screen-line each before the findings start. */}
+      <div className="flex flex-col gap-3 border-t border-border/50 pt-5">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+          <h2 className={SECTION_HEADING}>More about this host</h2>
+          {/* Social/OG preview lives off our engine: a link-out to a
+                third-party inspector rather than something we fetch. */}
+          {OG_INSPECT_URL_TEMPLATE && result.url && (
+            <a
+              href={OG_INSPECT_URL_TEMPLATE.replace(
+                "{url}",
+                encodeURIComponent(result.url),
+              )}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <Share2 aria-hidden className="h-3.5 w-3.5" />
+              Preview social cards
+              <ExternalLink aria-hidden className="h-3 w-3 opacity-70" />
+            </a>
+          )}
+        </div>
+        <p className="-mt-1 text-xs text-muted-foreground">
+          Infrastructure captured during this scan. The findings are below.
+        </p>
+
+        {result.screenshot && screenshotSrc && (
+          <ScreenshotPanel
+            src={screenshotSrc}
+            url={result.url}
+            width={result.screenshot.width}
+            height={result.screenshot.height}
+            capturedAt={result.screenshot.capturedAt}
+            scanId={screenshotRefreshScanId}
+            onRefreshed={onScreenshotRefreshed}
+          />
+        )}
+
+        {hasResponseHeaders && (
+          <ResponseHeaders headers={result.responseHeaders!} />
+        )}
+
+        <DnsRecordsPanel
+          records={result.dnsRecords}
+          scanId={refreshScanId}
+          onRefreshed={onDnsRefreshed}
+        />
+
+        <PortScanPanel
+          portScan={result.portScan}
+          scanId={refreshScanId}
+          onRefreshed={onPortRefreshed}
+        />
+
+        <ThreatIntelPanel threatIntel={result.threatIntel} />
+
+        <SoftwareInventoryPanel softwareInventory={result.softwareInventory} />
+
+        {subdomain}
+
+        {panelFooter}
+      </div>
+
+      {/* Stays directly above the findings list: it selects whose findings you
+          are reading. */}
       {crawlInfo && crawlInfo.pages.length > 1 && (
         <CrawlPagesInfo crawlInfo={crawlInfo} onSelectIssue={onSelectIssue} />
-      )}
-
-      {extendedPanels ? (
-        <div className="flex flex-col gap-3 border-t border-border/50 pt-5">
-          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-            <h2 className={SECTION_HEADING}>More about this host</h2>
-            {/* Social/OG preview lives off our engine: a link-out to a
-                third-party inspector rather than something we fetch. */}
-            {OG_INSPECT_URL_TEMPLATE && result.url && (
-              <a
-                href={OG_INSPECT_URL_TEMPLATE.replace(
-                  "{url}",
-                  encodeURIComponent(result.url),
-                )}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
-              >
-                <Share2 aria-hidden className="h-3.5 w-3.5" />
-                Preview social cards
-                <ExternalLink aria-hidden className="h-3 w-3 opacity-70" />
-              </a>
-            )}
-          </div>
-
-          {result.screenshot && screenshotSrc && (
-            <ScreenshotPanel
-              src={screenshotSrc}
-              url={result.url}
-              width={result.screenshot.width}
-              height={result.screenshot.height}
-              capturedAt={result.screenshot.capturedAt}
-              scanId={screenshotRefreshScanId}
-              onRefreshed={onScreenshotRefreshed}
-            />
-          )}
-
-          {hasResponseHeaders && (
-            <ResponseHeaders headers={result.responseHeaders!} />
-          )}
-
-          <DnsRecordsPanel
-            records={result.dnsRecords}
-            scanId={refreshScanId}
-            onRefreshed={onDnsRefreshed}
-          />
-
-          <PortScanPanel
-            portScan={result.portScan}
-            scanId={refreshScanId}
-            onRefreshed={onPortRefreshed}
-          />
-
-          <ThreatIntelPanel threatIntel={result.threatIntel} />
-
-          <SoftwareInventoryPanel
-            softwareInventory={result.softwareInventory}
-          />
-
-          {subdomain}
-
-          {panelFooter}
-        </div>
-      ) : (
-        hasResponseHeaders && (
-          <div className="flex flex-col gap-3 border-t border-border/50 pt-5">
-            <h2 className={SECTION_HEADING}>More about this host</h2>
-            <ResponseHeaders headers={result.responseHeaders!} />
-          </div>
-        )
       )}
 
       {result.findings.length > 0 ? (
@@ -224,16 +235,40 @@ export function ScanResultDetail({
           scanUrl={canRemediate ? result.url : undefined}
         />
       ) : (
-        (emptyFindings ?? (
-          <div className="rounded-md border border-dashed border-border bg-card/50 px-4 py-10 text-center">
-            <p className="text-sm font-semibold text-[hsl(var(--success))]">
-              Nothing found on this scan
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Every enabled check ran against this host and none of them fired.
-            </p>
-          </div>
-        ))
+        (emptyFindings ??
+        (incompleteAreas.length > 0 ? (
+          /* A no-findings result is only a clean result if everything
+               actually ran. ScanResult.incomplete lists branches that did not
+               finish inside the time budget, and its contract (lib/scanner/
+               types.ts) is explicit that a listed area means "not checked",
+               not "checked and clean". Reporting a partial scan as clean is
+               the worst failure mode this product has, so say what is
+               missing and offer the rescan instead. */
+          <EmptyState
+            tone="warning"
+            size="sm"
+            title="No findings, but this scan did not finish"
+            description={
+              <>
+                {incompleteAreas.join(", ")}{" "}
+                {incompleteAreas.length === 1 ? "did" : "did"} not complete
+                within the time budget, so{" "}
+                {incompleteAreas.length === 1
+                  ? "that area was"
+                  : "those areas were"}{" "}
+                not checked. Treat this as an incomplete result rather than a
+                clean one, and run the scan again.
+              </>
+            }
+          />
+        ) : (
+          <EmptyState
+            tone="success"
+            size="sm"
+            title="Nothing found on this scan"
+            description="Every enabled check ran against this host and none of them fired."
+          />
+        )))
       )}
     </>
   );

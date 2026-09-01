@@ -45,12 +45,34 @@ vi.mock("@/lib/billing/ai-usage", () => ({
   getAiCreditBalance: (...args: unknown[]) => mockGetAiCreditBalance(...args),
 }));
 
+const mockCreditGithubCreditPurchase = vi.fn();
+const mockGetGithubCreditBalance = vi.fn();
+vi.mock("@/lib/billing/github-review-usage", () => ({
+  creditGithubCreditPurchase: (...args: unknown[]) =>
+    mockCreditGithubCreditPurchase(...args),
+  getGithubCreditBalance: (...args: unknown[]) =>
+    mockGetGithubCreditBalance(...args),
+}));
+
+const mockCreditBrowserbaseCreditPurchase = vi.fn();
+const mockGetBrowserbaseCreditBalanceSeconds = vi.fn();
+vi.mock("@/lib/billing/browserbase-usage", () => ({
+  creditBrowserbaseCreditPurchase: (...args: unknown[]) =>
+    mockCreditBrowserbaseCreditPurchase(...args),
+  getBrowserbaseCreditBalanceSeconds: (...args: unknown[]) =>
+    mockGetBrowserbaseCreditBalanceSeconds(...args),
+}));
+
 const {
   createSubscription,
   confirmSubscription,
   createAiCreditPaymentIntent,
   confirmAiCreditPurchase,
   createBillingPortalSession,
+  createGithubCreditPaymentIntent,
+  confirmGithubCreditPurchase,
+  createBrowserbaseCreditPaymentIntent,
+  confirmBrowserbaseCreditPurchase,
 } = await import("@/app/actions/stripe");
 
 beforeEach(() => {
@@ -67,6 +89,10 @@ beforeEach(() => {
   mockGetOrCreateStripePriceId.mockReset();
   mockCreditAiCreditPurchase.mockReset();
   mockGetAiCreditBalance.mockReset();
+  mockCreditGithubCreditPurchase.mockReset();
+  mockGetGithubCreditBalance.mockReset();
+  mockCreditBrowserbaseCreditPurchase.mockReset();
+  mockGetBrowserbaseCreditBalanceSeconds.mockReset();
 
   mockGetSession.mockResolvedValue({ userId: 7 });
   mockGetStripe.mockReturnValue({
@@ -85,6 +111,10 @@ beforeEach(() => {
   mockGetOrCreateStripePriceId.mockResolvedValue("price_new");
   mockCreditAiCreditPurchase.mockResolvedValue({ credited: true });
   mockGetAiCreditBalance.mockResolvedValue(0);
+  mockCreditGithubCreditPurchase.mockResolvedValue({ credited: true });
+  mockGetGithubCreditBalance.mockResolvedValue(0);
+  mockCreditBrowserbaseCreditPurchase.mockResolvedValue({ credited: true });
+  mockGetBrowserbaseCreditBalanceSeconds.mockResolvedValue(0);
   // Default: the stored stripe_customer_id (cus_1 in every fixture below)
   // still resolves, matching the common case. The one test that exercises
   // a stale id overrides this.
@@ -866,5 +896,257 @@ describe("createBillingPortalSession", () => {
         return_url: expect.stringContaining("/profile?tab=billing"),
       }),
     );
+  });
+});
+
+// The GitHub-review and live-browser credit packs were the two untested price/
+// quantity-selection paths on this file (AUDIT-013#cov-17). They are separate
+// catalogs with separate metadata keys and separate balances, so a copy-paste
+// slip between them charges for one pack and credits another, and the only
+// place that shows up is a customer complaint or a hand reconciliation against
+// Stripe. Each assertion below pins one decision that picks a price, a
+// quantity, or who gets credited.
+
+describe("createGithubCreditPaymentIntent", () => {
+  it("rejects when there is no logged-in session", async () => {
+    mockGetSession.mockResolvedValue(null);
+    await expect(
+      createGithubCreditPaymentIntent("github_credits_1m"),
+    ).rejects.toThrow("logged in");
+    expect(mockPaymentIntentsCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unknown tier id rather than charging a default amount", async () => {
+    await expect(createGithubCreditPaymentIntent("not_a_tier")).rejects.toThrow(
+      "not found",
+    );
+    expect(mockPaymentIntentsCreate).not.toHaveBeenCalled();
+  });
+
+  it("charges the catalog price for the requested tier and stamps githubCreditTierId, not aiCreditTierId", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ email: "a@b.c", name: "A", stripe_customer_id: "cus_1" }],
+    });
+    mockPaymentIntentsCreate.mockResolvedValue({
+      id: "pi_gh",
+      client_secret: "cs_gh",
+    });
+
+    const result = await createGithubCreditPaymentIntent("github_credits_3m");
+
+    expect(result).toEqual({
+      clientSecret: "cs_gh",
+      paymentIntentId: "pi_gh",
+    });
+    expect(mockPaymentIntentsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 2500,
+        currency: "usd",
+        customer: "cus_1",
+        metadata: { userId: "7", githubCreditTierId: "github_credits_3m" },
+      }),
+    );
+  });
+
+  it("throws rather than returning a half-built intent when Stripe gives back no client secret", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ email: "a@b.c", name: "A", stripe_customer_id: "cus_1" }],
+    });
+    mockPaymentIntentsCreate.mockResolvedValue({
+      id: "pi_gh",
+      client_secret: null,
+    });
+
+    await expect(
+      createGithubCreditPaymentIntent("github_credits_1m"),
+    ).rejects.toThrow("Failed to create payment intent");
+  });
+});
+
+describe("confirmGithubCreditPurchase", () => {
+  it("refuses a PaymentIntent stamped with a different account's id", async () => {
+    mockPaymentIntentsRetrieve.mockResolvedValue({
+      id: "pi_gh",
+      status: "succeeded",
+      metadata: { userId: "99", githubCreditTierId: "github_credits_1m" },
+    });
+
+    await expect(confirmGithubCreditPurchase("pi_gh")).rejects.toThrow(
+      "does not belong to your account",
+    );
+    expect(mockCreditGithubCreditPurchase).not.toHaveBeenCalled();
+  });
+
+  it("credits exactly the tier's token count to the session's own account", async () => {
+    mockPaymentIntentsRetrieve.mockResolvedValue({
+      id: "pi_gh",
+      status: "succeeded",
+      metadata: { userId: "7", githubCreditTierId: "github_credits_8m" },
+    });
+    mockGetGithubCreditBalance.mockResolvedValue(8_000_000);
+
+    const result = await confirmGithubCreditPurchase("pi_gh");
+
+    expect(mockCreditGithubCreditPurchase).toHaveBeenCalledWith(
+      "pi_gh",
+      7,
+      8_000_000,
+    );
+    expect(result).toEqual({
+      succeeded: true,
+      tokens: 8_000_000,
+      balance: 8_000_000,
+    });
+  });
+
+  it("does not credit a PaymentIntent that has not cleared", async () => {
+    mockPaymentIntentsRetrieve.mockResolvedValue({
+      id: "pi_gh",
+      status: "requires_payment_method",
+      metadata: { userId: "7", githubCreditTierId: "github_credits_1m" },
+    });
+
+    const result = await confirmGithubCreditPurchase("pi_gh");
+
+    expect(mockCreditGithubCreditPurchase).not.toHaveBeenCalled();
+    expect(result.succeeded).toBe(false);
+    expect(result.tokens).toBe(0);
+  });
+
+  it("does not credit when the payment cleared but the tier id no longer resolves", async () => {
+    mockPaymentIntentsRetrieve.mockResolvedValue({
+      id: "pi_gh",
+      status: "succeeded",
+      metadata: { userId: "7", githubCreditTierId: "github_credits_retired" },
+    });
+
+    const result = await confirmGithubCreditPurchase("pi_gh");
+
+    expect(mockCreditGithubCreditPurchase).not.toHaveBeenCalled();
+    expect(result).toEqual({ succeeded: false, tokens: 0, balance: 0 });
+  });
+});
+
+describe("createBrowserbaseCreditPaymentIntent", () => {
+  it("rejects an unknown tier id rather than charging a default amount", async () => {
+    await expect(
+      createBrowserbaseCreditPaymentIntent("not_a_tier"),
+    ).rejects.toThrow("not found");
+    expect(mockPaymentIntentsCreate).not.toHaveBeenCalled();
+  });
+
+  it("charges the catalog price for the requested tier and stamps browserbaseCreditTierId", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ email: "a@b.c", name: "A", stripe_customer_id: "cus_1" }],
+    });
+    mockPaymentIntentsCreate.mockResolvedValue({
+      id: "pi_bb",
+      client_secret: "cs_bb",
+    });
+
+    const result = await createBrowserbaseCreditPaymentIntent(
+      "browserbase_credits_220m",
+    );
+
+    expect(result).toEqual({
+      clientSecret: "cs_bb",
+      paymentIntentId: "pi_bb",
+    });
+    expect(mockPaymentIntentsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 3000,
+        currency: "usd",
+        customer: "cus_1",
+        metadata: {
+          userId: "7",
+          browserbaseCreditTierId: "browserbase_credits_220m",
+        },
+      }),
+    );
+  });
+
+  it("creates a Stripe customer when the account has none yet, and bills that new customer", async () => {
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [{ email: "a@b.c", name: "A", stripe_customer_id: null }],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+    mockCustomersCreate.mockResolvedValue({ id: "cus_new" });
+    mockPaymentIntentsCreate.mockResolvedValue({
+      id: "pi_bb",
+      client_secret: "cs_bb",
+    });
+
+    await createBrowserbaseCreditPaymentIntent("browserbase_credits_30m");
+
+    expect(mockCustomersCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: { userId: "7" } }),
+    );
+    expect(mockPaymentIntentsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ customer: "cus_new" }),
+    );
+  });
+});
+
+describe("confirmBrowserbaseCreditPurchase", () => {
+  it("refuses a PaymentIntent stamped with a different account's id", async () => {
+    mockPaymentIntentsRetrieve.mockResolvedValue({
+      id: "pi_bb",
+      status: "succeeded",
+      metadata: {
+        userId: "99",
+        browserbaseCreditTierId: "browserbase_credits_30m",
+      },
+    });
+
+    await expect(confirmBrowserbaseCreditPurchase("pi_bb")).rejects.toThrow(
+      "does not belong to your account",
+    );
+    expect(mockCreditBrowserbaseCreditPurchase).not.toHaveBeenCalled();
+  });
+
+  it("credits the tier's minutes converted to seconds, and reports minutes back", async () => {
+    mockPaymentIntentsRetrieve.mockResolvedValue({
+      id: "pi_bb",
+      status: "succeeded",
+      metadata: {
+        userId: "7",
+        browserbaseCreditTierId: "browserbase_credits_100m",
+      },
+    });
+    mockGetBrowserbaseCreditBalanceSeconds.mockResolvedValue(6000);
+
+    const result = await confirmBrowserbaseCreditPurchase("pi_bb");
+
+    // 100 minutes bought, 6000 seconds credited. The unit conversion is the
+    // whole reason this branch is worth a test: crediting 100 here instead of
+    // 100 * 60 silently sells 100 seconds for the price of 100 minutes.
+    expect(mockCreditBrowserbaseCreditPurchase).toHaveBeenCalledWith(
+      "pi_bb",
+      7,
+      6000,
+    );
+    expect(result).toEqual({
+      succeeded: true,
+      minutes: 100,
+      balanceSeconds: 6000,
+    });
+  });
+
+  it("does not credit a PaymentIntent that has not cleared", async () => {
+    mockPaymentIntentsRetrieve.mockResolvedValue({
+      id: "pi_bb",
+      status: "processing",
+      metadata: {
+        userId: "7",
+        browserbaseCreditTierId: "browserbase_credits_30m",
+      },
+    });
+
+    const result = await confirmBrowserbaseCreditPurchase("pi_bb");
+
+    expect(mockCreditBrowserbaseCreditPurchase).not.toHaveBeenCalled();
+    expect(result.succeeded).toBe(false);
+    expect(result.minutes).toBe(0);
   });
 });

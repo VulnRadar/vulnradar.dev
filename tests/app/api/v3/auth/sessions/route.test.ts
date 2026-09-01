@@ -70,11 +70,15 @@ describe("GET /api/v3/auth/sessions", () => {
   });
 
   it("returns the caller's own sessions, hashing the id and flagging the current one", async () => {
-    cookieState.set(AUTH_SESSION_COOKIE_NAME, "raw-session-1");
+    // The cookie holds the bearer token; sessions.id holds its digest
+    // (AUDIT-012#auth-07), so the "is this me" comparison has to hash the
+    // cookie before comparing. Seeding the stored id as the digest of the
+    // cookie value is what makes that assertable.
+    cookieState.set(AUTH_SESSION_COOKIE_NAME, "raw-token-1");
     sessionRow = defaultSessionRow({ user_id: 33 });
     userSessionsRows = [
       {
-        id: "raw-session-1",
+        id: hashSessionId("raw-token-1"),
         ip_address: "2001:db8::1",
         ipv4_address: "203.0.113.5",
         user_agent:
@@ -105,7 +109,7 @@ describe("GET /api/v3/auth/sessions", () => {
       (s: { isCurrent: boolean }) => !s.isCurrent,
     );
 
-    expect(current.id).toBe(hashSessionId("raw-session-1"));
+    expect(current.id).toBe(hashSessionId(hashSessionId("raw-token-1")));
     expect(current.device).toBe("Chrome on Windows");
     expect(current.ipAddress).toBe("2001:db8::1");
     // The out-of-band IPv4 rides alongside the connection's IPv6.
@@ -114,11 +118,13 @@ describe("GET /api/v3/auth/sessions", () => {
     expect(other.id).toBe(hashSessionId("raw-session-2"));
     expect(other.device).toBe("curl");
 
-    // The raw bearer token must never appear anywhere in the response --
-    // that's exactly what httpOnly on the cookie is meant to prevent an
-    // XSS payload from reading, so the JSON API can't hand it back either.
+    // Neither the raw bearer token nor the stored id may appear anywhere in
+    // the response. The token is what httpOnly on the cookie exists to keep
+    // away from an XSS payload; the stored id is the argument every
+    // ownership check in lib/auth/auth.ts keys on.
     const body = JSON.stringify(json);
-    expect(body).not.toContain("raw-session-1");
+    expect(body).not.toContain("raw-token-1");
+    expect(body).not.toContain(hashSessionId("raw-token-1"));
     expect(body).not.toContain("raw-session-2");
   });
 });

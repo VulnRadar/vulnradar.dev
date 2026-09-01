@@ -1,12 +1,11 @@
-"use client";
-
-import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { APP_NAME, APP_REPO } from "@/lib/config/constants";
-import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
+import type { TocItem } from "@/components/docs/docs-types";
+import { DocsTocSpy } from "../docs-toc-spy";
 import {
   DocsHero,
   DocsSection,
+  DocsSubSection,
   DocsCallout,
   CodeBlock,
   DocsTable,
@@ -27,37 +26,15 @@ const tocItems: TocItem[] = [
   { id: "stripe", label: "Configure Stripe Webhook" },
   { id: "backups", label: "Backups" },
   { id: "updates", label: "Updates" },
+  { id: "renaming", label: "Renaming a fork" },
   { id: "troubleshooting", label: "Troubleshooting" },
   { id: "security", label: "Security Checklist" },
 ];
 
 export default function SelfHostingPage() {
-  const { setActiveSection, setTocItems } = useDocsContext();
-  const observerRef = useRef<IntersectionObserver | null>(null);
-
-  useEffect(() => {
-    setTocItems(tocItems);
-    return () => setTocItems([]);
-  }, [setTocItems]);
-
-  useEffect(() => {
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) setActiveSection(entry.target.id);
-        });
-      },
-      { rootMargin: "-20% 0px -70% 0px", threshold: 0 },
-    );
-    tocItems.forEach((item) => {
-      const el = document.getElementById(item.id);
-      if (el) observerRef.current?.observe(el);
-    });
-    return () => observerRef.current?.disconnect();
-  }, [setActiveSection]);
-
   return (
     <div className="space-y-16">
+      <DocsTocSpy items={tocItems} />
       <DocsHero
         id="top"
         badge="Deployment"
@@ -239,9 +216,12 @@ STRIPE_WEBHOOK_SECRET=whsec_...`}
       <DocsSection id="docker" title="docker-compose">
         <p className="text-sm text-muted-foreground">
           The default <InlineCode>docker-compose.yml</InlineCode> provisions
-          Postgres + the app container + a healthcheck + a smoke test. The app
-          reads <InlineCode>.env</InlineCode> via{" "}
-          <InlineCode>env_file</InlineCode>.
+          Postgres and the app container, each with a healthcheck, and the app
+          waits for Postgres to report healthy before it starts. The app reads{" "}
+          <InlineCode>.env</InlineCode> via <InlineCode>env_file</InlineCode>,
+          so every variable in that file reaches the container; the values
+          compose derives itself, such as the in-network database URL, are set
+          on the service and take precedence.
         </p>
         <DocsCallout variant="info">
           For production, prefer Docker secrets or a secret manager over a plain{" "}
@@ -274,12 +254,19 @@ docker compose logs -f app   # watch startup`}
             <InlineCode>npm run db:create</InlineCode>.)
           </li>
           <li>
-            Connect to Postgres and promote the user:
+            Nothing to run. The first account created on a fresh instance is
+            given the <InlineCode>super_admin</InlineCode> role automatically,
+            so signing up is all that is needed. Do not run an{" "}
+            <InlineCode>UPDATE users SET role = &apos;admin&apos;</InlineCode>{" "}
+            against it: <InlineCode>admin</InlineCode> is a lower level than{" "}
+            <InlineCode>super_admin</InlineCode>, so that demotes the account,
+            and no screen in the product can put it back.
             <CodeBlock
               language="sql"
-              code={`UPDATE users
+              code={`-- Only for promoting a LATER account, never the first one:
+UPDATE users
 SET role = 'admin'
-WHERE email = 'you@yourdomain.com';`}
+WHERE email = 'a-colleague@yourdomain.com';`}
             />
           </li>
           <li>
@@ -345,9 +332,9 @@ WHERE email = 'you@yourdomain.com';`}
           <InlineCode>CONFIG_BILLING_ENABLED = false</InlineCode>.
         </DocsCallout>
 
-        <h4 className="text-sm font-semibold mb-3 mt-2">
+        <h3 className="text-sm font-semibold mb-3 mt-2">
           Option A: Stripe dashboard
-        </h4>
+        </h3>
         <ol className="list-decimal pl-6 space-y-2 text-sm text-muted-foreground">
           <li>
             In the Stripe dashboard, create a webhook:
@@ -443,9 +430,9 @@ npm run db:restore -- --file=./backups/vulnradar-backup-<timestamp>.sql.gz.enc -
           </p>
         </DocsCallout>
 
-        <h4 className="text-sm font-semibold mb-3 mt-2">
+        <h3 className="text-sm font-semibold mb-3 mt-2">
           Backup environment variables
-        </h4>
+        </h3>
         <p className="text-sm text-muted-foreground">
           All optional; set them in <InlineCode>.env</InlineCode>. Full
           reference on the{" "}
@@ -532,21 +519,142 @@ cat backup-2026-06-18.sql | docker compose exec -T postgres psql -U vulnradar vu
       </DocsSection>
 
       <DocsSection id="updates" title="Updates">
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          There is no deploy pipeline that does this for you, and no automatic
+          rollback. Upgrading is five steps, in this order, and the first one is
+          not optional.
+        </p>
         <CodeBlock
           language="bash"
           code={`cd vulnradar.dev
+
+# 1. Back up, and write down where you are. This is your way back.
+docker compose exec app npm run db:backup
+git rev-parse --short HEAD          # or: git describe --tags
+
+# 2. Fetch the new code
 git pull
+
+# 3. Build the new image. This does NOT swap the running container yet.
 docker compose build app
-docker compose up -d`}
+
+# 4. Run the NEW image's migrator against the database, with the old
+#    container still serving traffic. 'run --rm' starts a throwaway
+#    container from the image you just built and never touches the
+#    'app' service, so the schema advances while the old code is live.
+docker compose run --rm app npm run db:migrate:dry-run   # read the plan
+docker compose run --rm app npm run db:migrate
+
+# 5. Now swap in the new version
+docker compose up -d
+docker compose logs -f app`}
         />
-        <p className="text-sm text-muted-foreground">
-          Watch the logs for new env-var requirements or schema changes.
+        <DocsCallout variant="warning" title="Why step 4 uses the new image">
+          <p>
+            Two things make the ordering matter.{" "}
+            <InlineCode>instrumentation.ts</InlineCode> applies its schema block
+            at process boot, which is after the new container is already the
+            running one, so leaving it to boot means there is no moment where
+            the schema is advanced while the old code is still live. And the
+            migrator that knows about the new schema version ships inside the
+            new image, so running{" "}
+            <InlineCode>docker compose exec app</InlineCode> would run the old
+            version&rsquo;s migrator and find nothing to do.{" "}
+            <InlineCode>docker compose run --rm app</InlineCode> gets you the
+            new migrator without giving the new code any traffic. Skip step 4
+            and the new container boots, sees a database older than{" "}
+            <InlineCode>MIN_SCHEMA_VERSION</InlineCode>, prints a SCHEMA VERSION
+            MISMATCH box and exits 1, which is a crash loop, not a rollback.
+          </p>
+        </DocsCallout>
+
+        <DocsSubSection title="Rolling back">
+          <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+            Reverting the image alone is only safe when the new version made no
+            schema change. If it did, the old code will not tolerate the new
+            schema, so the database has to go back too.
+          </p>
+          <CodeBlock
+            language="bash"
+            code={`# Schema unchanged: pin the previous tag and restart
+git checkout <previous-tag>
+docker compose build app && docker compose up -d
+
+# Schema changed: put the database back first, then the code.
+# Stop only the app so Postgres stays up for the restore.
+docker compose stop app
+docker compose run --rm app npm run db:restore   # the dump from step 1
+git checkout <previous-tag>
+docker compose build app && docker compose up -d`}
+          />
+          <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+            The migrator does ship reversible transitions (every version file
+            exports both an <InlineCode>upgrade</InlineCode> and a{" "}
+            <InlineCode>downgrade</InlineCode> plan, and{" "}
+            <InlineCode>npm run db:migrate</InlineCode> lets you pick an older
+            target), but a downgrade drops tables and columns and makes you type{" "}
+            <InlineCode>yes-delete-data</InlineCode> to confirm. Restoring the
+            backup you took in step 1 is the safer route and is the one to reach
+            for unless you know exactly what the downgrade removes.
+          </p>
+          <DocsCallout
+            variant="warning"
+            title="Rehearse this before you need it"
+          >
+            <p>
+              A restore path you have never run is not a rollback plan. Point a
+              throwaway database at a copy of your dump and bring the app up
+              against it once, so the first time you run these commands is not
+              during an outage.
+            </p>
+          </DocsCallout>
+        </DocsSubSection>
+      </DocsSection>
+
+      <DocsSection id="renaming" title="Renaming a fork">
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          GPL-3.0 makes a rebranded fork an expected use, so this is a real
+          question rather than a discouraged one. Here is the honest scope of
+          the work.
         </p>
-        <DocsCallout variant="warning" title="After schema changes">
-          If <InlineCode>instrumentation.ts</InlineCode> changed in the new
-          release, run <InlineCode>npm run db:migrate</InlineCode> inside the
-          app container to apply the diff interactively. The script is
-          idempotent; safe to re-run.
+
+        <DocsSubSection title="What one setting covers">
+          <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+            <InlineCode>CONFIG_APP_NAME</InlineCode> in{" "}
+            <InlineCode>lib/config/config-values.ts</InlineCode> is exported as{" "}
+            <InlineCode>APP_NAME</InlineCode>, and that one value already drives
+            the application chrome, page titles and social cards, every email
+            the app sends, all four report exporters (PDF, Markdown, SARIF and
+            the compliance crosswalk), the scanner&rsquo;s own User-Agent on
+            every outbound request, the comparison pages, and this
+            documentation. Change it and rebuild, and those all follow.{" "}
+            <InlineCode>CONFIG_APP_SLUG</InlineCode>,{" "}
+            <InlineCode>CONFIG_APP_URL</InlineCode>,{" "}
+            <InlineCode>CONFIG_LOGO_URL</InlineCode> and the support email
+            constants sit alongside it and want the same treatment.
+          </p>
+        </DocsSubSection>
+
+        <DocsSubSection title="What it does not cover">
+          <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+            Roughly two hundred further occurrences of the name are literal
+            strings, of which maybe sixty are visible to a user of a renamed
+            instance. The clusters worth doing, in order: the browser extension
+            (which has its own constants file and its own store listing), the
+            OAuth error strings in the sign-in callbacks, and the SDK sample
+            code in the API reference. Everything else is either a comment or
+            somewhere nobody looks.
+          </p>
+        </DocsSubSection>
+
+        <DocsCallout variant="warning" title="Two things must not be renamed">
+          <p>
+            The webhook signature header is part of the wire protocol: every
+            receiver your users have already written parses it by name, so
+            renaming it breaks them silently. And the changelog is a historical
+            record of releases that shipped under this name; templating it would
+            rewrite history rather than rebrand it. Leave both alone.
+          </p>
         </DocsCallout>
       </DocsSection>
 
@@ -577,8 +685,8 @@ docker compose up -d`}
             {
               symptom: "Build fails: TypeScript errors in lib/config",
               cause:
-                "Renamed a CONFIG_* constant without updating the typed DEFAULT_CONFIG",
-              fix: "Run npm run typecheck; the error points at the exact field.",
+                "Renamed or removed a CONFIG_* constant that registry.ts or constants.ts still imports by name",
+              fix: "Run npm run typecheck; the error points at the exact import site.",
             },
             {
               symptom: "502 from reverse proxy",
@@ -593,10 +701,91 @@ docker compose up -d`}
             {
               symptom: "Login succeeds but 2FA code never arrives",
               cause: "SMTP not configured",
-              fix: "Set SMTP_HOST/PORT/USER/PASS/FROM in .env and restart, or disable 2FA via /api/v3/auth/2fa/disable.",
+              fix: "Set SMTP_HOST/PORT/USER/PASS/FROM in .env and restart. If you are already locked out, clear 2FA from the database (see Locked out of your own instance below): /api/v3/auth/2fa/disable needs a completed login and cannot help here.",
             },
           ]}
         />
+
+        <DocsSubSection title="Locked out of your own instance">
+          <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+            The app has no self-service escape from a second factor you cannot
+            receive. <InlineCode>POST /api/v3/auth/2fa/disable</InlineCode>{" "}
+            calls <InlineCode>getSession()</InlineCode> and 401s without one,
+            and an account stopped at the 2FA prompt has no session yet: the
+            interim state is a separate signed token, not a session cookie. The
+            only recovery is from outside the app, against the database.
+          </p>
+          <CodeBlock
+            language="bash"
+            code={`# Clear the second factor for one account. Run against your database,
+# e.g. docker compose exec db psql -U vulnradar -d vulnradar
+UPDATE users
+   SET totp_enabled = false,
+       two_factor_method = NULL,
+       totp_secret = NULL,
+       backup_codes = NULL
+ WHERE email = 'you@example.com';`}
+          />
+          <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+            The user can sign in with their password afterwards and re-enrol.
+            Nothing else about the account changes.
+          </p>
+          <DocsCallout variant="warning" title="db:repair-2fa is not this">
+            <p>
+              <InlineCode>npm run db:repair-2fa</InlineCode> only touches rows
+              that <InlineCode>npm run db:diagnose-2fa</InlineCode> proves are
+              corrupt, such as <InlineCode>totp_enabled = true</InlineCode> with
+              no secret. A healthy row whose email simply cannot be delivered is
+              not corrupt, so the repair script will report nothing to do. Use
+              the SQL above.
+            </p>
+          </DocsCallout>
+        </DocsSubSection>
+
+        <DocsSubSection title="Database diagnostics and repair">
+          <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+            Every one of these reports before it writes. Run the{" "}
+            <InlineCode>diagnose</InlineCode> command first and read the output;
+            the <InlineCode>repair</InlineCode> commands only act on what the
+            matching diagnostic flagged.
+          </p>
+          <DocsTable
+            columns={[
+              { key: "command", header: "Command" },
+              { key: "what", header: "What it does" },
+            ]}
+            data={[
+              {
+                command: "npm run db:diagnose",
+                what: "Introspects the live schema and reports data corruption: foreign-key orphans, encrypted columns that will not decrypt, out-of-range enum values, impossible timestamps.",
+              },
+              {
+                command: "npm run db:repair",
+                what: "Applies the fixes db:diagnose found. Dry run by default; a real write needs --apply --admin-id=<id> and is recorded in admin_audit_log.",
+              },
+              {
+                command: "npm run db:diagnose-2fa",
+                what: "Reports accounts whose 2FA columns are internally inconsistent.",
+              },
+              {
+                command: "npm run db:repair-2fa",
+                what: "Fixes only the rows db:diagnose-2fa proved corrupt. It cannot unlock a healthy account.",
+              },
+              {
+                command: "npm run db:repair-sequences",
+                what: "Resets the Postgres identity sequences, which is what causes duplicate-key errors on insert after a restore.",
+              },
+              {
+                command: "npm run db:backup",
+                what: "Writes a full dump. Run this before any upgrade or repair.",
+              },
+              {
+                command: "npm run db:restore",
+                what: "Restores a dump written by db:backup.",
+              },
+            ]}
+          />
+        </DocsSubSection>
       </DocsSection>
 
       <DocsSection id="security" title="Security Checklist">

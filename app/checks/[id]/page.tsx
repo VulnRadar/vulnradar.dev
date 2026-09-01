@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { pageMetadata } from "@/lib/seo/metadata";
+import { pageMetadata, clampText } from "@/lib/seo/metadata";
+import { buildCheckTitle, buildCheckDescription } from "@/lib/seo/check-meta";
 import {
   BreadcrumbStructuredData,
   FaqStructuredData,
@@ -15,6 +16,7 @@ import {
   SeverityPill,
   Breadcrumbs,
   ScanCta,
+  ContributeCheckCta,
 } from "@/lib/seo/seo-ui";
 import {
   getAllChecks,
@@ -33,13 +35,6 @@ export const dynamicParams = true;
 
 export function generateStaticParams() {
   return getAllChecks().map((c) => ({ id: c.id }));
-}
-
-function clamp(text: string, max = 155): string {
-  const clean = text.replace(/\s+/g, " ").trim();
-  if (clean.length <= max) return clean;
-  const cut = clean.slice(0, max);
-  return `${cut.slice(0, cut.lastIndexOf(" "))}...`;
 }
 
 function checkPath(id: string) {
@@ -61,21 +56,16 @@ export async function generateMetadata({
       noIndex: true,
     });
   }
-  const label = getCategoryLabel(check.category);
   return pageMetadata({
-    // Clamp only the title portion so the rendered "<title> | VulnRadar" stays
-    // in the ~50-60 range even for long check names. The page H1 keeps the full
-    // title (see below), so nothing user-visible is truncated.
-    title: `How to fix: ${clamp(check.title, 36)}`,
-    // Append riskImpact so terse one-line check descriptions still fill the
-    // ~150-char meta window instead of landing well under it; clamp caps it.
-    description: clamp(
-      `${check.title} is a ${check.severity}-severity ${label.toLowerCase()} finding. ${check.description}${
-        check.riskImpact ? ` ${check.riskImpact}` : ""
-      }`,
-    ),
+    title: buildCheckTitle(check),
+    description: buildCheckDescription(check),
     path: checkPath(check.id),
     type: "article",
+    // Named explicitly rather than left to Next's opengraph-image file
+    // convention: pageMetadata always sets openGraph.images, and an explicit
+    // value wins over the convention, so without this every check page would
+    // keep unfurling with the site-wide marketing card.
+    image: `${checkPath(check.id)}/opengraph-image`,
     keywords: [
       `how to fix ${check.title.toLowerCase()}`,
       check.title.toLowerCase(),
@@ -86,22 +76,22 @@ export async function generateMetadata({
   });
 }
 
-function buildFaq(check: SeoCheck) {
+// The FAQ used to restate three blocks of the page body verbatim: the
+// description, fixSteps.join(" ") and riskImpact all render higher up the same
+// page, so the section (and the FAQPage structured data built from it) was a
+// second copy of the article on all 749 pages. Only questions whose answer is
+// NOT already on the page belong here, which today means the standards
+// mapping, plus a severity answer written as a rationale rather than a repeat
+// of the "Why it matters" paragraph.
+function buildFaq(check: SeoCheck, label: string) {
   const items: { question: string; answer: string }[] = [
     {
-      question: `What is "${check.title}"?`,
-      answer: check.description,
-    },
-    {
-      question: `How do I fix ${check.title}?`,
-      answer:
-        check.fixSteps.length > 0
-          ? check.fixSteps.join(" ")
-          : check.explanation,
-    },
-    {
       question: `How severe is ${check.title}?`,
-      answer: `${APP_NAME} rates this ${check.severity} severity. ${check.riskImpact}`,
+      answer: `${APP_NAME} rates this ${check.severity} severity in the ${label.toLowerCase()} category. The severity is fixed per check, not scored per site, so the same finding is the same severity on every scan.`,
+    },
+    {
+      question: `Does ${APP_NAME} check for this automatically?`,
+      answer: `Yes. It runs as part of every scan under the check id ${check.id}, which stays the same between runs so you can filter, diff, or gate CI on it.`,
     },
   ];
   if (check.cwe || check.owasp) {
@@ -136,7 +126,7 @@ export default async function CheckPage({
   const nonce = (await headers()).get("x-nonce") ?? "";
   const label = getCategoryLabel(check.category);
   const categoryPath = `/checks/category/${check.category}`;
-  const faq = buildFaq(check);
+  const faq = buildFaq(check, label);
 
   const siblings = getChecksInCategory(check.category)
     .filter((c) => c.id !== check.id)
@@ -153,7 +143,7 @@ export default async function CheckPage({
     <SeoPageShell>
       <TechArticleStructuredData
         title={`How to fix: ${check.title}`}
-        description={clamp(check.description, 300)}
+        description={clampText(check.description, 300)}
         path={checkPath(check.id)}
         nonce={nonce}
       />
@@ -161,7 +151,7 @@ export default async function CheckPage({
       {check.fixSteps.length > 0 && (
         <HowToStructuredData
           name={`How to fix: ${check.title}`}
-          description={clamp(check.riskImpact, 300)}
+          description={clampText(check.riskImpact, 300)}
           steps={check.fixSteps}
           path={checkPath(check.id)}
           nonce={nonce}
@@ -192,7 +182,14 @@ export default async function CheckPage({
           )}
         </div>
 
-        <h1 className="text-2xl sm:text-4xl font-semibold tracking-tight text-foreground text-balance">
+        {/* wrap-break-word: a good number of check titles are a single
+            unbreakable identifier (UnhandledPromiseRejectionWarning,
+            Range.createContextualFragment, location.replace(userInput)), and
+            line breaking never breaks around a dot between letters or a
+            bracket. At text-3xl those run past a 343px phone, and
+            text-balance only rebalances where lines fall, it cannot break a
+            word. */}
+        <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-foreground text-balance wrap-break-word">
           How to fix: {check.title}
         </h1>
         <p className="mt-4 text-base sm:text-lg text-muted-foreground leading-relaxed">
@@ -338,6 +335,8 @@ export default async function CheckPage({
             </p>
           </section>
         )}
+
+        <ContributeCheckCta className="mt-12" />
       </article>
 
       <ScanCta

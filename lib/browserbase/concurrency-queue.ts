@@ -30,6 +30,7 @@
 import pool from "@/lib/database/db";
 import { getSetting } from "@/lib/config/runtime-config";
 import { APP_NAME } from "@/lib/config/constants";
+import { CONFIG_BROWSERBASE_MAX_CONCURRENT_SESSIONS } from "@/lib/config/config-values";
 
 interface Waiter {
   resolve: (acquired: boolean) => void;
@@ -146,7 +147,22 @@ export async function acquireConcurrencySlot(
 export async function releaseConcurrencySlot(): Promise<void> {
   if (inFlight === 0) return;
   inFlight--;
-  const maxConcurrent = await getSetting("BROWSERBASE_MAX_CONCURRENT_SESSIONS");
+  // admit() must run even if the settings lookup fails. A throw from
+  // getSetting used to propagate out of here with the counter already
+  // decremented and every queued waiter left unadmitted, and every caller
+  // swallows this function's rejection, so the queue simply stalled until each
+  // waiter timed out with nothing in the error log. Fall back to the compiled
+  // default rather than skipping the admit.
+  let maxConcurrent: number;
+  try {
+    maxConcurrent = await getSetting("BROWSERBASE_MAX_CONCURRENT_SESSIONS");
+  } catch (err) {
+    console.error(
+      `[${APP_NAME}] Browserbase concurrency: settings lookup failed on release, admitting against the compiled default:`,
+      err,
+    );
+    maxConcurrent = CONFIG_BROWSERBASE_MAX_CONCURRENT_SESSIONS;
+  }
   admit(maxConcurrent === -1 ? Infinity : maxConcurrent);
 }
 

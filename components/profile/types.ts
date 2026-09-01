@@ -211,6 +211,8 @@ export interface NotificationPrefs {
   email_account_deletion: boolean;
   email_team_invite: boolean;
   email_team_changes: boolean;
+  email_product_updates: boolean;
+  email_tips_guides: boolean;
 }
 
 export type ProfileTab =

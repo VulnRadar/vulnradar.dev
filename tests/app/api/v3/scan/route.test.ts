@@ -68,13 +68,33 @@ vi.mock("@/lib/rate-limiting/daily-limits", () => ({
   getRateLimitHeaders: () => ({}),
 }));
 
+// The SSRF guard and the access-rule blocklist are the two gates that decide
+// whether this route may touch the target at all. They used to be stubbed
+// permanently permissive inside the factory itself, which meant no test could
+// drive a refusal and no test asserted the route even called them: deleting
+// both gates from the route left this whole suite green. Module-scope handles
+// instead, defaulted to allow in beforeEach, so a refusal is drivable and the
+// call itself is assertable.
+const mockValidateScanTarget = vi.fn();
 vi.mock("@/lib/scanner/safe-fetch", () => ({
-  validateScanTarget: vi.fn(async () => ({ safe: true })),
+  validateScanTarget: (...args: unknown[]) => mockValidateScanTarget(...args),
 }));
 
+const mockCheckAccessRules = vi.fn();
 vi.mock("@/lib/scanner/access-rules", () => ({
-  checkAccessRules: vi.fn(async () => ({ allowed: true })),
+  checkAccessRules: (...args: unknown[]) => mockCheckAccessRules(...args),
 }));
+
+const mockCheckTargetScanLimit = vi.fn();
+vi.mock("@/lib/rate-limiting/target-limits", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/rate-limiting/target-limits")>();
+  return {
+    ...actual,
+    checkTargetScanLimit: (...args: unknown[]) =>
+      mockCheckTargetScanLimit(...args),
+  };
+});
 
 const mockIsUrlOwnedByUser = vi.fn();
 vi.mock("@/lib/domains/scope", () => ({
@@ -186,11 +206,73 @@ beforeEach(() => {
   mockSendNotificationEmail.mockResolvedValue(undefined);
   mockIsUrlOwnedByUser.mockReset();
   mockIsUrlOwnedByUser.mockResolvedValue(true);
+  mockCheckTargetScanLimit.mockReset();
+  mockCheckTargetScanLimit.mockResolvedValue({
+    allowed: true,
+    retryAfterSeconds: 0,
+    rootDomain: "example.com",
+  });
   mockCheckConcurrentScanLimit.mockReset();
   mockCheckConcurrentScanLimit.mockResolvedValue({
     allowed: true,
     current: 0,
     limit: 3,
+  });
+  mockValidateScanTarget.mockReset();
+  mockValidateScanTarget.mockResolvedValue({ safe: true });
+  mockCheckAccessRules.mockReset();
+  mockCheckAccessRules.mockResolvedValue({ allowed: true });
+});
+
+describe("POST /api/v3/scan - target safety gates", () => {
+  it("calls the SSRF guard with the normalized URL on the happy path", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 1 }] });
+
+    await POST(postRequest({ url: "example.com" }));
+
+    // Asserting the argument, not just the call: the route normalizes the
+    // URL before validating, and validating the raw input instead would let
+    // a bare host through a guard that only understands absolute URLs.
+    expect(mockValidateScanTarget).toHaveBeenCalledWith("https://example.com");
+    expect(mockCheckAccessRules).toHaveBeenCalledWith("https://example.com");
+  });
+
+  it("returns 400 with the guard's reason and never dispatches the scan when the target is unsafe", async () => {
+    mockValidateScanTarget.mockResolvedValue({
+      safe: false,
+      reason: "Target resolves to a private IP address",
+    });
+
+    const res = await POST(postRequest({ url: "https://internal.test" }));
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe(
+      "Target resolves to a private IP address",
+    );
+    expect(mockExecuteScan).not.toHaveBeenCalled();
+  });
+
+  it("falls back to a generic message when the guard refuses without a reason", async () => {
+    mockValidateScanTarget.mockResolvedValue({ safe: false });
+
+    const res = await POST(postRequest({ url: "https://internal.test" }));
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("URL blocked for security reasons");
+    expect(mockExecuteScan).not.toHaveBeenCalled();
+  });
+
+  it("returns 403 BLOCKED and never dispatches the scan when access rules refuse", async () => {
+    mockCheckAccessRules.mockResolvedValue({ allowed: false });
+
+    const res = await POST(postRequest({ url: "https://blocked.test" }));
+
+    expect(res.status).toBe(403);
+    expect((await res.json()).statusCode).toBe("BLOCKED");
+    expect(mockExecuteScan).not.toHaveBeenCalled();
   });
 });
 
@@ -263,6 +345,53 @@ describe("POST /api/v3/scan", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
     const [, params] = mockQuery.mock.calls[0];
     expect(params[5]).toBe(true);
+  });
+
+  // scan_history.team_id had no writer at all, so GET
+  // /api/v3/teams/member-scans (WHERE user_id = $1 AND team_id = $2) could
+  // only ever return an empty list. The column is now bound on every
+  // scan-creation path, but a scan is personal unless the request names a
+  // team the caller can actually assign to.
+  it("inserts team_id null and skips the membership lookup when no team is requested", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 57 }] });
+
+    await POST(postRequest({ url: "https://example.com", isPublic: true }));
+
+    const [sql, params] = mockQuery.mock.calls[0];
+    expect(sql).toContain("team_id");
+    expect(params[6]).toBeNull();
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("inserts the requested team_id when the caller can assign scans to that team", async () => {
+    // getAssignableTeamIds, then the INSERT.
+    mockQuery.mockResolvedValueOnce({ rows: [{ team_id: 4, role: "member" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 58 }] });
+
+    const res = await POST(
+      postRequest({ url: "https://example.com", isPublic: true, teamId: 4 }),
+    );
+
+    expect(res.status).toBe(200);
+    const insertCall = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO scan_history"),
+    );
+    expect(insertCall![1][6]).toBe(4);
+  });
+
+  it("rejects a team the caller cannot assign scans to, and never creates the scan", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ team_id: 4, role: "viewer" }] });
+
+    const res = await POST(
+      postRequest({ url: "https://example.com", isPublic: true, teamId: 4 }),
+    );
+
+    expect(res.status).toBe(400);
+    const insertCall = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO scan_history"),
+    );
+    expect(insertCall).toBeUndefined();
+    expect(mockExecuteScan).not.toHaveBeenCalled();
   });
 
   it("falls back to the account's scans_private_by_default setting when the request omits isPublic", async () => {
@@ -514,42 +643,42 @@ describe("POST /api/v3/scan", () => {
   });
 });
 
+// reserveConcurrentScanSlot (count + INSERT inside one advisory-locked
+// transaction) is now the ONLY concurrency gate. The best-effort
+// checkConcurrentScanLimit pre-check that used to run first resolved the
+// user's plan and repeated the same COUNT on every scan, two round trips in
+// front of every request to fail marginally earlier for a caller already at
+// capacity.
 describe("concurrent-scan capacity gate", () => {
-  it("rejects with 429 when the caller is already at their plan's concurrent-scan limit", async () => {
-    mockCheckConcurrentScanLimit.mockResolvedValue({
-      allowed: false,
-      current: 3,
-      limit: 3,
-      message: "capacity message",
-    });
+  it("rejects with 429 when the reservation finds the caller already at their plan's limit", async () => {
+    mockReserveConcurrentScanSlot.mockResolvedValueOnce({
+      ok: false,
+      check: {
+        allowed: false,
+        current: 3,
+        limit: 3,
+        message: "capacity message",
+      },
+    } as unknown as { ok: true; scanId: number });
     const res = await POST(postRequest({ url: "https://example.com" }));
     expect(res.status).toBe(429);
     const json = await res.json();
     expect(json.statusCode).toBe("CONCURRENT_SCAN_LIMIT");
     expect(json.error).toBe("capacity message");
     expect(mockExecuteScan).not.toHaveBeenCalled();
-    expect(
-      mockQuery.mock.calls.some(([sql]) =>
-        String(sql).includes("INSERT INTO scan_history"),
-      ),
-    ).toBe(false);
   });
 
-  it("checks capacity for the caller's own user id before parsing the request body", async () => {
+  it("reserves the slot for the caller's own user id and no longer runs the redundant pre-check", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ scans_private_by_default: false }],
     });
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 4 }] });
     await POST(postRequest({ url: "https://example.com" }));
-    expect(mockCheckConcurrentScanLimit).toHaveBeenCalledWith(42);
+    expect(mockReserveConcurrentScanSlot.mock.calls[0][0]).toBe(42);
+    expect(mockCheckConcurrentScanLimit).not.toHaveBeenCalled();
   });
 
   it("proceeds normally when under the concurrent-scan limit", async () => {
-    mockCheckConcurrentScanLimit.mockResolvedValue({
-      allowed: true,
-      current: 1,
-      limit: 3,
-    });
     mockQuery.mockResolvedValueOnce({
       rows: [{ scans_private_by_default: false }],
     });
@@ -693,5 +822,62 @@ describe("port-scan domain ownership gate", () => {
     expect(mockExecuteScan).toHaveBeenCalledWith(
       expect.objectContaining({ portScan: false }),
     );
+  });
+});
+
+/**
+ * AUDIT-012#abuse-05: every other limiter in the codebase is keyed on the
+ * caller, so total scan volume aimed at one third-party site was bounded only
+ * by how many accounts the requester was willing to create.
+ */
+describe("per-target scan volume limit", () => {
+  it("rejects with 429 TARGET_RATE_LIMIT once the target's shared bucket is spent", async () => {
+    mockCheckTargetScanLimit.mockResolvedValue({
+      allowed: false,
+      retryAfterSeconds: 900,
+      rootDomain: "victim.example",
+    });
+    mockIsUrlOwnedByUser.mockResolvedValue(false);
+
+    const res = await POST(postRequest({ url: "https://www.victim.example" }));
+
+    expect(res.status).toBe(429);
+    const json = await res.json();
+    expect(json.statusCode).toBe("TARGET_RATE_LIMIT");
+    expect(json.error).toMatch(/victim\.example/);
+    expect(res.headers.get("Retry-After")).toBe("900");
+    expect(mockExecuteScan).not.toHaveBeenCalled();
+  });
+
+  it("lets a verified owner of the domain through the target limit", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 9 }] });
+    mockCheckTargetScanLimit.mockResolvedValue({
+      allowed: false,
+      retryAfterSeconds: 900,
+      rootDomain: "mine.example",
+    });
+    mockIsUrlOwnedByUser.mockResolvedValue(true);
+
+    const res = await POST(postRequest({ url: "https://mine.example" }));
+
+    expect(res.status).toBe(200);
+    expect(mockExecuteScan).toHaveBeenCalled();
+  });
+
+  it("costs an ordinary allowed scan no ownership lookup at all", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 9 }] });
+
+    await POST(postRequest({ url: "https://example.com" }));
+
+    expect(mockCheckTargetScanLimit).toHaveBeenCalledWith(
+      "https://example.com",
+    );
+    expect(mockIsUrlOwnedByUser).not.toHaveBeenCalled();
   });
 });
