@@ -80,7 +80,9 @@ for (const [name, entry] of [
     build: {
       outDir: viteOut,
       emptyOutDir: false,
-      minify: "esbuild",
+      // See vite.config.ts: `true` is this Vite's own default minifier.
+      // Naming esbuild breaks on Vite 8, which no longer bundles it.
+      minify: true,
       // No sourcemaps in a release build, matching vite.config.ts. This is
       // the release path (nothing calls build.mjs in development), and
       // background.js.map + content.js.map alone were 329 KB of the 606 KB

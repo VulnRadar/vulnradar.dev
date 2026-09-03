@@ -66,7 +66,11 @@ export default defineConfig(({ mode }) => ({
   build: {
     outDir: resolve(__dirname, "dist-build"),
     emptyOutDir: true,
-    minify: "esbuild",
+    // Not "esbuild": Vite 8 unbundled it, so naming it explicitly fails
+    // with "Cannot find package 'esbuild'" unless it is added as a direct
+    // dependency. `true` is whichever minifier this Vite ships with, which
+    // is what we actually want, and it is valid on both 6 and 8.
+    minify: true,
     sourcemap: mode === "development",
     target: "es2022",
     rollupOptions: {

@@ -2356,18 +2356,13 @@ Route: /docs/cli
 the rest of these docs cover, so anything the CLI does you can also do
 with a raw request. Authentication is the same Bearer API key.
 
-> **INFO: Coming to npm**
-> The vulnradar name on npm is registered to
-this project, but what is published there today is a placeholder, not
-the CLI. Do not wire npx vulnradar into a
-pipeline yet: clone and run the entrypoint as above. This page will
-switch to npx vulnradar scan <url> the
-moment the real package ships.
-
 ### Notes
 - The vulnradar CLI wraps the scan API: it starts a scan, polls until it finishes, prints a summary, and exits non-zero when the finding counts go over the limits you set. That exit code is the whole point: drop it into a pipeline step and a regression fails the build.
-- The CLI lives in the cli/ folder of the repo and is not on npm yet. Until it is, install it straight from the source, which puts a vulnradar command on your PATH:
-- Prefer not to install globally? Run the entrypoint directly from the clone with node cli/vulnradar.mjs scan <url>. It needs Node 22 or newer, the same floor as the rest of the project ( cli/package.json declares engines.node >=22.0.0), and has no dependencies of its own.
+- The CLI is on npm as vulnradar. npx needs no install at all, which is usually what you want in CI:
+- For a permanent command on your PATH:
+- It needs Node 22 or newer, the same floor as the rest of the project ( cli/package.json declares engines.node >=22.0.0), and has no dependencies of its own.
+- Only needed to work on the CLI itself, or to run a change that is not released yet:
+- Or run the entrypoint directly with node cli/vulnradar.mjs scan <url>, no install at all.
 - Pass your key with --api-key or the VULNRADAR_TOKEN environment variable. Prefer the variable in CI so the key never lands in shell history or logs. --api-base has the same env form, VULNRADAR_API_BASE, so a self-hosted CI does not repeat the flag on every invocation. An explicit flag beats the variable in both cases.
 - 0 when every finding count is at or under its threshold; 1 when a threshold is exceeded or the scan errors out. That is what lets a CI job block a merge on a new critical.
 - Once the CLI is on the runner (see Install), a GitHub Actions step fails the build on any new critical or high:
@@ -2375,17 +2370,22 @@ moment the real package ships.
 
 ### Code examples
 ```bash
+npx vulnradar scan https://example.com --max-high 0
+```
+
+```yaml
 git clone https://github.com/<value>.git
 cd vulnradar.dev/cli
 npm install -g .
 ```
 
-```yaml
-vulnradar scan <url> [options]
+```text
+npm i -g vulnradar
+vulnradar scan https://example.com --api-key vr_live_...
 ```
 
 ```text
-vulnradar scan https://example.com --api-key vr_live_...
+vulnradar scan <url> [options]
 ```
 
 ```text
@@ -2894,7 +2894,7 @@ individual URLs instead.
 | `/docs/administration` | - | 10 | 6 | 0 | 0 | 0 | 0 | 31 | 0 |
 | `/docs/ai` | - | 10 | 1 | 0 | 2 | 0 | 0 | 19 | 0 |
 | `/docs/billing` | - | 8 | 7 | 0 | 0 | 0 | 0 | 21 | 0 |
-| `/docs/cli` | - | 6 | 2 | 0 | 4 | 0 | 0 | 7 | 0 |
+| `/docs/cli` | - | 6 | 1 | 0 | 5 | 0 | 0 | 10 | 0 |
 | `/docs/github` | ✓ | 8 | 4 | 0 | 1 | 0 | 0 | 25 | 0 |
 | `/docs/reports` | - | 7 | 3 | 0 | 4 | 0 | 0 | 15 | 0 |
 | `/docs/scheduled-scans` | - | 9 | 6 | 0 | 0 | 0 | 0 | 22 | 0 |

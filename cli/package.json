@@ -1,6 +1,6 @@
 {
   "name": "vulnradar",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Run a VulnRadar scan from the command line and gate CI on the findings.",
   "license": "GPL-3.0",
   "repository": {
@@ -10,7 +10,7 @@
   },
   "type": "module",
   "bin": {
-    "vulnradar": "./vulnradar.mjs"
+    "vulnradar": "vulnradar.mjs"
   },
   "files": [
     "vulnradar.mjs",

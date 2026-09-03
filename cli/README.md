@@ -6,20 +6,35 @@ Action and the GitLab CI template, no dependencies (Node 22+, matching the
 rest of the project; Node 18 reached end of life in April 2025 and is not
 tested anywhere).
 
-> **Not on npm yet.** This tool ships from the repo for now. `npm i -g vulnradar`
-> and `npx vulnradar` will work once it is published; until then, install from
-> source as shown below.
+## Install
 
-## Install from the repo
+```
+npx vulnradar scan https://your-staging-url.com --max-high 0
+```
+
+`npx` needs no install at all, which is usually what you want in CI. For a
+permanent command on your PATH:
+
+```
+npm i -g vulnradar
+vulnradar scan https://your-staging-url.com --max-high 0
+```
+
+Pass your token with `--api-key` or the `VULNRADAR_TOKEN` environment
+variable. Prefer the variable in CI so the key never lands in shell history or
+a log. Create one under Settings > API Keys.
+
+### From source
+
+Only needed to work on the CLI itself, or to run an unreleased change:
 
 ```
 git clone https://github.com/VulnRadar/vulnradar.dev.git
 cd vulnradar.dev/cli
 npm install -g .          # or: npm link, for a live-linked dev copy
-vulnradar scan https://your-staging-url.com --max-high 0
 ```
 
-Or run it directly without a global install:
+Or run the entrypoint directly, with no install:
 
 ```
 VULNRADAR_TOKEN=your-token node vulnradar.mjs scan https://your-staging-url.com
@@ -53,18 +68,14 @@ error), so it drops straight into a CI gate.
 
 ## Example: GitHub Actions
 
-Until the CLI is on npm, install it from the repo in the job (or use the
-prebuilt GitHub Action in `.github/actions/`):
-
 ```yaml
-- run: |
-    git clone --depth 1 https://github.com/VulnRadar/vulnradar.dev.git /tmp/vr
-    node /tmp/vr/cli/vulnradar.mjs scan https://staging.example.com --max-critical 0 --max-high 0
+- run: npx vulnradar scan https://staging.example.com --max-critical 0 --max-high 0
   env:
     VULNRADAR_TOKEN: ${{ secrets.VULNRADAR_TOKEN }}
 ```
 
-Once published, this simplifies to `npx vulnradar scan …`.
+There is also a prebuilt action in `.github/actions/scan-gate` if you would
+rather pin an action than a package version.
 
 ## Develop
 

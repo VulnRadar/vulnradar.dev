@@ -3,6 +3,7 @@ import { DocsTocSpy } from "../docs-toc-spy";
 import {
   DocsHero,
   DocsSection,
+  DocsSubSection,
   DocsCallout,
   DocsTable,
   CodeBlock,
@@ -55,41 +56,45 @@ export default function CliPage() {
 
       <DocsSection id="install" title="Install">
         <p className="text-sm text-muted-foreground">
-          The CLI lives in the <InlineCode>cli/</InlineCode> folder of the repo
-          and is not on npm yet. Until it is, install it straight from the
-          source, which puts a <InlineCode>vulnradar</InlineCode> command on
-          your PATH:
+          The CLI is on npm as <InlineCode>vulnradar</InlineCode>.{" "}
+          <InlineCode>npx</InlineCode> needs no install at all, which is usually
+          what you want in CI:
         </p>
         <CodeBlock
           language="bash"
-          code={`git clone https://github.com/${APP_REPO}.git
-cd vulnradar.dev/cli
-npm install -g .`}
+          code={`npx vulnradar scan https://example.com --max-high 0`}
         />
         <p className="text-sm text-muted-foreground">
-          Then run it from anywhere:
+          For a permanent command on your PATH:
         </p>
         <CodeBlock
           language="bash"
-          code={`vulnradar scan https://example.com --api-key vr_live_...`}
+          code={`npm i -g vulnradar
+vulnradar scan https://example.com --api-key vr_live_...`}
         />
         <p className="text-sm text-muted-foreground">
-          Prefer not to install globally? Run the entrypoint directly from the
-          clone with{" "}
-          <InlineCode>node cli/vulnradar.mjs scan &lt;url&gt;</InlineCode>. It
-          needs Node 22 or newer, the same floor as the rest of the project (
+          It needs Node 22 or newer, the same floor as the rest of the project (
           <InlineCode>cli/package.json</InlineCode> declares{" "}
           <InlineCode>engines.node &gt;=22.0.0</InlineCode>), and has no
           dependencies of its own.
         </p>
-        <DocsCallout variant="info" title="Coming to npm">
-          The <InlineCode>vulnradar</InlineCode> name on npm is registered to
-          this project, but what is published there today is a placeholder, not
-          the CLI. Do not wire <InlineCode>npx vulnradar</InlineCode> into a
-          pipeline yet: clone and run the entrypoint as above. This page will
-          switch to <InlineCode>npx vulnradar scan &lt;url&gt;</InlineCode> the
-          moment the real package ships.
-        </DocsCallout>
+        <DocsSubSection title="From source">
+          <p className="max-w-[68ch] text-sm text-muted-foreground">
+            Only needed to work on the CLI itself, or to run a change that is
+            not released yet:
+          </p>
+          <CodeBlock
+            language="bash"
+            code={`git clone https://github.com/${APP_REPO}.git
+cd vulnradar.dev/cli
+npm install -g .`}
+          />
+          <p className="max-w-[68ch] text-sm text-muted-foreground">
+            Or run the entrypoint directly with{" "}
+            <InlineCode>node cli/vulnradar.mjs scan &lt;url&gt;</InlineCode>, no
+            install at all.
+          </p>
+        </DocsSubSection>
       </DocsSection>
 
       <DocsSection id="usage" title="Usage">
