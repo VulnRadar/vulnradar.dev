@@ -10,4 +10,8 @@ export { HistoryNotes } from "./history-notes";
 export { ScanTags } from "./scan-tags";
 export { HistoryTagsCard } from "./history-tags-card";
 export { HistoryViewTabs } from "./history-view-tabs";
-export { HistorySkeleton, HistoryDataSkeleton } from "./history-skeleton";
+export {
+  HistorySkeleton,
+  HistoryDataSkeleton,
+  HistoryDetailRouteSkeleton,
+} from "./history-skeleton";

@@ -4,6 +4,9 @@ import { SkeletonRegion } from "@/components/shared/skeleton-shapes";
 
 const ROW_COUNT = 5;
 
+/** The four-track layout BadgeScanList's header band and every row key off. */
+const GRID = "sm:grid-cols-[2rem_minmax(0,1fr)_auto_1rem]";
+
 /**
  * The two columns BadgePage fills once its scans arrive: BadgeScanList's rows
  * on the left, and BadgePreview's empty "pick a scan" frame on the right,
@@ -29,29 +32,44 @@ export function BadgeDataSkeleton() {
           <Skeleton className="h-3 w-14" />
         </div>
 
-        {/* BadgeScanList only shows its filter above five scans, so this bar
+        {/* BadgeScanList only shows its filter above three scans, so this bar
             is a bet either way: drawn, it costs the smallest accounts a small
             upward shift; left out, every account with a filter gets the same
             shift downward. Drawn, because the list is capped at 50 scans and
-            most accounts that reach this page have more than five. rounded-md,
+            most accounts that reach this page have more than three. rounded-md,
             not rounded-lg: it is a control, and the real one moved down to the
             control rung of the radius ladder without this following it. */}
         <Skeleton className="h-10 w-full rounded-md" />
 
-        <div className="rounded-xl border border-border bg-card overflow-hidden divide-y divide-border">
-          {Array.from({ length: ROW_COUNT }).map((_, i) => (
-            <div key={i} className="flex items-center gap-3 px-4 py-3">
-              <Skeleton className="h-8 w-8 rounded-lg shrink-0" />
-              <div className="flex flex-col min-w-0 flex-1 gap-1.5">
-                <Skeleton className="h-4 w-40" />
-                <Skeleton className="h-3 w-20" />
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          {/* The desktop column-header band (SCAN / RATING). Without it every
+              row sat ~37px too high until the scans arrived. */}
+          <div
+            className={`hidden gap-3 border-b border-border bg-muted/30 px-4 py-2.5 sm:grid ${GRID}`}
+          >
+            <span aria-hidden />
+            <Skeleton className="h-3.5 w-10" />
+            <Skeleton className="h-3.5 w-12" />
+            <span aria-hidden />
+          </div>
+          <div className="divide-y divide-border">
+            {Array.from({ length: ROW_COUNT }).map((_, i) => (
+              <div
+                key={i}
+                className={`flex items-center gap-3 px-4 py-3 sm:grid sm:items-center ${GRID}`}
+              >
+                <Skeleton className="h-8 w-8 rounded-lg shrink-0" />
+                <div className="flex flex-col min-w-0 flex-1 gap-1.5">
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-3 w-20" />
+                </div>
+                <Skeleton className="h-5 w-14 rounded-full shrink-0" />
+                {/* The row's trailing chevron, which the real list draws and
+                    this placeholder used to end one glyph short of. */}
+                <Skeleton className="h-4 w-4 shrink-0" />
               </div>
-              <Skeleton className="h-5 w-14 rounded-full shrink-0" />
-              {/* The row's trailing chevron, which the real list draws and
-                  this placeholder used to end one glyph short of. */}
-              <Skeleton className="h-4 w-4 shrink-0" />
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
 

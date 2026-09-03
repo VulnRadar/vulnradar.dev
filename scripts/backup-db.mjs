@@ -58,6 +58,13 @@ import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { pipeline } from "node:stream/promises";
 import { loadEnv, requireDatabaseUrl, ROOT } from "./_lib/_lib.env.mjs";
+
+/**
+ * Smallest file that could plausibly hold a dump. A gzip stream carrying no
+ * data is 20 bytes, which is exactly what a failed run used to leave behind,
+ * so anything in that region is an empty artefact rather than a backup.
+ */
+const MIN_USABLE_BACKUP_BYTES = 512;
 import { splitDbUrlForEnv } from "./_lib/_lib.db-url.mjs";
 import {
   banner,
@@ -253,6 +260,14 @@ async function runBackup() {
     pgDump.on("close", (code) => resolvePromise(code));
   });
 
+  // Removes the half-written artefact and its sidecar. Every throw below has
+  // to go through this: the file already exists by the time any of them can
+  // fire, because createWriteStream(finalPath) created it above.
+  const discardPartial = async () => {
+    await unlink(finalPath).catch(() => {});
+    await unlink(`${finalPath}.json`).catch(() => {});
+  };
+
   try {
     await pipeline(stages);
   } catch (err) {
@@ -260,11 +275,16 @@ async function runBackup() {
     // for the child's own 'error' event so its clearer message wins over the
     // generic stream-teardown error.
     await exitCodePromise;
+    await discardPartial();
     throw spawnError || describePgDumpError(err);
   }
   const exitCode = await exitCodePromise;
-  if (spawnError) throw spawnError;
+  if (spawnError) {
+    await discardPartial();
+    throw spawnError;
+  }
   if (exitCode !== 0) {
+    await discardPartial();
     throw new Error(
       `pg_dump exited with code ${exitCode}: ${stderrOutput.trim()}`,
     );
@@ -287,6 +307,23 @@ async function runBackup() {
   }
 
   const written = await stat(finalPath);
+
+  // pg_dump can exit 0 and still leave nothing worth keeping (an empty
+  // database, a dump that produced only a gzip header, a truncated stream that
+  // closed cleanly). A file that small cannot contain a schema, so treating it
+  // as a backup is the same lie as keeping the failed ones: it is counted in
+  // the admin list and it would restore nothing. MIN_USABLE_BACKUP_BYTES is
+  // deliberately low, since it only has to catch "there is no dump in here",
+  // not judge whether a real dump is complete.
+  if (written.size < MIN_USABLE_BACKUP_BYTES) {
+    await discardPartial();
+    throw new Error(
+      `pg_dump exited 0 but wrote only ${written.size} bytes, which cannot ` +
+        `contain a usable dump. Nothing was kept. Check that DATABASE_URL ` +
+        `points at a database with tables and that pg_dump can read it.`,
+    );
+  }
+
   success(
     `Wrote ${finalName} (${(written.size / 1024 / 1024).toFixed(2)} MB)${
       cipherInfo ? ", encrypted" : ""

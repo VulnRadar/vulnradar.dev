@@ -138,7 +138,7 @@ export default function TroubleshootingPage() {
             {
               message: `Scan exceeded the ${CONFIG_SCAN_TIMEOUT_SECONDS}s time limit.`,
               cause:
-                "The watchdog fired. A crawl says the same thing as “Crawl scan exceeded the ...s time limit.” against its own, larger budget. See timeouts below.",
+                "The watchdog fired. A crawl reports the same thing as 'Crawl scan exceeded the ...s time limit.' against its own, larger budget. See timeouts below.",
             },
             {
               message:

@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   backupFileName,
   selectExpiredBackups,
@@ -129,5 +130,73 @@ describe("describePgDumpError", () => {
       code: "ECONNREFUSED",
     });
     expect(describePgDumpError(other)).toBe(other);
+  });
+});
+
+/**
+ * A failed backup must leave nothing behind.
+ *
+ * `createWriteStream(finalPath)` creates the destination the instant it is
+ * called, before pg_dump has produced a byte, and every failure path after
+ * that used to throw without removing it. Running the backup on a machine
+ * without pg_dump three times left three 20-byte files, which is a bare gzip
+ * header and no data at all.
+ *
+ * The consequence is worse than clutter: the admin panel lists this directory,
+ * so those husks are presented as backups. An operator reads "3 backups" and
+ * believes the database is protected by three files that would restore
+ * nothing, and finds out otherwise at the only moment it matters.
+ *
+ * Asserted on the source because the failure only happens inside `runBackup`,
+ * which spawns a real pg_dump and streams to a real path. That belongs in the
+ * integration tier, not here, where `pg` is faked. What this can prove is that
+ * every throw between creating the file and declaring success still routes
+ * through the cleanup.
+ */
+describe("a failed backup leaves no artefact", () => {
+  const src = readFileSync("scripts/backup-db.mjs", "utf8");
+
+  it("defines the cleanup helper", () => {
+    expect(
+      src,
+      "discardPartial removes the half-written file and its sidecar",
+    ).toContain("const discardPartial =");
+    expect(src).toMatch(/unlink\(finalPath\)/);
+    expect(src).toMatch(/unlink\(`\$\{finalPath\}\.json`\)/);
+  });
+
+  it("every throw after the file exists cleans up first", () => {
+    // The window runs from createWriteStream to the success() call. Every
+    // `throw` inside it must be preceded by a discardPartial() await.
+    const from = src.indexOf("createWriteStream(finalPath)");
+    const to = src.indexOf("success(");
+    expect(from, "createWriteStream not found").toBeGreaterThan(-1);
+    expect(to, "success() not found").toBeGreaterThan(from);
+
+    const window = src.slice(from, to);
+    const throws = [...window.matchAll(/\n(\s*)throw /g)];
+    expect(
+      throws.length,
+      "expected throws in the danger window",
+    ).toBeGreaterThan(1);
+
+    for (const m of throws) {
+      const before = window.slice(Math.max(0, m.index - 400), m.index);
+      expect(
+        before,
+        `a throw at offset ${m.index} inside the write window does not call ` +
+          `discardPartial() first, so a failed run would leave a file the ` +
+          `admin panel lists as a backup.`,
+      ).toContain("discardPartial()");
+    }
+  });
+
+  it("rejects a dump too small to contain anything", () => {
+    // pg_dump can exit 0 having written only a gzip header. Keeping that is
+    // the same lie as keeping a failed run's file.
+    expect(src).toContain("MIN_USABLE_BACKUP_BYTES");
+    expect(src).toMatch(/written\.size < MIN_USABLE_BACKUP_BYTES/);
+    const declared = src.match(/MIN_USABLE_BACKUP_BYTES = (\d+)/)?.[1];
+    expect(Number(declared)).toBeGreaterThan(20);
   });
 });

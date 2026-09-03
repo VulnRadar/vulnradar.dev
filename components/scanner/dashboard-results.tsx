@@ -41,8 +41,15 @@ const ScanActionsMenu = dynamic(
     ),
   },
 );
-const IssueDetail = dynamic(() =>
-  import("./issue-detail").then((m) => ({ default: m.IssueDetail })),
+// `loading` is not optional here, even though the intended fallback really is
+// "draw nothing". next/dynamic only creates a Suspense boundary when it is
+// given a `loading` option or `ssr: false`; without one the chunk suspends the
+// nearest ANCESTOR boundary, which for this component is app/dashboard's own
+// loading.tsx. Opening a finding therefore replayed the whole route skeleton
+// over a finished scan. See the same note in ./scan-result-detail.tsx.
+const IssueDetail = dynamic(
+  () => import("./issue-detail").then((m) => ({ default: m.IssueDetail })),
+  { loading: () => null },
 );
 
 interface DashboardResultsProps {

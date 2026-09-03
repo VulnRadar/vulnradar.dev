@@ -1,30 +1,16 @@
 "use client";
 
 import { Suspense } from "react";
-import { Loader2 } from "lucide-react";
+import { CheckoutReturningMessage } from "@/components/billing/checkout-message";
 import { CheckoutSuccessContent } from "./checkout-success-content";
 
-function LoadingFallback() {
-  return (
-    <div
-      className="min-h-screen flex items-center justify-center bg-background"
-      role="status"
-      aria-live="polite"
-    >
-      <div className="text-center">
-        <Loader2
-          className="h-8 w-8 animate-spin text-primary mx-auto mb-4"
-          aria-hidden="true"
-        />
-        <h2 className="text-xl font-semibold mb-2">Loading...</h2>
-      </div>
-    </div>
-  );
-}
-
 export default function CheckoutSuccessPage() {
+  // The same element app/checkout/success/loading.tsx renders, so the route
+  // fallback and this boundary are one shape rather than two: the local copy
+  // that stood here was a bare "Loading..." heading with no h1 and different
+  // spacing, which the route transition then replaced.
   return (
-    <Suspense fallback={<LoadingFallback />}>
+    <Suspense fallback={<CheckoutReturningMessage />}>
       <CheckoutSuccessContent />
     </Suspense>
   );

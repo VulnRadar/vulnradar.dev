@@ -1,0 +1,56 @@
+[
+  {
+    "icon": "Container",
+    "label": "Setup Commands That Would Have Failed On A Real Machine",
+    "desc": "The self-hosting page told you to recover a locked-out account with docker compose exec db psql, and there is no service called db: the compose file names it postgres, so that command stops at \"no such service\" before it touches the database. The rollback path ran docker compose run --rm app npm run db:restore with no arguments, and the restore script does nothing without --file and --yes and refuses a database that still has tables without --force. The setup page described the compose file as Postgres plus app plus a smoke test, which does not exist, and said it provisions Postgres on port 5432 with the password vulnradar, when compose publishes no host port for Postgres at all and refuses to start until you set POSTGRES_PASSWORD yourself. All four are corrected, and a test now fails the build if any docs page names a compose service or an npm script that does not exist.",
+    "category": "fixed"
+  },
+  {
+    "icon": "SlidersHorizontal",
+    "label": "DB_PORT Was Documented As A Knob That Does Nothing",
+    "desc": "The configuration page listed DB_PORT alongside APP_PORT as a variable docker-compose.yml reads, and the setup page told you to put it in your .env. Nothing reads it: the compose file publishes no host port for Postgres, so the database is reachable only from inside the compose network. HOST_BIND, which compose does read and which decides whether your reverse proxy can reach the app at all, was documented nowhere. Both are now described honestly, and the docker-only list is checked against the compose file on every test run.",
+    "category": "fixed"
+  },
+  {
+    "icon": "CalendarClock",
+    "label": "Scan History Retention Was Never 30 Days",
+    "desc": "The configuration page said free accounts keep scan history for 30 days and Core Supporter for 90. Every plan ships at -1, keep forever, and has for a while: a stored result is small enough that age-based deletion is not worth the data loss. Anyone reading that page had a reason to think their history was being deleted out from under them. The four retention values now render from the constants themselves.",
+    "category": "fixed"
+  },
+  {
+    "icon": "CreditCard",
+    "label": "The Hand-Written Stripe Event List Was Three Events Short",
+    "desc": "Setting up the webhook by hand in the Stripe dashboard, the self-hosting page listed six events. The handler acts on nine. The three missing ones are payment_intent.succeeded, charge.refunded and charge.dispute.created, so a self-hoster who followed that list got a billing integration whose one-time credit purchases had no backup crediting path and whose refunds and chargebacks never clawed the credits back. The page now renders the same REQUIRED_EVENTS array the automatic setup registers.",
+    "category": "fixed"
+  },
+  {
+    "icon": "LayoutDashboard",
+    "label": "The Admin Panel Was Regrouped And The Docs Were Not",
+    "desc": "The administration page's map of the panel described the grouping from before it was reorganised: User Management, Communications, a one-item Content group and a seven-item System bucket. None of those groups exist. An operator looking for Error Logs under System, as the troubleshooting page also told them to, would not find it; it lives under Operations. The table now renders from the panel's own destination list, so the group names, the tab labels and the count of both follow the code.",
+    "category": "fixed"
+  },
+  {
+    "icon": "ShieldQuestion",
+    "label": "Turnstile Does Not Protect Password Reset",
+    "desc": "The configuration page said the CAPTCHA covers signup, password reset, the contact form and landing-contact. Password reset verifies no Turnstile token; support ticket creation, which was not listed, does. Naming the wrong endpoints is worse than naming none, because the reader stops looking. The page now names the four endpoints that actually verify a token and says what defends password reset instead.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Terminal",
+    "label": "CLI And Install Details That Had Drifted",
+    "desc": "The CLI page advertised Node 18, which went end of life in April 2025; the CLI itself declares Node 22 and has for a while. Its --timeout default was given as 300 seconds with no mention that a crawl silently gets 900 to match the server's own budget, and VULNRADAR_API_BASE, the environment form of --api-base that exists so a self-hosted CI need not repeat the flag, was undocumented. The setup page credited .npmrc with an install-script allow-list for five native packages; npm has no such mechanism and that file has never held one. Its real content, an engine-strict pin to Node 22, is what the page describes now.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Radar",
+    "label": "\"Six Service Probes\" Was A Feature That No Longer Exists",
+    "desc": "The docs index advertised six service probes for ssh, smtp, imap, pop3, ftp and mongodb. That per-service array was removed when the sweep was consolidated behind the single portScan boolean, which probes a curated set of 145 well-known ports. The page now states the real number and reads it from the sweep's own table. The eighteen check categories beside it were also a hand-typed copy of the scanner's union, and now come from the generated per-category map instead.",
+    "category": "fixed"
+  },
+  {
+    "icon": "AlertOctagon",
+    "label": "Error Messages The Docs Quoted But The App Never Prints",
+    "desc": "The setup page's troubleshooting table quoted two startup failures verbatim so you could match them against your logs, and both strings were invented. A schema that is too old prints a boxed SCHEMA VERSION MISMATCH with the two versions on separate lines, not \"Schema version mismatch: expected ... found ...\", and a bad encryption key prints the message the validator carries, which also tells you how to generate a good one. Both now quote what the app really emits, and the migration section documents --yes, the flag that makes db:migrate non-interactive in a pipeline.",
+    "category": "fixed"
+  }
+]

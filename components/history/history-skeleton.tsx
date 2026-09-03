@@ -3,6 +3,7 @@ import { StatStripSkeleton } from "@/components/shared/stat-strip";
 import { SkeletonRegion } from "@/components/shared/skeleton-shapes";
 import { Skeleton } from "@/components/ui/skeleton";
 import { HistoryViewTabs } from "./history-view-tabs";
+import { HistoryDetailSkeleton } from "./history-detail-skeleton";
 
 const ROW_COUNT = 6;
 
@@ -134,6 +135,25 @@ export function HistoryDataSkeleton() {
       <HistoryFiltersSkeleton />
       <HistoryScanListSkeleton />
     </SkeletonRegion>
+  );
+}
+
+/**
+ * The other half of the route fallback, for /history?scan=X.
+ *
+ * app/history/loading.tsx has to pick one of these before the page's own code
+ * exists, and it used to pick the list every time. So opening a scan by URL
+ * drew the list placeholder, then the page mounted and drew the detail
+ * placeholder: two different shapes for one navigation. This is the shape
+ * HistoryPage's detail branch renders (the tab strip, then
+ * HistoryDetailSkeleton), so the two agree and only one is ever painted.
+ */
+export function HistoryDetailRouteSkeleton() {
+  return (
+    <AppPageShell className="flex flex-col gap-5">
+      <HistoryViewTabs />
+      <HistoryDetailSkeleton />
+    </AppPageShell>
   );
 }
 

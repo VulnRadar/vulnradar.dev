@@ -1,6 +1,15 @@
 import { readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
+// Colour only when something is going to render it. FORCE_COLOR overrides,
+// NO_COLOR is the cross-tool convention for off.
+const COLOR =
+  process.env.FORCE_COLOR === "1" ||
+  (Boolean(process.stdout.isTTY) && !process.env.NO_COLOR);
+const RED = COLOR ? "\x1b[31m" : "";
+const BOLD = COLOR ? "\x1b[1m" : "";
+const RESET = COLOR ? "\x1b[0m" : "";
+
 /**
  * Fails the run when vitest collected fewer test files than exist on disk.
  *
@@ -80,7 +89,11 @@ export default class CompletenessReporter {
     this.reported = true;
     const missing = onDisk - ranCount;
     console.error(
-      `\n\x1b[31m\x1b[1mINCOMPLETE TEST RUN\x1b[0m\n` +
+      // Colour only when a terminal will render it, the same rule
+      // scripts/_lib/_lib.output.mjs applies. A CI log file keeps this text
+      // verbatim, and an escape sequence there is literal noise sitting in
+      // front of the one line that says the run proved nothing.
+      `\n${RED}${BOLD}INCOMPLETE TEST RUN${RESET}\n` +
         `  ${ranCount} test files ran, but ${onDisk} exist under tests/.\n` +
         `  ${missing} file${missing === 1 ? "" : "s"} never executed, ` +
         `almost certainly a forks worker that failed to start.\n` +

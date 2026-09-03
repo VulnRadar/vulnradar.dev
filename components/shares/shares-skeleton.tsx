@@ -80,6 +80,20 @@ export function SharesDataSkeleton() {
           larger radius than its own container and neither matched the
           rounded-xl strip that replaced it. */}
       <StatStripSkeleton />
+      {/* Search plus the verdict and sort triggers. SharesFilters only renders
+          above three links, so this bar is a bet either way: drawn, it costs
+          the smallest accounts a small upward shift; left out, every account
+          with a filter row gets the same shift downward. Drawn, because the
+          page paginates at ten rows and an account that has bothered to mint
+          share links usually has more than three. Same bet, same reasoning as
+          components/badge/badge-skeleton.tsx. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+        <Skeleton className="h-10 min-w-[12rem] flex-1 rounded-md" />
+        <div className="flex flex-wrap items-center gap-2">
+          <Skeleton className="h-11 w-32 rounded-md sm:h-10" />
+          <Skeleton className="h-11 w-36 rounded-md sm:h-10" />
+        </div>
+      </div>
       <SharesTableSkeleton />
     </SkeletonRegion>
   );

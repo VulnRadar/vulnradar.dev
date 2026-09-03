@@ -188,8 +188,6 @@ export default function TeamsPage() {
       setLoadError(
         "Could not reach the server to load your teams. Check your connection and try again.",
       );
-    } finally {
-      setLoading(false);
     }
   }, [router]);
 
@@ -205,11 +203,26 @@ export default function TeamsPage() {
     }
   }, []);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the requests resolve, not synchronously in this effect
-    fetchTeams();
-    fetchInvitations();
+  /**
+   * Both feeders of the one region this page has, revealed together.
+   *
+   * TeamInvitations renders null with nothing to show, so it used to appear
+   * out of nowhere at the top of the list a beat after the list itself and
+   * push every team down by the height of a panel. The two requests still go
+   * out at the same moment; only the swap out of the skeleton waits for both.
+   *
+   * allSettled, not all: a failing /teams/invitations must not be able to
+   * leave this page in its skeleton with no way out.
+   */
+  const loadTeamsPage = useCallback(async () => {
+    await Promise.allSettled([fetchTeams(), fetchInvitations()]);
+    setLoading(false);
   }, [fetchTeams, fetchInvitations]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the requests settle, not synchronously in this effect
+    loadTeamsPage();
+  }, [loadTeamsPage]);
 
   // Resolves ?team=<id> against the loaded list. This is what makes a deep
   // link work (the param is read before `teams` has arrived, so it has to be

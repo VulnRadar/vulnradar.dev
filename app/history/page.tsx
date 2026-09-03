@@ -115,7 +115,6 @@ export default function HistoryPage() {
     null,
   );
   const [scanOwnerId, setScanOwnerId] = useState<number | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [scanNotes, setScanNotes] = useState("");
   const [scanIsPublic, setScanIsPublic] = useState(true);
   const [scanDetailTags, setScanDetailTags] = useState<ScanTag[]>([]);
@@ -131,6 +130,20 @@ export default function HistoryPage() {
   const isStaff =
     me?.role && ["admin", "moderator", "support"].includes(me.role);
   const retentionKnown = !authLoading && (isStaff || me?.plan !== undefined);
+  // Read off the shared /auth/me that AuthProvider already caches, rather than
+  // this page issuing its own second copy of that exact request. Two things
+  // were wrong with the copy: it was a duplicate round trip, and it settled
+  // independently of the scan detail beside it, so on a /history?scan=X deep
+  // link the report rendered first and the owner's controls (rename, delete,
+  // re-scan, the remediation buttons) appeared afterwards, on their own.
+  const currentUserId = me?.userId ?? null;
+  // The detail region is fed by two requests: this scan, and who is asking.
+  // isOwner decides which half of that panel exists at all, so revealing the
+  // report before the identity is known means drawing it twice. Both are in
+  // flight together; only the swap is held. authLoading is false the moment
+  // /auth/me settles either way, failure included, so a dead auth endpoint
+  // degrades to "not the owner" rather than to a permanent skeleton.
+  const detailPending = detailLoading || authLoading;
   const userPlan = (me?.plan ||
     "free") as keyof typeof BILLING_HISTORY_RETENTION;
   const retentionDays = isStaff
@@ -315,23 +328,44 @@ export default function HistoryPage() {
       setTotalScans(typeof data.total === "number" ? data.total : rows.length);
     } catch {
       setListError("Couldn't reach the server to load your history.");
-    } finally {
-      setLoading(false);
     }
   }, [router]);
 
+  // A failure here is silent on purpose: the tag filter is one control in a
+  // row of four and its absence says everything it needs to.
+  const fetchTags = useCallback(async () => {
+    try {
+      const res = await fetch(API.SCAN_TAGS);
+      if (!res.ok) return;
+      const data = await res.json();
+      setAllTags(Array.isArray(data.tags) ? data.tags : []);
+    } catch {
+      /* the tag dropdown simply does not appear */
+    }
+  }, []);
+
+  /**
+   * The list region has two feeders, and it used to reveal on the first of
+   * them. The tag dropdown only exists once the account has tags
+   * (HistoryFilters renders it behind `allTags.length > 0`), so the filter row
+   * arrived with three controls and grew a fourth a moment later, moving the
+   * whole table sideways and down. Both requests still go out together; only
+   * the reveal waits for both.
+   *
+   * allSettled, not all: a dead /scan-tags must not leave this page in its
+   * skeleton forever, and neither of these two rejects for an HTTP error
+   * anyway, so `all` would only differ on a network fault, which is exactly
+   * the case that must not hang.
+   */
+  const loadList = useCallback(async () => {
+    await Promise.allSettled([fetchHistory(), fetchTags()]);
+    setLoading(false);
+  }, [fetchHistory, fetchTags]);
+
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: fetchHistory's setState calls only fire after its async request resolves, not synchronously in this effect
-    fetchHistory();
-    fetch(API.SCAN_TAGS)
-      .then((r) => r.json())
-      .then((d) => setAllTags(d.tags || []))
-      .catch(() => {});
-    fetch(API.AUTH.ME)
-      .then((r) => r.json())
-      .then((d) => setCurrentUserId(d.userId || null))
-      .catch(() => {});
-  }, [fetchHistory]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: loadList's setState calls only fire after its async requests settle, not synchronously in this effect
+    loadList();
+  }, [loadList]);
 
   // Handlers
   const handleViewScan = (scan: ScanRecord) => {
@@ -593,9 +627,9 @@ export default function HistoryPage() {
           {/* The detail view has no page h1 for the strip to sit under, so
               here it stays at the top where it was. */}
           <HistoryViewTabs />
-          {detailLoading && <HistoryDetailSkeleton />}
+          {detailPending && <HistoryDetailSkeleton />}
 
-          {!detailLoading && scanDetail && (
+          {!detailPending && scanDetail && (
             <div className="flex flex-col gap-4">
               {/* Owner-only affordances. currentUserId must be a real
                     identity: null === null would otherwise mark a signed-out
@@ -699,7 +733,7 @@ export default function HistoryPage() {
             </div>
           )}
 
-          {!detailLoading && !scanDetail && (
+          {!detailPending && !scanDetail && (
             <div className="flex flex-col items-center gap-4 py-16 text-center">
               <p className="text-sm text-muted-foreground">
                 {detailError ??
@@ -827,7 +861,7 @@ export default function HistoryPage() {
                 className="bg-transparent"
                 onClick={() => {
                   setLoading(true);
-                  fetchHistory();
+                  loadList();
                 }}
               >
                 Retry

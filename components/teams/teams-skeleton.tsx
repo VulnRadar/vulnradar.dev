@@ -4,6 +4,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 const ROW_COUNT = 5;
 
+/** The four-track layout TeamsList's header band and every row key off. */
+const GRID = "sm:grid-cols-[2.25rem_minmax(0,1fr)_7rem_1rem]";
+
 /**
  * Two exports over one shape, because a skeleton has two callers that want
  * opposite things.
@@ -40,12 +43,22 @@ export function TeamsDataSkeleton() {
         <Skeleton className="h-10 w-32 shrink-0" />
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-border/50 bg-card">
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
+        {/* The desktop column-header band (TEAM / YOUR ROLE). Without it every
+            row sat ~37px too high until the list arrived. */}
+        <div
+          className={`hidden gap-3 border-b border-border bg-muted/30 px-4 py-2.5 sm:grid sm:px-5 ${GRID}`}
+        >
+          <span aria-hidden />
+          <Skeleton className="h-3.5 w-10" />
+          <Skeleton className="h-3.5 w-16" />
+          <span aria-hidden />
+        </div>
         <div className="divide-y divide-border">
           {Array.from({ length: ROW_COUNT }).map((_, i) => (
             <div
               key={i}
-              className="flex items-center gap-3 px-4 py-3.5 sm:px-5"
+              className={`flex items-center gap-3 px-4 py-3.5 sm:grid sm:items-center sm:px-5 ${GRID}`}
             >
               <Skeleton className="h-9 w-9 rounded-full shrink-0" />
               <div className="min-w-0 flex-1 space-y-1.5">

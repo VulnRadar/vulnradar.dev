@@ -54,18 +54,40 @@ const PortScanPanel = dynamic(
   () => import("./port-scan-panel").then((m) => ({ default: m.PortScanPanel })),
   { loading: PanelRowFallback },
 );
-// These two deliberately have no fallback: each returns null when the scan
-// carries no threat-intel or software data, and that check lives inside the
-// panel. Reserving a row for something that may never render would trade one
-// reflow for the opposite one, and duplicating the predicate out here is
-// exactly the kind of copy that drifts.
-const ThreatIntelPanel = dynamic(() =>
-  import("./threat-intel-panel").then((m) => ({ default: m.ThreatIntelPanel })),
+/**
+ * These two deliberately draw nothing while their chunk is in flight: each
+ * returns null when the scan carries no threat-intel or software data, and
+ * that check lives inside the panel. Reserving a row for something that may
+ * never render would trade one reflow for the opposite one, and duplicating
+ * the predicate out here is exactly the kind of copy that drifts.
+ *
+ * `loading` is what makes that "nothing" local, and omitting it was the last
+ * double skeleton in the app. next/dynamic only wraps the lazy component in a
+ * Suspense boundary when it is given a `loading` option or `ssr: false`
+ * (`hasSuspenseBoundary = !opts.ssr || !!opts.loading`, see
+ * next/dist/shared/lib/lazy-dynamic/loadable.js). Without one, the chunk
+ * suspends the nearest ANCESTOR boundary instead, which on every surface that
+ * renders a scan report is the route's own loading.tsx. So the sequence on
+ * /history?scan=X was: route skeleton, then the page's detail skeleton, then
+ * the detail resolves, these two mount, the segment re-suspends and the route
+ * skeleton plays a THIRD time over the report that had already arrived.
+ * A fallback of null keeps the deliberate "draw nothing" and confines the
+ * suspension to this row.
+ */
+const drawNothingWhileLoading = { loading: () => null };
+const ThreatIntelPanel = dynamic(
+  () =>
+    import("./threat-intel-panel").then((m) => ({
+      default: m.ThreatIntelPanel,
+    })),
+  drawNothingWhileLoading,
 );
-const SoftwareInventoryPanel = dynamic(() =>
-  import("./software-inventory-panel").then((m) => ({
-    default: m.SoftwareInventoryPanel,
-  })),
+const SoftwareInventoryPanel = dynamic(
+  () =>
+    import("./software-inventory-panel").then((m) => ({
+      default: m.SoftwareInventoryPanel,
+    })),
+  drawNothingWhileLoading,
 );
 
 // Re-exported so existing importers keep resolving these from here; the

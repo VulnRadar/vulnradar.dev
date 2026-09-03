@@ -46,6 +46,10 @@ const STAT_STRIP_SKELETONS = [
   "components/shares/shares-skeleton.tsx",
   "components/history/history-skeleton.tsx",
   "components/assets/assets-skeleton.tsx",
+  // /repos grew the strip last, when the account's list pages were brought
+  // onto one vocabulary. It is listed here from the start so its placeholder
+  // can never become the sixth hand-rolled copy.
+  "components/repos/repos-skeleton.tsx",
   "components/scanner/dashboard.tsx",
   "components/admin/shared/skeleton.tsx",
 ];

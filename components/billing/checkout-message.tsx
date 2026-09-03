@@ -52,6 +52,30 @@ const TONE: Record<
   progress: { icon: Loader2, mark: "text-primary", role: "status" },
 };
 
+/**
+ * The waiting screen for /checkout/success, in one place because it has two
+ * callers that must not disagree: app/checkout/success/loading.tsx (the route
+ * fallback, which used to be app/checkout/loading.tsx's payment form, an order
+ * summary and a card field for a page that has neither) and the page's own
+ * Suspense fallback while it reads ?session_id.
+ *
+ * Deliberately the same tone and shape as the "Switching your plan over"
+ * screen that follows it, so coming back from Stripe is one spinner that
+ * gains a sentence rather than three different layouts in a row.
+ *
+ * The copy claims nothing about the payment: at this point the page has not
+ * read its own query string yet, let alone asked the server.
+ */
+export function CheckoutReturningMessage() {
+  return (
+    <CheckoutMessage
+      tone="progress"
+      title="Confirming your payment"
+      description="You have just come back from Stripe. This takes a few seconds."
+    />
+  );
+}
+
 export function CheckoutMessage({
   tone = "neutral",
   title,

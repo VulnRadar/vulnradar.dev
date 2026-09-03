@@ -4,102 +4,38 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AppPageShell } from "@/components/shared/app-page-shell";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { EmptyState } from "@/components/shared/empty-state";
+import { worthFiltering } from "@/components/shared/list-filter-bar";
 import {
   AlertTriangle,
   Check,
   Loader2,
-  Lock,
   Pencil,
-  RefreshCw,
   Search,
   ShieldAlert,
 } from "lucide-react";
 import { API, ROUTES } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
 import { useQueryParam } from "@/lib/ui/url-state";
+import { GithubIcon } from "@/components/repos/github-icon";
 import { GithubRepoPickerModal } from "@/components/repos/github-repo-picker-modal";
 import { GithubScanResultModal } from "@/components/repos/github-scan-result-modal";
 import { RepoDetail } from "@/components/repos/repo-detail";
 import { ReposDataSkeleton } from "@/components/repos/repos-skeleton";
+import { ReposList } from "@/components/repos/repos-list";
+import { ReposStats } from "@/components/repos/repos-stats";
 import {
-  SEVERITY_ORDER,
-  SEVERITY_TONE,
-} from "@/components/scanner/severity-badge";
+  applyRepoQuery,
+  ReposFilters,
+  REPO_QUERY_DEFAULTS,
+  type RepoQuery,
+} from "@/components/repos/repos-filters";
 import type {
   GithubRepo,
   GithubScanOutcome,
   RepoScanSummary,
 } from "@/components/repos/types";
-import type { ScanResult, Severity } from "@/lib/scanner/types";
-
-/**
- * Compact per-severity counts for a repo's last scan, shown directly in the
- * list row so the gist of a repo's history doesn't require clicking in --
- * only "not this" (findings count alone) or "click through" (full timeline)
- * existed before. Skips "info" here: it's rarely the reason to look twice at
- * a row, and this needs to stay a single line at list density.
- */
-function RowSeverityChips({
-  summary,
-}: {
-  summary: RepoScanSummary["lastScan"]["summary"];
-}) {
-  const present = SEVERITY_ORDER.filter(
-    (s): s is Exclude<Severity, "info"> =>
-      s !== "info" && (summary[s] ?? 0) > 0,
-  );
-  if (present.length === 0) {
-    return (
-      <span className="mt-0.5 inline-flex items-center gap-1 text-xs text-[hsl(var(--success))]">
-        <ShieldAlert className="h-3 w-3" aria-hidden="true" />
-        Clean
-      </span>
-    );
-  }
-  return (
-    <span className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
-      {present.map((s) => (
-        <span
-          key={s}
-          className={cn(
-            "inline-flex items-center gap-1 text-xs font-medium tabular-nums",
-            SEVERITY_TONE[s].text,
-          )}
-        >
-          <span
-            aria-hidden
-            className={cn("h-1.5 w-1.5 rounded-full", SEVERITY_TONE[s].solid)}
-          />
-          {summary[s]} {SEVERITY_TONE[s].label.toLowerCase()}
-        </span>
-      ))}
-    </span>
-  );
-}
-
-// lucide-react dropped brand/logo icons; every brand mark elsewhere in this
-// app (Discord, GithubRepoPickerModal, the Social tab's FaGithub) duplicates
-// its own inline SVG for the same reason.
-function GithubIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.57.1.78-.25.78-.55 0-.27-.01-1.17-.02-2.12-3.2.7-3.88-1.36-3.88-1.36-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.69.08-.69 1.15.08 1.76 1.18 1.76 1.18 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.25.73-1.54-2.56-.29-5.25-1.28-5.25-5.7 0-1.26.45-2.29 1.18-3.09-.12-.29-.51-1.46.11-3.05 0 0 .96-.31 3.15 1.18a10.9 10.9 0 0 1 2.87-.39c.97.01 1.95.13 2.87.39 2.19-1.49 3.15-1.18 3.15-1.18.62 1.59.23 2.76.11 3.05.73.8 1.18 1.83 1.18 3.09 0 4.43-2.7 5.4-5.27 5.69.41.36.78 1.06.78 2.14 0 1.55-.01 2.79-.01 3.17 0 .3.2.66.79.55A10.52 10.52 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z" />
-    </svg>
-  );
-}
-
-function formatRelativeScan(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
-}
+import type { ScanResult } from "@/lib/scanner/types";
 
 interface GithubStatus {
   connected: boolean;
@@ -128,7 +64,7 @@ export default function ReposPage() {
   const [status, setStatus] = useState<GithubStatus | null>(null);
   const [repos, setRepos] = useState<GithubRepo[] | null>(null);
   const [reposLoading, setReposLoading] = useState(false);
-  const [repoFilter, setRepoFilter] = useState("");
+  const [repoQuery, setRepoQuery] = useState<RepoQuery>(REPO_QUERY_DEFAULTS);
   const [scanningRepo, setScanningRepo] = useState<string | null>(null);
   const [scanModalOpen, setScanModalOpen] = useState(false);
   const [scanModalOutcome, setScanModalOutcome] =
@@ -358,14 +294,14 @@ export default function ReposPage() {
     ? (repos ?? []).find((r) => r.fullName === activeRepoName)
     : undefined;
 
-  const filteredRepos = (repos ?? []).filter((repo) => {
-    const q = repoFilter.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      repo.fullName.toLowerCase().includes(q) ||
-      (repo.description ?? "").toLowerCase().includes(q)
-    );
-  });
+  // A working set short enough to read at a glance gets no filter row, the
+  // call components/teams/teams-list.tsx already made for its own list. The
+  // query is forced back to its defaults when the row is not on screen, so a
+  // selection edited down to two repos can never land on a filtered-out list
+  // with no visible control to undo it.
+  const showFilters = worthFiltering(repos?.length ?? 0);
+  const effectiveQuery = showFilters ? repoQuery : REPO_QUERY_DEFAULTS;
+  const filteredRepos = applyRepoQuery(repos ?? [], summaries, effectiveQuery);
 
   return (
     <AppPageShell className="flex flex-col gap-5">
@@ -626,124 +562,51 @@ export default function ReposPage() {
               </Button>
             </div>
           ) : (
-            <div className="space-y-3">
-              <div className="relative">
-                <Search
-                  className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
-                  aria-hidden="true"
+            <div className="flex flex-col gap-5">
+              {/* Three of the four cells read off the scan history, so with
+                  that fetch failed they would all print a confident zero.
+                  The banner above already says the "last scanned" line is
+                  missing rather than empty; the strip stays off rather than
+                  contradicting it. */}
+              {!summariesFailed && (
+                <ReposStats repos={repos} summaries={summaries} />
+              )}
+
+              {showFilters && (
+                <ReposFilters
+                  query={repoQuery}
+                  onChange={(patch) =>
+                    setRepoQuery((prev) => ({ ...prev, ...patch }))
+                  }
                 />
-                <Input
-                  placeholder="Search your repos..."
-                  value={repoFilter}
-                  onChange={(e) => setRepoFilter(e.target.value)}
-                  aria-label="Search your GitHub repositories"
-                  className="pl-9 bg-background"
-                />
-              </div>
+              )}
 
               {filteredRepos.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-2">
-                  No repos match &quot;{repoFilter}&quot;.
-                </p>
+                <EmptyState
+                  icon={Search}
+                  size="sm"
+                  title="No repos match those filters"
+                  description="Search matches on the repository name and its description."
+                  action={
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setRepoQuery(REPO_QUERY_DEFAULTS)}
+                      className="bg-transparent"
+                    >
+                      Clear filters
+                    </Button>
+                  }
+                />
               ) : (
-                // rounded-xl: this is the page's primary panel, and it was
-                // shrinking its own radius the moment it had content (the
-                // empty state it replaces is rounded-xl).
-                <div className="rounded-xl border border-border divide-y divide-border/60 overflow-hidden">
-                  {filteredRepos.map((repo) => {
-                    const summary = summaries[repo.fullName];
-                    return (
-                      <div
-                        key={repo.fullName}
-                        className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors"
-                      >
-                        {repo.private ? (
-                          <Lock
-                            className="h-4 w-4 text-muted-foreground shrink-0"
-                            aria-hidden="true"
-                          />
-                        ) : (
-                          <GithubIcon className="h-4 w-4 text-muted-foreground shrink-0" />
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => setActiveRepoName(repo.fullName)}
-                          className="flex-1 min-w-0 text-left rounded focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          <p
-                            title={repo.fullName}
-                            className="text-sm font-medium text-foreground truncate hover:underline"
-                          >
-                            {repo.fullName}
-                          </p>
-                          {summary ? (
-                            <span className="flex flex-col gap-0.5">
-                              <RowSeverityChips
-                                summary={summary.lastScan.summary}
-                              />
-                              <span className="text-[11px] text-muted-foreground">
-                                {summary.scanCount} scan
-                                {summary.scanCount === 1 ? "" : "s"}
-                              </span>
-                            </span>
-                          ) : repo.description ? (
-                            // line-clamp-2, not truncate: a description is
-                            // prose, and one clipped line on a phone showed
-                            // about six words of it.
-                            <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
-                              {repo.description}
-                            </p>
-                          ) : summariesFailed ? (
-                            // No summary because the history fetch failed,
-                            // not because there is no history: this row used
-                            // to say "Not scanned yet" for a repo scanned
-                            // yesterday, contradicting the banner above that
-                            // says the line is missing rather than empty.
-                            <p className="text-xs text-muted-foreground/70 mt-0.5">
-                              Last scan unknown
-                            </p>
-                          ) : (
-                            <p className="text-xs text-muted-foreground/70 mt-0.5">
-                              Not scanned yet
-                            </p>
-                          )}
-                        </button>
-                        <span className="hidden sm:inline text-[11px] text-muted-foreground shrink-0 tabular-nums">
-                          updated {formatRelativeScan(repo.updatedAt)}
-                        </span>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={scanningRepo === repo.fullName}
-                          onClick={() => handleScan(repo.fullName)}
-                          className="shrink-0 gap-1.5"
-                        >
-                          {scanningRepo === repo.fullName ? (
-                            <Loader2
-                              className="h-3.5 w-3.5 animate-spin"
-                              aria-hidden="true"
-                            />
-                          ) : (
-                            <RefreshCw
-                              className="h-3.5 w-3.5"
-                              aria-hidden="true"
-                            />
-                          )}
-                          {/* "Scan" claims this repo has never been
-                                scanned. With the history fetch failed we do
-                                not know that, so the label drops the claim
-                                instead of guessing wrong on a repo that has
-                                a history. */}
-                          {summary
-                            ? "Rescan"
-                            : summariesFailed
-                              ? "Run scan"
-                              : "Scan"}
-                        </Button>
-                      </div>
-                    );
-                  })}
-                </div>
+                <ReposList
+                  repos={filteredRepos}
+                  summaries={summaries}
+                  summariesFailed={summariesFailed}
+                  scanningRepo={scanningRepo}
+                  onOpen={setActiveRepoName}
+                  onScan={handleScan}
+                />
               )}
             </div>
           )}

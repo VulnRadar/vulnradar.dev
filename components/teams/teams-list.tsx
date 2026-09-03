@@ -2,12 +2,20 @@
 
 import { Plus, Search, Users, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/shared/empty-state";
+import {
+  ListSearchInput,
+  worthFiltering,
+} from "@/components/shared/list-filter-bar";
 import { plural, pluralize } from "@/lib/ui/plural";
+import { cn } from "@/lib/ui/utils";
 import { RolePill } from "./role-pill";
 import { TeamAvatar } from "./team-avatar";
 import { type Team } from "./teams-types";
+
+/** The four-track layout the column header band and every row key off:
+ *  the team's 36px picture, its name, your role, the disclosure chevron. */
+const GRID = "sm:grid-cols-[2.25rem_minmax(0,1fr)_7rem_1rem]";
 
 interface TeamsListProps {
   teams: Team[];
@@ -66,21 +74,22 @@ export function TeamsList({
 
       {/* The search box used to render even with zero teams, so a new account
           was offered a way to filter an empty list. It appears once there is
-          enough here to be worth filtering. */}
-      {teams.length > 3 && (
-        <div className="relative">
-          <Search
-            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <Input
-            placeholder="Search teams..."
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            aria-label="Search teams by name"
-            className="pl-9"
-          />
-        </div>
+          enough here to be worth filtering, and that threshold is now the one
+          every list in the account uses.
+          No dropdown cluster beside it, unlike /history, /repos and /shares: a
+          team list has no severity, no verdict and no date, the plan caps it
+          at a handful of rows, and the only categorical axis (your role) is
+          already a labelled column two lines below. flex-none because this
+          sits in a COLUMN, where the search field's default flex-1 would
+          stretch it to fill the page. */}
+      {worthFiltering(teams.length) && (
+        <ListSearchInput
+          value={searchQuery}
+          onChange={onSearchChange}
+          placeholder="Search teams..."
+          label="Search teams by name"
+          className="flex-none"
+        />
       )}
 
       {filtered.length === 0 && !searchQuery ? (
@@ -113,18 +122,36 @@ export function TeamsList({
           }
         />
       ) : (
-        /* A list of identities, not a four-column table. The column header row
-           it replaces printed the member count as a bare digit under "Members"
-           on desktop while the mobile layout, three lines above, already wrote
-           the readable "4 members". One sentence per row now serves both. */
-        <div className="overflow-hidden rounded-xl border border-border/50 bg-card">
+        /* Still a list of identities rather than a four-column table: the
+           member count reads as a sentence in the row ("4 members, yours"),
+           not as a bare digit under a MEMBERS header, which is the column that
+           was rightly deleted here once. What came back is the header band the
+           rest of the account's lists carry, over only the two columns that
+           genuinely are columns. Your role is the one that needed it: a pill
+           reading "viewer" sat at the end of every row with nothing saying
+           whose role it was. */
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
+          <div
+            className={cn(
+              "hidden gap-3 border-b border-border bg-muted/30 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:grid sm:px-5",
+              GRID,
+            )}
+          >
+            <span aria-hidden />
+            <span>Team</span>
+            <span>Your role</span>
+            <span aria-hidden />
+          </div>
           <ul className="divide-y divide-border">
             {filtered.map((team) => (
               <li key={team.id}>
                 <button
                   type="button"
                   onClick={() => onOpenTeam(team)}
-                  className="group flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-5"
+                  className={cn(
+                    "group flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:grid sm:items-center sm:px-5",
+                    GRID,
+                  )}
                 >
                   {/* The team's own picture when it has one, otherwise the
                       owner's face, otherwise the team's initial. The row used

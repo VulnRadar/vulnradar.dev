@@ -1,6 +1,57 @@
+import { ArrowLeft } from "lucide-react";
+import { AppPageShell } from "@/components/shared/app-page-shell";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const BUBBLE_WIDTHS = ["w-2/3", "w-1/2", "w-3/5", "w-2/5"];
+
+/**
+ * The page's own title block. It needs no data, so it lives here rather than
+ * in the page: the route fallback and the page then render the same element
+ * instead of two copies that can disagree.
+ */
+export function ConversationHeader() {
+  return (
+    <div className="mb-6">
+      <Button
+        asChild
+        variant="outline"
+        size="sm"
+        className="h-8 gap-1.5 mb-3 border-border/60 bg-muted/40"
+      >
+        <a href="/admin?tab=ai-chats">
+          <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+          Back to AI Chats
+        </a>
+      </Button>
+      <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
+        Conversation
+      </h1>
+      <p className="text-sm text-muted-foreground mt-1">
+        Rendered with the same markdown and reasoning-block pipeline as the live
+        chat widget.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * The route fallback for app/admin/ai-chats/[id].
+ *
+ * Without one this segment inherited app/admin/loading.tsx, which draws the
+ * admin console: a tab rail over a stat strip and a data table. So opening a
+ * conversation from the AI Chats tab drew the console a second time and then
+ * replaced it with a transcript, which is a different page. Same shape as what
+ * the page itself renders while its fetch is in flight.
+ */
+export function ConversationRouteSkeleton() {
+  return (
+    <AppPageShell maxWidth="max-w-4xl" padding="py-8">
+      <ConversationHeader />
+      <ConversationSkeleton />
+    </AppPageShell>
+  );
+}
 
 /**
  * Mirrors AdminConversationPage's loaded layout (the user info card, then

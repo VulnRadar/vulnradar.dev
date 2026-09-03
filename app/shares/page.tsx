@@ -3,10 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useToast } from "@/components/ui/use-toast";
-import { AlertTriangle, Share2 } from "lucide-react";
+import { AlertTriangle, Search, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { EmptyState } from "@/components/shared/empty-state";
+import { worthFiltering } from "@/components/shared/list-filter-bar";
 import { AppPageShell } from "@/components/shared/app-page-shell";
 import {
   PaginationControl,
@@ -22,11 +24,15 @@ import {
 } from "@/lib/ui/url-state";
 import {
   type Share,
+  type ShareQuery,
+  applyShareQuery,
   getShareUrl,
+  SharesFilters,
   SharesStats,
   SharesEmptyState,
   SharesTable,
   SharesDataSkeleton,
+  SHARE_QUERY_DEFAULTS,
 } from "@/components/shares";
 
 export default function SharesPage() {
@@ -46,8 +52,18 @@ export default function SharesPage() {
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [selectedShare, setSelectedShare] = useState<Share | null>(null);
   const [confirmRevoke, setConfirmRevoke] = useState<Share | null>(null);
+  const [query, setQuery] = useState<ShareQuery>(SHARE_QUERY_DEFAULTS);
 
-  const { totalPages, getPage } = usePagination(shares, pageSize);
+  // A list short enough to read at a glance gets no filter row, the call
+  // components/teams/teams-list.tsx already made for its own list. The query
+  // is forced back to its defaults when the row is not on screen, so revoking
+  // a link down to two can never leave a filter running with no visible
+  // control to undo it.
+  const showFilters = worthFiltering(shares.length);
+  const effectiveQuery = showFilters ? query : SHARE_QUERY_DEFAULTS;
+  const filteredShares = applyShareQuery(shares, effectiveQuery);
+
+  const { totalPages, getPage } = usePagination(filteredShares, pageSize);
   const paginatedShares = getPage(currentPage);
 
   // page=1 is the implicit default, so it's left out of the URL entirely
@@ -55,6 +71,16 @@ export default function SharesPage() {
   function handlePageChange(page: number) {
     setCurrentPage(page);
     setQueryParam("page", page > 1 ? String(page) : null, { replace: true });
+  }
+
+  // Narrowing the list resets the page rather than leaving the reader on a
+  // page number the shorter list no longer has. Done here, in the handler,
+  // rather than in an effect clamping after the fact: the two are the same
+  // user action, and an effect would run a render later with an empty table
+  // on screen in between.
+  function updateQuery(patch: Partial<ShareQuery>) {
+    setQuery((prev) => ({ ...prev, ...patch }));
+    handlePageChange(1);
   }
 
   // Keeps currentPage in sync with browser back/forward on ?page=.
@@ -210,7 +236,16 @@ export default function SharesPage() {
         // Page clamp is a side effect, so it runs OUTSIDE the state updater --
         // updaters must be pure (React can call them twice under StrictMode,
         // which would double-fire handlePageChange's history.replaceState + event).
-        const newTotalPages = Math.max(1, Math.ceil(updated.length / pageSize));
+        // Clamped against what the table will actually SHOW, not against every
+        // link on the account: with a filter running, the two differ, and the
+        // account-wide count would leave the reader on an empty page.
+        const stillShown = worthFiltering(updated.length)
+          ? applyShareQuery(updated, query)
+          : updated;
+        const newTotalPages = Math.max(
+          1,
+          Math.ceil(stillShown.length / pageSize),
+        );
         if (currentPage > newTotalPages) handlePageChange(newTotalPages);
       } else {
         // A non-ok response used to fall out of this `if` and do nothing at
@@ -280,6 +315,13 @@ export default function SharesPage() {
         <>
           {shares.length > 0 && <SharesStats shares={shares} />}
 
+          {/* Between the strip and the table, the slot /history and /repos
+              put it in. Not rendered while the list failed to load: there is
+              nothing behind it to narrow. */}
+          {!listError && showFilters && (
+            <SharesFilters query={query} onChange={updateQuery} />
+          )}
+
           {listError ? (
             // rounded-xl, not rounded-md: this fills the page-panel slot, and
             // its sibling in that same slot (SharesEmptyState) is rounded-xl.
@@ -306,6 +348,25 @@ export default function SharesPage() {
             </div>
           ) : shares.length === 0 ? (
             <SharesEmptyState />
+          ) : filteredShares.length === 0 ? (
+            // "You have no share links" and "none of them match this filter"
+            // are different claims, and only the second one is true here.
+            <EmptyState
+              icon={Search}
+              size="sm"
+              title="No links match those filters"
+              description="Search matches on the scanned URL."
+              action={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => updateQuery(SHARE_QUERY_DEFAULTS)}
+                  className="bg-transparent"
+                >
+                  Clear filters
+                </Button>
+              }
+            />
           ) : (
             <SharesTable
               shares={paginatedShares}
@@ -320,7 +381,9 @@ export default function SharesPage() {
             />
           )}
 
-          {shares.length > 0 && (
+          {/* Counts what the table is showing. With a filter running, the
+              account-wide total would describe a different list. */}
+          {!listError && filteredShares.length > 0 && (
             <PaginationControl
               currentPage={currentPage}
               totalPages={totalPages}
@@ -330,7 +393,7 @@ export default function SharesPage() {
                 setPageSize(s);
                 handlePageChange(1);
               }}
-              totalItems={shares.length}
+              totalItems={filteredShares.length}
             />
           )}
         </>

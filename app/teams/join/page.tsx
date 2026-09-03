@@ -3,7 +3,6 @@
 import { useState, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Loader2 } from "lucide-react";
 import { AuthLayout } from "@/components/auth/auth-layout";
 import {
   AuthHeading,
@@ -13,32 +12,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/components/providers/auth-provider";
 import { TeamJoinForm } from "@/components/teams/team-join-form";
+// Shared with app/teams/join/loading.tsx so the route fallback and the page's
+// own waiting state are the same element rather than two copies of it.
+import { TeamJoinLoading } from "@/components/teams/team-join-loading";
 import { TeamJoinSuccess } from "@/components/teams/team-join-success";
 import { TeamJoinInvalid } from "@/components/teams/team-join-invalid";
 import { APP_NAME } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
-
-function LoadingState({ label = "Checking your invitation" }) {
-  return (
-    <div className="border-l-2 border-border pl-4" aria-busy="true">
-      <div className="flex items-center gap-2.5">
-        <Loader2
-          className="h-4 w-4 animate-spin text-muted-foreground shrink-0"
-          aria-hidden="true"
-        />
-        {/* Hand-rolled because this state needs the spinner beside the title,
-            but the size stays on AuthHeading's Tier B scale so the heading
-            does not change size when the invitation resolves. */}
-        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
-          One moment
-        </h1>
-      </div>
-      <p className="text-sm text-muted-foreground mt-2" role="status">
-        {label}
-      </p>
-    </div>
-  );
-}
 
 function JoinContent() {
   const searchParams = useSearchParams();
@@ -50,7 +30,7 @@ function JoinContent() {
   if (success) return <TeamJoinSuccess />;
 
   if (isLoading)
-    return <LoadingState label="Checking who you are signed in as" />;
+    return <TeamJoinLoading label="Checking who you are signed in as" />;
 
   // Accepting an invite needs a session. Sending an anonymous visitor into
   // the accept button just produced a 401 they could do nothing about.
@@ -105,7 +85,7 @@ function JoinContent() {
 export default function JoinTeamPage() {
   return (
     <AuthLayout>
-      <Suspense fallback={<LoadingState />}>
+      <Suspense fallback={<TeamJoinLoading />}>
         <JoinContent />
       </Suspense>
     </AuthLayout>

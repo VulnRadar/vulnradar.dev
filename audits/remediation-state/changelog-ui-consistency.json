@@ -1,0 +1,32 @@
+[
+  {
+    "icon": "Layout",
+    "label": "Repos, Shares, Teams And Badge Look Like The Same App As History",
+    "desc": "History opens with a strip of counts, pairs a search box with a row of filters, and lists results in a bordered table whose columns are labelled and whose rows carry a coloured stripe for how bad the worst finding was. Repos, Shared reports, Teams and Badge each had a different fraction of that, so moving between two pages that do the same job felt like moving between two products. They now share one vocabulary: the same stat strip, the same search field, the same filter buttons and the same table with a column header over every column.",
+    "category": "changed"
+  },
+  {
+    "icon": "List",
+    "label": "The Repos Page Says What Is In It Before You Read Every Row",
+    "desc": "The repository list had no summary at all, an unlabelled set of columns and a plain search box. It now opens with how many repos are in your working set, how many have ever been scanned, how many came back clean and how many findings are outstanding across the lot. Each row carries a coloured stripe for the worst severity its last scan found, its columns are headed Repository, Last scan, Updated and Actions, and the severity counts are the same pills History and Assets already use rather than a fifth way of writing the same numbers. If the scan history could not be loaded the strip stays off rather than printing four confident zeroes about scans it never read.",
+    "category": "changed"
+  },
+  {
+    "icon": "Filter",
+    "label": "Filter And Sort Your Repos And Your Share Links",
+    "desc": "Repos can now be narrowed to scanned, never scanned, has findings or clean, and sorted by most recently updated, name, or most findings. Shared reports can be narrowed to clean, has warnings or exploitable and sorted newest, oldest or expiring soonest, with links that never expire sorted last rather than treated as overdue. Both rows sit exactly where History's does and an engaged filter is tinted, so a narrowed list no longer looks identical to the full one.",
+    "category": "added"
+  },
+  {
+    "icon": "Columns3",
+    "label": "No More Unlabelled Columns",
+    "desc": "A pill reading \"viewer\" sat at the end of every row on the Teams list and a pill reading \"Caution\" at the end of every row on the Badge picker, with nothing on the page saying what either of them rated. Both lists gained a header band, so the role column is headed Your role and the badge list's is headed Rating. Repos gained one over all four of its columns.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Search",
+    "label": "One Search Box, Not Four",
+    "desc": "The search field appeared in four shapes across the account: History's, a full-width one on Repos, one at different metrics on Teams, and one on the Badge page built out of a raw input with its own border and text size. They are one control now. It also appears at the same point everywhere: previously Teams waited until you had four teams before offering one while Badge waited for six scans, and Repos offered a search box over a single repository.",
+    "category": "changed"
+  }
+]

@@ -3,6 +3,10 @@
 import { Search, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
+import {
+  ListSearchInput,
+  worthFiltering,
+} from "@/components/shared/list-filter-bar";
 import { UrlDisplay } from "@/components/shared/url-display";
 import { cn } from "@/lib/ui/utils";
 import { plural } from "@/lib/ui/plural";
@@ -16,6 +20,10 @@ import {
   getRelativeTime,
   parseUrl,
 } from "./badge-types";
+
+/** The four-track layout the column header band and every row key off: the
+ *  rating glyph, the URL, the rating word, the disclosure chevron. */
+const GRID = "sm:grid-cols-[2rem_minmax(0,1fr)_auto_1rem]";
 
 interface BadgeScanListProps {
   scans: ScanEntry[];
@@ -48,29 +56,40 @@ export function BadgeScanList({
         </span>
       </div>
 
-      {scans.length > 5 && (
-        <div className="relative">
-          <Search
-            className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <input
-            type="text"
-            placeholder="Search by domain"
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            aria-label="Search recent scans by domain"
-            className={cn(
-              // rounded-md, not rounded-lg: this is a control, and it was
-              // wearing the card rung of the radius ladder.
-              "w-full pl-9 pr-3 py-2.5 rounded-md border border-border bg-card text-base sm:text-sm text-foreground placeholder:text-muted-foreground transition-colors",
-              focus.ring,
-            )}
-          />
-        </div>
+      {/* The shared search field, not a raw <input> with its own border,
+          padding and text size, which is what made this control look unlike
+          the one on every other list in the account. The threshold is the
+          shared one too: it used to wait for six scans where /teams waited for
+          four. flex-none because this sits in a COLUMN, where the field's
+          default flex-1 would stretch it to fill the panel below it. */}
+      {worthFiltering(scans.length) && (
+        <ListSearchInput
+          value={searchQuery}
+          onChange={onSearchChange}
+          placeholder="Search by domain"
+          label="Search recent scans by domain"
+          className="flex-none"
+        />
       )}
 
       <div className="rounded-xl border border-border bg-card overflow-hidden">
+        {/* The column header band, above the scroller so it stays put while
+            the rows move under it. The rating was the unlabelled column: a
+            pill reading "Caution" sat at the end of every row with nothing
+            saying what it rated. Dropped when there is nothing to head. */}
+        {filteredScans.length > 0 && (
+          <div
+            className={cn(
+              "hidden gap-3 border-b border-border bg-muted/30 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:grid",
+              GRID,
+            )}
+          >
+            <span aria-hidden />
+            <span>Scan</span>
+            <span>Rating</span>
+            <span aria-hidden />
+          </div>
+        )}
         <div className="max-h-[400px] overflow-y-auto divide-y divide-border">
           {filteredScans.length === 0 ? (
             // Was a bare sentence with nothing to click, so the only way back
@@ -106,7 +125,8 @@ export function BadgeScanList({
                   onClick={() => onSelect(scan)}
                   aria-pressed={isSelected}
                   className={cn(
-                    "flex items-center gap-3 px-4 py-3 text-left transition-colors w-full group",
+                    "flex w-full items-center gap-3 px-4 py-3 text-left transition-colors group sm:grid sm:items-center",
+                    GRID,
                     focus.ring,
                     isSelected ? "bg-primary/5" : "hover:bg-muted/50",
                   )}
@@ -128,24 +148,26 @@ export function BadgeScanList({
                       {getRelativeTime(scan.scanned_at)}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span
-                      className={cn(
-                        "text-xs font-medium px-2 py-0.5 rounded-full",
-                        getSeverityBg(scan),
-                        getSeverityColor(scan),
-                      )}
-                    >
-                      {getSeverityLabel(scan)}
-                    </span>
-                    <ChevronRight
-                      aria-hidden="true"
-                      className={cn(
-                        "h-4 w-4 text-muted-foreground transition-transform",
-                        isSelected && "text-primary rotate-90",
-                      )}
-                    />
-                  </div>
+                  {/* The pill and the chevron used to share one wrapper, which
+                      left the rating with no track of its own to sit under a
+                      header. They are two cells now, so the word lines up down
+                      the column the way it does on /assets. */}
+                  <span
+                    className={cn(
+                      "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
+                      getSeverityBg(scan),
+                      getSeverityColor(scan),
+                    )}
+                  >
+                    {getSeverityLabel(scan)}
+                  </span>
+                  <ChevronRight
+                    aria-hidden="true"
+                    className={cn(
+                      "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+                      isSelected && "text-primary rotate-90",
+                    )}
+                  />
                 </button>
               );
             })
