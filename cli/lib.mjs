@@ -152,7 +152,8 @@ Options:
   --api-key <key>        API token (or set VULNRADAR_TOKEN).
   --api-base <url>       API base URL, for a self-hosted instance
                          (or set VULNRADAR_API_BASE; default ${DEFAULTS.apiBase}).
-  --crawl                Crawl and scan up to 15 pages instead of one URL.
+  --crawl                Crawl and scan a whole site instead of one URL.
+                         The page cap comes from your plan, not the CLI.
   --max-critical <n>     Fail if criticals exceed this (default ${DEFAULTS.maxCritical}).
   --max-high <n>         Fail if highs exceed this (default ${DEFAULTS.maxHigh}).
   --max-medium <n>       Fail if mediums exceed this; -1 disables (default ${DEFAULTS.maxMedium}).
