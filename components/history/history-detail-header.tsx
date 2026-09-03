@@ -54,27 +54,41 @@ export function HistoryDetailHeader({
           >
             <ArrowLeft aria-hidden className="h-4 w-4" />
           </button>
-          <button
-            type="button"
-            onClick={copyUrl}
-            aria-label="Copy scanned URL"
-            className="group flex min-w-0 items-center gap-2 rounded text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <span className="truncate font-mono text-base font-semibold text-foreground transition-colors group-hover:text-primary">
-              {scanDetail.url.replace(/^https?:\/\//, "")}
-            </span>
-            {copied ? (
-              <Check
-                aria-hidden
-                className="h-4 w-4 shrink-0 text-[hsl(var(--success))]"
-              />
-            ) : (
-              <Copy
-                aria-hidden
-                className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-              />
-            )}
-          </button>
+          {/* The scanned URL is what this view is about, so it is the page
+              heading. Opening a scan from /history swaps out the list branch
+              and the list's "History" h1 goes with it, so the detail view had
+              no h1 at all: the document lost its title landmark and a reader
+              moving by heading found nothing to land on.
+
+              The h1 wraps the button rather than sitting inside it. A button's
+              content model is phrasing content and a heading is not, so the
+              other way round would be invalid markup. */}
+          <h1 className="flex min-w-0 items-center">
+            <button
+              type="button"
+              onClick={copyUrl}
+              aria-label="Copy scanned URL"
+              className="group flex min-w-0 items-center gap-2 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span
+                title={scanDetail.url}
+                className="truncate font-mono text-base font-semibold text-foreground transition-colors group-hover:text-primary"
+              >
+                {scanDetail.url.replace(/^https?:\/\//, "")}
+              </span>
+              {copied ? (
+                <Check
+                  aria-hidden
+                  className="h-4 w-4 shrink-0 text-[hsl(var(--success))]"
+                />
+              ) : (
+                <Copy
+                  aria-hidden
+                  className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+                />
+              )}
+            </button>
+          </h1>
           {scanDetail.authenticated && (
             <AuthenticatedBadge className="shrink-0" />
           )}

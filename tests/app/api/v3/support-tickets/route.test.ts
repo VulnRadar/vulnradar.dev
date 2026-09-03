@@ -17,6 +17,8 @@ vi.mock("@/lib/auth", () => ({ getSession: () => mockGetSession() }));
 vi.mock("@/lib/support/ticket-notify", () => ({
   notifyStaffOfTicketActivity: vi.fn(),
   notifyUserOfStaffReply: vi.fn(),
+  confirmTicketToUser: vi.fn(),
+  notifyUserOfTicketStatus: vi.fn(),
 }));
 
 const { GET, POST } = await import("@/app/api/v3/support-tickets/route");

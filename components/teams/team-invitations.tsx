@@ -2,9 +2,8 @@
 
 import { Loader2, Check, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { cn } from "@/lib/ui/utils";
-import { type TeamInvitation, ROLE_COLORS } from "./teams-types";
+import { type TeamInvitation } from "./teams-types";
+import { RolePill } from "./role-pill";
 
 interface TeamInvitationsProps {
   invitations: TeamInvitation[];
@@ -38,66 +37,56 @@ export function TeamInvitations({
         </h2>
       </div>
 
-      <Card className="border-primary/20 bg-primary/[0.03]">
-        <CardContent className="divide-y divide-border/60 p-0">
-          {invitations.map((inv) => {
-            const busy = busyId === inv.id;
-            return (
-              <div
-                key={inv.id}
-                className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-foreground">
-                    {inv.team_name}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {inv.invited_by_name
-                      ? `${inv.invited_by_name} invited you`
-                      : "You were invited"}{" "}
-                    to join as{" "}
-                    <span
-                      className={cn(
-                        "inline-flex items-center rounded-full border px-1.5 py-0.5 text-[11px] font-medium capitalize",
-                        ROLE_COLORS[inv.role],
-                      )}
-                    >
-                      {inv.role}
-                    </span>
-                  </p>
-                </div>
-                <div className="flex shrink-0 gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => onAccept(inv.id)}
-                    disabled={busy}
-                    className="h-8 gap-1.5"
-                  >
-                    {busy ? (
-                      <Loader2
-                        className="h-3.5 w-3.5 animate-spin"
-                        aria-hidden="true"
-                      />
-                    ) : (
-                      <Check className="h-3.5 w-3.5" aria-hidden="true" />
-                    )}
-                    Accept
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => onDecline(inv.id)}
-                    disabled={busy}
-                    className="h-8"
-                  >
-                    Decline
-                  </Button>
-                </div>
+      <div className="overflow-hidden rounded-xl border border-primary/20 bg-primary/[0.03] divide-y divide-border/60">
+        {invitations.map((inv) => {
+          const busy = busyId === inv.id;
+          return (
+            <div
+              key={inv.id}
+              className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-foreground">
+                  {inv.team_name}
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {inv.invited_by_name
+                    ? `${inv.invited_by_name} invited you`
+                    : "You were invited"}{" "}
+                  to join as <RolePill role={inv.role} size="sm" />
+                </p>
               </div>
-            );
-          })}
-        </CardContent>
-      </Card>
+              <div className="flex shrink-0 gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => onAccept(inv.id)}
+                  disabled={busy}
+                  className="h-8 gap-1.5"
+                >
+                  {busy ? (
+                    <Loader2
+                      className="h-3.5 w-3.5 animate-spin"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                  )}
+                  Accept
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onDecline(inv.id)}
+                  disabled={busy}
+                  className="h-8"
+                >
+                  Decline
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

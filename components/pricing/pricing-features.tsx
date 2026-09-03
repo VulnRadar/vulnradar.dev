@@ -1,9 +1,11 @@
+"use client";
+
 import { Check, Minus } from "lucide-react";
 import { PLANS } from "@/lib/billing/plans";
+import { usePlanLimits, type AllPlanLimits } from "@/lib/hooks/use-plan-limits";
 import {
   AI_USAGE_WINDOW_HOURS,
   BILLING_HISTORY_RETENTION,
-  BILLING_PLAN_LIMITS,
   GITHUB_REVIEW_FREE_TRIAL_WINDOW_HOURS,
 } from "@/lib/config/client-constants";
 
@@ -44,20 +46,6 @@ function githubReviewQuota(n: number): CellValue {
   return `${n.toLocaleString()} / ${AI_USAGE_WINDOW_HOURS}hr`;
 }
 
-/**
- * Daily scan cap. Read from the deployment's billing config rather than the
- * catalog copy in lib/billing/catalog.ts, because the plan cards above this
- * table (app/pricing/page.tsx) already read it from there: sourcing the same
- * number from two places meant one config edit could leave the card and the
- * comparison row disagreeing with each other on the same page. Falls back to
- * the catalog value for any plan the config does not name.
- */
-function dailyScans(planId: string, catalogValue: number): CellValue {
-  const configured =
-    BILLING_PLAN_LIMITS[planId as keyof typeof BILLING_PLAN_LIMITS];
-  return quota(typeof configured === "number" ? configured : catalogValue);
-}
-
 function retention(planId: string): CellValue {
   const days =
     BILLING_HISTORY_RETENTION[planId as keyof typeof BILLING_HISTORY_RETENTION];
@@ -75,106 +63,116 @@ interface Section {
   rows: Row[];
 }
 
-const SECTIONS: Section[] = [
-  {
-    title: "Scanning",
-    rows: [
-      {
-        label: "Scans per day",
-        values: PLANS.map((p) => dailyScans(p.id, p.limits.dailyScans)),
-      },
-      {
-        label: "Scans running at once",
-        values: PLANS.map((p) => quota(p.limits.concurrentScans)),
-      },
-      {
-        label: "URLs per bulk request",
-        values: PLANS.map((p) => quota(p.limits.bulkScanUrls)),
-      },
-      {
-        // Enforced since crawl shipped, advertised nowhere until now: a user
-        // met this cap as a 403 mid-crawl rather than as a plan difference
-        // (AUDIT-011#drift-23).
-        label: "Pages per crawl",
-        values: PLANS.map((p) => quota(p.limits.crawlPages)),
-      },
-      {
-        label: "Scheduled scans",
-        values: PLANS.map((p) => quota(p.limits.scheduledScans)),
-      },
-      { label: "Scan history kept", values: PLANS.map((p) => retention(p.id)) },
-    ],
-  },
-  {
-    title: "AI",
-    rows: [
-      { label: "AI chat & AI scan summaries", values: PLANS.map(() => true) },
-      {
-        label: "AI finding verification",
-        values: PLANS.map((p) => aiUsageQuota(p.limits.aiTokensPerWindow)),
-      },
-      {
-        label: "AI GitHub code review",
-        values: PLANS.map((p) =>
-          githubReviewQuota(p.limits.githubReviewTokensPerWindow),
-        ),
-      },
-    ],
-  },
-  {
-    title: "Live browser",
-    rows: [
-      {
-        label: "Live-browser minutes/month",
-        values: PLANS.map((p) => quota(p.limits.browserbaseMinutesPerMonth)),
-      },
-      {
-        label: "Priority queue for live-browser sessions",
-        values: PLANS.map((p) => p.id !== "free"),
-      },
-    ],
-  },
-  {
-    title: "API & integrations",
-    rows: [
-      {
-        label: "API requests per day",
-        values: PLANS.map((p) => quota(p.limits.apiRequestsPerDay)),
-      },
-      { label: "API keys", values: PLANS.map((p) => quota(p.limits.apiKeys)) },
-      {
-        label: "Webhook endpoints",
-        values: PLANS.map((p) => quota(p.limits.webhooks)),
-      },
-      { label: "REST API and bearer tokens", values: PLANS.map(() => true) },
-    ],
-  },
-  {
-    title: "Team",
-    rows: [
-      {
-        label: "Teams you can create",
-        values: PLANS.map((p) => quota(p.limits.teams)),
-      },
-      {
-        label: "Team members per team",
-        values: PLANS.map((p) => quota(p.limits.teamMembers)),
-      },
-    ],
-  },
-  {
-    title: "Included on every plan",
-    rows: [
-      { label: "Every scanner category", values: PLANS.map(() => true) },
-      { label: "Stable finding IDs", values: PLANS.map(() => true) },
-      { label: "Self-hostable", values: PLANS.map(() => true) },
-      {
-        label: "Verified domains (unlimited)",
-        values: PLANS.map(() => true),
-      },
-    ],
-  },
-];
+/**
+ * Every row's numbers come from `limits`, which usePlanLimits resolves from
+ * the admin-editable BILLING_* settings the API actually enforces against.
+ *
+ * This table used to be built from lib/billing/catalog.ts's hardcoded PLANS[]
+ * copy, under a comment claiming it "cannot drift from what the API actually
+ * enforces". It could: enforcement resolves 48 registry settings
+ * (lib/billing/plan-limits.ts), and any one admin edit desynchronised the
+ * advertised number from the charged one, on the page where someone decides
+ * what to pay (AUDIT-011#drift-10).
+ */
+function buildSections(limits: AllPlanLimits): Section[] {
+  const each = (field: keyof AllPlanLimits[keyof AllPlanLimits]) =>
+    PLANS.map((p) => limits[p.id][field]);
+
+  return [
+    {
+      title: "Scanning",
+      rows: [
+        {
+          label: "Scans per day",
+          values: each("dailyScans").map(quota),
+        },
+        {
+          label: "Scans running at once",
+          values: each("concurrentScans").map(quota),
+        },
+        {
+          label: "URLs per bulk request",
+          values: each("bulkScanUrls").map(quota),
+        },
+        {
+          // Enforced since crawl shipped, advertised nowhere until now: a user
+          // met this cap as a 403 mid-crawl rather than as a plan difference
+          // (AUDIT-011#drift-23).
+          label: "Pages per crawl",
+          values: each("crawlPages").map(quota),
+        },
+        {
+          label: "Scheduled scans",
+          values: each("scheduledScans").map(quota),
+        },
+        {
+          label: "Scan history kept",
+          values: PLANS.map((p) => retention(p.id)),
+        },
+      ],
+    },
+    {
+      title: "AI",
+      rows: [
+        // "AI chat & AI scan summaries" used to sit here as four identical
+        // ticks. So did "REST API and bearer tokens" below, and every row of an
+        // "Included on every plan" section. A comparison table exists to make
+        // differences findable, and a row that is the same in all four columns
+        // is sixteen cells of noise between the reader and the rows that do
+        // differ. They are stated once, in prose, in the strip under the plan
+        // rail above (see UNIVERSAL in app/pricing/page.tsx).
+        {
+          label: "AI finding verification",
+          values: each("aiTokensPerWindow").map(aiUsageQuota),
+        },
+        {
+          label: "AI GitHub code review",
+          values: each("githubReviewTokensPerWindow").map(githubReviewQuota),
+        },
+      ],
+    },
+    {
+      title: "Live browser",
+      rows: [
+        {
+          label: "Live-browser minutes/month",
+          values: each("browserbaseMinutesPerMonth").map(quota),
+        },
+        {
+          label: "Priority queue for live-browser sessions",
+          values: PLANS.map((p) => p.id !== "free"),
+        },
+      ],
+    },
+    {
+      title: "API & integrations",
+      rows: [
+        {
+          label: "API requests per day",
+          values: each("apiRequestsPerDay").map(quota),
+        },
+        { label: "API keys", values: each("apiKeys").map(quota) },
+        {
+          label: "Webhook endpoints",
+          values: each("webhooks").map(quota),
+        },
+      ],
+    },
+    {
+      title: "Team",
+      rows: [
+        {
+          label: "Teams you can create",
+          values: each("teams").map(quota),
+        },
+        {
+          label: "Team members per team",
+          values: each("teamMembers").map(quota),
+        },
+      ],
+    },
+  ];
+}
 
 function Cell({ value, label }: { value: CellValue; label: string }) {
   if (typeof value === "boolean") {
@@ -207,21 +205,22 @@ function Cell({ value, label }: { value: CellValue; label: string }) {
 }
 
 export function PricingFeatures() {
+  // Resolved from the same admin-editable settings the API enforces against,
+  // falling back to the shipped catalog until the fetch lands.
+  const sections = buildSections(usePlanLimits());
+
   return (
-    <section className="border-t border-border/50">
+    <section id="compare" className="scroll-mt-20 border-t border-border/50">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
         <div className="mb-8 max-w-xl">
           <h2 className="text-xl sm:text-2xl font-semibold tracking-tight mb-2">
             Line by line
           </h2>
-          {/* This used to claim the table "cannot drift from what the API
-              actually enforces". It can: enforcement resolves the live,
-              admin-editable billing settings, while this table is built from
-              the shipped plan config. Saying so out loud is better than an
-              assurance that stops anyone checking. */}
           <p className="text-sm text-muted-foreground leading-relaxed">
-            These are the plan limits this deployment ships with. Your billing
-            page is always the authority on what your own account gets.
+            Every limit that changes between plans, and nothing that does not.
+            These are the limits this deployment enforces, read from the same
+            settings the API checks against; your billing page is always the
+            authority on what your own account gets.
           </p>
         </div>
 
@@ -247,7 +246,7 @@ export function PricingFeatures() {
                 ))}
               </tr>
             </thead>
-            {SECTIONS.map((section) => (
+            {sections.map((section) => (
               <tbody key={section.title}>
                 <tr className="border-b border-border/40 bg-muted/10">
                   <th

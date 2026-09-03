@@ -27,6 +27,7 @@ import { planMeetsMinimum, planRank } from "@/lib/billing/plan-limits";
 import { syncPreStaffPlanForManualPlanChange } from "@/lib/billing/staff-plan";
 import { APP_URL, ROUTES } from "@/lib/config/constants";
 import pool from "@/lib/database/db";
+import { sendEmail, creditPurchaseReceiptEmail } from "@/lib/email/email";
 
 export type CreateSubscriptionResult =
   | { kind: "new"; clientSecret: string; subscriptionId: string }
@@ -264,6 +265,57 @@ export interface ConfirmSubscriptionResult {
 }
 
 /**
+ * Receipt for a one-time credit purchase, from the fast path.
+ *
+ * This is the PRIMARY path: the client confirms payment and calls straight
+ * into here, and the Stripe webhook's payment_intent.succeeded branch is only
+ * the backup for a closed tab. The webhook receipts inside its own
+ * `result.credited` guard, so if this path credits first (which it normally
+ * does) the webhook credits nothing and sends nothing. Without this call, the
+ * common case is the silent one.
+ *
+ * `credited` is what makes it safe to have both: whichever path wins the
+ * ON CONFLICT is the only one that returns true, so the customer gets exactly
+ * one receipt.
+ */
+async function receiptCreditPurchase(opts: {
+  credited: boolean;
+  userId: number;
+  creditLabel: string;
+  quantity: number;
+  amountCents: number;
+  currency: string;
+  createdAt: number;
+}): Promise<void> {
+  if (!opts.credited) return;
+  try {
+    const res = await pool.query<{ email: string }>(
+      "SELECT email FROM users WHERE id = $1",
+      [opts.userId],
+    );
+    const email = res.rows[0]?.email;
+    if (!email) return;
+    await sendEmail({
+      to: email,
+      ...creditPurchaseReceiptEmail({
+        creditLabel: opts.creditLabel,
+        quantity: opts.quantity,
+        amountCents: opts.amountCents,
+        currency: opts.currency,
+        date: new Date(opts.createdAt * 1000).toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        }),
+        invoiceUrl: null,
+      }),
+    });
+  } catch (err) {
+    console.error("[Stripe] credit receipt email failed:", err);
+  }
+}
+
+/**
  * Writes a subscription's current Stripe status straight to the users row,
  * called right after the client confirms payment (or right after an
  * in-place plan switch) instead of waiting on the Stripe webhook. A
@@ -357,9 +409,9 @@ export interface CreateAiCreditPaymentIntentResult {
  * stripe.confirmPayment, then verified server-side by
  * confirmAiCreditPurchase below -- the same "deferred payment intent"
  * pattern components/billing/stripe-checkout.tsx uses for a subscription,
- * mirrored in components/billing/ai-credit-checkout.tsx for this one-time
- * purchase, rendered on the dedicated app/checkout/credits/page.tsx tier
- * picker instead of redirecting to Stripe's own hosted Checkout page.
+ * mirrored in components/billing/credit-checkout.tsx for this and the other
+ * two one-time purchases, rendered on the app/ai-credits tier picker instead
+ * of redirecting to Stripe's own hosted Checkout page.
  *
  * The customer-resolution block below (get-or-create, repair a stale
  * stored stripe_customer_id) is deliberately mirrored from createSubscription
@@ -506,11 +558,20 @@ export async function confirmAiCreditPurchase(
   if (succeeded) {
     // Idempotent -- see creditAiCreditPurchase's own comment for why this
     // needs to be more than a plain addAiCreditBalance call here.
-    await creditAiCreditPurchase(
+    const { credited } = await creditAiCreditPurchase(
       paymentIntent.id,
       sessionUser.userId,
       tier!.tokens,
     );
+    await receiptCreditPurchase({
+      credited,
+      userId: sessionUser.userId,
+      creditLabel: "AI analysis tokens",
+      quantity: tier!.tokens,
+      amountCents: tier!.priceInCents,
+      currency: paymentIntent.currency,
+      createdAt: paymentIntent.created,
+    });
   }
 
   const balance = await getAiCreditBalance(sessionUser.userId);
@@ -693,11 +754,20 @@ export async function confirmGithubCreditPurchase(
   const succeeded = paymentIntent.status === "succeeded" && !!tier;
 
   if (succeeded) {
-    await creditGithubCreditPurchase(
+    const { credited } = await creditGithubCreditPurchase(
       paymentIntent.id,
       sessionUser.userId,
       tier!.tokens,
     );
+    await receiptCreditPurchase({
+      credited,
+      userId: sessionUser.userId,
+      creditLabel: "GitHub review tokens",
+      quantity: tier!.tokens,
+      amountCents: tier!.priceInCents,
+      currency: paymentIntent.currency,
+      createdAt: paymentIntent.created,
+    });
   }
 
   const balance = await getGithubCreditBalance(sessionUser.userId);
@@ -840,11 +910,20 @@ export async function confirmBrowserbaseCreditPurchase(
   const succeeded = paymentIntent.status === "succeeded" && !!tier;
 
   if (succeeded) {
-    await creditBrowserbaseCreditPurchase(
+    const { credited } = await creditBrowserbaseCreditPurchase(
       paymentIntent.id,
       sessionUser.userId,
       tier!.minutes * 60,
     );
+    await receiptCreditPurchase({
+      credited,
+      userId: sessionUser.userId,
+      creditLabel: "Browserbase minutes",
+      quantity: tier!.minutes,
+      amountCents: tier!.priceInCents,
+      currency: paymentIntent.currency,
+      createdAt: paymentIntent.created,
+    });
   }
 
   const balanceSeconds = await getBrowserbaseCreditBalanceSeconds(

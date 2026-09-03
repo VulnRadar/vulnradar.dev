@@ -33,8 +33,13 @@ export function ConnectPill(props: ConnectPillProps): TemplateResult {
   // status message (SC 4.1.3). The <img> beside the label is decorative and
   // already carries alt="".
   if (!props.me && props.initializing) {
+    // Not `.disconnected`, which paints the dot in --vr-danger: this state
+    // lasts as long as one auth round trip on EVERY open, so that class made
+    // a red "something is wrong" dot flash before every successful connect,
+    // and made a first run look like a failure rather than a setup step. The
+    // bare .pill dot is --vr-info, which is what "we do not know yet" is.
     return html`
-      <div class="pill disconnected" role="status">
+      <div class="pill" role="status">
         ${ICON}
         <span class="label">Connecting&hellip;</span>
       </div>

@@ -58,6 +58,28 @@ export const STAFF_TICKET_STATUS_LABELS: Record<TicketStatus, string> = {
   closed: "Closed",
 };
 
+/**
+ * What happens NEXT, for the requester, one sentence per state. Lives beside
+ * the labels because the two must never overlap: the badge names the state and
+ * this sentence says what to do about it, and a ticket that said both read as
+ * the same fact twice on one screen. Each of these used to open by restating
+ * its own badge ("Marked resolved" under a Resolved badge), and the closed one
+ * was written a third time in place of the reply box.
+ *
+ * `open` and `awaiting_staff` share a sentence on purpose: they differ in who
+ * moved last, which the badge carries, not in what happens next.
+ *
+ * tests/lib/support/ticket-constants.test.ts holds the no-overlap rule.
+ */
+export const TICKET_STATUS_NEXT: Record<TicketStatus, string> = {
+  open: "A reply comes back here, by email and in your notifications.",
+  awaiting_staff:
+    "A reply comes back here, by email and in your notifications.",
+  awaiting_user: "Send a reply and it goes straight back to the team.",
+  resolved: "Reopen it if the problem is still there.",
+  closed: "No more replies here. Open a new ticket if you still need help.",
+};
+
 /** A ticket the user can still add messages to (not resolved/closed). */
 export const OPEN_TICKET_STATUSES: readonly TicketStatus[] = [
   "open",

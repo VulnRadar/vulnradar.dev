@@ -97,6 +97,12 @@ const ERROR_META: Record<
     icon: typeof ShieldX;
     rail: string;
     accent: string;
+    /** Same subject-panel rule the scan verdict follows: the one panel that
+     *  says what this screen IS carries the tone. /5 for the contrast reason
+     *  documented on VERDICT in components/scanner/scan-summary.tsx. */
+    tint: string;
+    edge: string;
+    tile: string;
   }
 > = {
   blocked: {
@@ -106,6 +112,9 @@ const ERROR_META: Record<
     icon: ShieldOff,
     rail: "bg-[hsl(var(--severity-medium))]",
     accent: "text-[hsl(var(--severity-medium))]",
+    tint: "bg-[hsl(var(--severity-medium))]/5",
+    edge: "border-[hsl(var(--severity-medium))]/30",
+    tile: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))]",
   },
   network: {
     title: "The target never answered",
@@ -114,6 +123,9 @@ const ERROR_META: Record<
     icon: WifiOff,
     rail: "bg-destructive",
     accent: "text-destructive",
+    tint: "bg-destructive/5",
+    edge: "border-destructive/30",
+    tile: "bg-destructive/10 text-destructive",
   },
   rate_limit: {
     title: "You have used up this window's scans",
@@ -123,6 +135,9 @@ const ERROR_META: Record<
     icon: Clock,
     rail: "bg-primary",
     accent: "text-primary",
+    tint: "bg-primary/5",
+    edge: "border-primary/30",
+    tile: "bg-primary/10 text-primary",
   },
   validation: {
     title: "The scanner rejected that input",
@@ -131,6 +146,9 @@ const ERROR_META: Record<
     icon: AlertCircle,
     rail: "bg-[hsl(var(--severity-medium))]",
     accent: "text-[hsl(var(--severity-medium))]",
+    tint: "bg-[hsl(var(--severity-medium))]/5",
+    edge: "border-[hsl(var(--severity-medium))]/30",
+    tile: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))]",
   },
   server: {
     title: "The scanner broke, not your target",
@@ -139,6 +157,9 @@ const ERROR_META: Record<
     icon: ServerCrash,
     rail: "bg-destructive",
     accent: "text-destructive",
+    tint: "bg-destructive/5",
+    edge: "border-destructive/30",
+    tile: "bg-destructive/10 text-destructive",
   },
   auth_failed: {
     title: "Login failed before the scan ran",
@@ -147,6 +168,9 @@ const ERROR_META: Record<
     icon: KeyRound,
     rail: "bg-[hsl(var(--severity-medium))]",
     accent: "text-[hsl(var(--severity-medium))]",
+    tint: "bg-[hsl(var(--severity-medium))]/5",
+    edge: "border-[hsl(var(--severity-medium))]/30",
+    tile: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))]",
   },
   generic: {
     title: "The scan did not finish",
@@ -155,6 +179,9 @@ const ERROR_META: Record<
     icon: ShieldX,
     rail: "bg-destructive",
     accent: "text-destructive",
+    tint: "bg-destructive/5",
+    edge: "border-destructive/30",
+    tile: "bg-destructive/10 text-destructive",
   },
 };
 
@@ -189,22 +216,51 @@ export function DashboardErrorState({
 
   return (
     <div className="pt-8">
-      <div className="relative overflow-hidden rounded-xl border border-border bg-card">
+      {/* This state replaces ScanHero, which owns the page's only h1, so a
+          failed scan left the document with no heading at all. Same fix, and
+          the same reasoning, as ScanningIndicator's sr-only h1: the panel
+          below already says this to anyone who can see it. */}
+      <h1 className="sr-only">{meta.title}</h1>
+      {/* The failure is what this screen is about, so it gets the verdict
+          treatment: tone rail, tinted surface, toned edge, and a headline at
+          the same weight a scan verdict gets. It used to be a neutral bg-card
+          box with a text-base title, which is what a successful scan's summary
+          also looked like. */}
+      <div
+        className={cn(
+          "relative overflow-hidden rounded-xl border bg-card",
+          meta.edge,
+        )}
+      >
+        <span
+          aria-hidden
+          className={cn("pointer-events-none absolute inset-0", meta.tint)}
+        />
         <span
           aria-hidden
           className={cn("absolute inset-y-0 left-0 w-1", meta.rail)}
         />
-        <div className="flex flex-col gap-4 py-5 pl-5 pr-4 sm:pl-6 sm:pr-5">
-          <div className="flex items-start gap-3">
-            <Icon
+        <div className="relative flex flex-col gap-4 py-5 pl-5 pr-4 sm:py-6 sm:pl-6 sm:pr-5">
+          <div className="flex items-start gap-3.5">
+            <span
               aria-hidden
-              className={cn("mt-0.5 h-5 w-5 shrink-0", meta.accent)}
-            />
+              className={cn(
+                "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg",
+                meta.tile,
+              )}
+            >
+              <Icon className="h-6 w-6" />
+            </span>
             <div className="min-w-0 flex-1">
-              <h2 className="text-base font-semibold text-foreground">
+              <h2
+                className={cn(
+                  "text-balance text-xl font-semibold leading-tight tracking-tight sm:text-2xl",
+                  meta.accent,
+                )}
+              >
                 {meta.title}
               </h2>
-              <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
                 {meta.description}
               </p>
             </div>
@@ -212,14 +268,14 @@ export function DashboardErrorState({
 
           {/* Target line */}
           {url && (
-            <div className="flex flex-wrap items-center gap-2 rounded border border-border bg-muted/40 px-3 py-2">
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2">
               <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
                 {url}
               </span>
               {status !== undefined && (
                 <span
                   className={cn(
-                    "shrink-0 rounded px-1.5 py-0.5 font-mono text-[11px] tabular-nums",
+                    "shrink-0 rounded-md px-1.5 py-0.5 font-mono text-[11px] tabular-nums",
                     status >= 500
                       ? "bg-destructive/10 text-destructive"
                       : status >= 400
@@ -234,7 +290,7 @@ export function DashboardErrorState({
           )}
 
           {/* Raw message from the scanner */}
-          <div className="overflow-hidden rounded border border-border">
+          <div className="overflow-hidden rounded-md border border-border">
             <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-3 py-1.5">
               <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                 Scanner output
@@ -244,7 +300,7 @@ export function DashboardErrorState({
                 onClick={copyDetails}
                 aria-label="Copy error details"
                 className={cn(
-                  "inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium transition-colors",
+                  "inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium transition-colors",
                   copied
                     ? "text-[hsl(var(--success))]"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -301,7 +357,7 @@ export function DashboardErrorState({
             {(kind === "blocked" || kind === "server") && (
               <a
                 href={`mailto:${SUPPORT_EMAIL}`}
-                className="ml-auto rounded text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                className="ml-auto rounded-sm text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               >
                 Think this is wrong? Mail {SUPPORT_EMAIL}
               </a>

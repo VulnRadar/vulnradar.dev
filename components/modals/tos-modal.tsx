@@ -7,6 +7,7 @@ import { APP_NAME, API } from "@/lib/config/client-constants";
 import { refreshAuthCache } from "@/components/providers/auth-provider";
 import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
 import { cn } from "@/lib/ui/utils";
+import { modalBand, modalPanel } from "@/components/ui/modal-grammar";
 
 interface TosModalProps {
   onAccept: () => void;
@@ -226,7 +227,18 @@ export function TosModal({
         .check-pop   { animation: checkPop 0.25s cubic-bezier(0.34,1.56,0.64,1) forwards; }
       `}</style>
 
-      {/* ── Backdrop ── */}
+      {/* ── Backdrop ──
+          Deliberately NOT ModalShell and deliberately not the shared scrim.
+          Accepting the terms is mandatory, so this is the one modal in the
+          product that must not close on a scrim click or on Escape, and
+          ModalShell does both. It also lands at z-100 (over the header and any
+          banner) and slides up from the bottom edge on mobile
+          (`items-end sm:items-center`, no padding below 640px), which is why
+          the panel keeps square lower corners there. The heavier
+          `bg-background/65 backdrop-blur-xl` is kept over the grammar's lighter
+          scrim for the same reason: the page behind is genuinely unusable
+          until this is answered, and it should look it. Everything else about
+          the panel now comes from modal-grammar. */}
       <div
         className={`fixed inset-0 z-100 flex items-end sm:items-center justify-center sm:p-4 ${mounted ? "tos-backdrop" : "opacity-0"}`}
       >
@@ -235,16 +247,24 @@ export function TosModal({
         {/* ── Modal card ── */}
         <div
           {...dialogProps}
-          className={`relative w-full sm:max-w-[432px] rounded-t-3xl sm:rounded-2xl border border-border/50 flex flex-col overflow-hidden outline-hidden ${mounted ? "tos-modal" : "opacity-0"}`}
-          style={{
-            background: "hsl(var(--card))",
-            maxHeight: "calc(100dvh - 48px)",
-            boxShadow:
-              "0 0 0 1px hsl(var(--border)/0.4), 0 24px 64px -8px hsl(0 0% 0% / 0.35), 0 8px 20px -4px hsl(0 0% 0% / 0.15)",
-          }}
+          className={cn(
+            modalPanel,
+            // rounded-none before rounded-t-lg: modalPanel rounds all four
+            // corners and the bottom two have to stay square against the
+            // viewport edge on mobile. tailwind-merge only lets a later
+            // `rounded-*` clear an earlier `rounded-t-*`, never the reverse,
+            // so the reset is spelled out rather than implied.
+            "rounded-none rounded-t-lg sm:max-w-[432px] sm:rounded-lg",
+            "flex flex-col overflow-hidden outline-hidden",
+            mounted ? "tos-modal" : "opacity-0",
+          )}
         >
-          {/* ── Header ── */}
-          <div className="px-6 pt-6 pb-4 border-b border-border/40 shrink-0">
+          {/* ── Header ──
+              The band's rhythm (px-5 py-4, border-border/50) without
+              modalBand.header itself: that constant is a `flex-col space-y-1.5`
+              stack, and this header is a progress meter row over a title block
+              with its own spacing. */}
+          <div className="px-5 py-4 border-b border-border/50 shrink-0">
             <div className="flex items-center justify-between gap-3">
               <span
                 className={cn(
@@ -311,7 +331,7 @@ export function TosModal({
           </div>
 
           {/* ── Checkboxes ── */}
-          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2 overscroll-contain">
+          <div className={cn(modalBand.body, "space-y-2 overscroll-contain")}>
             {CHECKBOXES.map(({ key, title, label }, i) => {
               // The one item with actual legal teeth (unauthorized scanning
               // can be a federal crime) was previously styled identically
@@ -407,8 +427,12 @@ export function TosModal({
             })}
           </div>
 
-          {/* ── Footer ── */}
-          <div className="px-6 py-4 border-t border-border/40 shrink-0 space-y-3">
+          {/* ── Footer ──
+              Same rhythm as modalBand.footer but not that constant either: it
+              is a `flex-col-reverse ... sm:flex-row` button row, and this
+              footer stacks an error line, a full-width accept button and a
+              legal note that must stay in that order. */}
+          <div className="px-5 py-4 border-t border-border/50 shrink-0 space-y-3">
             {acceptError && (
               <p role="alert" className="text-sm text-destructive text-center">
                 {acceptError}

@@ -5,6 +5,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Command as CommandPrimitive } from "cmdk";
 import { Search } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
+import { modalPanel, modalScrim } from "@/components/ui/modal-grammar";
 
 /**
  * cmdk primitives, styled to this theme.
@@ -44,9 +45,23 @@ function CommandDialog({
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-80 bg-background/80 backdrop-blur-xs data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+        {/* z-80, not the modal grammar's z-50: the palette is reachable by
+            keyboard from anywhere, including on top of an open dialog, so it
+            has to stack above one. Everything else about the panel is the
+            house grammar. */}
+        <DialogPrimitive.Overlay
+          className={cn(
+            modalScrim,
+            "z-80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+          )}
+        />
         <div className="fixed inset-0 z-80 flex items-start justify-center p-4 pt-[12vh]">
-          <DialogPrimitive.Content className="relative w-full max-w-xl overflow-hidden rounded-xl border border-border bg-card shadow-2xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
+          <DialogPrimitive.Content
+            className={cn(
+              modalPanel,
+              "z-80 max-w-xl overflow-hidden data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+            )}
+          >
             {/* Both are required for the dialog to be announced properly and
                 both are visual noise in a palette, so they are read-only text
                 for assistive tech. */}
@@ -68,7 +83,7 @@ const CommandInput = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.Input>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.Input>
 >(({ className, ...props }, ref) => (
-  <div className="flex items-center gap-2.5 border-b border-border/60 px-4">
+  <div className="flex items-center gap-2.5 border-b border-border/50 px-4">
     <Search aria-hidden className="h-4 w-4 shrink-0 text-muted-foreground" />
     <CommandPrimitive.Input
       ref={ref}

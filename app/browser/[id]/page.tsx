@@ -439,7 +439,12 @@ export default function BrowserViewerPage({ params }: PageProps) {
                   : "Maximum session time reached (5 min total)"
               }
               className={cn(
-                "flex items-center justify-center h-6 w-6 rounded border transition-colors",
+                // h-9 w-9 below sm rather than the app's h-11: this control
+                // sits inline with a compact timer pill in a floating dock, so
+                // a 44px box would set the whole bar's height. 36px still
+                // clears the 24px minimum by a wide margin, where the flat
+                // 24px it had did not.
+                "flex items-center justify-center h-9 w-9 rounded border transition-colors sm:h-6 sm:w-6",
                 canExtend
                   ? "border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
                   : "border-border/30 bg-muted/20 text-muted-foreground/30 cursor-not-allowed",
@@ -709,11 +714,18 @@ export default function BrowserViewerPage({ params }: PageProps) {
             ) : (
               <>
                 {/* Column headers */}
-                <div className="grid grid-cols-[44px_36px_40px_1fr] border-b border-border/40 bg-muted/30 shrink-0">
+                {/* The resource type drops out below sm. 120px of fixed
+                    columns in front of the path left it about 170px on a
+                    320px screen, so every host clipped to a stub; the type is
+                    the least load-bearing of the three. */}
+                <div className="grid grid-cols-[36px_32px_1fr] border-b border-border/40 bg-muted/30 shrink-0 sm:grid-cols-[44px_36px_40px_1fr]">
                   {["Method", "Stat", "Type", "Path"].map((h) => (
                     <div
                       key={h}
-                      className="px-2 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide"
+                      className={cn(
+                        "px-2 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide",
+                        h === "Type" && "hidden sm:block",
+                      )}
                     >
                       {h}
                     </div>
@@ -740,7 +752,7 @@ export default function BrowserViewerPage({ params }: PageProps) {
                     networkRequests.map((req) => (
                       <div
                         key={req.requestId}
-                        className="grid grid-cols-[44px_36px_40px_1fr] items-center border-b border-border/20 hover:bg-muted/25 transition-colors"
+                        className="grid grid-cols-[36px_32px_1fr] items-center border-b border-border/20 hover:bg-muted/25 transition-colors sm:grid-cols-[44px_36px_40px_1fr]"
                         title={req.url}
                       >
                         <div className="px-2 py-1.5">
@@ -765,7 +777,7 @@ export default function BrowserViewerPage({ params }: PageProps) {
                             {statusLabel(req.status, req.failed)}
                           </span>
                         </div>
-                        <div className="px-2 py-1.5">
+                        <div className="hidden px-2 py-1.5 sm:block">
                           <span className="text-[10px] font-mono text-muted-foreground/70 lowercase">
                             {resourceType(req.mimeType)}
                           </span>

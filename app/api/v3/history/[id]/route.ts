@@ -20,8 +20,12 @@ import {
   authorizeScanTeamChange,
   setScanTeams,
 } from "@/lib/teams/scan-teams";
+import { rateLimitedResponse } from "@/lib/api/rate-limit-response";
 import { resolveScanRow } from "@/lib/history/resolve-scan";
-import { attachRemediation } from "@/lib/scanner/remediation-store";
+import {
+  attachRemediation,
+  attachFalsePositiveVerdicts,
+} from "@/lib/scanner/remediation-store";
 import type { Vulnerability } from "@/lib/scanner/types";
 
 export async function GET(
@@ -68,10 +72,7 @@ export async function GET(
       keyData.dailyLimit,
     );
     if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { error: `Rate limit exceeded. Resets at ${rateLimit.resetsAt}` },
-        { status: 429 },
-      );
+      return rateLimitedResponse(rateLimit);
     }
 
     apiKeyId = keyData.keyId;
@@ -136,10 +137,13 @@ export async function GET(
     // finding they marked on an earlier scan of this target shows the same
     // status here. Owner-only -- deliberately NOT done in the team-member
     // branch below, since remediation tracking is private to its owner.
-    const ownedFindings = await attachRemediation(
+    const ownedFindings = await attachFalsePositiveVerdicts(
       authedUserId,
-      scan.url,
-      (scan.findings || []) as Vulnerability[],
+      await attachRemediation(
+        authedUserId,
+        scan.url,
+        (scan.findings || []) as Vulnerability[],
+      ),
     );
 
     return NextResponse.json({
@@ -258,10 +262,7 @@ export async function PATCH(
       keyData.dailyLimit,
     );
     if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { error: `Rate limit exceeded. Resets at ${rateLimit.resetsAt}` },
-        { status: 429 },
-      );
+      return rateLimitedResponse(rateLimit);
     }
 
     apiKeyId = keyData.keyId;
@@ -488,10 +489,7 @@ export async function DELETE(
       keyData.dailyLimit,
     );
     if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { error: `Rate limit exceeded. Resets at ${rateLimit.resetsAt}` },
-        { status: 429 },
-      );
+      return rateLimitedResponse(rateLimit);
     }
 
     apiKeyId = keyData.keyId;

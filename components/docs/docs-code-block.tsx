@@ -129,15 +129,27 @@ export function CodeBlock({
   return (
     <figure
       className={cn(
-        "not-prose overflow-hidden rounded-lg border border-border/60 bg-muted/30",
+        // Full-strength --muted rather than a /30 wash. --muted sits 5% darker
+        // than --background in light mode and 10% lighter in dark, so at full
+        // opacity the block reads as a distinct surface in both; at /30 it was
+        // roughly a 1.5% step and a snippet in the middle of prose did not
+        // announce itself as one.
+        "not-prose overflow-hidden rounded-lg border border-border bg-muted/60",
         className,
       )}
     >
-      <figcaption className="flex items-center justify-between gap-2 border-b border-border/60 bg-muted/50 px-3 py-1.5">
+      <figcaption className="flex items-center justify-between gap-2 border-b border-border bg-muted px-3 py-1.5">
         <span
           className={cn(
-            "min-w-0 flex-1 truncate text-[11px] text-muted-foreground",
-            filename ? "font-mono" : "font-medium",
+            "min-w-0 flex-1 text-muted-foreground",
+            filename
+              ? // A filename is unbounded, so that one clips.
+                "truncate font-mono text-[11px]"
+              : // The language is a label, not content: set as a tracked
+                // micro-caps chip so it never competes with the code itself.
+                // It is one of our own words ("BASH", "JSON"), so it does not
+                // truncate.
+                "font-mono text-[10px] font-semibold uppercase tracking-[0.12em]",
           )}
         >
           {label}
@@ -168,11 +180,22 @@ interface InlineCodeProps {
   className?: string;
 }
 
+/**
+ * Inline code was brand blue, and so is every link in docs prose. In a
+ * paragraph that mentions `scanners` and links to the API reference in the
+ * same sentence, the two were the same colour with no underline on either,
+ * so the only way to tell a clickable thing from a literal was to point at
+ * it. The chip already reads as code from the mono face and the tinted
+ * background; --foreground makes it the more legible of the two as well.
+ *
+ * Sized in em rather than a fixed text-xs so it scales with whatever it sits
+ * in: 12px was correct in a 14px paragraph and undersized in a heading.
+ */
 export function InlineCode({ children, className }: InlineCodeProps) {
   return (
     <code
       className={cn(
-        "bg-muted px-1.5 py-0.5 rounded text-xs font-mono text-primary wrap-break-word",
+        "rounded bg-muted px-1.5 py-0.5 font-mono text-[0.9em] text-foreground wrap-break-word",
         className,
       )}
     >

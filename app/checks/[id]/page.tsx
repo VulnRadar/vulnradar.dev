@@ -311,14 +311,21 @@ export default async function CheckPage({
             </h2>
             <ul className="grid sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
               {siblings.map((c) => (
-                <li key={c.id} className="flex items-center gap-2 min-w-0">
+                <li
+                  key={c.id}
+                  // items-start and no truncate, same as the /checks index: a
+                  // check title is catalogue copy, and clipping it at the
+                  // ~195px a phone gives this row destroys the only thing the
+                  // row says.
+                  className="flex items-start gap-2 min-w-0"
+                >
                   <SeverityPill
                     severity={c.severity}
                     className="scale-90 shrink-0"
                   />
                   <Link
                     href={checkPath(c.id)}
-                    className="text-muted-foreground hover:text-foreground transition-colors truncate"
+                    className="text-muted-foreground hover:text-foreground transition-colors"
                   >
                     {c.title}
                   </Link>

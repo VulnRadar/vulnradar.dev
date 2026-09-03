@@ -4,6 +4,8 @@ import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { markTeamInviteNotificationsHandled } from "@/lib/notifications/user-notifications";
 import { teamsDisabledResponse } from "@/lib/teams/feature-gate";
+import { sendNotificationEmail } from "@/lib/notifications/notifications";
+import { teamInviteResolvedEmail } from "@/lib/email/email";
 
 /**
  * The current user's OWN pending team invitations, matched by their email, so
@@ -72,8 +74,13 @@ export async function DELETE(request: Request) {
 
   // Scope the delete to the caller's own email so an inviteId (a small,
   // guessable integer) can't be used to decline someone else's invite.
-  const del = await pool.query(
-    "DELETE FROM team_invites WHERE id = $1 AND email = $2 AND accepted_at IS NULL",
+  // RETURNING, because the row carrying "who sent this" is gone by the time
+  // anyone could look it up, and the inviter is the one person who needs to
+  // know the answer.
+  const del = await pool.query<{ invited_by: number | null; team_id: number }>(
+    `DELETE FROM team_invites
+       WHERE id = $1 AND email = $2 AND accepted_at IS NULL
+       RETURNING invited_by, team_id`,
     [inviteId, email],
   );
   if (!del.rowCount) {
@@ -81,6 +88,31 @@ export async function DELETE(request: Request) {
       { error: "Invitation not found." },
       { status: 404 },
     );
+  }
+
+  const declined = del.rows?.[0];
+  if (declined?.invited_by && declined.invited_by !== session.userId) {
+    const invitedBy = declined.invited_by;
+    void (async () => {
+      try {
+        const inviter = await pool.query<{ email: string; team_name: string }>(
+          `SELECT u.email, t.name AS team_name
+             FROM users u, teams t
+            WHERE u.id = $1 AND t.id = $2`,
+          [invitedBy, declined.team_id],
+        );
+        const row = inviter.rows?.[0];
+        if (!row) return;
+        await sendNotificationEmail({
+          userId: invitedBy,
+          userEmail: row.email,
+          type: "team_changes",
+          emailContent: teamInviteResolvedEmail(row.team_name, email, false),
+        });
+      } catch (err) {
+        console.error("Failed to notify inviter of decline:", err);
+      }
+    })();
   }
 
   // Clear the bell notification for this invite, if one was created, so it

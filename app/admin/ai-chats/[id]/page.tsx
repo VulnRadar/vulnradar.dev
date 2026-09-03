@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Header } from "@/components/scanner/header";
 import { Footer } from "@/components/scanner/footer";
 import { UserAvatar } from "@/components/admin/shared";
+import { formatTimestamp } from "@/components/admin/utils";
 import { MessageContent } from "@/components/ai-chat/message-content";
 import { ConversationSkeleton } from "@/components/admin/ai-chats/conversation-skeleton";
 import { cn } from "@/lib/ui/utils";
@@ -28,26 +29,22 @@ type ConversationDetail = {
   lastMessageAt: string;
 };
 
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 function MessageBubble({ message }: { message: ConversationMessage }) {
   const isUser = message.role === "user";
   return (
     <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
+      {/* Same bubble as the support inbox thread: rounded-lg with one
+          squared corner for the tail, and a tinted fill rather than a solid
+          bg-primary. A whole conversation of solid brand-blue blocks is hard
+          to read and makes the transcript compete with the page around it,
+          which is the opposite of what an operator reading someone else's
+          chat needs. rounded-2xl was also a rung off the ladder. */}
       <div
         className={cn(
-          "max-w-[85%] sm:max-w-[70%] rounded-2xl px-4 py-3 text-sm leading-relaxed wrap-break-word",
+          "max-w-[85%] sm:max-w-[70%] rounded-lg border px-4 py-3 text-sm leading-relaxed wrap-break-word",
           isUser
-            ? "rounded-tr-sm bg-primary text-primary-foreground"
-            : "rounded-tl-sm bg-muted/60 border border-border/30 text-foreground",
+            ? "rounded-tr-sm border-primary/25 bg-primary/10 text-foreground"
+            : "rounded-tl-sm border-border/60 bg-muted/40 text-foreground",
         )}
       >
         <MessageContent content={message.content} role={message.role} />
@@ -118,7 +115,7 @@ export default function AdminConversationPage({ params }: PageProps) {
               Back to AI Chats
             </a>
           </Button>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
             Conversation
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -131,7 +128,7 @@ export default function AdminConversationPage({ params }: PageProps) {
 
         {!loading && forbidden && (
           <div className="flex flex-col items-center gap-4 py-24 text-center">
-            <div className="h-14 w-14 rounded-2xl bg-destructive/10 flex items-center justify-center">
+            <div className="h-14 w-14 rounded-lg bg-destructive/10 flex items-center justify-center">
               <ShieldOff
                 className="h-7 w-7 text-destructive"
                 aria-hidden="true"
@@ -148,7 +145,7 @@ export default function AdminConversationPage({ params }: PageProps) {
 
         {!loading && notFound && (
           <div className="flex flex-col items-center gap-4 py-24 text-center">
-            <div className="h-14 w-14 rounded-2xl bg-muted flex items-center justify-center">
+            <div className="h-14 w-14 rounded-lg bg-muted flex items-center justify-center">
               <MessageCircle
                 className="h-7 w-7 text-muted-foreground"
                 aria-hidden="true"
@@ -182,35 +179,48 @@ export default function AdminConversationPage({ params }: PageProps) {
                   </div>
                 )}
                 <div className="min-w-0">
-                  <p className="text-sm font-medium truncate flex items-center gap-1.5">
+                  <p
+                    title={detail.userName || detail.userEmail || undefined}
+                    className="text-sm font-medium truncate flex items-center gap-1.5"
+                  >
                     {detail.userName || detail.userEmail || (
-                      <span className="inline-flex items-center gap-1 text-muted-foreground italic">
+                      <span className="inline-flex items-center gap-1 text-muted-foreground">
                         <User className="h-3 w-3" aria-hidden="true" />
                         Guest
                       </span>
                     )}
                   </p>
                   {detail.userEmail && (
-                    <p className="text-xs text-muted-foreground truncate font-mono">
+                    <p
+                      title={detail.userEmail}
+                      className="text-xs text-muted-foreground truncate font-mono"
+                    >
                       {detail.userEmail}
                     </p>
                   )}
                 </div>
               </div>
-              <div className="flex flex-col gap-1 text-xs text-muted-foreground sm:text-right shrink-0">
+              {/* formatTimestamp, not toLocaleString(undefined): every other
+                  admin surface pins en-US, so this page was the only one that
+                  rendered a different date grammar depending on the reader's
+                  browser locale. */}
+              {/* sm:shrink-0, not shrink-0. Below sm this column is a stacked
+                  row and the session id is one opaque token, so a shrink-0
+                  column pushed the card wider than the page. */}
+              <div className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground sm:text-right sm:shrink-0">
                 <span>
                   Started{" "}
-                  <span className="text-foreground">
-                    {formatDateTime(detail.createdAt)}
+                  <span className="text-foreground tabular-nums">
+                    {formatTimestamp(detail.createdAt)}
                   </span>
                 </span>
                 <span>
                   Last message{" "}
-                  <span className="text-foreground">
-                    {formatDateTime(detail.lastMessageAt)}
+                  <span className="text-foreground tabular-nums">
+                    {formatTimestamp(detail.lastMessageAt)}
                   </span>
                 </span>
-                <span className="font-mono text-[11px]">
+                <span className="font-mono text-[11px] break-all">
                   Session {detail.sessionId}
                 </span>
               </div>

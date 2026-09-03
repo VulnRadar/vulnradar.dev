@@ -23,9 +23,15 @@ import {
   getAllChecks,
 } from "@/lib/seo/checks-content";
 import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/config/constants";
+import { EXACT_CHECK_CATEGORY_COUNT } from "@/lib/config/check-stats.generated";
 
 const TITLE = "Every Web Vulnerability Check, With Fixes";
 const TOTAL = getAllChecks().length;
+// Deliberately NO second count. This page used to print its own rounded
+// figure for "checks with a fix guide", which put a third number in front of
+// the reader next to the headline count and the category count. The
+// distinction it was drawing is real but it belongs in a sentence, not in a
+// number nobody can reconcile. One label, from config, everywhere.
 
 // Two numbers, both true, one click apart in the search results: the landing
 // page's meta description says TOTAL_CHECKS_LABEL ("795+", counting the
@@ -33,7 +39,7 @@ const TOTAL = getAllChecks().length;
 // and this page counts only the ones with a public fix guide. Presented alone
 // the smaller number read as the larger one having been marketing. State both
 // so they reconcile instead of contradicting.
-const COUNT_SENTENCE = `The ${TOTAL} security checks with a public fix guide, out of ${TOTAL_CHECKS_LABEL} ${APP_NAME} runs against a URL, grouped into 18 categories.`;
+const COUNT_SENTENCE = `The ${TOTAL_CHECKS_LABEL} checks ${APP_NAME} runs against a URL, grouped into ${EXACT_CHECK_CATEGORY_COUNT} categories. Most have a page here explaining what they catch and how to fix it; the rest only fire across several pages at once, so they have no standalone page.`;
 
 export const metadata: Metadata = pageMetadata({
   title: TITLE,
@@ -51,7 +57,7 @@ export const metadata: Metadata = pageMetadata({
 const FAQ = [
   {
     question: `How many checks does ${APP_NAME} run?`,
-    answer: `${APP_NAME} runs ${TOTAL_CHECKS_LABEL} checks and documents ${TOTAL} of them across 18 categories, from security headers and TLS to secret detection and DNS. Each documented one has its own page with the risk it catches and the fix. The rest run inside multi-page analysis, where a finding depends on several pages at once, so there is no single-check page to link to.`,
+    answer: `${APP_NAME} runs ${TOTAL_CHECKS_LABEL} checks across ${EXACT_CHECK_CATEGORY_COUNT} categories, from security headers and TLS to secret detection and DNS. Each documented one has its own page with the risk it catches and the fix. The rest run inside multi-page analysis, where a finding depends on several pages at once, so there is no single-check page to link to.`,
   },
   {
     question: "Do I have to run every check?",
@@ -86,23 +92,23 @@ export default async function ChecksIndexPage() {
             Every check {APP_NAME} runs
           </h1>
           <p className="mt-4 text-base sm:text-lg text-muted-foreground leading-relaxed">
-            {TOTAL} security checks with a public fix guide, grouped into 18
-            categories. Not a marketing number: every one is a real page that
-            tells you what it catches, why it matters, and how to fix it with
-            code you can paste. A scan runs {TOTAL_CHECKS_LABEL} in total, the
-            difference being detectors that only fire across several pages at
-            once and so have no standalone page here.
+            The {TOTAL_CHECKS_LABEL} checks a scan runs, grouped into{" "}
+            {EXACT_CHECK_CATEGORY_COUNT} categories. Not a marketing number:
+            most have a real page here that tells you what the check catches,
+            why it matters, and how to fix it with code you can paste. The rest
+            only fire across several pages at once, so there is no single check
+            to link to.
           </p>
           <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-sm border-t border-border/40 pt-4">
             <span className="text-muted-foreground">
               <span className="font-semibold text-foreground tabular-nums">
-                {TOTAL}
+                {TOTAL_CHECKS_LABEL}
               </span>{" "}
-              documented checks
+              checks
             </span>
             <span className="text-muted-foreground">
               <span className="font-semibold text-foreground tabular-nums">
-                18
+                {EXACT_CHECK_CATEGORY_COUNT}
               </span>{" "}
               categories
             </span>
@@ -190,7 +196,14 @@ export default async function ChecksIndexPage() {
                         // the API and a CI gate all refer to.
                         data-check={`${c.title} ${c.id}`.toLowerCase()}
                         data-severity={c.severity}
-                        className="flex items-center gap-2 min-w-0 text-sm"
+                        // items-start, and the title wraps. A check title is a
+                        // string from the catalogue, not user data: at one
+                        // column on a phone the row has about 195px and
+                        // "API Key or Secret Hardcoded in Client JavaScript"
+                        // needs roughly 300px, so truncating it cut the row's
+                        // only piece of meaning in half. Top alignment keeps
+                        // the severity pill on the first line.
+                        className="flex items-start gap-2 min-w-0 text-sm"
                       >
                         <SeverityPill
                           severity={c.severity}
@@ -198,7 +211,7 @@ export default async function ChecksIndexPage() {
                         />
                         <Link
                           href={`/checks/${c.id}`}
-                          className="text-muted-foreground hover:text-foreground transition-colors truncate"
+                          className="text-muted-foreground hover:text-foreground transition-colors"
                         >
                           {c.title}
                         </Link>

@@ -5,8 +5,10 @@ import { CrownIcon, Loader2, Ban } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -77,19 +79,19 @@ export function GiftSubscriptionModal({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent variant="shell" size="sm">
         <DialogHeader>
           <div className="flex items-center gap-3">
             <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
               <CrownIcon className="h-4 w-4 text-primary" aria-hidden="true" />
             </div>
             <div className="min-w-0">
-              <DialogTitle className="text-sm font-semibold">
+              <DialogTitle>
                 {existingGift
                   ? "Manage Gift Subscription"
                   : "Gift a Subscription"}
               </DialogTitle>
-              <DialogDescription className="text-[11px]">
+              <DialogDescription>
                 {existingGift
                   ? `Active until ${new Date(existingGift.end_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
                   : "Grant temporary premium access"}
@@ -98,20 +100,24 @@ export function GiftSubscriptionModal({
           </div>
         </DialogHeader>
 
-        {/* Active gift banner */}
-        {existingGift && (
-          <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg border bg-primary/5 border-primary/20 text-primary text-xs font-medium">
-            <CrownIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            Currently gifted:
-            <span className="font-semibold ml-1">
-              {PLAN_LABELS[existingGift.plan] || existingGift.plan}
-            </span>
-          </div>
-        )}
+        <DialogBody className="flex flex-col gap-4">
+          {/* Active gift banner */}
+          {existingGift && (
+            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg border bg-primary/5 border-primary/20 text-primary text-xs font-medium">
+              <CrownIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              Currently gifted:
+              <span className="font-semibold ml-1">
+                {PLAN_LABELS[existingGift.plan] || existingGift.plan}
+              </span>
+            </div>
+          )}
 
-        {/* Form */}
-        <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-3">
+          {/* Form */}
+          {/* One column below sm: the right cell is a datetime-local input,
+              which needs about 190px to print "09/01/2026, 12:00 PM" plus its
+              picker glyph, and a half-width dialog column on a phone is
+              roughly 130px. */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <label
                 htmlFor={planId}
@@ -155,41 +161,9 @@ export function GiftSubscriptionModal({
               : "User reverts to free plan when the gift expires. This is logged in the audit trail."}
           </p>
 
-          <div className="flex items-center gap-2">
-            <Button
-              className="flex-1 gap-1.5"
-              disabled={!giftEndDate || isLoading}
-              onClick={() =>
-                onGift(giftPlan, new Date(giftEndDate).toISOString())
-              }
-            >
-              {isLoading ? (
-                <>
-                  <Loader2
-                    className="h-3.5 w-3.5 animate-spin"
-                    aria-hidden="true"
-                  />{" "}
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <CrownIcon className="h-3.5 w-3.5" aria-hidden="true" />{" "}
-                  {existingGift ? "Update Gift" : "Gift Plan"}
-                </>
-              )}
-            </Button>
-            <Button
-              variant="ghost"
-              className="flex-1"
-              onClick={onClose}
-              disabled={isLoading}
-            >
-              Cancel
-            </Button>
-          </div>
-
-          {/* Revoke: only shown when there's an active gift. The parent's
-              SaveConfirmationModal is the confirmation. */}
+          {/* Revoke stays in the body rather than joining the footer band:
+              it is not the answer to this dialog, it undoes a gift that
+              already exists, and the divider above it is what says so. */}
           {existingGift && (
             <div className="pt-2 border-t border-border">
               <Button
@@ -204,7 +178,40 @@ export function GiftSubscriptionModal({
               </Button>
             </div>
           )}
-        </div>
+        </DialogBody>
+
+        <DialogFooter>
+          <Button
+            variant="ghost"
+            onClick={onClose}
+            disabled={isLoading}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            Cancel
+          </Button>
+          <Button
+            className="gap-1.5"
+            disabled={!giftEndDate || isLoading}
+            onClick={() =>
+              onGift(giftPlan, new Date(giftEndDate).toISOString())
+            }
+          >
+            {isLoading ? (
+              <>
+                <Loader2
+                  className="h-3.5 w-3.5 animate-spin"
+                  aria-hidden="true"
+                />{" "}
+                Saving...
+              </>
+            ) : (
+              <>
+                <CrownIcon className="h-3.5 w-3.5" aria-hidden="true" />{" "}
+                {existingGift ? "Update Gift" : "Gift Plan"}
+              </>
+            )}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

@@ -248,13 +248,27 @@
     }
   }
 
-  /* Pre-hydration visibility: hide staff/auth elements by default. */
+  /* Pre-hydration visibility: hidden by default, revealed by a data
+     attribute the blocking script in app/layout.tsx stamps onto <html> from
+     the cached session.
+
+     The reveal used to arrive as a <style> element that script built and
+     appended to document.head. Appending to the head before React hydrates is
+     what broke hydration app-wide (see lib/auth/auth-presence.ts), so the
+     rules live here and the script only sets an attribute. */
   .vr-staff-only {
     display: none !important;
   }
   .vr-auth-only {
     visibility: hidden;
     pointer-events: none;
+  }
+  :root[data-vr-auth="1"] .vr-auth-only {
+    visibility: visible;
+    pointer-events: auto;
+  }
+  :root[data-vr-staff="1"] .vr-staff-only {
+    display: flex !important;
   }
 }
 
@@ -690,9 +704,7 @@
      brand's look are unchanged while text clears AA in light mode. In dark
      mode --primary-text is the same value --primary already had, so this is
      a no-op there. */
-  .text-primary {
-    color: hsl(var(--primary-text));
-  }
+  /* .text-primary override moved out of @layer base, see end of file. */
 
   /* Selection - neutral gray for consistent highlight */
   ::selection {
@@ -832,4 +844,37 @@
 .dark [data-radix-collection-item][data-highlighted] {
   background-color: hsl(220 8% 24% / 0.95);
   color: hsl(220 10% 92%);
+}
+
+/* a11y: MUST stay outside every @layer. Tailwind emits its own .text-primary
+   into @layer utilities, and a later layer beats an earlier one no matter the
+   source order, so the same rule written inside @layer base silently did
+   nothing: all ~478 text-primary call sites rendered at the light --primary
+   blue, which fails AA on a light ground. That is the bug this rule exists to
+   fix, and it was itself broken for the same reason. An unlayered declaration
+   outranks every layered one, so this is the correct mechanism rather than a
+   specificity hack.
+
+   Verified in the built CSS:
+     .text-primary{color:hsl(var(--primary-text))}  inside @layer base
+     .text-primary{color:hsl(var(--primary))}       inside @layer utilities
+
+   The opacity variants each compile to their own class, so the bare-class
+   selector never matched them either. Only /80, /70 and /60 exist today;
+   a new step has to be added here or it inherits the bug. Check with:
+     grep -rho "text-primary/[0-9]\+" app/ components/
+
+   In dark mode --primary-text equals --primary, so all of this is a no-op
+   there. It only changes light mode, which is where the failure was. */
+.text-primary {
+  color: hsl(var(--primary-text));
+}
+.text-primary\/80 {
+  color: hsl(var(--primary-text) / 0.8);
+}
+.text-primary\/70 {
+  color: hsl(var(--primary-text) / 0.7);
+}
+.text-primary\/60 {
+  color: hsl(var(--primary-text) / 0.6);
 }

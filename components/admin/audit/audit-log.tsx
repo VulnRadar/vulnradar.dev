@@ -15,10 +15,18 @@ import {
   Download,
   Loader2,
 } from "lucide-react";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableHeader,
@@ -41,6 +49,7 @@ import {
   StatBarSkeleton,
   AdminMobileToc,
   AdminMobileTocTrigger,
+  AdminPanelHeader,
   type AdminTocItem,
 } from "@/components/admin/shared";
 import {
@@ -49,6 +58,7 @@ import {
   parseChangeDiff,
   AUDIT_FILTER_CATEGORIES,
 } from "@/components/admin/utils";
+import { ACTION_META } from "@/components/admin/config";
 import type { AuditEntry } from "@/components/admin/types";
 
 interface AuditLogProps {
@@ -63,6 +73,49 @@ interface AuditLogProps {
 
 const focusRing =
   "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
+
+/**
+ * Blast radius, read off the one table that already encodes it: ACTION_META
+ * paints anything that deletes, revokes or disables with the destructive
+ * token. Without this a `delete_user` sat at exactly the weight of a
+ * `view_user_detail`, and the log's whole value is being able to spot the
+ * former while scrolling past the latter.
+ */
+function isDestructiveAction(action: string): boolean {
+  return ACTION_META[action]?.cls.includes("destructive") ?? false;
+}
+
+/**
+ * Day separator label. The log is one undifferentiated reverse-chronological
+ * stream, so "3d ago" on row 40 told you nothing about where yesterday ended.
+ */
+function formatDayLabel(date: Date): string {
+  const startOfDay = new Date(date);
+  startOfDay.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const daysAgo = Math.round(
+    (today.getTime() - startOfDay.getTime()) / 86_400_000,
+  );
+  if (daysAgo === 0) return "Today";
+  if (daysAgo === 1) return "Yesterday";
+  return date.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    ...(date.getFullYear() !== new Date().getFullYear()
+      ? { year: "numeric" as const }
+      : {}),
+  });
+}
+
+/** True when this entry is the first of its calendar day in the rendered list. */
+function startsNewDay(logs: AuditEntry[], index: number): boolean {
+  const current = new Date(logs[index].created_at);
+  if (index === 0) return true;
+  const previous = new Date(logs[index - 1].created_at);
+  return current.toDateString() !== previous.toDateString();
+}
 
 export function AuditLog({
   auditLogs,
@@ -211,60 +264,56 @@ export function AuditLog({
 
       {/* Filters */}
       <Card id="audit-filters" className="border-border/50 bg-card/50">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <History className="h-4 w-4 text-primary" aria-hidden="true" />
-              </div>
-              <div>
-                <h2 className="text-base font-semibold">Audit Log</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  All admin actions across the platform
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
+        {/* border-b-0: this card is the header, so the grammar's own divider
+            would draw a stray line just above the card border. */}
+        <AdminPanelHeader
+          icon={History}
+          title="Audit Log"
+          subtitle="All admin actions across the platform"
+          className="border-b-0 pb-5"
+          actions={
+            <>
+              {/* One export control, not two. Below sm the CSV and JSON
+                  buttons collapsed to two identical download icons sitting
+                  next to each other, which is a coin flip rather than a
+                  choice. */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 px-3 gap-2 border-border/40"
+                    disabled={exportingFormat !== null}
+                    aria-label="Export the full audit log"
+                  >
+                    {exportingFormat !== null ? (
+                      <Loader2
+                        className="h-4 w-4 animate-spin"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <Download className="h-4 w-4" aria-hidden="true" />
+                    )}
+                    <span className="hidden sm:inline">Export</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-52">
+                  <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
+                    Full log, every page
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => handleExport("csv")}>
+                    CSV, for a spreadsheet
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => handleExport("json")}>
+                    JSON, for a script
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8 gap-1.5 border-border/40"
-                onClick={() => handleExport("csv")}
-                disabled={exportingFormat !== null}
-                aria-label="Export audit log as CSV"
-              >
-                {exportingFormat === "csv" ? (
-                  <Loader2
-                    className="h-4 w-4 animate-spin"
-                    aria-hidden="true"
-                  />
-                ) : (
-                  <Download className="h-4 w-4" aria-hidden="true" />
-                )}
-                <span className="hidden sm:inline">CSV</span>
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 gap-1.5 border-border/40"
-                onClick={() => handleExport("json")}
-                disabled={exportingFormat !== null}
-                aria-label="Export audit log as JSON"
-              >
-                {exportingFormat === "json" ? (
-                  <Loader2
-                    className="h-4 w-4 animate-spin"
-                    aria-hidden="true"
-                  />
-                ) : (
-                  <Download className="h-4 w-4" aria-hidden="true" />
-                )}
-                <span className="hidden sm:inline">JSON</span>
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 gap-1.5 border-border/40"
+                className="h-9 px-3 gap-2 border-border/40"
                 onClick={() => fetchAudit(1)}
                 aria-label="Refresh audit log"
               >
@@ -274,35 +323,32 @@ export function AuditLog({
                 />
                 <span className="hidden sm:inline">Refresh</span>
               </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="pt-0 space-y-4">
+            </>
+          }
+        >
           {/* Category filters. Wraps rather than scrolling: the old
               overflow-x-auto + scrollbar-hide strip hid seven of the ten
               filters on a phone with no cue that more existed. Matches
               components/admin/features/email-logs-manager.tsx. */}
-          <div className="-mx-4 px-4 sm:mx-0 sm:px-0">
-            <div className="flex flex-wrap gap-2 pb-2 sm:pb-0">
-              {AUDIT_FILTER_CATEGORIES.map((cat) => (
-                <button
-                  key={cat.id}
-                  type="button"
-                  onClick={() => setAuditFilter(cat.id)}
-                  aria-pressed={auditFilter === cat.id}
-                  className={cn(
-                    "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors border whitespace-nowrap shrink-0",
-                    focusRing,
-                    auditFilter === cat.id
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted border-border/40",
-                  )}
-                >
-                  <cat.icon className="h-3 w-3" aria-hidden="true" />
-                  {cat.label}
-                </button>
-              ))}
-            </div>
+          <div className="flex flex-wrap gap-2">
+            {AUDIT_FILTER_CATEGORIES.map((cat) => (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setAuditFilter(cat.id)}
+                aria-pressed={auditFilter === cat.id}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors border whitespace-nowrap shrink-0",
+                  focusRing,
+                  auditFilter === cat.id
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted border-border/40",
+                )}
+              >
+                <cat.icon className="h-3 w-3" aria-hidden="true" />
+                {cat.label}
+              </button>
+            ))}
           </div>
 
           {/* Search */}
@@ -319,7 +365,7 @@ export function AuditLog({
               className="pl-9 h-10 bg-background/50 border-border/40 focus:border-primary/50"
             />
           </div>
-        </CardContent>
+        </AdminPanelHeader>
       </Card>
 
       {/* Log entries */}
@@ -377,13 +423,27 @@ export function AuditLog({
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredLogs.map((log) => {
+                      {filteredLogs.map((log, index) => {
                         const isExpanded = expandedLog === log.id;
                         const logDate = new Date(log.created_at);
                         const diff = parseChangeDiff(log.details);
+                        const destructive = isDestructiveAction(log.action);
+                        const newDay = startsNewDay(filteredLogs, index);
 
                         return (
                           <React.Fragment key={log.id}>
+                            {newDay && (
+                              <TableRow className="border-border/40 hover:bg-transparent">
+                                <TableCell
+                                  colSpan={5}
+                                  className="px-5 py-1.5 bg-muted/30"
+                                >
+                                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                    {formatDayLabel(logDate)}
+                                  </span>
+                                </TableCell>
+                              </TableRow>
+                            )}
                             {/* a11y (SC 2.1.1): expanding a log entry's detail
                                 was click-only. See the note on the same fix in
                                 components/admin/users/users-tab.tsx. */}
@@ -405,7 +465,17 @@ export function AuditLog({
                                 }
                               }}
                             >
-                              <TableCell className="px-5 py-4">
+                              {/* The rail is always drawn, transparent when
+                                  the action is benign, so a destructive row
+                                  does not shift its neighbours by 2px. */}
+                              <TableCell
+                                className={cn(
+                                  "px-5 py-4 border-l-2",
+                                  destructive
+                                    ? "border-l-destructive/60"
+                                    : "border-l-transparent",
+                                )}
+                              >
                                 <ActionBadge action={log.action} />
                               </TableCell>
                               <TableCell className="px-3 py-4">
@@ -485,7 +555,7 @@ export function AuditLog({
                                     )}
                                   </div>
                                 ) : (
-                                  <span className="text-xs text-muted-foreground/50">
+                                  <span className="text-xs text-muted-foreground">
                                     -
                                   </span>
                                 )}
@@ -507,7 +577,15 @@ export function AuditLog({
                             </TableRow>
                             {isExpanded && (
                               <TableRow className="bg-muted/10 border-border/40 hover:bg-muted/10">
-                                <TableCell colSpan={5} className="px-5 py-4">
+                                <TableCell
+                                  colSpan={5}
+                                  className={cn(
+                                    "px-5 py-4 border-l-2",
+                                    destructive
+                                      ? "border-l-destructive/60"
+                                      : "border-l-transparent",
+                                  )}
+                                >
                                   <div className="animate-in slide-in-from-top-1 space-y-4">
                                     <p className="text-sm text-foreground leading-relaxed">
                                       {getActionSentence(log)}
@@ -588,7 +666,7 @@ export function AuditLog({
                                               },
                                             )}
                                             {log.ip_address && (
-                                              <span className="ml-2 font-mono">
+                                              <span className="ml-2 font-mono break-all">
                                                 IP: {log.ip_address}
                                               </span>
                                             )}
@@ -649,123 +727,147 @@ export function AuditLog({
                   auditPaging && "opacity-40 pointer-events-none",
                 )}
               >
-                {filteredLogs.map((log) => {
+                {filteredLogs.map((log, index) => {
                   const isExpanded = expandedLog === log.id;
                   const logDate = new Date(log.created_at);
                   const diff = parseChangeDiff(log.details);
+                  const destructive = isDestructiveAction(log.action);
+                  const newDay = startsNewDay(filteredLogs, index);
 
                   return (
-                    <div key={log.id} className="p-4">
-                      <button
-                        type="button"
-                        className={cn("w-full text-left rounded-sm", focusRing)}
-                        onClick={() =>
-                          setExpandedLog(isExpanded ? null : log.id)
-                        }
-                        aria-expanded={isExpanded}
-                      >
-                        <div className="flex items-start justify-between gap-3 mb-3">
-                          <div className="flex items-center gap-2.5">
-                            <UserAvatar
-                              name={log.admin_name}
-                              email={log.admin_email}
-                              size="sm"
-                              avatarUrl={log.admin_avatar_url}
-                            />
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-foreground">
-                                {log.admin_name ||
-                                  log.admin_email.split("@")[0]}
-                              </p>
-                              <p className="text-[10px] text-muted-foreground">
-                                {formatRelativeTime(logDate)}
-                              </p>
-                            </div>
-                          </div>
-                          <ChevronDown
-                            className={cn(
-                              "h-4 w-4 text-muted-foreground shrink-0 transition-transform mt-1",
-                              isExpanded && "rotate-180",
-                            )}
-                            aria-hidden="true"
-                          />
-                        </div>
-
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <ActionBadge action={log.action} />
-                          {log.target_email && (
-                            <>
-                              <span
-                                className="text-muted-foreground"
-                                aria-hidden="true"
-                              >
-                                &rarr;
-                              </span>
-                              <span className="text-xs text-muted-foreground truncate max-w-[140px]">
-                                {log.target_name ||
-                                  log.target_email.split("@")[0]}
-                              </span>
-                            </>
-                          )}
-                        </div>
-                      </button>
-
-                      {isExpanded && (
-                        <div className="mt-4 pt-4 border-t border-border/50 space-y-3 animate-in slide-in-from-top-1">
-                          <p className="text-sm text-foreground leading-relaxed">
-                            {getActionSentence(log)}
-                          </p>
-
-                          {log.details && (
-                            <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
-                              <p className="text-xs text-muted-foreground mb-1 font-medium">
-                                {diff?.field || "Details"}
-                              </p>
-                              {diff ? (
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <Badge
-                                    variant="outline"
-                                    className="bg-destructive/10 text-destructive border-destructive/20 font-mono font-normal text-xs"
-                                  >
-                                    {diff.from || "(empty)"}
-                                  </Badge>
-                                  <ArrowRight
-                                    className="h-3 w-3 text-muted-foreground shrink-0"
-                                    aria-hidden="true"
-                                  />
-                                  <Badge
-                                    variant="outline"
-                                    className="bg-primary/10 text-primary border-primary/20 font-mono font-normal text-xs"
-                                  >
-                                    {diff.to || "(empty)"}
-                                  </Badge>
-                                </div>
-                              ) : (
-                                <p className="text-sm text-foreground">
-                                  {log.details}
-                                </p>
-                              )}
-                            </div>
-                          )}
-
-                          <div className="flex flex-wrap gap-3 text-[10px] text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <Clock className="h-3 w-3" aria-hidden="true" />
-                              {logDate.toLocaleString("en-US", {
-                                dateStyle: "medium",
-                                timeStyle: "short",
-                              })}
-                            </span>
-                            {log.ip_address && (
-                              <span className="flex items-center gap-1 font-mono">
-                                <Globe className="h-3 w-3" aria-hidden="true" />
-                                {log.ip_address}
-                              </span>
-                            )}
-                          </div>
+                    <React.Fragment key={log.id}>
+                      {newDay && (
+                        <div className="px-4 py-1.5 bg-muted/30">
+                          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            {formatDayLabel(logDate)}
+                          </span>
                         </div>
                       )}
-                    </div>
+                      <div
+                        className={cn(
+                          "p-4 border-l-2",
+                          destructive
+                            ? "border-l-destructive/60"
+                            : "border-l-transparent",
+                        )}
+                      >
+                        <button
+                          type="button"
+                          className={cn(
+                            "w-full text-left rounded-sm",
+                            focusRing,
+                          )}
+                          onClick={() =>
+                            setExpandedLog(isExpanded ? null : log.id)
+                          }
+                          aria-expanded={isExpanded}
+                        >
+                          <div className="flex items-start justify-between gap-3 mb-3">
+                            <div className="flex items-center gap-2.5">
+                              <UserAvatar
+                                name={log.admin_name}
+                                email={log.admin_email}
+                                size="sm"
+                                avatarUrl={log.admin_avatar_url}
+                              />
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-foreground">
+                                  {log.admin_name ||
+                                    log.admin_email.split("@")[0]}
+                                </p>
+                                <p className="text-[10px] text-muted-foreground">
+                                  {formatRelativeTime(logDate)}
+                                </p>
+                              </div>
+                            </div>
+                            <ChevronDown
+                              className={cn(
+                                "h-4 w-4 text-muted-foreground shrink-0 transition-transform mt-1",
+                                isExpanded && "rotate-180",
+                              )}
+                              aria-hidden="true"
+                            />
+                          </div>
+
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <ActionBadge action={log.action} />
+                            {log.target_email && (
+                              <>
+                                <span
+                                  className="text-muted-foreground"
+                                  aria-hidden="true"
+                                >
+                                  &rarr;
+                                </span>
+                                <span className="text-xs text-muted-foreground truncate max-w-[140px]">
+                                  {log.target_name ||
+                                    log.target_email.split("@")[0]}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </button>
+
+                        {isExpanded && (
+                          <div className="mt-4 pt-4 border-t border-border/50 space-y-3 animate-in slide-in-from-top-1">
+                            <p className="text-sm text-foreground leading-relaxed">
+                              {getActionSentence(log)}
+                            </p>
+
+                            {log.details && (
+                              <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
+                                <p className="text-xs text-muted-foreground mb-1 font-medium">
+                                  {diff?.field || "Details"}
+                                </p>
+                                {diff ? (
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-destructive/10 text-destructive border-destructive/20 font-mono font-normal text-xs"
+                                    >
+                                      {diff.from || "(empty)"}
+                                    </Badge>
+                                    <ArrowRight
+                                      className="h-3 w-3 text-muted-foreground shrink-0"
+                                      aria-hidden="true"
+                                    />
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-primary/10 text-primary border-primary/20 font-mono font-normal text-xs"
+                                    >
+                                      {diff.to || "(empty)"}
+                                    </Badge>
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-foreground">
+                                    {log.details}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+
+                            <div className="flex flex-wrap gap-3 text-[10px] text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <Clock className="h-3 w-3" aria-hidden="true" />
+                                {logDate.toLocaleString("en-US", {
+                                  dateStyle: "medium",
+                                  timeStyle: "short",
+                                })}
+                              </span>
+                              {log.ip_address && (
+                                <span className="flex items-center gap-1 font-mono">
+                                  <Globe
+                                    className="h-3 w-3"
+                                    aria-hidden="true"
+                                  />
+                                  {log.ip_address}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </React.Fragment>
                   );
                 })}
               </div>

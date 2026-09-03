@@ -14,6 +14,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
+import { pluralize } from "@/lib/ui/plural";
 import { formatRelativeTime } from "@/lib/ui/relative-time";
 import { API, ROUTES } from "@/lib/config/client-constants";
 import {
@@ -30,7 +31,16 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { CONFIG_DASHBOARD_WIDGET_LIMIT } from "@/lib/config/config-values";
 import type { Severity } from "@/lib/scanner/types";
+
+/**
+ * How many rows each list widget holds. The API caps both the recent-scans and
+ * the top-findings queries at DASHBOARD_WIDGET_LIMIT, so the skeleton reads the
+ * same default rather than hardcoding a row count that could drift from it, and
+ * the loaded list slices to it rather than to a separate literal 6.
+ */
+const WIDGET_ROWS = CONFIG_DASHBOARD_WIDGET_LIMIT;
 
 interface DashboardData {
   totalScans: number;
@@ -108,7 +118,7 @@ function TrendBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums",
+        "inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-medium tabular-nums",
         isUp ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground",
       )}
     >
@@ -121,15 +131,61 @@ function TrendBadge({
 export function DashboardSkeleton() {
   return (
     <div className="flex w-full animate-pulse flex-col gap-4 pt-6">
-      <StatStripSkeleton />
+      {/* The loaded state puts the strip inside a card that also carries the
+          14-day activity row underneath it. The skeleton used to draw a bare
+          bordered strip and nothing else, so the whole page below it jumped
+          down by the height of that row the moment the fetch landed. */}
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
+        <StatStripSkeleton bordered={false} />
+        <div className="flex items-center gap-3 border-t border-border bg-muted/30 px-4 py-2.5">
+          <div className="h-3 w-12 shrink-0 rounded bg-muted" />
+          <div className="h-8 flex-1 rounded bg-muted/60" />
+          <div className="h-3 w-14 shrink-0 rounded bg-muted" />
+        </div>
+      </div>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
-        <div className="h-72 rounded-xl border border-border bg-card" />
+        {/* The three panels used to be blank h-72/h-32/h-36 rectangles, and
+            none of the three guesses was close: the real severity panel is
+            nearer 190px and the findings panel nearer 210px, so the grid grew
+            by well over a hundred pixels the moment data landed. Mirroring the
+            actual header bar and row counts means the height falls out of the
+            same structure instead of being guessed at. */}
+        <SkeletonPanel rows={WIDGET_ROWS} rowClassName="h-[38px]" withAction />
         <div className="flex flex-col gap-4">
-          <div className="h-32 rounded-xl border border-border bg-card" />
-          <div className="h-36 rounded-xl border border-border bg-card" />
+          <SkeletonPanel rows={SEVERITY_ORDER.length} withAction />
+          <SkeletonPanel rows={WIDGET_ROWS} />
         </div>
       </div>
     </div>
+  );
+}
+
+/** One dashboard widget: the muted header bar plus its rows. */
+function SkeletonPanel({
+  rows,
+  rowClassName = "h-4",
+  withAction = false,
+}: {
+  rows: number;
+  rowClassName?: string;
+  /** Panels whose header carries a trailing link or total on the right. */
+  withAction?: boolean;
+}) {
+  return (
+    <section className="flex flex-col overflow-hidden rounded-xl border border-border bg-card">
+      <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/30 px-4 py-2.5">
+        <div className="h-4 w-32 rounded bg-muted" />
+        {withAction && <div className="h-4 w-16 rounded bg-muted" />}
+      </div>
+      <div className="flex flex-1 flex-col justify-center gap-3 px-4 py-3">
+        {Array.from({ length: rows }).map((_, i) => (
+          <div
+            key={i}
+            className={cn("w-full rounded bg-muted", rowClassName)}
+          />
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -305,7 +361,7 @@ export function Dashboard() {
         {activity.length > 0 && (
           <div className="flex items-center gap-3 border-t border-border bg-muted/30 px-4 py-2.5">
             <span className="shrink-0 text-[11px] text-muted-foreground">
-              {activity.length} days
+              {pluralize(activity.length, "day")}
             </span>
             <TooltipProvider delayDuration={100}>
               <div
@@ -313,7 +369,7 @@ export function Dashboard() {
                 role="img"
                 aria-label={`Scan activity from ${fmtDay(activity[0].day)} to ${fmtDay(
                   activity[activity.length - 1].day,
-                )}, ${recentHalf + priorHalf} scans total`}
+                )}, ${pluralize(recentHalf + priorHalf, "scan")} total`}
               >
                 {activity.map((d, i) => (
                   <Tooltip key={i}>
@@ -336,9 +392,8 @@ export function Dashboard() {
                     <TooltipContent side="top" className="text-xs">
                       <p className="font-medium">{fmtDay(d.day)}</p>
                       <p className="text-muted-foreground">
-                        {d.scans} {d.scans === 1 ? "scan" : "scans"}
-                        {d.scans > 0 &&
-                          ` · ${d.issues} ${d.issues === 1 ? "issue" : "issues"}`}
+                        {pluralize(d.scans, "scan")}
+                        {d.scans > 0 && ` · ${pluralize(d.issues, "issue")}`}
                       </p>
                     </TooltipContent>
                   </Tooltip>
@@ -346,7 +401,7 @@ export function Dashboard() {
               </div>
             </TooltipProvider>
             <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] tabular-nums text-muted-foreground">
-              {recentHalf + priorHalf} scans
+              {pluralize(recentHalf + priorHalf, "scan")}
               <TrendBadge current={recentHalf} previous={priorHalf} />
             </span>
           </div>
@@ -364,7 +419,7 @@ export function Dashboard() {
             {recentScans.length > 0 && (
               <a
                 href={ROUTES.HISTORY}
-                className="inline-flex items-center gap-1 rounded text-xs font-medium text-primary transition-colors hover:text-primary/80 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                className="inline-flex items-center gap-1 rounded-sm text-xs font-medium text-primary transition-colors hover:text-primary/80 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
               >
                 All history
                 <ArrowUpRight aria-hidden className="h-3 w-3" />
@@ -378,7 +433,7 @@ export function Dashboard() {
             </p>
           ) : (
             <ul className="flex flex-1 flex-col divide-y divide-border">
-              {recentScans.slice(0, 6).map((scan) => {
+              {recentScans.slice(0, WIDGET_ROWS).map((scan) => {
                 const worst = worstSeverity(scan.summary);
                 const tone = worst ? SEVERITY_TONE[worst] : null;
                 return (
@@ -489,7 +544,14 @@ export function Dashboard() {
                       <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground/70">
                         {String(i + 1).padStart(2, "0")}
                       </span>
-                      <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                      {/* A check title comes out of our own catalogue, so the
+                          row can be sized to hold it. On a 320px phone the
+                          index, the count column and the gaps leave about
+                          185px, and "Missing Content-Security-Policy header"
+                          measures roughly 260px, so `truncate` here cut the
+                          finding's name in half on the one screen that is
+                          meant to tell you what keeps going wrong. */}
+                      <span className="min-w-0 flex-1 text-sm leading-snug text-foreground">
                         {v.title}
                       </span>
                       <span className="hidden h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-muted sm:block">

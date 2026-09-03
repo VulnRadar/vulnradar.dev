@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -37,8 +37,10 @@ import {
   DataTableSkeleton,
   StatBar,
   Toast,
+  AdminPanelHeader,
 } from "@/components/admin/shared";
 import { cn } from "@/lib/ui/utils";
+import { pluralize } from "@/lib/ui/plural";
 
 interface BlockedRule {
   id: number;
@@ -60,6 +62,22 @@ interface MatchingScan {
   user_email?: string;
   user_id: number;
 }
+
+/**
+ * How a scan got run. Three sources in one bare outline badge made `manual`,
+ * `api` and `scheduled` indistinguishable at a glance, which is the one thing
+ * this column exists to tell you: an api or scheduled scan of a blocked host
+ * means something is still pointed at it.
+ */
+const SOURCE_BADGE: Record<string, string> = {
+  manual: "bg-primary/10 text-primary border-primary/20",
+  api: "bg-[hsl(var(--chart-4))]/10 text-[hsl(var(--chart-4))] border-[hsl(var(--chart-4))]/20",
+  scheduled:
+    "bg-[hsl(var(--chart-3))]/10 text-[hsl(var(--chart-3))] border-[hsl(var(--chart-3))]/20",
+};
+
+const sourceBadgeClass = (source: string) =>
+  SOURCE_BADGE[source] ?? "bg-muted text-muted-foreground border-border";
 
 /**
  * The matching-scans list, rendered identically for the free-form lookup and
@@ -115,13 +133,15 @@ function MatchingScansList({ scans }: { scans: MatchingScan[] }) {
                   </TableCell>
                   <TableCell className="px-4 py-2.5">
                     <Badge
-                      variant="outline"
-                      className="text-[10px] px-1.5 py-0"
+                      className={cn(
+                        "text-[10px] px-1.5 py-0 font-medium capitalize",
+                        sourceBadgeClass(scan.source),
+                      )}
                     >
                       {scan.source}
                     </Badge>
                   </TableCell>
-                  <TableCell className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
+                  <TableCell className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap tabular-nums">
                     {formatDate(scan.scanned_at)}
                   </TableCell>
                 </TableRow>
@@ -142,13 +162,18 @@ function MatchingScansList({ scans }: { scans: MatchingScan[] }) {
               {scan.url}
             </p>
             <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+              <Badge
+                className={cn(
+                  "text-[10px] px-1.5 py-0 font-medium capitalize",
+                  sourceBadgeClass(scan.source),
+                )}
+              >
                 {scan.source}
               </Badge>
               <span className="text-xs font-mono text-muted-foreground truncate min-w-0">
                 {scan.user_email || `User #${scan.user_id}`}
               </span>
-              <span className="text-xs text-muted-foreground">
+              <span className="text-xs text-muted-foreground tabular-nums">
                 {formatDate(scan.scanned_at)}
               </span>
             </div>
@@ -280,7 +305,7 @@ export function BlockedDataManager() {
       const data = await res.json();
       if (res.ok) {
         setToast({
-          message: `Deleted ${data.deletedCount || 0} scan(s) for ${pendingDelete.value}`,
+          message: `Deleted ${pluralize(data.deletedCount || 0, "scan")} for ${pendingDelete.value}`,
           type: "success",
         });
         // Clear cached scans and refresh
@@ -348,7 +373,7 @@ export function BlockedDataManager() {
       const data = await res.json();
       if (res.ok) {
         setToast({
-          message: `Deleted ${data.deletedCount || 0} scan(s) for ${pendingLookupDelete.value}`,
+          message: `Deleted ${pluralize(data.deletedCount || 0, "scan")} for ${pendingLookupDelete.value}`,
           type: "success",
         });
         setLookupScans([]);
@@ -423,7 +448,7 @@ export function BlockedDataManager() {
         {
           field: "scans",
           label: "Scans to Delete",
-          oldValue: `${pendingDelete.scanCount} scan(s)`,
+          oldValue: `${pluralize(pendingDelete.scanCount, "scan")}`,
           newValue: "0",
         },
       ]
@@ -440,7 +465,7 @@ export function BlockedDataManager() {
         {
           field: "scans",
           label: "Scans to Delete",
-          oldValue: `${pendingLookupDelete.scanCount} scan(s)`,
+          oldValue: `${pluralize(pendingLookupDelete.scanCount, "scan")}`,
           newValue: "0",
         },
       ]
@@ -501,7 +526,7 @@ export function BlockedDataManager() {
         title="Purge Host Reputation"
         description={
           pendingPurgeHost
-            ? `This removes "${pendingPurgeHost}" from the public host directory and reputation cache (/host/${pendingPurgeHost}). It does not delete the underlying scan history -- a new scan will rebuild it. This action cannot be undone.`
+            ? `This removes "${pendingPurgeHost}" from the public host directory and reputation cache (/host/${pendingPurgeHost}). It does not delete the underlying scan history: a new scan will rebuild it. This action cannot be undone.`
             : undefined
         }
         confirmLabel="Purge Host"
@@ -517,16 +542,28 @@ export function BlockedDataManager() {
         {/* Stats */}
         <StatBar
           items={[
-            { label: "Blocked Rules", value: blockedRules.length, icon: Ban },
             {
-              label: "Scans Found",
+              label: "Blocked Rules",
+              value: blockedRules.length,
+              icon: Ban,
+              tone: "destructive",
+            },
+            {
+              // Only the rules an operator has expanded contribute to this:
+              // the panel never fetches match counts for rules nobody opened,
+              // so it read 0 on load and crept up as you clicked. The label
+              // says what the number is instead of implying a platform-wide
+              // total the client does not have.
+              label: "Scans Found So Far",
               value: totalScansFound,
               icon: FileSearch,
+              tone: "primary",
             },
             {
               label: "Block Attempts",
               value: blockedRules.reduce((sum, r) => sum + r.hit_count, 0),
               icon: AlertTriangle,
+              tone: "orange",
             },
           ]}
         />
@@ -558,22 +595,12 @@ export function BlockedDataManager() {
 
         {/* Free-form lookup: any host or URL, no blacklist rule required */}
         <Card className="border-border/50 bg-card/50 overflow-hidden">
-          <CardHeader className="pb-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="p-2 rounded-lg bg-primary/10 shrink-0">
-                <Search aria-hidden="true" className="h-4 w-4 text-primary" />
-              </div>
-              <div className="min-w-0">
-                <CardTitle className="text-base font-semibold truncate">
-                  Look Up Any Host or URL
-                </CardTitle>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  For something that ended up public and shouldn't have -- no
-                  blacklist rule needed first.
-                </p>
-              </div>
-            </div>
-            <div className="mt-4 flex gap-2">
+          <AdminPanelHeader
+            icon={Search}
+            title="Look Up Any Host or URL"
+            subtitle="For something that ended up public and shouldn't have. No blacklist rule needed first."
+          >
+            <div className="flex gap-2">
               <div className="relative flex-1">
                 <Search
                   aria-hidden="true"
@@ -605,18 +632,21 @@ export function BlockedDataManager() {
                 )}
               </Button>
             </div>
-          </CardHeader>
+          </AdminPanelHeader>
 
           {lookupScans !== null && (
-            <CardContent className="p-0 border-t border-border/40">
+            <CardContent className="p-0">
               <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
-                <p className="text-xs text-muted-foreground">
+                {/* min-w-0 + wrap-anywhere: the looked-up value is whatever
+                    the admin pasted in, usually a full URL, and unbroken it
+                    pushed this row wider than the page. */}
+                <p className="min-w-0 wrap-anywhere text-xs text-muted-foreground">
                   {lookupScans.length === 0 ? (
                     "No scan history found for that value."
                   ) : (
                     <>
                       Found{" "}
-                      <span className="font-medium text-foreground">
+                      <span className="font-medium text-foreground tabular-nums">
                         {lookupScans.length}
                       </span>{" "}
                       scan{lookupScans.length !== 1 ? "s" : ""} for{" "}
@@ -626,11 +656,16 @@ export function BlockedDataManager() {
                     </>
                   )}
                 </p>
+                {/* Both of these are irreversible, so both wear the one
+                    destructive grammar. Solid `variant="destructive"` is
+                    reserved for the confirm button inside the dialog each of
+                    them opens: two treatments side by side implied one was
+                    safer than the other. */}
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-8 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10"
+                    className="h-8 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
                     onClick={() => setPendingPurgeHost(lookupValue.trim())}
                     disabled={purgingHost}
                   >
@@ -646,9 +681,9 @@ export function BlockedDataManager() {
                   </Button>
                   {lookupScans.length > 0 && (
                     <Button
-                      variant="destructive"
+                      variant="outline"
                       size="sm"
-                      className="h-8 gap-1.5"
+                      className="h-8 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
                       onClick={() =>
                         setPendingLookupDelete({
                           value: lookupValue.trim(),
@@ -682,24 +717,27 @@ export function BlockedDataManager() {
 
         {/* Blocked Rules List */}
         <Card className="border-border/50 bg-card/50 overflow-hidden">
-          <CardHeader className="pb-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="p-2 rounded-lg bg-destructive/10 shrink-0">
-                  <Globe
-                    aria-hidden="true"
-                    className="h-4 w-4 text-destructive"
-                  />
-                </div>
-                <div className="min-w-0">
-                  <CardTitle className="text-base font-semibold truncate">
-                    Blocked URLs & IPs
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                    Find and delete scan data for blocked entries
-                  </p>
-                </div>
-              </div>
+          {/* Default (blue) tile, not the destructive one this header used to
+              carry: the header tone reports whether the panel's subject is in
+              trouble, and a list of blocks that exist is the normal state. A
+              red tile here would be a colour that means nothing. */}
+          <AdminPanelHeader
+            icon={Globe}
+            title="Blocked URLs & IPs"
+            subtitle="Find and delete scan data for blocked entries"
+            status={
+              // Hidden on a failed load, so a header count can never read as
+              // "nothing is blocked" when the list simply did not arrive.
+              fetchError ? null : (
+                <Badge
+                  variant="secondary"
+                  className="text-[11px] font-medium h-5 px-2 tabular-nums"
+                >
+                  {blockedRules.length}
+                </Badge>
+              )
+            }
+            actions={
               <Button
                 variant="outline"
                 size="sm"
@@ -714,10 +752,9 @@ export function BlockedDataManager() {
                 />
                 <span className="hidden sm:inline">Refresh</span>
               </Button>
-            </div>
-
-            {/* Search */}
-            <div className="mt-4 relative">
+            }
+          >
+            <div className="relative">
               <Search
                 aria-hidden="true"
                 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
@@ -730,7 +767,7 @@ export function BlockedDataManager() {
                 className="pl-10 bg-background/50 border-border/40"
               />
             </div>
-          </CardHeader>
+          </AdminPanelHeader>
 
           <CardContent className="p-0">
             {loading ? (
@@ -767,7 +804,11 @@ export function BlockedDataManager() {
                         onClick={() =>
                           handleToggleExpand(rule.id, rule.ip_address)
                         }
-                        className="w-full flex items-center gap-4 px-5 py-4 hover:bg-muted/20 transition-colors text-left"
+                        // The badges take their own line below sm: they and
+                        // the chevron are shrink-0, so a rule whose value is
+                        // a full URL had about 78px to show it on a 320px
+                        // screen. The icon tile stays on the value's line.
+                        className="w-full flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-4 hover:bg-muted/50 transition-colors text-left sm:px-5"
                       >
                         <div className="p-2 rounded-lg bg-muted/50 shrink-0">
                           {rule.value_type === "url" ? (
@@ -783,7 +824,10 @@ export function BlockedDataManager() {
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-mono text-foreground truncate">
+                          <p
+                            title={rule.ip_address}
+                            className="text-sm font-mono text-foreground truncate"
+                          >
                             {rule.ip_address}
                           </p>
                           {rule.description && (
@@ -792,19 +836,26 @@ export function BlockedDataManager() {
                             </p>
                           )}
                         </div>
-                        <div className="flex items-center gap-3 shrink-0">
+                        <div className="flex w-full items-center gap-3 sm:w-auto sm:shrink-0">
+                          {/* Block attempts are this panel's signal, so a rule
+                              that is actually catching traffic says so. Zero
+                              hits stays grey. */}
                           <Badge
-                            variant="outline"
-                            className="text-[10px] px-2 py-0.5 font-medium bg-muted/30"
+                            className={cn(
+                              "text-[10px] px-2 py-0.5 font-medium tabular-nums",
+                              rule.hit_count > 0
+                                ? "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/25"
+                                : "bg-muted/50 text-muted-foreground border-border",
+                            )}
                           >
-                            {rule.hit_count} hits
+                            {pluralize(rule.hit_count, "hit")}
                           </Badge>
                           {matchingScans[rule.id] && (
                             <Badge
                               className={cn(
-                                "text-[10px] px-2 py-0.5 font-medium",
+                                "text-[10px] px-2 py-0.5 font-medium tabular-nums",
                                 scans.length > 0
-                                  ? "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20"
+                                  ? "bg-destructive/10 text-destructive border-destructive/20"
                                   : "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20",
                               )}
                             >
@@ -859,16 +910,20 @@ export function BlockedDataManager() {
                               <div className="flex items-center justify-between mb-4">
                                 <p className="text-xs text-muted-foreground">
                                   Found{" "}
-                                  <span className="font-medium text-foreground">
+                                  <span className="font-medium text-foreground tabular-nums">
                                     {scans.length}
                                   </span>{" "}
                                   scan{scans.length !== 1 ? "s" : ""} matching
                                   this blocked entry
                                 </p>
+                                {/* Same delete as the lookup card runs, so the
+                                    same treatment: it used to be solid here and
+                                    outline there, which made one operation look
+                                    like two depending on the route you took. */}
                                 <Button
-                                  variant="destructive"
+                                  variant="outline"
                                   size="sm"
-                                  className="h-8 gap-1.5"
+                                  className="h-8 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
                                   onClick={() =>
                                     setPendingDelete({
                                       ruleId: rule.id,
@@ -894,10 +949,15 @@ export function BlockedDataManager() {
                               </div>
 
                               {/* Scans list */}
+                              {/* rounded-lg, not rounded-xl. The ladder gives
+                                  a standalone table the panel rung, but this
+                                  one is nested three levels inside a
+                                  rounded-lg card, and a child never gets a
+                                  larger radius than its container. */}
                               <div className="border border-border/40 rounded-lg overflow-hidden">
                                 <MatchingScansList scans={scans} />
                                 <div className="px-4 py-2 bg-muted/20 border-t border-border/30 text-center">
-                                  <p className="text-xs text-muted-foreground">
+                                  <p className="text-xs text-muted-foreground tabular-nums">
                                     {scans.length} scan
                                     {scans.length !== 1 ? "s" : ""} total.
                                     Scroll to view all.

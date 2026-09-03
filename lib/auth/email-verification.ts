@@ -50,9 +50,7 @@ export async function sendEmailVerification(
   setImmediate(() => {
     sendEmail({
       to,
-      subject: emailContent.subject,
-      text: emailContent.text,
-      html: emailContent.html,
+      ...emailContent,
     }).catch((err) => {
       console.error("[Email Error] Failed to send verification email:", err);
     });

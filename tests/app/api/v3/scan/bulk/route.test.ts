@@ -340,6 +340,10 @@ describe("POST /api/v3/scan/bulk - auth", () => {
     expect(res.status).toBe(429);
     const json = await res.json();
     expect(json.error).toMatch(/Bulk scan rate limit reached/);
+    // This route answers 429 for three different things and only the daily
+    // quota has an upgrade to offer, so each one names itself. The dashboard
+    // used to tell them apart by matching the error text.
+    expect(json.statusCode).toBe("BULK_RATE_LIMIT");
   });
 });
 
@@ -783,6 +787,10 @@ describe("POST /api/v3/scan/bulk - daily quota", () => {
     expect(res.status).toBe(429);
     const json = await res.json();
     expect(json.error).toMatch(/Daily scan limit reached/);
+    // The one 429 with an upgrade path. The dashboard opens the plan modal on
+    // this and only this, so it must be distinguishable from the burst limiter
+    // and the concurrency refusal without reading the copy.
+    expect(json.statusCode).toBe("DAILY_LIMIT");
     expect(insertedRows()).toHaveLength(0);
   });
 

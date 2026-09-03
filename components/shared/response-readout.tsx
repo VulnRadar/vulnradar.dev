@@ -42,7 +42,12 @@ function rowTone(row: ResponseReadoutRow): string {
 
 function rowGlyph(state: ResponseReadoutRow["state"]): string {
   if (state === "pass") return "✓";
-  if (state === "warn") return "⚠";
+  // U+FE0E, the text variation selector. Alone, U+26A0 is drawn as a colour
+  // emoji on Windows and on most phones, so the warn row grew a picture where
+  // its pass and fail siblings have flat monospace marks and the column
+  // stopped lining up. The selector pins it to the text form. ✓ and ✗ have no
+  // emoji form to fall back to, so they need nothing.
+  if (state === "warn") return "⚠︎";
   return "✗";
 }
 

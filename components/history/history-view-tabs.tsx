@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { ROUTES } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
 import { toggles } from "@/lib/ui/animations";
+import { tourAnchor } from "@/lib/tour/anchors";
 
 const TABS = [
   { href: ROUTES.HISTORY, label: "My History" },
@@ -37,7 +38,10 @@ export function HistoryViewTabs() {
     <div className="-mx-4 overflow-x-auto scrollbar-hide px-4 sm:mx-0 sm:px-0">
       {/* w-max + min-w-full: as wide as the tabs need when they overflow, but
           still full width otherwise so the bottom rule spans the page. */}
-      <div className="flex w-max min-w-full gap-1 border-b border-border/50">
+      <div
+        {...tourAnchor("historyTabs")}
+        className="flex w-max min-w-full gap-1 border-b border-border/50"
+      >
         {TABS.map((tab) => {
           const active = pathname === tab.href;
           return (

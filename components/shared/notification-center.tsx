@@ -26,7 +26,7 @@ import {
 } from "@/lib/config/client-constants";
 import { Sparkles } from "lucide-react";
 import { apiGet, apiPost, apiPatch } from "@/lib/api/client";
-import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
+import { ModalShell } from "@/components/ui/modal-shell";
 import { useClientConfig } from "@/lib/hooks/use-client-config";
 import { useVisibleInterval } from "@/lib/hooks/use-visible-interval";
 import { useOnline } from "@/lib/hooks/use-online";
@@ -89,7 +89,6 @@ interface UserNotification {
 export function BackupCodesModal() {
   const pathname = usePathname();
   const [dismissed, setDismissed] = useState(false);
-  const [closing, setClosing] = useState(false);
   const { me } = useAuth();
 
   const isPublicRoute = PUBLIC_PATHS.some((p) => {
@@ -101,110 +100,52 @@ export function BackupCodesModal() {
     !isPublicRoute && me?.userId && me?.backupCodesInvalid && !dismissed,
   );
 
-  const handleDismiss = useCallback(() => {
-    setClosing(true);
-    setTimeout(() => setDismissed(true), 200);
-  }, []);
+  // Was a `closing` flag plus a 200ms setTimeout driving an exit animation on
+  // a hand-rolled scrim. ModalShell unmounts on close like every other modal
+  // in the app, so the flag had nothing left to animate.
+  const handleDismiss = useCallback(() => setDismissed(true), []);
 
-  const { dialogProps, titleProps, descriptionProps } = useModalA11y({
-    open: show,
-    onClose: handleDismiss,
-    hasDescription: true,
-  });
-
-  if (!show) return null;
-
+  // The full-bleed destructive rail, the "Security Alert" eyebrow and the
+  // centred icon plate are gone: the header band's own mark carries the
+  // destructive tone, and none of the three exist on any other modal.
   return (
-    <div
-      className={cn(
-        "fixed inset-0 z-100 flex items-center justify-center bg-background/80 backdrop-blur-xs",
-        closing
-          ? "animate-out fade-out duration-200"
-          : "animate-in fade-in duration-200",
-      )}
+    <ModalShell
+      open={show}
+      onClose={handleDismiss}
+      title="Backup codes need rotation"
+      description="We upgraded our security to hash all 2FA backup codes. Your old codes stopped working. Generate a new set from your security settings."
+      icon={
+        <AlertTriangle
+          className="h-4 w-4 shrink-0 text-destructive"
+          aria-hidden="true"
+        />
+      }
+      size="md"
+      footer={
+        <>
+          <Button
+            variant="outline"
+            size="sm"
+            className="bg-transparent"
+            onClick={handleDismiss}
+          >
+            Remind me later
+          </Button>
+          <Button size="sm" asChild>
+            <a href={`${ROUTES.PROFILE}?tab=security`} onClick={handleDismiss}>
+              Rotate backup codes
+            </a>
+          </Button>
+        </>
+      }
     >
-      <div
-        className={cn(
-          "relative w-full max-w-lg mx-4",
-          closing
-            ? "animate-out zoom-out-95 duration-200"
-            : "animate-in zoom-in-95 duration-300",
-        )}
-      >
-        <div
-          {...dialogProps}
-          // max-h + a y scroll: overflow-hidden with no height cap, inside a
-          // centring flex container that does not scroll, put the two-button
-          // footer out of reach on a short viewport. The x axis still clips
-          // so the accent bar stays inside the rounded corners.
-          className="bg-card border border-border rounded-2xl shadow-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto overflow-x-hidden overscroll-contain outline-hidden"
-        >
-          <div className="h-1 w-full bg-destructive" />
-          <div className="flex items-center justify-between px-5 pt-4 pb-0">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <AlertTriangle
-                className="h-3.5 w-3.5 text-destructive"
-                aria-hidden="true"
-              />
-              <span className="text-[11px] font-semibold uppercase tracking-wider">
-                Security Alert
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={handleDismiss}
-              className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
-              aria-label="Dismiss"
-            >
-              <X className="h-4 w-4" aria-hidden="true" />
-            </button>
-          </div>
-          <div className="px-8 pt-6 pb-4 flex flex-col items-center text-center">
-            <div className="p-4 rounded-2xl mb-5 bg-destructive/10 text-destructive">
-              <AlertTriangle className="h-6 w-6" aria-hidden="true" />
-            </div>
-            <h2
-              {...titleProps}
-              className="text-xl font-bold text-foreground mb-3 text-balance"
-            >
-              Backup codes need rotation
-            </h2>
-            <p
-              {...descriptionProps}
-              className="text-sm text-muted-foreground leading-relaxed max-w-sm text-pretty"
-            >
-              We upgraded our security to hash all 2FA backup codes. Your old
-              codes stopped working. Generate a new set from your security
-              settings.
-            </p>
-            <div className="rounded-lg bg-destructive/5 border border-destructive/20 px-3 py-2.5 mt-3 w-full max-w-sm">
-              <p className="text-xs text-destructive font-medium">
-                Until you regenerate, backup codes cannot get you back in if you
-                lose your authenticator app.
-              </p>
-            </div>
-          </div>
-          <div className="px-8 pb-6 pt-3 flex items-center justify-center gap-3">
-            <Button
-              variant="outline"
-              size="sm"
-              className="bg-transparent"
-              onClick={handleDismiss}
-            >
-              Remind me later
-            </Button>
-            <Button size="sm" asChild>
-              <a
-                href={`${ROUTES.PROFILE}?tab=security`}
-                onClick={handleDismiss}
-              >
-                Rotate backup codes
-              </a>
-            </Button>
-          </div>
-        </div>
+      <div className="rounded-lg bg-destructive/5 border border-destructive/20 px-3 py-2.5">
+        <p className="text-xs text-destructive font-medium">
+          Until you regenerate, backup codes cannot get you back in if you lose
+          your authenticator app.
+        </p>
       </div>
-    </div>
+    </ModalShell>
   );
 }
 
@@ -501,7 +442,9 @@ export function NotificationBell() {
             ? `Notifications${count > 0 ? ` (${count} unread)` : ""}`
             : "Notifications"
         }
-        className="relative h-8 w-8"
+        // h-11 w-11 below sm, the app's touch-target floor. At a flat 32px
+        // this was the only route to the notification panel on a phone.
+        className="relative h-11 w-11 sm:h-8 sm:w-8"
       >
         <Bell className="h-4 w-4" aria-hidden="true" />
         {hydrated && count > 0 && (

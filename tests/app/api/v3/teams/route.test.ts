@@ -105,18 +105,30 @@ describe("GET /api/v3/teams", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it("scopes the team list to the session user via the team_members join", async () => {
+  /** One listed team, plus the follow-up query that decorates it with team
+   *  picture URLs. `stamps` is what team_avatars returns for it. */
+  function mockTeamList(stamps: { team_id: number; updated_at: Date }[] = []) {
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
           id: 1,
           name: "Acme",
+          slug: "acme",
+          owner_id: 42,
+          owner_name: "Ada",
+          owner_email: "ada@example.com",
+          owner_avatar_url: null,
           created_at: "now",
           role: "owner",
           member_count: "1",
         },
       ],
     });
+    mockQuery.mockResolvedValueOnce({ rows: stamps });
+  }
+
+  it("scopes the team list to the session user via the team_members join", async () => {
+    mockTeamList();
 
     const res = await GET();
     const json = await res.json();
@@ -128,6 +140,61 @@ describe("GET /api/v3/teams", () => {
       "JOIN team_members tm ON tm.team_id = t.id AND tm.user_id = $1",
     );
     expect(params).toEqual([42]);
+  });
+
+  /**
+   * components/teams/teams-list.tsx renders owner_name/owner_email on every
+   * row and this query selected neither, so a row read "owned by undefined"
+   * over a "?" placeholder for anyone looking at a team they do not own.
+   */
+  it("selects the owner's identity, which the list renders on every row", async () => {
+    mockTeamList();
+
+    const res = await GET();
+    const json = await res.json();
+
+    expect(json.teams[0].owner_name).toBe("Ada");
+    expect(json.teams[0].owner_email).toBe("ada@example.com");
+    expect(mockQuery.mock.calls[0][0]).toContain("LEFT JOIN users u");
+  });
+
+  it("derives each team's picture URL from its stored row, not a column", async () => {
+    const updatedAt = new Date("2026-01-02T03:04:05Z");
+    mockTeamList([{ team_id: 1, updated_at: updatedAt }]);
+
+    const res = await GET();
+    const json = await res.json();
+
+    expect(json.teams[0].avatar_url).toBe(
+      `/api/v3/teams/avatar/1?v=${updatedAt.getTime()}`,
+    );
+  });
+
+  it("gives a team with no stored picture a null url, so the UI falls back instead of loading a broken image", async () => {
+    mockTeamList();
+
+    const res = await GET();
+    const json = await res.json();
+
+    expect(json.teams[0].avatar_url).toBeNull();
+  });
+
+  /** team_avatars is created at boot with onError: "warn", so a deployment
+   *  where that create failed must still be able to list teams. */
+  it("still lists teams when the picture lookup fails outright", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 1, name: "Acme", role: "owner", member_count: "1" }],
+    });
+    mockQuery.mockRejectedValueOnce(
+      new Error('relation "team_avatars" does not exist'),
+    );
+
+    const res = await GET();
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.teams).toHaveLength(1);
+    expect(json.teams[0].avatar_url).toBeNull();
   });
 });
 
@@ -321,6 +388,108 @@ describe("PATCH /api/v3/teams", () => {
     expect(sql).toContain("UPDATE teams SET name");
     expect(params).toEqual(["New Name", 1]);
   });
+
+  /**
+   * The team picture rides on this same PATCH, the way a user's does on
+   * PATCH /api/v3/auth/update. Teams gained an avatar in the UI with no way to
+   * set one; these pin the three things that make setting one safe: only a
+   * member who can manage the team may do it, the bytes go through the same
+   * validator as a profile picture (so an SVG carrying a <script> is refused),
+   * and clearing it removes the stored row rather than leaving an orphan.
+   */
+  describe("team picture", () => {
+    // A minimal but genuinely PNG-signed payload: validateAvatarDataUrl checks
+    // magic bytes, so base64 of arbitrary text would be rejected for the wrong
+    // reason and the test would pass without proving anything.
+    const PNG_DATA_URL = `data:image/png;base64,${Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3,
+    ]).toString("base64")}`;
+
+    it("rejects a body carrying neither a name nor a picture", async () => {
+      const res = await PATCH(patchRequest({ teamId: 1 }));
+      expect(res.status).toBe(400);
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it("refuses a member who cannot manage the team, before storing anything", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ role: "member" }] });
+
+      const res = await PATCH(
+        patchRequest({ teamId: 1, avatarUrl: PNG_DATA_URL }),
+      );
+
+      expect(res.status).toBe(403);
+      // Permission check only: no INSERT reached team_avatars.
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+    });
+
+    it("refuses an SVG data URL even from an owner", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ role: "owner" }] });
+
+      const res = await PATCH(
+        patchRequest({
+          teamId: 1,
+          avatarUrl: `data:image/svg+xml;base64,${Buffer.from(
+            "<svg onload=alert(1)></svg>",
+          ).toString("base64")}`,
+        }),
+      );
+
+      expect(res.status).toBe(400);
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+    });
+
+    it("stores validated bytes and returns the URL that serves them back", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ role: "owner" }] });
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ updated_at: new Date("2026-01-02T03:04:05Z") }],
+      });
+
+      const res = await PATCH(
+        patchRequest({ teamId: 1, avatarUrl: PNG_DATA_URL }),
+      );
+      const json = await res.json();
+
+      expect(res.status).toBe(200);
+      const [sql, params] = mockQuery.mock.calls[1];
+      expect(sql).toContain("INSERT INTO team_avatars");
+      expect(params[0]).toBe(1);
+      expect(params[1]).toBeInstanceOf(Buffer);
+      expect(params[2]).toBe("image/png");
+      // The stamp comes from the stored row, so the URL the client renders and
+      // the one the teams list builds on its next load are the same URL.
+      expect(json.avatarUrl).toBe(
+        `/api/v3/teams/avatar/1?v=${new Date("2026-01-02T03:04:05Z").getTime()}`,
+      );
+    });
+
+    it("clears the picture on an empty string and reports it as removed", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ role: "manager" }] });
+      mockQuery.mockResolvedValueOnce({ rows: [] });
+
+      const res = await PATCH(patchRequest({ teamId: 1, avatarUrl: "" }));
+      const json = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(json.avatarUrl).toBeNull();
+      expect(mockQuery.mock.calls[1][0]).toContain("DELETE FROM team_avatars");
+      expect(mockQuery.mock.calls[1][1]).toEqual([1]);
+    });
+
+    it("leaves the name alone when only the picture is sent", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ role: "owner" }] });
+      mockQuery.mockResolvedValueOnce({ rows: [] });
+
+      const res = await PATCH(patchRequest({ teamId: 1, avatarUrl: "" }));
+      const json = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(json).not.toHaveProperty("name");
+      for (const [sql] of mockQuery.mock.calls) {
+        expect(sql).not.toContain("UPDATE teams SET name");
+      }
+    });
+  });
 });
 
 describe("DELETE /api/v3/teams", () => {
@@ -362,7 +531,8 @@ describe("DELETE /api/v3/teams", () => {
   });
 
   it("allows the owner to delete, cascading invites and members via one atomic DELETE", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ role: "owner" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "owner" }] }); // membership
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // roster, read for the notices
     mockQuery.mockResolvedValueOnce({}); // DELETE teams (cascades invites + members)
 
     const res = await DELETE(deleteRequest({ teamId: 1 }));
@@ -372,8 +542,26 @@ describe("DELETE /api/v3/teams", () => {
     expect(json).toEqual({ success: true });
     // A single DELETE FROM teams; team_members/team_invites cascade via their
     // ON DELETE CASCADE FK, so no separate (non-atomic) deletes are issued.
-    expect(mockQuery).toHaveBeenCalledTimes(2);
-    expect(mockQuery.mock.calls[1][0]).toContain("DELETE FROM teams");
-    expect(mockQuery.mock.calls[1][1]).toEqual([1]);
+    //
+    // Asserted by statement shape rather than by call count. The route now
+    // also reads the member roster before the cascade, so it can tell the
+    // people who are about to lose access that the team is gone, and a bare
+    // count cannot tell that read apart from the hand-rolled child deletes
+    // this test exists to forbid. The shape check is the stricter of the two:
+    // it names the statements that must not appear.
+    const statements = mockQuery.mock.calls.map((c) => String(c[0]));
+    expect(
+      statements.filter((s) => s.includes("DELETE FROM teams")),
+    ).toHaveLength(1);
+    expect(statements.some((s) => s.includes("DELETE FROM team_members"))).toBe(
+      false,
+    );
+    expect(statements.some((s) => s.includes("DELETE FROM team_invites"))).toBe(
+      false,
+    );
+    const deleteCall = mockQuery.mock.calls.find((c) =>
+      String(c[0]).includes("DELETE FROM teams"),
+    );
+    expect(deleteCall?.[1]).toEqual([1]);
   });
 });

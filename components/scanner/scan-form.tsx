@@ -27,7 +27,9 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/ui/utils";
+import { useIsomorphicLayoutEffect } from "@/lib/ui/use-isomorphic-layout-effect";
 import { toggles } from "@/lib/ui/animations";
+import { tourAnchor } from "@/lib/tour/anchors";
 import type { Category, ScanStatus } from "@/lib/scanner/types";
 import { CATEGORY_META } from "@/lib/scanner/category-meta";
 import {
@@ -42,6 +44,7 @@ import {
   getQueryParam,
   setQueryParam,
   setQueryParams,
+  useQuerySeededState,
 } from "@/lib/ui/url-state";
 import {
   InlineAuthForm,
@@ -200,7 +203,9 @@ export interface ScanFormPayload {
 
 interface ScanFormProps {
   onScan: (payload: ScanFormPayload) => void;
-  onBulkScan?: (urls: string[], isPublic: boolean) => void;
+  /** `isPublic` is omitted while the account's privacy default is still
+   *  loading, so the server applies it instead of the client guessing. */
+  onBulkScan?: (urls: string[], isPublic?: boolean) => void;
   bulkStatus?: "idle" | "scanning" | "done";
   bulkProgress?: { current: number; total: number };
   status: ScanStatus;
@@ -208,7 +213,10 @@ interface ScanFormProps {
    *  Privacy, see components/profile/tabs/profile-privacy-tab.tsx). Seeds
    *  the toggle below; once someone clicks it by hand, a later change to
    *  this prop (e.g. auth finishing its fetch after this form already
-   *  mounted) stops overwriting their choice. */
+   *  mounted) stops overwriting their choice.
+   *
+   *  `undefined` means the account default has not been read yet, and is NOT
+   *  the same as `false`. The toggle reads as unknown until it resolves. */
   defaultPrivate?: boolean;
 }
 
@@ -308,38 +316,57 @@ export function ScanForm({
   status,
   defaultPrivate,
 }: ScanFormProps) {
-  const { me } = useAuth();
+  const { me, isLoading: authLoading } = useAuth();
   // The caller's real, admin-configurable bulk-scan cap (see
   // app/api/v3/auth/me/route.ts), not a flat constant -- this is exactly
   // the number the pricing page advertises per plan (5/10/25/100), so it
   // must be the one the UI actually enforces.
-  const bulkUrlLimit =
-    me?.bulkScanUrls === undefined
-      ? BULK_URL_FALLBACK_LIMIT
-      : me.bulkScanUrls === -1
-        ? BULK_URL_UNLIMITED_CEILING
-        : me.bulkScanUrls;
+  // Whether that real cap has actually arrived. The fallback below is a safe
+  // number to VALIDATE against, but it is the wrong number to PRINT: the plans
+  // are 5/10/25/100 and the fallback is 10, so a free account was told 10 (and
+  // then had an 8-URL paste rejected) while an elite account was told 10
+  // instead of 100. Nothing is stated as the cap until it is known.
+  const bulkLimitKnown = me?.bulkScanUrls !== undefined;
+  const bulkUrlLimit = !bulkLimitKnown
+    ? BULK_URL_FALLBACK_LIMIT
+    : me.bulkScanUrls === -1
+      ? BULK_URL_UNLIMITED_CEILING
+      : me.bulkScanUrls;
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
   // Set when the entered URL isn't a useful target (a search engine / results
   // page). We don't block -- the user can scan anyway -- we just warn first.
   const [targetWarning, setTargetWarning] = useState<string | null>(null);
-  const [mode, setMode] = useState<ScanMode>(() =>
-    parseModeFromQuery(getQueryParam("mode")),
+  // Seeded after the first render, not during it. These three read the query
+  // string, which does not exist on the server, so a useState initializer made
+  // the server render one console and the client's first render another. React
+  // answers that by regenerating the tree, which replays the route skeleton
+  // over the page: /dashboard?mode=quick got it, plain /dashboard did not.
+  const [mode, setMode] = useQuerySeededState<ScanMode>(
+    () => parseModeFromQuery(getQueryParam("mode")),
+    parseModeFromQuery(null),
   );
-  const [enabledFamilies, setEnabledFamilies] = useState<Set<Category>>(
+  const [enabledFamilies, setEnabledFamilies] = useQuerySeededState<
+    Set<Category>
+  >(
     () =>
       new Set(
         CHECK_FAMILIES.map((f) => f.id).filter(
           (id) => getQueryParam(`family_${id}`) !== "0",
         ),
       ),
+    // Every family on: what the URL means is "all of these minus the ones
+    // switched off", so with no params the fallback already is the answer.
+    new Set(CHECK_FAMILIES.map((f) => f.id)),
   );
   // Which of the nine active probes are selected. Opt-in and off by default,
   // so the seed is empty unless the URL names some.
-  const [selectedActiveProbes, setSelectedActiveProbes] = useState<
+  const [selectedActiveProbes, setSelectedActiveProbes] = useQuerySeededState<
     Set<ActiveProbeId>
-  >(() => new Set(parseActiveProbeIds(getQueryParam("active_probes"))));
+  >(
+    () => new Set(parseActiveProbeIds(getQueryParam("active_probes"))),
+    new Set(),
+  );
   const [scannersOpen, setScannersOpen] = useState(false);
   const [activeProbesOpen, setActiveProbesOpen] = useState(false);
 
@@ -364,27 +391,64 @@ export function ScanForm({
   // "Keep this scan private" -- seeded from the account default, but once
   // someone actually clicks it, their choice sticks even if `defaultPrivate`
   // changes underneath (e.g. auth finishes loading a beat after mount).
-  const [keepPrivate, setKeepPrivate] = useState(!!defaultPrivate);
+  //
+  // null means "we have not read the account default yet", and it is a real
+  // third state, not a stand-in for false. This used to be `useState(!!default
+  // Private)`: AuthProvider has no fallbackData, so `me` is null on the first
+  // client render and `!!undefined` is false, which painted the switch OFF and
+  // asserted "Findings go to the public host page when this finishes" to a
+  // user whose account says the opposite. Submitting inside that window sent
+  // isPublic: true and genuinely published the scan. While the value is
+  // unknown the request now omits isPublic entirely, which is exactly what the
+  // server wants: resolveScanIsPublic (lib/scanner/scan-privacy.ts) falls back
+  // to users.scans_private_by_default when the field is absent.
+  const [keepPrivate, setKeepPrivate] = useState<boolean | null>(
+    defaultPrivate === undefined ? null : defaultPrivate,
+  );
+  // Known once the account default has arrived OR the user has chosen for
+  // themselves. Only the first of those is worth waiting on, so the control is
+  // disabled only while auth is genuinely in flight: if /auth/me fails outright
+  // the switch still works, and an untouched null keeps omitting isPublic so
+  // the server applies the account setting either way.
+  const privacyKnown = keepPrivate !== null;
+  const privacyPending = authLoading && !privacyKnown;
   const userTouchedPrivacyRef = useRef(false);
   useEffect(() => {
-    if (!userTouchedPrivacyRef.current) setKeepPrivate(!!defaultPrivate);
+    if (userTouchedPrivacyRef.current || defaultPrivate === undefined) return;
+    setKeepPrivate(defaultPrivate);
   }, [defaultPrivate]);
 
   // "Capture page screenshot" -- opt-in, off by default. A screenshot spins
   // up a real, metered live-browser session, so it is never on unless the
   // user turns it on. Seeded from the URL so a shared ?screenshot=1 link
   // pre-selects it.
-  const [captureScreenshot, setCaptureScreenshot] = useState(
+  const [captureScreenshot, setCaptureScreenshot] = useQuerySeededState(
     () => getQueryParam("screenshot") === "1",
+    false,
   );
 
   // "Scan common ports" -- opt-in, off by default. A port sweep makes the
   // server a scan source against the target, so the API requires a verified
   // domain (the same gate active probing uses). Seeded from the URL so a
   // shared ?port_scan=1 link pre-selects it.
-  const [portScan, setPortScan] = useState(
+  const [portScan, setPortScan] = useQuerySeededState(
     () => getQueryParam("port_scan") === "1",
+    false,
   );
+
+  // The five values above render their server-safe default first and take
+  // their real value from the URL in a layout effect, so hydration matches
+  // (see useQuerySeededState). The mirror further down writes this form's
+  // state back into the URL, and on the first pass it would therefore write
+  // the defaults over the very params that were about to be read: landing on
+  // ?mode=deep would briefly rewrite the URL to ?mode=quick before the seed
+  // corrected it. Nothing is lost, because the seed reads first, but the
+  // write is wrong while it stands and it fires the location bridge. This
+  // marker holds the mirror until the seeds have landed.
+  const seededRef = useRef(false);
+  useIsomorphicLayoutEffect(() => {
+    seededRef.current = true;
+  }, []);
 
   const isScanning = status === "scanning";
   const isBulkScanning = bulkStatus === "scanning";
@@ -422,6 +486,7 @@ export function ScanForm({
     // deep scan could leave a dozen entries behind, and the back button then
     // walked back through them one checkbox at a time instead of leaving the
     // page. Toggling a setting is not a navigation.
+    if (!seededRef.current) return;
     setQueryParams(
       {
         mode,
@@ -519,7 +584,9 @@ export function ScanForm({
       mode,
       scanners,
       auth: authValue ?? undefined,
-      isPublic: !keepPrivate,
+      // Omitted while the account default is still unknown, so the server
+      // resolves it rather than the client guessing "public".
+      isPublic: privacyKnown ? !keepPrivate : undefined,
       captureScreenshot,
       portScan,
     });
@@ -557,7 +624,7 @@ export function ScanForm({
       );
       return;
     }
-    onBulkScan?.(lines, !keepPrivate);
+    onBulkScan?.(lines, privacyKnown ? !keepPrivate : undefined);
   }
 
   /**
@@ -658,7 +725,10 @@ export function ScanForm({
     <div className="w-full">
       <div className="overflow-hidden rounded-xl border border-border bg-card">
         {/* Mode strip */}
-        <div className="flex items-center gap-1 border-b border-border bg-muted/30 px-2 py-1.5">
+        <div
+          {...tourAnchor("scanModes")}
+          className="flex items-center gap-1 border-b border-border bg-muted/30 px-2 py-1.5"
+        >
           {[
             { id: "quick" as const, label: "Quick", icon: Zap },
             { id: "deep" as const, label: "Deep", icon: Globe },
@@ -673,7 +743,7 @@ export function ScanForm({
                 disabled={isScanning}
                 aria-pressed={active}
                 className={cn(
-                  `inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-sm font-medium ${toggles.control}`,
+                  `inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm font-medium ${toggles.control}`,
                   active
                     ? "bg-card text-foreground shadow-xs"
                     : "text-muted-foreground hover:text-foreground",
@@ -689,7 +759,10 @@ export function ScanForm({
           <span className="ml-auto hidden pr-1 text-[11px] text-muted-foreground sm:block">
             {mode === "quick" && "One page, every enabled family"}
             {mode === "deep" && "Crawl first, then pick the pages to scan"}
-            {mode === "bulk" && `Up to ${bulkUrlLimit} URLs, one per line`}
+            {mode === "bulk" &&
+              (bulkLimitKnown
+                ? `Up to ${bulkUrlLimit} URLs, one per line`
+                : "One URL per line")}
           </span>
         </div>
 
@@ -698,7 +771,10 @@ export function ScanForm({
             below rather than being duplicated in each. Seeded from the
             account's "scans are private by default" setting (Profile ->
             Privacy) via the defaultPrivate prop. */}
-        <div className="flex items-center gap-2.5 border-b border-border bg-muted/10 px-3 py-2">
+        <div
+          {...tourAnchor("scanPrivacy")}
+          className="flex items-center gap-2.5 border-b border-border bg-muted/10 px-3 py-2"
+        >
           <Lock
             aria-hidden
             className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
@@ -709,21 +785,29 @@ export function ScanForm({
           >
             Keep this scan private
           </label>
+          {/* Three states, not two. Saying "Findings go to the public host
+              page" before the account default has loaded is a claim about
+              where this scan's results end up, and it was the wrong one for
+              every private-by-default account. */}
           <span className="hidden text-[11px] text-muted-foreground sm:block">
-            {keepPrivate
-              ? "Skips the public host page."
-              : "Findings go to the public host page when this finishes."}
+            {privacyPending
+              ? "Reading your account default..."
+              : !privacyKnown
+                ? "Uses your account default."
+                : keepPrivate
+                  ? "Skips the public host page."
+                  : "Findings go to the public host page when this finishes."}
           </span>
           <Switch
             id="scan-keep-private"
-            checked={keepPrivate}
+            checked={keepPrivate ?? false}
             onCheckedChange={(checked) => {
               userTouchedPrivacyRef.current = true;
               setKeepPrivate(checked);
             }}
-            disabled={isScanning || isBulkScanning}
+            disabled={isScanning || isBulkScanning || privacyPending}
             aria-label="Keep this scan private"
-            className="ml-auto"
+            className={cn("ml-auto", privacyPending && "opacity-50")}
           />
         </div>
 
@@ -743,6 +827,7 @@ export function ScanForm({
               />
               <Input
                 id="scan-url-input"
+                {...tourAnchor("scanUrlInput")}
                 type="text"
                 placeholder="example.com or 203.0.113.10"
                 value={url}
@@ -769,6 +854,7 @@ export function ScanForm({
                     type="button"
                     variant="outline"
                     disabled={isScanning}
+                    {...tourAnchor("scanFamilies")}
                     className={cn(
                       "h-11 shrink-0 gap-1.5 bg-transparent px-3 text-sm",
                       !allFamiliesSelected && "border-primary/40 text-primary",
@@ -800,7 +886,7 @@ export function ScanForm({
                             : resetAllFamilies
                         }
                         className={cn(
-                          "rounded px-1.5 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10",
+                          "rounded-md px-1.5 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10",
                           FOCUS_RING,
                         )}
                       >
@@ -838,7 +924,7 @@ export function ScanForm({
                               disabled={isScanning || autoOff}
                               aria-pressed={active}
                               className={cn(
-                                `group relative flex w-full items-center gap-2 rounded px-2 py-1.5 text-left ${toggles.control}`,
+                                `group relative flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left ${toggles.control}`,
                                 active && "bg-primary/5 hover:bg-primary/10",
                                 !active && !autoOff && "hover:bg-muted/60",
                                 autoOff && "cursor-not-allowed opacity-40",
@@ -867,7 +953,7 @@ export function ScanForm({
                               <span
                                 aria-hidden
                                 className={cn(
-                                  `ml-auto flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${toggles.control}`,
+                                  `ml-auto flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-md border ${toggles.control}`,
                                   active
                                     ? "border-primary bg-primary text-primary-foreground"
                                     : "border-border bg-transparent group-hover:border-muted-foreground/50",
@@ -942,7 +1028,7 @@ export function ScanForm({
                           disabled={isScanning}
                           aria-pressed={active}
                           className={cn(
-                            `group relative flex w-full items-center gap-2 rounded px-2 py-1.5 text-left ${toggles.control}`,
+                            `group relative flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left ${toggles.control}`,
                             active && "bg-primary/5 hover:bg-primary/10",
                             !active && "hover:bg-muted/60",
                             isScanning && "cursor-not-allowed opacity-50",
@@ -967,7 +1053,7 @@ export function ScanForm({
                           <span
                             aria-hidden
                             className={cn(
-                              "ml-auto flex h-3.5 w-3.5 shrink-0 items-center justify-center self-start rounded border",
+                              "ml-auto flex h-3.5 w-3.5 shrink-0 items-center justify-center self-start rounded-md border",
                               active
                                 ? "border-primary bg-primary text-primary-foreground"
                                 : "border-border bg-transparent group-hover:border-muted-foreground/50",
@@ -988,6 +1074,7 @@ export function ScanForm({
                 type="submit"
                 size="lg"
                 disabled={isScanning}
+                {...tourAnchor("scanSubmit")}
                 className={cn(
                   "h-11 flex-1 gap-2 px-6 sm:flex-none",
                   FOCUS_RING,
@@ -1143,12 +1230,15 @@ export function ScanForm({
               <span
                 className={cn(
                   "font-mono text-xs tabular-nums",
-                  bulkCount > bulkUrlLimit
+                  bulkLimitKnown && bulkCount > bulkUrlLimit
                     ? "text-destructive"
                     : "text-muted-foreground",
                 )}
               >
-                {bulkCount}/{bulkUrlLimit}
+                {/* The denominator is only shown once it is this account's
+                    real cap. Printing the fallback here read as a plan
+                    allowance and was wrong for every plan but core. */}
+                {bulkLimitKnown ? `${bulkCount}/${bulkUrlLimit}` : bulkCount}
               </span>
               <input
                 ref={specInputRef}
@@ -1167,7 +1257,7 @@ export function ScanForm({
                 onClick={() => specInputRef.current?.click()}
                 disabled={isBulkScanning || specImporting}
                 className={cn(
-                  "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50",
+                  "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50",
                   FOCUS_RING,
                 )}
               >
@@ -1182,7 +1272,7 @@ export function ScanForm({
                     setSpecNote("");
                   }}
                   className={cn(
-                    "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+                    "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
                     FOCUS_RING,
                   )}
                 >
@@ -1203,7 +1293,10 @@ export function ScanForm({
               if (bulkError) setBulkError("");
               if (specNote) setSpecNote("");
             }}
-            rows={6}
+            // Four, not six: six was sized to fit the three-line placeholder
+            // and left the panel looking empty on arrival. Still resize-y, and
+            // it grows when a list is pasted.
+            rows={4}
             disabled={isBulkScanning}
             className={cn(
               "w-full resize-y bg-transparent px-3 py-2.5 font-mono text-base sm:text-xs text-foreground placeholder:text-muted-foreground/60 disabled:opacity-50",
@@ -1265,7 +1358,26 @@ export function ScanForm({
             </p>
           )}
 
-          <div className="flex justify-end border-t border-border p-2 sm:p-2.5">
+          {/* The summary sits in the footer rather than above the button so the
+              bar has a subject: this row used to be a full-width rule with one
+              right-aligned control and nothing else on it. */}
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-border p-2 sm:p-2.5">
+            <p className="min-w-0 pl-1 text-xs text-muted-foreground">
+              {bulkCount === 0 ? (
+                "Each URL is scanned separately and counts against today's quota."
+              ) : bulkLimitKnown && bulkCount > bulkUrlLimit ? (
+                <span className="text-destructive">
+                  {bulkCount} URLs pasted, {bulkUrlLimit} allowed on your plan.
+                  Remove {bulkCount - bulkUrlLimit} to continue.
+                </span>
+              ) : (
+                <>
+                  {bulkCount} {bulkCount === 1 ? "URL" : "URLs"} ready.{" "}
+                  {bulkCount === 1 ? "It counts" : "Each counts"} as one scan
+                  against today&apos;s quota.
+                </>
+              )}
+            </p>
             <Button
               type="submit"
               size="lg"

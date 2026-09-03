@@ -18,6 +18,17 @@ import tokens from "../src/lib/tokens.json";
  * which token paints what has to be reflected here. Anything deliberately
  * exempt is listed at the bottom with the reason, rather than quietly omitted.
  *
+ * The second pass, during the visual design pass, found the gap this file's
+ * own method left: it only covered colour that arrives from a STYLESHEET, and
+ * the loudest colour in the extension did not. The result panel's score, the
+ * risk word beside it, every finding row's rail, the injected card's score
+ * ring and its severity dots were all written as inline styles from
+ * severityHex()/colorForScore(), which return the SOLID ramp - the dark
+ * theme's - in both themes. On the light card that put the risk word between
+ * 1.76:1 and 3.35:1 and the card's caution numeral at 1.56:1. Those elements
+ * now carry data-sev and read the same variables the chips do, and the pairs
+ * are listed below like everything else. Colour set from JS is still colour.
+ *
  * SC 1.4.3 (Contrast, Minimum, AA): 4.5:1 for normal text. Every piece of text
  * in this extension is normal text: the largest type anywhere is the 32px
  * score number, which IS large-scale, but it is coloured from the severity
@@ -191,6 +202,37 @@ function pairsFor(theme: "light" | "dark"): Pair[] {
     tint(t.warning, 15, t.card),
   );
 
+  // ---- the result panel's score and the risk word beside it
+  //
+  // Not a tint: these are painted straight onto the card. They used to be
+  // written inline from severityHex(), which returns the SOLID ramp (the dark
+  // theme's) in both themes, so on the light card the 11px risk word measured
+  // 1.76:1 at medium and 2.03:1 at clean and the 32px score missed even the
+  // 3:1 large-text bar on three rungs. They read --vr-sev-text now, via
+  // data-sev on the panel.
+  for (const key of SEVERITIES) {
+    text(
+      `score and risk word, "${key}", on the card`,
+      t.severityText[key],
+      t.card,
+    );
+  }
+  text('score and risk word, "clean", on the card', t.success, t.card);
+  // The panel's and each finding row's left rail. Redundant with the chip
+  // beside it, so 1.4.11 is not strictly engaged, but the rail is the thing
+  // the eye lands on first in a list of findings and it costs nothing.
+  for (const key of SEVERITIES) {
+    nonText(`finding rail, "${key}", on the page`, t.severity[key], t.bg);
+  }
+
+  // ---- the brand tint chip: the popup's plan pill and the options page's
+  // per-section state chip, both --vr-primary-text on a 12% tint of the fill
+  text(
+    "plan / section-state chip on its own 12% tint over a card",
+    t.primaryText,
+    tint(t.primary, 12, t.card),
+  );
+
   // ---- other coloured text
   text("incomplete-scan note", t.warning, t.card);
   text("history trend, improved", t.success, t.bg);
@@ -204,7 +246,26 @@ function pairsFor(theme: "light" | "dark"): Pair[] {
   text("card verdict, safe", t.success, t.card);
   text("card verdict, caution", t.warning, t.card);
   text("card verdict, unsafe", t.danger, t.card);
-  text("card severity chip text", t.text, t.mutedBg);
+  // The card's severity chips are now the popup's chip: the same tint of the
+  // same hue with the same graded percentage, labelled in severityText. They
+  // were a neutral --vr-muted-bg pill with a dot painted from the solid ramp,
+  // which put the "medium" dot at 1.7:1 against the pill on a light page. The
+  // one difference from the popup is info, which takes a 10% tint of its own
+  // hue here rather than the popup's neutral surface, so it is asserted.
+  for (const key of SEVERITIES) {
+    const pct = key === "critical" || key === "high" ? 15 : 10;
+    text(
+      `card severity chip "${key}" label on its own tint`,
+      t.severityText[key],
+      tint(t.severity[key], pct, t.card),
+    );
+  }
+  // The score ring's numeral, over the ring's own --vr-bg centre. Three tiers,
+  // from badge.ts's TIER_VAR; it used to take colorForScore()'s solid hex,
+  // which measured 1.56:1 here at caution on the light theme.
+  text("card score ring numeral, unsafe", t.severity.critical, t.bg);
+  text("card score ring numeral, caution", t.severity.medium, t.bg);
+  text("card score ring numeral, safe", t.success, t.bg);
   text("card mute-row buttons", t.textMuted, t.card);
   text("card primary button label", t.primaryFg, t.primary);
 
@@ -225,6 +286,10 @@ function pairsFor(theme: "light" | "dark"): Pair[] {
   nonText("card verdict rail, safe", t.success, t.card);
   nonText("card verdict rail, caution", t.warning, t.card);
   nonText("card verdict rail, unsafe", t.danger, t.card);
+  // The conic-gradient arc against the unfilled remainder of the ring.
+  nonText("card score ring arc, unsafe", t.severity.critical, t.mutedBg);
+  nonText("card score ring arc, caution", t.severity.medium, t.mutedBg);
+  nonText("card score ring arc, safe", t.success, t.mutedBg);
 
   return out;
 }

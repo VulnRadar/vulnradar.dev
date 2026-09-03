@@ -22,8 +22,12 @@ export function Toast({ toast, onClose, duration = 5000 }: ToastProps) {
 
   return (
     <div
-      role="status"
-      aria-live="polite"
+      // A failed admin action is announced immediately; a success can wait
+      // for a pause in speech. Both used to be polite, so an operator using a
+      // screen reader could fire a second action before hearing that the
+      // first one failed.
+      role={toast.type === "error" ? "alert" : "status"}
+      aria-live={toast.type === "error" ? "assertive" : "polite"}
       className={cn(
         // max-w keeps a long server error message on screen: without it the
         // part an admin needs to read ran off the right edge on a phone.

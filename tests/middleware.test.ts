@@ -10,6 +10,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { ROUTES } from "@/lib/config/client-constants";
 
 const { middleware } = await import("@/middleware");
 
@@ -241,8 +242,28 @@ describe("middleware: public path / auth redirects", () => {
     expect(res.headers.get("location")).toBeNull();
   });
 
-  it("does not redirect an unauthenticated request for /badge", () => {
-    const res = middleware(makeRequest("/badge"));
+  // The reverse of the fix above, and the reason the /badge case is worth
+  // keeping rather than deleting: ROUTES.BADGE WAS in PUBLIC_PATHS, and it
+  // should not have been. The page is a builder over the caller's own scan
+  // history (GET /api/v3/badge/scans needs a session), so signed out it
+  // rendered a permanently empty page instead of anything useful. /compare has
+  // always been private for the same reason; it is asserted here so the pair
+  // stays together. The badge IMAGE endpoints under /api/v3/badge are a
+  // different prefix and stay public: they are embedded on third-party sites.
+  it.each([ROUTES.BADGE, ROUTES.COMPARE])(
+    "redirects an unauthenticated request for %s to /login, keeping the return path",
+    (route) => {
+      const res = middleware(makeRequest(route));
+      const location = res.headers.get("location");
+      expect(location).toContain("/login");
+      expect(location).toContain(
+        `redirect=${encodeURIComponent(route).replace(/\//g, "%2F")}`,
+      );
+    },
+  );
+
+  it("keeps the embeddable badge image endpoint public", () => {
+    const res = middleware(makeRequest("/api/v3/badge/site/abc123"));
     expect(res.headers.get("location")).toBeNull();
   });
 

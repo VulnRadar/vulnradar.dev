@@ -529,7 +529,22 @@ const endpoints: Endpoint[] = [
     path: "/history",
     title: "List Scan History",
     description:
-      "Returns up to 100 most recent scans for the authenticated user. Retention is a per-plan admin setting and ships as unlimited on every plan, so by default nothing is aged out. GitHub repo scans are excluded from this list.",
+      "The authenticated user's own scans, most recent first, 100 per page by default. Retention is a per-plan admin setting and ships as unlimited on every plan, so by default nothing is aged out. GitHub repo scans are excluded from this list.",
+    queryParams: [
+      {
+        name: "limit",
+        type: "number",
+        description:
+          "Rows to return. Clamped to maxLimit rather than rejected if you ask for more.",
+        default: "100 (the deployment's maxLimit)",
+      },
+      {
+        name: "offset",
+        type: "number",
+        description: "Rows to skip. This is how you reach page 2.",
+        default: "0",
+      },
+    ],
     responseExample: `{
   "scans": [
     {
@@ -540,15 +555,21 @@ const endpoints: Endpoint[] = [
       "duration": 1423,
       "scanned_at": "2026-03-10T15:30:00.000Z",
       "source": "api",
+      "status": "completed",
       "tags": ["production", "weekly-scan"]
     }
   ],
-  "total": 7,
+  "total": 143,
   "limit": 100,
-  "truncated": false
+  "offset": 0,
+  "maxLimit": 100,
+  "truncated": true
 }`,
     notes: [
       "id is an opaque, non-enumerable string. Treat it as a token, not a number: /history/{id} also accepts the legacy integer id, but this list only ever returns the opaque form.",
+      "total is every scan on the account inside retention, not the length of this page. truncated means there are rows AFTER this page: walk them with ?offset=100, ?offset=200 and so on until it goes false. Before pagination existed this endpoint reported truncated: true and gave you no way to act on it.",
+      "limit is the page size actually applied to your request, and maxLimit is the largest this deployment will serve. A self-hosted instance may have raised or lowered maxLimit, so read it rather than assuming 100.",
+      "status distinguishes a finished scan from one still pending or running, or one that failed. A pending row carries an empty summary and findings_count 0, which is not the same thing as a clean result.",
       "This list is your own scans only. There is no team clause on the query. For a teammate's scans use GET /api/v3/teams/member-scans?teamId=&userId=, and for a single scan a teammate owns use GET /history/{id}, which does honour team access.",
       "Use /history/{id} for full details (findings, response headers).",
     ],
@@ -749,22 +770,50 @@ format=json       -> application/json            vulnradar-example.com.json`,
     id: "patch-history-id",
     method: "PATCH",
     path: "/history/{id}",
-    title: "Update Scan Notes",
-    description: "Update the user note on a scan. Owner only.",
+    title: "Update a Scan's Notes, Visibility, or Teams",
+    description:
+      "Edit one past scan. Send only the fields you want to change; an absent field is left alone, and a body with none of them is a 400. This card used to document notes alone, which is why isPublic and team sharing looked like UI-only actions.",
     pathParams: [
-      { name: "id", type: "number", required: true, description: "Scan ID" },
+      {
+        name: "id",
+        type: "string",
+        required: true,
+        description: "Scan public id (the legacy numeric id also works)",
+      },
     ],
     requestBody: `{
-  "notes": "Investigating HSTS issue with infra team"
+  "notes": "Investigating HSTS issue with infra team",
+  "isPublic": false,
+  "teamIds": [7, 9]
 }`,
     responseExample: `{
-  "success": true
+  "notes": "Investigating HSTS issue with infra team",
+  "isPublic": false,
+  "teamId": 7,
+  "teamIds": [7, 9]
 }`,
+    notes: [
+      "The response is flat. There is no { success: true } wrapper, and this card previously claimed there was.",
+      "teamIds is a full REPLACEMENT set, not a list of teams to add. Send [] to unshare the scan entirely. Because omitting a team is how you remove it, every id in the array and every id being dropped is permission-checked, so you cannot drop a team you do not manage by leaving it out.",
+      "teamId (a single number, or null) is still accepted for clients written before multi-team sharing and means the same as a one- or zero-element teamIds. It also comes back in the response as the primary team, which is simply the first entry of teamIds.",
+      "teamIds is reported whether or not this request changed it, so an absent field in your request never leaves you guessing whether it means 'unchanged' or 'shared with nobody'.",
+      "notes is truncated at 2000 characters rather than rejected.",
+      "Setting isPublic to false revokes the existing share link, and also drops the scan from the public /host page if it was that host's current source.",
+      "Notes and visibility need write access, which a team member with a write role has. Changing the team set is owner-only: sharing is an ownership decision, not a collaboration one.",
+    ],
     errors: [
-      { code: 400, description: "Notes longer than 2000 characters" },
+      {
+        code: 400,
+        description:
+          "Nothing to update, a non-string notes, a non-boolean isPublic, or a teamIds entry you cannot share into",
+      },
       { code: 401, description: "Unauthorized" },
-      { code: 403, description: "Forbidden: not the scan owner" },
-      { code: 404, description: "Scan not found" },
+      {
+        code: 403,
+        description:
+          "Read access but not write access, or not the owner when changing teamIds",
+      },
+      { code: 404, description: "Scan not found, or no access to it at all" },
     ],
   },
   {
@@ -1133,6 +1182,35 @@ format=json       -> application/json            vulnradar-example.com.json`,
     ],
   },
   {
+    id: "post-keys-reset-binding",
+    method: "POST",
+    path: "/keys/{id}/reset-binding",
+    title: "Clear a Key's IP Binding",
+    description:
+      "Forget the IP a key pinned itself to on first use. Only relevant on deployments that have API-key IP binding switched on; on every other deployment there is nothing bound and this is a no-op that still returns 200.",
+    pathParams: [
+      {
+        name: "id",
+        type: "number",
+        required: true,
+        description: "Key ID whose binding to clear",
+      },
+    ],
+    responseExample: `{
+  "success": true
+}`,
+    notes: [
+      "Rotating the key used to be the only way out of a binding mismatch, which forces every consumer of that key to be reconfigured for what is usually just a CI runner getting a different address this morning.",
+      "The next successful request re-adopts whichever subnet it comes from. This is a recovery action, not a way to switch the feature off.",
+      "Session cookie auth. A key cannot clear its own binding, which would defeat the point.",
+    ],
+    errors: [
+      { code: 400, description: "Invalid key ID" },
+      { code: 401, description: "Unauthorized" },
+      { code: 404, description: "Key not found or already revoked" },
+    ],
+  },
+  {
     id: "get-domains",
     method: "GET",
     path: "/domains",
@@ -1255,6 +1333,290 @@ format=json       -> application/json            vulnradar-example.com.json`,
       { code: 404, description: "Domain not found" },
     ],
   },
+  {
+    id: "patch-domains-id",
+    method: "PATCH",
+    path: "/domains/{id}",
+    title: "Assign a Domain to a Team",
+    description:
+      "Share a verified domain with a team so its members' scans can use it, or send teamId: null to make it personal again.",
+    pathParams: [
+      {
+        name: "id",
+        type: "number",
+        required: true,
+        description: "Domain ID to reassign",
+      },
+    ],
+    requestBody: `{
+  "teamId": 7
+}`,
+    responseExample: `{
+  "id": 12,
+  "domain": "example.com",
+  "team_id": 7,
+  "status": "verified",
+  "verification_method": "dns-txt",
+  "created_at": "2026-08-01T00:00:00.000Z",
+  "verified_at": "2026-08-01T00:12:00.000Z",
+  "last_checked_at": "2026-08-30T04:00:00.000Z",
+  "last_check_error": null
+}`,
+    notes: [
+      "Owner-only, matching the rule on webhooks. A team member with write access may USE a shared domain, but deciding who a proof of ownership is shared with belongs to whoever proved it.",
+      "teamId must name a team you can write into. A team you only have read access to, or one you are not in at all, is a 400 rather than a silent no-op.",
+      "A domain that is not yours returns 404, not 403. There is no read-only variant of this action, so a non-owner learns nothing about whether the id is real.",
+      "The response is the updated row, flat, using its database column names.",
+    ],
+    errors: [
+      {
+        code: 400,
+        description:
+          "Body carried no teamId, teamId was neither an integer nor null, or it names a team you cannot write into",
+      },
+      { code: 401, description: "Unauthorized" },
+      { code: 404, description: "Domain not found, or you are not its owner" },
+    ],
+  },
+  {
+    id: "get-webhooks",
+    method: "GET",
+    path: "/webhooks",
+    title: "List Webhooks",
+    description:
+      "Your webhooks plus any assigned to a team you belong to. Team co-membership alone is enough to read them; all team roles can view.",
+    responseExample: `{
+  "webhooks": [
+    {
+      "id": 3,
+      "url": "https://hooks.example.com/vulnradar",
+      "name": "CI alerts",
+      "type": "generic",
+      "active": true,
+      "team_id": null,
+      "created_at": "2026-08-01T00:00:00.000Z"
+    }
+  ]
+}`,
+    notes: [
+      "The signing secret is never returned here. It is shown once when the webhook is created and once more when it is rotated, the same contract an API key's raw value has.",
+      "Session cookie auth: an API key cannot reach the webhook routes.",
+    ],
+    errors: [{ code: 401, description: "Unauthorized" }],
+  },
+  {
+    id: "post-webhooks",
+    method: "POST",
+    path: "/webhooks",
+    title: "Create a Webhook",
+    description:
+      "Register a public HTTPS endpoint to be called when a scan completes.",
+    requestBody: `{
+  "url": "https://hooks.example.com/vulnradar",
+  "name": "CI alerts",
+  "type": "auto"
+}`,
+    responseExample: `{
+  "id": 3,
+  "url": "https://hooks.example.com/vulnradar",
+  "name": "CI alerts",
+  "type": "generic",
+  "active": true,
+  "created_at": "2026-08-01T00:00:00.000Z",
+  "secret": "<64 hex chars, shown once>"
+}`,
+    notes: [
+      "secret is returned exactly once, in this response. Store it now: nothing else ever returns it, and the only way to get a new one is POST /webhooks/{id}/rotate-secret.",
+      "Sign-check every delivery against it. That is the only thing separating a real delivery from anyone who learned your endpoint URL.",
+      'type is "auto" (or omitted) to detect the payload format from the URL, or one of "discord", "slack", "generic" to force it.',
+      "https only, and the URL is checked against the same private-address guard the scanner uses, so localhost, link-local and private-range targets are refused.",
+      "The number of webhooks you can hold is capped by your plan.",
+    ],
+    errors: [
+      {
+        code: 400,
+        description:
+          "Missing or unparseable URL, a non-HTTPS or blocked target, or the plan limit is reached",
+      },
+      { code: 401, description: "Unauthorized" },
+      { code: 403, description: "Webhooks are disabled on this deployment" },
+    ],
+  },
+  {
+    id: "patch-webhooks",
+    method: "PATCH",
+    path: "/webhooks",
+    title: "Send a Test Payload",
+    description:
+      "Deliver a one-off test payload so you can confirm a webhook is wired up. This does NOT edit the webhook; PATCH /webhooks/{id} does that.",
+    requestBody: `{
+  "id": 3
+}`,
+    responseExample: `{
+  "success": true,
+  "message": "Test webhook sent successfully"
+}`,
+    notes: [
+      "The two PATCH routes are easy to confuse: PATCH /webhooks with { id } in the body sends a test, PATCH /webhooks/{id} with the id in the path edits the resource.",
+      "The stored URL is re-validated against the private-address guard before the call, since DNS may have moved since registration.",
+      "Failures come back as { success: false, error } with a 400, not the bare { error } most of this API uses. The error text includes the status and first 100 characters your endpoint returned, which is usually enough to diagnose it.",
+      "Needs write access: a viewer-role co-member gets 403.",
+    ],
+    errors: [
+      {
+        code: 400,
+        description:
+          "Missing id, the target is now blocked, or your endpoint refused the delivery",
+      },
+      { code: 401, description: "Unauthorized" },
+      { code: 403, description: "No write access to this webhook" },
+      { code: 404, description: "Webhook not found" },
+    ],
+  },
+  {
+    id: "patch-webhooks-id",
+    method: "PATCH",
+    path: "/webhooks/{id}",
+    title: "Edit, Pause, or Reassign a Webhook",
+    description:
+      "Update a webhook in place. Send at least one of active, url, name, type or teamId; an absent field is left alone.",
+    pathParams: [
+      {
+        name: "id",
+        type: "number",
+        required: true,
+        description: "Webhook ID to edit",
+      },
+    ],
+    requestBody: `{
+  "active": false
+}`,
+    responseExample: `{
+  "id": 3,
+  "url": "https://hooks.example.com/vulnradar",
+  "name": "CI alerts",
+  "type": "generic",
+  "active": false,
+  "team_id": null,
+  "created_at": "2026-08-01T00:00:00.000Z"
+}`,
+    notes: [
+      "active: false pauses delivery while keeping the id and the secret, which is what you want during an incident on the receiving side. Deleting and recreating changes both.",
+      "teamId is owner-only; the other fields need write access. A read-only co-member gets 403 because they legitimately know the webhook exists; a caller with no access at all gets 404.",
+      "A new url is re-validated the same way POST /webhooks validates it.",
+    ],
+    errors: [
+      {
+        code: 400,
+        description:
+          "Invalid id, a body with nothing to update, or a blocked URL",
+      },
+      { code: 401, description: "Unauthorized" },
+      { code: 403, description: "Read access but not write access" },
+      { code: 404, description: "Webhook not found" },
+    ],
+  },
+  {
+    id: "post-webhooks-rotate-secret",
+    method: "POST",
+    path: "/webhooks/{id}/rotate-secret",
+    title: "Rotate a Webhook's Signing Secret",
+    description:
+      "Issue a new HMAC signing secret in place: same row, same id, same URL.",
+    pathParams: [
+      {
+        name: "id",
+        type: "number",
+        required: true,
+        description: "Webhook ID whose secret to replace",
+      },
+    ],
+    responseExample: `{
+  "id": 3,
+  "url": "https://hooks.example.com/vulnradar",
+  "name": "CI alerts",
+  "type": "generic",
+  "active": true,
+  "created_at": "2026-08-01T00:00:00.000Z",
+  "secret": "<new 64 hex chars, shown once>"
+}`,
+    notes: [
+      "Before this existed, a leaked signing secret could only be dealt with by deleting the webhook and creating a new one, which changes the id and breaks the consumer's configuration for what should be a credential swap.",
+      "Every signature your consumer is currently verifying becomes invalid the moment this returns. Deploy the new secret first, or accept a gap.",
+      "Owner-only, not merely team-write: a team member with write access can edit or pause a webhook, but this is an ownership-level decision.",
+    ],
+    errors: [
+      { code: 400, description: "Invalid webhook id" },
+      { code: 401, description: "Unauthorized" },
+      { code: 404, description: "Webhook not found, or you are not its owner" },
+    ],
+  },
+  {
+    id: "get-webhooks-deliveries",
+    method: "GET",
+    path: "/webhooks/{id}/deliveries",
+    title: "Read a Webhook's Delivery Log",
+    description:
+      "The 50 most recent delivery attempts, newest first, so a failing webhook can be diagnosed from what actually came back rather than by guessing.",
+    pathParams: [
+      {
+        name: "id",
+        type: "number",
+        required: true,
+        description: "Webhook ID whose attempts to read",
+      },
+    ],
+    responseExample: `{
+  "deliveries": [
+    {
+      "id": 981,
+      "event_type": "scan.completed",
+      "http_status": 200,
+      "response_snippet": "ok",
+      "attempted_at": "2026-08-30T04:00:03.120Z"
+    },
+    {
+      "id": 980,
+      "event_type": "scan.completed",
+      "http_status": null,
+      "response_snippet": "Blocked: target resolves to a private address",
+      "attempted_at": "2026-08-29T04:00:02.480Z"
+    }
+  ]
+}`,
+    notes: [
+      "http_status is null on a network error or a blocked target; response_snippet then carries the error text instead of a body.",
+      "Neither field ever contains the request payload, so the log is safe to read without exposing what was sent.",
+      "Fixed at 50 rows with no paging. There is no older page: this is a recent-attempts view, not an audit trail.",
+      "Read access follows the list: the owner, or a co-member of the team the webhook is assigned to.",
+    ],
+    errors: [
+      { code: 400, description: "Invalid webhook id" },
+      { code: 401, description: "Unauthorized" },
+      { code: 404, description: "Webhook not found, or no access to it" },
+    ],
+  },
+  {
+    id: "delete-webhooks",
+    method: "DELETE",
+    path: "/webhooks",
+    title: "Delete a Webhook",
+    description: "Remove a webhook so it stops being called.",
+    requestBody: `{
+  "id": 3
+}`,
+    responseExample: `{
+  "success": true
+}`,
+    notes: [
+      "The id goes in the body, not the path or the query string, unlike DELETE /domains.",
+      "Prefer PATCH /webhooks/{id} with active: false if you only want to stop deliveries for a while: deleting loses the id and the secret.",
+    ],
+    errors: [
+      { code: 401, description: "Unauthorized" },
+      { code: 403, description: "No write access to this webhook" },
+    ],
+  },
 ];
 
 const tocItems: TocItem[] = [
@@ -1360,7 +1722,7 @@ for finding in result.findings:
 
 export default function APIDocsPage() {
   return (
-    <div className="space-y-16">
+    <div className="space-y-12 sm:space-y-16">
       <DocsTocSpy items={tocItems} />
       <DocsHero
         id="top"
@@ -1518,6 +1880,7 @@ export default function APIDocsPage() {
             method: e.method,
             endpoint: e.path,
             description: e.title,
+            href: `#${e.id}`,
           }))}
         />
 
@@ -1666,8 +2029,24 @@ X-RateLimit-Reset: 2026-03-12T00:00:00.000Z`}
               sends rate-limit headers on a 200: not the session path of{" "}
               <InlineCode>/scan</InlineCode>, and not any{" "}
               <InlineCode>/history</InlineCode> or{" "}
-              <InlineCode>/scan/status</InlineCode> read. Every 429 from a scan
-              endpoint carries the full five.
+              <InlineCode>/scan/status</InlineCode> read.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              A 429 from a spent <em>key</em> quota is uniform: all five headers
+              plus <InlineCode>Retry-After</InlineCode>, on{" "}
+              <InlineCode>/scan</InlineCode>,{" "}
+              <InlineCode>/scan/crawl</InlineCode>,{" "}
+              <InlineCode>/scan/bulk</InlineCode>,{" "}
+              <InlineCode>/scan/authenticated</InlineCode> and every{" "}
+              <InlineCode>/history</InlineCode> read. The history reads used to
+              answer that same limiter with a bare{" "}
+              <InlineCode>{"{ error }"}</InlineCode> and no{" "}
+              <InlineCode>Retry-After</InlineCode>, so one retry path could not
+              cover both. A 429 from a session-path daily quota still carries
+              the five <InlineCode>X-RateLimit-*</InlineCode> headers but no{" "}
+              <InlineCode>Retry-After</InlineCode>: that counter resets at
+              midnight UTC, which <InlineCode>X-RateLimit-Reset</InlineCode>{" "}
+              already tells you.
             </p>
           </div>
           <div className="min-w-0 space-y-2">

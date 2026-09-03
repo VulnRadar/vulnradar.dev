@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  AlertCircle,
   ArrowLeft,
   ChevronRight,
   LifeBuoy,
   Loader2,
   Plus,
+  RefreshCw,
   Send,
   Users,
 } from "lucide-react";
@@ -26,6 +28,7 @@ import {
   TICKET_CATEGORIES,
   TICKET_CATEGORY_LABELS,
   TICKET_STATUS_LABELS,
+  TICKET_STATUS_NEXT,
   TICKET_SUBJECT_MAX,
   TICKET_MESSAGE_MAX,
   OPEN_TICKET_STATUSES,
@@ -93,29 +96,10 @@ const STATUS_STYLES: Record<TicketStatus, string> = {
   closed: "bg-muted text-muted-foreground border-border",
 };
 
-const STATUS_DOTS: Record<TicketStatus, string> = {
-  open: "bg-primary",
-  awaiting_staff: "bg-primary",
-  awaiting_user: "bg-[hsl(var(--warning))]",
-  resolved: "bg-[hsl(var(--success))]",
-  closed: "bg-muted-foreground/40",
-};
-
-/**
- * A status badge says what state a ticket is in; it does not say what happens
- * next, which is the only thing the person who opened it actually wants to
- * know. One sentence per state, shown above the conversation alongside the
- * button that changes that state.
- */
-const STATUS_NEXT: Record<TicketStatus, string> = {
-  open: "We have your ticket. A reply comes back here, by email and in your notifications.",
-  awaiting_staff:
-    "Your reply is with our team. The answer comes back here, by email and in your notifications.",
-  awaiting_user: "Support has replied and is waiting on you.",
-  resolved: "Marked resolved. Reopen it if the problem is still there.",
-  closed: "This ticket is closed. Open a new one to carry on.",
-};
-
+// The badge says what state the ticket is in and TICKET_STATUS_NEXT says what
+// happens next; the strip below pairs the sentence with the button that
+// changes that state, above the conversation so neither is below the fold.
+//
 // Box and copy are tinted separately: the tone belongs on the sentence, not
 // on the container, or it would also repaint the buttons sitting next to it
 // (the outline and ghost variants both inherit their text colour).
@@ -158,6 +142,9 @@ export function SupportTickets() {
   const [tickets, setTickets] = useState<TicketListItem[] | null>(null);
   const [view, setView] = useState<"list" | "new" | "thread">("list");
   const [thread, setThread] = useState<Thread | null>(null);
+  /** The ticket the thread pane is showing, kept even when the fetch fails so
+   *  the failure state can offer a retry rather than only a dead end. */
+  const [threadId, setThreadId] = useState<number | null>(null);
   const [threadLoading, setThreadLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -197,6 +184,13 @@ export function SupportTickets() {
 
   const openThread = useCallback(async (id: number) => {
     setView("thread");
+    setThreadId(id);
+    // Drop a previously open thread before fetching a different one. The header
+    // renders from `thread`, so holding the old object showed one ticket's
+    // subject and status above another ticket's loading spinner. A reload of
+    // the SAME ticket (after a reply or a status change) keeps it, so those do
+    // not flash the header away.
+    setThread((prev) => (prev && prev.ticket.id === id ? prev : null));
     setThreadLoading(true);
     setShowShare(false);
     setError(null);
@@ -204,8 +198,9 @@ export function SupportTickets() {
       const res = await fetch(API.SUPPORT_TICKET(id));
       if (!res.ok) throw new Error("Could not open this ticket.");
       setThread(await res.json());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not open this ticket.");
+    } catch {
+      // No banner: the thread pane's own failure state says this, and carries
+      // the retry button. Setting both stated one failure twice on one screen.
       setThread(null);
     } finally {
       setThreadLoading(false);
@@ -396,6 +391,11 @@ export function SupportTickets() {
     }
   }
 
+  // Owner only, resolved only: `closed` is deliberately terminal for the
+  // requester and the route 409s on posting to it.
+  const canReopen =
+    !!thread?.viewerIsOwner && thread.ticket.status === "resolved";
+
   return (
     <section className="mt-10 border-t border-border/50 pt-8">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -403,9 +403,12 @@ export function SupportTickets() {
           <h2 className="text-lg font-semibold text-foreground">
             Your support tickets
           </h2>
+          {/* Where a reply turns up is said by whichever block is on screen
+              below (the status strip on an open thread, the empty state on an
+              empty list). Repeating it here put the same promise twice in
+              every view. */}
           <p className="text-sm text-muted-foreground">
-            Talk to our team directly. We reply by email and in your
-            notifications.
+            Talk to our team directly.
           </p>
         </div>
         {view !== "new" && (
@@ -522,32 +525,22 @@ export function SupportTickets() {
                   key={i}
                   className="flex items-start gap-3 px-3 py-3 sm:px-4"
                 >
-                  <Skeleton className="mt-1.5 h-2 w-2 shrink-0 rounded-full" />
                   <div className="min-w-0 flex-1 space-y-2">
                     <Skeleton className="h-3.5 w-2/3" />
                     <Skeleton className="h-3 w-1/2" />
                   </div>
+                  <Skeleton className="mt-0.5 h-4 w-4 shrink-0 rounded-sm" />
                 </div>
               ))}
             </div>
           ) : tickets.length === 0 ? (
+            // No action button here: the section header's New ticket button is
+            // already on screen, a few lines up, with the same label, icon and
+            // handler. The description names it instead of repeating it.
             <EmptyState
               icon={LifeBuoy}
               title="No tickets yet"
-              description="Open one and a person on our team picks it up. You get the reply by email and in your notifications."
-              action={
-                <Button
-                  size="sm"
-                  className="h-9 gap-1.5 px-3"
-                  onClick={() => {
-                    setView("new");
-                    setError(null);
-                  }}
-                >
-                  <Plus className="h-4 w-4" aria-hidden="true" />
-                  New ticket
-                </Button>
-              }
+              description="New ticket starts a thread with our team. A person picks it up, and the reply comes back here, by email and in your notifications."
             />
           ) : (
             // A divided list, not a stack of separate cards: these rows are one
@@ -561,28 +554,22 @@ export function SupportTickets() {
                   onClick={() => openThread(t.id)}
                   className="flex w-full items-start gap-3 px-3 py-3 text-left transition-colors duration-200 ease-out hover:bg-muted/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:px-4"
                 >
-                  <span
-                    className={cn(
-                      "mt-1.5 h-2 w-2 shrink-0 rounded-full",
-                      STATUS_DOTS[t.status],
-                    )}
-                    aria-hidden="true"
-                  />
+                  {/* The coloured status dot that used to lead this row said
+                      exactly what the badge beside the subject says, in the
+                      same hue and with none of the wording. The badge is the
+                      one that carries the label, so it is the one that stays.
+                      Same for the old "Shared with you" pill: the meta line
+                      below names who shared it, which is strictly more. */}
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-2">
                       <span className="truncate text-sm font-medium text-foreground">
                         {t.subject}
                       </span>
                       <StatusBadge status={t.status} />
-                      {t.shared && (
-                        <span className="inline-flex shrink-0 items-center rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                          Shared with you
-                        </span>
-                      )}
                     </span>
                     <span className="mt-0.5 block text-xs text-muted-foreground">
-                      {t.shared && t.shared_owner_name
-                        ? `From ${t.shared_owner_name} · `
+                      {t.shared
+                        ? `Shared by ${t.shared_owner_name ?? "a teammate"} · `
                         : ""}
                       {TICKET_CATEGORY_LABELS[t.category]} &middot;{" "}
                       {t.message_count}{" "}
@@ -660,36 +647,42 @@ export function SupportTickets() {
                     STATUS_STRIP[thread.ticket.status].text,
                   )}
                 >
-                  {STATUS_NEXT[thread.ticket.status]}
+                  {TICKET_STATUS_NEXT[thread.ticket.status]}
                 </p>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  {OPEN_TICKET_STATUSES.includes(thread.ticket.status) && (
-                    <>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8 px-2.5 text-xs"
-                        onClick={() => setStatus("resolved")}
-                      >
-                        Mark resolved
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground"
-                        onClick={() => setStatus("closed")}
-                      >
-                        Close ticket
-                      </Button>
-                    </>
-                  )}
-                  {/* Saying "this is not fixed" used to require writing another
-                      message: replying to a resolved ticket is what put it back
-                      in the support queue, and there was no button for the case
-                      where there is nothing more to add (AUDIT-011#drift-21).
-                      Owner only, and resolved only: `closed` stays terminal. */}
-                  {thread.viewerIsOwner &&
-                    thread.ticket.status === "resolved" && (
+                {/* Closed is terminal for the requester, so the strip has no
+                    buttons in that state. Rendering the container anyway left
+                    an empty box that justify-between pushed the sentence away
+                    from. */}
+                {(OPEN_TICKET_STATUSES.includes(thread.ticket.status) ||
+                  canReopen) && (
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {OPEN_TICKET_STATUSES.includes(thread.ticket.status) && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 px-2.5 text-xs"
+                          onClick={() => setStatus("resolved")}
+                        >
+                          Mark resolved
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+                          onClick={() => setStatus("closed")}
+                        >
+                          Close ticket
+                        </Button>
+                      </>
+                    )}
+                    {/* Saying "this is not fixed" used to require writing
+                        another message: replying to a resolved ticket is what
+                        put it back in the support queue, and there was no
+                        button for the case where there is nothing more to add
+                        (AUDIT-011#drift-21). Owner only, and resolved only:
+                        `closed` stays terminal. */}
+                    {canReopen && (
                       <Button
                         size="sm"
                         variant="outline"
@@ -699,7 +692,8 @@ export function SupportTickets() {
                         Reopen
                       </Button>
                     )}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -802,11 +796,11 @@ export function SupportTickets() {
                 ))}
               </div>
 
-              {thread.ticket.status === "closed" ? (
-                <p className="border-t border-border/60 bg-muted/20 px-3 py-3 text-sm text-muted-foreground sm:px-4">
-                  This ticket is closed. Open a new ticket to continue.
-                </p>
-              ) : (
+              {/* A closed ticket gets no reply box and no notice in its place:
+                  the status strip above the conversation already says the
+                  ticket is closed and what to do instead, and this used to say
+                  it a second time in the same card. */}
+              {thread.ticket.status !== "closed" && (
                 <form
                   onSubmit={sendReply}
                   className="border-t border-border/60 bg-muted/10 p-3 sm:p-4"
@@ -841,9 +835,25 @@ export function SupportTickets() {
               )}
             </>
           ) : (
-            <p className="p-4 text-sm text-muted-foreground">
-              Could not load this ticket.
-            </p>
+            <EmptyState
+              variant="inline"
+              icon={AlertCircle}
+              title="Could not load this ticket"
+              description="The request did not come back. Try again, or go back to all tickets."
+              action={
+                threadId !== null ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 gap-1.5 px-3 text-xs"
+                    onClick={() => openThread(threadId)}
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+                    Try again
+                  </Button>
+                ) : undefined
+              }
+            />
           )}
         </div>
       )}

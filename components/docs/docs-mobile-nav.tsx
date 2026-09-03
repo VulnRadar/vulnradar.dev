@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/ui/utils";
+import { modalCloseChip } from "@/components/ui/modal-grammar";
 import { List, X } from "lucide-react";
 import { DOCS_NAV, isNavItemActive } from "./docs-nav";
 import type { TocItem } from "./docs-types";
@@ -134,7 +135,7 @@ export function DocsMobileNav({
         type="button"
         onClick={onClose}
         aria-label="Close navigation"
-        className="absolute right-3 top-3 z-10 rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+        className={cn(modalCloseChip, "right-3 top-3 z-10")}
       >
         <X className="h-5 w-5" aria-hidden="true" />
       </button>

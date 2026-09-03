@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -43,23 +42,31 @@ export function ProfilePrivacyTab({
   // per-scan "Keep this scan private" toggle on the scan form (see
   // lib/scanner/scan-privacy.ts's resolveScanIsPublic). Local state plus
   // pendingChanges, same discard/save flow ProfileNotificationsTab uses.
-  const [scansPrivateByDefault, setScansPrivateByDefault] = useState(
-    preloadedScansPrivateByDefault ?? false,
-  );
+  //
+  // null is a third state, not a missing boolean: the parent leaves it null
+  // when GET /account/privacy failed, and `?? false` turned that into the
+  // sentence "New scans publish to the public page at /host/<hostname> as
+  // soon as they finish" for an account that may be set to the opposite.
+  // The parent's banner says the load failed but clears after 8 seconds,
+  // while a wrong switch sits there for good.
+  const [scansPrivateByDefault, setScansPrivateByDefault] = useState<
+    boolean | null
+  >(preloadedScansPrivateByDefault ?? null);
   const [originalScansPrivateByDefault, setOriginalScansPrivateByDefault] =
-    useState(preloadedScansPrivateByDefault ?? false);
+    useState<boolean | null>(preloadedScansPrivateByDefault ?? null);
 
   // "List new shares in Public Scans by default" -- the account-level
   // counterpart to the per-share "List publicly" / "Unlist" toggle on the
   // Shared page (see lib/scanner/share-privacy.ts's
   // resolveSharePubliclyListed). Independent of the scan-visibility setting
-  // above: same discard/save flow, different setting entirely.
+  // above: same discard/save flow, same null tri-state, different setting
+  // entirely.
   const [sharePubliclyListedByDefault, setSharePubliclyListedByDefault] =
-    useState(preloadedSharePubliclyListedByDefault ?? true);
+    useState<boolean | null>(preloadedSharePubliclyListedByDefault ?? null);
   const [
     originalSharePubliclyListedByDefault,
     setOriginalSharePubliclyListedByDefault,
-  ] = useState(preloadedSharePubliclyListedByDefault ?? true);
+  ] = useState<boolean | null>(preloadedSharePubliclyListedByDefault ?? null);
 
   // Update state when preloaded data changes
   useEffect(() => {
@@ -69,24 +76,23 @@ export function ProfilePrivacyTab({
     }
   }, [preloadedDataReqInfo]);
 
+  // Both effects used to test `!== undefined`, which null passes, so a
+  // failed request was actively coerced to a concrete boolean here. Only a
+  // real boolean is a real setting.
   useEffect(() => {
-    if (preloadedScansPrivateByDefault !== undefined) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs local state from a changed prop, gated so it only fires when the preloaded value actually arrives
-      setScansPrivateByDefault(preloadedScansPrivateByDefault ?? false);
-      setOriginalScansPrivateByDefault(preloadedScansPrivateByDefault ?? false);
-    }
+    if (typeof preloadedScansPrivateByDefault !== "boolean") return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs local state from a changed prop, gated so it only fires when the preloaded value actually arrives
+    setScansPrivateByDefault(preloadedScansPrivateByDefault);
+    setOriginalScansPrivateByDefault(preloadedScansPrivateByDefault);
   }, [preloadedScansPrivateByDefault]);
 
   useEffect(() => {
-    if (preloadedSharePubliclyListedByDefault !== undefined) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs local state from a changed prop, gated so it only fires when the preloaded value actually arrives
-      setSharePubliclyListedByDefault(
-        preloadedSharePubliclyListedByDefault ?? true,
-      );
-      setOriginalSharePubliclyListedByDefault(
-        preloadedSharePubliclyListedByDefault ?? true,
-      );
-    }
+    if (typeof preloadedSharePubliclyListedByDefault !== "boolean") return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs local state from a changed prop, gated so it only fires when the preloaded value actually arrives
+    setSharePubliclyListedByDefault(preloadedSharePubliclyListedByDefault);
+    setOriginalSharePubliclyListedByDefault(
+      preloadedSharePubliclyListedByDefault,
+    );
   }, [preloadedSharePubliclyListedByDefault]);
 
   // Reset to original when discard is clicked (mirrors ProfileGeneralTab).
@@ -273,73 +279,82 @@ export function ProfilePrivacyTab({
         fastest way to see exactly what we hold.
       </p>
 
-      {/* Scan visibility default */}
+      {/* What is public by default.
+          These were two separate sections, each an h2 plus its own bordered
+          Card holding one switch, which read as two unrelated settings and
+          pushed everything below them (including account deletion) a screen
+          further down. They are the same kind of decision -- what a NEW scan
+          or share does before you touch it -- so they share one panel with a
+          divider between the rows. The mechanisms stay distinct: the first
+          controls whether a scan feeds /host/[hostname], the second whether
+          a share link appears in the /public-scans directory. */}
       <section className="flex flex-col gap-4">
         <div>
           <h2 className="text-base font-semibold tracking-tight text-foreground">
-            Scan visibility
+            What is public by default
           </h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Every completed scan writes a snapshot to a public page at
-            /host/&lt;hostname&gt; unless you say otherwise.
+            Applies to new scans and new share links. Either one can still be
+            flipped individually after the fact.
           </p>
         </div>
-        <Card className="border-border/50 bg-card/50">
-          <CardContent className="flex items-center justify-between gap-4 py-5">
+        <div className="rounded-xl border border-border/50 bg-card/50 divide-y divide-border/50">
+          <div className="flex items-center justify-between gap-4 p-4 sm:p-5">
             <div className="min-w-0">
               <p className="text-sm font-medium text-foreground">
                 Scans are public by default
               </p>
               <p className="text-xs text-muted-foreground mt-1 leading-relaxed max-w-md">
-                {scansPrivateByDefault
-                  ? 'New scans skip the public host page. You can still make a single scan public from that scan\'s menu, or by checking "public" before you run it.'
-                  : "New scans publish to the public host page as soon as they finish. Turn this off to keep new scans private unless you say otherwise per scan."}
+                {scansPrivateByDefault === null
+                  ? "We could not load this setting, so it is not shown. Guessing it either way would tell you the opposite of what your account actually does with a new scan. Reload the page to try again."
+                  : scansPrivateByDefault
+                    ? 'New scans skip the public page at /host/<hostname>. You can still make a single scan public from that scan\'s menu, or by checking "public" before you run it.'
+                    : "New scans publish to the public page at /host/<hostname> as soon as they finish. Turn this off to keep new scans private unless you say otherwise per scan."}
               </p>
             </div>
-            <Switch
-              checked={!scansPrivateByDefault}
-              onCheckedChange={(checked) =>
-                handleTogglePrivateByDefault(!checked)
-              }
-              aria-label="Scans are public by default"
-            />
-          </CardContent>
-        </Card>
-      </section>
-
-      {/* Public Scans directory listing default -- a separate mechanism
-          from scan visibility above: this one is about whether a NEW share
-          link shows up in the public /public-scans directory, not whether
-          the scan itself feeds /host/[hostname]. */}
-      <section className="flex flex-col gap-4">
-        <div>
-          <h2 className="text-base font-semibold tracking-tight text-foreground">
-            Public Scans directory
-          </h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Anyone can browse /public-scans to see who scanned what. This only
-            affects scans you actively share.
-          </p>
-        </div>
-        <Card className="border-border/50 bg-card/50">
-          <CardContent className="flex items-center justify-between gap-4 py-5">
+            {/* No switch while the real value is unknown: a switch has only
+                two positions and both of them are a claim about who can see
+                your scans. Nothing to toggle also means nothing to save. */}
+            {scansPrivateByDefault === null ? (
+              <span className="text-xs font-medium text-muted-foreground shrink-0">
+                Unknown
+              </span>
+            ) : (
+              <Switch
+                checked={!scansPrivateByDefault}
+                onCheckedChange={(checked) =>
+                  handleTogglePrivateByDefault(!checked)
+                }
+                aria-label="Scans are public by default"
+              />
+            )}
+          </div>
+          <div className="flex items-center justify-between gap-4 p-4 sm:p-5">
             <div className="min-w-0">
               <p className="text-sm font-medium text-foreground">
-                List new shares in Public Scans by default
+                List new shares in the Public Scans directory
               </p>
               <p className="text-xs text-muted-foreground mt-1 leading-relaxed max-w-md">
-                {sharePubliclyListedByDefault
-                  ? 'A new share link is listed in /public-scans as soon as you create it. Unlist any single share from the "Shared" page\'s menu without changing this default.'
-                  : 'New share links stay off the public directory until you list them one at a time from the "Shared" page. The link itself still works for anyone you send it to.'}
+                {sharePubliclyListedByDefault === null
+                  ? "We could not load this setting, so it is not shown. Guessing it either way would tell you the opposite of what your account actually does with a new share link. Reload the page to try again."
+                  : sharePubliclyListedByDefault
+                    ? 'A new share link is listed at /public-scans, which anyone can browse, as soon as you create it. Unlist any single share from the "Shared" page without changing this default.'
+                    : 'New share links stay off the public directory until you list them one at a time from the "Shared" page. The link itself still works for anyone you send it to.'}
               </p>
             </div>
-            <Switch
-              checked={sharePubliclyListedByDefault}
-              onCheckedChange={handleToggleSharePubliclyListedByDefault}
-              aria-label="List new shares in Public Scans by default"
-            />
-          </CardContent>
-        </Card>
+            {sharePubliclyListedByDefault === null ? (
+              <span className="text-xs font-medium text-muted-foreground shrink-0">
+                Unknown
+              </span>
+            ) : (
+              <Switch
+                checked={sharePubliclyListedByDefault}
+                onCheckedChange={handleToggleSharePubliclyListedByDefault}
+                aria-label="List new shares in the Public Scans directory"
+              />
+            )}
+          </div>
+        </div>
       </section>
 
       {/* Data Export */}
@@ -352,100 +367,105 @@ export function ProfilePrivacyTab({
             A JSON file with everything tied to your account.
           </p>
         </div>
-        <Card className="border-border/50 bg-card/50">
-          <CardContent className="pt-6">
-            <div className="flex flex-col gap-4">
-              {/* Download Fresh Data Section */}
-              <div className="flex flex-col gap-4 p-4 rounded-lg border border-border bg-secondary/30">
-                {/* Can download fresh data - no cooldown or cooldown expired */}
-                {dataReqInfo?.canDownloadNew && (
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium text-foreground">
-                        Your profile, API keys, scan history, and usage logs
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {dataReqInfo?.lastDownloadAt
-                          ? "Your cooldown has expired. Get a fresh export now."
-                          : "Downloads immediately as a .json file."}
-                      </p>
-                    </div>
-                    <Button
-                      onClick={handleRequestData}
-                      disabled={requestingData}
-                      className="shrink-0 gap-2"
-                    >
-                      {requestingData ? (
-                        <Loader2
-                          className="h-4 w-4 animate-spin"
-                          aria-hidden="true"
-                        />
-                      ) : (
-                        <Download className="h-4 w-4" aria-hidden="true" />
-                      )}
-                      {requestingData ? "Downloading..." : "Download now"}
-                    </Button>
-                  </div>
-                )}
-
-                {/* Cooldown active - can't get fresh data yet */}
-                {!dataReqInfo?.canDownloadNew &&
-                  dataReqInfo?.lastDownloadAt && (
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-medium text-foreground">
-                          A fresh export is on cooldown
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          Next one is ready in{" "}
-                          <span className="font-mono text-foreground font-semibold">
-                            {dataReqInfo.cooldownEndsAt
-                              ? getTimeRemaining(dataReqInfo.cooldownEndsAt) ||
-                                "soon"
-                              : "soon"}
-                          </span>
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Last downloaded{" "}
-                          {formatDate(dataReqInfo.lastDownloadAt)}
-                        </p>
-                      </div>
-                      <Button disabled className="shrink-0 gap-2">
-                        <Clock className="h-4 w-4" aria-hidden="true" />
-                        On cooldown
-                      </Button>
-                    </div>
-                  )}
+        {/* One panel with divided rows, matching the defaults panel above.
+            It used to be a Card wrapping a CardContent wrapping a bordered
+            box wrapping the row, so a single button sat inside three nested
+            borders. It also rendered that innermost box empty when
+            dataReqInfo never arrived, which read as a broken control rather
+            than a failed request. */}
+        <div className="rounded-xl border border-border/50 bg-card/50 divide-y divide-border/50">
+          {/* No cooldown, or the cooldown has expired */}
+          {dataReqInfo?.canDownloadNew && (
+            <div className="flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">
+                  Your profile, API keys, scan history, and usage logs
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {dataReqInfo?.lastDownloadAt
+                    ? "Your cooldown has expired. Get a fresh export now."
+                    : "Downloads immediately as a .json file."}
+                </p>
               </div>
-
-              {/* Re-download Previous Export */}
-              {dataReqInfo?.hasData && (
-                <div className="flex items-center justify-between gap-3 p-4 rounded-lg border border-border bg-muted/50">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">
-                      Your last export is still available
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      No cooldown on re-downloading it. Generated{" "}
-                      {dataReqInfo.lastDownloadAt
-                        ? formatDate(dataReqInfo.lastDownloadAt)
-                        : "recently"}
-                      .
-                    </p>
-                  </div>
-                  <Button
-                    onClick={handleDownloadPreviousData}
-                    variant="outline"
-                    className="shrink-0 gap-2"
-                  >
-                    <Download className="h-4 w-4" aria-hidden="true" />
-                    Re-download
-                  </Button>
-                </div>
-              )}
+              <Button
+                onClick={handleRequestData}
+                disabled={requestingData}
+                className="shrink-0 gap-2"
+              >
+                {requestingData ? (
+                  <Loader2
+                    className="h-4 w-4 animate-spin"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <Download className="h-4 w-4" aria-hidden="true" />
+                )}
+                {requestingData ? "Downloading..." : "Download now"}
+              </Button>
             </div>
-          </CardContent>
-        </Card>
+          )}
+
+          {/* Cooldown active, so no fresh export yet */}
+          {!dataReqInfo?.canDownloadNew && dataReqInfo?.lastDownloadAt && (
+            <div className="flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">
+                  A fresh export is on cooldown
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Next one is ready in{" "}
+                  <span className="font-mono text-foreground font-semibold">
+                    {dataReqInfo.cooldownEndsAt
+                      ? getTimeRemaining(dataReqInfo.cooldownEndsAt) || "soon"
+                      : "soon"}
+                  </span>
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Last downloaded {formatDate(dataReqInfo.lastDownloadAt)}
+                </p>
+              </div>
+              <Button disabled className="shrink-0 gap-2">
+                <Clock className="h-4 w-4" aria-hidden="true" />
+                On cooldown
+              </Button>
+            </div>
+          )}
+
+          {/* Re-download the previous export */}
+          {dataReqInfo?.hasData && (
+            <div className="flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">
+                  Your last export is still available
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  No cooldown on re-downloading it. Generated{" "}
+                  {dataReqInfo.lastDownloadAt
+                    ? formatDate(dataReqInfo.lastDownloadAt)
+                    : "recently"}
+                  .
+                </p>
+              </div>
+              <Button
+                onClick={handleDownloadPreviousData}
+                variant="outline"
+                className="shrink-0 gap-2"
+              >
+                <Download className="h-4 w-4" aria-hidden="true" />
+                Re-download
+              </Button>
+            </div>
+          )}
+
+          {/* The request that fills dataReqInfo failed or has not landed.
+              Without this the panel rendered as an empty bordered box. */}
+          {!dataReqInfo && (
+            <p className="p-4 sm:p-5 text-sm text-muted-foreground">
+              We could not load your export history. Reload the page to try
+              again.
+            </p>
+          )}
+        </div>
       </section>
 
       {/* Danger zone: same visual language as the sign-out-everywhere danger

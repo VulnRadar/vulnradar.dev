@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useToast } from "@/components/ui/use-toast";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import { Header } from "@/components/scanner/header";
-import { Footer } from "@/components/scanner/footer";
+import { AppPageShell } from "@/components/shared/app-page-shell";
 import {
   PaginationControl,
   usePagination,
@@ -17,6 +18,7 @@ import {
   getQueryParamInt,
   QUERY_CHANGE_EVENT,
   setQueryParam,
+  useQuerySeededState,
 } from "@/lib/ui/url-state";
 import {
   type Share,
@@ -24,8 +26,8 @@ import {
   SharesStats,
   SharesEmptyState,
   SharesTable,
+  SharesDataSkeleton,
 } from "@/components/shares";
-import { SharesSkeleton } from "@/components/shares/shares-skeleton";
 
 export default function SharesPage() {
   const { toast } = useToast();
@@ -37,8 +39,9 @@ export default function SharesPage() {
     number | null
   >(null);
   const [pageSize, setPageSize] = useState(10);
-  const [currentPage, setCurrentPage] = useState(
+  const [currentPage, setCurrentPage] = useQuerySeededState(
     () => getQueryParamInt("page") ?? 1,
+    1,
   );
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [selectedShare, setSelectedShare] = useState<Share | null>(null);
@@ -67,7 +70,7 @@ export default function SharesPage() {
       window.removeEventListener(QUERY_CHANGE_EVENT, onChange);
       window.removeEventListener("popstate", syncPageFromUrl);
     };
-  }, []);
+  }, [setCurrentPage]);
 
   // A failed load used to fall through to SharesEmptyState, which says there
   // are no share links. For a page whose whole subject is which of your scan
@@ -125,7 +128,9 @@ export default function SharesPage() {
           title: next
             ? "Could not list that report publicly"
             : "Could not unlist that report",
-          description: data.error || "The report's visibility is unchanged.",
+          description:
+            data.error ||
+            "Nothing changed, the report is still exactly as it was. Try again in a moment.",
           variant: "destructive",
         });
       }
@@ -133,7 +138,8 @@ export default function SharesPage() {
       console.error("Failed to update public listing:", err);
       toast({
         title: "Could not change that report's visibility",
-        description: "The report's visibility is unchanged.",
+        description:
+          "Nothing changed. Check your connection and try the switch again.",
         variant: "destructive",
       });
     } finally {
@@ -160,7 +166,8 @@ export default function SharesPage() {
         toast({
           title: "Could not change when this link expires",
           description:
-            data.error || "The expiry is unchanged. Please try again.",
+            data.error ||
+            "Nothing changed, the link still expires when it did. Try again in a moment.",
           variant: "destructive",
         });
         return;
@@ -231,33 +238,52 @@ export default function SharesPage() {
     }
   }
 
-  if (loading) {
-    return <SharesSkeleton />;
-  }
-
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <Header />
-      <main
-        id="main-content"
-        tabIndex={-1}
-        className="w-full max-w-6xl mx-auto flex-1 px-4 py-6 sm:px-6 sm:py-8"
-      >
-        <div className="flex flex-col gap-5">
-          <div className="pb-2 pt-2 sm:pt-4">
-            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
-              Shared reports
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Anyone with a link below can read that report without logging in.
-              Revoke a link and it stops working immediately.
-            </p>
-          </div>
+    <AppPageShell className="flex flex-col gap-5">
+      {/* Title block carries the one action this page cannot do itself:
+          links are minted from a scan in History, so with links already
+          in the list the only route back there used to be the empty
+          state nobody sees any more.
 
+          It is static text, so it renders on the first frame rather than
+          waiting behind a placeholder with the rest of the page. */}
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3 pb-2 pt-2 sm:pt-4">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
+            Shared reports
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Anyone with a link below can read that report without logging in.
+            Revoke a link and it stops working immediately.
+          </p>
+        </div>
+        {/* Whether this button belongs here depends on the data, and below sm
+            it wraps onto its own line, so it is reserved rather than left out:
+            otherwise everything under it moves down when the list lands. */}
+        {loading ? (
+          <Skeleton className="h-10 w-44 shrink-0" />
+        ) : (
+          shares.length > 0 && (
+            <Button variant="outline" className="shrink-0 gap-2" asChild>
+              <Link href="/history">
+                <Share2 className="h-4 w-4" aria-hidden="true" />
+                Share another scan
+              </Link>
+            </Button>
+          )
+        )}
+      </div>
+
+      {loading ? (
+        <SharesDataSkeleton />
+      ) : (
+        <>
           {shares.length > 0 && <SharesStats shares={shares} />}
 
           {listError ? (
-            <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-destructive/30 bg-destructive/5 px-4 py-14 text-center">
+            // rounded-xl, not rounded-md: this fills the page-panel slot, and
+            // its sibling in that same slot (SharesEmptyState) is rounded-xl.
+            <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-destructive/30 bg-destructive/5 px-4 py-14 text-center">
               <AlertTriangle
                 className="h-6 w-6 text-destructive/70"
                 aria-hidden="true"
@@ -307,8 +333,8 @@ export default function SharesPage() {
               totalItems={shares.length}
             />
           )}
-        </div>
-      </main>
+        </>
+      )}
 
       <ConfirmDialog
         open={confirmRevoke !== null}
@@ -332,8 +358,6 @@ export default function SharesPage() {
         }}
       />
 
-      <Footer />
-
       {selectedShare && (
         <ShareModal
           open={shareModalOpen}
@@ -348,6 +372,6 @@ export default function SharesPage() {
           togglingPubliclyListed={togglingPubliclyListed === selectedShare.id}
         />
       )}
-    </div>
+    </AppPageShell>
   );
 }

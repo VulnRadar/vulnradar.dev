@@ -1,0 +1,26 @@
+[
+  {
+    "icon": "Layers",
+    "label": "Bulk Scanning Now Uses The Bulk Endpoint",
+    "desc": "Starting a bulk scan from the dashboard sent one request per URL, so a 10-URL run made 10 round trips, tripped its own burst limiter partway through, and reported success or failure a URL at a time. It now sends the whole list in one request to the bulk endpoint that was already built for it. That path slices the batch against your remaining daily quota up front, runs the SSRF and access-rule checks on every URL before charging any of them, and admits the whole batch under a single concurrency reservation, so a plan that allows one scan at a time can still queue its full bulk allowance. Turning bulk scanning off for a deployment now actually turns it off in the dashboard; before, the switch only reached the API.",
+    "category": "changed"
+  },
+  {
+    "icon": "AlertTriangle",
+    "label": "A Refused Bulk Scan Says Why",
+    "desc": "A bulk scan that was refused outright reported \"0 of 10 scans queued, 10 were refused\", which is true and explains nothing. The summary now carries the reason: bulk scanning switched off, a rejected request, or a connection that never reached the server. The daily-limit case is told apart from the other refusals by the response itself rather than by matching the wording of the error, so editing that copy can no longer break which message you get.",
+    "category": "fixed"
+  },
+  {
+    "icon": "CreditCard",
+    "label": "Advertised Plan Limits Are The Limits That Are Enforced",
+    "desc": "The pricing cards, the line-by-line comparison table, the checkout page and the upgrade modal read a copy of the plan limits compiled into the page, while the API enforced 48 separate admin-editable settings. The numbers matched as shipped, but any one edit in the admin settings quietly desynchronised what was advertised from what was charged, including on the page where the card details go in. All four now read the same values the API enforces against, falling back to the shipped numbers until they load. The upgrade modal also had three limits written out as plain sentences that tracked nothing at all; they are counted from the same values now. A test asserts the shipped copy equals the configured defaults for every plan and every limit, so the two cannot drift apart again.",
+    "category": "fixed"
+  },
+  {
+    "icon": "LifeBuoy",
+    "label": "The Chat Launcher Really Does Step Over A Save Bar",
+    "desc": "The support launcher measures what is pinned to the bottom of the screen and lifts itself clear, so it stops covering the Save Changes button on a phone. The measurement never found anything: every bottom bar in the app is a click-through wrapper around the card you actually see, and the probe only inspected the card, which is not the part that is pinned. It now looks at the whole chain above whatever it finds. It also re-measures from where the launcher would sit unlifted, so stepping clear of a bar cannot make it think the bar has gone and drop back onto it.",
+    "category": "fixed"
+  }
+]

@@ -56,7 +56,10 @@ export default function DonatePage() {
         <Button asChild size="lg" className="h-11 px-6">
           <a href={STRIPE_DONATE_URL}>Continue to Stripe</a>
         </Button>
-        <p className="text-xs text-muted-foreground/70 mt-4 leading-relaxed">
+        {/* Full-strength --muted-foreground: the token is tuned to 5.84:1 in
+            light and 5.90:1 in dark, and a /70 variant took 12px text under
+            AA in both. */}
+        <p className="text-xs text-muted-foreground mt-4 leading-relaxed">
           Not moving? Use the button above. Payment is handled entirely by
           Stripe.
         </p>

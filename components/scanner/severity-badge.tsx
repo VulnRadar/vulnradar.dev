@@ -25,6 +25,17 @@ export interface SeverityTone {
   text: string;
   /** Tinted surface. Strength scales with severity on purpose. */
   surface: string;
+  /**
+   * Tint for a whole PANEL rather than a chip. Held at a uniform /5 across
+   * every level, unlike `surface`: a badge is a few square centimetres and can
+   * carry /15, but the same value across a full-width header washes the panel
+   * and eats into the contrast of every foreground colour drawn on it. /5 is
+   * the strongest value that keeps the severity's own text colour above 4.5:1
+   * on --card in both themes (the binding pair is critical in dark mode, at
+   * 4.61:1). Painted as an overlay over bg-card, never as the panel's only
+   * background, so the panel keeps a solid base.
+   */
+  panel: string;
   /** Tinted border to match the surface. */
   border: string;
   /**
@@ -40,6 +51,7 @@ export const SEVERITY_TONE: Record<Severity, SeverityTone> = {
     solid: "bg-[hsl(var(--severity-critical))]",
     text: "text-[hsl(var(--severity-critical))]",
     surface: "bg-[hsl(var(--severity-critical))]/15",
+    panel: "bg-[hsl(var(--severity-critical))]/5",
     border: "border-[hsl(var(--severity-critical))]/40",
     emphasis: "loud",
   },
@@ -48,6 +60,7 @@ export const SEVERITY_TONE: Record<Severity, SeverityTone> = {
     solid: "bg-[hsl(var(--severity-high))]",
     text: "text-[hsl(var(--severity-high))]",
     surface: "bg-[hsl(var(--severity-high))]/15",
+    panel: "bg-[hsl(var(--severity-high))]/5",
     border: "border-[hsl(var(--severity-high))]/40",
     emphasis: "loud",
   },
@@ -56,6 +69,7 @@ export const SEVERITY_TONE: Record<Severity, SeverityTone> = {
     solid: "bg-[hsl(var(--severity-medium))]",
     text: "text-[hsl(var(--severity-medium))]",
     surface: "bg-[hsl(var(--severity-medium))]/10",
+    panel: "bg-[hsl(var(--severity-medium))]/5",
     border: "border-[hsl(var(--severity-medium))]/30",
     emphasis: "normal",
   },
@@ -64,6 +78,7 @@ export const SEVERITY_TONE: Record<Severity, SeverityTone> = {
     solid: "bg-[hsl(var(--severity-low))]",
     text: "text-[hsl(var(--severity-low))]",
     surface: "bg-[hsl(var(--severity-low))]/10",
+    panel: "bg-[hsl(var(--severity-low))]/5",
     border: "border-[hsl(var(--severity-low))]/30",
     emphasis: "normal",
   },
@@ -72,6 +87,9 @@ export const SEVERITY_TONE: Record<Severity, SeverityTone> = {
     solid: "bg-[hsl(var(--severity-info))]",
     text: "text-[hsl(var(--severity-info))]",
     surface: "bg-muted",
+    // Info is the one level that is not a problem, so its panel stays neutral
+    // rather than tinting a whole header grey for no signal.
+    panel: "",
     border: "border-border",
     emphasis: "quiet",
   },
@@ -105,7 +123,7 @@ export function SeverityBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded border font-semibold uppercase tracking-wide tabular-nums",
+        "inline-flex items-center gap-1.5 rounded-md border font-semibold uppercase tracking-wide tabular-nums",
         size === "sm" ? "px-1.5 py-0.5 text-[10px]" : "px-2 py-1 text-xs",
         tone.surface,
         tone.border,

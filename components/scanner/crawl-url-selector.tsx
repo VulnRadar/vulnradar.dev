@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ArrowRight, Check, Loader2, Search, X } from "lucide-react";
+import { ArrowRight, Check, Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ModalShell } from "@/components/ui/modal-shell";
 import { cn } from "@/lib/ui/utils";
-import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
 import { useAuth } from "@/components/providers/auth-provider";
 import { getCrawlPageSelectionLimit } from "@/lib/billing/crawl-page-limits";
 import { BILLING_ENABLED } from "@/lib/config/client-constants";
@@ -88,176 +88,32 @@ export function CrawlUrlSelector({
 
   const hostname = urls.length > 0 ? getHostname(urls[0]) : "";
 
-  const { dialogProps: crawlDialogProps, titleProps: crawlTitleProps } =
-    useModalA11y({
-      open: urls.length > 0 || isLoading,
-      onClose: onCancel,
-    });
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <button
-        type="button"
-        aria-label="Cancel crawl"
-        className="absolute inset-0 cursor-default bg-background/80 backdrop-blur-xs"
-        onClick={onCancel}
-      />
-
-      <div
-        className="relative flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-lg border border-border bg-card shadow-lg"
-        {...crawlDialogProps}
-      >
-        <div className="flex items-start gap-3 border-b border-border px-5 py-4">
-          <div className="min-w-0 flex-1">
-            <h2
-              className="text-sm font-semibold text-foreground"
-              {...crawlTitleProps}
-            >
-              Pick the pages to scan
-            </h2>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">
-              {isLoading
-                ? `Crawling ${hostname || "the entry page"} for links`
-                : `${urls.length} ${urls.length === 1 ? "page" : "pages"} found on ${hostname}. Each one costs a scan.`}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onCancel}
-            className={cn(
-              "-mr-1 inline-flex h-11 w-11 sm:h-7 sm:w-7 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
-              FOCUS_RING,
-            )}
-            aria-label="Close"
-          >
-            <X aria-hidden className="h-4 w-4" />
-          </button>
-        </div>
-
-        {isLoading && (
-          <div className="flex flex-col items-center gap-2 py-12">
-            <Loader2
-              aria-hidden
-              className="h-5 w-5 animate-spin text-primary"
-            />
-            <p className="text-sm text-muted-foreground">
-              Following links from the entry page
-            </p>
-            <p className="font-mono text-xs tabular-nums text-muted-foreground/60">
-              {urls.length} found so far
-            </p>
-          </div>
-        )}
-
-        {!isLoading && urls.length > 0 && (
-          <>
-            <div className="flex items-center gap-2 border-b border-border bg-muted/30 px-3 py-2">
-              <div className="relative flex-1">
-                <Search
-                  aria-hidden
-                  className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
-                />
-                <input
-                  type="search"
-                  placeholder="Filter paths"
-                  value={filter}
-                  onChange={(e) => setFilter(e.target.value)}
-                  aria-label="Filter pages by URL"
-                  className="h-7 w-full rounded border border-border bg-background pl-7 pr-2 text-base sm:text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() =>
-                  setSelected(
-                    allSelectableSelected
-                      ? new Set()
-                      : new Set(urls.slice(0, maxSelectable)),
-                  )
-                }
-                className={cn(
-                  "shrink-0 rounded px-1.5 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10",
-                  FOCUS_RING,
-                )}
-              >
-                {allSelectableSelected ? "Clear all" : "Select all"}
-              </button>
-            </div>
-
-            {isCapped && urls.length > selectionLimit && (
-              <div className="border-b border-border bg-primary/5 px-3 py-1.5 text-[11px] leading-relaxed text-muted-foreground">
-                Your plan scans up to {selectionLimit} pages per crawl. Upgrade
-                to select more.
-              </div>
-            )}
-
-            <ul className="min-h-0 flex-1 overflow-y-auto p-1.5">
-              {filtered.map((url, i) => {
-                const isChecked = selected.has(url);
-                return (
-                  <li key={url}>
-                    <button
-                      type="button"
-                      onClick={() => toggleUrl(url)}
-                      aria-pressed={isChecked}
-                      disabled={!isChecked && atCap}
-                      className={cn(
-                        "flex w-full items-center gap-2.5 rounded px-2.5 py-1.5 text-left transition-colors hover:bg-muted/60",
-                        !isChecked &&
-                          atCap &&
-                          "cursor-not-allowed opacity-40 hover:bg-transparent",
-                        FOCUS_RING,
-                      )}
-                    >
-                      <span
-                        aria-hidden
-                        className={cn(
-                          "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border",
-                          isChecked
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-border",
-                        )}
-                      >
-                        {isChecked && (
-                          <Check className="h-2.5 w-2.5" strokeWidth={3} />
-                        )}
-                      </span>
-                      <span
-                        className={cn(
-                          "min-w-0 flex-1 truncate font-mono text-xs",
-                          isChecked
-                            ? "text-foreground"
-                            : "text-muted-foreground",
-                        )}
-                      >
-                        {getPath(url)}
-                      </span>
-                      {i === 0 && !filter && (
-                        <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
-                          Entry
-                        </span>
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
-              {filtered.length === 0 && (
-                <li className="py-6 text-center text-xs text-muted-foreground">
-                  No paths contain &ldquo;{filter}&rdquo;.
-                </li>
-              )}
-            </ul>
-          </>
-        )}
-
-        <div className="flex items-center justify-between gap-3 border-t border-border bg-muted/30 px-5 py-3">
-          <span className="text-xs tabular-nums text-muted-foreground">
+    // The parent only mounts this while the crawl gate is up, so `open` is
+    // constant: ModalShell owns the scrim, the panel, the close chip and the
+    // focus/Escape handling that useModalA11y used to be wired up by hand here.
+    <ModalShell
+      open
+      onClose={onCancel}
+      title="Pick the pages to scan"
+      description={
+        isLoading
+          ? `Crawling ${hostname || "the entry page"} for links`
+          : `${urls.length} ${urls.length === 1 ? "page" : "pages"} found on ${hostname}. Each one costs a scan.`
+      }
+      size="md"
+      // p-0 and a flex column so the filter bar and the plan-cap notice stay
+      // pinned, run to the panel edge, and only the list under them scrolls.
+      bodyClassName="flex flex-col p-0"
+      footer={
+        <>
+          <span className="text-xs tabular-nums text-muted-foreground sm:mr-auto sm:self-center">
             {selected.size} of {urls.length} selected
             {isCapped && urls.length > selectionLimit
               ? ` (max ${selectionLimit})`
               : ""}
           </span>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
@@ -276,8 +132,119 @@ export function CrawlUrlSelector({
               <ArrowRight aria-hidden className="h-3.5 w-3.5" />
             </Button>
           </div>
+        </>
+      }
+    >
+      {isLoading && (
+        <div className="flex flex-col items-center gap-2 py-12">
+          <Loader2 aria-hidden className="h-5 w-5 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">
+            Following links from the entry page
+          </p>
+          <p className="font-mono text-xs tabular-nums text-muted-foreground/60">
+            {urls.length} found so far
+          </p>
         </div>
-      </div>
-    </div>
+      )}
+
+      {!isLoading && urls.length > 0 && (
+        <>
+          <div className="flex items-center gap-2 border-b border-border bg-muted/30 px-3 py-2">
+            <div className="relative flex-1">
+              <Search
+                aria-hidden
+                className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+              />
+              <input
+                type="search"
+                placeholder="Filter paths"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                aria-label="Filter pages by URL"
+                className="h-7 w-full rounded-md border border-border bg-background pl-7 pr-2 text-base sm:text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setSelected(
+                  allSelectableSelected
+                    ? new Set()
+                    : new Set(urls.slice(0, maxSelectable)),
+                )
+              }
+              className={cn(
+                "shrink-0 rounded-md px-1.5 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10",
+                FOCUS_RING,
+              )}
+            >
+              {allSelectableSelected ? "Clear all" : "Select all"}
+            </button>
+          </div>
+
+          {isCapped && urls.length > selectionLimit && (
+            <div className="border-b border-border bg-primary/5 px-3 py-1.5 text-[11px] leading-relaxed text-muted-foreground">
+              Your plan scans up to {selectionLimit} pages per crawl. Upgrade to
+              select more.
+            </div>
+          )}
+
+          <ul className="min-h-0 flex-1 overflow-y-auto p-1.5">
+            {filtered.map((url, i) => {
+              const isChecked = selected.has(url);
+              return (
+                <li key={url}>
+                  <button
+                    type="button"
+                    onClick={() => toggleUrl(url)}
+                    aria-pressed={isChecked}
+                    disabled={!isChecked && atCap}
+                    className={cn(
+                      "flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left transition-colors hover:bg-muted/60",
+                      !isChecked &&
+                        atCap &&
+                        "cursor-not-allowed opacity-40 hover:bg-transparent",
+                      FOCUS_RING,
+                    )}
+                  >
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-md border",
+                        isChecked
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border",
+                      )}
+                    >
+                      {isChecked && (
+                        <Check className="h-2.5 w-2.5" strokeWidth={3} />
+                      )}
+                    </span>
+                    <span
+                      className={cn(
+                        "min-w-0 flex-1 truncate font-mono text-xs",
+                        isChecked ? "text-foreground" : "text-muted-foreground",
+                      )}
+                    >
+                      {getPath(url)}
+                    </span>
+                    {i === 0 && !filter && (
+                      <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
+                        Entry
+                      </span>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+            {filtered.length === 0 && (
+              <li className="py-6 text-center text-xs text-muted-foreground">
+                No paths contain &ldquo;{filter}&rdquo;.
+              </li>
+            )}
+          </ul>
+        </>
+      )}
+    </ModalShell>
   );
 }

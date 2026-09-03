@@ -1,15 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import {
-  Camera,
-  Loader2,
-  Maximize2,
-  ChevronDown,
-  ChevronRight,
-  Crown,
-  RefreshCw,
-} from "lucide-react";
+import { Camera, Maximize2, ChevronDown, ChevronRight } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -17,17 +9,40 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { API } from "@/lib/config/client-constants";
-import { cn } from "@/lib/ui/utils";
-import { useAuth } from "@/components/providers/auth-provider";
+import { PREMIUM_FEATURES } from "@/components/modals/premium-upgrade-modal";
 import {
-  PremiumUpgradeModal,
-  PREMIUM_FEATURES,
-  hasFeatureAccess,
-} from "@/components/modals/premium-upgrade-modal";
+  PanelActionBar,
+  PanelNotRunRow,
+  PanelRefreshError,
+  usePanelRefresh,
+} from "./panel-refresh";
+
+/** The small reference result_meta.screenshot carries (lib/scanner/page-screenshot.ts). */
+interface ScreenshotRef {
+  width: number;
+  height: number;
+  capturedAt: string;
+}
+
+/**
+ * Stated before the control is ever pressed, and again on the confirm step.
+ *
+ * This is the only re-runnable panel whose action costs real money: a capture
+ * opens a genuine headless browser and draws down the account's live-browser
+ * minutes (lib/billing/browserbase-usage.ts), the same meter the interactive
+ * session viewer spends. The DNS lookup and the port sweep cost a lookup and a
+ * few sockets, so they run on one press; this one arms first and spends second.
+ */
+const CAPTURE_COST =
+  "Opens a real browser once and uses your live-browser minutes.";
 
 interface ScreenshotPanelProps {
-  /** Image URL served by the screenshot route (owner/public or token-scoped). */
-  src: string;
+  /**
+   * Image URL served by the screenshot route (owner/public or token-scoped).
+   * Absent when this scan has no screenshot yet, which is the state the
+   * owner's "Capture screenshot" control exists for.
+   */
+  src?: string;
   /** The scanned URL, for the caption and image alt text. */
   url: string;
   /** Capture viewport dimensions, for the intrinsic image box (avoids layout shift). */
@@ -35,19 +50,15 @@ interface ScreenshotPanelProps {
   height?: number;
   capturedAt?: string;
   /**
-   * Owner-only: the scan id whose screenshot this panel can re-capture. When
-   * set (and not the shared/read-only view), a small refresh control re-runs
-   * the metered capture for this scan and reloads the image in place. Omitted
-   * on the shared page.
+   * Owner-only: the scan id whose screenshot this panel can capture or
+   * re-capture. When set (and not the shared/read-only view), a metered
+   * capture control appears and reloads the image in place. Omitted on the
+   * shared and host pages, so a viewer can never spend the owner's minutes.
    */
   scanId?: string | number | null;
-  /** Called with the fresh reference after a successful re-capture so the
-   *  parent can update its copy of the result in place. */
-  onRefreshed?: (ref: {
-    width: number;
-    height: number;
-    capturedAt: string;
-  }) => void;
+  /** Called with the fresh reference after a successful capture so the parent
+   *  can update its copy of the result in place. */
+  onRefreshed?: (ref: ScreenshotRef) => void;
 }
 
 function formatCapturedAt(iso?: string): string | null {
@@ -62,11 +73,18 @@ function formatCapturedAt(iso?: string): string | null {
 
 /**
  * The opt-in page screenshot, rendered as a thumbnail card that opens a
- * full-size view on click. Bows out entirely (renders nothing) if the image
- * fails to load -- a screenshot is best-effort, so a scan whose reference is
- * present but whose bytes can't be served (revoked visibility, missing row)
- * degrades to no panel rather than a broken image, matching how the other
- * "More about this host" panels render nothing when they have nothing.
+ * full-size view on click.
+ *
+ * Three states, and the middle one is new: a scan that has a screenshot shows
+ * it; a scan that does NOT (the option was left off, or the stored bytes can no
+ * longer be served) offers the owner a capture instead of rendering nothing;
+ * and any read-only viewer of a scan without a screenshot still gets nothing at
+ * all, since there is no image to show and no control they may press.
+ *
+ * A re-capture never blanks the picture that is already there. The old frame
+ * stays on screen for the whole capture, and is swapped only once the fresh
+ * reference comes back; a failed capture leaves it untouched and puts the
+ * reason underneath.
  */
 export function ScreenshotPanel({
   src,
@@ -81,68 +99,61 @@ export function ScreenshotPanel({
   // Collapsed by default: a screenshot is a large visual, so it starts folded
   // like the other "More about this host" panels and expands on click.
   const [expanded, setExpanded] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   // Bumped after a successful re-capture to bust the served image's private
   // cache (the screenshot route sets Cache-Control: max-age=3600), so the
   // fresh frame actually loads instead of the stale cached one.
   const [cacheBust, setCacheBust] = useState<string | null>(null);
-  const { me, isStaff } = useAuth();
-  const userPlan = me?.plan || "free";
-  // Same premium gate as the subdomain refresh: staff always pass, everyone
-  // else needs the dns_refetch plan (Pro). A free user gets the upgrade modal
-  // instead of a silent 402 from the route.
-  const canRefresh =
-    isStaff ||
-    hasFeatureAccess(
-      userPlan,
-      PREMIUM_FEATURES.screenshot_recapture.requiredPlan,
+
+  const refresh = usePanelRefresh<ScreenshotRef>({
+    scanId,
+    endpoint: API.SCAN_REFRESH_SCREENSHOT,
+    responseKey: "screenshot",
+    feature: PREMIUM_FEATURES.screenshot_recapture,
+    failureMessage: "Could not capture the screenshot.",
+    confirmCost: CAPTURE_COST,
+    onRefreshed: (shot) => {
+      setBroken(false);
+      setCacheBust(shot.capturedAt || String(Date.now()));
+      onRefreshed?.(shot);
+    },
+  });
+
+  const hasImage = Boolean(src) && !broken;
+
+  // Nothing to show. The owner gets the capture control (the route captures
+  // and stores from cold just as happily as it re-captures); anyone else gets
+  // no panel, exactly as before.
+  if (!hasImage) {
+    if (!refresh.offered) return null;
+    return (
+      <>
+        {refresh.modal}
+        <PanelNotRunRow
+          icon={Camera}
+          title="Page screenshot"
+          // "Unavailable" rather than "Not captured" when a reference existed
+          // but its bytes would not load: the difference matters to whoever is
+          // deciding whether to spend minutes on a re-capture.
+          status={broken ? "Unavailable" : "Not captured"}
+          actionLabel={broken ? "Capture again" : "Capture screenshot"}
+          proLabel="Pro"
+          note={CAPTURE_COST}
+          confirmLabel="Capture now"
+          state={refresh}
+        />
+      </>
     );
-
-  async function handleRefresh() {
-    if (!scanId || refreshing) return;
-    if (!canRefresh) {
-      setShowUpgradeModal(true);
-      return;
-    }
-    setRefreshing(true);
-    setError(null);
-    try {
-      const res = await fetch(API.SCAN_REFRESH_SCREENSHOT(scanId), {
-        method: "POST",
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Could not refresh the screenshot.");
-      } else if (data.screenshot) {
-        setBroken(false);
-        setCacheBust(data.screenshot.capturedAt || String(Date.now()));
-        onRefreshed?.(data.screenshot);
-      }
-    } catch {
-      setError("Could not refresh the screenshot.");
-    } finally {
-      setRefreshing(false);
-    }
   }
-
-  if (broken) return null;
 
   const captured = formatCapturedAt(capturedAt);
   const alt = `Screenshot of ${url}`;
   const imgSrc = cacheBust
-    ? `${src}${src.includes("?") ? "&" : "?"}v=${encodeURIComponent(cacheBust)}`
+    ? `${src}${src!.includes("?") ? "&" : "?"}v=${encodeURIComponent(cacheBust)}`
     : src;
 
   return (
     <>
-      <PremiumUpgradeModal
-        open={showUpgradeModal}
-        onOpenChange={setShowUpgradeModal}
-        feature={PREMIUM_FEATURES.screenshot_recapture}
-        currentPlan={userPlan}
-      />
+      {refresh.modal}
       <div className="overflow-hidden rounded-xl border border-border bg-card">
         <button
           type="button"
@@ -154,7 +165,8 @@ export function ScreenshotPanel({
             aria-hidden
             className="h-4 w-4 shrink-0 text-muted-foreground"
           />
-          <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+          {/* A literal we wrote, so it wraps rather than clips. */}
+          <span className="min-w-0 flex-1 text-sm font-medium text-foreground">
             Page screenshot
           </span>
           {captured && (
@@ -176,48 +188,34 @@ export function ScreenshotPanel({
         </button>
         {expanded && (
           <div className="border-t border-border">
-            {scanId && (
-              <div className="flex items-center gap-2 border-b border-border bg-muted/30 px-4 py-1.5">
-                <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
-                  {captured ? `Captured ${captured}` : "Page screenshot"}
-                </span>
-                <button
-                  type="button"
-                  onClick={handleRefresh}
-                  disabled={refreshing}
-                  className={cn(
-                    "inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-50",
-                    canRefresh
-                      ? "text-foreground hover:bg-muted"
-                      : "text-primary hover:bg-primary/10",
-                  )}
-                  title={
-                    canRefresh
-                      ? "Re-capture the page screenshot now"
-                      : "Premium feature, upgrade to Pro"
-                  }
-                  aria-label={
-                    canRefresh
-                      ? "Re-capture the page screenshot now"
-                      : "Premium feature, upgrade to Pro"
-                  }
-                >
-                  {refreshing ? (
-                    <Loader2 aria-hidden className="h-3.5 w-3.5 animate-spin" />
-                  ) : canRefresh ? (
-                    <RefreshCw aria-hidden className="h-3.5 w-3.5" />
-                  ) : (
-                    <Crown aria-hidden className="h-3.5 w-3.5" />
-                  )}
-                  <span className="hidden sm:inline">
-                    {canRefresh ? "Refresh" : "Pro"}
-                  </span>
-                </button>
-              </div>
-            )}
-            {error && (
-              <p className="border-b border-border px-4 py-2 text-xs text-destructive">
-                {error}
+            {/* No cooldownMs, deliberately. DNS and ports both cache per host
+                for five minutes, so "Available to refresh in Xm" is a true
+                statement about the server. A capture has no such cache: every
+                press opens a browser and spends minutes, so a countdown here
+                would invent a window that does not exist. Age only. */}
+            <PanelActionBar
+              state={refresh}
+              capturedAt={capturedAt}
+              agePrefix="Captured"
+              refreshLabel="Re-capture"
+              refreshTitle="Re-capture the page screenshot now"
+              confirmLabel="Capture now"
+              className="bg-muted/30"
+            >
+              {/* The absolute timestamp, bare: the relative "Captured 3 hours
+                  ago" beside it supplies the verb. Dropped on a phone, where
+                  the relative form is the more useful of the two and the bar
+                  has no room for both. */}
+              <span className="hidden min-w-0 truncate text-[11px] text-muted-foreground sm:inline">
+                {captured ?? "Page screenshot"}
+              </span>
+            </PanelActionBar>
+            <PanelRefreshError error={refresh.error} />
+            {/* Cost restated where the spend happens, not only on the confirm
+                step, so an owner who lands here mid-scroll still sees it. */}
+            {refresh.offered && !refresh.pendingCost && (
+              <p className="border-b border-border px-4 py-1.5 text-[11px] text-muted-foreground">
+                {CAPTURE_COST}
               </p>
             )}
             <Dialog>
@@ -239,19 +237,24 @@ export function ScreenshotPanel({
                     onError={() => setBroken(true)}
                     className="block aspect-4/3 max-h-[280px] w-full object-cover object-top sm:aspect-auto sm:max-h-[420px]"
                   />
-                  <span className="absolute right-2 top-2 flex items-center gap-1 rounded bg-background/85 px-1.5 py-0.5 text-[11px] font-medium text-foreground opacity-0 backdrop-blur-xs transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                  <span className="absolute right-2 top-2 flex items-center gap-1 rounded-md bg-background/85 px-1.5 py-0.5 text-[11px] font-medium text-foreground opacity-0 backdrop-blur-xs transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
                     <Maximize2 aria-hidden className="h-3 w-3" />
                     Enlarge
                   </span>
                 </button>
               </DialogTrigger>
-              <DialogContent className="max-w-4xl p-2 sm:p-3">
+              {/* The one modal that stays compact on purpose: it is a bare
+                  lightbox, so a header band would put a titled strip above a
+                  picture that names itself. The padding is trimmed to a mat
+                  around the image, and the title is sr-only so the dialog is
+                  still announced. */}
+              <DialogContent size="xl" className="p-2 sm:p-3">
                 <DialogTitle className="sr-only">{alt}</DialogTitle>
                 {/* eslint-disable-next-line @next/next/no-img-element -- see above. */}
                 <img
                   src={imgSrc}
                   alt={alt}
-                  className="h-auto max-h-[80vh] w-full rounded object-contain"
+                  className="h-auto max-h-[80vh] w-full rounded-lg object-contain"
                 />
               </DialogContent>
             </Dialog>

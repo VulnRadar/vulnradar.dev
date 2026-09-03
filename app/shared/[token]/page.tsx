@@ -140,7 +140,7 @@ export default function SharedScanPage() {
           <div className="flex flex-col items-center gap-5 py-20 text-center">
             <CircleAlert aria-hidden className="h-8 w-8 text-destructive" />
             <div className="flex max-w-sm flex-col gap-2">
-              <h1 className="text-lg font-semibold text-foreground">
+              <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
                 This link doesn&rsquo;t work anymore
               </h1>
               <p className="text-sm leading-relaxed text-muted-foreground">
@@ -182,7 +182,7 @@ export default function SharedScanPage() {
                     itself (safe/caution/unsafe, severity breakdown) lives in
                     ScanSummary directly below -- showing it here too was
                     just the same story told twice. */}
-                <header className="overflow-hidden rounded-md border border-border bg-card">
+                <header className="overflow-hidden rounded-xl border border-border bg-card">
                   <div className="flex flex-col gap-4 p-5 sm:p-6">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <p className="text-xs text-muted-foreground">
@@ -214,7 +214,7 @@ export default function SharedScanPage() {
                           {scannedByRole !== STAFF_ROLES.USER &&
                             ROLE_BADGE_STYLES[scannedByRole] && (
                               <span
-                                className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${ROLE_BADGE_STYLES[scannedByRole]}`}
+                                className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${ROLE_BADGE_STYLES[scannedByRole]}`}
                               >
                                 {STAFF_ROLE_LABELS[scannedByRole] ||
                                   scannedByRole}
@@ -223,7 +223,7 @@ export default function SharedScanPage() {
                           {scannedByBadges.slice(0, 2).map((badge) => (
                             <span
                               key={badge.id}
-                              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium"
+                              className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium"
                               style={{
                                 backgroundColor: `${badge.color}15`,
                                 borderWidth: 1,
@@ -246,9 +246,15 @@ export default function SharedScanPage() {
                             type="button"
                             onClick={copyUrl}
                             aria-label="Copy scanned URL"
-                            className="group inline-flex min-w-0 items-center gap-2 rounded text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                            className="group inline-flex min-w-0 items-center gap-2 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                           >
-                            <h1 className="truncate text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+                            {/* Same as /host: the aria-label names the copy
+                                action, not the URL, so the clipped value
+                                needs a title of its own. */}
+                            <h1
+                              title={result.url}
+                              className="truncate text-xl font-semibold tracking-tight text-foreground sm:text-2xl"
+                            >
                               {result.url}
                             </h1>
                             {copied ? (
@@ -317,7 +323,7 @@ export default function SharedScanPage() {
                   }
                   panelFooter={
                     scanNotes ? (
-                      <div className="rounded-md border border-border bg-card p-4">
+                      <div className="rounded-lg border border-border bg-card p-4">
                         <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                           Note from the person who shared this
                         </h2>
@@ -330,7 +336,7 @@ export default function SharedScanPage() {
                 />
 
                 {/* Converts the anonymous visitor: this is the page that sells the product. */}
-                <div className="flex flex-col items-start gap-3 rounded-md border border-primary/20 bg-primary/5 p-5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-col items-start gap-3 rounded-xl border border-primary/20 bg-primary/5 p-5 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-start gap-3">
                     <ScanSearch
                       aria-hidden

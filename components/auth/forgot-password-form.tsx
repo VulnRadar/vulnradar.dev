@@ -8,11 +8,11 @@ import { Label } from "@/components/ui/label";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { API } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
-import { transitions } from "@/lib/ui/animations";
 import {
   AuthAlert,
   authFieldClass,
   authFocusRing,
+  authPillClass,
 } from "@/components/auth/auth-shell";
 
 interface ForgotPasswordFormProps {
@@ -94,14 +94,7 @@ export function ForgotPasswordForm({ onSuccess }: ForgotPasswordFormProps) {
         )}
       </Button>
 
-      <Link
-        href="/login"
-        className={cn(
-          "inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground w-fit mt-1",
-          transitions.colors,
-          authFocusRing,
-        )}
-      >
+      <Link href="/login" className={cn(authPillClass, "mt-1")}>
         <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
         Back to sign in
       </Link>

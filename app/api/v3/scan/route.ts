@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimitedResponse } from "@/lib/api/rate-limit-response";
 import { getPlannedSyncCategories } from "@/lib/scanner/engine";
 import { getPlannedAsyncBranches } from "@/lib/scanner/async-checks";
 import {
@@ -125,28 +126,7 @@ export async function POST(request: NextRequest) {
           ),
         );
 
-        return NextResponse.json(
-          {
-            error: `Rate limit exceeded. ${rateLimit.limit} requests per 24 hours. Resets at ${rateLimit.resetsAt}`,
-            limit: rateLimit.limit,
-            used: rateLimit.used,
-            remaining: rateLimit.remaining,
-            resets_at: rateLimit.resetsAt,
-          },
-          {
-            status: 429,
-            headers: {
-              "X-RateLimit-Limit": String(rateLimit.limit),
-              "X-RateLimit-Remaining": String(rateLimit.remaining),
-              "X-RateLimit-Reset": rateLimit.resetsAt,
-              "Retry-After": String(
-                Math.ceil(
-                  (new Date(rateLimit.resetsAt).getTime() - Date.now()) / 1000,
-                ),
-              ),
-            },
-          },
-        );
+        return rateLimitedResponse(rateLimit);
       }
 
       apiKeyId = keyData.keyId;

@@ -12,7 +12,7 @@ import {
   Save,
   Trash2,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +25,7 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import { cn } from "@/lib/ui/utils";
+import { pluralize } from "@/lib/ui/plural";
 import { ROLE_COLORS } from "@/components/teams/teams-types";
 import { PaginationControl } from "@/components/ui/pagination-control";
 import {
@@ -34,9 +35,10 @@ import {
   TableScrollArea,
   DataTableSkeleton,
   SortableHeader,
+  AdminPanelHeader,
   type SortDirection,
 } from "@/components/admin/shared";
-import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
+import { ModalShell } from "@/components/ui/modal-shell";
 import { useAdminPermissions } from "@/components/admin/hooks";
 
 const focusRing =
@@ -132,9 +134,6 @@ export function TeamsList({
     setTeamMembers(null);
   };
 
-  const { dialogProps: teamDialogProps, titleProps: teamTitleProps } =
-    useModalA11y({ open: !!modalTeam, onClose: closeTeamModal });
-
   // Client-side sort of the currently loaded page of teams. Does not
   // trigger a refetch; only reorders what's already on screen.
   const sortedTeams = useMemo(() => {
@@ -162,150 +161,110 @@ export function TeamsList({
 
   return (
     <>
-      {/* Team members modal — rendered outside card flow to prevent layout shift */}
+      {/* Team members modal: rendered outside card flow to prevent layout shift */}
       {modalTeam && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs"
-          onClick={closeTeamModal}
+        <ModalShell
+          open
+          onClose={closeTeamModal}
+          size="md"
+          title={modalTeam.name}
+          description={
+            teamMembersLoading
+              ? "Loading members..."
+              : `${teamMembers?.members.length ?? 0} member${(teamMembers?.members.length ?? 0) !== 1 ? "s" : ""}`
+          }
+          icon={
+            <UsersRound
+              className="h-4 w-4 shrink-0 text-primary"
+              aria-hidden="true"
+            />
+          }
         >
-          <div
-            className="bg-card border border-border rounded-xl p-6 w-full max-w-lg mx-4 shadow-2xl max-h-[80vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-            {...teamDialogProps}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-primary/10">
-                  <UsersRound
-                    className="h-4 w-4 text-primary"
-                    aria-hidden="true"
+          {teamMembersLoading ? (
+            <DataTableSkeleton rows={4} />
+          ) : (
+            <div className="space-y-2">
+              {(teamMembers?.members ?? []).map((member) => (
+                <div
+                  key={member.user_id}
+                  className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border border-border/50 hover:bg-muted/50 transition-colors"
+                >
+                  <UserAvatar
+                    name={member.name}
+                    email={member.email}
+                    size="sm"
+                    avatarUrl={member.avatar_url}
                   />
-                </div>
-                <div>
-                  <h3
-                    className="text-base font-semibold text-foreground"
-                    {...teamTitleProps}
-                  >
-                    {modalTeam.name}
-                  </h3>
-                  <p className="text-xs text-muted-foreground">
-                    {teamMembersLoading
-                      ? "Loading members..."
-                      : `${teamMembers?.members.length ?? 0} member${(teamMembers?.members.length ?? 0) !== 1 ? "s" : ""}`}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={closeTeamModal}
-                className="p-2 rounded-lg hover:bg-muted transition-colors"
-                aria-label="Close team members dialog"
-              >
-                <X className="h-4 w-4" aria-hidden="true" />
-              </button>
-            </div>
-
-            {teamMembersLoading ? (
-              <DataTableSkeleton rows={4} />
-            ) : (
-              <div className="space-y-2">
-                {(teamMembers?.members ?? []).map((member) => (
-                  <div
-                    key={member.user_id}
-                    className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border border-border/50 hover:bg-muted/50 transition-colors"
-                  >
-                    <UserAvatar
-                      name={member.name}
-                      email={member.email}
-                      size="sm"
-                      avatarUrl={member.avatar_url}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">
-                        {member.name || member.email.split("@")[0]}
-                      </p>
-                      <p className="text-xs text-muted-foreground truncate font-mono">
-                        {member.email}
-                      </p>
-                    </div>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "text-[10px] px-2 py-0.5 font-medium capitalize",
-                        ROLE_COLORS[member.role] ||
-                          "bg-muted text-muted-foreground border-border",
-                      )}
-                    >
-                      {member.role}
-                    </Badge>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">
+                      {member.name || member.email.split("@")[0]}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate font-mono">
+                      {member.email}
+                    </p>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "text-[10px] px-2 py-0.5 font-medium capitalize",
+                      ROLE_COLORS[member.role] ||
+                        "bg-muted text-muted-foreground border-border",
+                    )}
+                  >
+                    {member.role}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </ModalShell>
       )}
 
       <div className="space-y-4">
         {/* Teams table */}
         <Card className="border-border/50 bg-card/50 overflow-hidden">
-          <CardHeader className="pb-4 pt-5 px-5">
-            <div className="flex flex-col gap-4">
-              {/* Title row */}
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="p-2 rounded-lg bg-primary/10 shrink-0">
-                  <UsersRound
-                    className="h-4 w-4 text-primary"
-                    aria-hidden="true"
-                  />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <CardTitle className="text-base font-semibold">
-                      Team Directory
-                    </CardTitle>
-                    <Badge
-                      variant="secondary"
-                      className="text-[11px] font-medium h-5 px-2"
-                    >
-                      {teams.length}
-                    </Badge>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    View and manage all platform teams
-                  </p>
-                </div>
-              </div>
-              {/* Search and actions row */}
-              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                <div className="relative flex-1">
-                  <Search
-                    className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
-                    aria-hidden="true"
-                  />
-                  <Input
-                    placeholder="Search teams by name..."
-                    value={teamsSearch}
-                    onChange={(e) => setTeamsSearch(e.target.value)}
-                    aria-label="Search teams by name"
-                    className="pl-9 h-10 bg-background/50 border-border/40 focus:border-primary/50"
-                  />
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-10 px-3 gap-2 border-border/40 shrink-0"
-                  onClick={() => fetchTeams(teamsPage, teamsSearch)}
-                  aria-label="Refresh teams"
-                >
-                  <RefreshCw
-                    className={cn("h-4 w-4", teamsLoading && "animate-spin")}
-                    aria-hidden="true"
-                  />
-                  <span className="hidden sm:inline">Refresh</span>
-                </Button>
-              </div>
+          <AdminPanelHeader
+            icon={UsersRound}
+            title="Team Directory"
+            subtitle="View and manage all platform teams"
+            status={
+              <Badge
+                variant="secondary"
+                className="text-[11px] font-medium h-5 px-2 tabular-nums"
+              >
+                {teams.length}
+              </Badge>
+            }
+            actions={
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 px-3 gap-2 border-border/40 shrink-0"
+                onClick={() => fetchTeams(teamsPage, teamsSearch)}
+                aria-label="Refresh teams"
+              >
+                <RefreshCw
+                  className={cn("h-4 w-4", teamsLoading && "animate-spin")}
+                  aria-hidden="true"
+                />
+                <span className="hidden sm:inline">Refresh</span>
+              </Button>
+            }
+          >
+            <div className="relative">
+              <Search
+                className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
+                aria-hidden="true"
+              />
+              <Input
+                placeholder="Search teams by name..."
+                value={teamsSearch}
+                onChange={(e) => setTeamsSearch(e.target.value)}
+                aria-label="Search teams by name"
+                className="pl-9 h-10 bg-background/50 border-border/40 focus:border-primary/50"
+              />
             </div>
-          </CardHeader>
+          </AdminPanelHeader>
           <CardContent className="p-0">
             {teamsLoading ? (
               <div className="p-4 sm:p-5">
@@ -428,13 +387,25 @@ export function TeamsList({
                                   </Button>
                                 </div>
                               ) : (
-                                <div>
-                                  <p className="text-sm font-medium text-foreground">
-                                    {team.name}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground font-mono">
-                                    {team.slug}
-                                  </p>
+                                /* The row had no colour anywhere: team, owner
+                                   and date were three greys, so nothing in it
+                                   read as the subject. The team gets a marker
+                                   and the metadata drops a step. */
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <div
+                                    aria-hidden="true"
+                                    className="h-8 w-8 shrink-0 rounded-md bg-primary/10 text-primary flex items-center justify-center text-xs font-semibold uppercase"
+                                  >
+                                    {team.name.slice(0, 2)}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-medium text-foreground truncate">
+                                      {team.name}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground font-mono truncate">
+                                      {team.slug}
+                                    </p>
+                                  </div>
                                 </div>
                               )}
                             </TableCell>
@@ -447,25 +418,22 @@ export function TeamsList({
                                   avatarUrl={team.owner_avatar_url}
                                 />
                                 <div className="min-w-0">
-                                  <p className="text-sm font-medium truncate max-w-[140px]">
+                                  <p className="text-sm text-muted-foreground truncate max-w-[140px]">
                                     {team.owner_name ||
                                       team.owner_email.split("@")[0]}
                                   </p>
-                                  <p className="text-xs text-muted-foreground truncate max-w-[140px] font-mono">
+                                  <p className="text-xs text-muted-foreground/80 truncate max-w-[140px] font-mono">
                                     {team.owner_email}
                                   </p>
                                 </div>
                               </div>
                             </TableCell>
                             <TableCell className="px-4 py-4 text-center">
-                              <Badge
-                                variant="secondary"
-                                className="text-xs font-medium"
-                              >
+                              <Badge className="text-xs font-medium tabular-nums bg-primary/10 text-primary border-primary/20">
                                 {team.member_count}
                               </Badge>
                             </TableCell>
-                            <TableCell className="px-4 py-4 text-sm text-muted-foreground whitespace-nowrap">
+                            <TableCell className="px-4 py-4 text-sm text-muted-foreground whitespace-nowrap tabular-nums">
                               {new Date(team.created_at).toLocaleDateString(
                                 "en-US",
                                 {
@@ -507,15 +475,21 @@ export function TeamsList({
                                     aria-hidden="true"
                                   />
                                 </Button>
+                                {/* Delete stays visible while View and Rename
+                                    are hover-revealed: it cascades to every
+                                    member, so it is not the same class of
+                                    action as the two beside it and should not
+                                    appear at the same moment in the same
+                                    shape. */}
                                 {perms.canDeleteUsers && (
                                   <Button
-                                    variant="ghost"
+                                    variant="outline"
                                     size="sm"
-                                    className="h-8 w-8 p-0 text-destructive hover:text-destructive opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity"
+                                    className="h-8 w-8 p-0 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
                                     onClick={() =>
                                       setConfirmDialog({
                                         title: "Delete Team",
-                                        description: `This will permanently delete "${team.name}" and remove all ${team.member_count} members. This cannot be undone.`,
+                                        description: `This will permanently delete "${team.name}" and remove all ${pluralize(team.member_count, "member")}. This cannot be undone.`,
                                         confirmLabel: "Delete Team",
                                         danger: true,
                                         onConfirm: () => {
@@ -546,7 +520,7 @@ export function TeamsList({
                   {sortedTeams.map((team) => (
                     <div
                       key={team.id}
-                      className="px-5 py-4 border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors"
+                      className="px-5 py-4 border-b border-border/40 last:border-0 hover:bg-muted/50 transition-colors"
                     >
                       <div className="flex items-start justify-between gap-3 mb-3">
                         {/* The rename editor has to exist in this branch too.
@@ -603,19 +577,24 @@ export function TeamsList({
                           </div>
                         ) : (
                           <>
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-foreground">
-                                {team.name}
-                              </p>
-                              <p className="text-xs text-muted-foreground font-mono">
-                                {team.slug}
-                              </p>
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div
+                                aria-hidden="true"
+                                className="h-8 w-8 shrink-0 rounded-md bg-primary/10 text-primary flex items-center justify-center text-xs font-semibold uppercase"
+                              >
+                                {team.name.slice(0, 2)}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-foreground truncate">
+                                  {team.name}
+                                </p>
+                                <p className="text-xs text-muted-foreground font-mono truncate">
+                                  {team.slug}
+                                </p>
+                              </div>
                             </div>
-                            <Badge
-                              variant="secondary"
-                              className="text-xs font-medium shrink-0"
-                            >
-                              {team.member_count} members
+                            <Badge className="text-xs font-medium shrink-0 tabular-nums bg-primary/10 text-primary border-primary/20">
+                              {pluralize(team.member_count, "member")}
                             </Badge>
                           </>
                         )}
@@ -628,16 +607,16 @@ export function TeamsList({
                           avatarUrl={team.owner_avatar_url}
                         />
                         <div className="min-w-0">
-                          <p className="text-sm truncate">
+                          <p className="text-sm text-muted-foreground truncate">
                             {team.owner_name || team.owner_email.split("@")[0]}
                           </p>
-                          <p className="text-xs text-muted-foreground truncate font-mono">
+                          <p className="text-xs text-muted-foreground/80 truncate font-mono">
                             {team.owner_email}
                           </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-3 text-xs text-muted-foreground mb-3">
-                        <span>
+                        <span className="tabular-nums">
                           Created{" "}
                           {new Date(team.created_at).toLocaleDateString(
                             "en-US",
@@ -659,7 +638,7 @@ export function TeamsList({
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-8 w-8 p-0 border-border/40"
+                          className="h-11 w-11 sm:h-8 sm:w-8 p-0 border-border/40"
                           onClick={() =>
                             setEditingTeam({ id: team.id, name: team.name })
                           }
@@ -671,11 +650,11 @@ export function TeamsList({
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-8 w-8 p-0 border-destructive/30 text-destructive hover:bg-destructive/10"
+                            className="h-11 w-11 sm:h-8 sm:w-8 p-0 border-destructive/30 text-destructive hover:bg-destructive/10"
                             onClick={() =>
                               setConfirmDialog({
                                 title: "Delete Team",
-                                description: `This will permanently delete "${team.name}" and remove all ${team.member_count} members. This cannot be undone.`,
+                                description: `This will permanently delete "${team.name}" and remove all ${pluralize(team.member_count, "member")}. This cannot be undone.`,
                                 confirmLabel: "Delete Team",
                                 danger: true,
                                 onConfirm: () => {

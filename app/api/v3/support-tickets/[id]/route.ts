@@ -8,6 +8,7 @@ import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 import {
   notifyStaffOfTicketActivity,
   notifyUserOfStaffReply,
+  notifyUserOfTicketStatus,
 } from "@/lib/support/ticket-notify";
 import {
   TICKET_MESSAGE_MAX,
@@ -251,23 +252,27 @@ export async function POST(
   );
 
   queueMicrotask(() => {
-    if (actingAsStaff) {
-      void notifyUserOfStaffReply({
-        ticketId: id,
-        subject: ticket.subject,
-        ownerUserId: ticket.user_id,
-        ownerEmail: ticket.owner_email,
-        body: message,
-      });
-    } else {
-      void notifyStaffOfTicketActivity({
-        ticketId: id,
-        subject: ticket.subject,
-        category: ticket.category,
-        fromEmail: session.email,
-        body: message,
-        isNew: false,
-      });
+    try {
+      if (actingAsStaff) {
+        void notifyUserOfStaffReply({
+          ticketId: id,
+          subject: ticket.subject,
+          ownerUserId: ticket.user_id,
+          ownerEmail: ticket.owner_email,
+          body: message,
+        });
+      } else {
+        void notifyStaffOfTicketActivity({
+          ticketId: id,
+          subject: ticket.subject,
+          category: ticket.category,
+          fromEmail: session.email,
+          body: message,
+          isNew: false,
+        });
+      }
+    } catch (err) {
+      console.error("Ticket reply notification failed:", err);
     }
   });
 
@@ -365,6 +370,26 @@ export async function PATCH(
     `UPDATE support_tickets SET status = $1, updated_at = NOW() WHERE id = $2`,
     [status, id],
   );
+
+  // The mirror of the arm below. Staff resolving or closing a ticket without a
+  // final reply is the commonest way a ticket ends, and it was silent: the
+  // owner learned about it only by reopening the page, and never learned that
+  // replying reopens it. Only a staff-initiated change sends, because an owner
+  // who resolved their own ticket does not need to be told they did.
+  if (access.isStaff && !access.isOwner) {
+    queueMicrotask(() => {
+      try {
+        void notifyUserOfTicketStatus({
+          ticketId: id,
+          subject: ticket.subject,
+          ownerEmail: ticket.owner_email,
+          status,
+        });
+      } catch (err) {
+        console.error("Ticket status notification failed:", err);
+      }
+    });
+  }
 
   // A reopen with no message would otherwise slide back into the queue with
   // nothing to announce it: the reply path notifies staff, so this one has to

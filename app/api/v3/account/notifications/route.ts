@@ -14,6 +14,18 @@ import {
 // of sync with NOTIFICATION_COLUMNS once (missing email_posture_digest).
 const ALL_PREF_COLUMNS = ALL_COLUMNS;
 
+/**
+ * Preferences a user is not allowed to switch off.
+ *
+ * app/api/v3/account/unsubscribe/route.ts has enforced this since it was
+ * written; this route, the profile Notifications tab's writer, did not. So the
+ * one-click unsubscribe endpoint correctly refused to disable security alerts
+ * and the settings page next to it happily did, which silently suppressed the
+ * brute-force warning at app/api/v3/auth/login/route.ts. Same set, same rule,
+ * both writers.
+ */
+const ALWAYS_ON = new Set<string>(["email_security"]);
+
 // GET: Fetch notification preferences
 export const GET = withErrorHandling(async () => {
   const session = await getSession();
@@ -39,7 +51,7 @@ export const PUT = withErrorHandling(async (request: NextRequest) => {
       if (typeof data[col] !== "boolean") {
         return ApiResponse.badRequest(`Invalid value for ${col}`);
       }
-      updates[col] = data[col];
+      updates[col] = ALWAYS_ON.has(col) ? true : data[col];
     }
   }
 

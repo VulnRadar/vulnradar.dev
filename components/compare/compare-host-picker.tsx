@@ -2,8 +2,10 @@
 
 import { Globe, ChevronRight, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
+import { pluralize } from "@/lib/ui/plural";
 import { focus } from "@/lib/ui/animations";
 import { Skeleton } from "@/components/ui/skeleton";
+import { tourAnchor } from "@/lib/tour/anchors";
 import { type HostGroup, getRelativeTime } from "./compare-types";
 
 const ROW_COUNT = 5;
@@ -91,6 +93,13 @@ export function CompareHostPicker({
                 type="button"
                 onClick={() => onSelect(host)}
                 aria-label={`Compare scans for ${host}`}
+                // Every row, not just the first: the tour resolves an anchor
+                // to the first copy with a real box, and the row it lands on
+                // is whichever the host filter has left on screen. Its absence
+                // is also the signal the tour needs, since an account with
+                // nothing scanned twice renders this list empty and the step
+                // asking for a host to be clicked cannot be satisfied.
+                {...tourAnchor("compareHostRow")}
                 className={cn(
                   "flex items-center gap-3 px-4 py-3.5 text-left w-full transition-colors hover:bg-muted/50",
                   focus.ring,
@@ -101,7 +110,7 @@ export function CompareHostPicker({
                     {host}
                   </span>
                   <span className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
-                    <span>{scans.length} scans</span>
+                    <span>{pluralize(scans.length, "scan")}</span>
                     <span aria-hidden="true">·</span>
                     <span>latest {getRelativeTime(scans[0].scanned_at)}</span>
                   </span>

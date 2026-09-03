@@ -26,7 +26,12 @@ function LoadingState({ label = "Checking your invitation" }) {
           className="h-4 w-4 animate-spin text-muted-foreground shrink-0"
           aria-hidden="true"
         />
-        <h1 className="text-2xl font-semibold tracking-tight">One moment</h1>
+        {/* Hand-rolled because this state needs the spinner beside the title,
+            but the size stays on AuthHeading's Tier B scale so the heading
+            does not change size when the invitation resolves. */}
+        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
+          One moment
+        </h1>
       </div>
       <p className="text-sm text-muted-foreground mt-2" role="status">
         {label}

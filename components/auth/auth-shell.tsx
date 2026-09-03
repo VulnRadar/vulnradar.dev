@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { AlertTriangle, Check, Info, X } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
-import { focus } from "@/lib/ui/animations";
+import { focus, transitions } from "@/lib/ui/animations";
 import {
   checkPasswordRequirements,
   type PasswordRequirementContext,
@@ -24,6 +24,18 @@ export const authFocusRing = focus.ring;
 export const authFieldClass = cn(
   "h-11 border-border/60 bg-background",
   "focus-visible:border-primary/60",
+  authFocusRing,
+);
+
+/** The bordered pill every secondary action in the flow wears (back to sign
+ *  in, back to landing, resend, switch method). It was copied inline in four
+ *  files and skipped entirely on the 2FA screen, which left that screen's
+ *  actions as naked text with no hit area to aim at. */
+export const authPillClass = cn(
+  "inline-flex w-fit items-center gap-1.5 rounded-md border border-border/60 bg-muted/40",
+  "px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground",
+  "disabled:opacity-50",
+  transitions.colors,
   authFocusRing,
 );
 
@@ -64,6 +76,13 @@ export function AuthSteps({
   );
 }
 
+/** Tier B, the sub-page title size. In the split layout the left pitch
+ *  heading is the page's display heading, so the form column's heading
+ *  labels a panel rather than selling the page. It was `text-2xl` flat,
+ *  which is a third H1 size belonging to neither tier. */
+const authHeadingClass =
+  "text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground";
+
 export function AuthHeading({
   title,
   description,
@@ -79,10 +98,7 @@ export function AuthHeading({
       <h1
         ref={ref}
         tabIndex={-1}
-        className={cn(
-          "text-2xl font-semibold tracking-tight outline-hidden",
-          authFocusRing,
-        )}
+        className={cn(authHeadingClass, "outline-hidden", authFocusRing)}
       >
         {title}
       </h1>
@@ -90,6 +106,49 @@ export function AuthHeading({
         <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
           {description}
         </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * The keyline + title + body of an outcome screen, on its own so a screen
+ * that needs a different focus target (verify-email-expired autofocuses its
+ * email field, not the heading) can render the same header instead of
+ * hand-rolling a copy that drifts.
+ */
+export function AuthOutcomeHeader({
+  tone,
+  title,
+  headingRef,
+  className,
+  children,
+}: {
+  tone: "positive" | "negative";
+  title: string;
+  headingRef?: React.Ref<HTMLHeadingElement>;
+  className?: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "border-l-2 pl-4",
+        tone === "negative" ? "border-destructive" : "border-primary",
+        className,
+      )}
+    >
+      <h1
+        ref={headingRef}
+        tabIndex={headingRef ? -1 : undefined}
+        className={cn(authHeadingClass, "outline-hidden", authFocusRing)}
+      >
+        {title}
+      </h1>
+      {children ? (
+        <div className="mt-2 text-sm text-muted-foreground leading-relaxed space-y-2">
+          {children}
+        </div>
       ) : null}
     </div>
   );
@@ -117,28 +176,9 @@ export function AuthOutcome({
   const ref = useFocusOnMount(true);
   return (
     <div>
-      <div
-        className={cn(
-          "border-l-2 pl-4",
-          tone === "negative" ? "border-destructive" : "border-primary",
-        )}
-      >
-        <h1
-          ref={ref}
-          tabIndex={-1}
-          className={cn(
-            "text-2xl font-semibold tracking-tight outline-hidden",
-            authFocusRing,
-          )}
-        >
-          {title}
-        </h1>
-        {children ? (
-          <div className="mt-2 text-sm text-muted-foreground leading-relaxed space-y-2">
-            {children}
-          </div>
-        ) : null}
-      </div>
+      <AuthOutcomeHeader tone={tone} title={title} headingRef={ref}>
+        {children}
+      </AuthOutcomeHeader>
       {actions ? <div className="mt-7 space-y-2.5">{actions}</div> : null}
       {footnote ? (
         <p className="mt-5 text-xs text-muted-foreground/70 leading-relaxed">

@@ -91,7 +91,7 @@ export function ResponseHeaders({ headers }: ResponseHeadersProps) {
                 {present.map((h) => (
                   <span
                     key={h}
-                    className="rounded border border-[hsl(var(--success))]/30 bg-[hsl(var(--success))]/10 px-1.5 py-0.5 font-mono text-[11px] text-[hsl(var(--success))]"
+                    className="rounded-md border border-[hsl(var(--success))]/30 bg-[hsl(var(--success))]/10 px-1.5 py-0.5 font-mono text-[11px] text-[hsl(var(--success))]"
                   >
                     {h}
                   </span>
@@ -106,7 +106,7 @@ export function ResponseHeaders({ headers }: ResponseHeadersProps) {
                 {missing.map((h) => (
                   <span
                     key={h}
-                    className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground line-through"
+                    className="rounded-md border border-border bg-background px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground line-through"
                   >
                     {h}
                   </span>

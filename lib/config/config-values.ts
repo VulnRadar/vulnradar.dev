@@ -16,6 +16,15 @@ import { GENERATED_CHECKS_LABEL } from "./check-stats.generated";
 // App metadata - UPDATE THESE FOR YOUR DEPLOYMENT
 export const CONFIG_APP_NAME = "VulnRadar";
 export const CONFIG_APP_SLUG = "vulnradar";
+/**
+ * What the in-app AI assistant calls itself.
+ *
+ * A module-level literal inside components/ai-chat/chat-widget.tsx until the
+ * product tour needed to name it too. Copying it into a second file is how a
+ * rename ends up half-applied, and this is a deployment-branding value like
+ * the two above it, so it belongs here rather than in a component.
+ */
+export const CONFIG_AI_BOT_NAME = "Vera";
 export const CONFIG_APP_VERSION = "3.8.0";
 // The minimum database schema version this app requires.
 // App 3.0.0 requires schema v3.0.0 (ai_conversations + email unsubscribe).
@@ -175,6 +184,48 @@ export const CONFIG_CHROME_WEB_STORE_URL =
 // section, updated alongside this.
 export const CONFIG_FIREFOX_ADDON_URL =
   "https://addons.mozilla.org/en-US/firefox/addon/vulnradar-website-scanner/";
+
+// SOCIAL ACCOUNTS - UPDATE THESE FOR YOUR DEPLOYMENT
+//
+// The same identity warning as CONFIG_DISCORD_INVITE_URL above applies to
+// every line here, and applies harder: each non-empty value is published in
+// the JSON-LD Organization node's `sameAs` array, which is not a link but an
+// assertion that the account IS this organisation. A fork that ships these
+// unchanged tells Google and every answer engine that its organisation and
+// VulnRadar's are the same entity, and sends its own visitors to someone
+// else's channel.
+//
+// Each platform is independently optional and empty is a first-class value:
+// an empty string is the whole "off" switch, dropping that platform from the
+// footer, from the landing page, and from `sameAs` at once. There is no
+// second flag to remember. A deployment overrides one with the matching
+// NEXT_PUBLIC_SOCIAL_*_URL variable (see lib/config/client-constants.ts and
+// .env.example); an empty variable falls back to the constant below, so
+// blanking one that ships non-empty means editing it here.
+//
+// Discord is not in this list and must not be added to it: it already has
+// CONFIG_DISCORD_INVITE_URL above, and the registry in client-constants.ts
+// reads that one. Two constants for one link is how a footer ends up
+// pointing at a server the structured data does not claim.
+//
+// Declaration order here is not the render order; SOCIAL_LINKS in
+// client-constants.ts owns that.
+export const CONFIG_SOCIAL_YOUTUBE_URL = "https://www.youtube.com/@VulnRadar";
+export const CONFIG_SOCIAL_TIKTOK_URL = "https://www.tiktok.com/@vulnradar";
+export const CONFIG_SOCIAL_INSTAGRAM_URL =
+  "https://www.instagram.com/vulnradar/";
+export const CONFIG_SOCIAL_X_URL = "https://x.com/vulnradardev";
+// Platforms VulnRadar has no account on. They ship empty on purpose: an
+// unconfigured platform renders nothing at all rather than a dead icon, so
+// this list can grow ahead of the accounts themselves.
+export const CONFIG_SOCIAL_MASTODON_URL = "";
+export const CONFIG_SOCIAL_BLUESKY_URL = "";
+export const CONFIG_SOCIAL_LINKEDIN_URL = "";
+export const CONFIG_SOCIAL_REDDIT_URL = "";
+// A feed this site publishes, not an account that is this site, which is why
+// it is the one entry excluded from `sameAs` (see SOCIAL_PROFILE_URLS in
+// client-constants.ts). Still an absolute https URL like the rest.
+export const CONFIG_SOCIAL_RSS_URL = "";
 
 // Emails - UPDATE THESE FOR YOUR DEPLOYMENT
 export const CONFIG_SUPPORT_EMAIL = "support@vulnradar.dev";

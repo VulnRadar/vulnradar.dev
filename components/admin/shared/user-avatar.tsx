@@ -41,9 +41,15 @@ export function UserAvatar({
   }
 
   return (
+    // font-semibold, not font-bold. This design system uses three weights
+    // (default, medium, semibold) and nothing else; bold appears nowhere in
+    // the work this panel is measured against.
+    // aria-hidden because the initial is a decorative restatement of the name
+    // that always sits beside it: read aloud it is just a stray letter.
     <div
+      aria-hidden="true"
       className={cn(
-        "rounded-full flex items-center justify-center font-bold shrink-0",
+        "rounded-full flex items-center justify-center font-semibold shrink-0",
         sizeClasses[size],
         AVATAR_COLORS[colorIdx],
       )}

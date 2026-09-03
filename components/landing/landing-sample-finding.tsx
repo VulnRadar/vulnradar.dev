@@ -79,14 +79,14 @@ export function LandingSampleFinding() {
                 sample finding's metadata simply disappeared at the narrow end
                 and at 200% zoom. One column below sm, three from sm up; the
                 divider flips axis with it so the rule still sits between
-                cells rather than across them. */}
+                cells rather than across them. The values do not truncate
+                either: they are three constants in this file, so there is
+                nothing unbounded here to guard against. */}
             <dl className="grid grid-cols-1 divide-y divide-border/60 border-b border-border/60 text-xs sm:grid-cols-3 sm:divide-x sm:divide-y-0">
               {META.map(([label, value]) => (
                 <div key={label} className="px-4 py-3 min-w-0">
                   <dt className="text-muted-foreground mb-1">{label}</dt>
-                  <dd className="font-mono text-foreground truncate">
-                    {value}
-                  </dd>
+                  <dd className="font-mono text-foreground">{value}</dd>
                 </div>
               ))}
             </dl>

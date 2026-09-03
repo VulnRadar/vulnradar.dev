@@ -27,6 +27,7 @@
 
 import {
   CONFIG_API_VERSION,
+  CONFIG_AI_BOT_NAME,
   CONFIG_APP_NAME,
   CONFIG_APP_SLUG,
   CONFIG_APP_VERSION,
@@ -37,6 +38,15 @@ import {
   CONFIG_SUPPORT_EMAIL,
   CONFIG_LOGO_URL,
   CONFIG_DISCORD_INVITE_URL,
+  CONFIG_SOCIAL_YOUTUBE_URL,
+  CONFIG_SOCIAL_TIKTOK_URL,
+  CONFIG_SOCIAL_INSTAGRAM_URL,
+  CONFIG_SOCIAL_X_URL,
+  CONFIG_SOCIAL_MASTODON_URL,
+  CONFIG_SOCIAL_BLUESKY_URL,
+  CONFIG_SOCIAL_LINKEDIN_URL,
+  CONFIG_SOCIAL_REDDIT_URL,
+  CONFIG_SOCIAL_RSS_URL,
   CONFIG_VERSION_COOKIE_NAME,
   CONFIG_VERSION_COOKIE_MAX_AGE_DAYS,
   CONFIG_TOTP_VALIDITY_SECONDS,
@@ -497,6 +507,7 @@ export const OG_INSPECT_URL_TEMPLATE: string =
 
 export const APP_NAME = CONFIG_APP_NAME;
 export const APP_SLUG = CONFIG_APP_SLUG;
+export const AI_BOT_NAME = CONFIG_AI_BOT_NAME;
 export const APP_VERSION = CONFIG_APP_VERSION;
 export const ENGINE_VERSION = CONFIG_ENGINE_VERSION;
 export const TOTAL_CHECKS_LABEL = CONFIG_TOTAL_CHECKS_LABEL;
@@ -550,6 +561,138 @@ export const LOGO_URL = `${APP_URL}${CONFIG_LOGO_URL}`;
 // footer, and llms.txt.
 export const DISCORD_INVITE_URL =
   process.env.NEXT_PUBLIC_DISCORD_INVITE_URL || CONFIG_DISCORD_INVITE_URL;
+
+// SOCIAL ACCOUNTS
+//
+// One registry, read by the footer, by the landing page's open-source
+// section, and by the JSON-LD Organization node's sameAs array, so those
+// three can never disagree about which accounts exist. A platform with no URL
+// is dropped once, here, instead of being guarded at each render site.
+//
+// Icons are deliberately NOT in this table: it is data, and this module is
+// imported by server code and by tests. components/shared/social-links.tsx
+// owns the id -> mark mapping and is exhaustive over SocialPlatformId, so a
+// new id below fails typecheck there until it has a mark.
+
+export const SOCIAL_PLATFORM_IDS = [
+  "youtube",
+  "tiktok",
+  "instagram",
+  "x",
+  "discord",
+  "mastodon",
+  "bluesky",
+  "linkedin",
+  "reddit",
+  "rss",
+] as const;
+
+export type SocialPlatformId = (typeof SOCIAL_PLATFORM_IDS)[number];
+
+export interface SocialLink {
+  id: SocialPlatformId;
+  /** Accessible name for the icon-only link, and its tooltip. */
+  label: string;
+  url: string;
+  /**
+   * Whether this URL identifies the organisation, which is what schema.org's
+   * sameAs means. True for a profile. False for the RSS feed: a document the
+   * site publishes is not an account that is the site.
+   */
+  identity: boolean;
+}
+
+// Render order, most-used first. Discord reads DISCORD_INVITE_URL rather than
+// a CONFIG_SOCIAL_DISCORD_URL of its own, so the invite lives in exactly one
+// place (see the note in config-values.ts).
+const DECLARED_SOCIAL_LINKS: SocialLink[] = [
+  {
+    id: "youtube",
+    label: "YouTube",
+    url:
+      process.env.NEXT_PUBLIC_SOCIAL_YOUTUBE_URL || CONFIG_SOCIAL_YOUTUBE_URL,
+    identity: true,
+  },
+  {
+    id: "tiktok",
+    label: "TikTok",
+    url: process.env.NEXT_PUBLIC_SOCIAL_TIKTOK_URL || CONFIG_SOCIAL_TIKTOK_URL,
+    identity: true,
+  },
+  {
+    id: "instagram",
+    label: "Instagram",
+    url:
+      process.env.NEXT_PUBLIC_SOCIAL_INSTAGRAM_URL ||
+      CONFIG_SOCIAL_INSTAGRAM_URL,
+    identity: true,
+  },
+  {
+    id: "x",
+    label: "X",
+    url: process.env.NEXT_PUBLIC_SOCIAL_X_URL || CONFIG_SOCIAL_X_URL,
+    identity: true,
+  },
+  { id: "discord", label: "Discord", url: DISCORD_INVITE_URL, identity: true },
+  {
+    id: "mastodon",
+    label: "Mastodon",
+    url:
+      process.env.NEXT_PUBLIC_SOCIAL_MASTODON_URL || CONFIG_SOCIAL_MASTODON_URL,
+    identity: true,
+  },
+  {
+    id: "bluesky",
+    label: "Bluesky",
+    url:
+      process.env.NEXT_PUBLIC_SOCIAL_BLUESKY_URL || CONFIG_SOCIAL_BLUESKY_URL,
+    identity: true,
+  },
+  {
+    id: "linkedin",
+    label: "LinkedIn",
+    url:
+      process.env.NEXT_PUBLIC_SOCIAL_LINKEDIN_URL || CONFIG_SOCIAL_LINKEDIN_URL,
+    identity: true,
+  },
+  {
+    id: "reddit",
+    label: "Reddit",
+    url: process.env.NEXT_PUBLIC_SOCIAL_REDDIT_URL || CONFIG_SOCIAL_REDDIT_URL,
+    identity: true,
+  },
+  {
+    id: "rss",
+    label: "RSS feed",
+    url: process.env.NEXT_PUBLIC_SOCIAL_RSS_URL || CONFIG_SOCIAL_RSS_URL,
+    identity: false,
+  },
+];
+
+/**
+ * The platforms this deployment actually has, in render order. Empty on a
+ * deployment that configured none, and every consumer renders nothing at all
+ * in that case rather than an empty container.
+ *
+ * "Configured" means an absolute https URL, not merely a non-empty string.
+ * These values reach an `href` and can be set by whoever deploys this, so a
+ * relative path, an http origin, or a `javascript:` payload all collapse to
+ * the same safe outcome as leaving the platform unset: it does not render.
+ */
+export const SOCIAL_LINKS: SocialLink[] = DECLARED_SOCIAL_LINKS.filter((link) =>
+  link.url.startsWith("https://"),
+);
+
+/**
+ * The configured profile URLs, deduplicated, for the JSON-LD Organization
+ * node's sameAs array. Not simply every configured URL: sameAs asserts
+ * identity, so the RSS feed is excluded by its `identity: false`.
+ */
+export const SOCIAL_PROFILE_URLS: string[] = [
+  ...new Set(
+    SOCIAL_LINKS.filter((link) => link.identity).map((link) => link.url),
+  ),
+];
 
 // TURNSTILE / CAPTCHA
 //

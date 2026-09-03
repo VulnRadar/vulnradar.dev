@@ -10,9 +10,9 @@
 // this module the data to render.
 
 import { html, render, type TemplateResult } from "lit-html";
-import { colorForScore } from "../lib/badge";
+import { TIER_VAR, tierForScore } from "../lib/badge";
 import { VULNRADAR } from "../lib/constants";
-import { formatRelative, severityHex } from "../lib/format";
+import { formatRelative } from "../lib/format";
 import { buildScopedTokensCss } from "../lib/tokens";
 import type {
   CardPosition,
@@ -304,6 +304,18 @@ function Chrome(
   `;
 }
 
+/**
+ * The severity read-out, drawn the way the popup and the app's own
+ * severity-badge component draw it: a tint of the severity's own hue with a
+ * matching edge, label and dot.
+ *
+ * It used to be a neutral grey pill with a coloured dot, painted from
+ * severityHex() - the solid (dark) ramp on both themes, so on a light page the
+ * "medium" dot measured 1.7:1 against the pill behind it and was effectively
+ * invisible, and the same finding looked like two different things depending
+ * on whether you read it here or in the popup. `data-sev` supplies the hue
+ * (see SEVERITY_CHIP_VARS in CARD_CSS) so nothing here is a literal colour.
+ */
 function SeverityChips(
   counts: ReputationSeverityCounts | null,
 ): TemplateResult {
@@ -318,8 +330,8 @@ function SeverityChips(
     <div class="chip-row">
       ${present.map(
         ({ s, n }) => html`
-          <span class="chip">
-            <span class="dot" style="background:${severityHex(s)}"></span>
+          <span class="chip" data-sev=${s}>
+            <span class="dot" aria-hidden="true"></span>
             ${n} ${s}
           </span>
         `,
@@ -344,7 +356,11 @@ function ScoreBody(
   whenLabel: string,
   reportLink: { host: string; onDismiss: () => void } | null,
 ): TemplateResult {
-  const scoreColor = colorForScore(score);
+  // A CSS variable, not colorForScore()'s hex: that returns the solid ramp
+  // (the dark theme's) whatever theme the page is being read in, which put
+  // this numeral at 1.56:1 against the ring's own centre on a light page.
+  // Same three tiers, same boundaries: see badge.ts's tierForScore.
+  const scoreColor = TIER_VAR[tierForScore(score)];
   const verdict = verdictFor(score, serverVerdict);
   const ringPct = Math.max(0, Math.min(10, score)) * 10;
 
@@ -473,7 +489,12 @@ export function showUnknownCard(
     }
     ${MuteRow(actions)}
   `;
-  render(Chrome("#60a5fa", body, actions.onDismiss), root);
+  // Token, not the literal #60a5fa this and the two cards below carried: the
+  // whole reason VERDICT_RAIL above stopped holding hexes was that a literal
+  // is one theme's value painted on both, and the error card's #ef4444 in
+  // particular is the dark ramp's red on a light card (3.35:1, against 6.14:1
+  // for the danger token).
+  render(Chrome("var(--vr-primary)", body, actions.onDismiss), root);
   scheduleAutoDismiss(AUTO_DISMISS_MS_UNKNOWN);
 }
 
@@ -516,7 +537,7 @@ export function showScanningCard(url: string, onDismiss: () => void): void {
       </div>
     </div>
   `;
-  render(Chrome("#60a5fa", body, onDismiss), root);
+  render(Chrome("var(--vr-primary)", body, onDismiss), root);
   // No auto-dismiss: a scan can legitimately take minutes, and it should
   // stay put until it actually has something to report.
 }
@@ -565,9 +586,24 @@ export function showScanErrorCard(
       Try again
     </button>
   `;
-  render(Chrome("#ef4444", body, onDismiss), root);
+  render(Chrome("var(--vr-danger)", body, onDismiss), root);
   scheduleAutoDismiss(AUTO_DISMISS_MS_UNKNOWN);
 }
+
+/**
+ * --vr-sev / --vr-sev-text per severity: the same two-variable contract
+ * tokens.css declares for the popup's badges, scoped to this card's chips.
+ * Built from the token NAMES rather than their values, so a severity retune in
+ * tokens.json reaches the injected card without an edit here.
+ */
+const SEVERITY_CHIP_VARS = (
+  ["critical", "high", "medium", "low", "info"] as const
+)
+  .map(
+    (k) =>
+      `  .chip[data-sev="${k}"] { --vr-sev: var(--vr-sev-${k}); --vr-sev-text: var(--vr-sev-${k}-text); }`,
+  )
+  .join("\n");
 
 // The palette is built from lib/tokens.json, the same source scripts/
 // gen-tokens.mjs uses for src/tokens.css. This file used to declare its own
@@ -577,6 +613,7 @@ export function showScanErrorCard(
 const CARD_CSS = `
   :host { all: initial; }
 ${buildScopedTokensCss("  .card")}
+${SEVERITY_CHIP_VARS}
   * { box-sizing: border-box; }
   .card {
     position: fixed;
@@ -587,10 +624,18 @@ ${buildScopedTokensCss("  .card")}
        floating over someone else's site. */
     background: var(--vr-card);
     color: var(--vr-text);
-    border: 1px solid var(--vr-border);
+    /* The one place --vr-border's "container edges do not need 3:1" reasoning
+       does not hold. Everywhere else in the extension a container sits on a
+       surface this palette chose; here it floats over a page of unknown
+       colour, and the edge is the only thing that says where the extension
+       ends and the site begins. --vr-input is the token that carries a real
+       floor (4.02:1 on the light card, 3.91:1 on the dark one), so the card
+       reads as a deliberate object on a white page, a dark page or a
+       photograph, instead of a faint 1.36:1 rectangle. */
+    border: 1px solid var(--vr-input);
     border-radius: 12px;
     box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16), 0 2px 8px rgba(15, 23, 42, 0.08);
-    font: 13px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font: 13px/1.5 var(--vr-font);
     z-index: 2147483647;
     overflow: hidden;
     animation: vr-slide-in 200ms ease-out;
@@ -623,6 +668,13 @@ ${buildScopedTokensCss("  .card")}
     from { opacity: 0; transform: translateY(-6px); }
     to { opacity: 1; transform: translateY(0); }
   }
+  /* SC 2.3.3. The entrance is decoration and goes; the scanning spinner below
+     does not, because it is the only signal that a scan which can legitimately
+     run for minutes is still alive, and 2.2.2 exempts movement essential to
+     the activity. Same split, and the same reasoning, as popup.css. */
+  @media (prefers-reduced-motion: reduce) {
+    .card { animation: none; }
+  }
   .rail {
     display: block;
     height: 3px;
@@ -635,7 +687,7 @@ ${buildScopedTokensCss("  .card")}
   .card :focus-visible {
     outline: 2px solid var(--vr-primary-text);
     outline-offset: 2px;
-    border-radius: 5px;
+    border-radius: var(--vr-radius-sm);
   }
   /* Text only the screen reader gets: the score ring is aria-hidden because it
      is a conic gradient, so the number has to be spoken somewhere. */
@@ -667,7 +719,10 @@ ${buildScopedTokensCss("  .card")}
     line-height: 1;
     cursor: pointer;
     padding: 0;
-    border-radius: 5px;
+    border-radius: var(--vr-radius-sm);
+    transition:
+      color 0.12s ease,
+      background 0.12s ease;
   }
   .dismiss-btn:hover { color: var(--vr-text); background: var(--vr-muted-bg); }
   .score-block {
@@ -718,18 +773,39 @@ ${buildScopedTokensCss("  .card")}
     gap: 6px;
     padding: 12px 16px 0;
   }
+  /* Tinted by its own severity, matching the popup's .badge and the app's
+     severity-badge component. It was a neutral grey pill with a dot painted
+     from the solid ramp, so on a light page the "medium" dot sat at 1.7:1
+     against the pill behind it, and the same finding looked like two
+     unrelated things depending on which surface you read it on. */
   .chip {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    background: var(--vr-muted-bg);
-    border-radius: 5px;
-    padding: 4px 8px;
+    background: color-mix(in srgb, var(--vr-sev) 15%, transparent);
+    border: 1px solid color-mix(in srgb, var(--vr-sev) 40%, transparent);
+    border-radius: var(--vr-radius-sm);
+    padding: 3px 8px;
     font-size: 11px;
     font-weight: 600;
-    color: var(--vr-text);
+    color: var(--vr-sev-text);
   }
-  .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  /* The graded tint, copied from the popup, which copied it from the app's
+     SEVERITY_TONE: the quiet end of the ramp is the lightest part of the
+     scale, so the tint gives way rather than the ramp. */
+  .chip[data-sev="medium"],
+  .chip[data-sev="low"],
+  .chip[data-sev="info"] {
+    background: color-mix(in srgb, var(--vr-sev) 10%, transparent);
+    border-color: color-mix(in srgb, var(--vr-sev) 30%, transparent);
+  }
+  .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--vr-sev);
+    flex-shrink: 0;
+  }
   .no-findings {
     margin: 12px 16px 0;
     font-size: 12px;
@@ -752,7 +828,9 @@ ${buildScopedTokensCss("  .card")}
     height: 30px;
     border-radius: 50%;
     border: 3px solid var(--vr-muted-bg);
-    border-top-color: var(--vr-primary);
+    /* The moving arc has to be visible against its own track for the spinner
+       to read as spinning: the brand fill is 2.2:1 there on the light theme. */
+    border-top-color: var(--vr-primary-text);
     animation: vr-spin 800ms linear infinite;
   }
   @keyframes vr-spin {
@@ -784,7 +862,7 @@ ${buildScopedTokensCss("  .card")}
     background: var(--vr-primary);
     color: var(--vr-primary-fg);
     border: none;
-    border-radius: 7px;
+    border-radius: var(--vr-radius);
     padding: 9px 12px;
     font: inherit;
     font-weight: 700;
@@ -792,8 +870,11 @@ ${buildScopedTokensCss("  .card")}
     text-align: center;
     text-decoration: none;
     cursor: pointer;
+    transition: filter 0.12s ease;
   }
-  .btn-primary:hover { opacity: 0.9; }
+  /* Brightness, not opacity: fading a filled button fades its label with it,
+     and this one's label/fill pair is measured. Same hover as the popup's. */
+  .btn-primary:hover { filter: brightness(1.08); }
   .signed-in-link {
     display: block;
     margin: 8px 16px 0;
@@ -802,7 +883,10 @@ ${buildScopedTokensCss("  .card")}
     text-align: center;
     text-decoration: none;
   }
-  .signed-in-link:hover { color: var(--vr-primary); text-decoration: underline; }
+  /* --vr-primary-text, not --vr-primary: hovering a muted link must not make
+     it harder to read, and the brand fill measures 2.26:1 as text on the light
+     card against this token's 5.15:1. */
+  .signed-in-link:hover { color: var(--vr-primary-text); text-decoration: underline; }
   /* lit-html inlines a nested TemplateResult's top-level nodes as direct
      children of .card (no wrapper element), so this targets exactly the
      case where a card's body ends right at the primary action button with
@@ -814,10 +898,13 @@ ${buildScopedTokensCss("  .card")}
   .card > .btn-primary:last-child {
     margin-bottom: 16px;
   }
+  /* Three related quick actions, so they sit together as one row. Spread edge
+     to edge across 328px by space-between they read as three unrelated links
+     that happen to share a line. */
   .mute-row {
     display: flex;
-    justify-content: space-between;
-    gap: 12px;
+    flex-wrap: wrap;
+    gap: 16px;
     margin: 12px 16px 0;
     padding: 10px 0 14px;
     border-top: 1px solid var(--vr-border);
@@ -831,6 +918,7 @@ ${buildScopedTokensCss("  .card")}
     font-size: 11.5px;
     cursor: pointer;
     padding: 0;
+    transition: color 0.12s ease;
   }
   .text-btn:hover { color: var(--vr-text); text-decoration: underline; }
 `;

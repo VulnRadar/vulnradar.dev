@@ -372,6 +372,9 @@ describe("POST /api/v3/webhooks/stripe: payment_intent.succeeded (AI credit purc
     withIdempotency("evt_pi_1");
     // The credit guard-insert + balance increment is one atomic CTE now.
     mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 42 }] }); // credit CTE
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ email: "buyer@example.dev" }],
+    }); // recipient lookup for the credit receipt
 
     const res = await POST(
       signedRequest(
@@ -391,10 +394,18 @@ describe("POST /api/v3/webhooks/stripe: payment_intent.succeeded (AI credit purc
       ),
     );
     expect(res.status).toBe(200);
-    // Idempotency INSERT + the single credit CTE.
-    expect(mockQuery).toHaveBeenCalledTimes(2);
-    const [creditSql, creditParams] = mockQuery.mock.calls[1];
-    expect(creditSql).toContain("INSERT INTO ai_credit_purchases");
+    // The idempotency INSERT, then exactly one credit statement.
+    //
+    // Asserted by statement shape rather than by call count. A credited
+    // purchase now also looks the buyer's address up and sends them a
+    // receipt, so the handler issues more queries than it used to, and a bare
+    // count cannot tell that read apart from a second credit write, which is
+    // what this test is actually about.
+    const creditCalls = mockQuery.mock.calls.filter((c) =>
+      String(c[0]).includes("INSERT INTO ai_credit_purchases"),
+    );
+    expect(creditCalls).toHaveLength(1);
+    const [creditSql, creditParams] = creditCalls[0];
     expect(creditSql).toContain("ai_credit_balance = ai_credit_balance +");
     expect(creditParams).toEqual(["pi_1", 42, 1_000_000]);
   });

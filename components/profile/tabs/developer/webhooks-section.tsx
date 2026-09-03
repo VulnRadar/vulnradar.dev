@@ -269,7 +269,14 @@ export function WebhooksSection({
                   <div
                     key={wh.id}
                     className={cn(
-                      "flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors",
+                      // The controls take their own line below sm. That
+                      // cluster is shrink-0 and runs to about 160px (a switch
+                      // plus three buttons), which left roughly 88px on a
+                      // 320px screen for the webhook's name and its whole
+                      // endpoint URL. w-full on the cluster rather than
+                      // flex-col on the row, so the type glyph stays on the
+                      // name's line instead of sitting alone above it.
+                      "flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 transition-colors hover:bg-muted/30",
                       !wh.active && "opacity-60",
                     )}
                   >
@@ -293,8 +300,8 @@ export function WebhooksSection({
                       <Globe className="h-4 w-4 text-primary shrink-0" />
                     )}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium text-foreground truncate">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="min-w-0 text-sm font-medium text-foreground truncate">
                           {wh.name}
                         </p>
                         <span
@@ -315,11 +322,14 @@ export function WebhooksSection({
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-muted-foreground truncate font-mono">
+                      <p
+                        title={wh.url}
+                        className="text-xs text-muted-foreground truncate font-mono"
+                      >
                         {wh.url}
                       </p>
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
+                    <div className="flex w-full items-center gap-1 sm:w-auto sm:shrink-0">
                       <Switch
                         checked={wh.active}
                         disabled={isToggling}
@@ -335,7 +345,7 @@ export function WebhooksSection({
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-10 w-10 sm:h-7 sm:w-7 text-muted-foreground hover:text-foreground"
+                        className="h-11 w-11 sm:h-7 sm:w-7 text-muted-foreground hover:text-foreground"
                         onClick={() => onStartEditWebhook(wh)}
                         title="Edit webhook"
                         aria-label={`Edit webhook ${wh.name}`}
@@ -345,7 +355,7 @@ export function WebhooksSection({
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-10 w-10 sm:h-7 sm:w-7 text-primary hover:text-primary hover:bg-primary/10"
+                        className="h-11 w-11 sm:h-7 sm:w-7 text-primary hover:text-primary hover:bg-primary/10"
                         disabled={testingWebhookId === wh.id}
                         onClick={() => onTestWebhook(wh.id)}
                         title="Send test webhook"
@@ -360,7 +370,7 @@ export function WebhooksSection({
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-10 w-10 sm:h-7 sm:w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        className="h-11 w-11 sm:h-7 sm:w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
                         onClick={() =>
                           onRequestConfirm({
                             kind: "delete-webhook",

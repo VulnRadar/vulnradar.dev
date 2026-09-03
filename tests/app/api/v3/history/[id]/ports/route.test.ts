@@ -213,3 +213,50 @@ describe("POST /api/v3/history/[id]/ports - sweep timeout follows the setting", 
     );
   });
 });
+
+/**
+ * The panel decides whether to DRAW the "Run port sweep" control from the scan
+ * id its surface passes (only the owner's own surfaces pass one). That is a
+ * rendering decision; this is the one that actually holds. A non-owner who
+ * POSTs this route by hand must get nothing, and must not cause a sweep to be
+ * run and stored against someone else's scan.
+ */
+describe("POST /api/v3/history/[id]/ports - ownership", () => {
+  it("401s an unauthenticated caller before the plan gate or the sweep", async () => {
+    mockGetSession.mockResolvedValue(null);
+
+    const res = await POST(req(), params());
+
+    expect(res.status).toBe(401);
+    expect(mockGetUserPlan).not.toHaveBeenCalled();
+    expect(mockScanPorts).not.toHaveBeenCalled();
+  });
+
+  it("404s a scan owned by someone else and never sweeps or writes", async () => {
+    mockResolveScanRow.mockResolvedValue({
+      id: 10,
+      user_id: 999,
+      url: "https://example.com",
+    });
+
+    const res = await POST(req(), params());
+
+    // 404 rather than 403, so a stranger cannot enumerate scan ids.
+    expect(res.status).toBe(404);
+    expect(mockIsUrlOwnedByUser).not.toHaveBeenCalled();
+    expect(mockScanPorts).not.toHaveBeenCalled();
+    const update = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("result_meta = COALESCE"),
+    );
+    expect(update).toBeUndefined();
+  });
+
+  it("404s a scan that does not exist", async () => {
+    mockResolveScanRow.mockResolvedValue(null);
+
+    const res = await POST(req(), params("nope"));
+
+    expect(res.status).toBe(404);
+    expect(mockScanPorts).not.toHaveBeenCalled();
+  });
+});

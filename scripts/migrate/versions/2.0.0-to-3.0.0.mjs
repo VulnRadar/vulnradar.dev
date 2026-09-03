@@ -539,8 +539,19 @@ const EMAIL_LOGS_SQL = `
     status VARCHAR(30) NOT NULL,
     error_message TEXT,
     redacted_preview TEXT,
+    redacted_html TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
+
+  -- The rendered document sendEmail handed to nodemailer, redacted (see
+  -- redactEmailHtml). The ALTER is not redundant with the column above --
+  -- a database that already ran this bucket back when the table had seven
+  -- columns gets nothing from CREATE TABLE IF NOT EXISTS, and
+  -- lib/email/email.ts's INSERT names redacted_html unconditionally.
+  -- lib/database/schema/01-core.mjs carries the same pair for the same
+  -- reason.
+  ALTER TABLE email_logs
+    ADD COLUMN IF NOT EXISTS redacted_html TEXT;
 
   CREATE INDEX IF NOT EXISTS idx_email_logs_created_at
     ON email_logs(created_at DESC);
@@ -562,6 +573,19 @@ const SCAN_SCREENSHOTS_SQL = `
 const USER_AVATARS_SQL = `
   CREATE TABLE IF NOT EXISTS user_avatars (
     user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    image_data BYTEA NOT NULL,
+    content_type TEXT NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  );
+`;
+
+// Uploaded team picture bytes, keyed 1:1 on the team. Same shape as
+// user_avatars. There is deliberately no teams.avatar_url to go with it: a
+// team picture is always these bytes or nothing, so the URL is derived from
+// updated_at and the two cannot drift apart.
+const TEAM_AVATARS_SQL = `
+  CREATE TABLE IF NOT EXISTS team_avatars (
+    team_id INTEGER PRIMARY KEY REFERENCES teams(id) ON DELETE CASCADE,
     image_data BYTEA NOT NULL,
     content_type TEXT NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -839,6 +863,7 @@ export const upgrade = {
     { name: "email_logs", sql: EMAIL_LOGS_SQL },
     { name: "scan_screenshots", sql: SCAN_SCREENSHOTS_SQL },
     { name: "user_avatars", sql: USER_AVATARS_SQL },
+    { name: "team_avatars", sql: TEAM_AVATARS_SQL },
     { name: "github_credit_purchases", sql: GITHUB_CREDIT_PURCHASES_SQL },
     { name: "browserbase_usage", sql: BROWSERBASE_USAGE_SQL },
     {
@@ -2080,6 +2105,7 @@ export const downgrade = {
     "email_logs",
     "scan_screenshots",
     "user_avatars",
+    "team_avatars",
     "github_credit_purchases",
     "browserbase_usage",
     "browserbase_credit_purchases",

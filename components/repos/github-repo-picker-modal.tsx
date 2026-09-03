@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -13,6 +14,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Loader2, Lock, Search, RotateCcw } from "lucide-react";
+import { EmptyState } from "@/components/shared/empty-state";
 import { API } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
 import type { GithubRepo } from "./types";
@@ -73,7 +75,12 @@ export function GithubRepoPickerModal({
   onConfirm,
 }: GithubRepoPickerModalProps) {
   const [repos, setRepos] = useState<GithubRepo[] | null>(null);
-  const [loading, setLoading] = useState(false);
+  // Starts true, not false: loadRepos() runs from the `open` effect, which
+  // fires AFTER the first committed render with open === true. On that frame
+  // repos is still null, so a `false` here painted the search-miss empty state
+  // ("No repo name or description contains \"\"") before the fetch had even
+  // started. Nothing has been searched yet at that point; it is loading.
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -93,8 +100,12 @@ export function GithubRepoPickerModal({
       setRepos(data.repos);
     } catch {
       setLoadError("Failed to load repositories.");
+    } finally {
+      // `finally`, not a bare call after the try: the non-ok branch above
+      // returns straight past that, so an API error left the spinner up
+      // forever and the error state (with its Retry) was never reachable.
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   // Re-fetch fresh from GitHub every time the modal opens (new repos may
@@ -163,25 +174,25 @@ export function GithubRepoPickerModal({
         if (!confirming) onOpenChange(next);
       }}
     >
-      <DialogContent className="sm:max-w-2xl p-0 gap-0 flex flex-col max-h-[85vh] overflow-hidden">
-        <div className="px-6 pt-6 pb-4 border-b border-border/60 shrink-0">
-          <DialogHeader>
-            <div className="flex items-center gap-3">
-              <div className="h-11 w-11 rounded-full bg-foreground flex items-center justify-center shrink-0">
-                <GithubIcon className="h-6 w-6 text-background" />
-              </div>
-              <div className="min-w-0">
-                <DialogTitle>Select repositories</DialogTitle>
-                <DialogDescription>
-                  Pick which repos show up on your Repos page. Change this
-                  anytime.
-                </DialogDescription>
-              </div>
+      <DialogContent variant="shell" size="lg">
+        <DialogHeader>
+          <div className="flex items-center gap-3">
+            <div className="h-11 w-11 rounded-full bg-foreground flex items-center justify-center shrink-0">
+              <GithubIcon className="h-6 w-6 text-background" />
             </div>
-          </DialogHeader>
-        </div>
+            <div className="min-w-0">
+              <DialogTitle>Select repositories</DialogTitle>
+              <DialogDescription>
+                Pick which repos show up on your Repos page. Change this
+                anytime.
+              </DialogDescription>
+            </div>
+          </div>
+        </DialogHeader>
 
-        <div className="px-6 py-4 flex flex-col gap-3 min-h-0 flex-1 overflow-hidden">
+        {/* overflow-hidden, not the band's own overflow-y-auto: the repo list
+            below is the scroller, so the band itself must not scroll too. */}
+        <DialogBody className="flex flex-col gap-3 overflow-hidden">
           <div className="relative shrink-0">
             <Search
               className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
@@ -202,27 +213,38 @@ export function GithubRepoPickerModal({
               {selectedCount} selected
               {repos ? ` of ${repos.length}` : ""}
             </span>
-            <div className="flex items-center gap-3">
-              <button
+            {/* Both were bare text-xs runs with no height and no padding, so
+                the hit area was the glyphs themselves. Ghost buttons at the
+                house small size give them a real target without turning a
+                secondary row into two solid buttons. */}
+            <div className="flex items-center gap-1 -mr-2">
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={selectAllVisible}
                 disabled={loading || filteredRepos.length === 0}
-                className="font-medium text-primary hover:underline disabled:opacity-40 disabled:no-underline rounded focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                className="px-2.5 text-xs font-medium text-primary hover:text-primary"
               >
                 Select all{filter.trim() ? " matching" : " visible"}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={clearAll}
                 disabled={selectedCount === 0}
-                className="font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 rounded focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                className="px-2.5 text-xs font-medium text-muted-foreground"
               >
                 Clear
-              </button>
+              </Button>
             </div>
           </div>
 
-          <div className="rounded-lg border border-border min-h-64 flex-1 overflow-y-auto overflow-x-hidden">
+          {/* rounded-md, not rounded-lg: the modal panel around it is
+              rounded-lg, and a child at its parent's radius fights the
+              modal's own corners. */}
+          <div className="rounded-md border border-border min-h-64 flex-1 overflow-y-auto overflow-x-hidden">
             {loading ? (
               <div className="flex items-center justify-center h-64 text-muted-foreground">
                 <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
@@ -241,10 +263,46 @@ export function GithubRepoPickerModal({
                 </Button>
               </div>
             ) : filteredRepos.length === 0 ? (
-              <div className="flex items-center justify-center h-64 px-6 text-center text-sm text-muted-foreground">
-                {repos && repos.length === 0
-                  ? "No repositories found on this account."
-                  : `No repos match "${filter}".`}
+              // Was a sentence alone in a 256px box. Both cases have an
+              // obvious next move, so both now offer it.
+              <div className="flex h-64 items-center justify-center px-4">
+                {repos && repos.length === 0 ? (
+                  <EmptyState
+                    variant="inline"
+                    size="sm"
+                    title="No repositories on this account"
+                    description="GitHub returned nothing for this account. If you just created a repo or were added to one, reload to pick it up."
+                    action={
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={loadRepos}
+                        className="gap-1.5 bg-transparent"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                        Reload from GitHub
+                      </Button>
+                    }
+                  />
+                ) : (
+                  <EmptyState
+                    variant="inline"
+                    size="sm"
+                    icon={Search}
+                    title="Nothing matches that search"
+                    description={`No repo name or description contains "${filter}".`}
+                    action={
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setFilter("")}
+                        className="bg-transparent"
+                      >
+                        Clear search
+                      </Button>
+                    }
+                  />
+                )}
               </div>
             ) : (
               <div className="divide-y divide-border/60">
@@ -299,9 +357,9 @@ export function GithubRepoPickerModal({
               <p className="text-sm text-destructive">{confirmError}</p>
             </div>
           )}
-        </div>
+        </DialogBody>
 
-        <DialogFooter className="px-6 py-4 border-t border-border/60">
+        <DialogFooter>
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}

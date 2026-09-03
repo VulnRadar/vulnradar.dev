@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import type { LucideIcon } from "lucide-react";
 import { ChevronDown, List, X } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
+import { modalCloseChip } from "@/components/ui/modal-grammar";
 
 export interface AdminTocItem {
   /** Unique per list: it is this item's React key. Several items can point
@@ -25,6 +26,24 @@ export interface AdminTocItem {
   /** Run before scrolling, e.g. to switch an internal tab so the target
    *  section is actually mounted. Omit for a plain scroll-to-anchor entry. */
   onSelect?: () => void;
+  /** Health of the destination, mirrored from the desktop sidebar's dot so a
+   *  phone shows which section is unhealthy without opening every one. Only
+   *  the two states worth interrupting for: healthy renders nothing. */
+  status?: "warn" | "crit";
+}
+
+/** Amber needs attention, red is critical. One vocabulary, shared by the
+ *  desktop sidebar in app/admin/page.tsx and both mobile surfaces here. */
+function StatusDot({ status }: { status: "warn" | "crit" }) {
+  return (
+    <span
+      className={cn(
+        "h-1.5 w-1.5 shrink-0 rounded-full",
+        status === "crit" ? "bg-destructive" : "bg-[hsl(var(--warning))]",
+      )}
+      aria-hidden="true"
+    />
+  );
 }
 
 /**
@@ -96,11 +115,20 @@ export function AdminMobileSectionTrigger({
   label,
   isOpen,
   onToggle,
+  status,
+  statusLabel,
 }: {
   icon: LucideIcon;
   label: string;
   isOpen: boolean;
   onToggle: () => void;
+  /** Worst state across every section, so a phone shows a fault without the
+   *  operator opening the drawer. The desktop sidebar is always visible and
+   *  carries this per item; on mobile the drawer is closed by default, so the
+   *  aggregate has to live on the thing that opens it. */
+  status?: "warn" | "crit";
+  /** Read out in place of the dot, which cannot carry meaning on its own. */
+  statusLabel?: string;
 }) {
   return (
     <button
@@ -110,20 +138,34 @@ export function AdminMobileSectionTrigger({
       aria-expanded={isOpen}
       aria-controls="admin-section-nav"
       className={cn(
-        "flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-card px-3.5 py-2.5 text-left transition-colors",
+        "flex w-full items-center justify-between gap-2 rounded-lg border bg-card px-3.5 py-2.5 text-left transition-colors",
         "hover:bg-muted/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+        status === "crit"
+          ? "border-destructive/40"
+          : status === "warn"
+            ? "border-[hsl(var(--warning))]/40"
+            : "border-border",
       )}
     >
       <span className="flex items-center gap-2 min-w-0">
         <Icon className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-        <span className="text-sm font-medium text-foreground truncate">
-          {label}
-        </span>
+        {/* Section names come from nav.ts ("Trust & Safety", "Hosts & Shares"),
+            so there is nothing unbounded here for an ellipsis to protect
+            against. */}
+        <span className="text-sm font-medium text-foreground">{label}</span>
       </span>
-      <ChevronDown
-        className="h-4 w-4 text-muted-foreground shrink-0"
-        aria-hidden="true"
-      />
+      <span className="flex items-center gap-2 shrink-0">
+        {status && (
+          <>
+            <StatusDot status={status} />
+            <span className="sr-only">{statusLabel ?? "Needs attention"}</span>
+          </>
+        )}
+        <ChevronDown
+          className="h-4 w-4 text-muted-foreground"
+          aria-hidden="true"
+        />
+      </span>
     </button>
   );
 }
@@ -247,7 +289,7 @@ export function AdminMobileToc({
           type="button"
           onClick={onClose}
           aria-label="Close navigation"
-          className="absolute right-3 top-3 rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+          className={cn(modalCloseChip, "right-3 top-3")}
         >
           <X className="h-5 w-5" aria-hidden="true" />
         </button>
@@ -260,7 +302,7 @@ export function AdminMobileToc({
           {groups.map((g, i) => (
             <div key={g.group || `group-${i}`}>
               {g.group && (
-                <h3 className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
+                <h3 className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   {g.group}
                 </h3>
               )}
@@ -272,14 +314,26 @@ export function AdminMobileToc({
                     onClick={() => handleSelect(item)}
                     aria-current={item.active ? "page" : undefined}
                     className={cn(
-                      "block w-full rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
+                      "flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
                       "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
                       item.active
                         ? "bg-primary/10 text-primary font-medium"
                         : "text-foreground hover:bg-muted",
                     )}
                   >
-                    {item.label}
+                    {/* Same as the section trigger above: a nav label, not
+                        user data. */}
+                    <span className="min-w-0">{item.label}</span>
+                    {item.status && (
+                      <>
+                        <StatusDot status={item.status} />
+                        <span className="sr-only">
+                          {item.status === "crit"
+                            ? "Critical"
+                            : "Needs attention"}
+                        </span>
+                      </>
+                    )}
                   </button>
                 ))}
               </div>

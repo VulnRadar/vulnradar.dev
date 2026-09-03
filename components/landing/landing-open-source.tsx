@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { FaGithub } from "react-icons/fa";
-import { APP_REPO, ROUTES } from "@/lib/config/constants";
-import { CONFIG_DISCORD_INVITE_URL } from "@/lib/config/config-values";
+import { APP_REPO, ROUTES, SOCIAL_LINKS } from "@/lib/config/constants";
+import { SocialLinks } from "@/components/shared/social-links";
+import { focus } from "@/lib/ui/animations";
 
 /** `href` is optional: a fact that can be checked gets a link to the thing
  *  that proves it, rather than asking the reader to take our word for it. */
@@ -36,9 +37,15 @@ const linkClass =
   "inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border/60 bg-card text-sm font-medium text-foreground hover:bg-muted transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
 
 // The repo link is the point of this section, so it carries the accent the
-// other two (secondary) links deliberately don't.
+// secondary links beside it deliberately don't.
 const primaryLinkClass =
   "inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-primary/25 bg-primary/10 text-sm font-medium text-primary hover:bg-primary/15 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
+
+// Icon-only, and lighter than the two chips beside them on purpose: the repo
+// is what this section is arguing for, the accounts are an aside. 44px below
+// sm for the touch minimum, 36px from sm up so the group sits level with the
+// chips. Pill radius per the radius ladder: these are icon buttons.
+const socialLinkClass = `inline-flex h-11 w-11 sm:h-9 sm:w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground ${focus.ring}`;
 
 export function LandingOpenSource() {
   return (
@@ -55,14 +62,29 @@ export function LandingOpenSource() {
               engine bolted on behind the login. What runs in the SaaS is what
               you can run yourself.
             </p>
+            {/* The self-host sentence used to stand on its own word. It now
+                names the thing that proves it, because this is the one claim
+                on the page that a reader can only test by spending an hour on
+                it, and it is the claim AUDIT-014#comp-01 found had quietly
+                stopped being true. The CI job named here is the `selfhost`
+                job in .github/workflows/ci.yml. */}
             <p>
-              Self-hosting is one Dockerfile and a Postgres connection string.
-              If you disagree with a severity rating, open the check, argue with
-              it, and send a pull request.
+              Self-hosting is one Dockerfile and a Postgres connection string,
+              and CI checks that on every build: it builds the production image,
+              boots it against an empty database, and fails if the schema does
+              not come up. If you disagree with a severity rating, open the
+              check, argue with it, and send a pull request.
             </p>
           </div>
 
-          <div className="mt-8 flex flex-wrap gap-3">
+          {/* The accounts ride in this row rather than getting a section of
+              their own. This is already the "where else to find us" row (the
+              repo, the self-host guide, and the Discord server that now shows
+              as a mark instead of a chip, so no destination is linked twice),
+              and a strip of identical icon cards under a "Follow us" heading
+              is exactly the template the rest of this page avoids. Renders
+              nothing when a deployment has configured no accounts. */}
+          <div className="mt-8 flex flex-wrap items-center gap-3">
             <a
               href={`https://github.com/${APP_REPO}`}
               target="_blank"
@@ -75,14 +97,17 @@ export function LandingOpenSource() {
             <Link href={`${ROUTES.DOCS}/self-hosting`} className={linkClass}>
               Self-host guide
             </Link>
-            <a
-              href={CONFIG_DISCORD_INVITE_URL}
-              target="_blank"
-              rel="noreferrer"
-              className={linkClass}
-            >
-              Discord
-            </a>
+            {SOCIAL_LINKS.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1 sm:ml-1">
+                <span className="mr-1 text-sm text-muted-foreground">
+                  Also on
+                </span>
+                <SocialLinks
+                  className={socialLinkClass}
+                  iconClassName="h-4 w-4"
+                />
+              </div>
+            )}
           </div>
         </div>
 

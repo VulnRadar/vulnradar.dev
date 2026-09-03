@@ -35,6 +35,8 @@ import {
   type FindingRemediation,
 } from "@/lib/scanner/remediation";
 import { cn } from "@/lib/ui/utils";
+import { tourAnchor } from "@/lib/tour/anchors";
+import { plural, pluralize } from "@/lib/ui/plural";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
 import { SEVERITY_PRIORITY, API } from "@/lib/config/client-constants";
@@ -426,6 +428,15 @@ export function ResultsList({
       result = result.filter((f) => findingMatchesQuery(f, searchQuery));
     }
     return [...result].sort((a, b) => {
+      // A finding the owner marked a false positive is already excluded from
+      // the summary counts and the danger score server-side
+      // (lib/scanner/recompute-scan-score.ts), so leaving it ranked among the
+      // live findings made the card and this list contradict each other. It
+      // sorts last instead of being hidden: the verdict is triage, not a
+      // delete, and a finding that vanished would leave no way to undo it.
+      if (Boolean(a.suppressed) !== Boolean(b.suppressed)) {
+        return a.suppressed ? 1 : -1;
+      }
       const orderA = SEVERITY_PRIORITY[a.severity] ?? 0;
       const orderB = SEVERITY_PRIORITY[b.severity] ?? 0;
       if (orderA !== orderB) return sortAsc ? orderA - orderB : orderB - orderA;
@@ -506,6 +517,7 @@ export function ResultsList({
             className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
           />
           <input
+            {...tourAnchor("findingSearch")}
             type="search"
             placeholder="Search findings or paste a check id"
             value={searchInput}
@@ -522,7 +534,7 @@ export function ResultsList({
               onClick={() => setSearchQuery("")}
               aria-label="Clear filter"
               className={cn(
-                "absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors",
+                "absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors",
                 FOCUS_RING,
               )}
             >
@@ -563,6 +575,11 @@ export function ResultsList({
             type="button"
             onClick={() => setGrouped(!grouped)}
             aria-pressed={grouped}
+            aria-label={
+              grouped
+                ? "Grouped by severity. Switch to a flat list."
+                : "Flat list. Group by severity."
+            }
             className={cn(
               "inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-md border text-xs font-medium transition-colors",
               grouped
@@ -576,7 +593,15 @@ export function ResultsList({
             ) : (
               <List className="h-3.5 w-3.5" />
             )}
-            Group by severity
+            {/* The label names the view you are in, not an action you might
+                take. Grouping is the default (see `grouped` above: it is on
+                unless ?group=flat says otherwise), so a button permanently
+                reading "Group by severity" described something already true
+                and read as an option you had to switch on. The pressed tint
+                said otherwise, and the two disagreed. aria-label carries the
+                action, which is what a screen reader needs from a control
+                whose visible text is a state. */}
+            {grouped ? "Grouped" : "Flat list"}
           </button>
 
           {selectable && (
@@ -602,7 +627,10 @@ export function ResultsList({
       </div>
 
       {/* Severity filter. Doubles as the legend: colour, name and count together. */}
-      <div className="flex overflow-x-auto rounded-xl border border-border bg-card divide-x divide-border">
+      <div
+        {...tourAnchor("scanSeverity")}
+        className="flex overflow-x-auto rounded-xl border border-border bg-card divide-x divide-border"
+      >
         {SEVERITY_ORDER.map((sev) => {
           const count = severityCounts[sev] || 0;
           const active = activeSeverities.has(sev);
@@ -703,43 +731,57 @@ export function ResultsList({
         </div>
       )}
 
-      {/* Count + AI verification line */}
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs">
-        <p className="text-muted-foreground" aria-live="polite">
-          <span className="font-semibold text-foreground tabular-nums">
-            {filtered.length}
-          </span>{" "}
-          {filtered.length === 1 ? "finding" : "findings"}
+      {/* The live region is mounted unconditionally and the visible line is
+          not: a region inserted at the same moment as its first text is not
+          reliably announced, so filtering would silently change the list for a
+          screen reader. sr-only is position:absolute, so it is not a flex item
+          and costs no gap. */}
+      <p className="sr-only" aria-live="polite">
+        {isFiltered
+          ? `Showing ${filtered.length} of ${pluralize(findings.length, "finding")}`
+          : ""}
+      </p>
+
+      {/* This line is the filter's readout, so it speaks only while a filter is
+          narrowing the set. It used to print the unfiltered total too, which
+          the "Findings" section header states already: the same number landed
+          on screen twice with nothing between them but the pill row. */}
+      {(isFiltered || aiCounts.verified > 0) && (
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs">
           {isFiltered && (
-            <>
-              {" of "}
-              <span className="tabular-nums">{findings.length}</span>
-            </>
+            <p className="text-muted-foreground">
+              Showing{" "}
+              <span className="font-semibold text-foreground tabular-nums">
+                {filtered.length}
+              </span>{" "}
+              of <span className="tabular-nums">{findings.length}</span>{" "}
+              {plural(findings.length, "finding")}
+            </p>
           )}
-        </p>
-        {aiCounts.verified > 0 && (
-          <p className="inline-flex items-center gap-1.5 text-muted-foreground">
-            <BotMessageSquare
-              aria-hidden
-              className="h-3.5 w-3.5 text-primary"
-            />
-            AI checked{" "}
-            <span className="font-medium text-foreground tabular-nums">
-              {aiCounts.verified}
-            </span>{" "}
-            against the live site
-            {aiCounts.falsePositive > 0 && (
-              <>
-                {", "}
-                <span className="font-medium text-foreground tabular-nums">
-                  {aiCounts.falsePositive}
-                </span>{" "}
-                may not apply
-              </>
-            )}
-          </p>
-        )}
-      </div>
+          {aiCounts.verified > 0 && (
+            <p className="inline-flex items-center gap-1.5 text-muted-foreground">
+              <BotMessageSquare
+                aria-hidden
+                className="h-3.5 w-3.5 text-primary"
+              />
+              AI checked{" "}
+              <span className="font-medium text-foreground tabular-nums">
+                {aiCounts.verified}
+              </span>{" "}
+              against the live site
+              {aiCounts.falsePositive > 0 && (
+                <>
+                  {", "}
+                  <span className="font-medium text-foreground tabular-nums">
+                    {aiCounts.falsePositive}
+                  </span>{" "}
+                  may not apply
+                </>
+              )}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Findings */}
       {filtered.length === 0 ? (
@@ -747,7 +789,7 @@ export function ResultsList({
           icon={Search}
           size="sm"
           title="Nothing matches those filters"
-          description={`${findings.length} ${findings.length === 1 ? "finding" : "findings"} ${findings.length === 1 ? "is" : "are"} hidden. Clear the search box or turn a severity back on.`}
+          description={`${pluralize(findings.length, "finding")} ${findings.length === 1 ? "is" : "are"} hidden. Clear the search box or turn a severity back on.`}
           action={
             <Button
               variant="outline"
@@ -842,17 +884,31 @@ export function ResultsList({
           // the whole bar parked behind it. A sticky bottom offset is
           // measured from the viewport edge, same as a fixed one, so the
           // variable works here.
-          className="sticky bottom-[calc(0.75rem+var(--vr-cookie-h,0px))] z-20 mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-card/95 px-3 py-2.5 shadow-lg backdrop-blur transition-[bottom] duration-300"
+          className="sticky bottom-[calc(0.75rem+var(--vr-cookie-h,0px))] z-20 mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-border/50 bg-card px-4 py-3 shadow-lg backdrop-blur-xs transition-[bottom] duration-300"
         >
-          <span className="text-xs font-semibold text-foreground">
-            {visibleSelected.size} selected
+          {/* Icon tile plus a text-sm label, matching the unsaved-changes bar
+              in components/admin/features/system-settings-manager.tsx. Both
+              are the same kind of object, a floating bar that appears when you
+              have pending work and offers to commit or discard it, and they
+              looked nothing like each other: this one opened with a bare
+              text-xs count and ran straight into a native select. */}
+          <span className="flex items-center gap-3">
+            <span className="rounded-lg bg-primary/10 p-1.5">
+              <ListChecks
+                className="h-3.5 w-3.5 text-primary"
+                aria-hidden="true"
+              />
+            </span>
+            <span className="text-sm font-medium text-foreground">
+              {visibleSelected.size} selected
+            </span>
           </span>
           <select
             aria-label="Set status for selected findings"
             value={bulkStatus}
             onChange={(e) => setBulkStatus(e.target.value as RemediationStatus)}
             className={cn(
-              "h-8 rounded-md border border-input bg-background px-2 text-xs",
+              "h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground",
               FOCUS_RING,
             )}
           >
@@ -873,7 +929,7 @@ export function ResultsList({
                 maxLength={120}
                 placeholder="Assignee (optional)"
                 className={cn(
-                  "h-8 w-36 rounded-md border border-input bg-background px-2 text-xs placeholder:text-muted-foreground",
+                  "h-8 w-36 rounded-md border border-input bg-background px-2 text-xs text-foreground placeholder:text-muted-foreground",
                   FOCUS_RING,
                 )}
               />
@@ -890,37 +946,43 @@ export function ResultsList({
                 value={bulkDue}
                 onChange={(e) => setBulkDue(e.target.value)}
                 className={cn(
-                  "h-8 rounded-md border border-input bg-background px-2 text-xs",
+                  "h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground",
                   FOCUS_RING,
                 )}
               />
             </>
           )}
-          <button
-            type="button"
-            onClick={applyBulk}
-            disabled={bulkBusy}
-            className={cn(
-              "inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-60",
-              FOCUS_RING,
-            )}
-          >
-            {bulkBusy && (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-            )}
-            Apply
-          </button>
-          <button
-            type="button"
-            onClick={clearSelection}
-            aria-label="Clear selection"
-            className={cn(
-              "inline-flex h-8 items-center rounded-md border border-border px-2 text-xs text-muted-foreground hover:text-foreground",
-              FOCUS_RING,
-            )}
-          >
-            <X className="h-3.5 w-3.5" aria-hidden />
-          </button>
+          {/* The actions sit right, after an auto margin, so the bar reads
+              count on the left and commit/dismiss on the right whatever the
+              middle controls are. Real Buttons rather than hand-rolled ones:
+              the previous pair reimplemented the primary and ghost variants
+              at slightly the wrong height and weight. */}
+          <span className="ms-auto flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={applyBulk}
+              disabled={bulkBusy}
+              className="h-8 gap-1.5"
+            >
+              {bulkBusy && (
+                <Loader2
+                  className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
+                  aria-hidden
+                />
+              )}
+              Apply
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearSelection}
+              aria-label="Clear selection"
+              className="h-8 gap-1.5"
+            >
+              <X className="h-3.5 w-3.5" aria-hidden />
+              <span className="hidden sm:inline">Cancel</span>
+            </Button>
+          </span>
           {bulkError && (
             <span className="text-xs text-[hsl(var(--severity-high))]">
               Couldn&apos;t apply. Try again.
@@ -977,6 +1039,10 @@ function FindingRow({
     <button
       type="button"
       onClick={() => onSelect(issue)}
+      // Every row carries the anchor, not just the first: the tour resolves an
+      // anchor to the first copy with a real box, so this works whichever rows
+      // a severity filter has left on screen.
+      {...tourAnchor("findingRow")}
       // role="checkbox" only in select mode: the row really is a checkbox
       // there, and aria-pressed (what this used to send) describes a toggle
       // button, which is not what a screen reader should announce for a row
@@ -1047,13 +1113,13 @@ function FindingRow({
         </span>
 
         <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-          <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+          <span className="inline-flex items-center rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
             {categoryLabel(issue.category)}
           </span>
           {remediationBadge && (
             <span
               className={cn(
-                "inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-medium",
+                "inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium",
                 remediationBadge.className,
               )}
             >
@@ -1063,7 +1129,7 @@ function FindingRow({
           {verdict && VerdictIcon && (
             <span
               className={cn(
-                "inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium",
+                "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium",
                 verdict.chip,
               )}
               title={issue.aiReason}

@@ -146,41 +146,49 @@ function injectStyles() {
       margin-bottom: 8px;
     }
     .welcome-hero h1 {
-      font-size: 24px;
+      font-size: 28px;
       font-weight: 700;
+      letter-spacing: -0.02em;
       margin: 0;
     }
     .tagline {
       color: var(--vr-text-muted);
-      font-size: 14px;
+      font-size: 15px;
       max-width: 480px;
       margin: 0;
     }
+    /* Hairline-separated rows rather than three floating blocks: this is a
+       procedure, so it should read like one list you work down, not like three
+       cards you could take in any order. */
     .steps {
       display: flex;
       flex-direction: column;
-      gap: 16px;
       list-style: none;
       margin: 0;
       padding: 0;
+      border-top: 1px solid var(--vr-border);
     }
     .step {
       display: flex;
       gap: 16px;
-      align-items: flex-start;
+      align-items: baseline;
+      padding: 16px 0;
+      border-bottom: 1px solid var(--vr-border);
     }
+    /* The numeral stays: these genuinely are three steps in an order and the
+       reader needs to know which one they are on. The filled brand-blue circle
+       around it does not. It is the shape every generated onboarding page
+       takes, and it spent the page's only strong colour on decoration while
+       the one thing you are meant to press sits below in the same colour. */
     .step-num {
       flex-shrink: 0;
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      background: var(--vr-primary);
-      color: var(--vr-primary-fg);
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      width: 28px;
+      font-family: var(--vr-mono);
+      font-size: 20px;
       font-weight: 600;
-      font-size: 14px;
+      line-height: 1.2;
+      color: var(--vr-text-muted);
+      font-variant-numeric: tabular-nums;
     }
     .step-body {
       flex: 1;

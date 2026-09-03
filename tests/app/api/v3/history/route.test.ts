@@ -125,9 +125,11 @@ describe("GET /api/v3/history", () => {
     expect(sql).toContain("sh.user_id = $1");
     expect(sql).toContain("sh.scanned_at > NOW()");
     expect(sql).toContain("sh.scan_type != 'github'");
-    // [userId, retentionDays, historyMaxRows] -- HISTORY_LIST_MAX_ROWS (100
-    // shipped default) is now its own admin-configurable LIMIT param.
-    expect(params).toEqual([7, 30, 100]);
+    // [userId, retentionDays, limit, offset]. HISTORY_LIST_MAX_ROWS (100
+    // shipped default) is the admin-configurable LIMIT, and the trailing 0 is
+    // the OFFSET a request with no ?offset resolves to -- identical to the
+    // pre-pagination behaviour.
+    expect(params).toEqual([7, 30, 100, 0]);
   });
 
   it("exposes the opaque public_id as the id the client consumes, not the sequential primary key", async () => {
@@ -161,8 +163,8 @@ describe("GET /api/v3/history", () => {
     const [sql, params] = mockBusinessQuery.mock.calls[1];
     expect(sql).toContain("sh.user_id = $1");
     expect(sql).not.toContain("scanned_at >");
-    // [userId, historyMaxRows] -- no date filter, so no retentionDays param.
-    expect(params).toEqual([7, 100]);
+    // [userId, limit, offset] -- no date filter, so no retentionDays param.
+    expect(params).toEqual([7, 100, 0]);
   });
 
   it("gives unlimited retention for a plan whose retention is -1, independent of staff role", async () => {
@@ -177,7 +179,7 @@ describe("GET /api/v3/history", () => {
 
     const [sql, params] = mockBusinessQuery.mock.calls[1];
     expect(sql).not.toContain("scanned_at >");
-    expect(params).toEqual([7, 100]);
+    expect(params).toEqual([7, 100, 0]);
   });
 
   it("authenticates via a Bearer API key and records usage", async () => {
@@ -198,6 +200,126 @@ describe("GET /api/v3/history", () => {
 
     expect(res.status).toBe(200);
     expect(mockRecordUsage).toHaveBeenCalledWith(3);
+  });
+
+  // Pagination. Before this, the list was hard-capped at HISTORY_LIST_MAX_ROWS
+  // and reported `truncated: true` with no way to ask for the next page: an
+  // account with more scans than the cap simply could not reach the older ones
+  // over the API. ref: AUDIT-015#api-01
+  describe("pagination", () => {
+    function primeOnePage(rows: unknown[], total: number) {
+      mockBusinessQuery.mockResolvedValueOnce({
+        rows: [{ plan: "free", role: "user" }],
+      });
+      mockBusinessQuery.mockResolvedValueOnce({ rows });
+      mockBusinessQuery.mockResolvedValueOnce({ rows: [{ n: total }] });
+    }
+
+    function pagedRequest(query: string) {
+      return new NextRequest(`http://localhost/api/v3/history?${query}`, {
+        method: "GET",
+      });
+    }
+
+    /**
+     * The limit and offset are always the LAST two params, whichever retention
+     * branch ran. Asserted as a tail rather than a whole array because
+     * runtime-config memoizes settings for the life of the module, so a plan's
+     * retention window here depends on what an earlier test in this file put
+     * in system_settings, and that is not what these tests are about.
+     */
+    const paging = (params: unknown[]) => params.slice(-2);
+
+    it("passes limit and offset through to the query and reports them back", async () => {
+      primeOnePage([{ id: "a", url: "https://a.test" }], 412);
+
+      const res = await GET(pagedRequest("limit=25&offset=50"));
+      const json = await res.json();
+
+      const [, params] = mockBusinessQuery.mock.calls[1];
+      expect(paging(params as unknown[])).toEqual([25, 50]);
+      expect(json.limit).toBe(25);
+      expect(json.offset).toBe(50);
+      expect(json.maxLimit).toBe(100);
+      expect(json.total).toBe(412);
+    });
+
+    it("clamps a limit above the deployment cap instead of rejecting it", async () => {
+      primeOnePage([], 5);
+
+      const res = await GET(pagedRequest("limit=100000"));
+      const json = await res.json();
+
+      const [, params] = mockBusinessQuery.mock.calls[1];
+      expect(paging(params as unknown[])).toEqual([100, 0]);
+      expect(json.limit).toBe(100);
+    });
+
+    it("falls back to the full page for a limit that is zero, negative, or junk", async () => {
+      for (const bad of ["0", "-5", "abc", ""]) {
+        mockBusinessQuery.mockReset();
+        primeOnePage([], 5);
+        await GET(pagedRequest(`limit=${bad}`));
+        const [, params] = mockBusinessQuery.mock.calls[1];
+        expect(paging(params as unknown[]), `limit=${bad}`).toEqual([100, 0]);
+      }
+    });
+
+    it("truncated means 'there are rows after this page', not 'the cap was hit'", async () => {
+      // Last page: offset 100 + 43 rows returned == the 143 total, so there is
+      // nothing after it even though a previous page was full.
+      primeOnePage(new Array(43).fill({ id: "x" }), 143);
+
+      const res = await GET(pagedRequest("offset=100"));
+      const json = await res.json();
+
+      expect(json.truncated).toBe(false);
+    });
+
+    it("still reports truncated on the first page when more rows follow", async () => {
+      primeOnePage(new Array(100).fill({ id: "x" }), 143);
+
+      const res = await GET(getRequest());
+      const json = await res.json();
+
+      expect(json.offset).toBe(0);
+      expect(json.truncated).toBe(true);
+    });
+  });
+
+  // A spent per-key quota answers the same way on a history read as it does on
+  // POST /scan. It used to be a bare { error } with no Retry-After, so a client
+  // could not write one retry path across the two. ref: AUDIT-015#api-02
+  it("answers a spent API-key quota with Retry-After and the rate-limit headers", async () => {
+    const resetsAt = new Date(Date.now() + 3600_000).toISOString();
+    mockValidateApiKey.mockResolvedValue({
+      keyId: 3,
+      userId: 7,
+      dailyLimit: 50,
+      needsTermsAcceptance: false,
+    });
+    mockCheckApiKeyRateLimit.mockResolvedValue({
+      allowed: false,
+      limit: 50,
+      used: 50,
+      remaining: 0,
+      resetsAt,
+    });
+
+    const res = await GET(
+      getRequest({ authorization: "Bearer vr_live_testkey" }),
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get("X-RateLimit-Limit")).toBe("50");
+    expect(res.headers.get("X-RateLimit-Remaining")).toBe("0");
+    expect(res.headers.get("X-RateLimit-Reset")).toBe(resetsAt);
+    expect(Number(res.headers.get("Retry-After"))).toBeGreaterThan(0);
+    expect(json.limit).toBe(50);
+    expect(json.used).toBe(50);
+    expect(json.resets_at).toBe(resetsAt);
+    expect(mockBusinessQuery).not.toHaveBeenCalled();
   });
 
   it("rejects an invalid or revoked API key", async () => {

@@ -34,6 +34,40 @@ interface OAuthButtonsProps {
   intent: "login" | "signup";
 }
 
+type ConfiguredProvider = {
+  id: "google" | "github" | "discord";
+  name: string;
+  icon: React.ReactNode;
+};
+
+function ProviderButton({
+  provider,
+  label,
+  showLabel,
+  onStart,
+}: {
+  provider: ConfiguredProvider;
+  /** Full sentence, e.g. "Sign in with GitHub". Always the accessible name,
+   *  even when the button only shows the provider's name. */
+  label: string;
+  showLabel: boolean;
+  onStart: (id: string) => void;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="lg"
+      aria-label={label}
+      className={cn("h-11 w-full border-border/60 gap-2 px-3", authFocusRing)}
+      onClick={() => onStart(provider.id)}
+    >
+      {provider.icon}
+      {showLabel ? label : provider.name}
+    </Button>
+  );
+}
+
 /**
  * Provider sign-in/sign-up buttons for Google, GitHub, and Discord.
  * Each one is individually shown only once its client id/secret is
@@ -45,13 +79,38 @@ interface OAuthButtonsProps {
  */
 export function OAuthButtons({ actionLabel, intent }: OAuthButtonsProps) {
   const providers = useOAuthProviders();
-  const anyConfigured =
-    providers.google || providers.github || providers.discord;
 
-  if (!anyConfigured) return null;
+  const configured: ConfiguredProvider[] = [];
+  if (providers.google)
+    configured.push({
+      id: "google",
+      name: "Google",
+      icon: <FcGoogle className="h-4 w-4" aria-hidden="true" />,
+    });
+  if (providers.github)
+    configured.push({
+      id: "github",
+      name: "GitHub",
+      icon: <FaGithub className="h-4 w-4" aria-hidden="true" />,
+    });
+  if (providers.discord)
+    configured.push({ id: "discord", name: "Discord", icon: <DiscordIcon /> });
+
+  if (configured.length === 0) return null;
 
   const startUrl = (provider: string) =>
     `${API.AUTH.OAUTH_START(provider)}?intent=${intent}`;
+  const start = (id: string) => {
+    window.location.href = startUrl(id);
+  };
+
+  // With all three configured this was three identical full-width bars, the
+  // one place the form column read templated. The first keeps the full
+  // sentence and the other two pair off underneath it. Every button is still
+  // h-11 with the outline border, so neither the 44px target nor the visible
+  // control border moves.
+  const lead = configured.length === 3 ? configured[0] : null;
+  const rest = lead ? configured.slice(1) : configured;
 
   return (
     <>
@@ -66,43 +125,34 @@ export function OAuthButtons({ actionLabel, intent }: OAuthButtonsProps) {
         </span>
       </div>
 
-      {providers.google && (
-        <Button
-          type="button"
-          variant="outline"
-          size="lg"
-          className={cn("h-11 w-full border-border/60 gap-2", authFocusRing)}
-          onClick={() => (window.location.href = startUrl("google"))}
-        >
-          <FcGoogle className="h-4 w-4" aria-hidden="true" />
-          {actionLabel} with Google
-        </Button>
+      {lead && (
+        <ProviderButton
+          provider={lead}
+          label={`${actionLabel} with ${lead.name}`}
+          showLabel
+          onStart={start}
+        />
       )}
 
-      {providers.github && (
-        <Button
-          type="button"
-          variant="outline"
-          size="lg"
-          className={cn("h-11 w-full border-border/60 gap-2", authFocusRing)}
-          onClick={() => (window.location.href = startUrl("github"))}
-        >
-          <FaGithub className="h-4 w-4" aria-hidden="true" />
-          {actionLabel} with GitHub
-        </Button>
-      )}
-
-      {providers.discord && (
-        <Button
-          type="button"
-          variant="outline"
-          size="lg"
-          className={cn("h-11 w-full border-border/60 gap-2", authFocusRing)}
-          onClick={() => (window.location.href = startUrl("discord"))}
-        >
-          <DiscordIcon />
-          {actionLabel} with Discord
-        </Button>
+      {rest.length > 1 ? (
+        <div className="grid grid-cols-2 gap-2">
+          {rest.map((p) => (
+            <ProviderButton
+              key={p.id}
+              provider={p}
+              label={`${actionLabel} with ${p.name}`}
+              showLabel={false}
+              onStart={start}
+            />
+          ))}
+        </div>
+      ) : (
+        <ProviderButton
+          provider={rest[0]}
+          label={`${actionLabel} with ${rest[0].name}`}
+          showLabel
+          onStart={start}
+        />
       )}
     </>
   );

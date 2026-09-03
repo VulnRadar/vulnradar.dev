@@ -43,6 +43,8 @@ vi.mock("@/lib/auth/authorization", async () => {
 vi.mock("@/lib/support/ticket-notify", () => ({
   notifyStaffOfTicketActivity: vi.fn(),
   notifyUserOfStaffReply: vi.fn(),
+  confirmTicketToUser: vi.fn(),
+  notifyUserOfTicketStatus: vi.fn(),
 }));
 
 // Mock the rate limiter so it never touches the (mocked) db pool and so the

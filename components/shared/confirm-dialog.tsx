@@ -91,7 +91,11 @@ export function ConfirmDialog({
         if (!next && !isBusy) onCancel();
       }}
     >
-      <AlertDialogContent className="sm:max-w-md">
+      {/* No variant and no size: `compact` at `sm` is exactly what a
+          confirmation wants, and that is the AlertDialog default. This is the
+          deliberately smaller tier, so the footer sits in the scroll flow
+          rather than pinned under a divider. */}
+      <AlertDialogContent>
         <AlertDialogHeader>
           <div className="flex items-start gap-3">
             <div
@@ -114,17 +118,20 @@ export function ConfirmDialog({
             </div>
             <div className="min-w-0">
               <AlertDialogTitle>{title}</AlertDialogTitle>
-              <AlertDialogDescription className="text-left">
-                {description}
-              </AlertDialogDescription>
+              <AlertDialogDescription>{description}</AlertDialogDescription>
             </div>
           </div>
         </AlertDialogHeader>
 
+        {/* Left as two bare children rather than wrapped in an AlertDialogBody:
+            the compact tier is a `grid gap-4`, so header, children, error and
+            footer are each their own row with the gap between them. Wrapping
+            these two would collapse them into one row and leave a typed-name
+            input touching the failure message directly under it. */}
         {children}
         {error && <InlineAlert tone="error">{error}</InlineAlert>}
 
-        <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row">
+        <AlertDialogFooter>
           <AlertDialogCancel disabled={isBusy}>{cancelLabel}</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleConfirm}

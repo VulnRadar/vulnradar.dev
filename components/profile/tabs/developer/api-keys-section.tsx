@@ -29,7 +29,11 @@ import type { ConfirmAction } from "./types";
 
 interface ApiKeysSectionProps {
   apiKeys: ApiKey[];
-  maxActiveKeys: number;
+  /** Active keys the plan allows, -1 for unlimited, or null while the
+   *  caller does not know the plan yet (/auth/me still in flight). Null is
+   *  never treated as a limit: it renders the count without a ceiling and
+   *  gates nothing. */
+  maxActiveKeys: number | null;
   newKeyName: string;
   onNewKeyNameChange: (value: string) => void;
   newKeyScopes: ApiKeyScope[];
@@ -138,8 +142,12 @@ export function ApiKeysSection({
   const activeKeys = apiKeys.filter(
     (k) => k && typeof k === "object" && !k.revoked_at,
   );
+  const limitKnown = maxActiveKeys !== null;
   const unlimitedKeys = maxActiveKeys === -1;
-  const atKeyLimit = !unlimitedKeys && activeKeys.length >= maxActiveKeys;
+  const atKeyLimit =
+    maxActiveKeys !== null &&
+    maxActiveKeys !== -1 &&
+    activeKeys.length >= maxActiveKeys;
 
   return (
     <section className="flex flex-col gap-4">
@@ -159,7 +167,11 @@ export function ApiKeysSection({
                 )}
               >
                 <Key className="h-3 w-3" aria-hidden="true" />
-                {unlimitedKeys
+                {/* "1/1 active" in a destructive-red pill was the first thing
+                    a paying user saw while their plan was still loading, since
+                    the unknown limit resolved to the free plan's single slot.
+                    Without a known ceiling the count stands on its own. */}
+                {unlimitedKeys || !limitKnown
                   ? `${activeKeys.length} active`
                   : `${activeKeys.length}/${maxActiveKeys} active`}
               </span>
@@ -312,6 +324,81 @@ export function ApiKeysSection({
         </div>
       ) : (
         <>
+          {/* Create form first, list second.
+              The empty state above already leads with this form, but once
+              you had keys it moved below the whole list, so making a second
+              key meant scrolling past every existing one to find the input.
+              It keeps the empty state's dashed panel so the "make a new one"
+              affordance looks the same in both states, and the slot counter
+              sits with it because that is what explains a disabled button. */}
+          <div className="rounded-xl border border-dashed border-border bg-muted/20 p-4 sm:p-5 flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
+              <div className="flex-1 w-full sm:w-auto">
+                <Label htmlFor="key-name" className="sr-only">
+                  Name for the new API key
+                </Label>
+                <Input
+                  id="key-name"
+                  placeholder="Name another key..."
+                  value={newKeyName}
+                  onChange={(e) => onNewKeyNameChange(e.target.value)}
+                  className="h-10"
+                  maxLength={100}
+                  disabled={atKeyLimit}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !atKeyLimit) onGenerateKey();
+                  }}
+                />
+              </div>
+              <Button
+                onClick={onGenerateKey}
+                disabled={
+                  generatingKey || atKeyLimit || newKeyScopes.length === 0
+                }
+                className="shrink-0 h-10 gap-2 w-full sm:w-auto"
+              >
+                {generatingKey ? (
+                  <Loader2
+                    className="h-4 w-4 animate-spin"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                )}
+                {generatingKey ? "Creating..." : "Create key"}
+              </Button>
+            </div>
+            {!atKeyLimit && (
+              <div className="rounded-lg border border-border/60 bg-card/50 px-3 py-2">
+                <p className="text-xs font-medium text-muted-foreground mb-0.5">
+                  What the new key can do
+                </p>
+                {ALL_API_KEY_SCOPES.map((scope) => (
+                  <ScopeCheckbox
+                    key={scope}
+                    scope={scope}
+                    checked={newKeyScopes.includes(scope)}
+                    onToggle={() => onToggleScope(scope)}
+                  />
+                ))}
+                {newKeyScopes.length === 0 && (
+                  <p className="text-xs text-destructive mt-1">
+                    Select at least one scope.
+                  </p>
+                )}
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              {!limitKnown
+                ? `${activeKeys.length} key slot${activeKeys.length === 1 ? "" : "s"} in use. Your plan's limit has not loaded, so nothing here is gated on it.`
+                : unlimitedKeys
+                  ? `${activeKeys.length} key slot${activeKeys.length === 1 ? "" : "s"} in use. Your plan has no limit.`
+                  : atKeyLimit
+                    ? `You are using all ${maxActiveKeys} key slots. Rotate one in place, or revoke a key to free a slot.`
+                    : `${activeKeys.length} of ${maxActiveKeys} key slots in use.`}
+            </p>
+          </div>
+
           <ul className="flex flex-col gap-2">
             {activeKeys.map((key) => {
               const pct = Math.min(
@@ -409,68 +496,6 @@ export function ApiKeysSection({
               );
             })}
           </ul>
-
-          <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
-            <div className="flex-1 w-full sm:w-auto">
-              <Label htmlFor="key-name" className="sr-only">
-                Name for the new API key
-              </Label>
-              <Input
-                id="key-name"
-                placeholder="Name another key..."
-                value={newKeyName}
-                onChange={(e) => onNewKeyNameChange(e.target.value)}
-                className="h-10"
-                maxLength={100}
-                disabled={atKeyLimit}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !atKeyLimit) onGenerateKey();
-                }}
-              />
-            </div>
-            <Button
-              variant="outline"
-              onClick={onGenerateKey}
-              disabled={
-                generatingKey || atKeyLimit || newKeyScopes.length === 0
-              }
-              className="shrink-0 h-10 gap-2 w-full sm:w-auto"
-            >
-              {generatingKey ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              ) : (
-                <Plus className="h-4 w-4" aria-hidden="true" />
-              )}
-              {generatingKey ? "Creating..." : "Create key"}
-            </Button>
-          </div>
-          {!atKeyLimit && (
-            <div className="rounded-lg border border-border/60 bg-card/50 px-3 py-2">
-              <p className="text-xs font-medium text-muted-foreground mb-0.5">
-                What the new key can do
-              </p>
-              {ALL_API_KEY_SCOPES.map((scope) => (
-                <ScopeCheckbox
-                  key={scope}
-                  scope={scope}
-                  checked={newKeyScopes.includes(scope)}
-                  onToggle={() => onToggleScope(scope)}
-                />
-              ))}
-              {newKeyScopes.length === 0 && (
-                <p className="text-xs text-destructive mt-1">
-                  Select at least one scope.
-                </p>
-              )}
-            </div>
-          )}
-          <p className="text-xs text-muted-foreground -mt-1">
-            {unlimitedKeys
-              ? `${activeKeys.length} key slot${activeKeys.length === 1 ? "" : "s"} in use. Your plan has no limit.`
-              : atKeyLimit
-                ? `You are using all ${maxActiveKeys} key slots. Rotate one in place, or revoke a key to free a slot.`
-                : `${activeKeys.length} of ${maxActiveKeys} key slots in use.`}
-          </p>
         </>
       )}
     </section>

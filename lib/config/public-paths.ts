@@ -187,12 +187,16 @@ export const PUBLIC_PATHS = [
   API.CONTACT,
 
   // ─── Public Badge Endpoints (v2) ────────────────────────────────
+  // The badge IMAGE and its redirect are embedded on third-party sites, so
+  // they are fetched by browsers that carry no session for this app and have
+  // to stay public. The /badge PAGE is not: ROUTES.BADGE used to be listed
+  // here too, but that page is a builder over the caller's OWN scan history
+  // (GET /api/v3/badge/scans is session-authenticated and returns an empty
+  // list without a session), so signed out it rendered a permanently empty
+  // page. It is private now, and app/badge/page.tsx renders the signed-in app
+  // header to match. This entry does NOT cover it: the page is "/badge" and
+  // this is "/api/v3/badge", two different prefixes.
   "/api/v3/badge",
-  // The BADGE *page* itself (app/badge/page.tsx, where a site owner
-  // configures/copies their embed snippet) was missing -- only the API
-  // route was listed -- so a logged-out visitor got 307'd to /login
-  // before ever seeing it.
-  ROUTES.BADGE,
 
   // ─── Public Avatar Files ────────────────────────────────────────
   // Avatars already render on logged-out surfaces (shared scan reports)

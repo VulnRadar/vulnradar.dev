@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Globe2, ListChecks, X, Zap } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
+import { tourAnchor } from "@/lib/tour/anchors";
 import type { Category } from "@/lib/scanner/types";
 import { ALL_CATEGORIES } from "@/lib/scanner/types";
 import { CATEGORY_META } from "@/lib/scanner/category-meta";
@@ -301,7 +302,10 @@ export function ScanningIndicator({
           ? `${Math.min(categoriesCompleted, categoriesTotal)} of ${categoriesTotal} check families complete.`
           : "Scan starting."}
       </p>
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div
+        {...tourAnchor("scanProgress")}
+        className="overflow-hidden rounded-xl border border-border bg-card"
+      >
         {/* Target line */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border/60 px-4 py-3 sm:px-5">
           {/* The house pill is rounded-full at text-[10px] with uppercase
@@ -394,9 +398,13 @@ export function ScanningIndicator({
                     <span className="h-1 w-1 rounded-full bg-current" />
                   )}
                 </span>
+                {/* No truncate: every one of these is a check-family label we
+                    wrote ("Information disclosure", "Security headers"), and
+                    the column is one-up on a phone, so it has the room to
+                    print them whole. */}
                 <span
                   className={cn(
-                    "min-w-0 truncate",
+                    "min-w-0",
                     running && "font-medium text-foreground",
                     done && "text-muted-foreground",
                     !done && !running && "text-muted-foreground/50",

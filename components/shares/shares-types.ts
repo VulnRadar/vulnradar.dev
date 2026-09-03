@@ -27,21 +27,36 @@ export interface Share {
   findingsCount: number;
 }
 
-/** "Never expires" / "Expires in 12d" / "Expires today", for the shares
- *  list. Callers only ever see a live share (an expired one is filtered
- *  out server-side), so this never needs to describe an already-expired
- *  state. */
-export function formatExpiry(expiresAt: string | null | undefined): string {
-  if (!expiresAt) return "Never expires";
+/** The two forms the shares list needs for one expiry: `label` for the
+ *  "Expires" column, which already names the fact, and `spoken` for the
+ *  accessible name of the control in that cell, which is read on its own
+ *  with no column header for context. Callers only ever see a live share
+ *  (an expired one is filtered out server-side), so this never needs to
+ *  describe an already-expired state. */
+export function formatExpiry(expiresAt: string | null | undefined): {
+  label: string;
+  spoken: string;
+} {
+  if (!expiresAt) return { label: "Never", spoken: "This link never expires" };
   const diffMs = new Date(expiresAt).getTime() - Date.now();
   const diffDays = Math.ceil(diffMs / 86400000);
-  if (diffDays <= 1) return "Expires today";
-  return `Expires in ${diffDays}d`;
+  if (diffDays <= 1)
+    return { label: "Today", spoken: "This link expires today" };
+  return {
+    label: `in ${diffDays}d`,
+    spoken: `This link expires in ${diffDays} days`,
+  };
 }
 
 // Canonical relative-time formatter (see lib/ui/relative-time.ts).
 export { formatRelativeTime } from "@/lib/ui/relative-time";
 
+/** `rail` is the full-strength fill for the 3px severity strip down the left
+ *  edge of a row, and `bg` the 10% tint used behind larger surfaces. The row
+ *  used to derive the rail from the tint with `bg.replace("/10", "")`, which
+ *  only worked for as long as every tint here happened to end in exactly
+ *  "/10": changing one to "/12" would have silently painted a transparent
+ *  rail with no type error. Both are stated. */
 export function getSeverityInfo(share: Share) {
   const rating = getSafetyRating(share.findings);
   if (rating === "unsafe")
@@ -49,6 +64,7 @@ export function getSeverityInfo(share: Share) {
       label: "Exploitable",
       color: "text-[hsl(var(--severity-critical))]",
       bg: "bg-[hsl(var(--severity-critical))]/10",
+      rail: "bg-[hsl(var(--severity-critical))]",
       icon: ShieldAlert,
     };
   if (rating === "caution")
@@ -56,12 +72,14 @@ export function getSeverityInfo(share: Share) {
       label: "Caution",
       color: "text-[hsl(var(--severity-medium))]",
       bg: "bg-[hsl(var(--severity-medium))]/10",
+      rail: "bg-[hsl(var(--severity-medium))]",
       icon: AlertTriangle,
     };
   return {
     label: "Clean",
     color: "text-[hsl(var(--success))]",
     bg: "bg-[hsl(var(--success))]/10",
+    rail: "bg-[hsl(var(--success))]",
     icon: CheckCircle2,
   };
 }

@@ -7,11 +7,21 @@ import { useEffect, useId, useRef } from "react";
  * (`role="dialog"`, `aria-modal`, `aria-labelledby`, `aria-describedby`)
  * plus escape-key dismissal and basic focus management.
  *
-the codebase has ~6 hand-rolled `<div>` modals that
- * lack these attributes. A full migration to `@radix-ui/react-dialog` is
- * deferred (behavior-parity risk per modal). This hook gives screen
- * readers and keyboard users the same semantics without changing the
- * visual layout.
+ * This used to be called directly by roughly a dozen hand-rolled `<div>`
+ * modals. It now has three callers, and the shape of that list is the point:
+ *
+ *  - components/ui/modal-shell.tsx, which is the one non-Radix modal shell.
+ *    Everything that used to call this hook itself goes through ModalShell now,
+ *    so the a11y wiring and the chrome arrive together instead of a modal being
+ *    able to have one without the other.
+ *  - components/modals/tos-modal.tsx and components/shared/onboarding-tour.tsx,
+ *    which cannot use ModalShell because it closes on a scrim click and both of
+ *    those must not (one is a mandatory legal gate, the other burns the tour on
+ *    close). Each documents that at its call site.
+ *
+ * A full migration to `@radix-ui/react-dialog` stays deferred, and now costs
+ * less to leave undone: the two remaining direct callers are exactly the two
+ * whose dismissal behaviour Radix would have to be argued out of.
  *
  * Usage:
  *   const { dialogProps, titleProps, descriptionProps } =
@@ -25,6 +35,14 @@ the codebase has ~6 hand-rolled `<div>` modals that
  *     </div>
  *   );
  */
+
+/**
+ * Marks a top-level overlay that a modal must not inert or hide.
+ *
+ * Spread it onto the outermost element of an overlay that is mounted beside
+ * the page (in the root layout) rather than inside it. See the effect below.
+ */
+export const OVERLAY_PASSTHROUGH = "data-overlay-passthrough";
 
 interface UseModalA11yOptions {
   open: boolean;
@@ -68,6 +86,15 @@ export function useModalA11y({
   // it. `inert` rides along where the browser supports it: it also takes the
   // background out of the tab order and out of pointer events, which is what
   // a modal means.
+  //
+  // OVERLAY_PASSTHROUGH is the one exception, and it is narrow on purpose.
+  // Everything a modal covers is page content, with one exception: an overlay
+  // mounted in the root layout is a SIBLING body child, not content behind the
+  // dialog, and inerting it kills its own controls for as long as the modal is
+  // up. That is not theoretical -- the product tour's callout is such a
+  // sibling, and its "End tour" button went dead every time a modal opened over
+  // a step. Opted into by attribute rather than by component name so this file
+  // keeps knowing nothing about who its neighbours are.
   useEffect(() => {
     if (!open) return;
     const panel = panelRef.current;
@@ -76,6 +103,7 @@ export function useModalA11y({
     for (const el of Array.from(document.body.children)) {
       if (!(el instanceof HTMLElement)) continue;
       if (el.contains(panel)) continue;
+      if (el.hasAttribute(OVERLAY_PASSTHROUGH)) continue;
       if (el.hasAttribute("aria-hidden")) continue;
       el.setAttribute("aria-hidden", "true");
       el.setAttribute("inert", "");

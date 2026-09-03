@@ -29,13 +29,17 @@ function FindingRow({
           variant === "removed" && "opacity-50",
         )}
       />
+      {/* A finding title is one of our own check names, so the row is sized to
+          hold it rather than clipped to fit. Two scans of the same host differ
+          by a handful of findings and the whole point of this list is reading
+          which, so "Missing Content-Security-Policy header" clipped at 190px
+          on a phone told you nothing the severity word did not. */}
       <span
         className={cn(
-          "flex-1 min-w-0 text-sm truncate",
+          "flex-1 min-w-0 text-sm leading-snug",
           variant === "removed" && "line-through opacity-60",
           variant === "unchanged" && "text-muted-foreground",
         )}
-        title={title}
       >
         {title}
       </span>

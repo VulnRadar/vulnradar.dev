@@ -11,11 +11,16 @@ name: CI
 # claim they blocked merges, which was never true.
 #
 # To make them real, add a ruleset on `main` requiring the Lint, Typecheck,
-# Test, Extension, Build and Self-host smoke test check names, plus a code-owner
-# review, and blocking force pushes. .github/rulesets/main.json is that
-# ruleset, ready to import under Settings > Rules > Rulesets > New ruleset >
+# Test, Integration, Extension, Build and Self-host smoke test check names,
+# plus a code-owner review, and blocking force pushes.
+# .github/rulesets/main.json is that ruleset, listing exactly those seven
+# names, ready to import under Settings > Rules > Rulesets > New ruleset >
 # Import a ruleset; it lives in the repository so the configuration is
-# reviewable here rather than only in the web UI.
+# reviewable here rather than only in the web UI. Two things to know before
+# importing it: it ships with an empty `bypass_actors`, so nobody, admins
+# included, can push straight to `main` once it is active, and it requires a
+# code-owner approval, which on a two-owner CODEOWNERS means the other owner
+# has to approve. Add a repository-admin bypass actor if that is not wanted.
 #
 # .github/workflows/dependabot-auto-merge.yml no longer relies on that: it
 # used to call `gh pr merge --auto`, which waits only for branch protection,

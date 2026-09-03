@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { PUBLIC_PATHS } from "@/lib/config/public-paths";
+import { ROUTES } from "@/lib/config/client-constants";
 
 /**
  * Pins the one convention for the public surface: a page a logged-out visitor
@@ -49,26 +51,79 @@ const PUBLIC_SHELLS = [
 ];
 
 /**
- * Public pages that render their own chrome rather than going through a shell.
- * Kept short on purpose: every entry here is a place the convention has to be
- * re-checked by hand.
- *
- * app/badge/page.tsx is the known outlier. ROUTES.BADGE is in PUBLIC_PATHS
- * (lib/config/public-paths.ts) and the page imports the app Header directly, so
- * a logged-out visitor gets the signed-in chrome on a public page. It is listed
- * rather than fixed because it was outside the boundary of the change that
- * added this test; move it onto PublicPageShell and delete this entry.
- */
-/**
  * Public pages that render their own chrome instead of a shell.
  *
- * Empty, and it should stay empty. app/badge/page.tsx was the last one: it is
+ * Empty, and it should stay empty. app/badge/page.tsx was the last one: it was
  * in PUBLIC_PATHS but rendered the signed-in app Header, so a logged-out
  * visitor following a badge link got chrome for an account they do not have.
+ * That was fixed by moving it onto PublicPageShell; it has since been fixed the
+ * other way round instead (see PRIVATE_APP_PAGES below), because the page is a
+ * builder over the caller's own scan history and was never public in any useful
+ * sense. Either resolution keeps this list empty. What must never happen again
+ * is a page sitting in PUBLIC_PATHS while rendering the app header.
  */
 const KNOWN_UNSHELLED_PUBLIC_PAGES: string[] = [];
 
+/**
+ * The other half of the same convention: a page that is NOT public renders the
+ * signed-in app Header and never a public shell.
+ *
+ * /badge and /compare are the two that moved. Both read the caller's own scan
+ * history and show nothing at all without a session, so both are out of
+ * PUBLIC_PATHS and both carry the app header. The shell and the path list have
+ * to move together, which is what the two assertions below pin: fixing only one
+ * half is how /badge ended up public-with-app-chrome in the first place.
+ */
+const PRIVATE_APP_PAGES = ["app/badge/page.tsx", "app/compare/page.tsx"];
+
 const APP_HEADER_IMPORT = /from\s+"@\/components\/scanner\/header"/;
+
+/**
+ * The same chrome, reached either way. A signed-in page used to import Header
+ * itself; it now goes through AppPageShell, which is the single component that
+ * renders that Header (plus the measured main and Footer). Matching only the
+ * direct import would report the move onto the shell as a page losing its
+ * chrome, which is the opposite of what happened.
+ */
+const APP_CHROME_IMPORT =
+  /from\s+"@\/components\/(scanner\/header|shared\/app-page-shell)"/;
+
+/** Exactly the match middleware.ts runs: exact for "/" and "/landing", prefix
+ *  for everything else. */
+function isPublicPath(pathname: string): boolean {
+  return PUBLIC_PATHS.some((p) =>
+    p === ROUTES.HOME || p === ROUTES.LANDING
+      ? pathname === p
+      : pathname.startsWith(p),
+  );
+}
+
+/** Every app-router page file, paired with the route it serves. Route groups
+ *  ("(group)") contribute no path segment; dynamic segments are left as-is,
+ *  which is all prefix matching needs. */
+function appPages(): { rel: string; route: string }[] {
+  const out: { rel: string; route: string }[] = [];
+  function walk(dir: string) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (entry.name !== "page.tsx") continue;
+      const segments = path
+        .relative(path.join(ROOT, "app"), dir)
+        .split(path.sep)
+        .filter((s) => s && !s.startsWith("("));
+      out.push({
+        rel: path.relative(ROOT, full).split(path.sep).join("/"),
+        route: "/" + segments.join("/"),
+      });
+    }
+  }
+  walk(path.join(ROOT, "app"));
+  return out;
+}
 
 describe("public page shells", () => {
   it.each(PUBLIC_SHELLS)("%s renders the public nav", (rel) => {
@@ -118,7 +173,30 @@ describe("public page shells", () => {
     // The exception list is empty, so this is now a real assertion rather
     // than a record of known debt: every public page goes through a shell.
     expect(KNOWN_UNSHELLED_PUBLIC_PAGES).toEqual([]);
-    expect(read("app/badge/page.tsx")).not.toMatch(APP_HEADER_IMPORT);
-    expect(read("app/badge/page.tsx")).toContain("PublicPageShell");
+    // Derived rather than hand-listed, so a page added to PUBLIC_PATHS later
+    // is checked without anyone remembering to add it here.
+    const offenders = appPages()
+      .filter(({ route }) => isPublicPath(route))
+      .filter(({ rel }) => APP_HEADER_IMPORT.test(read(rel)))
+      .map(({ rel }) => rel);
+    expect(offenders).toEqual([]);
+  });
+
+  it("the pages that are signed-in only render the app header, not a public shell", () => {
+    for (const rel of PRIVATE_APP_PAGES) {
+      expect(read(rel), rel).toMatch(APP_CHROME_IMPORT);
+      // code(), not read(): both files carry a comment naming the shell they
+      // moved off and why, and matching that would report the explanation as
+      // the defect.
+      expect(code(rel), rel).not.toContain("PublicPageShell");
+    }
+  });
+
+  it("keeps /badge and /compare out of the public allowlist", () => {
+    // The half that middleware.ts reads. Without this, the pages above could
+    // keep the app header while quietly becoming reachable signed out again.
+    for (const route of [ROUTES.BADGE, ROUTES.COMPARE]) {
+      expect(isPublicPath(route), route).toBe(false);
+    }
   });
 });

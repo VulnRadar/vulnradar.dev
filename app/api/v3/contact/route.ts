@@ -154,16 +154,12 @@ export async function POST(request: NextRequest) {
         await Promise.all([
           sendEmail({
             to: noreplyEmail,
-            subject: emailPayload.subject,
-            text: emailPayload.text,
-            html: emailPayload.html,
+            ...emailPayload,
             replyTo: normalizedEmail,
           }),
           sendEmail({
             to: normalizedEmail,
-            subject: confirmationPayload.subject,
-            text: confirmationPayload.text,
-            html: confirmationPayload.html,
+            ...confirmationPayload,
           }),
         ]);
       } catch (error) {

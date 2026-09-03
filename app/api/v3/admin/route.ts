@@ -42,6 +42,7 @@ import {
   adminNotificationEmail,
   adminAccountChangeEmail,
   passwordResetEmail,
+  passwordChangedEmail,
 } from "@/lib/email/email";
 import { deleteAvatarFilesIfLocal } from "@/lib/uploads/avatar-storage";
 import { PASSWORD_GATED_ACTIONS } from "@/components/admin/config";
@@ -929,6 +930,24 @@ export async function PATCH(request: NextRequest) {
         `Updated password for ${targetUser.email}`,
         ip,
       );
+      // Every sibling case here notifies (reset_password, revoke_sessions,
+      // disable, update_email, update_plan, force_logout_all). This one did
+      // not, and it is the one where a staff member now knows the account's
+      // password and every session was destroyed. Sent through the same
+      // helper, so the admin's "notify user" toggle still applies.
+      try {
+        await sendNotificationIfEnabled(
+          notifyUser,
+          targetUser.email,
+          passwordChangedEmail(false, {
+            ipAddress: ip,
+            userAgent: "Administrator action",
+          }),
+          targetUser.unsubscribe_token,
+        );
+      } catch (err) {
+        console.error("Failed to send admin password-change notice:", err);
+      }
       return NextResponse.json({ success: true });
     }
 

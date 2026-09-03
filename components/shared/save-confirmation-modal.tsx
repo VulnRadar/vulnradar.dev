@@ -23,7 +23,7 @@ import {
   User,
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
-import { transitions, backdrops } from "@/lib/ui/animations";
+import { transitions } from "@/lib/ui/animations";
 
 export interface ChangeItem {
   field: string;
@@ -196,9 +196,12 @@ export function SaveConfirmationModal({
 
   return (
     <AlertDialog open={isOpen} onOpenChange={handleClose}>
-      <AlertDialogContent
-        className={cn("sm:max-w-md border-border/60", backdrops.card)}
-      >
+      {/* Bare: `sm:max-w-md` is the AlertDialog's default size rung, the panel
+          edge is the grammar's own bare `border`, and backdrops.card
+          (`bg-card/95 backdrop-blur-xs`) was fighting the panel's opaque
+          bg-card. A 95% card over a scrim that is already blurred read as a
+          rendering artefact, not as depth. */}
+      <AlertDialogContent>
         {/* Success State */}
         {success ? (
           <div className="flex flex-col items-center justify-center py-8 animate-fade-in">
@@ -381,7 +384,7 @@ export function SaveConfirmationModal({
               </div>
             )}
 
-            <AlertDialogFooter className="gap-2 sm:gap-0">
+            <AlertDialogFooter>
               <Button
                 variant="outline"
                 onClick={handleClose}

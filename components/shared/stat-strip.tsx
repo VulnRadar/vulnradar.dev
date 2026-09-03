@@ -41,6 +41,33 @@ export interface StatStripItem {
 
 const CONTAINER = "overflow-hidden rounded-xl border border-border bg-border";
 
+/**
+ * Column tracks for the md strip, keyed by how many cells it actually has.
+ *
+ * This used to be the literal `grid-cols-2 gap-px sm:grid-cols-4` in both the
+ * strip and its skeleton, whatever the caller passed. A grid asked for four
+ * tracks and given three items still draws the fourth track, and since the
+ * container is `bg-border` showing through a `gap-px` between `bg-card`
+ * cells, that empty track rendered as a bordered box with nothing in it.
+ * /assets has exactly three cells (Clean, Caution, Exploitable), so it shipped
+ * a visible empty fourth card, and the placeholder drew the same hole.
+ *
+ * Written out rather than interpolated because Tailwind only emits classes it
+ * can read as whole strings; `sm:grid-cols-${n}` compiles to nothing.
+ */
+const MD_COLS: Record<number, string> = {
+  1: "grid-cols-1",
+  2: "grid-cols-2",
+  3: "grid-cols-3",
+  4: "grid-cols-2 sm:grid-cols-4",
+  5: "grid-cols-2 sm:grid-cols-5",
+  6: "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6",
+};
+
+function mdGrid(count: number): string {
+  return `grid gap-px ${MD_COLS[count] ?? "grid-cols-2 sm:grid-cols-4"}`;
+}
+
 function isZero(value: string | number) {
   return typeof value === "number" && value === 0;
 }
@@ -62,9 +89,7 @@ export function StatStrip({
     <div
       className={cn(
         bordered ? CONTAINER : "bg-border",
-        size === "md"
-          ? "grid grid-cols-2 gap-px sm:grid-cols-4"
-          : "flex flex-wrap gap-px",
+        size === "md" ? mdGrid(items.length) : "flex flex-wrap gap-px",
         className,
       )}
     >
@@ -75,7 +100,13 @@ export function StatStrip({
           "flex min-w-0 items-center bg-card text-left transition-colors",
           size === "md"
             ? "gap-3 px-4 py-3"
-            : "flex-1 basis-24 gap-2.5 px-3 py-2 sm:px-4",
+            : // Two per row on a phone, the strip's natural flow from sm up.
+              // basis-24 (96px) alone let four cells shrink to about 88px on a
+              // 390px screen, and after the padding and the icon that leaves
+              // roughly 40px for a 10px uppercase caption. "SESSIONS" needs
+              // about 55px, so it clipped to "SESSIO...". Half-width minus the
+              // 1px gap gives every label room to be read.
+              "flex-1 basis-[calc(50%-1px)] gap-2.5 px-3 py-2 sm:basis-24 sm:px-4",
           item.onClick &&
             "hover:bg-muted/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
           item.active && "bg-primary/5",
@@ -164,19 +195,22 @@ export function StatStrip({
 export function StatStripSkeleton({
   cells = 4,
   size = "md",
+  bordered = true,
   className,
 }: {
   cells?: number;
   size?: "sm" | "md";
+  /** Mirrors StatStrip's own prop. Without it the dashboard, which renders the
+   *  strip unbordered inside a card, had no way to draw its placeholder the
+   *  same way and so drew a second border the loaded state does not have. */
+  bordered?: boolean;
   className?: string;
 }) {
   return (
     <div
       className={cn(
-        CONTAINER,
-        size === "md"
-          ? "grid grid-cols-2 gap-px sm:grid-cols-4"
-          : "flex flex-wrap gap-px",
+        bordered ? CONTAINER : "bg-border",
+        size === "md" ? mdGrid(cells) : "flex flex-wrap gap-px",
         className,
       )}
       aria-hidden
@@ -188,7 +222,13 @@ export function StatStripSkeleton({
             "flex items-center bg-card",
             size === "md"
               ? "gap-3 px-4 py-3"
-              : "flex-1 basis-24 gap-2.5 px-3 py-2 sm:px-4",
+              : // Two per row on a phone, the strip's natural flow from sm up.
+                // basis-24 (96px) alone let four cells shrink to about 88px on a
+                // 390px screen, and after the padding and the icon that leaves
+                // roughly 40px for a 10px uppercase caption. "SESSIONS" needs
+                // about 55px, so it clipped to "SESSIO...". Half-width minus the
+                // 1px gap gives every label room to be read.
+                "flex-1 basis-[calc(50%-1px)] gap-2.5 px-3 py-2 sm:basis-24 sm:px-4",
           )}
         >
           <div

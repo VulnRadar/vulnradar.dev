@@ -42,7 +42,12 @@ export default async function SecurityPage() {
         {/* Header. Matches the legal pages' header rhythm but carries a
             security kicker rather than reusing LegalPageHeader's legal one. */}
         <header className="border-b border-border/50 pb-6">
-          <p className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-primary/70">
+          {/* text-primary, not text-primary/70: globals.css routes the bare
+              `.text-primary` utility at the AA-safe --primary-text, but an
+              opacity variant compiles to its own class and so falls back to
+              raw --primary at 70%, which does not clear AA at 11px in the
+              light theme. */}
+          <p className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
             Security · Responsible disclosure
           </p>
           {/* Tier A page H1, the scale every marketing, docs, SEO and legal

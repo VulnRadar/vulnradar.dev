@@ -4,6 +4,9 @@ import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { encryptWebhookSecret } from "@/lib/webhooks/secret";
+import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
+import { sendNotificationEmail } from "@/lib/notifications/notifications";
+import { webhookSecretRotatedEmail } from "@/lib/email/email";
 
 /**
  * POST /api/v3/webhooks/[id]/rotate-secret: issue a new HMAC signing
@@ -59,6 +62,27 @@ export async function POST(
   if (result.rows.length === 0) {
     return NextResponse.json({ error: "Webhook not found" }, { status: 404 });
   }
+
+  // Creating and deleting a webhook both email; rotating its secret did not,
+  // and it is the change with the largest blast radius of the three: every
+  // receiver verifying signatures starts rejecting deliveries the instant this
+  // returns.
+  const rotated = result.rows[0];
+  void (async () => {
+    try {
+      await sendNotificationEmail({
+        userId: session.userId,
+        userEmail: session.email,
+        type: "webhooks",
+        emailContent: webhookSecretRotatedEmail(rotated.name || rotated.url, {
+          ipAddress: (await getClientIp()) || "Unknown",
+          userAgent: await getUserAgent(),
+        }),
+      });
+    } catch (err) {
+      console.error("Failed to send webhook secret rotation notice:", err);
+    }
+  })();
 
   return NextResponse.json({ ...result.rows[0], secret });
 }

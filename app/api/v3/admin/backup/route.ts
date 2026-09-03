@@ -9,6 +9,8 @@ import {
   getLatestJob,
 } from "@/lib/backup/job-store";
 import { runBackupJob } from "@/lib/backup/run-backup";
+import { getSetting } from "@/lib/config/runtime-config";
+import { CONFIG_SCHEDULED_BACKUP_INTERVAL_MS } from "@/lib/config/config-values";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -157,9 +159,18 @@ export async function GET() {
   // reasoning applies to job.log below: see the redaction in
   // scripts/backup-db.mjs's "Target:" line, which is the only place a
   // path could otherwise have leaked into it.
+  // The schedule, so the panel can say whether an old backup is a fault or
+  // just a fact. Without it the tab could only print a date and leave the
+  // staleness arithmetic to the reader, or assume schedules are on and cry
+  // wolf on a deployment that runs backups by hand. Same two values, read the
+  // same way, as GET /api/v3/admin/health's backup row: intervalMs is a
+  // source-only setting (registry.ts's non-editable list, the timer reads it
+  // once at registration), so the compiled constant is the live value.
   return NextResponse.json({
     job: getLatestJob() ?? null,
     backups,
     lastBackupAt: backups[0]?.modifiedAt ?? null,
+    scheduledEnabled: await getSetting("SCHEDULED_BACKUP_ENABLED"),
+    intervalMs: CONFIG_SCHEDULED_BACKUP_INTERVAL_MS,
   });
 }

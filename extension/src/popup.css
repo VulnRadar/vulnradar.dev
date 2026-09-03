@@ -117,6 +117,24 @@ select:focus-visible,
   .finding-chevron {
     transition: none;
   }
+  /* Named rather than a blanket `animation: none` on `*`, which would take the
+     spinner with it. Every entrance below is decoration; the spinner is not.
+     `!important` for the same reason the transition rule above carries it: a
+     media query adds no specificity, this block sits at the top of the file,
+     and every rule it is overriding is a later single-class selector - in
+     options.css's case, in a stylesheet that imports this one and therefore
+     cascades after it entirely. Without it the reduce preference would be
+     silently ignored. */
+  .result,
+  .error-banner,
+  .info-banner,
+  .target-warning,
+  .status-banner,
+  .toast,
+  .dialog,
+  .dialog-backdrop {
+    animation: none !important;
+  }
 }
 
 /* --- Pill: connect status --- */
@@ -133,8 +151,18 @@ select:focus-visible,
   background: var(--vr-card);
 }
 
+/* Connected is the resting state: it has nothing to act on and repeats on
+   every open, so it recedes to a plain identity line instead of a bordered
+   card at the top of the popup. The edge used to be --vr-success, which spends
+   this product's "safe" colour on "you are signed in" - it competed with the
+   scan button under it, and on a surface whose entire job is a verdict, green
+   has to mean the verdict. The small dot below keeps the state signal.
+   Disconnected keeps the card, because that one carries a button and is the
+   reason the popup cannot do its job. */
 .pill.connected {
-  border-color: var(--vr-success);
+  padding: 2px 2px 0;
+  border-color: transparent;
+  background: none;
   color: var(--vr-text);
 }
 
@@ -158,12 +186,19 @@ select:focus-visible,
   font-weight: 500;
 }
 
+/* The brand blue is a FILL, and the popup gets exactly one filled-blue thing:
+   the scan button. Three of them (this, the URL bar's Copy, and the button
+   itself) meant the one control that matters had no more weight than the two
+   that do not. A 12% tint with --vr-primary-text on it is the same idiom the
+   options nav already uses for its active item, measured at 5.27:1 on the card
+   and 4.71:1 on the page. */
 .pill .plan {
   font-size: 10px;
   padding: 2px 8px;
   border-radius: var(--vr-radius-pill);
-  background: var(--vr-primary);
-  color: var(--vr-primary-fg);
+  background: color-mix(in srgb, var(--vr-primary) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vr-primary) 32%, transparent);
+  color: var(--vr-primary-text);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -207,11 +242,24 @@ select:focus-visible,
   font-size: 11px;
   padding: 2px 8px;
   border-radius: var(--vr-radius-sm);
-  background: var(--vr-primary);
-  color: var(--vr-primary-fg);
+  /* Was a filled brand-blue button sitting directly above the filled brand-blue
+     Scan button, which made copying the URL look as important as scanning it.
+     Same quiet outline as .copy-report and .export-btn, so every secondary
+     action in the popup now looks like the same kind of thing. */
+  border: 1px solid var(--vr-input);
+  background: none;
+  color: var(--vr-text-muted);
   font-weight: 500;
   font-family: var(--vr-font);
   cursor: pointer;
+  transition:
+    color 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.url-pill .copy:hover {
+  border-color: var(--vr-primary-text);
+  color: var(--vr-primary-text);
 }
 
 /* --- Scan section --- */
@@ -259,12 +307,13 @@ select:focus-visible,
   color: var(--vr-primary-fg);
 }
 
+/* A read-out, not a control: it was drawn as a bordered chip on a card
+   surface, the same box the Quick/Deep buttons beside it are drawn in, so the
+   row read as three controls of which one does nothing when clicked. Plain
+   text lets the toggle own the row. */
 .families-chip {
   font-size: 11px;
-  padding: 6px 10px;
-  border-radius: var(--vr-radius);
-  background: var(--vr-card);
-  border: 1px solid var(--vr-border);
+  padding: 6px 2px;
   color: var(--vr-text-muted);
   font-weight: 500;
   white-space: nowrap;
@@ -287,6 +336,9 @@ select:focus-visible,
   border: none;
   cursor: pointer;
   font-family: var(--vr-font);
+  transition:
+    filter 0.12s ease,
+    opacity 0.12s ease;
 }
 
 .scan-button-full:hover:not(:disabled) {
@@ -359,17 +411,52 @@ select:focus-visible,
   }
 }
 
+/* Result panels and banners used to appear between one frame and the next,
+   which in a 360px popup reads as the layout jumping rather than as an answer
+   arriving. Short and small on purpose: 180ms and 4px, so it registers as the
+   panel settling and never as something to wait for. Turned off wholesale
+   under prefers-reduced-motion above. */
+@keyframes vr-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* For the one thing that should not move as it arrives: the options page's
+   modal backdrop, which covers the whole window. */
+@keyframes vr-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 /* --- Result panel --- */
 
+/* The subject of the popup. `data-sev` on this element resolves --vr-sev and
+   --vr-sev-text from tokens.css, so the rail, the score and the risk word all
+   take the severity ramp FOR THE CURRENT THEME. They were written inline from
+   severityHex(), which is the solid ramp (the dark theme's) whatever theme is
+   showing: on the light card that put the 11px risk word between 1.76:1 and
+   3.35:1 and the 32px score under the 3:1 large-text bar on three of its five
+   rungs. Measured now: 5.21:1 to 7.61:1 light, 5.34:1 to 9.22:1 dark. */
 .result {
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 12px;
   border: 1px solid var(--vr-border);
+  border-left: 3px solid var(--vr-sev, var(--vr-border));
   border-radius: var(--vr-radius);
   background: var(--vr-card);
-  /* border-left overridden inline per-scan with score color */
+  animation: vr-rise 180ms ease-out;
 }
 
 .result-top {
@@ -389,6 +476,8 @@ select:focus-visible,
   font-size: 32px;
   font-weight: 800;
   line-height: 1;
+  color: var(--vr-sev-text, var(--vr-text));
+  font-variant-numeric: tabular-nums;
 }
 
 .score-labels {
@@ -397,10 +486,16 @@ select:focus-visible,
   gap: 1px;
 }
 
+/* A bare number does not say whether it is bad. The word beside it does, and
+   it was set at 11px, the same size as the timestamp and the export labels,
+   so the one piece of plain English in the panel carried no more weight than
+   its metadata. */
 .score-risk {
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 700;
   line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--vr-sev-text, var(--vr-text));
 }
 
 .score-sub {
@@ -557,9 +652,20 @@ select:focus-visible,
 /* success and warning need no light/dark text split: darkening the value
    darkens its own tint with it, and the lightness they carry clears AA on
    both. Both properties are still set so .badge's `color` always resolves. */
-.badge.clean {
+.badge.clean,
+[data-sev="clean"] {
   --vr-sev: var(--vr-success);
   --vr-sev-text: var(--vr-success);
+}
+
+/* The in-row size: a severity word beside a finding title, a bare count in a
+   history row. Two near-identical inline styles at the call sites before this,
+   which is how they had drifted to different paddings. Declared after every
+   .badge rule so it wins on font-size and padding at equal specificity. */
+.badge-sm {
+  font-size: 9px;
+  padding: 1px 6px;
+  flex-shrink: 0;
 }
 
 .findings {
@@ -570,9 +676,14 @@ select:focus-visible,
   overflow-y: auto;
 }
 
+/* Same data-sev mechanism as .result above: the rail was an inline
+   severityHex(), so on the light theme every finding was railed in the dark
+   ramp's saturated orange/amber while the chip 6px to its right was drawn in
+   the light ramp. Two colours for one severity, side by side. */
 .finding {
   padding: 8px 10px;
   border: 1px solid var(--vr-border);
+  border-left: 3px solid var(--vr-sev, var(--vr-border));
   border-radius: var(--vr-radius-sm);
   font-size: 12px;
   background: var(--vr-bg);
@@ -894,13 +1005,22 @@ select:focus-visible,
   letter-spacing: 0.06em;
 }
 
+/* The Connect / Settings button inside the disconnected pill: the one thing
+   to do when the extension cannot do anything else, so it is drawn as a
+   control with an edge rather than as a word that happens to be blue. */
 .section-action {
   min-height: 24px;
-  padding: 2px 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--vr-input);
   border-radius: var(--vr-radius-sm);
   font-size: 11px;
   color: var(--vr-primary-text);
-  font-weight: 500;
+  font-weight: 600;
+  transition: border-color 0.12s ease;
+}
+
+.section-action:hover {
+  border-color: var(--vr-primary-text);
 }
 
 /* --- Rate limit bar --- */
@@ -1031,17 +1151,24 @@ select:focus-visible,
   gap: 4px;
 }
 
+/* Three of these sit side by side and none of them is the point of the popup,
+   so they are muted at rest and only take the brand colour on hover. In blue
+   they read as a row of three links competing with the scan button above. */
 .footer-settings {
   min-height: 24px;
   font-size: 11px;
-  color: var(--vr-primary-text);
+  color: var(--vr-text-muted);
   font-weight: 500;
   padding: 2px 8px;
   border-radius: var(--vr-radius-sm);
   border: 1px solid transparent;
+  transition:
+    color 0.12s ease,
+    border-color 0.12s ease;
 }
 
 .footer-settings:hover {
+  color: var(--vr-primary-text);
   border-color: var(--vr-primary-text);
 }
 
@@ -1055,6 +1182,13 @@ select:focus-visible,
 [data-compact] .pill {
   padding: 5px 10px;
   font-size: 11px;
+}
+
+/* [data-compact] .pill and .pill.connected are the same specificity, so
+   without this the compact rule above would put the card padding back on a
+   pill that no longer has a card. */
+[data-compact] .pill.connected {
+  padding: 0 2px;
 }
 
 [data-compact] .url-pill {
@@ -1073,6 +1207,10 @@ select:focus-visible,
 
 [data-compact] .score-num {
   font-size: 24px;
+}
+
+[data-compact] .score-risk {
+  font-size: 12px;
 }
 
 [data-compact] .result-top {
@@ -1111,6 +1249,7 @@ select:focus-visible,
   display: flex;
   align-items: center;
   gap: 8px;
+  animation: vr-rise 180ms ease-out;
 }
 
 .info-banner {
@@ -1123,6 +1262,7 @@ select:focus-visible,
   display: flex;
   align-items: center;
   gap: 8px;
+  animation: vr-rise 180ms ease-out;
 }
 
 /* Pre-scan "this isn't a useful target" warning (search engines, etc.). */
@@ -1134,6 +1274,7 @@ select:focus-visible,
   display: flex;
   flex-direction: column;
   gap: 8px;
+  animation: vr-rise 180ms ease-out;
 }
 .target-warning-text {
   display: flex;

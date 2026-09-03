@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimitedResponse } from "@/lib/api/rate-limit-response";
 import type { PoolClient } from "pg";
 import { getSession } from "@/lib/auth";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
@@ -170,28 +171,7 @@ export async function POST(request: NextRequest) {
     );
 
     if (!earlyCheck.allowed) {
-      return NextResponse.json(
-        {
-          error: "Rate limit exceeded.",
-          limit: earlyCheck.limit,
-          used: earlyCheck.used,
-          remaining: earlyCheck.remaining,
-          resets_at: earlyCheck.resetsAt,
-        },
-        {
-          status: 429,
-          headers: {
-            "X-RateLimit-Limit": String(earlyCheck.limit),
-            "X-RateLimit-Remaining": String(earlyCheck.remaining),
-            "X-RateLimit-Reset": earlyCheck.resetsAt,
-            "Retry-After": String(
-              Math.ceil(
-                (new Date(earlyCheck.resetsAt).getTime() - Date.now()) / 1000,
-              ),
-            ),
-          },
-        },
-      );
+      return rateLimitedResponse(earlyCheck);
     }
 
     apiKeyId = keyData.keyId;
@@ -219,6 +199,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error: `Bulk scan rate limit reached. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).`,
+          statusCode: "BULK_RATE_LIMIT",
         },
         { status: 429 },
       );
@@ -324,8 +305,13 @@ export async function POST(request: NextRequest) {
   // is the atomic incrementDailyCountCapped call in the admission loop below.
   const quotaCheck = await canMakeRequest(authedUserId!);
   if (!quotaCheck.allowed) {
+    // statusCode, not just a message: this route answers 429 for three
+    // different things (burst rate limit, concurrency, daily quota) and only
+    // this one has an upgrade to offer. The dashboard used to tell them apart
+    // by matching the error text, which is exactly the kind of coupling that
+    // breaks the next time the copy is edited.
     return NextResponse.json(
-      { error: DAILY_LIMIT_MESSAGE },
+      { error: DAILY_LIMIT_MESSAGE, statusCode: "DAILY_LIMIT" },
       { status: 429, headers: getRateLimitHeaders(quotaCheck) },
     );
   }

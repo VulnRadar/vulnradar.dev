@@ -1,16 +1,26 @@
 "use client";
 
-import { Plus, Search, Users, Eye, ChevronRight } from "lucide-react";
+import { Plus, Search, Users, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
-import { cn } from "@/lib/ui/utils";
-import { type Team, ROLE_ICONS, ROLE_COLORS } from "./teams-types";
+import { plural, pluralize } from "@/lib/ui/plural";
+import { RolePill } from "./role-pill";
+import { TeamAvatar } from "./team-avatar";
+import { type Team } from "./teams-types";
 
 interface TeamsListProps {
   teams: Team[];
   searchQuery: string;
+  /** Seats per team from the plan, or null when billing is off. -1 means no
+   *  cap. Used only to say how many teams the account may still create. */
+  teamLimit: number | null;
+  /** Pending invitations addressed to the signed-in user. Rendered here,
+   *  under the page title, rather than above it: as a sibling above this
+   *  component its h2 came before the page's only h1, so the document
+   *  started at heading level 2 and the page title was pushed down the
+   *  screen whenever an invitation was waiting. */
+  invitations?: React.ReactNode;
   onSearchChange: (q: string) => void;
   onOpenTeam: (team: Team) => void;
   onShowCreate: () => void;
@@ -19,6 +29,8 @@ interface TeamsListProps {
 export function TeamsList({
   teams,
   searchQuery,
+  teamLimit,
+  invitations,
   onSearchChange,
   onOpenTeam,
   onShowCreate,
@@ -27,18 +39,40 @@ export function TeamsList({
     t.name.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
+  // -1 is the plan catalog's "unlimited" sentinel and null means billing is
+  // off, so neither is a number worth printing at someone.
+  const showsQuota = teamLimit !== null && teamLimit >= 0;
+
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Teams</h1>
-        <p className="text-sm text-muted-foreground">
-          Collaborate with team members on security scans.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
+            Teams
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            A team shares its scans. Everyone in one can open every report run
+            under it, and the role you give someone decides whether they can
+            also start scans or invite people.
+          </p>
+        </div>
+        <Button className="shrink-0 gap-1.5" onClick={onShowCreate}>
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          New team
+        </Button>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+      {invitations}
+
+      {/* The search box used to render even with zero teams, so a new account
+          was offered a way to filter an empty list. It appears once there is
+          enough here to be worth filtering. */}
+      {teams.length > 3 && (
+        <div className="relative">
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
           <Input
             placeholder="Search teams..."
             value={searchQuery}
@@ -47,20 +81,16 @@ export function TeamsList({
             className="pl-9"
           />
         </div>
-        <Button className="gap-1.5 shrink-0" onClick={onShowCreate}>
-          <Plus className="h-4 w-4" />
-          New Team
-        </Button>
-      </div>
+      )}
 
       {filtered.length === 0 && !searchQuery ? (
         <EmptyState
           icon={Users}
           title="No teams yet"
-          description="Create a team to collaborate on security scans with others."
+          description="Create one to put your scans somewhere your colleagues can read them. You name it, invite people by email, and pick what each of them is allowed to do."
           action={
             <Button size="sm" onClick={onShowCreate} className="gap-1.5">
-              <Plus className="h-3.5 w-3.5" />
+              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
               Create your first team
             </Button>
           }
@@ -70,7 +100,7 @@ export function TeamsList({
           icon={Search}
           size="sm"
           title={`No teams match "${searchQuery}"`}
-          description="Try a different name."
+          description="Search matches on the team name only."
           action={
             <Button
               variant="outline"
@@ -83,52 +113,64 @@ export function TeamsList({
           }
         />
       ) : (
-        <Card className="bg-card border-border/50">
-          <CardContent className="p-0">
-            <div className="hidden sm:grid grid-cols-[1fr_100px_120px_32px] gap-4 px-5 py-3 border-b border-border text-xs font-medium text-muted-foreground uppercase tracking-wider bg-muted/30 rounded-t-lg">
-              <span>Team</span>
-              <span>Members</span>
-              <span>Your Role</span>
-              <span />
-            </div>
-            <div className="divide-y divide-border">
-              {filtered.map((team) => {
-                const Icon = ROLE_ICONS[team.role] || Eye;
-                return (
-                  <button
-                    key={team.id}
-                    type="button"
-                    onClick={() => onOpenTeam(team)}
-                    className="group w-full flex items-center sm:grid sm:grid-cols-[1fr_100px_120px_32px] gap-4 px-5 py-4 hover:bg-muted/30 transition-colors text-left"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">
-                        {team.name}
-                      </p>
-                      <p className="text-xs text-muted-foreground sm:hidden">
-                        {team.member_count} member
-                        {team.member_count !== 1 && "s"}
-                      </p>
-                    </div>
-                    <span className="hidden sm:block text-sm text-muted-foreground tabular-nums">
-                      {team.member_count}
-                    </span>
-                    <span
-                      className={cn(
-                        "inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border shrink-0 w-fit",
-                        ROLE_COLORS[team.role],
-                      )}
-                    >
-                      <Icon className="h-3 w-3" />
-                      <span className="capitalize">{team.role}</span>
-                    </span>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 transition-transform group-hover:translate-x-0.5" />
-                  </button>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
+        /* A list of identities, not a four-column table. The column header row
+           it replaces printed the member count as a bare digit under "Members"
+           on desktop while the mobile layout, three lines above, already wrote
+           the readable "4 members". One sentence per row now serves both. */
+        <div className="overflow-hidden rounded-xl border border-border/50 bg-card">
+          <ul className="divide-y divide-border">
+            {filtered.map((team) => (
+              <li key={team.id}>
+                <button
+                  type="button"
+                  onClick={() => onOpenTeam(team)}
+                  className="group flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-5"
+                >
+                  {/* The team's own picture when it has one, otherwise the
+                      owner's face, otherwise the team's initial. The row used
+                      to show the owner unconditionally, which was the only
+                      identity available before teams could have a picture of
+                      their own; keeping it as the second rung means no row
+                      lost its face when this went in. */}
+                  <TeamAvatar
+                    name={team.name}
+                    avatarUrl={team.avatar_url}
+                    fallbackSrc={team.owner_avatar_url}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-foreground">
+                      {team.name}
+                    </p>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                      {/* pluralize() coerces before comparing. member_count is
+                          typed number here but arrives as the string "1":
+                          GET /api/v3/teams reads it from a COUNT(*), which
+                          node-postgres returns as a bigint string, so the old
+                          `!== 1` test was true on a one-person team and every
+                          row read "1 members". */}
+                      {pluralize(team.member_count, "member")}
+                      {team.role === "owner"
+                        ? ", yours"
+                        : `, owned by ${team.owner_name || team.owner_email}`}
+                    </p>
+                  </div>
+                  <RolePill role={team.role} />
+                  <ChevronRight
+                    className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
+                    aria-hidden="true"
+                  />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {showsQuota && (
+        <p className="text-xs text-muted-foreground">
+          {teams.length} of {teamLimit} {plural(teamLimit, "team")} on your
+          plan.
+        </p>
       )}
     </div>
   );

@@ -133,23 +133,50 @@ export function ChecksFilter({ children }: { children: React.ReactNode }) {
           )}
         </div>
 
+        {/* Severity filters carry their own severity colour, not the brand
+            blue they used to share. Five identical chips that all turned the
+            same blue asked the reader to translate a word into a colour that
+            every row underneath is already using, on the one control whose
+            entire subject is that colour. Off, the dot alone carries it; on,
+            the chip takes the full tone the matching pills use.
+
+            Inline style rather than Tailwind classes because the severity is
+            dynamic: `bg-[hsl(var(--severity-critical))]/12` built from a
+            template string is invisible to the class scanner. The vars hold
+            space-separated HSL triplets, so `hsl(var(--x) / 0.12)` is valid
+            and stays theme-aware. Same idiom as SeverityPill in
+            lib/seo/seo-ui.tsx. */}
         <div className="flex flex-wrap gap-1.5">
           {SEVERITIES.map((severity) => {
             const on = severities.includes(severity);
+            const v = `var(--severity-${severity})`;
             return (
               <button
                 key={severity}
                 type="button"
                 onClick={() => toggleSeverity(severity)}
                 aria-pressed={on}
-                className={cn(
-                  "rounded-full border px-2.5 py-1 text-xs capitalize transition-colors",
-                  "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+                style={
                   on
-                    ? "border-primary/40 bg-primary/10 text-primary"
-                    : "border-border text-muted-foreground hover:text-foreground",
+                    ? {
+                        color: `hsl(${v})`,
+                        backgroundColor: `hsl(${v} / 0.12)`,
+                        borderColor: `hsl(${v} / 0.4)`,
+                      }
+                    : undefined
+                }
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs capitalize transition-colors",
+                  "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+                  !on &&
+                    "border-border text-muted-foreground hover:text-foreground",
                 )}
               >
+                <span
+                  aria-hidden="true"
+                  className="h-1.5 w-1.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: `hsl(${v})` }}
+                />
                 {severity}
               </button>
             );

@@ -200,6 +200,88 @@ describe("GET /api/v3/admin/email-logs", () => {
     const res = await GET(getRequest());
     expect(res.status).toBe(500);
   });
+
+  it("keeps the rendered copy off the list payload", async () => {
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: "1" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await GET(getRequest());
+
+    // Twenty rendered emails is a few hundred kilobytes, and the search box
+    // refetches this on every keystroke. The body is fetched per row instead.
+    const selectCall = mockQuery.mock.calls[2] as [string, unknown[]];
+    expect(selectCall[0]).not.toContain("redacted_html");
+  });
+});
+
+describe("GET /api/v3/admin/email-logs?id=", () => {
+  it("requires a session", async () => {
+    mockGetSession.mockResolvedValue(null);
+    const res = await GET(getRequest("?id=4"));
+    expect(res.status).toBe(403);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("rejects a caller below admin", async () => {
+    mockGetSession.mockResolvedValue({ userId: 3 });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 3, role: "support" }] });
+    const res = await GET(getRequest("?id=4"));
+    expect(res.status).toBe(403);
+  });
+
+  it("returns the single row with the rendered copy", async () => {
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 4,
+          recipient: "a@example.com",
+          subject: "Verify your email",
+          status: "sent",
+          error_message: null,
+          redacted_preview: "hi",
+          redacted_html: "<!DOCTYPE html><html><body>hi</body></html>",
+          created_at: "2026-08-10T00:00:00Z",
+        },
+      ],
+    });
+
+    const res = await GET(getRequest("?id=4"));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.log.id).toBe(4);
+    expect(json.log.redacted_html).toContain("<!DOCTYPE html>");
+
+    const selectCall = mockQuery.mock.calls[1] as [string, unknown[]];
+    expect(selectCall[0]).toContain("redacted_html");
+    // Parameterised, not interpolated.
+    expect(selectCall[0]).toContain("WHERE id = $1");
+    expect(selectCall[1]).toEqual([4]);
+  });
+
+  it("rejects a non-numeric id before touching the database", async () => {
+    withAdmin();
+    const res = await GET(getRequest("?id=notanumber"));
+    expect(res.status).toBe(400);
+    // Only requireAdmin's own role lookup ran.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("404s an id that does not exist", async () => {
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    const res = await GET(getRequest("?id=999"));
+    expect(res.status).toBe(404);
+  });
+
+  it("returns a graceful 500 when the lookup fails", async () => {
+    withAdmin();
+    mockQuery.mockRejectedValueOnce(new Error("db exploded"));
+    const res = await GET(getRequest("?id=4"));
+    expect(res.status).toBe(500);
+  });
 });
 
 describe("DELETE /api/v3/admin/email-logs", () => {

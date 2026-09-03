@@ -50,7 +50,7 @@ export function ThreatIntelPanel({ threatIntel }: ThreatIntelPanelProps) {
         onClick={() => setExpanded(!expanded)}
         aria-expanded={expanded}
         aria-controls={panelId}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         <ShieldAlert
           aria-hidden
@@ -61,9 +61,11 @@ export function ThreatIntelPanel({ threatIntel }: ThreatIntelPanelProps) {
             and the card overflow-hidden, this row measured about 363px
             against the ~343 a 375px phone has, so the headline and the
             chevron were clipped away entirely and the panel looked like it
-            had nothing to expand. min-w-0 + truncate here, and the source
-            count (repeated in the body below) hidden under sm. */}
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+            had nothing to expand. The source count (repeated in the body
+            below) is hidden under sm, and the row wraps instead of the title
+            truncating: "Threat intelligence" is our own label, and clipping a
+            heading we wrote to buy width for a badge is a bad trade. */}
+        <span className="min-w-0 flex-1 text-sm font-medium text-foreground">
           Threat intelligence
         </span>
         <span
@@ -145,7 +147,7 @@ function SourceRow({ source }: { source: ThreatIntelSource }) {
               {source.categories.map((c) => (
                 <span
                   key={c}
-                  className="rounded border border-[hsl(var(--severity-high))]/30 bg-[hsl(var(--severity-high))]/10 px-1.5 py-0.5 font-mono text-[10px] text-[hsl(var(--severity-high))]"
+                  className="rounded-md border border-[hsl(var(--severity-high))]/30 bg-[hsl(var(--severity-high))]/10 px-1.5 py-0.5 font-mono text-[10px] text-[hsl(var(--severity-high))]"
                 >
                   {c}
                 </span>

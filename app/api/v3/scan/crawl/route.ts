@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimitedResponse } from "@/lib/api/rate-limit-response";
 import { getSession } from "@/lib/auth";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import {
@@ -104,28 +105,7 @@ export async function POST(request: NextRequest) {
     apiKeyRateLimit = rateLimit;
 
     if (!rateLimit.allowed) {
-      return NextResponse.json(
-        {
-          error: `Rate limit exceeded. ${rateLimit.limit} requests per 24 hours. Resets at ${rateLimit.resetsAt}`,
-          limit: rateLimit.limit,
-          used: rateLimit.used,
-          remaining: rateLimit.remaining,
-          resets_at: rateLimit.resetsAt,
-        },
-        {
-          status: 429,
-          headers: {
-            "X-RateLimit-Limit": String(rateLimit.limit),
-            "X-RateLimit-Remaining": String(rateLimit.remaining),
-            "X-RateLimit-Reset": rateLimit.resetsAt,
-            "Retry-After": String(
-              Math.ceil(
-                (new Date(rateLimit.resetsAt).getTime() - Date.now()) / 1000,
-              ),
-            ),
-          },
-        },
-      );
+      return rateLimitedResponse(rateLimit);
     }
 
     apiKeyId = keyData.keyId;

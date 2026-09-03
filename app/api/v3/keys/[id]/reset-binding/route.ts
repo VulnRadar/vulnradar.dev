@@ -2,6 +2,10 @@ import { NextResponse, NextRequest } from "next/server";
 import { getSession } from "@/lib/auth";
 import { resetApiKeyBinding } from "@/lib/api/api-keys";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
+import pool from "@/lib/database/db";
+import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
+import { sendNotificationEmail } from "@/lib/notifications/notifications";
+import { apiKeyBindingResetEmail } from "@/lib/email/email";
 
 /**
  * Clear the IP a key pinned itself to on first use under
@@ -38,6 +42,32 @@ export async function POST(
       { status: 404 },
     );
   }
+
+  // A binding VIOLATION already emails (lib/api/api-keys.ts). Deliberately
+  // switching the control off did not, which is the wrong way round: one is a
+  // request that failed, the other is a security control being removed.
+  void (async () => {
+    try {
+      const named = await pool.query<{ name: string }>(
+        "SELECT name FROM api_keys WHERE id = $1 AND user_id = $2",
+        [keyId, session.userId],
+      );
+      await sendNotificationEmail({
+        userId: session.userId,
+        userEmail: session.email,
+        type: "api_keys",
+        emailContent: apiKeyBindingResetEmail(
+          named.rows?.[0]?.name ?? `Key #${keyId}`,
+          {
+            ipAddress: (await getClientIp()) || "Unknown",
+            userAgent: await getUserAgent(),
+          },
+        ),
+      });
+    } catch (err) {
+      console.error("Failed to send API key binding reset notice:", err);
+    }
+  })();
 
   return NextResponse.json({ success: true });
 }

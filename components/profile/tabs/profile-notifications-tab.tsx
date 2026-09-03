@@ -9,6 +9,7 @@ import {
   MonitorSmartphone,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   CalendarClock,
   Key,
   Gauge,
@@ -27,6 +28,9 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import type { ProfileTabProps, NotificationPrefs } from "../types";
 
+// Fills in any column a response that DID arrive left out, so a preference
+// added after a user's row was written still renders as a boolean. It is not
+// a stand-in for a response that never arrived: see the null tri-state below.
 const DEFAULT_PREFS: NotificationPrefs = {
   email_security: true,
   email_new_login: true,
@@ -65,25 +69,35 @@ export function ProfileNotificationsTab({
   preloadedNotifPrefs,
   preloadedDigestEmailEnabled,
 }: ProfileTabProps) {
-  // Initialize with preloaded data if available
+  // null means "we do not know", not "everything is on". The parent only
+  // calls setNotifPrefs when the GET succeeded, so falling back to
+  // DEFAULT_PREFS (every flag true) rendered twenty switches in the on
+  // position for a failed request: someone who had unsubscribed from
+  // Product updates was shown as subscribed, and could re-save that guess
+  // back over their real row. Same tri-state ProfileSecurityTab uses for
+  // backupCodesRemaining.
   const initialPrefs = preloadedNotifPrefs
     ? { ...DEFAULT_PREFS, ...preloadedNotifPrefs }
-    : DEFAULT_PREFS;
-  const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>(initialPrefs);
-  const [originalPrefs, setOriginalPrefs] =
-    useState<NotificationPrefs>(initialPrefs);
+    : null;
+  const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs | null>(
+    initialPrefs,
+  );
+  const [originalPrefs, setOriginalPrefs] = useState<NotificationPrefs | null>(
+    initialPrefs,
+  );
 
   // Posture digest opt-in (users.digest_email_enabled) -- unlike every
   // other category above, this defaults OFF and lives on `users`, not
   // `notification_preferences`, so it needs its own state/pendingChanges
   // key. Same discard/save shape as ProfilePrivacyTab's
-  // scansPrivateByDefault toggle.
-  const [digestEmailEnabled, setDigestEmailEnabled] = useState(
-    preloadedDigestEmailEnabled ?? false,
+  // scansPrivateByDefault toggle, and the same null tri-state: its own
+  // fetch can fail independently of the twenty above.
+  const [digestEmailEnabled, setDigestEmailEnabled] = useState<boolean | null>(
+    preloadedDigestEmailEnabled ?? null,
   );
-  const [originalDigestEmailEnabled, setOriginalDigestEmailEnabled] = useState(
-    preloadedDigestEmailEnabled ?? false,
-  );
+  const [originalDigestEmailEnabled, setOriginalDigestEmailEnabled] = useState<
+    boolean | null
+  >(preloadedDigestEmailEnabled ?? null);
 
   // Update state when preloaded data changes
   useEffect(() => {
@@ -96,11 +110,13 @@ export function ProfileNotificationsTab({
   }, [preloadedNotifPrefs]);
 
   useEffect(() => {
-    if (preloadedDigestEmailEnabled !== undefined) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs local editable state from an async-loaded parent prop, gated by that dependency changing
-      setDigestEmailEnabled(preloadedDigestEmailEnabled ?? false);
-      setOriginalDigestEmailEnabled(preloadedDigestEmailEnabled ?? false);
-    }
+    // Was `!== undefined`, which null passes: a failed posture-digest fetch
+    // leaves the parent's value null, and the `?? false` below it then
+    // rendered "we do not know" as "you are unsubscribed".
+    if (typeof preloadedDigestEmailEnabled !== "boolean") return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs local editable state from an async-loaded parent prop, gated by that dependency changing
+    setDigestEmailEnabled(preloadedDigestEmailEnabled);
+    setOriginalDigestEmailEnabled(preloadedDigestEmailEnabled);
   }, [preloadedDigestEmailEnabled]);
 
   // Reset to original values when discardKey changes (discard was clicked)
@@ -123,7 +139,11 @@ export function ProfileNotificationsTab({
   }, [saveKey]);
 
   const handleToggle = (key: keyof NotificationPrefs, checked: boolean) => {
-    setNotifPrefs((prev) => ({ ...prev, [key]: checked }));
+    // Unknown prefs render as the error panel below instead of switches, so
+    // nothing can call this before they load. The guard makes that true for
+    // the type checker as well.
+    if (!originalPrefs) return;
+    setNotifPrefs((prev) => (prev ? { ...prev, [key]: checked } : prev));
     // Track changes relative to original values
     const isChanged = checked !== originalPrefs[key];
     setPendingChanges((prev) => {
@@ -169,11 +189,39 @@ export function ProfileNotificationsTab({
   // unsubscribe_all) had cleared it saw this switch turn on and never
   // received a digest. One switch, both columns, and the displayed state is
   // the AND of the two so it can never claim to be on while a gate is shut.
-  const postureDigestOn = digestEmailEnabled && notifPrefs.email_posture_digest;
   const handleTogglePostureDigest = (checked: boolean) => {
     handleToggleDigestEmailEnabled(checked);
     handleToggle("email_posture_digest", checked);
   };
+
+  // The GET behind every switch below failed. A switch is a settled claim
+  // about what we will email you, so none of them are drawn at all rather
+  // than drawn from a default: the parent raises a banner naming this
+  // section, but that banner clears itself after 8 seconds while whatever is
+  // on screen stays there for good.
+  if (!notifPrefs) {
+    return (
+      <div className="rounded-xl border border-border/50 bg-card/50 p-5 sm:p-6 flex items-start gap-3">
+        <AlertTriangle
+          className="h-4 w-4 text-destructive shrink-0 mt-0.5"
+          aria-hidden="true"
+        />
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-foreground">
+            Your email settings could not be loaded
+          </p>
+          <p className="text-sm text-muted-foreground mt-1 max-w-prose leading-relaxed">
+            Nothing is shown here rather than a set of defaults, since the
+            defaults would say you are subscribed to every category whether you
+            are or not. Reload the page to try again.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const postureDigestOn =
+    digestEmailEnabled === true && notifPrefs.email_posture_digest;
 
   return (
     <div className="flex flex-col gap-8">
@@ -200,36 +248,36 @@ export function ProfileNotificationsTab({
                 {
                   key: "email_security" as const,
                   icon: Shield,
-                  label: "Security Alerts",
-                  desc: "Unusual activity, account compromise warnings, and critical security events.",
+                  label: "Security alerts",
+                  desc: "Unusual activity on your account, and anything that looks like someone else getting in.",
                   badge: "Recommended",
                 },
                 {
                   key: "email_new_login" as const,
                   icon: LogIn,
-                  label: "Login Alerts",
-                  desc: "Notifications when someone signs into your account from a new device or location.",
+                  label: "New sign-ins",
+                  desc: "A sign-in from a device or location we have not seen before.",
                   badge: "" as const,
                 },
                 {
                   key: "email_password_change" as const,
                   icon: Lock,
-                  label: "Password Changes",
-                  desc: "Alerts when your password is changed or a reset is requested.",
+                  label: "Password changes",
+                  desc: "Your password changed, or a reset was requested for it.",
                   badge: "" as const,
                 },
                 {
                   key: "email_2fa_change" as const,
                   icon: Fingerprint,
-                  label: "2FA Changes",
-                  desc: "Notifications when two-factor authentication is enabled, disabled, or modified.",
+                  label: "Two-step verification changes",
+                  desc: "Two-step verification turned on, turned off, or switched method.",
                   badge: "" as const,
                 },
                 {
                   key: "email_session_revoked" as const,
                   icon: MonitorSmartphone,
-                  label: "Session Alerts",
-                  desc: "Alerts about active sessions and session revocations.",
+                  label: "Revoked sessions",
+                  desc: "A signed-in session was ended, by you or by a sign-out everywhere.",
                   badge: "" as const,
                 },
               ] as const
@@ -286,26 +334,26 @@ export function ProfileNotificationsTab({
                 {
                   key: "email_scan_complete" as const,
                   icon: CheckCircle2,
-                  label: "Scan Completed",
-                  desc: "Alerts when vulnerability scans are finished.",
+                  label: "Scan finished",
+                  desc: "Every scan, as soon as it has a result.",
                 },
                 {
                   key: "email_critical_findings" as const,
                   icon: ShieldAlert,
-                  label: "Critical Findings",
-                  desc: "An immediate alert the moment a scan turns up a critical vulnerability.",
+                  label: "Critical findings",
+                  desc: "The moment a scan turns up something rated critical, without waiting for the rest of the run.",
                 },
                 {
                   key: "email_regression_alert" as const,
                   icon: AlertCircle,
-                  label: "New Issues Since Last Scan",
-                  desc: "Alerts when a scan finds a new critical or high severity issue that wasn't there last time.",
+                  label: "New issues since last scan",
+                  desc: "A critical or high finding on a target that did not have it last time.",
                 },
                 {
                   key: "email_schedules" as const,
                   icon: CalendarClock,
-                  label: "Scheduled Scans Completed",
-                  desc: "Alerts when your scheduled scans finish.",
+                  label: "Scheduled scans",
+                  desc: "Results from the scans you set to run on a schedule.",
                 },
               ] as const
             ).map(({ key, icon: Icon, label, desc }) => (
@@ -346,14 +394,27 @@ export function ProfileNotificationsTab({
                 <p className="text-xs text-muted-foreground mt-1">
                   A periodic summary across every site you've scanned: new
                   critical/high findings and whether your open count is trending
-                  up or down. Off by default.
+                  up or down.{" "}
+                  {digestEmailEnabled === null
+                    ? "We could not check whether you are subscribed to it, so no switch is shown. Reload the page to check again."
+                    : "Off by default."}
                 </p>
               </div>
-              <Switch
-                checked={postureDigestOn}
-                onCheckedChange={handleTogglePostureDigest}
-                aria-label="Posture Digest"
-              />
+              {/* Its opt-in lives on its own endpoint, so it can be unknown
+                  while every other switch on this tab is real. Off by default
+                  is exactly what a failed check used to render, which reads
+                  as "you are unsubscribed" rather than "we do not know". */}
+              {digestEmailEnabled === null ? (
+                <span className="text-xs font-medium text-muted-foreground shrink-0">
+                  Unknown
+                </span>
+              ) : (
+                <Switch
+                  checked={postureDigestOn}
+                  onCheckedChange={handleTogglePostureDigest}
+                  aria-label="Posture Digest"
+                />
+              )}
             </div>
           </CardContent>
         </Card>
@@ -376,26 +437,26 @@ export function ProfileNotificationsTab({
                 {
                   key: "email_api_keys" as const,
                   icon: Key,
-                  label: "API Key Activity",
-                  desc: "Alerts when API keys are created, revoked, or approaching expiration.",
+                  label: "API key activity",
+                  desc: "A key was created or revoked, or one of yours is close to expiring.",
                 },
                 {
                   key: "email_api_limit_warning" as const,
                   icon: Gauge,
-                  label: "API Limit Warnings",
-                  desc: "Warnings when your API usage nears rate limits or daily quotas.",
+                  label: "Approaching API limits",
+                  desc: "Your API usage is close to a rate limit or the daily quota.",
                 },
                 {
                   key: "email_webhooks" as const,
                   icon: Webhook,
-                  label: "Webhook Events",
-                  desc: "Notifications when webhooks are created, modified, or disabled.",
+                  label: "Webhook changes",
+                  desc: "A webhook was created, edited, or switched off.",
                 },
                 {
                   key: "email_webhook_failure" as const,
                   icon: XCircle,
-                  label: "Webhook Failures",
-                  desc: "Alerts when webhook deliveries fail repeatedly.",
+                  label: "Webhook failures",
+                  desc: "Deliveries to one of your endpoints keep failing.",
                 },
               ] as const
             ).map(({ key, icon: Icon, label, desc }) => (
@@ -443,26 +504,26 @@ export function ProfileNotificationsTab({
                 {
                   key: "email_data_requests" as const,
                   icon: Download,
-                  label: "Data Export Updates",
-                  desc: "Notifications when your data export is ready for download.",
+                  label: "Data exports",
+                  desc: "Your export is built and ready to download.",
                 },
                 {
                   key: "email_account_deletion" as const,
                   icon: UserCog,
-                  label: "Account Deletion",
-                  desc: "Confirmations and alerts when account deletion is requested or processed.",
+                  label: "Account deletion",
+                  desc: "Deletion was requested on your account, and again when it runs.",
                 },
                 {
                   key: "email_team_invite" as const,
                   icon: Users,
-                  label: "Team Invites",
-                  desc: "Notifications when you're invited to join a team or workspace.",
+                  label: "Team invitations",
+                  desc: "Someone invited you to join their team.",
                 },
                 {
                   key: "email_team_changes" as const,
                   icon: Users,
-                  label: "Team Changes",
-                  desc: "Alerts about team membership changes, role updates, and team activity.",
+                  label: "Team changes",
+                  desc: "People joining or leaving a team you are in, and role changes.",
                 },
               ] as const
             ).map(({ key, icon: Icon, label, desc }) => (
@@ -517,13 +578,13 @@ export function ProfileNotificationsTab({
                 {
                   key: "email_product_updates" as const,
                   icon: Sparkles,
-                  label: "Product Updates",
+                  label: "Product updates",
                   desc: "New features, improvements, and release notes.",
                 },
                 {
                   key: "email_tips_guides" as const,
                   icon: GraduationCap,
-                  label: "Tips and Guides",
+                  label: "Tips and guides",
                   desc: "Occasional tips on getting more out of VulnRadar.",
                 },
               ] as const

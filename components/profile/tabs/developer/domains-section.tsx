@@ -311,7 +311,15 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
 
                 return (
                   <div key={d.id}>
-                    <div className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors">
+                    {/* The controls take their own line below sm. An
+                        unverified domain carries three shrink-0 buttons ("DNS
+                        record", "Verify now" and the trash) worth about 235px,
+                        which on a 320px screen left essentially nothing for
+                        the domain itself and its status badge. w-full on the
+                        button group rather than flex-col on the row, so the
+                        status glyph stays on the domain's line instead of
+                        sitting alone above it. */}
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 transition-colors hover:bg-muted/30">
                       <StatusIcon
                         className={cn(
                           "h-4 w-4 shrink-0",
@@ -322,8 +330,11 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
                         aria-hidden="true"
                       />
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium text-foreground truncate">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p
+                            title={d.domain}
+                            className="min-w-0 text-sm font-medium text-foreground truncate"
+                          >
                             {d.domain}
                           </p>
                           <Badge
@@ -343,12 +354,12 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
                           </p>
                         )}
                       </div>
-                      <div className="flex items-center gap-1 shrink-0">
+                      <div className="flex w-full flex-wrap items-center gap-1 sm:w-auto sm:shrink-0">
                         {needsRecord && (
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-10 sm:h-7 gap-1 text-xs"
+                            className="h-11 sm:h-7 gap-1 text-xs"
                             // a11y (SC 4.1.2): a rotating chevron was the only
                             // signal that this expands the DNS record block.
                             aria-expanded={isExpanded}
@@ -370,7 +381,7 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-10 sm:h-7 text-xs text-primary hover:text-primary hover:bg-primary/10"
+                            className="h-11 sm:h-7 text-xs text-primary hover:text-primary hover:bg-primary/10"
                             disabled={verifyingId === d.id}
                             onClick={() => handleVerifyNow(d)}
                           >
@@ -384,7 +395,7 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-10 w-10 sm:h-7 sm:w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          className="h-11 w-11 sm:h-7 sm:w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
                           onClick={() => setDeleteTarget(d)}
                           title="Remove domain"
                           aria-label={`Remove domain ${d.domain}`}
@@ -491,7 +502,7 @@ export function DomainsSection({ setError, setSuccess }: DomainsSectionProps) {
               its subdomains) until it&apos;s verified again.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter className="flex-col-reverse sm:flex-row gap-2">
+          <AlertDialogFooter>
             <Button
               variant="outline"
               onClick={() => setDeleteTarget(null)}

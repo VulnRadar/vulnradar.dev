@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { captureAndStoreScreenshot } from "@/lib/scanner/page-screenshot";
+import { checkBrowserbaseQuota } from "@/lib/billing/browserbase-usage";
 import {
   resolveOwnedScan,
   requireRefreshPlan,
@@ -26,8 +27,14 @@ export const maxDuration = 60;
  *
  * Premium-gated (requireRefreshPlan), matching the subdomain panel's refresh
  * control: on the hosted SaaS a re-capture is a paid feature, but a
- * self-hosted deployment (BILLING_ENABLED=false) allows it for everyone. This
- * is on top of captureAndStoreScreenshot's own browser-minutes metering.
+ * self-hosted deployment (BILLING_ENABLED=false) allows it for everyone. On top
+ * of that it checks the live-browser minute allowance up front so an exhausted
+ * meter is a 402 that says so, rather than the generic 502 that a best-effort
+ * capture would otherwise collapse into.
+ *
+ * This route both captures from cold and re-captures: the panel offers it on a
+ * scan that was run without the screenshot option at all, which is why the UI
+ * calls it "Capture screenshot" there and "Re-capture" once one exists.
  */
 export async function POST(
   _request: NextRequest,
@@ -50,6 +57,27 @@ export async function POST(
     return NextResponse.json(
       { error: "Rate limit reached. Please wait before refreshing again." },
       { status: 429 },
+    );
+  }
+
+  // Live-browser minutes, checked explicitly BEFORE the capture rather than
+  // only inside it. capturePageScreenshot self-gates on the same meter, but it
+  // is best-effort and collapses every reason into a null, so an owner whose
+  // allowance was simply spent got the generic 502 below and no idea whether
+  // waiting, upgrading, or buying credits was the answer. Same check and the
+  // same 402 the interactive session route returns
+  // (app/api/v3/browser/sessions/route.ts), so both spenders of this meter
+  // refuse in the same words.
+  const quota = await checkBrowserbaseQuota(userId);
+  if (!quota.allowed) {
+    return NextResponse.json(
+      {
+        error:
+          quota.message ||
+          "Your live-browser minutes for this period are used up, so a screenshot cannot be captured right now.",
+        statusCode: "BROWSER_QUOTA_EXHAUSTED",
+      },
+      { status: 402 },
     );
   }
 

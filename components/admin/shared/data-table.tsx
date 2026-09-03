@@ -4,25 +4,74 @@ import type { ElementType, ReactNode } from "react";
 import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 
+/**
+ * An empty table is not always the same event, and this component used to draw
+ * all of them identically: a grey circle and a grey sentence. So "Couldn't
+ * load billing overview" (the request failed, the figures below are unknown)
+ * and "No accounts past due" (the best news the panel can deliver) were the
+ * same element, which is the one distinction an operator actually needs.
+ *
+ * default  a list is empty. Quiet, because an absence is not a verdict.
+ * success  the thing you were looking for does not exist, and that is good.
+ * warning  empty because a filter excluded everything, or something is off.
+ * error    we could not read it. NOT the same as "there is nothing here".
+ */
+type EmptyStateTone = "default" | "success" | "warning" | "error";
+
+const EMPTY_TONE: Record<
+  EmptyStateTone,
+  { ring: string; icon: string; title: string }
+> = {
+  default: {
+    ring: "bg-muted/50",
+    icon: "text-muted-foreground/50",
+    title: "text-foreground",
+  },
+  success: {
+    ring: "bg-[hsl(var(--success))]/10",
+    icon: "text-[hsl(var(--success))]",
+    title: "text-[hsl(var(--success))]",
+  },
+  warning: {
+    ring: "bg-[hsl(var(--warning))]/10",
+    icon: "text-[hsl(var(--warning))]",
+    title: "text-[hsl(var(--warning))]",
+  },
+  error: {
+    ring: "bg-destructive/10",
+    icon: "text-destructive",
+    title: "text-destructive",
+  },
+};
+
 interface EmptyStateProps {
   icon: ElementType;
   title: string;
   description?: string;
   action?: ReactNode;
+  /** Leave unset for an ordinary empty list. See the table above. */
+  tone?: EmptyStateTone;
   className?: string;
 }
 
 /**
  * Standard empty state for tables and lists across the admin panel.
  * Use instead of a bare table with just a header row.
+ *
+ * This is the admin geometry (a filled circle, tighter type) and is separate
+ * from components/shared/empty-state.tsx, which is the page-level one with a
+ * dashed container. Use that one on a user-facing page; use this one inside an
+ * admin card that already has its own border.
  */
 export function EmptyState({
   icon: Icon,
   title,
   description,
   action,
+  tone = "default",
   className,
 }: EmptyStateProps) {
+  const styles = EMPTY_TONE[tone];
   return (
     <div
       className={cn(
@@ -30,10 +79,15 @@ export function EmptyState({
         className,
       )}
     >
-      <div className="h-12 w-12 rounded-full bg-muted/50 flex items-center justify-center mb-4">
-        <Icon className="h-6 w-6 text-muted-foreground/50" aria-hidden="true" />
+      <div
+        className={cn(
+          "h-12 w-12 rounded-full flex items-center justify-center mb-4",
+          styles.ring,
+        )}
+      >
+        <Icon className={cn("h-6 w-6", styles.icon)} aria-hidden="true" />
       </div>
-      <p className="text-sm font-medium text-foreground">{title}</p>
+      <p className={cn("text-sm font-medium", styles.title)}>{title}</p>
       {description && (
         <p className="text-xs text-muted-foreground mt-1 max-w-sm">
           {description}

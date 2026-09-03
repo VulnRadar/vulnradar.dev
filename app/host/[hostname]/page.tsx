@@ -175,7 +175,7 @@ export default function HostReportPage() {
               className="h-8 w-8 text-muted-foreground"
             />
             <div className="flex max-w-sm flex-col gap-2">
-              <h1 className="text-lg font-semibold text-foreground">
+              <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
                 Something went wrong
               </h1>
               <p className="text-sm leading-relaxed text-muted-foreground">
@@ -192,7 +192,7 @@ export default function HostReportPage() {
               className="h-9 w-9 text-muted-foreground"
             />
             <div className="flex max-w-md flex-col gap-2">
-              <h1 className="text-lg font-semibold text-foreground">
+              <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
                 {data.host} hasn&rsquo;t been scanned yet
               </h1>
               <p className="text-sm leading-relaxed text-muted-foreground">
@@ -239,7 +239,7 @@ export default function HostReportPage() {
                   </button>
                 )}
 
-                <header className="overflow-hidden rounded-md border border-border bg-card">
+                <header className="overflow-hidden rounded-xl border border-border bg-card">
                   <div className="flex flex-col gap-4 p-5 sm:p-6">
                     <p className="text-xs text-muted-foreground">
                       The latest public {APP_NAME} scan of this host. Anyone
@@ -253,9 +253,15 @@ export default function HostReportPage() {
                             type="button"
                             onClick={copyHost}
                             aria-label="Copy hostname"
-                            className="group inline-flex min-w-0 items-center gap-2 rounded text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                            className="group inline-flex min-w-0 items-center gap-2 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                           >
-                            <h1 className="truncate text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+                            {/* title, because the button's aria-label names
+                                the action and not the value, so a clipped
+                                host had no full form anywhere on the page. */}
+                            <h1
+                              title={data?.host}
+                              className="truncate text-xl font-semibold tracking-tight text-foreground sm:text-2xl"
+                            >
                               {data?.host}
                             </h1>
                             {copied ? (
@@ -330,7 +336,7 @@ export default function HostReportPage() {
                   }
                 />
 
-                <div className="flex flex-col items-start gap-3 rounded-md border border-primary/20 bg-primary/5 p-5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-col items-start gap-3 rounded-xl border border-primary/20 bg-primary/5 p-5 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-start gap-3">
                     <ScanSearch
                       aria-hidden

@@ -75,9 +75,12 @@ export default async function ToolsIndexPage() {
                   <h2 className="font-semibold text-foreground group-hover:text-primary transition-colors">
                     {tool.name}
                   </h2>
-                  <p className="text-sm text-primary/80 mt-0.5">
-                    {tool.tagline}
-                  </p>
+                  {/* text-primary, not text-primary/80: globals.css routes
+                      the bare `.text-primary` utility at --primary-text,
+                      which is the AA-safe tone, but an opacity variant
+                      compiles to its own class and so falls back to raw
+                      --primary at 80% -- about 1.9:1 on the light theme. */}
+                  <p className="text-sm text-primary mt-0.5">{tool.tagline}</p>
                 </div>
                 <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
               </div>

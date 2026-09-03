@@ -45,8 +45,13 @@ import {
 } from "@/lib/auth/oauth-userinfo";
 import { findTrustedDevice } from "@/lib/auth/device-trust";
 import { signPendingToken } from "@/lib/auth/pending-2fa";
-import { getClientIp } from "@/lib/api/request-utils";
-import { sendEmail, email2FACodeEmail } from "@/lib/email/email";
+import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
+import {
+  sendEmail,
+  email2FACodeEmail,
+  loginMethodChangedEmail,
+} from "@/lib/email/email";
+import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { DEVICE_TRUST_COOKIE_NAME } from "@/lib/config/constants";
 import { exchangeGithubCode, fetchGithubUser } from "@/lib/github/github-oauth";
 import { saveGithubConnection } from "@/lib/github/github-connections";
@@ -424,9 +429,7 @@ async function sendOAuthEmail2FACode(
   const emailContent = email2FACodeEmail(code);
   await sendEmail({
     to: userEmail,
-    subject: emailContent.subject,
-    text: emailContent.text,
-    html: emailContent.html,
+    ...emailContent,
   });
 }
 
@@ -524,6 +527,28 @@ async function handleOAuthLink(
           ],
         );
       }
+      // Adding a way into the account is the same class of event as turning
+      // 2FA on, and it said nothing. Gated on `security` rather than
+      // `account_changes`: this is a credential, not a profile field.
+      void (async () => {
+        try {
+          await sendNotificationEmail({
+            userId: session.userId,
+            userEmail: session.email,
+            type: "security",
+            emailContent: loginMethodChangedEmail(
+              OAUTH_PROVIDERS[provider].label,
+              true,
+              {
+                ipAddress: (await getClientIp()) || "Unknown",
+                userAgent: await getUserAgent(),
+              },
+            ),
+          });
+        } catch (err) {
+          console.error("Failed to send OAuth link notice:", err);
+        }
+      })();
     } catch (err) {
       // Belt-and-suspenders for the race the SELECT above can't fully
       // close: two concurrent link requests for the same provider

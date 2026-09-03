@@ -26,6 +26,7 @@ import {
   FolderGit2,
   ArrowRight,
 } from "lucide-react";
+import { cn } from "@/lib/ui/utils";
 import { API, ROUTES, DISCORD_INVITE_URL } from "@/lib/config/client-constants";
 import { useOAuthProviders } from "@/lib/hooks/use-oauth-providers";
 import { refreshAuthCache } from "@/components/providers/auth-provider";
@@ -82,9 +83,10 @@ function OAuthIdentityCard({
 }: {
   provider: "google" | "github";
   label: string;
-  /** Rendered in the card header's plate, which is white in both themes
-   *  (see the h-9 w-9 bg-white div below) -- must be a colour that reads on
-   *  white. */
+  /** Rendered in the card header's plate, a neutral bg-muted surface in both
+   *  themes (see the h-9 w-9 div below). Use text-foreground for a
+   *  single-colour mark so it follows the theme; a multi-colour glyph such as
+   *  FcGoogle reads on it unchanged. */
   icon: React.ReactNode;
   /** Rendered inside the "Continue with X" button, whose background is
    *  connectButtonClassName's own brand color, not white. Defaults to
@@ -166,14 +168,27 @@ function OAuthIdentityCard({
         <div className="border-b border-border/60 px-5 py-4">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="h-9 w-9 rounded-lg bg-white flex items-center justify-center ring-1 ring-black/10 shrink-0">
+              {/* Neutral surface, not bg-white. A hard white plate on the
+                  near-black card read as a broken image in dark mode, and it
+                  also contradicted the icon it holds: GitHub's mark is
+                  text-foreground, which is near-white in dark mode and so was
+                  invisible on white. bg-muted works in both themes and lets
+                  every provider mark use the foreground token. */}
+              <div className="h-9 w-9 rounded-lg bg-muted flex items-center justify-center ring-1 ring-border shrink-0">
                 {icon}
               </div>
               <div className="min-w-0">
                 <h2 className="text-base font-semibold text-foreground">
                   {label}
                 </h2>
-                <p className="text-xs truncate text-muted-foreground">
+                {/* Only the connected branch truncates. The other branch is a
+                    sentence we wrote, and clipping that is pure loss. */}
+                <p
+                  className={cn(
+                    "text-xs text-muted-foreground",
+                    connected && "truncate",
+                  )}
+                >
                   {connected ? displayName : "Sign in without a password"}
                 </p>
               </div>
@@ -278,15 +293,15 @@ function OAuthIdentityCard({
           if (!open && !disconnecting) setShowDisconnectConfirm(false);
         }}
       >
-        <AlertDialogContent className="sm:max-w-md">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Disconnect {label}?</AlertDialogTitle>
-            <AlertDialogDescription className="text-left">
+            <AlertDialogDescription>
               {displayName} will no longer sign you in. You can reconnect the
               same or a different account any time.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter className="flex-col-reverse sm:flex-row gap-2">
+          <AlertDialogFooter>
             <Button
               variant="outline"
               onClick={() => setShowDisconnectConfirm(false)}
@@ -341,11 +356,19 @@ function GithubRepoAccessSection({
   const [revoking, setRevoking] = useState(false);
   const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
 
+  // Both failure paths used to land on connected:false, which renders the
+  // "Grant repo access" pitch: the catch set it explicitly, and a 5xx whose
+  // body is a JSON error object parsed cleanly into a status with no
+  // `connected` key, so it never reached the catch at all. Someone who had
+  // already granted the scope was told to grant it again. Status stays null
+  // on a failure now, and null renders as "we could not check".
   useEffect(() => {
     fetch(API.ACCOUNT_GITHUB)
-      .then((r) => r.json())
-      .then((d) => setStatus(d))
-      .catch(() => setStatus({ connected: false }))
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: GithubRepoAccessStatus | null) =>
+        setStatus(d && typeof d.connected === "boolean" ? d : null),
+      )
+      .catch(() => setStatus(null))
       .finally(() => setLoading(false));
   }, []);
 
@@ -371,8 +394,32 @@ function GithubRepoAccessSection({
 
   if (loading) return null;
 
-  const connected = Boolean(status?.connected);
-  const repoCount = status?.selectedRepos?.length ?? 0;
+  // The check itself failed, so whether the scope was granted is unknown.
+  // The alternative here is the "not granted" pitch with its Grant button,
+  // which for an already-granted account is a pointless round trip through
+  // GitHub's consent screen.
+  if (!status) {
+    return (
+      <div className="pt-4 mt-1 border-t border-border/50">
+        <div className="flex items-center gap-2 mb-2">
+          <FolderGit2
+            className="h-4 w-4 text-muted-foreground shrink-0"
+            aria-hidden="true"
+          />
+          <h3 className="text-sm font-semibold text-foreground">
+            Repo scanning
+          </h3>
+        </div>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          We could not check whether repo access is granted on this account.
+          Reload the page to check again.
+        </p>
+      </div>
+    );
+  }
+
+  const connected = Boolean(status.connected);
+  const repoCount = status.selectedRepos?.length ?? 0;
 
   return (
     <div className="pt-4 mt-1 border-t border-border/50">
@@ -448,10 +495,10 @@ function GithubRepoAccessSection({
           if (!open && !revoking) setShowRevokeConfirm(false);
         }}
       >
-        <AlertDialogContent className="sm:max-w-md">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Revoke repo access?</AlertDialogTitle>
-            <AlertDialogDescription className="text-left">
+            <AlertDialogDescription>
               VulnRadar loses read access to your repos and can&apos;t scan them
               until you grant access again. Your GitHub sign-in stays connected,
               and past repo scan results in{" "}
@@ -461,7 +508,7 @@ function GithubRepoAccessSection({
               are kept.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter className="flex-col-reverse sm:flex-row gap-2">
+          <AlertDialogFooter>
             <Button
               variant="outline"
               onClick={() => setShowRevokeConfirm(false)}
@@ -644,7 +691,14 @@ export function ProfileSocialTab({
                   <h2 className="text-base font-semibold text-foreground">
                     Discord
                   </h2>
-                  <p className="text-xs text-muted-foreground truncate">
+                  {/* Same split as the OAuth card above: the username clips,
+                      our own copy does not. */}
+                  <p
+                    className={cn(
+                      "text-xs text-muted-foreground",
+                      user?.discordId && "truncate",
+                    )}
+                  >
                     {user?.discordId
                       ? user.discordUsername || "Connected"
                       : "Sign in and community"}
@@ -738,7 +792,7 @@ export function ProfileSocialTab({
               </>
             ) : (
               <>
-                {/* Not connected — clean left-aligned layout, no icon grid */}
+                {/* Not connected: left-aligned layout, no icon grid */}
                 <div className="space-y-3">
                   <div>
                     <h3 className="text-sm font-semibold text-foreground">
@@ -807,7 +861,14 @@ export function ProfileSocialTab({
           provider="github"
           label="GitHub"
           icon={
-            <FaGithub className="h-5 w-5 text-[#181717]" aria-hidden="true" />
+            // text-foreground, not GitHub's #181717: the mark sits on the card
+            // background, which is near-black in dark mode, so the literal
+            // brand black rendered an invisible logo there. GitHub's own
+            // guidance is black or white depending on the ground, which is
+            // what the foreground token already resolves to per theme. The
+            // connect button below keeps the brand fill, because that tile
+            // provides its own dark ground in both themes.
+            <FaGithub className="h-5 w-5 text-foreground" aria-hidden="true" />
           }
           buttonIcon={
             <FaGithub className="h-5 w-5 text-white" aria-hidden="true" />
@@ -873,16 +934,16 @@ export function ProfileSocialTab({
           if (!open && !disconnecting) setShowDisconnectConfirm(false);
         }}
       >
-        <AlertDialogContent className="sm:max-w-md">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Disconnect Discord?</AlertDialogTitle>
-            <AlertDialogDescription className="text-left">
+            <AlertDialogDescription>
               {user?.discordUsername || "This Discord account"} will no longer
               sign you in or sync your avatar. You can reconnect the same or a
               different account any time.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter className="flex-col-reverse sm:flex-row gap-2">
+          <AlertDialogFooter>
             <Button
               variant="outline"
               onClick={() => setShowDisconnectConfirm(false)}

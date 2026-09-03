@@ -1,4 +1,4 @@
-import { HistorySkeleton } from "@/components/history/history-skeleton";
+import { HistorySkeleton } from "@/components/history";
 
 export default function Loading() {
   return <HistorySkeleton />;

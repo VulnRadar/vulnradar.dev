@@ -6,6 +6,42 @@ import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { markTeamInviteNotificationsHandled } from "@/lib/notifications/user-notifications";
 import { teamsDisabledResponse } from "@/lib/teams/feature-gate";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import { sendNotificationEmail } from "@/lib/notifications/notifications";
+import { teamInviteResolvedEmail } from "@/lib/email/email";
+
+/**
+ * Tell the person who sent an invite how it was answered.
+ *
+ * The invitee gets the invite mail and an in-app bell; the inviter got
+ * nothing either way, so a team owner who invited five people had to keep
+ * reopening the members page to find out who had actually joined. Gated on
+ * team_changes, and never sent to yourself.
+ */
+async function notifyInviter(opts: {
+  invitedBy: number | null;
+  actorUserId: number;
+  teamName: string;
+  inviteeEmail: string;
+  accepted: boolean;
+}): Promise<void> {
+  if (!opts.invitedBy || opts.invitedBy === opts.actorUserId) return;
+  const inviter = await pool.query<{ email: string }>(
+    "SELECT email FROM users WHERE id = $1",
+    [opts.invitedBy],
+  );
+  const email = inviter.rows?.[0]?.email;
+  if (!email) return;
+  await sendNotificationEmail({
+    userId: opts.invitedBy,
+    userEmail: email,
+    type: "team_changes",
+    emailContent: teamInviteResolvedEmail(
+      opts.teamName,
+      opts.inviteeEmail,
+      opts.accepted,
+    ),
+  });
+}
 
 export async function POST(request: Request) {
   const session = await getSession();
@@ -58,13 +94,13 @@ export async function POST(request: Request) {
   // someone else's invite.
   const inviteRes = token
     ? await pool.query(
-        `SELECT ti.id, ti.team_id, ti.email, ti.role, ti.expires_at, t.name as team_name
+        `SELECT ti.id, ti.team_id, ti.email, ti.role, ti.expires_at, ti.invited_by, t.name as team_name
          FROM team_invites ti JOIN teams t ON t.id = ti.team_id
          WHERE ti.token = $1 AND ti.accepted_at IS NULL`,
         [createHash("sha256").update(token).digest("hex")],
       )
     : await pool.query(
-        `SELECT ti.id, ti.team_id, ti.email, ti.role, ti.expires_at, t.name as team_name
+        `SELECT ti.id, ti.team_id, ti.email, ti.role, ti.expires_at, ti.invited_by, t.name as team_name
          FROM team_invites ti JOIN teams t ON t.id = ti.team_id
          WHERE ti.id = $1 AND ti.accepted_at IS NULL`,
         [inviteId],
@@ -120,6 +156,20 @@ export async function POST(request: Request) {
     "INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, $3)",
     [invite.team_id, session.userId, invite.role],
   );
+
+  void (async () => {
+    try {
+      await notifyInviter({
+        invitedBy: invite.invited_by ?? null,
+        actorUserId: session.userId,
+        teamName: invite.team_name,
+        inviteeEmail: userEmail,
+        accepted: true,
+      });
+    } catch (err) {
+      console.error("Failed to notify inviter of acceptance:", err);
+    }
+  })();
 
   // Clear the bell notification for this invite, if one was created, so
   // it doesn't linger after being acted on.

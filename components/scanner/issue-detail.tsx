@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { SEVERITY_TONE } from "@/components/scanner/severity-badge";
 import type { Vulnerability } from "@/lib/scanner/types";
 import { cn } from "@/lib/ui/utils";
+import { tourAnchor } from "@/lib/tour/anchors";
 import { copyToClipboard } from "@/lib/ui/clipboard";
 import { API, APP_NAME } from "@/lib/config/client-constants";
 import {
@@ -58,17 +59,28 @@ const CATEGORY_LABEL: Record<string, string> = {
   "active-probes": "Active probing",
 };
 
+/**
+ * a11y (SC 1.4.3): the first two used to paint a tinted surface UNDER their
+ * own accent text, and this block sits on the page background rather than on a
+ * card, so the tint composited straight over --background. On light mode that
+ * measured 4.41:1 for text-primary on bg-primary/5, and 4.02:1 for the medium
+ * severity on its /10, both on a 14px medium headline, i.e. normal text under
+ * the 4.5:1 floor. The accent now sits on --card, where the same two colours
+ * measure 5.15:1 and 5.14:1, and the tone is carried by the border instead.
+ * It also lands on the rule the rest of the page follows: the severity-tinted
+ * header is the only toned surface, everything under it is a neutral card.
+ */
 const AI_VERDICT_COPY: Record<
   NonNullable<Vulnerability["aiVerdict"]>,
   { headline: string; tone: string }
 > = {
   confirmed: {
     headline: "AI probed the live site and confirmed this finding",
-    tone: "border-primary/20 bg-primary/5 text-primary",
+    tone: "border-primary/30 bg-card text-primary",
   },
   possible_fp: {
     headline: "AI thinks this one may not apply to your site",
-    tone: "border-[hsl(var(--severity-medium))]/30 bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))]",
+    tone: "border-[hsl(var(--severity-medium))]/40 bg-card text-[hsl(var(--severity-medium))]",
   },
   uncertain: {
     headline: "AI could not reach a verdict, review this one by hand",
@@ -128,6 +140,12 @@ function FindingFeedback({
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState<FeedbackVerdict | null>(null);
   const [error, setError] = useState(false);
+  // Separate from `error`, which is a SAVE failure. A failed READ used to be
+  // swallowed: `loaded` flipped true with `verdict` still null, so all three
+  // buttons rendered unpressed and a finding the user had already marked
+  // "False positive" read as never marked, with nothing said. Absence of a
+  // verdict and inability to read one are different claims.
+  const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -135,16 +153,20 @@ function FindingFeedback({
     setLoaded(false);
     setVerdict(null);
     setError(false);
+    setLoadFailed(false);
     fetch(
       `${API.SCAN_FEEDBACK}?url=${encodeURIComponent(findingUrl)}&findingId=${encodeURIComponent(findingId)}`,
     )
-      .then((res) => (res.ok ? res.json() : null))
+      .then((res) => {
+        if (!res.ok) throw new Error("feedback read failed");
+        return res.json();
+      })
       .then((data: { feedback?: { verdict: FeedbackVerdict }[] } | null) => {
         if (cancelled || !data?.feedback?.length) return;
         setVerdict(data.feedback[0].verdict);
       })
       .catch(() => {
-        /* best-effort preload; the buttons still work without it */
+        if (!cancelled) setLoadFailed(true);
       })
       .finally(() => {
         if (!cancelled) setLoaded(true);
@@ -185,7 +207,10 @@ function FindingFeedback({
   if (!loaded) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
+    <div
+      {...tourAnchor("findingTriage")}
+      className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3"
+    >
       <span className="text-xs font-medium text-muted-foreground">
         Mark this result:
       </span>
@@ -196,7 +221,10 @@ function FindingFeedback({
             type="button"
             onClick={() => submit(v)}
             disabled={saving !== null}
-            aria-pressed={verdict === v}
+            // Undefined, not false, while the stored verdict could not be
+            // read: aria-pressed="false" asserts "not marked", which is the
+            // thing we do not know.
+            aria-pressed={loadFailed ? undefined : verdict === v}
             className={cn(
               "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-60",
               verdict === v
@@ -390,8 +418,17 @@ function RemediationControl({
 
   // rounded-xl, matching the FindingFeedback card directly above it: both are
   // panels on the radius ladder, and the two now render as a pair.
+  //
+  // a11y (SC 1.4.3): this used to be bg-primary/5, and the selected status
+  // chip inside it was bg-primary/15 text-primary. Composited, that put the
+  // 12px chip label on roughly 19% primary, where --primary-text measures
+  // 4.01:1 in light mode: an AA failure on the control that records what you
+  // are doing about a finding. bg-card here and /10 on the chip (the value
+  // FindingFeedback already uses) measures 4.78:1. It also settles the rule
+  // the rest of this page now follows: the severity-tinted header is the only
+  // toned surface, and everything under it is a neutral card.
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card px-4 py-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <span className="text-xs font-semibold text-foreground">
           Your remediation tracking
@@ -411,8 +448,8 @@ function RemediationControl({
               className={cn(
                 "inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-60",
                 status === s
-                  ? "border-primary/40 bg-primary/15 text-primary"
-                  : "border-border/60 bg-card text-muted-foreground hover:border-border hover:text-foreground",
+                  ? "border-primary/30 bg-primary/10 text-primary"
+                  : "border-border/60 bg-background text-muted-foreground hover:border-border hover:text-foreground",
                 FOCUS_RING,
               )}
             >
@@ -563,7 +600,10 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-muted/40">
+    <div
+      {...tourAnchor("findingFix")}
+      className="overflow-hidden rounded-xl border border-border bg-muted/40"
+    >
       <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-1.5">
         <span className="inline-flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
           <Terminal aria-hidden className="h-3 w-3" />
@@ -607,7 +647,10 @@ function Evidence({ evidence }: { evidence: string }) {
     expanded || !overflows ? lines : lines.slice(0, EVIDENCE_PREVIEW_LINES);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card">
+    <div
+      {...tourAnchor("findingEvidence")}
+      className="overflow-hidden rounded-xl border border-border bg-card"
+    >
       <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-4 py-2">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           What the scanner saw
@@ -728,8 +771,21 @@ export function IssueDetail({
         Back to findings
       </button>
 
-      {/* Header. The severity rail runs the full height so it reads before the text. */}
-      <header className="relative overflow-hidden rounded-xl border border-border bg-card">
+      {/* Header. Same rule the scan verdict follows: the one panel that states
+          what the page is ABOUT carries the tone, and every panel below it is a
+          neutral card. Rail, tinted edge and a tint overlay over the card base,
+          so severity registers before a word of it is read. Info is untinted on
+          purpose (SEVERITY_TONE.panel is empty there): it is not a problem. */}
+      <header
+        className={cn(
+          "relative overflow-hidden rounded-xl border bg-card",
+          tone.emphasis === "quiet" ? "border-border" : tone.border,
+        )}
+      >
+        <span
+          aria-hidden
+          className={cn("pointer-events-none absolute inset-0", tone.panel)}
+        />
         <span
           aria-hidden
           className={cn(
@@ -738,7 +794,7 @@ export function IssueDetail({
             tone.emphasis === "quiet" && "opacity-40",
           )}
         />
-        <div className="flex flex-col gap-3 py-4 pl-5 pr-4 sm:py-5 sm:pl-6 sm:pr-5">
+        <div className="relative flex flex-col gap-3 py-4 pl-5 pr-4 sm:py-5 sm:pl-6 sm:pr-5">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
             <span
               className={cn(
@@ -819,7 +875,7 @@ export function IssueDetail({
       {verdict && (
         <div
           className={cn(
-            "flex items-start gap-3 rounded-md border px-4 py-3",
+            "flex items-start gap-3 rounded-lg border px-4 py-3",
             verdict.tone,
           )}
         >
@@ -985,7 +1041,7 @@ export function IssueDetail({
               target="_blank"
               rel="noopener noreferrer"
               className={cn(
-                "inline-flex items-center gap-1.5 rounded text-sm text-primary hover:underline",
+                "inline-flex items-center gap-1.5 rounded-sm text-sm text-primary hover:underline",
                 FOCUS_RING,
               )}
             >

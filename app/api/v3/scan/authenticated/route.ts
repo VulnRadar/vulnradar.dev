@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimitedResponse } from "@/lib/api/rate-limit-response";
 import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import {
@@ -184,10 +185,11 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       keyData.dailyLimit,
     );
     if (!keyRate.allowed) {
-      return ApiResponse.tooManyRequests(
-        "Rate limit exceeded.",
-        Math.ceil((new Date(keyRate.resetsAt).getTime() - Date.now()) / 1000),
-      );
+      // Was ApiResponse.tooManyRequests, which sends Retry-After but none of
+      // the X-RateLimit-* headers and a body with no quota numbers in it. Every
+      // sibling scan endpoint answered the same limiter differently.
+      // ref: AUDIT-015#api-02
+      return rateLimitedResponse(keyRate);
     }
     authedUserId = keyData.userId;
     isApiKeyAuth = true;

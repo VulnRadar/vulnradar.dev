@@ -42,11 +42,16 @@ export function LegalNav() {
             href={page.href}
             aria-current={isActive ? "page" : undefined}
             className={cn(
-              "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors",
+              // rounded-md, not rounded-lg: these are chips, and the radius
+              // ladder in CLAUDE.md puts a control-shaped thing one rung
+              // below the card it sits on.
+              // min-h-9 gives the row a consistent height whether or not the
+              // label wraps to the short form on a phone.
+              "flex min-h-9 items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-colors",
               "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
               isActive
-                ? "bg-primary/10 font-medium text-primary"
-                : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                ? "border-primary/30 bg-primary/10 font-medium text-primary"
+                : "border-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground",
             )}
           >
             <Icon className="h-3.5 w-3.5" aria-hidden="true" />

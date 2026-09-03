@@ -2,14 +2,13 @@
 
 import { useState, useCallback, useEffect, Suspense, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import dynamic from "next/dynamic";
 import { ROUTES } from "@/lib/config/client-constants";
 import {
   setQueryParams,
   removeQueryParam,
   LOCATION_CHANGE_EVENT,
 } from "@/lib/ui/url-state";
-import { Header } from "@/components/scanner/header";
+import { AppPageShell } from "@/components/shared/app-page-shell";
 import { ScanHero } from "@/components/scanner/scan-hero";
 import {
   ScanForm,
@@ -19,7 +18,6 @@ import {
 } from "@/components/scanner/scan-form";
 import { ScanningIndicator } from "@/components/scanner/scanning-indicator";
 import { Dashboard } from "@/components/scanner/dashboard";
-import { Footer } from "@/components/scanner/footer";
 import {
   DashboardErrorState,
   type ErrorKind,
@@ -44,13 +42,6 @@ import {
 } from "./poll-scan-status";
 import { buildScanRequest } from "./scan-request";
 
-const OnboardingTour = dynamic(
-  () =>
-    import("@/components/shared/onboarding-tour").then((m) => ({
-      default: m.OnboardingTour,
-    })),
-  { ssr: false },
-);
 import type {
   ScanResult,
   ScanStatus,
@@ -60,14 +51,12 @@ import { DEFAULT_SCAN_NOTE } from "@/lib/config/client-constants";
 import { API } from "@/lib/config/client-constants";
 import { mapHistoryDetailResponse } from "@/lib/scanner/history-detail";
 import { useClientConfig } from "@/lib/hooks/use-client-config";
-import { DashboardRouteSkeleton } from "@/components/dashboard/dashboard-skeleton";
+import { DashboardDataSkeleton } from "@/components/dashboard/dashboard-skeleton";
 import {
   PremiumUpgradeModal,
   PREMIUM_FEATURES,
 } from "@/components/modals/premium-upgrade-modal";
 import { useAuth } from "@/components/providers/auth-provider";
-
-const CONTAINER = "w-full max-w-6xl mx-auto px-4 sm:px-6";
 
 /** Gap between retries of a bulk URL that was refused for concurrency, and the
  *  ceiling on how long one URL is allowed to wait for a slot before it is
@@ -90,16 +79,23 @@ function scanParamIsTarget(value: string): boolean {
 const SCAN_MAX_WAIT_MS = 6 * 60 * 1000;
 const CRAWL_MAX_WAIT_MS = 16 * 60 * 1000;
 
+/**
+ * The shell sits OUTSIDE the Suspense boundary on purpose. DashboardContent
+ * reads useSearchParams, so it suspends on first render; with the boundary
+ * around the whole page the fallback used to redraw Header and Footer as grey
+ * boxes over chrome that needs no data at all. Only the console itself waits.
+ *
+ * pb-16 with no top padding is this page's own measurement: ScanHero carries
+ * the top spacing.
+ */
 export default function DashboardPage() {
   return (
-    <Suspense fallback={<DashboardLoading />}>
-      <DashboardContent />
-    </Suspense>
+    <AppPageShell padding="pb-16">
+      <Suspense fallback={<DashboardDataSkeleton />}>
+        <DashboardContent />
+      </Suspense>
+    </AppPageShell>
   );
-}
-
-function DashboardLoading() {
-  return <DashboardRouteSkeleton />;
 }
 
 function DashboardContent() {
@@ -215,6 +211,9 @@ function DashboardContent() {
     successful: number;
     failed: number;
     skipped: number;
+    /** Set when the batch was refused outright (feature off, bad request,
+     *  server or network failure) rather than partially queued. */
+    error?: string;
   } | null>(null);
   const aiAvailableRef = useRef(false);
   const [showAiModal, setShowAiModal] = useState(false);
@@ -747,83 +746,114 @@ function DashboardContent() {
     async (urls: string[], isPublic?: boolean) => {
       setBulkStatus("scanning");
       setBulkResult(null);
-      setBulkProgress({ current: 0, total: urls.length });
-
-      let successful = 0;
-      let failed = 0;
-      let skipped = 0;
-
-      for (let i = 0; i < urls.length; i++) {
-        setBulkProgress({ current: i + 1, total: urls.length });
-
-        // POST /api/v3/scan reserves a concurrency slot and returns while the
-        // scan is still running (route.ts's `void executeScan`), so this loop
-        // fires the whole list in well under a second -- far faster than the
-        // scans themselves finish. Every plan caps concurrent scans (free
-        // is 1), so from the second URL onwards the response was a 429
-        // carrying statusCode CONCURRENT_SCAN_LIMIT, which the old code
-        // bucketed with the daily-quota 429 and reported as "skipped, you hit
-        // the scan limit" while opening the daily-limit upgrade modal. A
-        // 10-URL run on a free account queued one scan and told the user the
-        // other nine were over quota, when the daily quota was never involved.
-        // A concurrency 429 means "not yet", so wait for the running scan to
-        // release its slot and retry the same URL.
-        const deadline = Date.now() + BULK_CONCURRENCY_MAX_WAIT_MS;
-        let outcome: "queued" | "over-quota" | "refused" = "refused";
-
-        while (true) {
-          try {
-            const res = await fetch(API.SCAN, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                url: urls[i],
-                source: "bulk",
-                ...(typeof isPublic === "boolean" ? { isPublic } : {}),
-              }),
-            });
-            const data = await res.json().catch(() => ({}));
-
-            if (res.ok && !data.error) {
-              outcome = "queued";
-              break;
-            }
-            if (
-              res.status === 429 &&
-              data.statusCode === "CONCURRENT_SCAN_LIMIT" &&
-              Date.now() < deadline
-            ) {
-              await new Promise((resolve) =>
-                setTimeout(resolve, BULK_CONCURRENCY_RETRY_MS),
-              );
-              continue;
-            }
-            // Everything else is a real refusal. Only the daily cap has an
-            // upgrade path, and it is the only 429 left once concurrency has
-            // been handled above.
-            outcome = res.status === 429 ? "over-quota" : "refused";
-            break;
-          } catch {
-            outcome = "refused";
-            break;
-          }
-        }
-
-        if (outcome === "queued") {
-          successful++;
-        } else if (outcome === "over-quota") {
-          skipped++;
-          if (skipped === 1) {
-            setShowLimitModal(true);
-          }
-        } else {
-          failed++;
-        }
-      }
-
-      setBulkResult({ total: urls.length, successful, failed, skipped });
+      // One request, so there is no per-URL step left to count. The submit
+      // button carries the pending state on its own; a determinate bar that
+      // never moves would say less than nothing.
       setBulkProgress(undefined);
-      setBulkStatus("done");
+
+      // POST /api/v3/scan/bulk, not a loop of POST /api/v3/scan. The batch
+      // endpoint was fully built (quota slicing, per-URL SSRF and access-rule
+      // gates, one locked batch reservation, detached execution) and had no
+      // caller: the dashboard paid N round trips for what the server does in
+      // one, tripped its own burst limiter doing it, and ran a second,
+      // separately-audited quota and privacy path. It also meant
+      // FEATURE_BULK_SCANS gated only the unused endpoint, so turning the
+      // feature off left this tab fully working. ref: AUDIT-011#drift-06
+      //
+      // The batch is admitted as a unit (lib/rate-limiting/concurrent-scans.ts,
+      // reserveConcurrentScanBatch), so concurrency refuses the whole request
+      // rather than individual URLs, and only when the account is already at
+      // capacity. That is a "not yet", so wait for the running scan to drain
+      // and resend, the same way the old per-URL loop did.
+      const deadline = Date.now() + BULK_CONCURRENCY_MAX_WAIT_MS;
+
+      const refuse = (error: string) => {
+        setBulkResult({
+          total: urls.length,
+          successful: 0,
+          failed: urls.length,
+          skipped: 0,
+          error,
+        });
+      };
+
+      try {
+        while (true) {
+          // Derived from API.SCAN rather than written out, so the api version
+          // segment still has exactly one definition. The API map lost its
+          // SCAN_BULK entry while the endpoint had no caller; it should get
+          // one back now that it has.
+          const res = await fetch(`${API.SCAN}/bulk`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              urls,
+              ...(typeof isPublic === "boolean" ? { isPublic } : {}),
+            }),
+          });
+          const data = (await res.json().catch(() => null)) as {
+            total?: number;
+            queued?: number;
+            failed?: number;
+            skipped?: number;
+            error?: string;
+            statusCode?: string;
+          } | null;
+
+          if (
+            res.status === 429 &&
+            data?.statusCode === "CONCURRENT_SCAN_LIMIT" &&
+            Date.now() < deadline
+          ) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, BULK_CONCURRENCY_RETRY_MS),
+            );
+            continue;
+          }
+
+          if (!res.ok) {
+            // Only the daily cap has an upgrade path to offer. The route now
+            // names it rather than leaving the client to tell two 429s apart
+            // by their message text.
+            if (data?.statusCode === "DAILY_LIMIT") {
+              setShowLimitModal(true);
+              setBulkResult({
+                total: urls.length,
+                successful: 0,
+                failed: 0,
+                skipped: urls.length,
+              });
+            } else {
+              refuse(
+                data?.error ??
+                  "That bulk scan was refused. Try again in a moment.",
+              );
+            }
+            return;
+          }
+
+          // `failed` from the route counts every non-success entry, the
+          // quota-skipped ones included. The summary prints refused and
+          // skipped as separate numbers, so take the skipped ones back out.
+          const skipped = Number(data?.skipped ?? 0);
+          const failed = Number(data?.failed ?? 0);
+          if (skipped > 0) setShowLimitModal(true);
+          setBulkResult({
+            total: Number(data?.total ?? urls.length),
+            successful: Number(data?.queued ?? 0),
+            failed: Math.max(0, failed - skipped),
+            skipped,
+          });
+          return;
+        }
+      } catch {
+        refuse(
+          "Could not reach the server, so nothing was queued. Check your connection and try again.",
+        );
+      } finally {
+        setBulkProgress(undefined);
+        setBulkStatus("done");
+      }
     },
     [],
   );
@@ -966,96 +996,92 @@ function DashboardContent() {
     handleScan(payload);
   }
 
+  // The product tour is no longer mounted here. It spans six routes, so it
+  // lives in the root layout (components/shared/tour/tour-mount.tsx) and
+  // survives every navigation it asks the reader to make.
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <OnboardingTour />
-      <Header />
-
-      <main
-        id="main-content"
-        tabIndex={-1}
-        className={`flex-1 pb-16 ${CONTAINER}`}
-      >
-        {/* Idle: the scan console, then whatever this account has already found */}
-        {status === "idle" && (
-          <>
-            <ScanHero />
-            <ScanForm
-              onScan={handleScan}
-              status={status}
-              onBulkScan={handleBulkScan}
-              bulkStatus={bulkStatus}
-              bulkProgress={bulkProgress}
-              defaultPrivate={me?.scansPrivateByDefault}
-            />
-            {bulkStatus === "done" && bulkResult && (
-              <DashboardBulkResult
-                result={bulkResult}
-                onDismiss={() => {
-                  setBulkResult(null);
-                  setBulkStatus("idle");
-                }}
-              />
-            )}
-            <Dashboard />
-          </>
-        )}
-
-        {/* In progress */}
-        {status === "scanning" && (
-          <div className="flex justify-center pt-10 sm:pt-16">
-            <ScanningIndicator
-              url={scanningUrl ?? undefined}
-              mode={scanningMode}
-              categories={scanningCategories}
-              currentCategory={scanProgress?.currentCategory ?? null}
-              categoriesCompleted={scanProgress?.categoriesCompleted ?? 0}
-              categoriesTotal={scanProgress?.categoriesTotal ?? 0}
-              onCancel={runningScanId ? handleCancelScan : undefined}
-            />
-          </div>
-        )}
-
-        {/* Failed */}
-        {status === "failed" && error && (
-          <DashboardErrorState
-            error={error}
-            details={errorDetails || undefined}
-            url={errorUrl ?? undefined}
-            status={errorStatus ?? undefined}
-            forcedKind={errorForcedKind}
-            onRetry={handleRetryScan}
-            onBack={handleReset}
+    <>
+      {/* Idle: the scan console, then whatever this account has already found */}
+      {status === "idle" && (
+        <>
+          <ScanHero />
+          <ScanForm
+            onScan={handleScan}
+            status={status}
+            onBulkScan={handleBulkScan}
+            bulkStatus={bulkStatus}
+            bulkProgress={bulkProgress}
+            defaultPrivate={me?.scansPrivateByDefault}
           />
-        )}
+          {bulkStatus === "done" && bulkResult && (
+            <DashboardBulkResult
+              result={bulkResult}
+              onDismiss={() => {
+                setBulkResult(null);
+                setBulkStatus("idle");
+              }}
+            />
+          )}
+          <Dashboard />
+        </>
+      )}
 
-        {/* Complete */}
-        {status === "done" && result && (
-          <DashboardResults
-            result={result}
-            selectedIssue={selectedIssue}
-            onSelectIssue={setSelectedIssue}
-            scanHistoryId={scanHistoryId}
-            scanPublicId={scanPublicId}
-            scanNotes={scanNotes}
-            scanTags={scanTags}
-            onAddTag={handleAddTag}
-            onRemoveTag={handleRemoveTag}
-            crawlInfo={crawlInfo}
-            authReport={authReport}
-            onReset={handleReset}
-            onScanSubdomain={(subUrl) =>
-              handleScan({ url: subUrl, mode: "quick" })
-            }
-            onSaveNotes={handleSaveNotes}
-            onFindingsUpdated={handleFindingsUpdated}
-            onVerdictChanged={handleVerdictChanged}
+      {/* In progress */}
+      {status === "scanning" && (
+        <div className="flex justify-center pt-10 sm:pt-16">
+          <ScanningIndicator
+            url={scanningUrl ?? undefined}
+            mode={scanningMode}
+            categories={scanningCategories}
+            currentCategory={scanProgress?.currentCategory ?? null}
+            categoriesCompleted={scanProgress?.categoriesCompleted ?? 0}
+            categoriesTotal={scanProgress?.categoriesTotal ?? 0}
+            onCancel={runningScanId ? handleCancelScan : undefined}
           />
-        )}
-      </main>
+        </div>
+      )}
 
-      <Footer />
+      {/* Failed */}
+      {status === "failed" && error && (
+        <DashboardErrorState
+          error={error}
+          details={errorDetails || undefined}
+          url={errorUrl ?? undefined}
+          status={errorStatus ?? undefined}
+          forcedKind={errorForcedKind}
+          onRetry={handleRetryScan}
+          onBack={handleReset}
+        />
+      )}
 
+      {/* Complete */}
+      {status === "done" && result && (
+        <DashboardResults
+          result={result}
+          selectedIssue={selectedIssue}
+          onSelectIssue={setSelectedIssue}
+          scanHistoryId={scanHistoryId}
+          scanPublicId={scanPublicId}
+          scanNotes={scanNotes}
+          scanTags={scanTags}
+          onAddTag={handleAddTag}
+          onRemoveTag={handleRemoveTag}
+          crawlInfo={crawlInfo}
+          authReport={authReport}
+          initialIsPublic={pendingIsPublic}
+          onReset={handleReset}
+          onScanSubdomain={(subUrl) =>
+            handleScan({ url: subUrl, mode: "quick" })
+          }
+          onSaveNotes={handleSaveNotes}
+          onFindingsUpdated={handleFindingsUpdated}
+          onVerdictChanged={handleVerdictChanged}
+        />
+      )}
+
+      {/* Overlays. They are fixed-position, so sitting inside main rather than
+          beside it changes nothing about where they land, and it keeps the
+          page a single tree under the shell. */}
       {showCrawlSelector && (
         <CrawlUrlSelector
           urls={crawlDiscoveryUrls}
@@ -1082,6 +1108,6 @@ function DashboardContent() {
           onViewNow={handleViewNow}
         />
       )}
-    </div>
+    </>
   );
 }

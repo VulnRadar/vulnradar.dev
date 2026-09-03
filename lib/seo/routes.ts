@@ -153,6 +153,11 @@ export const DISALLOWED_PATHS: readonly string[] = [
   "/teams",
   "/checkout",
   "/browser/",
+  // Auth-gated, same as /compare above. The badge BUILDER reads the caller's
+  // own scan history and is out of PUBLIC_PATHS, so a crawl of it lands on
+  // /login?redirect=/badge. The badge IMAGE it produces lives under /api/ and
+  // is disallowed by the first entry in this list, which is right too: it is
+  // an image embedded on someone else's page, not a page of ours to index.
   "/badge",
   "/verify-email",
   "/reset-password",
@@ -163,6 +168,12 @@ export const DISALLOWED_PATHS: readonly string[] = [
   // carries a single-use token, so an indexed copy is a dead link at best and
   // a leaked invite at worst.
   "/staff-invite",
+  // Development-only workbenches (app/dev/modals). app/dev/modals/page.tsx
+  // already calls notFound() in a production build and "/dev" is deliberately
+  // absent from PUBLIC_PATHS, so this is the third layer rather than the only
+  // one: it keeps the path out of robots.txt and the sitemap even if somebody
+  // later adds a /dev page that forgets the gate.
+  "/dev",
 ] as const;
 
 /**

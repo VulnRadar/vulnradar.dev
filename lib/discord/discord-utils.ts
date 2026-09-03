@@ -40,9 +40,7 @@ export async function sendDiscordEmail2FACode(
     const emailContent = email2FACodeEmail(code);
     await sendEmail({
       to: userEmail,
-      subject: emailContent.subject,
-      text: emailContent.text,
-      html: emailContent.html,
+      ...emailContent,
     });
   } catch (error) {
     console.error("[Discord Email 2FA]", error);

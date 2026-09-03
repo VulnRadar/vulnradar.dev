@@ -16,6 +16,9 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { OAUTH_PROVIDERS } from "@/lib/auth/oauth-providers";
+import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
+import { sendNotificationEmail } from "@/lib/notifications/notifications";
+import { loginMethodChangedEmail } from "@/lib/email/email";
 
 type LinkableProvider = "google" | "github";
 
@@ -161,6 +164,30 @@ export async function DELETE(
         { status: 400 },
       );
     }
+
+    // Removing a way into the account is the mirror of turning 2FA off, which
+    // does email. This did not, so an account whose only other credential was a
+    // password could lose a sign-in method with no record of it anywhere the
+    // owner would see.
+    void (async () => {
+      try {
+        await sendNotificationEmail({
+          userId: session.userId,
+          userEmail: session.email,
+          type: "security",
+          emailContent: loginMethodChangedEmail(
+            OAUTH_PROVIDERS[provider].label,
+            false,
+            {
+              ipAddress: (await getClientIp()) || "Unknown",
+              userAgent: await getUserAgent(),
+            },
+          ),
+        });
+      } catch (err) {
+        console.error("Failed to send OAuth disconnect notice:", err);
+      }
+    })();
 
     return NextResponse.json({
       success: true,

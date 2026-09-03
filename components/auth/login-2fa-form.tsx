@@ -5,18 +5,18 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2 } from "lucide-react";
+import { ArrowLeft, KeyRound, Loader2, Mail } from "lucide-react";
 import {
   API,
   DEVICE_TRUST_DURATION,
   TOTP_CODE_VALIDITY,
 } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
-import { transitions } from "@/lib/ui/animations";
 import {
   AuthAlert,
   authFieldClass,
   authFocusRing,
+  authPillClass,
 } from "@/components/auth/auth-shell";
 import { refreshAuthCache } from "@/components/providers/auth-provider";
 
@@ -229,18 +229,18 @@ export function Login2FAForm({
         )}
       </Button>
 
-      <div className="flex flex-col items-start gap-2.5 mt-1 text-sm">
+      {/* Same bordered-pill grammar as the back actions on the login, signup
+          and forgot-password screens. These were the only secondary actions
+          in the flow rendered as naked left-aligned text. */}
+      <div className="flex flex-col items-start gap-2.5 mt-1">
         {method === "email" ? (
           <button
             type="button"
             disabled={resendingCode}
             onClick={handleResendEmailCode}
-            className={cn(
-              "rounded text-muted-foreground hover:text-foreground disabled:opacity-50",
-              transitions.colors,
-              authFocusRing,
-            )}
+            className={authPillClass}
           >
+            <Mail className="h-3.5 w-3.5" aria-hidden="true" />
             {resendingCode ? "Sending a new code" : "Send a new code"}
           </button>
         ) : (
@@ -253,12 +253,9 @@ export function Login2FAForm({
               setRememberDevice(false);
               setError("");
             }}
-            className={cn(
-              "rounded text-muted-foreground hover:text-foreground",
-              transitions.colors,
-              authFocusRing,
-            )}
+            className={authPillClass}
           >
+            <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
             {useBackupCode
               ? "Use my authenticator app instead"
               : "Lost your authenticator? Use a backup code"}
@@ -266,15 +263,8 @@ export function Login2FAForm({
         )}
 
         {onCancel && (
-          <button
-            type="button"
-            onClick={onCancel}
-            className={cn(
-              "rounded text-muted-foreground hover:text-foreground",
-              transitions.colors,
-              authFocusRing,
-            )}
-          >
+          <button type="button" onClick={onCancel} className={authPillClass}>
+            <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
             Start over with a different account
           </button>
         )}
