@@ -117,22 +117,35 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      # release: this was a plain `docker build`, so the buildx setup step
-      # above did nothing and the published manifest was single-platform
-      # amd64. Anyone self-hosting on ARM64 (a Pi, Apple Silicon, a Graviton
-      # or Ampere VPS) got "no matching manifest for linux/arm64" from
-      # `docker compose up -d`. buildx builds both and pushes one image
-      # index. The arm64 leg runs under QEMU emulation and is slow, which is
-      # acceptable on a tag-only workflow.
+      # release: amd64 only, on purpose. This used to build both platforms in
+      # one step, and the arm64 leg runs under QEMU: on v3.8.0 it spent over
+      # 40 minutes on `npm ci` alone before reaching `npm run build`, and the
+      # GitHub release could not be created until it finished, because
+      # release.yml waits on this workflow.
+      #
+      # arm64 is still published. docker-publish-arm64.yml builds it after
+      # this workflow succeeds and merges it into these same tags as a
+      # multi-arch index, so `docker compose up -d` on a Pi or an Ampere box
+      # still resolves. The difference is that arm64 arrives a little after
+      # the release rather than holding it up.
       - name: Build and push image index
         id: build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64
+          # arm64 is added later by docker-publish-arm64.yml. See above.
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.tags.outputs.list }}
+          # Layer cache, one scope per platform. Sharing a single scope makes
+          # the two legs evict each other and neither ever hits. mode=max so
+          # intermediate layers are stored: the expensive one here is the
+          # `npm ci` layer, which mode=min would not keep. Only helps from the
+          # second release onward, since cache-from reads what an earlier run
+          # wrote.
+          cache-from: type=gha,scope=buildkit-amd64
+          cache-to: type=gha,mode=max,scope=buildkit-amd64
           # release: a cosign signature attests WHO signed, not what went
           # into the artifact. `mode=max` makes buildkit attach a full SLSA
           # provenance attestation to the pushed index (source repo, commit,
