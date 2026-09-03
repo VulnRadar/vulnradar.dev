@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -89,122 +90,123 @@ export function AiVerifyResultModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* shadow-2xl, not DialogContent's shadow-lg: this is the only dialog
-          in the product that sets p-0 and runs its content edge to edge, so
-          it leans harder on elevation to read as a card.
-
-          It also carried a border-input override, on the premise that a bare
-          `border` resolves to the v4 compat shim's near-white
-          --color-gray-200. It does not: `* { @apply border-border }` is
-          emitted after that shim in the same layer and wins on source order,
-          so the inherited edge is --border, which is the right token for a
-          panel. A modal is not an SC 1.4.11 user interface component; see
-          components/ui/dialog.tsx. */}
-      {/* overflow-x-hidden, not overflow-hidden: the shorthand also cancelled
-          DialogContent's own overflow-y-auto, so on a short viewport the
-          4-up Stat row (which wraps to three or four rows at 375px) and the
-          skipped-findings note past max-h were simply cut off with no way to
-          scroll to them. The x axis still clips, which is what keeps the
-          full-bleed rail inside the rounded corners. */}
-      <DialogContent className="overflow-x-hidden p-0 shadow-2xl sm:max-w-lg">
+      {/* variant="shell": the panel clips on both axes (which is what keeps the
+          full-bleed severity rail inside the rounded corners) while the body
+          band scrolls on its own. The old p-0 + overflow-x-hidden pairing had
+          to cancel the padded tier's overflow-y-auto to do the first, so the
+          4-up Stat row (three or four rows at 375px) and the skipped-findings
+          note past max-h were cut off with no way to reach them. */}
+      <DialogContent variant="shell" size="md">
         {loading ? (
-          <div className="flex items-start gap-3 p-6">
-            <Loader2
-              aria-hidden
-              className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-primary"
-            />
-            <DialogHeader className="min-w-0 text-left">
-              <DialogTitle>Checking findings against the live site</DialogTitle>
+          <>
+            <DialogHeader>
+              <div className="flex items-center gap-2.5">
+                <Loader2
+                  aria-hidden
+                  className="h-4 w-4 shrink-0 animate-spin text-primary"
+                />
+                <DialogTitle>
+                  Checking findings against the live site
+                </DialogTitle>
+              </div>
+            </DialogHeader>
+            <DialogBody>
               <DialogDescription>
                 {pendingCount} {pendingCount === 1 ? "finding" : "findings"} get
                 re-probed before AI marks each one confirmed, a likely false
                 positive, or uncertain. Usually 5 to 30 seconds.
               </DialogDescription>
-            </DialogHeader>
-          </div>
+            </DialogBody>
+          </>
         ) : error ? (
-          <div className="p-6">
-            <DialogHeader className="text-left">
-              <DialogTitle className="flex items-center gap-2">
+          <>
+            <DialogHeader>
+              <div className="flex items-center gap-2.5">
                 <AlertTriangle
-                  className="h-5 w-5 text-destructive"
+                  className="h-4 w-4 shrink-0 text-destructive"
                   aria-hidden="true"
                 />
-                AI verification failed
-              </DialogTitle>
-              <DialogDescription>{error}</DialogDescription>
+                <DialogTitle>AI verification failed</DialogTitle>
+              </div>
             </DialogHeader>
-          </div>
+            <DialogBody>
+              <DialogDescription>{error}</DialogDescription>
+            </DialogBody>
+          </>
         ) : findings ? (
           <>
+            {/* The headline is the coloured h2 in the card below, so the header
+                band would only repeat it. It stays sr-only to name the dialog. */}
             <DialogHeader className="sr-only">
               <DialogTitle>{headline}</DialogTitle>
               <DialogDescription>{detail}</DialogDescription>
             </DialogHeader>
-            {/* Mirrors ScanSummary's card anatomy (rail + headline/detail next
+            <DialogBody className="p-0">
+              {/* Mirrors ScanSummary's card anatomy (rail + headline/detail next
                 to SeverityDistribution, then a divided stat-bar row) so this
                 reads as the same kind of result, not a different component. */}
-            <div className="relative">
-              <span
-                aria-hidden
-                className={cn("absolute inset-y-0 left-0 w-1", railClass)}
-              />
-              <div className="grid grid-cols-1 gap-5 py-4 pl-5 pr-4 sm:py-5 sm:pl-6 sm:pr-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-6">
-                <div className="flex flex-col gap-1.5">
-                  <h2
-                    className={cn(
-                      "text-base font-semibold leading-tight sm:text-lg",
-                      textClass,
-                    )}
-                  >
-                    {headline}
-                  </h2>
-                  <p className="text-sm leading-relaxed text-muted-foreground">
-                    {detail}
-                  </p>
+              <div className="relative">
+                <span
+                  aria-hidden
+                  className={cn("absolute inset-y-0 left-0 w-1", railClass)}
+                />
+                <div className="grid grid-cols-1 gap-5 py-4 pl-5 pr-4 sm:py-5 sm:pl-6 sm:pr-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-6">
+                  <div className="flex flex-col gap-1.5">
+                    <h2
+                      className={cn(
+                        "text-base font-semibold leading-tight sm:text-lg",
+                        textClass,
+                      )}
+                    >
+                      {headline}
+                    </h2>
+                    <p className="text-sm leading-relaxed text-muted-foreground">
+                      {detail}
+                    </p>
+                  </div>
+                  {confirmed.length > 0 && (
+                    <SeverityDistribution counts={confirmedCounts} />
+                  )}
                 </div>
-                {confirmed.length > 0 && (
-                  <SeverityDistribution counts={confirmedCounts} />
+              </div>
+
+              <div className="flex flex-wrap items-stretch divide-x divide-border border-t border-border bg-muted/30">
+                <Stat
+                  label="Confirmed"
+                  value={String(confirmed.length)}
+                  icon={CheckCheck}
+                  tone="primary"
+                />
+                <Stat
+                  label="Possible false positive"
+                  value={String(possibleFp)}
+                  icon={XCircle}
+                  tone="muted"
+                />
+                <Stat
+                  label="Needs a human"
+                  value={String(uncertain)}
+                  icon={HelpCircle}
+                  tone="muted"
+                />
+                {skipped > 0 && (
+                  <Stat
+                    label="Ran out of time"
+                    value={String(skipped)}
+                    icon={AlertTriangle}
+                    tone="orange"
+                  />
                 )}
               </div>
-            </div>
 
-            <div className="flex flex-wrap items-stretch divide-x divide-border border-t border-border bg-muted/30">
-              <Stat
-                label="Confirmed"
-                value={String(confirmed.length)}
-                icon={CheckCheck}
-                tone="primary"
-              />
-              <Stat
-                label="Possible false positive"
-                value={String(possibleFp)}
-                icon={XCircle}
-                tone="muted"
-              />
-              <Stat
-                label="Needs a human"
-                value={String(uncertain)}
-                icon={HelpCircle}
-                tone="muted"
-              />
               {skipped > 0 && (
-                <Stat
-                  label="Ran out of time"
-                  value={String(skipped)}
-                  icon={AlertTriangle}
-                  tone="orange"
-                />
+                <p className="px-5 py-3 text-xs text-muted-foreground">
+                  {skipped} {skipped === 1 ? "finding" : "findings"} ran out of
+                  time and stayed unverified. Run Verify with AI again to pick
+                  them up.
+                </p>
               )}
-            </div>
-
-            {skipped > 0 && (
-              <p className="px-6 py-3 text-xs text-muted-foreground">
-                {skipped} {skipped === 1 ? "finding" : "findings"} ran out of
-                time and stayed unverified. Run Verify with AI again to pick
-                them up.
-              </p>
-            )}
+            </DialogBody>
           </>
         ) : null}
       </DialogContent>

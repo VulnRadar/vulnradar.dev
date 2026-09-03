@@ -29,16 +29,18 @@ const AUTH_READOUT_ROWS: ResponseReadoutRow[] = [
   },
 ];
 
+// Ordered lead-first: the API-key line is the most concrete of the three, so
+// it carries the rail and the other two run in underneath it as support.
 function accountReasons(): { label: string; body: string }[] {
   if (!BILLING_ENABLED) {
     return [
       {
-        label: "History",
-        body: "Every scan is kept and diffable, so you can see what changed since last week rather than re-reading a fresh report.",
-      },
-      {
         label: "API keys",
         body: "Same engine over HTTP. Run it from CI and fail the build on a finding ID.",
+      },
+      {
+        label: "History",
+        body: "Every scan is kept and diffable, so you can see what changed since last week rather than re-reading a fresh report.",
       },
       {
         label: "Schedules and webhooks",
@@ -48,6 +50,10 @@ function accountReasons(): { label: string; body: string }[] {
   }
   return [
     {
+      label: "API keys",
+      body: `Same engine over HTTP, ${BILLING_PLAN_LIMITS.free} scans a day free. Run it from CI and fail the build on a finding ID.`,
+    },
+    {
       label: "History",
       // Same -1 = unlimited sentinel guard as the pricing surfaces: this read
       // "Scans kept for -1 days" on the login and signup pages.
@@ -55,10 +61,6 @@ function accountReasons(): { label: string; body: string }[] {
         BILLING_HISTORY_RETENTION.free === -1
           ? "Every scan is kept on the free plan, so you can diff today against last week."
           : `Scans kept for ${BILLING_HISTORY_RETENTION.free} days on the free plan, so you can diff today against last week.`,
-    },
-    {
-      label: "API keys",
-      body: `Same engine over HTTP, ${BILLING_PLAN_LIMITS.free} scans a day free. Run it from CI and fail the build on a finding ID.`,
     },
     {
       label: "Schedules and webhooks",
@@ -72,7 +74,7 @@ interface AuthSplitLayoutProps {
 }
 
 export function AuthSplitLayout({ children }: AuthSplitLayoutProps) {
-  const reasons = accountReasons();
+  const [lead, ...supporting] = accountReasons();
 
   return (
     <div className="relative flex min-h-screen flex-col overflow-hidden bg-background">
@@ -101,7 +103,9 @@ export function AuthSplitLayout({ children }: AuthSplitLayoutProps) {
           {/* The pitch. Desktop only; on a phone it would push the form below
               the fold. */}
           <div className="hidden max-w-md lg:block">
-            <h2 className="text-[28px] font-semibold leading-[1.15] tracking-tight text-foreground">
+            {/* On the type scale, not an arbitrary 28px: text-3xl's own
+                line-height is already tight enough for the two-line break. */}
+            <h2 className="text-3xl font-semibold tracking-tight text-foreground">
               Paste a URL. Get findings,
               <br />
               not a grade out of ten.
@@ -112,15 +116,33 @@ export function AuthSplitLayout({ children }: AuthSplitLayoutProps) {
               reference in a pull request or gate a build on.
             </p>
 
-            <dl className="mt-7 space-y-3.5 border-l border-border/60 pl-4">
-              {reasons.map((r) => (
-                <div key={r.label}>
-                  <dt className="text-sm font-medium text-foreground">
-                    {r.label}
-                  </dt>
-                  <dd className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
-                    {r.body}
-                  </dd>
+            {/* Three identical dt-over-dd rows read as a template, so the
+                shape is broken deliberately: the lead reason gets a block
+                heading and its own paragraph, and the two supporting ones
+                run in as tight label-then-sentence lines beneath it. Still a
+                real term/description list, so it stays a <dl>. */}
+            <dl className="mt-7 border-l border-border/60 pl-4">
+              <div>
+                <dt className="text-base font-semibold tracking-tight text-foreground">
+                  {lead.label}
+                </dt>
+                <dd className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                  {lead.body}
+                </dd>
+              </div>
+              {supporting.map((r, i) => (
+                <div
+                  key={r.label}
+                  className={
+                    i === 0
+                      ? "mt-5 text-sm leading-relaxed"
+                      : "mt-2.5 text-sm leading-relaxed"
+                  }
+                >
+                  <dt className="inline font-medium text-foreground">
+                    {r.label}.
+                  </dt>{" "}
+                  <dd className="inline text-muted-foreground">{r.body}</dd>
                 </div>
               ))}
             </dl>

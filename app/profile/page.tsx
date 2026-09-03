@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { cn } from "@/lib/ui/utils";
+import { tourAnchor } from "@/lib/tour/anchors";
 import { API } from "@/lib/config/client-constants";
 import { refreshAuthCache } from "@/components/providers/auth-provider";
 import {
@@ -52,9 +53,8 @@ import {
   Bot,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Header } from "@/components/scanner/header";
-import { Footer } from "@/components/scanner/footer";
-import { ProfileSkeleton } from "@/components/profile/profile-skeleton";
+import { AppPageShell } from "@/components/shared/app-page-shell";
+import { ProfileDataSkeleton } from "@/components/profile/profile-skeleton";
 import {
   SaveConfirmationModal,
   type ChangeItem,
@@ -88,7 +88,7 @@ function ProfileContent() {
     ? (activeProfileTab as ProfileTab)
     : "general";
 
-  // admin: always reflect the current tab in the URL — even on first
+  // admin: always reflect the current tab in the URL, even on first
   // load when no tab has been clicked. Otherwise the URL is
   // /profile with no ?tab= which is ambiguous (the default could
   // change in the future).
@@ -100,7 +100,7 @@ function ProfileContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Change tab — just update the query param, no page reload
+  // Change tab: just update the query param, no page reload
   const handleProfileTabChange = (tab: ProfileTab) => {
     // Clear any pending changes when switching tabs
     if (Object.keys(pendingChanges).length > 0 || showSaveModal) {
@@ -341,9 +341,19 @@ function ProfileContent() {
       // reverse. A privacy control must never display a guess.
       if (!privacyRes.ok) failedSections.push("scan privacy default");
       if (!sharePrivacyRes.ok) failedSections.push("public listing default");
+      // The same rule for the three below, each of which used to fail
+      // silently into something that reads as a settled answer: the twenty
+      // notification switches fell back to every category ON (so someone who
+      // had unsubscribed from product email was shown as subscribed), the
+      // posture-digest opt-in fell back to OFF, and Billing fell back to a
+      // skeleton that never resolves on the tab that charges people money.
+      // The tabs now render those as unknown; this is what announces why.
+      if (!notifsRes.ok) failedSections.push("email notification settings");
+      if (!postureDigestRes.ok) failedSections.push("posture digest setting");
+      if (!billingRes.ok) failedSections.push("billing details");
       if (failedSections.length > 0) {
         setError(
-          `Could not load your ${failedSections.join(", ")}. Those sections may look empty or show a default that is not your real setting. Reload to try again.`,
+          `Could not load your ${failedSections.join(", ")}. Those sections may look empty, and any setting we could not read is shown as unknown rather than guessed. Reload to try again.`,
         );
       }
 
@@ -681,117 +691,138 @@ function ProfileContent() {
 
   // ---- Helpers ----
 
-  if (loading || redirectingToLogin) {
-    return <ProfileSkeleton />;
-  }
+  // A 401/403 is already on its way to /login, so it keeps the panel greyed
+  // rather than flashing the "could not be loaded" screen at someone who is
+  // simply signed out.
+  const showSkeleton = loading || redirectingToLogin;
 
   // Loading finished but the account never arrived: a 5xx or a network fault
   // on /auth/me. Every tab below reads `user`, so rendering them against null
   // would show a settings page full of blanks. Say what happened instead, and
-  // give the one action that can fix it.
-  if (!user) {
+  // give the one action that can fix it. This one branch does replace the
+  // page: with no account there is no sidebar worth keeping mounted.
+  if (!user && !showSkeleton) {
     return (
-      <div className="min-h-screen bg-background flex flex-col">
-        <Header />
-        <main
-          id="main-content"
-          tabIndex={-1}
-          className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 flex flex-col items-center justify-center gap-4 text-center"
+      <AppPageShell
+        maxWidth="max-w-5xl"
+        padding="py-8 sm:py-10"
+        className="lg:px-8 flex flex-col items-center justify-center gap-4 text-center"
+      >
+        <AlertTriangle
+          className="h-6 w-6 text-destructive"
+          aria-hidden="true"
+        />
+        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">
+          Account settings could not be loaded
+        </h1>
+        <p className="max-w-md text-sm text-muted-foreground">
+          {loadFailed ||
+            "The server did not return your account. You are still signed in."}
+        </p>
+        <Button
+          variant="outline"
+          className="bg-transparent"
+          onClick={() => {
+            setLoading(true);
+            setLoadFailed(null);
+            fetchData();
+          }}
         >
-          <AlertTriangle
-            className="h-6 w-6 text-destructive"
-            aria-hidden="true"
-          />
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">
-            Account settings could not be loaded
-          </h1>
-          <p className="max-w-md text-sm text-muted-foreground">
-            {loadFailed ||
-              "The server did not return your account. You are still signed in."}
-          </p>
-          <Button
-            variant="outline"
-            className="bg-transparent"
-            onClick={() => {
-              setLoading(true);
-              setLoadFailed(null);
-              fetchData();
-            }}
-          >
-            Try again
-          </Button>
-        </main>
-        <Footer />
-      </div>
+          Try again
+        </Button>
+      </AppPageShell>
     );
   }
 
-  const TABS = [
+  // Eight panels behind eight flat entries told you nothing about which one
+  // holds what you came for, so finding a setting meant opening tabs until it
+  // appeared. The three groups are the three reasons anyone is on this page:
+  // the account itself, the things you build against it, and the switches
+  // that change what the product does to you. The mobile strip stays flat,
+  // because it already scrolls and group labels in a horizontal row would
+  // just be more to scroll past.
+  const TAB_GROUPS: {
+    label: string;
+    tabs: { id: ProfileTab; label: string; icon: React.ReactNode }[];
+  }[] = [
     {
-      id: "general" as ProfileTab,
-      label: "General",
-      icon: <UserCog className="h-4 w-4" />,
+      label: "Account",
+      tabs: [
+        {
+          id: "general" as ProfileTab,
+          label: "General",
+          icon: <UserCog className="h-4 w-4" />,
+        },
+        {
+          id: "security" as ProfileTab,
+          label: "Security",
+          icon: <Lock className="h-4 w-4" />,
+        },
+        {
+          id: "social" as ProfileTab,
+          label: "Social",
+          icon: <Share2 className="h-4 w-4" />,
+        },
+        {
+          id: "billing" as ProfileTab,
+          label: "Billing",
+          icon: <CreditCard className="h-4 w-4" />,
+        },
+      ],
     },
     {
-      id: "security" as ProfileTab,
-      label: "Security",
-      icon: <Lock className="h-4 w-4" />,
+      label: "Build with it",
+      tabs: [
+        {
+          id: "developer" as ProfileTab,
+          label: "Developer",
+          icon: <Key className="h-4 w-4" />,
+        },
+        {
+          id: "ai" as ProfileTab,
+          label: "AI",
+          icon: <Bot className="h-4 w-4" />,
+        },
+      ],
     },
     {
-      id: "social" as ProfileTab,
-      label: "Social",
-      icon: <Share2 className="h-4 w-4" />,
-    },
-    {
-      id: "billing" as ProfileTab,
-      label: "Billing",
-      icon: <CreditCard className="h-4 w-4" />,
-    },
-    {
-      id: "developer" as ProfileTab,
-      label: "Developer",
-      icon: <Key className="h-4 w-4" />,
-    },
-    {
-      id: "notifications" as ProfileTab,
-      label: "Notifications",
-      icon: <Bell className="h-4 w-4" />,
-    },
-    {
-      id: "privacy" as ProfileTab,
-      label: "Privacy",
-      icon: <Shield className="h-4 w-4" />,
-    },
-    {
-      id: "ai" as ProfileTab,
-      label: "AI",
-      icon: <Bot className="h-4 w-4" />,
+      label: "Preferences",
+      tabs: [
+        {
+          id: "notifications" as ProfileTab,
+          label: "Notifications",
+          icon: <Bell className="h-4 w-4" />,
+        },
+        {
+          id: "privacy" as ProfileTab,
+          label: "Privacy",
+          icon: <Shield className="h-4 w-4" />,
+        },
+      ],
     },
   ];
+  const TABS = TAB_GROUPS.flatMap((g) => g.tabs);
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <Header />
-
-      <main
-        id="main-content"
-        tabIndex={-1}
-        className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 flex flex-col gap-6 sm:gap-8 min-w-0"
-      >
-        {/* Page header, top-left pattern (matches Admin / Shared pages). The
+    <AppPageShell
+      maxWidth="max-w-5xl"
+      padding="py-8 sm:py-10"
+      className="lg:px-8 flex flex-col gap-6 sm:gap-8"
+    >
+      {/* Page header, top-left pattern (matches Admin / Shared pages). The
             H1 is the Tier B in-app scale shared with History, Assets, Shares,
             Repos and Public scans, so the title does not change size as the
             user moves between them. */}
-        <div className="mb-2">
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
-            Account Settings
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Manage your account settings and preferences
-          </p>
-        </div>
+      <div className="mb-2">
+        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
+          Account Settings
+        </h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Manage your account settings and preferences
+        </p>
+      </div>
 
-        {/* Status banner. Every tab writes its success/error here, and the
+      {/* Status banner. Every tab writes its success/error here, and the
             tabs are long: the Developer tab alone stacks API keys, webhooks
             and schedules vertically, so a failed delete near its bottom used
             to set a message hundreds of pixels above the viewport and the
@@ -801,42 +832,47 @@ function ProfileContent() {
             offset the desktop sidebar uses), plus a scroll-into-view
             on the first render of an error, so the message is always where
             the user is looking. */}
-        {(error || success) && (
-          <div
-            ref={statusBannerRef}
-            role={error ? "alert" : "status"}
-            aria-live={error ? "assertive" : "polite"}
-            className={cn(
-              "sticky top-[calc(4.5rem+var(--vr-banner-h,0px)+var(--vr-imp-banner-h,0px))] z-30 flex items-center gap-3 px-4 py-3 rounded-xl text-sm border backdrop-blur-sm transition-[top] duration-300",
-              error
-                ? "bg-destructive/10 text-destructive border-destructive/20"
-                : "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20",
-            )}
+      {(error || success) && (
+        <div
+          ref={statusBannerRef}
+          role={error ? "alert" : "status"}
+          aria-live={error ? "assertive" : "polite"}
+          className={cn(
+            "sticky top-[calc(4.5rem+var(--vr-banner-h,0px)+var(--vr-imp-banner-h,0px))] z-30 flex items-center gap-3 px-4 py-3 rounded-xl text-sm border backdrop-blur-sm transition-[top] duration-300",
+            error
+              ? "bg-destructive/10 text-destructive border-destructive/20"
+              : "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20",
+          )}
+        >
+          {error ? (
+            <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+          ) : (
+            <Check className="h-4 w-4 shrink-0" aria-hidden="true" />
+          )}
+          <span className="flex-1">{error || success}</span>
+          <button
+            type="button"
+            onClick={() => {
+              setError(null);
+              setSuccess(null);
+            }}
+            className="text-xs font-medium hover:underline opacity-70 hover:opacity-100 transition-opacity rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
-            {error ? (
-              <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-            ) : (
-              <Check className="h-4 w-4 shrink-0" aria-hidden="true" />
-            )}
-            <span className="flex-1">{error || success}</span>
-            <button
-              type="button"
-              onClick={() => {
-                setError(null);
-                setSuccess(null);
-              }}
-              className="text-xs font-medium hover:underline opacity-70 hover:opacity-100 transition-opacity rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
+            Dismiss
+          </button>
+        </div>
+      )}
 
-        {/* Two-column layout: Sidebar + Content */}
-        <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
-          {/* Sidebar Navigation */}
-          <aside className="lg:w-48 lg:shrink-0">
-            {/* Mobile: Scrollable horizontal tab bar.
+      {/* Two-column layout: Sidebar + Content */}
+      <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
+        {/* Sidebar Navigation */}
+        {/* One anchor covering both tab renderings. The tour resolves an
+              anchor to the first copy with a real box, and only one of the
+              mobile strip and the desktop sidebar is ever laid out, so a step
+              that says "open the Developer section" points at whichever of
+              them the reader can actually see. */}
+        <aside {...tourAnchor("profileTabs")} className="lg:w-48 lg:shrink-0">
+          {/* Mobile: Scrollable horizontal tab bar.
                 The label used to be `hidden sm:inline`, which below 640px
                 left eight buttons holding nothing but a lucide glyph. lucide
                 marks its SVG aria-hidden whenever no a11y prop is passed, so
@@ -847,228 +883,247 @@ function ProfileContent() {
                 stay at every width now. type="button" keeps these out of any
                 enclosing form's submit path and aria-current names the one
                 that is showing. */}
-            <div className="lg:hidden overflow-x-auto scrollbar-hide -mx-4 px-4 border-b border-border/80">
-              <div className="flex gap-0.5 min-w-max">
-                {TABS.map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => handleProfileTabChange(tab.id)}
-                    aria-current={
-                      activeProfileTabSafe === tab.id ? "page" : undefined
-                    }
-                    className={cn(
-                      "flex items-center gap-2 px-3.5 py-3 text-sm font-medium transition-all whitespace-nowrap border-b-2 -mb-px",
-                      activeProfileTabSafe === tab.id
-                        ? "border-primary text-foreground"
-                        : "border-transparent text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {tab.icon}
-                    <span>{tab.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Desktop: Vertical sidebar — self-start is required for sticky to work in a flex row.
-                top offset grows by --vr-banner-h (site-notifications.tsx) and
-                --vr-imp-banner-h (admin/impersonation-banner.tsx) when either banner is
-                showing, since the fixed Header above shifts down to stay below them too. */}
-            <nav className="hidden lg:flex flex-col gap-0.5 sticky top-[calc(5rem+var(--vr-banner-h,0px)+var(--vr-imp-banner-h,0px))] self-start transition-[top] duration-300">
+          <div className="lg:hidden overflow-x-auto scrollbar-hide -mx-4 px-4 border-b border-border/80">
+            <div className="flex gap-0.5 min-w-max">
               {TABS.map((tab) => (
-                <a
+                <button
                   key={tab.id}
-                  href={`/profile?tab=${tab.id}`}
-                  onClick={(e) => {
-                    if (!e.ctrlKey && !e.metaKey) {
-                      e.preventDefault();
-                      handleProfileTabChange(tab.id);
-                    }
-                  }}
-                  // a11y (SC 4.1.2): the mobile tab list already marks the
-                  // active entry; the desktop sidebar carried the state in
-                  // colour and weight only.
+                  type="button"
+                  onClick={() => handleProfileTabChange(tab.id)}
                   aria-current={
                     activeProfileTabSafe === tab.id ? "page" : undefined
                   }
                   className={cn(
-                    "flex items-center gap-2.5 px-3 py-2.5 text-sm rounded-lg transition-colors",
+                    "flex items-center gap-2 px-3.5 py-3 text-sm font-medium transition-all whitespace-nowrap border-b-2 -mb-px",
                     activeProfileTabSafe === tab.id
-                      ? "bg-primary/10 text-primary font-medium"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+                      ? "border-primary text-foreground"
+                      : "border-transparent text-muted-foreground hover:text-foreground",
                   )}
                 >
                   {tab.icon}
                   <span>{tab.label}</span>
-                </a>
+                </button>
               ))}
-            </nav>
-          </aside>
-
-          {/* Main Content Area */}
-          <div className="flex-1 min-w-0">
-            {/* ===================== GENERAL TAB ===================== */}
-            {activeProfileTabSafe === "general" && (
-              <ProfileGeneralTab
-                user={user}
-                loading={loading}
-                error={error}
-                success={success}
-                setError={setError}
-                setSuccess={setSuccess}
-                onTabChange={handleProfileTabChange}
-                pendingChanges={pendingChanges}
-                setPendingChanges={setPendingChanges}
-                discardKey={discardKey}
-                onAvatarCrop={handleCroppedAvatar}
-                onSetCropDialog={(open, src) => {
-                  setCropDialogOpen(open);
-                  setCropImageSrc(src);
-                }}
-              />
-            )}
-
-            {/* ===================== SOCIAL TAB ===================== */}
-            {activeProfileTabSafe === "social" && (
-              <ProfileSocialTab
-                user={user}
-                loading={loading}
-                error={error}
-                success={success}
-                setError={setError}
-                setSuccess={setSuccess}
-                // Lets a disconnect update this page's `user` in place
-                // instead of reloading the document, which used to throw
-                // away the success banner it had just set.
-                onUserPatch={patchUser}
-                onTabChange={handleProfileTabChange}
-                pendingChanges={pendingChanges}
-                setPendingChanges={setPendingChanges}
-              />
-            )}
-
-            {/* ===================== BILLING TAB ===================== */}
-            {activeProfileTabSafe === "billing" && (
-              <ProfileBillingTab
-                user={user}
-                loading={loading}
-                error={error}
-                success={success}
-                setError={setError}
-                setSuccess={setSuccess}
-                onTabChange={handleProfileTabChange}
-                pendingChanges={pendingChanges}
-                setPendingChanges={setPendingChanges}
-                preloadedBillingInfo={billingInfo}
-              />
-            )}
-
-            {/* ===================== SECURITY TAB ===================== */}
-            {activeProfileTabSafe === "security" && (
-              <ProfileSecurityTab
-                user={user}
-                loading={loading}
-                error={error}
-                success={success}
-                setError={setError}
-                setSuccess={setSuccess}
-                onTabChange={handleProfileTabChange}
-                pendingChanges={pendingChanges}
-                setPendingChanges={setPendingChanges}
-                onUserPatch={patchUser}
-              />
-            )}
-
-            {/* ===================== DEVELOPER TAB ===================== */}
-            {activeProfileTabSafe === "developer" && (
-              <ProfileDeveloperTab
-                user={user}
-                loading={loading}
-                error={error}
-                success={success}
-                setError={setError}
-                setSuccess={setSuccess}
-                onTabChange={handleProfileTabChange}
-                pendingChanges={pendingChanges}
-                setPendingChanges={setPendingChanges}
-                preloadedApiKeys={apiKeys}
-                preloadedWebhooks={webhooks}
-                preloadedSchedules={schedules}
-                setApiKeys={setApiKeys}
-                setWebhooks={setWebhooks}
-                setSchedules={setSchedules}
-              />
-            )}
-
-            {/* ===================== NOTIFICATIONS TAB ===================== */}
-            {activeProfileTabSafe === "notifications" && (
-              <ProfileNotificationsTab
-                user={user}
-                loading={loading}
-                error={error}
-                success={success}
-                setError={setError}
-                setSuccess={setSuccess}
-                onTabChange={handleProfileTabChange}
-                pendingChanges={pendingChanges}
-                setPendingChanges={setPendingChanges}
-                discardKey={discardKey}
-                saveKey={saveKey}
-                preloadedNotifPrefs={notifPrefs}
-                preloadedDigestEmailEnabled={digestEmailEnabled}
-              />
-            )}
-
-            {/* ===================== PRIVACY TAB ===================== */}
-            {activeProfileTabSafe === "privacy" && (
-              <ProfilePrivacyTab
-                user={user}
-                loading={loading}
-                error={error}
-                success={success}
-                setError={setError}
-                setSuccess={setSuccess}
-                onTabChange={handleProfileTabChange}
-                pendingChanges={pendingChanges}
-                setPendingChanges={setPendingChanges}
-                discardKey={discardKey}
-                saveKey={saveKey}
-                preloadedDataReqInfo={dataReqInfo}
-                preloadedScansPrivateByDefault={scansPrivateByDefault}
-                preloadedSharePubliclyListedByDefault={
-                  sharePubliclyListedByDefault
-                }
-              />
-            )}
-
-            {/* ===================== AI SETTINGS TAB ===================== */}
-            {activeProfileTabSafe === "ai" && (
-              <ProfileAiSettingsTab
-                user={user}
-                loading={loading}
-                error={error}
-                success={success}
-                setError={setError}
-                setSuccess={setSuccess}
-                onTabChange={handleProfileTabChange}
-                pendingChanges={pendingChanges}
-                setPendingChanges={setPendingChanges}
-              />
-            )}
+            </div>
           </div>
-          {/* End Main Content Area */}
+
+          {/* Desktop: Vertical sidebar. self-start is required for sticky to work in a flex row.
+                top offset grows by --vr-banner-h (site-notifications.tsx) and
+                --vr-imp-banner-h (admin/impersonation-banner.tsx) when either banner is
+                showing, since the fixed Header above shifts down to stay below them too. */}
+          <nav
+            aria-label="Account settings sections"
+            className="hidden lg:flex flex-col gap-5 sticky top-[calc(5rem+var(--vr-banner-h,0px)+var(--vr-imp-banner-h,0px))] self-start transition-[top] duration-300"
+          >
+            {TAB_GROUPS.map((group) => (
+              <div key={group.label} className="flex flex-col gap-0.5">
+                <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+                  {group.label}
+                </p>
+                {group.tabs.map((tab) => (
+                  <a
+                    key={tab.id}
+                    href={`/profile?tab=${tab.id}`}
+                    onClick={(e) => {
+                      if (!e.ctrlKey && !e.metaKey) {
+                        e.preventDefault();
+                        handleProfileTabChange(tab.id);
+                      }
+                    }}
+                    // a11y (SC 4.1.2): the mobile tab list already marks the
+                    // active entry; the desktop sidebar carried the state in
+                    // colour and weight only.
+                    aria-current={
+                      activeProfileTabSafe === tab.id ? "page" : undefined
+                    }
+                    className={cn(
+                      "flex items-center gap-2.5 px-3 py-2.5 text-sm rounded-lg transition-colors",
+                      activeProfileTabSafe === tab.id
+                        ? "bg-primary/10 text-primary font-medium"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+                    )}
+                  >
+                    {tab.icon}
+                    <span>{tab.label}</span>
+                  </a>
+                ))}
+              </div>
+            ))}
+          </nav>
+        </aside>
+
+        {/* Main Content Area. The sidebar above is static, so only this
+              column waits: `!user` here is unreachable once showSkeleton is
+              false (the branch above returns), and is written out so the tabs
+              below narrow to a non-null account. */}
+        <div {...tourAnchor("profilePanel")} className="flex-1 min-w-0">
+          {showSkeleton || !user ? (
+            <ProfileDataSkeleton />
+          ) : (
+            <>
+              {/* ===================== GENERAL TAB ===================== */}
+              {activeProfileTabSafe === "general" && (
+                <ProfileGeneralTab
+                  user={user}
+                  loading={loading}
+                  error={error}
+                  success={success}
+                  setError={setError}
+                  setSuccess={setSuccess}
+                  onTabChange={handleProfileTabChange}
+                  pendingChanges={pendingChanges}
+                  setPendingChanges={setPendingChanges}
+                  discardKey={discardKey}
+                  onAvatarCrop={handleCroppedAvatar}
+                  onSetCropDialog={(open, src) => {
+                    setCropDialogOpen(open);
+                    setCropImageSrc(src);
+                  }}
+                />
+              )}
+
+              {/* ===================== SOCIAL TAB ===================== */}
+              {activeProfileTabSafe === "social" && (
+                <ProfileSocialTab
+                  user={user}
+                  loading={loading}
+                  error={error}
+                  success={success}
+                  setError={setError}
+                  setSuccess={setSuccess}
+                  // Lets a disconnect update this page's `user` in place
+                  // instead of reloading the document, which used to throw
+                  // away the success banner it had just set.
+                  onUserPatch={patchUser}
+                  onTabChange={handleProfileTabChange}
+                  pendingChanges={pendingChanges}
+                  setPendingChanges={setPendingChanges}
+                />
+              )}
+
+              {/* ===================== BILLING TAB ===================== */}
+              {activeProfileTabSafe === "billing" && (
+                <ProfileBillingTab
+                  user={user}
+                  loading={loading}
+                  error={error}
+                  success={success}
+                  setError={setError}
+                  setSuccess={setSuccess}
+                  onTabChange={handleProfileTabChange}
+                  pendingChanges={pendingChanges}
+                  setPendingChanges={setPendingChanges}
+                  preloadedBillingInfo={billingInfo}
+                />
+              )}
+
+              {/* ===================== SECURITY TAB ===================== */}
+              {activeProfileTabSafe === "security" && (
+                <ProfileSecurityTab
+                  user={user}
+                  loading={loading}
+                  error={error}
+                  success={success}
+                  setError={setError}
+                  setSuccess={setSuccess}
+                  onTabChange={handleProfileTabChange}
+                  pendingChanges={pendingChanges}
+                  setPendingChanges={setPendingChanges}
+                  onUserPatch={patchUser}
+                />
+              )}
+
+              {/* ===================== DEVELOPER TAB ===================== */}
+              {activeProfileTabSafe === "developer" && (
+                <ProfileDeveloperTab
+                  user={user}
+                  loading={loading}
+                  error={error}
+                  success={success}
+                  setError={setError}
+                  setSuccess={setSuccess}
+                  onTabChange={handleProfileTabChange}
+                  pendingChanges={pendingChanges}
+                  setPendingChanges={setPendingChanges}
+                  preloadedApiKeys={apiKeys}
+                  preloadedWebhooks={webhooks}
+                  preloadedSchedules={schedules}
+                  setApiKeys={setApiKeys}
+                  setWebhooks={setWebhooks}
+                  setSchedules={setSchedules}
+                />
+              )}
+
+              {/* ===================== NOTIFICATIONS TAB ===================== */}
+              {activeProfileTabSafe === "notifications" && (
+                <ProfileNotificationsTab
+                  user={user}
+                  loading={loading}
+                  error={error}
+                  success={success}
+                  setError={setError}
+                  setSuccess={setSuccess}
+                  onTabChange={handleProfileTabChange}
+                  pendingChanges={pendingChanges}
+                  setPendingChanges={setPendingChanges}
+                  discardKey={discardKey}
+                  saveKey={saveKey}
+                  preloadedNotifPrefs={notifPrefs}
+                  preloadedDigestEmailEnabled={digestEmailEnabled}
+                />
+              )}
+
+              {/* ===================== PRIVACY TAB ===================== */}
+              {activeProfileTabSafe === "privacy" && (
+                <ProfilePrivacyTab
+                  user={user}
+                  loading={loading}
+                  error={error}
+                  success={success}
+                  setError={setError}
+                  setSuccess={setSuccess}
+                  onTabChange={handleProfileTabChange}
+                  pendingChanges={pendingChanges}
+                  setPendingChanges={setPendingChanges}
+                  discardKey={discardKey}
+                  saveKey={saveKey}
+                  preloadedDataReqInfo={dataReqInfo}
+                  preloadedScansPrivateByDefault={scansPrivateByDefault}
+                  preloadedSharePubliclyListedByDefault={
+                    sharePubliclyListedByDefault
+                  }
+                />
+              )}
+
+              {/* ===================== AI SETTINGS TAB ===================== */}
+              {activeProfileTabSafe === "ai" && (
+                <ProfileAiSettingsTab
+                  user={user}
+                  loading={loading}
+                  error={error}
+                  success={success}
+                  setError={setError}
+                  setSuccess={setSuccess}
+                  onTabChange={handleProfileTabChange}
+                  pendingChanges={pendingChanges}
+                  setPendingChanges={setPendingChanges}
+                />
+              )}
+            </>
+          )}
         </div>
-        {/* End Two-column layout */}
+        {/* End Main Content Area */}
+      </div>
+      {/* End Two-column layout */}
 
-        {/* Bottom spacer for the floating save bar, plus the cookie notice
+      {/* Bottom spacer for the floating save bar, plus the cookie notice
             underneath it when that is showing. */}
-        {hasPendingChanges && (
-          <div className="h-[calc(5rem+var(--vr-cookie-h,0px))]" />
-        )}
-      </main>
+      {hasPendingChanges && (
+        <div className="h-[calc(5rem+var(--vr-cookie-h,0px))]" />
+      )}
 
-      {/* Floating Save Bar */}
+      {/* Floating Save Bar. Fixed-position, so it is not a flex item of the
+          shell's main and the column gap above never sees it. */}
       {hasPendingChanges && (
         <div
           // Sits above the cookie notice rather than under it. That bar is
@@ -1117,8 +1172,6 @@ function ProfileContent() {
         confirmText="Save All Changes"
       />
 
-      <Footer />
-
       <ImageCropDialog
         open={cropDialogOpen}
         imageSrc={cropImageSrc}
@@ -1129,6 +1182,6 @@ function ProfileContent() {
         onCrop={handleCroppedAvatar}
         saving={uploadingAvatar}
       />
-    </div>
+    </AppPageShell>
   );
 }

@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -86,112 +87,128 @@ export function GithubScanResultModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* overflow-x-hidden, not overflow-hidden: the shorthand also cancelled
-          DialogContent's own overflow-y-auto, so on a short viewport the
-          wrapped stat row and the two footnote paragraphs below it were cut
-          off with no way to scroll to them. The x axis still clips, which is
-          what keeps the full-bleed rail inside the rounded corners. */}
-      <DialogContent className="overflow-x-hidden p-0 sm:max-w-lg">
+      {/* The shell tier: the panel clips (so the full-bleed rail stays inside
+          the rounded corners) and the body below scrolls, which is what keeps
+          the wrapped stat row and the two footnote paragraphs reachable on a
+          short viewport. */}
+      <DialogContent variant="shell" size="md">
         {loading ? (
-          <div className="flex items-start gap-3 p-6">
-            <Loader2
-              aria-hidden
-              className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-primary"
-            />
-            <DialogHeader className="min-w-0 text-left">
-              <DialogTitle>Scanning {repoFullName}</DialogTitle>
-              <DialogDescription>
-                Running pattern-based secret detection and an AI code review
-                over the repo&apos;s source. Larger repos can take up to a
-                minute.
-              </DialogDescription>
-            </DialogHeader>
-          </div>
+          // border-b-0: the header band is the only band in this state, so its
+          // divider would land a hairline above the panel's own edge.
+          <DialogHeader className="border-b-0">
+            {/* The repo path is the only unbounded part of this title, so
+                it is the part that truncates: an 80-character owner/name
+                used to widen the dialog header until it overflowed. */}
+            <DialogTitle className="flex min-w-0 items-center gap-1.5">
+              <Loader2
+                aria-hidden
+                className="h-4 w-4 shrink-0 animate-spin text-primary"
+              />
+              <span className="shrink-0">Scanning</span>
+              <span className="truncate" title={repoFullName ?? undefined}>
+                {repoFullName}
+              </span>
+            </DialogTitle>
+            <DialogDescription>
+              Running pattern-based secret detection and an AI code review over
+              the repo&apos;s source. Larger repos can take up to a minute.
+            </DialogDescription>
+          </DialogHeader>
         ) : error ? (
-          <div className="p-6">
-            <DialogHeader className="text-left">
-              <DialogTitle className="flex items-center gap-2">
-                <AlertTriangle
-                  className="h-5 w-5 text-destructive"
-                  aria-hidden="true"
-                />
-                Scan failed
-              </DialogTitle>
-              <DialogDescription>{error}</DialogDescription>
-            </DialogHeader>
-          </div>
+          <DialogHeader className="border-b-0">
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle
+                className="h-5 w-5 text-destructive"
+                aria-hidden="true"
+              />
+              Scan failed
+            </DialogTitle>
+            <DialogDescription>{error}</DialogDescription>
+          </DialogHeader>
         ) : outcome ? (
           <>
             <DialogHeader className="sr-only">
               <DialogTitle>{headline}</DialogTitle>
               <DialogDescription>{detail}</DialogDescription>
             </DialogHeader>
-            {/* Mirrors AiVerifyResultModal's card anatomy so this reads as
+            {/* p-0: this body is full-bleed by design (the severity rail runs
+                to the panel edge and the stat row is ruled off edge to edge),
+                so the band's own padding would inset all of it. */}
+            <DialogBody className="p-0">
+              {/* Mirrors AiVerifyResultModal's card anatomy so this reads as
                 the same kind of result, not a different component. */}
-            <div className="relative">
-              <span
-                aria-hidden
-                className={cn("absolute inset-y-0 left-0 w-1", railClass)}
-              />
-              <div className="grid grid-cols-1 gap-5 py-4 pl-5 pr-4 sm:py-5 sm:pl-6 sm:pr-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-6">
-                <div className="flex flex-col gap-1.5">
-                  <h2
-                    className={cn(
-                      "text-base font-semibold leading-tight sm:text-lg",
-                      textClass,
-                    )}
-                  >
-                    {headline}
-                  </h2>
-                  <p className="text-sm leading-relaxed text-muted-foreground">
-                    {detail}
-                  </p>
+              <div className="relative">
+                <span
+                  aria-hidden
+                  className={cn("absolute inset-y-0 left-0 w-1", railClass)}
+                />
+                <div className="grid grid-cols-1 gap-5 py-4 pl-5 pr-4 sm:py-5 sm:pl-6 sm:pr-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-6">
+                  <div className="flex flex-col gap-1.5">
+                    <h2
+                      className={cn(
+                        "text-base font-semibold leading-tight sm:text-lg",
+                        textClass,
+                      )}
+                    >
+                      {headline}
+                    </h2>
+                    <p className="text-sm leading-relaxed text-muted-foreground">
+                      {detail}
+                    </p>
+                  </div>
+                  {findings.length > 0 && (
+                    <SeverityDistribution counts={counts} />
+                  )}
                 </div>
-                {findings.length > 0 && (
-                  <SeverityDistribution counts={counts} />
-                )}
               </div>
-            </div>
 
-            <div className="flex flex-wrap items-stretch divide-x divide-border border-t border-border bg-muted/30">
-              <Stat
-                label="Files scanned"
-                value={String(outcome.filesScanned)}
-                icon={FileCode2}
-                tone="muted"
-              />
-              <Stat
-                label="Branch"
-                value={outcome.ref || "default"}
-                icon={GitBranch}
-                tone="muted"
-              />
-              <Stat
-                label="AI review"
-                value={
-                  outcome.aiReviewSkipped
-                    ? "Skipped"
-                    : `${outcome.aiTokensUsed.toLocaleString()} tokens`
-                }
-                icon={Sparkles}
-                tone={outcome.aiReviewSkipped ? "orange" : "primary"}
-              />
-            </div>
+              <div className="flex flex-wrap items-stretch divide-x divide-border border-t border-border bg-muted/30">
+                <Stat
+                  label="Files scanned"
+                  value={String(outcome.filesScanned)}
+                  icon={FileCode2}
+                  tone="muted"
+                />
+                <Stat
+                  label="Branch"
+                  value={outcome.ref || "default"}
+                  icon={GitBranch}
+                  tone="muted"
+                />
+                <Stat
+                  label="AI review"
+                  value={
+                    outcome.aiReviewSkipped
+                      ? "Skipped"
+                      : `${outcome.aiTokensUsed.toLocaleString()} tokens`
+                  }
+                  icon={Sparkles}
+                  tone={outcome.aiReviewSkipped ? "orange" : "primary"}
+                />
+              </div>
 
-            {outcome.aiReviewSkipped && (
-              <p className="px-6 py-3 text-xs text-muted-foreground">
-                AI review didn&apos;t run for this scan: no AI endpoint is
-                configured (yours or VulnRadar&apos;s). Pattern-based secret
-                detection still ran fully.
-              </p>
-            )}
-            {outcome.filesSkippedByCaps > 0 && (
-              <p className="px-6 py-3 text-xs text-muted-foreground">
-                {outcome.filesSkippedByCaps} file
-                {outcome.filesSkippedByCaps === 1 ? "" : "s"} skipped to stay
-                within the scan size limit.
-              </p>
-            )}
+              {/* Two separate caveats. Stacked bare they ran together as one
+                paragraph whenever both fired, so they are ruled off from the
+                stat row and from each other. */}
+              {(outcome.aiReviewSkipped || outcome.filesSkippedByCaps > 0) && (
+                <div className="divide-y divide-border border-t border-border">
+                  {outcome.aiReviewSkipped && (
+                    <p className="px-6 py-3 text-xs text-muted-foreground">
+                      AI review didn&apos;t run for this scan: no AI endpoint is
+                      configured (yours or VulnRadar&apos;s). Pattern-based
+                      secret detection still ran fully.
+                    </p>
+                  )}
+                  {outcome.filesSkippedByCaps > 0 && (
+                    <p className="px-6 py-3 text-xs text-muted-foreground">
+                      {outcome.filesSkippedByCaps} file
+                      {outcome.filesSkippedByCaps === 1 ? "" : "s"} skipped to
+                      stay within the scan size limit.
+                    </p>
+                  )}
+                </div>
+              )}
+            </DialogBody>
           </>
         ) : null}
       </DialogContent>

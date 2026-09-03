@@ -84,14 +84,23 @@ export function ImpersonationBanner() {
     <div
       ref={bannerRef}
       role="alert"
-      /* flex-wrap + min-w-0 + truncate: at 375px the unwrapped row measured
-         wider than the viewport, and justify-center split the overflow both
-         ways, so the page scrolled horizontally on every route while
-         impersonating and the Stop button sat partly off the right edge. */
-      className="fixed top-0 left-0 right-0 z-60 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 bg-amber-500 px-4 py-2 text-sm font-medium text-amber-950"
+      /* flex-wrap + min-w-0: at 375px the unwrapped row measured wider than
+         the viewport, and justify-center split the overflow both ways, so the
+         page scrolled horizontally on every route while impersonating and the
+         Stop button sat partly off the right edge. The variable part is
+         bounded by the max-w-[45vw] cap on the email itself, so the "Viewing
+         as" wrapper no longer nowraps: it is our own two words and had no
+         business being the thing an ellipsis lands on. */
+      /* --warning, not amber-500. This bar is the loudest surface in the
+         product and it was painted from the raw Tailwind palette, so it was
+         the one alarm colour in the app that did not move when the theme
+         did. --warning is the same amber in both themes and
+         --primary-foreground is near-black in both, which is what this bar
+         needs for contrast either way. */
+      className="fixed top-0 left-0 right-0 z-60 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 bg-[hsl(var(--warning))] px-4 py-2 text-sm font-medium text-[hsl(var(--primary-foreground))]"
     >
       <UserCog className="h-4 w-4 shrink-0" aria-hidden="true" />
-      <span className="min-w-0 truncate">
+      <span className="min-w-0">
         Viewing as{" "}
         <span className="font-semibold max-w-[45vw] inline-block align-bottom truncate">
           {me.email}
@@ -101,13 +110,13 @@ export function ImpersonationBanner() {
         type="button"
         onClick={handleStop}
         disabled={stopping}
-        className="shrink-0 inline-flex items-center gap-1.5 rounded-md bg-amber-950/10 px-2.5 py-1 font-semibold hover:bg-amber-950/20 disabled:opacity-60"
+        className="shrink-0 inline-flex items-center gap-1.5 rounded-md bg-black/10 px-2.5 py-1 font-semibold hover:bg-black/20 disabled:opacity-60"
       >
         {stopping && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
         Stop impersonating
       </button>
       {stopError && (
-        <span className="inline-flex items-center gap-1 text-amber-950/80 shrink-0">
+        <span className="inline-flex items-center gap-1 opacity-80 shrink-0">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           Couldn&apos;t stop, try again
         </span>

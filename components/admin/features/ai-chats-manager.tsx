@@ -14,7 +14,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -25,12 +24,15 @@ import {
 } from "@/components/ui/table";
 import { PaginationControl } from "@/components/ui/pagination-control";
 import { cn } from "@/lib/ui/utils";
+import { pluralize } from "@/lib/ui/plural";
 import {
+  AdminPanelHeader,
   DataTableSkeleton,
   EmptyState,
   StatBar,
   StatBarSkeleton,
   SortableHeader,
+  StatusPill,
   TableScrollArea,
   UserAvatar,
   nextSortDirection,
@@ -150,7 +152,7 @@ export function AIChatsManager() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold tracking-tight">
           AI Conversations
@@ -166,11 +168,15 @@ export function AIChatsManager() {
       ) : (
         <StatBar
           items={[
+            // Signed-in vs guest is an identity split, not a verdict, so
+            // these carry chart hues rather than the ok/warn palette. "All
+            // (this page)" was tone "success", which said a raw count of
+            // stored conversations was good news.
             {
               label: "All (this page)",
               value: conversations.length,
               icon: Users,
-              tone: "success",
+              tone: "primary",
               onClick: () => setIdentityFilter("all"),
               active: identityFilter === "all",
             },
@@ -178,7 +184,7 @@ export function AIChatsManager() {
               label: "Signed-in",
               value: signedInCount,
               icon: User,
-              tone: "primary",
+              tone: "purple",
               onClick: () => setIdentityFilter("signed-in"),
               active: identityFilter === "signed-in",
             },
@@ -194,71 +200,62 @@ export function AIChatsManager() {
               label: "Messages (this page)",
               value: messageCountOnPage,
               icon: MessageCircle,
-              tone: "purple",
+              tone: "orange",
             },
           ]}
         />
       )}
 
-      <Card className="border-border/50 bg-card/50 overflow-hidden">
-        <CardHeader className="pb-4 pt-5 px-5">
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="p-2 rounded-lg bg-primary/10 shrink-0">
-                  <MessageCircle
-                    className="h-4 w-4 text-primary"
-                    aria-hidden="true"
-                  />
-                </div>
-                <div className="min-w-0">
-                  <CardTitle className="text-base font-semibold truncate">
-                    Conversations
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                    {total} conversation{total !== 1 ? "s" : ""} stored
-                  </p>
-                </div>
-              </div>
-              <Badge
-                variant="secondary"
-                className="text-xs font-medium h-6 px-2.5 shrink-0"
-              >
-                {total.toLocaleString()} total
-              </Badge>
+      <div className="overflow-hidden rounded-xl border border-border/50 bg-card/50">
+        <AdminPanelHeader
+          icon={MessageCircle}
+          title="Conversations"
+          // The subtitle used to be "{total} conversations stored" beside a
+          // badge reading "{total.toLocaleString()} total": the same number,
+          // twice, formatted two ways, so at 1234 one read 1234 and the other
+          // 1,234. The badge keeps the number and the subtitle says the thing
+          // the number does not.
+          subtitle="Search and sort apply to the page currently loaded, not the whole table."
+          status={
+            <Badge
+              variant="secondary"
+              className="text-[11px] font-medium h-5 px-2 shrink-0 tabular-nums"
+            >
+              {total.toLocaleString()}
+            </Badge>
+          }
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="relative flex-1">
+              <Search
+                className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
+                aria-hidden="true"
+              />
+              <Input
+                placeholder="Search this page by name, email, or session id..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                aria-label="Search conversations on this page"
+                className="pl-9 h-9 bg-background/50 border-border/40 focus:border-primary/50"
+              />
             </div>
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-              <div className="relative flex-1">
-                <Search
-                  className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
-                  aria-hidden="true"
-                />
-                <Input
-                  placeholder="Search this page by name, email, or session id..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  aria-label="Search conversations on this page"
-                  className="pl-9 h-10 bg-background/50 border-border/40 focus:border-primary/50"
-                />
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-10 px-3 gap-2 border-border/40 shrink-0"
-                onClick={() => fetchConversations(page, pageSize)}
-                aria-label="Refresh conversations"
-              >
-                <RefreshCw
-                  className={cn("h-4 w-4", loading && "animate-spin")}
-                  aria-hidden="true"
-                />
-                <span className="hidden sm:inline">Refresh</span>
-              </Button>
-            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 px-3 gap-2 border-border/40 shrink-0"
+              onClick={() => fetchConversations(page, pageSize)}
+              aria-label="Refresh conversations"
+            >
+              <RefreshCw
+                className={cn("h-4 w-4", loading && "animate-spin")}
+                aria-hidden="true"
+              />
+              <span className="hidden sm:inline">Refresh</span>
+            </Button>
           </div>
-        </CardHeader>
+        </AdminPanelHeader>
 
-        <CardContent className="p-0">
+        <div>
           {loading ? (
             <div className="p-4 sm:p-5">
               <DataTableSkeleton rows={6} />
@@ -286,12 +283,14 @@ export function AIChatsManager() {
                         <TableHead className="px-5 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                           User
                         </TableHead>
-                        <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                          Session
-                        </TableHead>
-                        <TableHead className="px-4 h-10">
+                        {/* The session id had a whole column of prime
+                            horizontal space to itself. Nobody scans a UUID:
+                            it is there to be searched and copied, which it
+                            still is as a sub-line of the user cell. */}
+                        <TableHead className="px-4 h-10 text-right">
                           <SortableHeader
                             label="Messages"
+                            align="right"
                             active={sortColumn === "messages"}
                             direction={
                               sortColumn === "messages" ? sortDirection : null
@@ -339,8 +338,14 @@ export function AIChatsManager() {
                                   />
                                 </div>
                               )}
+                              {/* Guest is keyed off userId, the same field the
+                                  Signed-in / Guests filters and the strip
+                                  counts use. The badge used to render only
+                                  when there was neither a name nor an email,
+                                  so the row could disagree with the filter
+                                  that produced it. */}
                               <div className="min-w-0">
-                                {conv.userName || conv.userEmail ? (
+                                {conv.userId !== null ? (
                                   <>
                                     <p className="text-sm font-medium truncate">
                                       {conv.userName || conv.userEmail}
@@ -352,27 +357,25 @@ export function AIChatsManager() {
                                     )}
                                   </>
                                 ) : (
-                                  <Badge
-                                    variant="outline"
-                                    className="text-[10px] px-1.5 py-0 font-normal text-muted-foreground border-border/50"
-                                  >
+                                  <StatusPill tone="neutral" icon={UserX}>
                                     Guest
-                                  </Badge>
+                                  </StatusPill>
                                 )}
+                                <p
+                                  className="text-[11px] font-mono text-muted-foreground truncate max-w-[24ch]"
+                                  title={conv.sessionId}
+                                >
+                                  {conv.sessionId}
+                                </p>
                               </div>
                             </div>
                           </TableCell>
-                          <TableCell className="px-4 py-3">
-                            <span className="text-xs font-mono text-muted-foreground truncate block max-w-40">
-                              {conv.sessionId}
-                            </span>
-                          </TableCell>
-                          <TableCell className="px-4 py-3">
-                            <span className="text-sm font-medium text-foreground">
+                          <TableCell className="px-4 py-3 text-right">
+                            <span className="text-sm font-medium tabular-nums text-foreground">
                               {conv.messageCount}
                             </span>
                           </TableCell>
-                          <TableCell className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">
+                          <TableCell className="px-4 py-3 text-sm tabular-nums text-muted-foreground whitespace-nowrap">
                             {formatRelativeTime(new Date(conv.lastMessageAt))}
                           </TableCell>
                           <TableCell className="px-5 py-3">
@@ -425,12 +428,19 @@ export function AIChatsManager() {
                     )}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">
-                        {conv.userName || conv.userEmail || "Guest"}
+                        {conv.userId !== null
+                          ? conv.userName || conv.userEmail
+                          : "Guest"}
                       </p>
-                      <div className="flex items-center gap-3 mt-0.5 text-[11px] text-muted-foreground">
-                        <span>{conv.messageCount} messages</span>
-                        <span className="text-border">|</span>
-                        <span>
+                      {/* Was a literal ASCII pipe painted with a border token
+                          used as a text colour. Every sibling list in the
+                          panel separates with a middot. */}
+                      <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-muted-foreground">
+                        <span className="tabular-nums">
+                          {pluralize(conv.messageCount, "message")}
+                        </span>
+                        <span aria-hidden="true">&middot;</span>
+                        <span className="tabular-nums">
                           {formatRelativeTime(new Date(conv.lastMessageAt))}
                         </span>
                       </div>
@@ -460,8 +470,8 @@ export function AIChatsManager() {
               )}
             </>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }

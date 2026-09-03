@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -174,7 +175,8 @@ function TeamPickerRow({
       disabled={disabled}
       onClick={onSelect}
       className={cn(
-        "flex w-full items-center gap-3 rounded-md border px-3 py-2.5 text-left transition-colors",
+        // items-start, because the meta line below wraps now.
+        "flex w-full items-start gap-3 rounded-md border px-3 py-2.5 text-left transition-colors",
         "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
         "disabled:cursor-not-allowed disabled:opacity-60",
         selected
@@ -196,7 +198,11 @@ function TeamPickerRow({
         <span className="block truncate text-sm font-medium text-foreground">
           {label}
         </span>
-        <span className="block truncate text-xs text-muted-foreground">
+        {/* `meta` is a whole sentence we wrote ("Shared already. Your role
+            there can no longer manage scans, so you cannot remove it."), so
+            one clipped line left only the first few words. It wraps; `label`
+            above keeps truncating because that one is a team name. */}
+        <span className="block text-xs leading-snug text-muted-foreground">
           {meta}
         </span>
       </span>
@@ -1252,28 +1258,25 @@ export function ScanActionsMenu({
         />
       )}
 
-      {/* Team picker. Replaces the row-per-team the menu used to render.
-          Built on the same sectioned shell as ShareModal (full-bleed panel,
-          each band carrying its own padding) rather than the default p-6
-          dialog: these two are the product's pair of "share this scan"
-          modals and were reading as two unrelated controls. */}
+      {/* Team picker. Replaces the row-per-team the menu used to render. Same
+          shell tier and width rung as ShareModal: these two are the product's
+          pair of "share this scan" modals and were reading as two unrelated
+          controls. */}
       <Dialog open={teamModalOpen} onOpenChange={setTeamModalOpen}>
-        <DialogContent className="sm:max-w-md p-0 gap-0 flex flex-col max-h-[85vh] overflow-hidden">
-          <DialogHeader className="shrink-0 border-b border-border/50 p-5 pb-4">
+        <DialogContent variant="shell" size="sm">
+          <DialogHeader>
             <div className="flex items-center gap-2.5">
               <Users aria-hidden className="h-4 w-4 shrink-0 text-primary" />
-              <DialogTitle className="text-base font-semibold">
-                Share with a team
-              </DialogTitle>
+              <DialogTitle>Share with a team</DialogTitle>
             </div>
-            <DialogDescription className="text-sm text-muted-foreground">
+            <DialogDescription>
               Pick as many teams as you like. Everyone on a team you tick can
               open this scan from their own history. Only teams where your role
               can manage scans are listed.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-5">
+          <DialogBody>
             {teamLoading ? (
               <div role="status" className="flex flex-col gap-1.5">
                 <span className="sr-only">
@@ -1375,10 +1378,10 @@ export function ScanActionsMenu({
                 ))}
               </div>
             )}
-          </div>
+          </DialogBody>
 
-          <DialogFooter className="shrink-0 border-t border-border/50 p-5 pt-4 sm:items-center sm:justify-between">
-            <p className="mt-2 text-xs text-muted-foreground sm:mt-0">
+          <DialogFooter className="sm:items-center sm:justify-between">
+            <p className="text-xs text-muted-foreground">
               Every tick saves straight away.
             </p>
             <Button
@@ -1409,8 +1412,10 @@ export function ScanActionsMenu({
         summary={summaryText}
       />
 
+      {/* Compact: two sentences and a pair of buttons. Bands here would be
+          three dividers around nothing. */}
       <Dialog open={viewOpen} onOpenChange={setViewOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent size="sm">
           <DialogHeader>
             <DialogTitle>Live browser session</DialogTitle>
             <DialogDescription>
@@ -1442,8 +1447,10 @@ export function ScanActionsMenu({
         </DialogContent>
       </Dialog>
 
+      {/* Shell: this one has a form field, so the submit buttons stay pinned
+          below it rather than scrolling away with a long error message. */}
       <Dialog open={githubOpen} onOpenChange={setGithubOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent variant="shell" size="sm">
           <DialogHeader>
             <DialogTitle>File as GitHub issue</DialogTitle>
             <DialogDescription>
@@ -1453,39 +1460,41 @@ export function ScanActionsMenu({
             </DialogDescription>
           </DialogHeader>
 
-          {githubResult ? (
-            <div className="rounded-md border border-[hsl(var(--success))]/30 bg-[hsl(var(--success))]/10 px-3 py-2.5 text-sm">
-              <p className="text-foreground">Issue created.</p>
-              <a
-                href={safeHref(githubResult.url)}
-                target="_blank"
-                rel="noreferrer"
-                className="text-primary hover:underline break-all"
-              >
-                {githubResult.url}
-              </a>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <label
-                htmlFor="gh-issue-repo"
-                className="text-sm font-medium text-foreground"
-              >
-                Repository
-              </label>
-              <Input
-                id="gh-issue-repo"
-                value={githubRepo}
-                onChange={(e) => setGithubRepo(e.target.value)}
-                placeholder="owner/name"
-                autoComplete="off"
-                spellCheck={false}
-              />
-              {githubError && (
-                <p className="text-sm text-destructive">{githubError}</p>
-              )}
-            </div>
-          )}
+          <DialogBody>
+            {githubResult ? (
+              <div className="rounded-md border border-[hsl(var(--success))]/30 bg-[hsl(var(--success))]/10 px-3 py-2.5 text-sm">
+                <p className="text-foreground">Issue created.</p>
+                <a
+                  href={safeHref(githubResult.url)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary hover:underline break-all"
+                >
+                  {githubResult.url}
+                </a>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <label
+                  htmlFor="gh-issue-repo"
+                  className="text-sm font-medium text-foreground"
+                >
+                  Repository
+                </label>
+                <Input
+                  id="gh-issue-repo"
+                  value={githubRepo}
+                  onChange={(e) => setGithubRepo(e.target.value)}
+                  placeholder="owner/name"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                {githubError && (
+                  <p className="text-sm text-destructive">{githubError}</p>
+                )}
+              </div>
+            )}
+          </DialogBody>
 
           <DialogFooter>
             {githubResult ? (

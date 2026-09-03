@@ -193,7 +193,7 @@ export function ProfileGeneralTab({
                 htmlFor="avatar-upload"
                 className="text-sm font-medium text-muted-foreground"
               >
-                Profile Picture
+                Profile picture
               </Label>
               <div className="flex items-center gap-4">
                 <div className="relative group">
@@ -434,8 +434,13 @@ export function ProfileGeneralTab({
         </div>
         <Card className="border-border/50 bg-card/50">
           <CardContent className="pt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            {/* No step count. This said "the eight-step tour" long after the
+                tour stopped being eight slides of prose, which is what a
+                number typed into copy about something that grows does. */}
             <p className="text-sm text-muted-foreground">
-              Replays the eight-step tour from the start on your dashboard.
+              Restarts the walkthrough from the beginning on your dashboard. It
+              highlights real controls and waits for you, and you can end it
+              from any step.
             </p>
             <Button
               variant="outline"

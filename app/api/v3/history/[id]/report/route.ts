@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { recordUsage } from "@/lib/api/api-keys";
 import { validateApiKey } from "@/lib/api/api-keys";
 import { checkRateLimit as checkApiKeyRateLimit } from "@/lib/api/api-keys";
+import { rateLimitedResponse } from "@/lib/api/rate-limit-response";
 import {
   hasApiKeyScope,
   apiKeyScopeErrorMessage,
@@ -113,10 +114,7 @@ export async function GET(
       keyData.dailyLimit,
     );
     if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { error: `Rate limit exceeded. Resets at ${rateLimit.resetsAt}` },
-        { status: 429 },
-      );
+      return rateLimitedResponse(rateLimit);
     }
     apiKeyId = keyData.keyId;
     authedUserId = keyData.userId;

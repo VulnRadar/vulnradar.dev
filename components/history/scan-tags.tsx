@@ -3,6 +3,7 @@
 import { useId, useState } from "react";
 import { Tag, Sparkles, Plus, X } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
+import { tourAnchor } from "@/lib/tour/anchors";
 import { CONFIG_MAX_TAG_LENGTH } from "@/lib/config/config-values";
 import type { ScanTag, TagMutationResult } from "./history-types";
 
@@ -127,7 +128,10 @@ export function ScanTags({
   }
 
   return (
-    <div className={cn("flex flex-wrap items-center gap-1", className)}>
+    <div
+      {...tourAnchor("historyTags")}
+      className={cn("flex flex-wrap items-center gap-1", className)}
+    >
       {tags.map((t) =>
         t.source === "auto" ? (
           <span

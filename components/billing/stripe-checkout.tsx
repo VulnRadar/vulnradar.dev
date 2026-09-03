@@ -8,41 +8,21 @@ import {
   useElements,
 } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
-import { Check, Loader2, AlertTriangle } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { ROUTES } from "@/lib/config/client-constants";
 import { useAuth } from "@/components/providers/auth-provider";
 import { createSubscription, confirmSubscription } from "@/app/actions/stripe";
 import { getPlanById } from "@/lib/billing/catalog";
 import { CHECKOUT_CONFIRM_BACKOFF_MS } from "./checkout-confirm";
+import {
+  CheckoutStatus,
+  PaymentFormSkeleton,
+  stripeAppearance,
+} from "./checkout-status";
 import { InlineAlert } from "@/components/shared/inline-alert";
-
-/** Mirrors the PaymentElement's own shape (tabs row, then card/email
- * fields) so there's no layout jump once Stripe's real form mounts. Only
- * shown for the brief window before the theme is known client-side. */
-function PaymentFormSkeleton() {
-  return (
-    <div className="space-y-5" role="status" aria-label="Loading payment form">
-      <div className="flex gap-2">
-        <Skeleton className="h-10 flex-1 rounded-md" />
-        <Skeleton className="h-10 flex-1 rounded-md" />
-        <Skeleton className="h-10 flex-1 rounded-md" />
-      </div>
-      <div className="space-y-3">
-        <Skeleton className="h-10 w-full rounded-md" />
-        <Skeleton className="h-10 w-full rounded-md" />
-        <div className="flex gap-3">
-          <Skeleton className="h-10 flex-1 rounded-md" />
-          <Skeleton className="h-10 flex-1 rounded-md" />
-        </div>
-      </div>
-      <Skeleton className="h-11 w-full rounded-md" />
-    </div>
-  );
-}
 
 const stripePromise = loadStripe(
   process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!,
@@ -110,83 +90,59 @@ function useConfirmSubscription(onSuccess?: () => void) {
 // three credit purchase screens do.
 function ConfirmingStatus() {
   return (
-    <div
-      className="flex flex-col items-center justify-center py-10 text-center"
-      role="status"
-      aria-live="polite"
-    >
-      <Loader2
-        className="h-7 w-7 animate-spin text-primary mb-4"
-        aria-hidden="true"
-      />
-      <h3 className="text-base font-semibold mb-1">
-        Payment taken. Switching your plan over
-      </h3>
-      <p className="text-sm text-muted-foreground mb-4 max-w-xs">
-        This usually lands in a few seconds. Your card has already been charged,
-        so it is safe to leave.
-      </p>
-      <Button
-        variant="ghost"
-        size="sm"
-        asChild
-        className="text-muted-foreground hover:text-foreground"
-      >
-        <Link href={ROUTES.DASHBOARD}>Go to the dashboard now</Link>
-      </Button>
-    </div>
+    <CheckoutStatus
+      tone="progress"
+      title="Payment taken. Switching your plan over"
+      description="This usually lands in a few seconds. Your card has already been charged, so it is safe to leave."
+      action={
+        <Button
+          variant="ghost"
+          size="sm"
+          asChild
+          className="text-muted-foreground hover:text-foreground"
+        >
+          <Link href={ROUTES.DASHBOARD}>Go to the dashboard now</Link>
+        </Button>
+      }
+    />
   );
 }
 
 function VerifiedStatus({ plan }: { plan: string }) {
   return (
-    <div
-      className="flex flex-col items-center justify-center py-10 text-center"
-      role="status"
-    >
-      <div className="w-14 h-14 rounded-full bg-[hsl(var(--success))]/10 flex items-center justify-center mb-5">
-        <Check
-          className="h-7 w-7 text-[hsl(var(--success))]"
-          aria-hidden="true"
-        />
-      </div>
-      <h3 className="text-xl font-semibold mb-2">You are subscribed</h3>
-      <p className="text-muted-foreground mb-6">
-        Your account is on{" "}
-        <span className="font-medium text-foreground">
-          {getPlanById(plan)?.name || plan}
-        </span>{" "}
-        now. The new scan limit applies immediately.
-      </p>
-      <Button size="lg" className="h-11 px-6 gap-2" asChild>
-        <Link href={ROUTES.DASHBOARD}>Start scanning</Link>
-      </Button>
-    </div>
+    <CheckoutStatus
+      tone="success"
+      title="You are subscribed"
+      description={
+        <>
+          Your account is on{" "}
+          <span className="font-medium text-foreground">
+            {getPlanById(plan)?.name || plan}
+          </span>{" "}
+          now. The new scan limit applies immediately.
+        </>
+      }
+      action={
+        <Button size="lg" className="h-11 px-6 gap-2" asChild>
+          <Link href={ROUTES.DASHBOARD}>Start scanning</Link>
+        </Button>
+      }
+    />
   );
 }
 
 function PendingStatus() {
   return (
-    <div
-      className="flex flex-col items-center justify-center py-10 text-center"
-      role="status"
-    >
-      <div className="w-14 h-14 rounded-full bg-[hsl(var(--warning))]/10 flex items-center justify-center mb-5">
-        <AlertTriangle
-          className="h-7 w-7 text-[hsl(var(--warning))]"
-          aria-hidden="true"
-        />
-      </div>
-      <h3 className="text-xl font-semibold mb-2">Still confirming</h3>
-      <p className="text-muted-foreground mb-6 max-w-sm">
-        Stripe took the payment, but we have not been able to confirm it yet.
-        This can happen with some payment methods. Refresh this page in a
-        minute, or check the dashboard.
-      </p>
-      <Button size="lg" className="h-11 px-6 gap-2" variant="outline" asChild>
-        <Link href={ROUTES.DASHBOARD}>Go to dashboard</Link>
-      </Button>
-    </div>
+    <CheckoutStatus
+      tone="warning"
+      title="Still confirming"
+      description="Stripe took the payment, but we have not been able to confirm it yet. This can happen with some payment methods. Refresh this page in a minute, or check the dashboard."
+      action={
+        <Button size="lg" className="h-11 px-6 gap-2" variant="outline" asChild>
+          <Link href={ROUTES.DASHBOARD}>Go to dashboard</Link>
+        </Button>
+      }
+    />
   );
 }
 
@@ -217,7 +173,13 @@ function CheckoutForm({
     const validateCard = async () => {
       const { error: submitError } = await elements.submit();
       if (submitError) {
-        setError(submitError.message ?? "Please check your payment details");
+        // Stripe almost always gives a specific message here; this fallback is
+        // for the rare case it does not, and it still has to name the failure
+        // and the fix rather than say "try again".
+        setError(
+          submitError.message ??
+            "Your card details did not validate. Check the card number, expiry date and CVC, then submit again. Nothing has been charged.",
+        );
         setIsProcessing(false);
         return false;
       }
@@ -225,7 +187,7 @@ function CheckoutForm({
     };
 
     // Validate the card BEFORE anything exists on Stripe's side, the way
-    // ai-credit-checkout.tsx does: creating the subscription first meant every
+    // credit-checkout.tsx does: creating the subscription first meant every
     // mistyped card number left an orphan incomplete subscription behind.
     //
     // Staff are the one exception, and the reason the old order existed: a
@@ -277,7 +239,10 @@ function CheckoutForm({
     });
 
     if (confirmError) {
-      setError(confirmError.message ?? "Payment failed");
+      setError(
+        confirmError.message ??
+          "Stripe could not take the payment and did not say why. Nothing has been charged. Submit again, or use a different card.",
+      );
       setIsProcessing(false);
       return;
     }
@@ -288,7 +253,12 @@ function CheckoutForm({
     ) {
       await run(subscription.subscriptionId);
     } else {
-      setError("Payment was not completed. Please try again.");
+      // Reached when the intent comes back in any other state (requires_action
+      // that the browser could not complete, canceled, still requiring a
+      // payment method). Nothing is captured in any of them.
+      setError(
+        "Your bank did not complete the payment, so nothing has been charged and your plan has not changed. Submit again, or use a different card.",
+      );
       setIsProcessing(false);
     }
   };
@@ -421,54 +391,11 @@ export function StripeCheckout({
   // wait for it rather than flashing the wrong-themed Stripe form.
   if (resolvedTheme === undefined) return <PaymentFormSkeleton />;
 
-  // Stripe renders in an iframe, so it cannot inherit our CSS variables. Mirror
-  // the two themes here instead of shipping a dark form onto a light page.
+  // Stripe renders in an iframe, so it cannot inherit our CSS variables.
+  // stripeAppearance() resolves them off the document root instead of keeping
+  // a hand-written second palette here; see checkout-status.tsx for why.
   const isDark = resolvedTheme === "dark";
-  const appearance = isDark
-    ? {
-        theme: "night" as const,
-        variables: {
-          colorPrimary: "hsl(213, 94%, 68%)",
-          colorBackground: "hsl(224, 18%, 9%)",
-          colorText: "hsl(210, 20%, 95%)",
-          colorDanger: "hsl(0, 91%, 71%)",
-          borderRadius: "8px",
-          fontFamily:
-            '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-        },
-        rules: {
-          ".Input": {
-            backgroundColor: "hsl(224, 18%, 12%)",
-            border: "1px solid hsl(224, 15%, 16%)",
-          },
-          ".Input:focus": {
-            border: "1px solid hsl(213, 94%, 68%)",
-            boxShadow: "0 0 0 1px hsl(213, 94%, 68%)",
-          },
-        },
-      }
-    : {
-        theme: "stripe" as const,
-        variables: {
-          colorPrimary: "hsl(213, 94%, 68%)",
-          colorBackground: "hsl(0, 0%, 100%)",
-          colorText: "hsl(220, 20%, 10%)",
-          colorDanger: "hsl(0, 84%, 60%)",
-          borderRadius: "8px",
-          fontFamily:
-            '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-        },
-        rules: {
-          ".Input": {
-            backgroundColor: "hsl(0, 0%, 100%)",
-            border: "1px solid hsl(220, 15%, 88%)",
-          },
-          ".Input:focus": {
-            border: "1px solid hsl(213, 94%, 68%)",
-            boxShadow: "0 0 0 1px hsl(213, 94%, 68%)",
-          },
-        },
-      };
+  const appearance = stripeAppearance(isDark);
 
   return (
     <Elements

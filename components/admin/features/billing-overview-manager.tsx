@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -18,10 +17,15 @@ import {
   Info,
   CreditCard,
 } from "lucide-react";
+// The tone-aware empty state, not the admin one. The admin EmptyState has no
+// tone, so "Couldn't load billing overview" (a failed request) and "No
+// accounts past due" (the best news this panel can carry) rendered as the
+// same grey box with a different sentence in it.
+import { EmptyState } from "@/components/shared/empty-state";
 import {
-  EmptyState,
   StatBar,
   StatBarSkeleton,
+  StatusPill,
   DataTableSkeleton,
   TableScrollArea,
   Toast,
@@ -80,6 +84,32 @@ function formatCents(cents: number): string {
   });
 }
 
+/** One geometry for both of this panel's tables. They were the only admin
+ *  tables passing no className at all, so they inherited ui/table.tsx's
+ *  h-12 / 14px sentence-case default while every sibling table renders a
+ *  h-10 uppercase micro-label head over px-4 py-3 cells. Billing read as a
+ *  different product bolted onto the panel purely because of this. */
+const TH = "px-4 h-10 text-[11px] font-semibold uppercase tracking-wider";
+const TH_RIGHT = `${TH} text-right`;
+const TD = "px-4 py-3";
+
+/**
+ * How overdue an account is, from the one date the endpoint gives us.
+ * Every row in the failed-payments table is past due, so a "past due" chip on
+ * all of them would be noise; what an operator needs is which of them Stripe
+ * has already stopped retrying. A period end in the past means the billing
+ * period it belongs to has closed with the invoice still unpaid.
+ */
+function pastDueState(periodEnd: string | null): {
+  tone: "crit" | "warn";
+  label: string;
+} {
+  if (!periodEnd) return { tone: "warn", label: "No period end" };
+  return new Date(periodEnd).getTime() < Date.now()
+    ? { tone: "crit", label: "Period ended" }
+    : { tone: "warn", label: "In retry" };
+}
+
 /**
  * Admin > Billing Overview. Aggregate MRR/plan-mix/failed-payment
  * reporting (AUDIT-010 admin-feature-gap) sourced from
@@ -120,46 +150,50 @@ export function BillingOverviewManager() {
     fetchOverview(true);
   }, [fetchOverview]);
 
+  const pastDue = data?.totals.pastDueUsers ?? 0;
+
   return (
-    <div className="space-y-6">
-      <Card className="border-border/50 bg-card/50 overflow-hidden">
-        <CardHeader className="pb-4 pt-5 px-5">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="p-2 rounded-lg bg-primary/10 shrink-0">
-                <Wallet className="h-4 w-4 text-primary" aria-hidden="true" />
-              </div>
-              <div className="min-w-0">
-                <CardTitle className="text-base font-semibold truncate">
-                  Billing Overview
-                </CardTitle>
-                <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                  MRR estimate, plan mix, and failed payments, computed from
-                  data already synced into this app. No live Stripe calls.
-                </p>
-              </div>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-10 px-3 gap-2 border-border/40 shrink-0"
-              onClick={() => fetchOverview(false)}
-              disabled={loading || refreshing}
-              aria-label="Refresh billing overview"
-            >
-              <RefreshCw
-                className={cn("h-4 w-4", refreshing && "animate-spin")}
-                aria-hidden="true"
-              />
-              <span className="hidden sm:inline">Refresh</span>
-            </Button>
-          </div>
-        </CardHeader>
-      </Card>
+    <div className="space-y-4">
+      {/* A heading and a live sentence, not a card. This was a whole <Card>
+          whose only content was an icon tile, a title, a subtitle and the
+          Refresh button: a 100px-tall header pretending to be a panel, sitting
+          above the panels it introduced. */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">
+            Billing overview
+          </h2>
+          <p className="max-w-prose text-sm text-muted-foreground">
+            {loading
+              ? "Reading plan mix and failed payments from locally synced data."
+              : pastDue > 0
+                ? `${pastDue} ${pastDue === 1 ? "account is" : "accounts are"} past due.`
+                : "No account is past due."}{" "}
+            Every number here comes from data already synced into this app, so
+            there are no live Stripe calls behind this page.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9 shrink-0 gap-2 px-3 border-border/40"
+          onClick={() => fetchOverview(false)}
+          disabled={loading || refreshing}
+          aria-label="Refresh billing overview"
+        >
+          <RefreshCw
+            className={cn("h-4 w-4", refreshing && "animate-spin")}
+            aria-hidden="true"
+          />
+          <span className="hidden sm:inline">Refresh</span>
+        </Button>
+      </div>
 
       {!loading && data && !data.billingEnabled && (
-        <div className="flex items-start gap-3 p-4 rounded-xl border border-border/50 bg-muted/20">
-          <div className="p-2 rounded-lg bg-muted shrink-0">
+        // rounded-lg, matching the sibling callout in mass-email-manager. A
+        // callout is a small card, not a panel.
+        <div className="flex items-start gap-3 p-4 rounded-lg border border-border/50 bg-muted/20">
+          <div className="p-2 rounded-md bg-muted shrink-0">
             <Info
               className="h-4 w-4 text-muted-foreground"
               aria-hidden="true"
@@ -211,7 +245,7 @@ export function BillingOverviewManager() {
         )
       )}
 
-      <Card className="border-border/50 bg-card/50 overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-border/50 bg-card/50">
         <div className="border-b border-border/40 bg-muted/30 p-4 sm:p-5">
           <h3 className="text-sm font-semibold text-foreground">Plan mix</h3>
           <p className="text-xs text-muted-foreground mt-1">
@@ -221,15 +255,19 @@ export function BillingOverviewManager() {
             tier&apos;s headcount but not toward paying users or MRR.
           </p>
         </div>
-        <CardContent className="p-0">
+        <div>
           {loading ? (
             <div className="p-4 sm:p-5">
               <DataTableSkeleton rows={4} />
             </div>
           ) : !data ? (
             // Without this the failed fetch rendered a header-only table,
-            // which reads as "no plans" rather than "nothing loaded".
+            // which reads as "no plans" rather than "nothing loaded". The
+            // warning tone is what separates it from a genuinely empty list.
             <EmptyState
+              variant="inline"
+              size="sm"
+              tone="warning"
               icon={AlertTriangle}
               title="Couldn't load billing overview"
               description="The request failed. Use Refresh above to try again."
@@ -245,33 +283,56 @@ export function BillingOverviewManager() {
                     them, which is what the min-w exists to prevent. */}
                 <TableScrollArea maxHeight="28rem">
                   <Table className="min-w-[560px]">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Plan</TableHead>
-                        <TableHead className="text-right">Price / mo</TableHead>
-                        <TableHead className="text-right">Users</TableHead>
-                        <TableHead className="text-right">Paying</TableHead>
-                        <TableHead className="text-right">MRR</TableHead>
+                    <TableHeader className="bg-muted/40">
+                      <TableRow className="border-y border-border/50 hover:bg-transparent">
+                        <TableHead className={TH}>Plan</TableHead>
+                        <TableHead className={TH_RIGHT}>Price / mo</TableHead>
+                        <TableHead className={TH_RIGHT}>Users</TableHead>
+                        <TableHead className={TH_RIGHT}>Paying</TableHead>
+                        <TableHead className={TH_RIGHT}>MRR</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {data?.planMix.map((plan) => (
-                        <TableRow key={plan.planId}>
-                          <TableCell className="font-medium text-foreground">
+                        <TableRow
+                          key={plan.planId}
+                          className="border-border/40"
+                        >
+                          <TableCell
+                            className={cn(TD, "font-medium text-foreground")}
+                          >
                             {plan.planName}
                           </TableCell>
-                          <TableCell className="text-right text-muted-foreground">
+                          {/* tabular-nums: this was the one currency column
+                              without it, sitting between three that had it,
+                              so the prices were the only figures in the table
+                              that did not line up on the decimal. */}
+                          <TableCell
+                            className={cn(
+                              TD,
+                              "text-right tabular-nums text-muted-foreground",
+                            )}
+                          >
                             {plan.priceInCents === 0
                               ? "Free"
                               : formatCents(plan.priceInCents)}
                           </TableCell>
-                          <TableCell className="text-right tabular-nums">
+                          <TableCell
+                            className={cn(TD, "text-right tabular-nums")}
+                          >
                             {plan.totalUsers.toLocaleString()}
                           </TableCell>
-                          <TableCell className="text-right tabular-nums">
+                          <TableCell
+                            className={cn(TD, "text-right tabular-nums")}
+                          >
                             {plan.activeUsers.toLocaleString()}
                           </TableCell>
-                          <TableCell className="text-right tabular-nums font-medium">
+                          <TableCell
+                            className={cn(
+                              TD,
+                              "text-right tabular-nums font-medium",
+                            )}
+                          >
                             {formatCents(plan.mrrCents)}
                           </TableCell>
                         </TableRow>
@@ -307,14 +368,18 @@ export function BillingOverviewManager() {
               </div>
             </>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
-      <Card className="border-border/50 bg-card/50 overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-border/50 bg-card/50">
         <div className="border-b border-border/40 bg-muted/30 p-4 sm:p-5">
           <h3 className="text-sm font-semibold text-foreground">
             Failed payments
           </h3>
+          {/* The second half of this sentence used to be a template literal
+              written across three source lines, so its own indentation (a
+              newline plus sixteen spaces, twice) was baked into the rendered
+              string. */}
           <p className="text-xs text-muted-foreground mt-1">
             {loading
               ? "Loading..."
@@ -322,24 +387,30 @@ export function BillingOverviewManager() {
                   data?.failedPayments.recentEventCount30d === 1
                     ? "event"
                     : "events"
-                } in the last 30 days. There's no local record of amount or
-                invoice per failure, only the account's current status and
-                the raw webhook delivery log below.`}
+                } in the last 30 days. There's no local record of amount or invoice per failure, only the account's current status and the raw webhook delivery log below.`}
           </p>
         </div>
-        <CardContent className="p-0">
+        <div>
           {loading ? (
             <div className="p-4 sm:p-5">
               <DataTableSkeleton rows={3} />
             </div>
           ) : !data ? (
             <EmptyState
+              variant="inline"
+              size="sm"
+              tone="warning"
               icon={AlertTriangle}
               title="Couldn't load failed payments"
               description="The request failed. Use Refresh above to try again."
             />
           ) : data.failedPayments.pastDueUsers.length === 0 ? (
+            // Good news, and drawn as such. This and the failure above used
+            // to be the same grey box.
             <EmptyState
+              variant="inline"
+              size="sm"
+              tone="success"
               icon={CreditCard}
               title="No accounts past due"
               description="Nobody is currently sitting in a failed-payment retry window."
@@ -350,37 +421,83 @@ export function BillingOverviewManager() {
                scrolling. min-w on the table is what makes the wrapper scroll
                rather than shrink. */
             <TableScrollArea maxHeight="28rem">
-              <Table className="min-w-[520px]">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Account</TableHead>
-                    <TableHead>Plan</TableHead>
-                    <TableHead className="text-right">Period end</TableHead>
+              <Table className="min-w-[620px]">
+                <TableHeader className="bg-muted/40">
+                  <TableRow className="border-y border-border/50 hover:bg-transparent">
+                    <TableHead className={TH}>Account</TableHead>
+                    <TableHead className={TH}>Plan</TableHead>
+                    <TableHead className={TH}>State</TableHead>
+                    <TableHead className={TH_RIGHT}>Period end</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data?.failedPayments.pastDueUsers.map((user) => (
-                    <TableRow key={user.id}>
-                      <TableCell>
-                        <div className="text-sm text-foreground">
-                          {user.name || user.email}
-                        </div>
-                        {user.name && (
-                          <div className="text-xs text-muted-foreground">
-                            {user.email}
-                          </div>
+                  {data?.failedPayments.pastDueUsers.map((user) => {
+                    const state = pastDueState(user.currentPeriodEnd);
+                    const plan = getPlanById(user.plan);
+                    return (
+                      <TableRow
+                        key={user.id}
+                        // The red "Past due" number in the strip above had
+                        // nothing connecting it to the rows that produced it:
+                        // this was the failure list of the whole panel drawn
+                        // in default grey. A row whose period has already
+                        // closed carries the tint; one still inside its retry
+                        // window does not, so the two are told apart.
+                        className={cn(
+                          "border-border/40",
+                          state.tone === "crit" && "bg-destructive/5",
                         )}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {getPlanById(user.plan)?.name || user.plan}
-                      </TableCell>
-                      <TableCell className="text-right text-muted-foreground">
-                        {user.currentPeriodEnd
-                          ? formatTimestamp(user.currentPeriodEnd)
-                          : "-"}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                      >
+                        <TableCell className={TD}>
+                          {/* A real link to the account, the same move the
+                              support inbox makes with a requester's name, so
+                              chasing a failed payment does not mean copying an
+                              email into the Users tab by hand. */}
+                          <a
+                            href={`/admin?tab=users&user=${user.id}`}
+                            className="text-sm text-primary hover:underline"
+                          >
+                            {user.name || user.email}
+                          </a>
+                          {user.name && (
+                            <div className="text-xs text-muted-foreground font-mono">
+                              {user.email}
+                            </div>
+                          )}
+                        </TableCell>
+                        {/* A past-due Pro and a past-due Free rendered
+                            identically though only one of them is revenue.
+                            The tier's price is what says which is which. */}
+                        <TableCell className={TD}>
+                          <span className="text-sm font-medium text-foreground">
+                            {plan?.name || user.plan}
+                          </span>
+                          {plan && plan.priceInCents > 0 && (
+                            <span className="ml-1.5 text-xs tabular-nums text-muted-foreground">
+                              {formatCents(plan.priceInCents)}/mo
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className={TD}>
+                          <StatusPill tone={state.tone}>
+                            {state.label}
+                          </StatusPill>
+                        </TableCell>
+                        <TableCell
+                          className={cn(
+                            TD,
+                            "text-right tabular-nums text-muted-foreground",
+                          )}
+                        >
+                          {/* Was "-", a bare ASCII hyphen, for a null. Every
+                              other absence in this panel is spelled out. */}
+                          {user.currentPeriodEnd
+                            ? formatTimestamp(user.currentPeriodEnd)
+                            : "Not recorded"}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </TableScrollArea>
@@ -395,10 +512,14 @@ export function BillingOverviewManager() {
                 {data.failedPayments.recentEvents.slice(0, 8).map((evt) => (
                   <li
                     key={evt.eventId}
-                    className="flex items-center justify-between text-xs text-muted-foreground gap-3"
+                    // Stacked below sm: a Stripe event id is about 30 mono
+                    // characters and the timestamp opposite it is shrink-0.
+                    className="flex flex-col text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:gap-3"
                   >
-                    <span className="font-mono truncate">{evt.eventId}</span>
-                    <span className="shrink-0">
+                    <span title={evt.eventId} className="font-mono truncate">
+                      {evt.eventId}
+                    </span>
+                    <span className="shrink-0 tabular-nums">
                       {formatTimestamp(evt.processedAt)}
                     </span>
                   </li>
@@ -406,8 +527,8 @@ export function BillingOverviewManager() {
               </ul>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
     </div>

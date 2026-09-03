@@ -1,6 +1,6 @@
 "use client";
 
-import { Globe, ShieldCheck, ShieldAlert, ShieldX } from "lucide-react";
+import { ShieldCheck, ShieldAlert, ShieldX } from "lucide-react";
 import { StatStrip } from "@/components/shared/stat-strip";
 import type { AssetRow } from "./assets-types";
 
@@ -15,12 +15,13 @@ export function AssetsStats({ assets }: { assets: AssetRow[] }) {
   return (
     <StatStrip
       items={[
-        {
-          value: total,
-          label: "Hosts scanned",
-          icon: Globe,
-          iconTone: "primary",
-        },
+        // No "Hosts scanned" cell. The h1 subtitle directly above this strip
+        // already states that number in a sentence ("37 distinct hosts across
+        // your recent scans"), so the page opened by printing the same figure
+        // twice about fifty pixels apart, and unlike the /history case the
+        // total here is not even independent information: the three cells
+        // below partition it. HistoryStats dropped its equivalent cell for the
+        // same reason.
         {
           value: clean,
           label: "Clean",

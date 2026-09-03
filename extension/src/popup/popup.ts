@@ -19,17 +19,12 @@ import type { ScanOutcome } from "../lib/scan";
 import { classifyScanTarget } from "../lib/scan-target";
 import { applyTheme, watchSystemTheme } from "../lib/theme";
 import { VULNRADAR } from "../lib/constants";
-import { CLEAN_SOLID } from "../lib/tokens";
 import { sendTabMessage, TabMessageTimeoutError } from "../lib/messaging";
-import {
-  formatCount,
-  formatDuration,
-  formatRelative,
-  severityHex,
-} from "../lib/format";
+import { formatCount, formatDuration, formatRelative } from "../lib/format";
 import { ConnectPill } from "./components/connect-pill";
 import { ScanButton } from "./components/scan-button";
 import { DEFAULT_SETTINGS } from "../lib/types";
+import { tierForScore } from "../lib/badge";
 import type {
   AuthMe,
   RateLimitInfo,
@@ -171,7 +166,6 @@ function App(): TemplateResult {
       initializing: state.initializing,
       onOpenOptions: openOptions,
     })}
-    ${RateLimitBar()}
     ${ScanButton({
       url: state.url,
       isScanning: state.isScanning,
@@ -182,7 +176,12 @@ function App(): TemplateResult {
       onModeChange: setMode,
       onCopyUrl: copyUrl,
     })}
-    ${LiveStatus()}
+    <!-- Below the scan button, not above it. Two account read-outs (who you
+         are, how much quota is left) used to occupy the top of a popup whose
+         job is "scan this page", pushing the one control that matters into
+         third place. It reads better here anyway: "30 remaining" belongs under
+         the button that spends one. -->
+    ${RateLimitBar()} ${LiveStatus()}
     ${
       state.targetWarning
         ? html`
@@ -400,18 +399,24 @@ function ResultPanel(r: ScanResult, isStale: boolean): TemplateResult {
   // assertion and must not be rendered from an absence.
   const incomplete = r.incomplete ?? [];
   const score = r.dangerScore ?? 0;
-  // Rungs read off the shared severity ramp rather than a fifth hand-written
-  // colour list, so a severity retune reaches this too.
-  const scoreColor =
-    score >= 8
-      ? severityHex("critical")
-      : score >= 5
-        ? severityHex("high")
-        : score >= 3
-          ? severityHex("medium")
-          : score >= 1
-            ? severityHex("low")
-            : CLEAN_SOLID;
+  // A severity KEY, not a hex. `data-sev` on the panel resolves --vr-sev and
+  // --vr-sev-text from tokens.css, so the rail, the score and the risk word
+  // take the ramp for the theme that is actually showing. They were painted
+  // from severityHex(), which returns the SOLID ramp (the dark theme's) in
+  // both themes: on the light card the risk word measured 1.76:1 at medium.
+  // Colour comes from the canonical 3-tier boundary, never a private ladder.
+  // tierForScore is what the toolbar badge and the injected card already use,
+  // and it is why a score of 3 reads safe here as it does everywhere else.
+  // The five risk WORDS below stay: a finer label is useful, a contradictory
+  // colour is not.
+  const tone =
+    tierForScore(score) === "unsafe"
+      ? "critical"
+      : tierForScore(score) === "caution"
+        ? "high"
+        : score >= 1
+          ? "low"
+          : "clean";
   const riskLabel =
     score >= 8
       ? "High risk"
@@ -432,7 +437,7 @@ function ResultPanel(r: ScanResult, isStale: boolean): TemplateResult {
   ] as Severity[];
 
   return html`
-    <div class="result" style="border-left: 3px solid ${scoreColor}">
+    <div class="result" data-sev=${tone}>
       ${
         r.redirect
           ? html`
@@ -456,11 +461,9 @@ function ResultPanel(r: ScanResult, isStale: boolean): TemplateResult {
       }
       <div class="result-top">
         <div class="result-score-wrap">
-          <span class="score-num" style="color: ${scoreColor}">${score}</span>
+          <span class="score-num">${score}</span>
           <div class="score-labels">
-            <span class="score-risk" style="color: ${scoreColor}"
-              >${riskLabel}</span
-            >
+            <span class="score-risk">${riskLabel}</span>
             <span class="score-sub">out of 10</span>
           </div>
         </div>
@@ -629,10 +632,7 @@ function FindingRow(v: Vulnerability): TemplateResult {
   };
 
   return html`
-    <div
-      class="finding"
-      style="border-left: 3px solid ${severityHex(v.severity)}"
-    >
+    <div class="finding" data-sev=${v.severity}>
       <!-- a11y (SC 4.1.2): a finding with no extra detail is not a control and
            is now marked as nothing at all. It used to carry
            role="presentation" together with aria-label, aria-expanded="false"
@@ -678,11 +678,7 @@ function FindingHeaderContent(
   isOpen: boolean,
 ): TemplateResult {
   return html`
-    <span
-      class="badge ${v.severity}"
-      style="font-size:9px;padding:1px 5px;flex-shrink:0"
-      >${v.severity}</span
-    >
+    <span class="badge badge-sm ${v.severity}">${v.severity}</span>
     <span class="finding-title">${v.title}</span>
     ${
       hasDetail
@@ -826,10 +822,9 @@ function HistoryRow(
         @keydown=${onActivate(open)}
       >
         <span
-          class="badge ${
+          class="badge badge-sm ${
             critical > 0 ? "high" : row.summary.medium > 0 ? "medium" : "low"
           }"
-          style="font-size:9px;padding:1px 6px"
         >
           ${row.findings_count}
         </span>

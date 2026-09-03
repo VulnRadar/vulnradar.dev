@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/ui/utils";
 import { focus } from "@/lib/ui/animations";
+import { PRICING_HERO_SECTION } from "./pricing-sections";
 
 interface PricingHeroProps {
   billing: "monthly" | "yearly";
@@ -11,10 +12,15 @@ interface PricingHeroProps {
 export function PricingHero({ billing, onBillingChange }: PricingHeroProps) {
   return (
     <section className="border-b border-border/50">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-14 pb-10 sm:pt-20 sm:pb-12">
+      <div className={PRICING_HERO_SECTION}>
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] gap-8 lg:gap-12 lg:items-end">
           <div className="max-w-2xl">
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight mb-5 text-balance">
+            {/* Tier A exactly (CLAUDE.md typography, which names /pricing as
+                the Tier A reference). The lg:text-5xl this carried was a third
+                H1 size, and it made this title bigger than the one on /demo,
+                /security and every /checks page. Same fix demo-hero already
+                had. */}
+            <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight mb-5 text-balance">
               Free until the free tier runs out.
             </h1>
             <p className="text-base sm:text-lg text-muted-foreground text-pretty leading-relaxed">

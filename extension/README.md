@@ -65,30 +65,36 @@ Not supported in v0.1. Safari Web Extensions require a separate Xcode project + 
 1. Click the VulnRadar icon in the toolbar
 2. The **Connect VulnRadar** pill says "Not connected" with a red dot
 3. Click the link or open **Options** to paste your API key
-4. After saving, the pill turns green with "user@example.com (Pro plan, 142/150 left)"
+4. After saving, the pill becomes a plain identity line: a green dot, your name or email, and a plan chip
 5. Now any click on the icon shows the popup with the current page URL and a **Scan** button
 
 ## How to use
 
 ### Popup (click the toolbar icon)
 
-- **Connect pill** (top): shows your login status, plan, remaining quota
-- **URL pill** (middle): the current page URL, copy button
-- **Mode + families + Scan button**: Quick / Deep toggle, family count chip, big Scan button
-- **Result panel**: severity badges (Critical/High/Medium/Low/Info), finding list with fix snippets, "Open in Dashboard" link
+- **Connect pill** (top): login status and plan. Quiet when connected, a bordered card with a Connect button when not
+- **URL pill**: the current page URL, copy button
+- **Mode + families + Scan button**: Quick / Deep toggle, enabled-family count, the one filled button in the popup
+- **Quota bar**: below the Scan button, since it is what the button spends
+- **Result panel**: danger score and risk word in the severity colour, severity badges, expandable findings, export buttons, "Full report" link
 
 ### Options (right-click the icon → Options, or click the link in the popup)
 
-8 sections, left rail nav or stacked accordions:
+8 sections, sticky left rail nav on desktop, stacked below 768px. Each
+section prints its current value as a chip in its own heading, so the page
+can be read down the column without opening every card.
 
-1. **Authentication**: paste API key, "Test connection", "Create API key" link to dashboard, "Sign out"
-2. **Auto-Scan**: off / on-tab-focus / on-page-load / on-URL-change, throttle seconds, whitelist/blacklist patterns
-3. **Scan Families**: 18 checkboxes with "what this checks" tooltips
-4. **Service Probes**: 6 checkboxes + per-probe port inputs (ssh/smtp/imap/pop3/ftp/mongodb)
-5. **Schedule**: one-time / daily / weekly scan schedule + "scan on every browser launch" toggle
-6. **Notifications**: severity threshold dropdown, sound checkbox, click-to-open-dashboard toggle
+The order here is the order in `SECTIONS` in `src/options/options.ts`, which
+drives both the nav and the page. Keep the two in step.
+
+1. **Authentication**: paste API key, "Test & Save", link to Profile › API Keys, "Sign out"
+2. **Auto-Scan**: off / on-tab-focus / on-page-load / on-URL-change, a global pause, throttle seconds, whitelist/blacklist fragments
+3. **Scan Families**: 18 checkboxes, each with what that family checks
+4. **Port Sweep**: one toggle for the curated port + service sweep. Replaced the old per-service probe list, which the API had stopped reading
+5. **Site Alerts**: the on-page card - show-for-scanned / show-for-new toggles, corner picker, muted URL patterns, active snoozes
+6. **Notifications**: severity threshold, sound, click-to-open-dashboard
 7. **Appearance**: light / dark / system theme, compact mode
-8. **Privacy**: "What data leaves my browser" disclosure, "Clear local cache" button, "Reset all settings" link
+8. **Privacy**: "What data leaves my browser" disclosure, "Clear local cache"
 
 ## Permissions
 

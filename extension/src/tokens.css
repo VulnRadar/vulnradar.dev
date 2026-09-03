@@ -120,27 +120,32 @@
   --vr-sev-info-text: #7e8ca0;
 }
 
-.badge.critical {
+.badge.critical,
+[data-sev="critical"] {
   --vr-sev: var(--vr-sev-critical);
   --vr-sev-text: var(--vr-sev-critical-text);
 }
 
-.badge.high {
+.badge.high,
+[data-sev="high"] {
   --vr-sev: var(--vr-sev-high);
   --vr-sev-text: var(--vr-sev-high-text);
 }
 
-.badge.medium {
+.badge.medium,
+[data-sev="medium"] {
   --vr-sev: var(--vr-sev-medium);
   --vr-sev-text: var(--vr-sev-medium-text);
 }
 
-.badge.low {
+.badge.low,
+[data-sev="low"] {
   --vr-sev: var(--vr-sev-low);
   --vr-sev-text: var(--vr-sev-low-text);
 }
 
-.badge.info {
+.badge.info,
+[data-sev="info"] {
   --vr-sev: var(--vr-sev-info);
   --vr-sev-text: var(--vr-sev-info-text);
 }

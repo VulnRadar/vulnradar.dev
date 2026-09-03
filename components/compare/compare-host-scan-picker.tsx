@@ -13,9 +13,9 @@ import {
 
 interface CompareHostScanPickerProps {
   scans: ScanOption[];
-  selectedA: number | null;
-  selectedB: number | null;
-  onToggle: (id: number) => void;
+  selectedA: string | null;
+  selectedB: string | null;
+  onToggle: (id: string) => void;
 }
 
 /**

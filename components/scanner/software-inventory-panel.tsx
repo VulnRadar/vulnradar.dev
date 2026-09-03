@@ -47,18 +47,23 @@ export function SoftwareInventoryPanel({
         onClick={() => setExpanded(!expanded)}
         aria-expanded={expanded}
         aria-controls={panelId}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         <Boxes aria-hidden className="h-4 w-4 shrink-0 text-muted-foreground" />
-        {/* min-w-0 + truncate on the title, and the component count hidden
-            below sm. With everything else shrink-0 and the card
-            overflow-hidden, the header measured about 363px against the ~343
-            available on a 375px phone whenever vulnerableCount > 0, so the
-            headline and the chevron were clipped away entirely: the panel
-            looked like it had nothing to expand at exactly the moment it did.
-            The count is the least load-bearing of the three and it is
-            repeated inside the panel body. */}
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+        {/* The component count is hidden below sm: with everything else
+            shrink-0 and the card overflow-hidden, the header measured about
+            363px against the ~343 available on a 375px phone whenever
+            vulnerableCount > 0, so the headline and the chevron were clipped
+            away entirely and the panel looked like it had nothing to expand.
+            The count is the least load-bearing of the three and it is repeated
+            inside the panel body.
+
+            The title used to carry `truncate` as the other half of that fix,
+            which traded one clipped thing for another: "Software inventory" is
+            our own label, so at 320px it rendered as "Software invento...".
+            The row wraps now and the title wraps with it, so the width is
+            found rather than taken out of the heading. */}
+        <span className="min-w-0 flex-1 text-sm font-medium text-foreground">
           Software inventory
         </span>
         <span
@@ -139,12 +144,12 @@ function InventoryRow({ item }: { item: SoftwareInventoryEntry }) {
               {item.version}
             </span>
           )}
-          <span className="rounded border border-border bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+          <span className="rounded-md border border-border bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
             {CATEGORY_LABEL[item.category]}
           </span>
           {vulnerable && (
             <span
-              className="rounded border px-1.5 py-0.5 font-mono text-[10px] font-medium"
+              className="rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-medium"
               style={{
                 borderColor: `hsl(var(--severity-${item.cve!.severity}) / 0.35)`,
                 backgroundColor: `hsl(var(--severity-${item.cve!.severity}) / 0.12)`,

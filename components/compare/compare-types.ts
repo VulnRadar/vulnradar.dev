@@ -1,5 +1,11 @@
 export interface ScanOption {
-  id: number;
+  /**
+   * scan_history.public_id, an opaque 32-char hex handle. NOT the numeric
+   * primary key: GET /api/v3/history projects `sh.public_id AS id`. Typed
+   * `number` once, which made the page parseInt it and send a value that
+   * matched no scan, so every comparison failed.
+   */
+  id: string;
   url: string;
   findings_count: number;
   scanned_at: string;
@@ -27,26 +33,11 @@ export interface DiffResult {
 // components/scanner/severity-badge.tsx; the local copies here had drifted on
 // `info` (bg-muted-foreground vs the --severity-info token).
 
-export interface ParsedUrl {
-  subdomain: string | null;
-  host: string;
-  path: string;
-  full: string;
-}
-
-export function parseUrl(url: string): ParsedUrl {
-  try {
-    const u = new URL(url);
-    const path = u.pathname === "/" ? "" : u.pathname + (u.search || "");
-    const parts = u.hostname.split(".");
-    // Treat as subdomain only if there are 3+ parts (e.g. sub.example.com)
-    const subdomain = parts.length > 2 ? parts[0] : null;
-    const host = subdomain ? parts.slice(1).join(".") : u.hostname;
-    return { subdomain, host, path, full: u.hostname + path };
-  } catch {
-    return { subdomain: null, host: url, path: "", full: url };
-  }
-}
+// One splitter, in components/shared/url-display.tsx, alongside the component
+// that renders the result. /compare and /badge each had their own copy and the
+// two had already drifted apart in how they truncated the parts.
+import { parseUrl, type ParsedUrl } from "@/components/shared/url-display";
+export { parseUrl, type ParsedUrl };
 
 export function displayUrl(url: string) {
   const { full } = parseUrl(url);

@@ -174,10 +174,18 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         isPublic: true,
       };
     });
+    // totalHosts/totalScans are counted over the rows this request returned,
+    // which the LIMIT above caps. Reported alongside `limit` and `truncated`
+    // so a client can tell a real total from a floor: without them a capped
+    // page reads as "that is everything", which is the opposite of what a
+    // truncation means. Same reasoning as GET /api/v3/history.
+    // ref: AUDIT-015#api-04
     return ApiResponse.success({
       assets,
       totalHosts: assets.length,
       totalScans: assets.length,
+      limit: ALL_HOSTS_MAX,
+      truncated: res.rows.length === ALL_HOSTS_MAX,
       scope: "all",
     });
   }
@@ -262,9 +270,16 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     isPublic: g.latest.is_public,
   }));
 
+  // totalScans is the number of scan rows this request grouped, and that read
+  // is capped at HISTORY_LIST_MAX_ROWS, so on an account with more scans than
+  // the cap it silently pins to the cap and both counts understate the truth.
+  // `limit` and `truncated` say so rather than leaving the client to present a
+  // ceiling as a total. ref: AUDIT-015#api-04
   return ApiResponse.success({
     assets,
     totalHosts: assets.length,
     totalScans: result.rows.length,
+    limit: historyMaxRows,
+    truncated: result.rows.length === historyMaxRows,
   });
 });

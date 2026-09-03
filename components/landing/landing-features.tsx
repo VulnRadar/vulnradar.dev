@@ -22,7 +22,10 @@ export function LandingFeatures() {
     <section className="py-16 sm:py-20 border-t border-border/50">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] gap-8 lg:gap-14 items-start">
-          <div className="rounded-2xl border border-primary/20 bg-primary/10 p-6 sm:p-8">
+          {/* rounded-xl, not rounded-2xl: the radius ladder in CLAUDE.md tops
+              out at xl for a page-level panel, and this was the only 2xl left
+              on the marketing surfaces. */}
+          <div className="rounded-xl border border-primary/20 bg-primary/10 p-6 sm:p-8">
             <p className="font-mono text-xs uppercase tracking-wider text-primary mb-4">
               The part that matters
             </p>

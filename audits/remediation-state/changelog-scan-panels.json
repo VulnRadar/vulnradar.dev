@@ -1,0 +1,20 @@
+[
+  {
+    "icon": "Camera",
+    "label": "Capture A Screenshot After The Scan, Not Only During It",
+    "desc": "The page screenshot is an opt-in scan option, and a scan run without ticking it showed no screenshot panel at all. The only way to get one was to re-run the whole scan, which spent a daily scan and left a second history row for the same host. The panel now appears on your own scans either way: when there is no screenshot it says so and offers to capture one. Because a capture opens a real browser and spends your live-browser minutes, the cost is written on the row before you press anything and the button asks you to confirm before it spends. If your minutes are gone, it now says exactly that instead of failing with a generic error.",
+    "category": "added"
+  },
+  {
+    "icon": "Clock",
+    "label": "Every Result Panel Says How Old Its Data Is",
+    "desc": "Open ports and DNS records showed a \"Fetched 3 hours ago\" line only on your own scans, so a shared report listed DNS records with no clue when they were resolved. The age now shows for everyone; only the refresh button is yours. The page screenshot, which had no age line anywhere, shows one too.",
+    "category": "changed"
+  },
+  {
+    "icon": "RefreshCw",
+    "label": "A Refresh Never Blanks What You Are Already Looking At",
+    "desc": "Refreshing open ports, DNS records or the screenshot updates the panel in place: the previous capture stays on screen for the whole request and is replaced only when the new one actually arrives. A refresh that fails leaves the old data exactly where it was and puts the reason underneath it, rather than collapsing the panel to a spinner. A server that answered successfully but sent nothing back used to leave the panel silently unchanged with no explanation; that now reads as a failed refresh and says so.",
+    "category": "fixed"
+  }
+]

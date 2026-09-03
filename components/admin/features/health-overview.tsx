@@ -118,7 +118,10 @@ export function HealthOverview({
               />
             </div>
             <div className="min-w-0">
-              <CardTitle className="text-base font-semibold truncate">
+              {/* No truncate: the parent is min-w-0 and the refresh button is
+                  shrink-0, so the only thing an ellipsis could ever eat here
+                  is the two words we wrote. */}
+              <CardTitle className="text-base font-semibold">
                 System Health
               </CardTitle>
               <p className="text-xs text-muted-foreground mt-0.5">

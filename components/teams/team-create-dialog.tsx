@@ -88,7 +88,7 @@ export function TeamCreateDialog({
 
   return (
     <Dialog open={open} onOpenChange={creating ? undefined : onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent size="md">
         <DialogHeader>
           <DialogTitle>Create a team</DialogTitle>
           <DialogDescription>

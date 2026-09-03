@@ -3,6 +3,7 @@
 import * as React from "react";
 import {
   AlertDialog,
+  AlertDialogBody,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -12,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle, KeyRound, Loader2 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 
 export interface AdminPasswordConfirmResult {
@@ -84,7 +85,7 @@ export function AdminPasswordConfirmDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={(o) => !o && handleCancel()}>
-      <AlertDialogContent className="sm:max-w-md border-border/60">
+      <AlertDialogContent>
         <AlertDialogHeader>
           <div className="flex items-start gap-3">
             <div
@@ -95,15 +96,18 @@ export function AdminPasswordConfirmDialog({
                   : "bg-primary/10",
               )}
             >
-              <AlertTriangle
-                className={cn(
-                  "h-5 w-5",
-                  variant === "destructive"
-                    ? "text-destructive"
-                    : "text-primary",
-                )}
-                aria-hidden="true"
-              />
+              {/* A blue warning triangle is a mixed signal: the glyph says
+                  "something is wrong" while the colour says "routine". A
+                  non-destructive re-auth is a lock, and only the destructive
+                  variant gets the triangle. */}
+              {variant === "destructive" ? (
+                <AlertTriangle
+                  className="h-5 w-5 text-destructive"
+                  aria-hidden="true"
+                />
+              ) : (
+                <KeyRound className="h-5 w-5 text-primary" aria-hidden="true" />
+              )}
             </div>
             <div>
               <AlertDialogTitle>{title}</AlertDialogTitle>
@@ -112,7 +116,7 @@ export function AdminPasswordConfirmDialog({
           </div>
         </AlertDialogHeader>
 
-        <div className="space-y-2 px-1">
+        <AlertDialogBody className="space-y-2">
           <Label htmlFor={inputId}>Your password</Label>
           <Input
             id={inputId}
@@ -143,7 +147,7 @@ export function AdminPasswordConfirmDialog({
               {error}
             </p>
           )}
-        </div>
+        </AlertDialogBody>
 
         <AlertDialogFooter>
           <Button

@@ -81,3 +81,41 @@ export async function attachRemediation(
     return remediation ? { ...f, remediation } : f;
   });
 }
+
+/**
+ * Flag the findings this owner has marked a false positive.
+ *
+ * Reads the same table and the same predicate as
+ * lib/scanner/recompute-scan-score.ts, which excludes these from summary,
+ * findings_count and dangerScore. Keeping one source for both is the point:
+ * a second rule would let the numbers and the list drift apart again.
+ *
+ * Owner-only, like attachRemediation. A teammate viewing the scan sees the
+ * findings as scanned, since the verdict is the owner's own triage.
+ */
+export async function attachFalsePositiveVerdicts(
+  userId: number,
+  findings: Vulnerability[],
+): Promise<Vulnerability[]> {
+  if (!Array.isArray(findings) || findings.length === 0) return findings;
+  try {
+    const res = await pool.query<{ finding_id: string }>(
+      `SELECT finding_id FROM scan_finding_feedback
+       WHERE user_id = $1 AND verdict = 'false_positive'`,
+      [userId],
+    );
+    if (res.rows.length === 0) return findings;
+    const suppressed = new Set(res.rows.map((row) => row.finding_id));
+    return findings.map((f) =>
+      suppressed.has(f.id) ? { ...f, suppressed: true } : f,
+    );
+  } catch (err) {
+    // Best effort: a failed lookup must not cost the user their findings.
+    // The list then shows every finding, which is the safe direction.
+    console.error(
+      "Failed to attach false-positive verdicts:",
+      err instanceof Error ? err.message : err,
+    );
+    return findings;
+  }
+}

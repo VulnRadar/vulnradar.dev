@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getCategoryCounts } from "@/lib/scanner/registry";
 import { CATEGORY_META } from "@/lib/scanner/category-meta";
 import type { Category } from "@/lib/scanner/types";
+import { TOTAL_CHECKS_LABEL } from "@/lib/config/constants";
 import { cn } from "@/lib/ui/utils";
 
 /**
@@ -14,7 +15,6 @@ const FLAGSHIP_CATEGORY: Category = "vibe-code";
 export function LandingCategories() {
   const counts = getCategoryCounts();
   const keys = Object.keys(CATEGORY_META) as Category[];
-  const total = keys.reduce((sum, key) => sum + (counts[key] ?? 0), 0);
 
   return (
     <section
@@ -33,9 +33,15 @@ export function LandingCategories() {
             </p>
           </div>
           <div className="shrink-0 sm:text-right">
+            {/* The rounded label, never the live exact total. Both of these
+                used to print the summed registry count, which is the one form
+                the owner does not want in user-facing copy and which
+                contradicted the same page's hero and metadata two sections
+                up. The per-category numbers in the table below stay exact:
+                those are a breakdown, not the headline claim. */}
             <p className="text-sm text-muted-foreground tabular-nums">
               <span className="font-mono font-semibold text-foreground">
-                {total.toLocaleString()}
+                {TOTAL_CHECKS_LABEL}
               </span>{" "}
               checks in {keys.length} categories
             </p>
@@ -47,7 +53,7 @@ export function LandingCategories() {
               href="/checks"
               className="mt-1 inline-block text-sm text-primary hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
             >
-              See all {total.toLocaleString()} checks
+              Browse every check
             </Link>
           </div>
         </div>

@@ -65,4 +65,73 @@ export const BRAND = {
     low: "#2a8ff4",
     info: "#7b899e",
   },
+
+  // LIGHT-SURFACE VARIANTS, for email.
+  //
+  // Everything above is the dark theme, which is right for the PDF report and
+  // the OG cards (they control their own canvas) and wrong for email, which
+  // is read on white far more often than not. The dark values do not survive
+  // that move: #60a5fa on white is 2.16:1 and #9aa6b8 is 2.28:1, both far
+  // under the 4.5:1 WCAG AA floor for body text, so a dark-only palette
+  // either forces every message to paint itself black in an otherwise light
+  // inbox or renders unreadable the moment a client drops the background.
+  //
+  // Emails therefore render light by default and swap to the dark set above
+  // under prefers-color-scheme (lib/email/layout.ts). Every value here is
+  // measured against the surface it is actually used on, not just white:
+  // `surface` (#ffffff) for body copy and `surfaceRaised` (#f2f5f9) for the
+  // detail panels and callouts, which is the tighter of the two.
+  onLight: {
+    // Canvas behind the card. Mirrors the light theme's --background
+    // (213 25% 90%) in app/globals.css.
+    canvas: "#dfe5ec",
+    // The card itself. White rather than the app's --card, because the whole
+    // message sits on it and the extra step buys contrast everywhere at once.
+    surface: "#ffffff",
+    // Detail panels, callouts, the one-time-code block.
+    surfaceRaised: "#f2f5f9",
+    border: "#d3dae4",
+    // Mirrors the light theme's --border.
+    borderStrong: "#bec6d0",
+
+    // 17.8:1 on surface. Mirrors --foreground (220 20% 10%).
+    text: "#14181f",
+    // 7.37:1 on surface, 6.74:1 on surfaceRaised, 5.81:1 on canvas.
+    // Mirrors --muted-foreground (220 12% 35%).
+    textMuted: "#4f5664",
+    // Footer fine print, on the canvas rather than the card: 4.85:1 there.
+    textFaint: "#5a6270",
+
+    // Button fill. White label on it is 5.17:1. Same hex as primaryHover
+    // above, so the light button is the app's own hover blue rather than a
+    // colour invented for email.
+    primary: "#2563eb",
+    // Link and accent TEXT. primaryLight (#60a5fa) is 2.16:1 on white, so
+    // link text needs its own darker value: 6.48:1 on surface, 5.93:1 on
+    // surfaceRaised.
+    primaryText: "#065ac1",
+    onPrimary: "#ffffff",
+
+    // Status tints. Foregrounds are measured on surfaceRaised, where every
+    // callout actually sits.
+    success: "#047857", // 5.48:1 on surface, 5.01:1 on surfaceRaised
+    successBg: "#e8f6ef",
+    warning: "#92400e", // 7.09:1 on surface, 6.48:1 on surfaceRaised
+    warningBg: "#fdf3e3",
+    danger: "#b91c1c", // 6.47:1 on surface, 5.92:1 on surfaceRaised
+    dangerBg: "#fdecec",
+    infoBg: "#e9f1fd",
+
+    // Severity, re-derived for a light ground. The dark ramp fails here:
+    // #ef4444 is 3.76:1 on white and #e7b008 is 1.9:1, so a chip row would
+    // be decoration rather than information. Hues are held (red, orange,
+    // amber, blue, slate) and only lightness moves.
+    severity: {
+      critical: "#b91c1c", // 6.47:1 on surface, 5.92:1 on surfaceRaised
+      high: "#a83a06", // 6.39:1 / 5.86:1
+      medium: "#8a5406", // 6.27:1 / 5.73:1
+      low: "#1d4ed8", // 6.70:1 / 6.13:1
+      info: "#475569", // 7.58:1 / 6.93:1
+    },
+  },
 } as const;

@@ -111,17 +111,13 @@ export async function POST(request: NextRequest) {
           // Send to support team
           sendEmail({
             to: noreplyEmail,
-            subject: adminEmail.subject,
-            text: adminEmail.text,
-            html: adminEmail.html,
+            ...adminEmail,
             replyTo: normalizedEmail,
           }),
           // Send confirmation to user
           sendEmail({
             to: normalizedEmail,
-            subject: userEmail.subject,
-            text: userEmail.text,
-            html: userEmail.html,
+            ...userEmail,
           }),
         ]);
       } catch (error) {

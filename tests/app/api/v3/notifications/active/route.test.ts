@@ -74,7 +74,7 @@ describe("GET /api/v3/notifications/active", () => {
     expect(params[2]).toBe(false);
   });
 
-  it("returns the rows from the query directly as a JSON array", async () => {
+  it("returns the rows from the query under a notifications key", async () => {
     mockGetSession.mockResolvedValue(null);
     mockQuery.mockResolvedValue({
       rows: [{ id: 1, type: "banner", audience: "all" }],
@@ -82,8 +82,10 @@ describe("GET /api/v3/notifications/active", () => {
     const res = await GET();
     const json = await res.json();
     expect(res.status).toBe(200);
-    expect(Array.isArray(json)).toBe(true);
-    expect(json).toHaveLength(1);
+    // Named envelope, matching every other collection route. A bare array had
+    // nowhere to carry a total or a cursor without breaking callers.
+    expect(Array.isArray(json.notifications)).toBe(true);
+    expect(json.notifications).toHaveLength(1);
   });
 
   it("returns 500 and does not throw when the database errors", async () => {

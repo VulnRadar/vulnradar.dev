@@ -130,19 +130,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // clobber the cache mid-load, wait for the real result.
     if (isLoading) return;
 
-    const { cache, css } = computeAuthPresence(me);
+    const { cache, auth, staff } = computeAuthPresence(me);
     try {
       if (cache === null) localStorage.removeItem("vr_auth_cache");
       else localStorage.setItem("vr_auth_cache", cache);
     } catch {}
 
-    let el = document.getElementById("vr-auth-css");
-    if (!el && css) {
-      el = document.createElement("style");
-      el.id = "vr-auth-css";
-      document.head.appendChild(el);
-    }
-    if (el) el.textContent = css;
+    // The same two attributes the pre-hydration script in app/layout.tsx
+    // stamps, now corrected against the real /auth/me answer rather than the
+    // cached guess. Toggling an attribute here replaces managing a <style>
+    // element, which could not be done without appending to document.head.
+    const el = document.documentElement;
+    if (auth) el.setAttribute("data-vr-auth", "1");
+    else el.removeAttribute("data-vr-auth");
+    if (staff) el.setAttribute("data-vr-staff", "1");
+    else el.removeAttribute("data-vr-staff");
   }, [me, isLoading]);
 
   return (
@@ -186,6 +188,6 @@ export function clearAuthCache() {
     }
     toRemove.forEach((k) => localStorage.removeItem(k));
   } catch {}
-  const el = document.getElementById("vr-auth-css");
-  if (el) el.textContent = "";
+  document.documentElement.removeAttribute("data-vr-auth");
+  document.documentElement.removeAttribute("data-vr-staff");
 }

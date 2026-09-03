@@ -22,6 +22,7 @@ import {
   AuthAlert,
   authFieldClass,
   authFocusRing,
+  authPillClass,
   PasswordStrengthMeter,
 } from "@/components/auth/auth-shell";
 import { OAuthButtons } from "@/components/auth/oauth-buttons";
@@ -279,14 +280,7 @@ export function SignupForm({ onSuccess, initialError }: SignupFormProps) {
         </Link>
       </p>
 
-      <Link
-        href="/"
-        className={cn(
-          "inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground w-fit",
-          transitions.colors,
-          authFocusRing,
-        )}
-      >
+      <Link href="/" className={authPillClass}>
         <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
         Back to landing
       </Link>

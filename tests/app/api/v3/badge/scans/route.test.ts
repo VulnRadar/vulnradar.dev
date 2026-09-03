@@ -32,6 +32,7 @@ describe("GET /api/v3/badge/scans", () => {
 
     expect(res.status).toBe(401);
     const json = await res.json();
+    const scans = json.scans;
     expect(json).toEqual({ error: "Unauthorized" });
     expect(mockQuery).not.toHaveBeenCalled();
   });
@@ -68,7 +69,8 @@ describe("GET /api/v3/badge/scans", () => {
 
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json).toEqual([
+    const scans = json.scans;
+    expect(scans).toEqual([
       {
         id: 1,
         url: "https://example.com",
@@ -100,8 +102,9 @@ describe("GET /api/v3/badge/scans", () => {
     const res = await GET();
 
     const json = await res.json();
-    expect(json[0].summary).toEqual({ total: 0 });
-    expect(json[0].findings).toEqual([]);
+    const scans = json.scans;
+    expect(scans[0].summary).toEqual({ total: 0 });
+    expect(scans[0].findings).toEqual([]);
   });
 
   it("returns an empty array when the user has no scans", async () => {
@@ -111,7 +114,8 @@ describe("GET /api/v3/badge/scans", () => {
     const res = await GET();
 
     const json = await res.json();
-    expect(json).toEqual([]);
+    const scans = json.scans;
+    expect(scans).toEqual([]);
   });
 
   it("includes the auto-updating site_badge_token when one is already issued for that URL", async () => {
@@ -134,8 +138,9 @@ describe("GET /api/v3/badge/scans", () => {
 
     const res = await GET();
     const json = await res.json();
-    expect(json[0].site_badge_token).toBe("a".repeat(64));
-    expect(json[0].site_badge_scope).toBe("global");
+    const scans = json.scans;
+    expect(scans[0].site_badge_token).toBe("a".repeat(64));
+    expect(scans[0].site_badge_scope).toBe("global");
 
     const [sql] = mockQuery.mock.calls[0];
     expect(sql).toContain("LEFT JOIN host_badges");

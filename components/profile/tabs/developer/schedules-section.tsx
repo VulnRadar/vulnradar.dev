@@ -61,8 +61,11 @@ interface SchedulesSectionProps {
     sch: ScheduleItem,
     which: "next_run" | "last_run",
   ) => string | null;
-  /** Session user's plan id, for the hourly/6-hourly upgrade gate. */
-  userPlan: string;
+  /** Session user's plan id, for the hourly/6-hourly upgrade gate. null
+   *  while /auth/me is still in flight: nothing is locked on a plan nobody
+   *  knows yet, since the guess was "free" and that told a Pro Supporter
+   *  their hourly scans needed an upgrade they had already paid for. */
+  userPlan: string | null;
   /** Pause/resume a schedule in place. Not routed through the destructive
    *  confirm dialog: flipping it back is one click either way. */
   onToggleSchedule: (id: number, active: boolean) => void;
@@ -113,6 +116,7 @@ export function SchedulesSection({
   const isLocked =
     BILLING_ENABLED &&
     !!requiredPlan &&
+    userPlan !== null &&
     !hasFeatureAccess(userPlan, requiredPlan);
   const requiredPlanName = requiredPlan
     ? (getPlanById(requiredPlan)?.name ?? requiredPlan)
@@ -164,6 +168,7 @@ export function SchedulesSection({
                     const locked =
                       BILLING_ENABLED &&
                       !!def.minPlan &&
+                      userPlan !== null &&
                       !hasFeatureAccess(userPlan, def.minPlan);
                     return (
                       <option key={freq} value={freq} disabled={locked}>
@@ -317,7 +322,7 @@ export function SchedulesSection({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-10 w-10 sm:h-7 sm:w-7 text-muted-foreground hover:text-foreground shrink-0"
+                      className="h-11 w-11 sm:h-7 sm:w-7 text-muted-foreground hover:text-foreground shrink-0"
                       disabled={isToggling}
                       onClick={() => onToggleSchedule(sch.id, !isPaused)}
                       aria-label={
@@ -337,7 +342,7 @@ export function SchedulesSection({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-10 w-10 sm:h-7 sm:w-7 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
+                      className="h-11 w-11 sm:h-7 sm:w-7 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
                       onClick={() =>
                         onRequestConfirm({
                           kind: "delete-schedule",

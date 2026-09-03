@@ -30,7 +30,7 @@ const tocItems: TocItem[] = [
 
 export default function GithubScanningPage() {
   return (
-    <div className="space-y-16">
+    <div className="space-y-12 sm:space-y-16">
       <DocsTocSpy items={tocItems} />
       <DocsHero
         id="top"
@@ -349,10 +349,10 @@ export default function GithubScanningPage() {
         <DocsSubSection title="Buying credits">
           <p className="max-w-[68ch] text-sm text-muted-foreground">
             When billing is on, a one-time top-up at{" "}
-            <InlineCode>/checkout/github-credits</InlineCode> adds to a
-            purchased balance that never expires and is spent only after the
-            window allowance runs out. Credits and the plan window are separate
-            balances with separate ledgers. Tiers:
+            <InlineCode>/github-credits</InlineCode> adds to a purchased balance
+            that never expires and is spent only after the window allowance runs
+            out. Credits and the plan window are separate balances with separate
+            ledgers. Tiers:
           </p>
           <DocsTable
             caption="One-time GitHub review credit tiers from lib/billing/github-credit-catalog.ts"

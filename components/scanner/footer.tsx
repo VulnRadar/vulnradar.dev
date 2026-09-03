@@ -14,6 +14,15 @@ import {
 } from "@/lib/config/client-constants";
 import { Button } from "@/components/ui/button";
 import { ThemedLogo } from "@/components/shared/themed-logo";
+import { SocialLinks } from "@/components/shared/social-links";
+import { focus } from "@/lib/ui/animations";
+
+// One shape for every icon link in the bottom bar, the pre-existing repo and
+// email marks included, so the row stays uniform however many social accounts
+// are configured. 44px below sm is the project's touch minimum; the mark
+// itself stays h-4, so nothing about the row's visual weight changes. Pill
+// radius per the radius ladder: this is an icon button.
+const iconLinkClass = `inline-flex h-11 w-11 sm:h-9 sm:w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground ${focus.ring}`;
 
 export function Footer() {
   return (
@@ -273,24 +282,33 @@ export function Footer() {
             {"\u00A9"} {new Date().getFullYear()} {APP_NAME}. For authorized
             security testing only.
           </p>
-          <div className="flex items-center gap-5">
+          {/* This row was already the footer's icon-link row (the repo mark
+              and the support address), so the social accounts join it rather
+              than getting a block of their own: same muted h-4 marks, same
+              weight, one place to look. The -mx-2.5 cancels the padding the
+              targets add so the row still lines up with the columns above.
+              Wraps because the registry can hold ten platforms. */}
+          <div className="flex flex-wrap items-center justify-center gap-y-1 -mx-2.5 sm:justify-end">
             <a
               href={`https://github.com/${APP_REPO}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-muted-foreground hover:text-foreground transition-colors"
+              className={iconLinkClass}
               aria-label="GitHub"
+              title="GitHub"
             >
-              <FaGithub className="h-4 w-4" />
+              <FaGithub className="h-4 w-4" aria-hidden="true" />
             </a>
+            <SocialLinks className={iconLinkClass} iconClassName="h-4 w-4" />
             <a
               href={`mailto:${SUPPORT_EMAIL}`}
-              className="text-muted-foreground hover:text-foreground transition-colors"
+              className={iconLinkClass}
               aria-label="Email"
+              title="Email"
             >
-              <Mail className="h-4 w-4" />
+              <Mail className="h-4 w-4" aria-hidden="true" />
             </a>
-            <span className="text-xs text-muted-foreground">
+            <span className="px-2.5 text-xs text-muted-foreground">
               {APP_URL.replace(/^https?:\/\//, "")}
             </span>
           </div>

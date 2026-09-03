@@ -22,12 +22,16 @@ export function EndpointCard({
   notes,
 }: Endpoint) {
   return (
+    // No hover treatment. The card used to lighten its border on hover,
+    // which promises a click on a reference block that does not navigate
+    // anywhere.
     <Card
       id={id}
-      className="p-4 sm:p-6 border-border/50 bg-card/50 scroll-mt-24 transition-all duration-200 hover:border-primary/30"
+      className="p-4 sm:p-6 border-border/50 bg-card/50 scroll-mt-24"
     >
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+      {/* The method and path are the endpoint's identity, so they lead and
+          they are the largest thing in the card. */}
+      <div className="mb-3 flex flex-wrap items-center gap-2 sm:gap-3">
         <Badge
           className={cn(
             "font-mono text-[10px] sm:text-xs border px-2 py-0.5",
@@ -36,20 +40,26 @@ export function EndpointCard({
         >
           {method}
         </Badge>
-        <code className="text-primary font-mono text-xs sm:text-sm break-all bg-primary/5 px-2 py-0.5 rounded">
+        <code className="rounded bg-primary/5 px-2 py-0.5 font-mono text-[13px] sm:text-sm break-all text-primary">
           {path}
         </code>
       </div>
 
-      {/* Title */}
-      <h3 className="text-sm font-medium text-foreground mb-2">{title}</h3>
+      {/* The human name for the endpoint. At text-sm font-medium it was set
+          smaller than the paragraph under it, so the one line telling you
+          what the endpoint is for was the quietest thing in the card. */}
+      <h3 className="mb-2 text-base font-semibold tracking-tight text-foreground">
+        {title}
+      </h3>
 
-      {/* Description */}
-      <p className="text-muted-foreground text-sm mb-4 sm:mb-6 leading-relaxed">
+      <p className="mb-5 sm:mb-6 max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
         {description}
       </p>
 
-      <div className="space-y-6">
+      {/* Five uppercase labels stacked with equal air between them read as
+          one list of five things rather than as request, response and
+          errors. A hairline between the blocks says where each one ends. */}
+      <div className="divide-y divide-border/40 [&>div]:py-5 [&>div:first-child]:pt-0 [&>div:last-child]:pb-0">
         {/* Path and query parameters. These used to be hand-written flex rows
             here while components/docs/docs-table.tsx exported a purpose-built
             ParamTable that took this exact EndpointParam[] and no page ever

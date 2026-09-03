@@ -55,7 +55,7 @@ export function HistoryNotes({
                 className="h-7 text-xs gap-1.5 text-muted-foreground"
               >
                 <Pencil className="h-3 w-3" />
-                {notes ? "Edit" : "Add Note"}
+                {notes ? "Edit" : "Add note"}
               </Button>
             ) : (
               <div className="flex gap-1.5">
@@ -101,7 +101,10 @@ export function HistoryNotes({
             placeholder="Add notes about this scan..."
             aria-label="Scan notes"
             maxLength={2000}
-            className="w-full min-h-[80px] rounded-lg border border-border bg-background px-3 py-2 text-base sm:text-sm text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-1 focus:ring-ring resize-y"
+            // rounded-md and a 2px ring: this is a control, and both the
+            // radius ladder and every other input in the product say so. It
+            // was the only text field left drawing a 1px focus ring.
+            className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-base sm:text-sm text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-ring resize-y"
           />
           {saveError && (
             <p role="alert" className="mt-2 text-xs text-destructive">
@@ -116,7 +119,7 @@ export function HistoryNotes({
       ) : (
         <p className="text-xs text-muted-foreground/60 italic">
           {isOwner
-            ? 'No notes yet. Click "Add Note" to annotate this scan.'
+            ? "No notes yet. Add one so the next person reading this report knows what state the host was in."
             : "No notes for this scan."}
         </p>
       )}

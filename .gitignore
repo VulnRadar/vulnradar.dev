@@ -76,3 +76,5 @@ marketing/
 # Local source archives, never committed (a 25MB .rar was staged once).
 *.rar
 *.zip
+
+certificates

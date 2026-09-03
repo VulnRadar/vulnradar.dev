@@ -36,7 +36,7 @@ const tocItems: TocItem[] = [
 
 export default function AiDocsPage() {
   return (
-    <div className="space-y-16">
+    <div className="space-y-12 sm:space-y-16">
       <DocsTocSpy items={tocItems} />
       <DocsHero
         id="top"
@@ -115,7 +115,7 @@ export default function AiDocsPage() {
       <DocsSection id="vera" title="The Vera assistant">
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
           Vera is the floating chat widget in the bottom-right corner (hidden on
-          the docs, admin, and live-browser pages). It is scoped to {APP_NAME}
+          the docs, admin, and live-browser pages). It is scoped to {APP_NAME}{" "}
           only: it answers questions about scan findings, how to fix them, API
           usage, and self-hosting, and declines anything off-topic. Sending a
           message requires being signed in; the widget shows a sign-in gate
@@ -538,8 +538,8 @@ curl -sS -X POST "${APP_URL}/api/v3/history/SCAN_PUBLIC_ID/summary?regenerate=tr
       <DocsSection id="credits" title="AI credits">
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
           AI credits are a one-time top-up bought at{" "}
-          <InlineCode>/checkout/credits</InlineCode> (a single Stripe payment,
-          not a subscription). They are a fallback, not a substitute: a call the
+          <InlineCode>/ai-credits</InlineCode> (a single Stripe payment, not a
+          subscription). They are a fallback, not a substitute: a call the
           plan&rsquo;s free per-window allowance already covers never touches
           credits, and only the portion of a call that lands above the ceiling
           is charged against the balance. The balance carries over between

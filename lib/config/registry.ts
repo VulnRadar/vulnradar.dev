@@ -22,6 +22,15 @@ import {
   CONFIG_DISCORD_INVITE_URL,
   CONFIG_CHROME_WEB_STORE_URL,
   CONFIG_FIREFOX_ADDON_URL,
+  CONFIG_SOCIAL_YOUTUBE_URL,
+  CONFIG_SOCIAL_TIKTOK_URL,
+  CONFIG_SOCIAL_INSTAGRAM_URL,
+  CONFIG_SOCIAL_X_URL,
+  CONFIG_SOCIAL_MASTODON_URL,
+  CONFIG_SOCIAL_BLUESKY_URL,
+  CONFIG_SOCIAL_LINKEDIN_URL,
+  CONFIG_SOCIAL_REDDIT_URL,
+  CONFIG_SOCIAL_RSS_URL,
   CONFIG_SUPPORT_EMAIL,
   CONFIG_LEGAL_EMAIL,
   CONFIG_SECURITY_EMAIL,
@@ -325,6 +334,7 @@ export type SettingType =
 export type SettingGroup =
   | "General"
   | "Branding"
+  | "Social"
   | "SEO"
   | "Features"
   | "Billing"
@@ -351,6 +361,16 @@ export interface SettingDefinition {
   max?: number;
   /** Allowed values for `type: "enum"`. */
   options?: readonly string[];
+}
+
+/**
+ * Help text for one social-account entry. Nine of them say the same three
+ * things (what it does, that empty means off, and that the running app reads
+ * the compiled constant), so they are built rather than pasted; only the
+ * platform name and the example URL differ.
+ */
+function socialHelp(platform: string, envKey: string, example: string): string {
+  return `Public ${platform} profile shown as an icon link in the footer and on the landing page, and published in the JSON-LD Organization node's sameAs array, which asserts the account is this organisation. Leave empty to omit ${platform} everywhere; a value must be an absolute https URL (${example}) or it is ignored. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set NEXT_PUBLIC_SOCIAL_${envKey}_URL in the environment, or CONFIG_SOCIAL_${envKey}_URL in lib/config/config-values.ts, and rebuild instead.`;
 }
 
 export const SETTINGS_REGISTRY = {
@@ -437,6 +457,105 @@ export const SETTINGS_REGISTRY = {
     group: "General",
     label: "Firefox Add-ons listing URL",
     help: "Shown as the install link on the extension docs page once the listing is live. Leave empty to fall back to a packaged-release download. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set NEXT_PUBLIC_FIREFOX_ADDON_URL in the environment, or CONFIG_FIREFOX_ADDON_URL in lib/config/config-values.ts, and rebuild instead.",
+  },
+  // Social accounts. Every one is `type: "string"`, not `type: "url"`, and
+  // that is deliberate: `url` compiles to z.url(), which rejects "", so a
+  // url-typed entry cannot express "this deployment has no such account" --
+  // the exact state most of these ship in. The absolute-https requirement the
+  // help text states is enforced where it matters, in SOCIAL_LINKS
+  // (lib/config/client-constants.ts), which is what actually renders.
+  SOCIAL_YOUTUBE_URL: {
+    tier: "build",
+    type: "string",
+    default: CONFIG_SOCIAL_YOUTUBE_URL,
+    group: "Social",
+    label: "YouTube channel URL",
+    help: socialHelp("YouTube", "YOUTUBE", "https://www.youtube.com/@handle"),
+    max: 200,
+  },
+  SOCIAL_TIKTOK_URL: {
+    tier: "build",
+    type: "string",
+    default: CONFIG_SOCIAL_TIKTOK_URL,
+    group: "Social",
+    label: "TikTok profile URL",
+    help: socialHelp("TikTok", "TIKTOK", "https://www.tiktok.com/@handle"),
+    max: 200,
+  },
+  SOCIAL_INSTAGRAM_URL: {
+    tier: "build",
+    type: "string",
+    default: CONFIG_SOCIAL_INSTAGRAM_URL,
+    group: "Social",
+    label: "Instagram profile URL",
+    help: socialHelp(
+      "Instagram",
+      "INSTAGRAM",
+      "https://www.instagram.com/handle/",
+    ),
+    max: 200,
+  },
+  SOCIAL_X_URL: {
+    tier: "build",
+    type: "string",
+    default: CONFIG_SOCIAL_X_URL,
+    group: "Social",
+    label: "X (Twitter) profile URL",
+    help: socialHelp("X", "X", "https://x.com/handle"),
+    max: 200,
+  },
+  SOCIAL_MASTODON_URL: {
+    tier: "build",
+    type: "string",
+    default: CONFIG_SOCIAL_MASTODON_URL,
+    group: "Social",
+    label: "Mastodon profile URL",
+    help: socialHelp(
+      "Mastodon",
+      "MASTODON",
+      "https://infosec.exchange/@handle",
+    ),
+    max: 200,
+  },
+  SOCIAL_BLUESKY_URL: {
+    tier: "build",
+    type: "string",
+    default: CONFIG_SOCIAL_BLUESKY_URL,
+    group: "Social",
+    label: "Bluesky profile URL",
+    help: socialHelp("Bluesky", "BLUESKY", "https://bsky.app/profile/handle"),
+    max: 200,
+  },
+  SOCIAL_LINKEDIN_URL: {
+    tier: "build",
+    type: "string",
+    default: CONFIG_SOCIAL_LINKEDIN_URL,
+    group: "Social",
+    label: "LinkedIn page URL",
+    help: socialHelp(
+      "LinkedIn",
+      "LINKEDIN",
+      "https://www.linkedin.com/company/handle",
+    ),
+    max: 200,
+  },
+  SOCIAL_REDDIT_URL: {
+    tier: "build",
+    type: "string",
+    default: CONFIG_SOCIAL_REDDIT_URL,
+    group: "Social",
+    label: "Reddit community URL",
+    help: socialHelp("Reddit", "REDDIT", "https://www.reddit.com/r/community"),
+    max: 200,
+  },
+  SOCIAL_RSS_URL: {
+    tier: "build",
+    type: "string",
+    default: CONFIG_SOCIAL_RSS_URL,
+    group: "Social",
+    label: "RSS feed URL",
+    help: "Feed shown alongside the social icons in the footer and on the landing page. This is the one entry that is NOT published in the JSON-LD sameAs array: sameAs asserts identity, and a feed is a document this site publishes rather than an account that is this site. Leave empty to omit it; a value must be an absolute https URL or it is ignored. Reference only: nothing reads the saved value, so a change here does not apply, not even after a rebuild. Set NEXT_PUBLIC_SOCIAL_RSS_URL in the environment, or CONFIG_SOCIAL_RSS_URL in lib/config/config-values.ts, and rebuild instead.",
+    max: 200,
   },
   TERMS_UPDATED_AT: {
     tier: "runtime",
@@ -3144,6 +3263,8 @@ export const SETTINGS_REGISTRY = {
  * CONFIG_ constant name without the prefix, matching SETTINGS_REGISTRY.
  */
 export const NEVER_CONFIGURABLE = {
+  AI_BOT_NAME:
+    "The assistant introduces itself by this name in its own welcome message, in the aria-label of every control in the chat panel, and in the product tour's copy about it. All three are client components that read the build-time constant, so a runtime edit would rename it in a settings row and nowhere the reader can see. Edit it in config-values.ts and rebuild.",
   APP_VERSION:
     "Describes the running code. Editing it makes the app lie about itself.",
   ENGINE_VERSION:

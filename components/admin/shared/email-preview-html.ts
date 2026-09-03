@@ -19,10 +19,56 @@
  * must escape and wrap it themselves, the same way lib/email/email.ts's
  * template functions build HTML before handing it to the layout.
  */
-import { BRAND } from "@/lib/config/brand";
-import { emailLayout, escapeHtml } from "@/lib/email/layout";
+import {
+  emailLayout,
+  emailHeading,
+  emailProse,
+  escapeHtml,
+} from "@/lib/email/layout";
 
 export { escapeHtml };
+
+/**
+ * An attribute the browser fetches on its own: src, srcset, background,
+ * poster. Only http(s) values are matched, so an inlined `data:` image is
+ * untouched (it is already in the document and costs no request).
+ */
+const REMOTE_SUBRESOURCE_ATTR =
+  /(\s)(src|srcset|background|poster)(\s*=\s*["']?\s*https?:\/\/)/gi;
+
+/** `url(https://...)` in a stylesheet or a style attribute. */
+const REMOTE_CSS_URL = /url\(\s*(["']?)\s*https?:\/\/[^)"']*\1\s*\)/gi;
+
+/** Whether anything in this document would reach the network to render. */
+export function hasRemoteContent(html: string): boolean {
+  // A fresh regex per call: a /g pattern reused through .test() carries
+  // lastIndex between calls and alternates true/false on identical input.
+  return (
+    new RegExp(REMOTE_SUBRESOURCE_ATTR.source, "i").test(html) ||
+    new RegExp(REMOTE_CSS_URL.source, "i").test(html)
+  );
+}
+
+/**
+ * Stop a previewed email fetching anything, before it is handed to a frame.
+ *
+ * A logged email is shown to the highest-privilege account in the product, and
+ * a remote image in one is a beacon: opening the message would tell whoever
+ * put the URL there the admin's IP address, their user agent, and the moment
+ * they read it. That is the ordinary reason mail clients ship with remote
+ * content off, and it applies here with more force, because the reader is an
+ * administrator and the sender may be whoever filled in a contact form.
+ *
+ * The attribute is renamed rather than blanked, so the browser never sees a
+ * `src` to load and there is no placeholder URL to reason about. The original
+ * value stays in the markup under a `data-vr-blocked-` prefix, which is what
+ * lets the viewer offer the unmodified document when an admin asks for it.
+ */
+export function blockRemoteContent(html: string): string {
+  return html
+    .replace(REMOTE_SUBRESOURCE_ATTR, "$1data-vr-blocked-$2$3")
+    .replace(REMOTE_CSS_URL, "none");
+}
 
 export function generateEmailPreviewHtml({
   title,
@@ -51,13 +97,18 @@ export function generateEmailPreviewHtml({
   unsubscribeUrl?: string | null;
 }): string {
   const safeTitle = escapeHtml(title || "Subject");
+  // emailHeading rather than a hand-written <h1>: the copy here was a
+  // transcription of it that had drifted to font-weight 700, so an admin
+  // previewed a heading heavier than any real message renders. The body
+  // wrapper carries the same class hooks the layout's dark-mode rules target,
+  // so the preview inverts the way a real message does.
   return emailLayout({
-    content: `<h1 style="margin: 0 0 12px 0; font-size: 21px; line-height: 1.3; font-weight: 700; color: ${BRAND.text}; letter-spacing: -0.2px;">${safeTitle}</h1>
-              <div style="font-size: 14px; color: ${BRAND.textMuted}; line-height: 1.65;">${bodyHtml}</div>`,
+    content: `${emailHeading(safeTitle)}${emailProse(bodyHtml)}`,
     appName,
     appUrl,
     logoSrc: logoSrc || `${appUrl}/favicon.svg`,
     supportEmail: supportEmail || `support@${new URL(appUrl).hostname}`,
     unsubscribeUrl: unsubscribeUrl ?? null,
+    title: title || undefined,
   });
 }

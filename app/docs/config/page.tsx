@@ -44,7 +44,7 @@ const tocItems: TocItem[] = [
 
 export default function ConfigPage() {
   return (
-    <div className="space-y-16">
+    <div className="space-y-12 sm:space-y-16">
       <DocsTocSpy items={tocItems} />
       <DocsHero
         id="top"
@@ -137,8 +137,8 @@ export default function ConfigPage() {
         <p className="max-w-[68ch] text-sm text-muted-foreground">
           Edit <InlineCode>lib/config/config-values.ts</InlineCode> to change
           the shipped default for any of these. What that edit costs you depends
-          on the setting&rsquo;s tier. General, Branding, and SEO values are
-          build tier: editing the constant (or the{" "}
+          on the setting&rsquo;s tier. General, Social, Branding, and SEO values
+          are build tier: editing the constant (or the{" "}
           <InlineCode>NEXT_PUBLIC_*</InlineCode> env var named in the
           field&rsquo;s help text) and rebuilding is the{" "}
           <strong className="text-foreground">only</strong> way to change them.
@@ -586,9 +586,10 @@ export default function ConfigPage() {
               other running instance within the cache TTL.
             </li>
             <li>
-              <strong className="text-foreground">Build</strong>: the 29
-              General, Branding, and SEO fields (app name, slug, description,
-              app URL, repo, logo, colours, footer text, the 13{" "}
+              <strong className="text-foreground">Build</strong>: the 38
+              General, Social, Branding, and SEO fields (app name, slug,
+              description, app URL, repo, logo, colours, footer text, the 9{" "}
+              <InlineCode>SOCIAL_*</InlineCode> account URLs, the 13{" "}
               <InlineCode>SEO_*</InlineCode> keys, and a couple of client-side
               limits). These are compiled into the app. Saving one writes the
               database row and the admin panel shows it back to you, but{" "}

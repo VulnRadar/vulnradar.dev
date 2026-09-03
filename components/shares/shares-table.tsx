@@ -21,11 +21,15 @@ export function SharesTable({
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
       {/* Table header - hidden on mobile */}
-      <div className="hidden sm:grid grid-cols-[1fr_110px_100px_110px_80px] gap-4 border-b border-border bg-muted/30 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+      {/* Expires is its own column. It used to be a second line inside
+          "Shared", which put the one setting people come here to change
+          under a header naming a different fact. */}
+      <div className="hidden sm:grid grid-cols-[1fr_110px_100px_110px_120px_80px] gap-4 border-b border-border bg-muted/30 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         <div>Target</div>
         <div>Status</div>
         <div>Findings</div>
         <div>Shared</div>
+        <div>Expires</div>
         <div className="text-right">Actions</div>
       </div>
 

@@ -31,7 +31,9 @@ import {
 import { downloadBlob } from "@/lib/ui/download";
 import { APP_SLUG } from "@/lib/config/client-constants";
 import {
+  AdminPanelHeader,
   ConfirmDialog,
+  StatusPill,
   useUnsavedChangesWarning,
   AdminMobileToc,
   AdminMobileTocTrigger,
@@ -39,6 +41,7 @@ import {
   type AdminTocItem,
 } from "@/components/admin/shared";
 import { cn } from "@/lib/ui/utils";
+import { pluralize } from "@/lib/ui/plural";
 import { SETTINGS_REGISTRY, type SettingKey } from "@/lib/config/registry";
 import {
   SETTINGS_TABS,
@@ -54,6 +57,52 @@ import { SettingField } from "./settings-field";
 
 type EffectiveMap = Partial<Record<SettingKey, FieldValue>>;
 type ChangesMap = Partial<Record<SettingKey, FieldValue>>;
+
+/**
+ * Human labels for the cleanup run's per-table counts. The panel used to
+ * print `key.replace(/_/g, " ")` over these, and the keys are camelCase
+ * identifiers from CleanupStats (lib/database/cleanup.ts), not snake_case, so
+ * that replace did nothing at all and the result read "oldSubdomainCache".
+ * Anything added to CleanupStats later falls through to deCamel() below,
+ * which at least produces "old webhook deliveries" rather than a raw
+ * identifier.
+ */
+const CLEANUP_STAT_LABELS: Record<string, string> = {
+  expiredSessions: "expired sessions",
+  oldApiUsage: "API usage rows",
+  revokedApiKeys: "revoked API keys",
+  oldDataRequests: "old data requests",
+  oldScans: "scans past retention",
+  oldRateLimits: "rate-limit counters",
+  expiredTokens: "expired tokens",
+  expiredInvites: "expired invites",
+  expired2FACodes: "expired 2FA codes",
+  expiredBillingCodes: "expired billing codes",
+  expiredDeviceTrust: "expired device trusts",
+  expiredNotifications: "expired notifications",
+  expiredGiftedSubs: "expired gifted subs",
+  oldAuditLogs: "audit log rows",
+  oldAdminNotes: "old admin notes",
+  oldStaffActivity: "staff activity rows",
+  oldSubdomainCache: "subdomain cache rows",
+  oldAiConversations: "old AI conversations",
+  oldScanFindingFeedback: "finding feedback rows",
+  oldUserNotifications: "user notifications",
+  oldGithubReviewUsage: "GitHub review usage rows",
+  oldBrowserSessions: "old browser sessions",
+  oldKevCache: "KEV cache rows",
+  oldErrorLogs: "error log entries",
+  archivedAuditLogs: "audit rows archived",
+  oldEmailLogs: "email log entries",
+  oldWebhookDeliveries: "webhook delivery rows",
+};
+
+function deCamel(key: string): string {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/_/g, " ")
+    .toLowerCase();
+}
 
 async function callFeaturesApi(
   body: Record<string, unknown>,
@@ -343,7 +392,7 @@ export function SystemSettingsManager() {
     if (preview.length === 0) {
       setSaveError(
         unknown.length > 0
-          ? `Nothing to import: every recognized key already matches, and ${unknown.length} key(s) were not recognized.`
+          ? `Nothing to import: every recognized key already matches, and ${pluralize(unknown.length, "key")} were not recognized.`
           : "Nothing to import: every value in that file already matches the current settings.",
       );
       return;
@@ -380,7 +429,7 @@ export function SystemSettingsManager() {
     setImportPending({});
     if (importUnknownKeys.length > 0) {
       setSaveError(
-        `Imported. Skipped ${importUnknownKeys.length} key(s) not recognized by this version: ${importUnknownKeys.join(", ")}.`,
+        `Imported. Skipped ${pluralize(importUnknownKeys.length, "key")} not recognized by this version: ${importUnknownKeys.join(", ")}.`,
       );
     }
   };
@@ -411,8 +460,8 @@ export function SystemSettingsManager() {
   return (
     <div className="space-y-6">
       {saveError && (
-        <div className="flex items-start gap-3 p-4 rounded-xl border border-destructive/30 bg-destructive/10">
-          <div className="p-2 rounded-lg bg-destructive/20 shrink-0">
+        <div className="flex items-start gap-3 p-4 rounded-lg border border-destructive/30 bg-destructive/10">
+          <div className="p-2 rounded-md bg-destructive/20 shrink-0">
             <AlertTriangle
               className="h-4 w-4 text-destructive"
               aria-hidden="true"
@@ -427,7 +476,7 @@ export function SystemSettingsManager() {
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 w-7 p-0 shrink-0"
+            className="h-11 w-11 sm:h-7 sm:w-7 p-0 shrink-0"
             onClick={() => setSaveError(null)}
             aria-label="Dismiss"
           >
@@ -441,27 +490,34 @@ export function SystemSettingsManager() {
         id="settings-panel"
         className="border-border/50 bg-card/50 overflow-hidden"
       >
-        <div className="px-4 sm:px-5 py-4 border-b border-border/50">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <Settings className="h-4 w-4 text-primary" aria-hidden="true" />
-              </div>
-              <div>
-                <h3 className="text-base font-semibold text-foreground">
-                  System Settings
-                </h3>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {Object.keys(SETTINGS_REGISTRY).length} configurable values. A
-                  database override wins over the shipped default.
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
+        <AdminPanelHeader
+          icon={Settings}
+          title="System Settings"
+          // The old line reported only the registry size, which is a compile
+          // time constant and identical on every install. How many values
+          // this instance has actually moved off their defaults is the number
+          // an operator is here for, so it leads.
+          subtitle={
+            <>
+              <span className="tabular-nums">{overridden.size}</span> of{" "}
+              <span className="tabular-nums">
+                {Object.keys(SETTINGS_REGISTRY).length}
+              </span>{" "}
+              values customised on this instance. A database override wins over
+              the shipped default.
+            </>
+          }
+          status={
+            overridden.size > 0 ? (
+              <StatusPill tone="info">Customised</StatusPill>
+            ) : null
+          }
+          actions={
+            <>
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8 gap-1.5 border-border/40"
+                className="h-9 px-3 gap-2 border-border/40"
                 onClick={handleExport}
                 disabled={overridden.size === 0}
                 aria-label="Export customized settings as JSON"
@@ -479,7 +535,7 @@ export function SystemSettingsManager() {
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8 gap-1.5 border-border/40"
+                className="h-9 px-3 gap-2 border-border/40"
                 onClick={() => importInputRef.current?.click()}
                 aria-label="Import settings from a JSON file"
               >
@@ -489,7 +545,7 @@ export function SystemSettingsManager() {
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8 gap-1.5 border-border/40"
+                className="h-9 px-3 gap-2 border-border/40"
                 onClick={fetchEffective}
                 disabled={loading}
                 aria-label="Refresh system settings"
@@ -500,9 +556,9 @@ export function SystemSettingsManager() {
                 />
                 <span className="hidden sm:inline">Refresh</span>
               </Button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        />
 
         <CardContent className="p-3 sm:p-4">
           {loadError ? (
@@ -604,7 +660,7 @@ export function SystemSettingsManager() {
                             )}
                           >
                             {cluster.label && (
-                              <p className="px-4 sm:px-5 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 bg-muted/20">
+                              <p className="px-4 sm:px-5 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground bg-muted/20">
                                 {cluster.label}
                               </p>
                             )}
@@ -646,22 +702,12 @@ export function SystemSettingsManager() {
         id="settings-cleanup"
         className="border-border/50 bg-card/50 overflow-hidden"
       >
-        <div className="px-4 sm:px-5 py-4 border-b border-border/50">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-destructive/10">
-              <Trash2 className="h-4 w-4 text-destructive" aria-hidden="true" />
-            </div>
-            <div>
-              <h3 className="text-base font-semibold text-foreground">
-                Database Cleanup
-              </h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Remove expired tokens, old sessions, and stale data. Runs
-                automatically every 5 minutes.
-              </p>
-            </div>
-          </div>
-        </div>
+        <AdminPanelHeader
+          icon={Trash2}
+          tone="crit"
+          title="Database Cleanup"
+          subtitle="Removes expired tokens, old sessions, and stale data. Runs automatically every 5 minutes."
+        />
         <CardContent className="p-4 sm:p-5">
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
             <div className="flex-1 text-sm text-muted-foreground">
@@ -669,10 +715,14 @@ export function SystemSettingsManager() {
               keys, old scan history (per plan retention), audit logs older than
               365 days, and other stale database rows.
             </div>
+            {/* Solid destructive. This deletes scan history and audit rows
+                across every account on the instance and cannot be undone, and
+                it used to be an outline h-8 button indistinguishable from
+                Export, Import and Refresh one card above it. */}
             <Button
-              variant="outline"
+              variant="destructive"
               size="sm"
-              className="h-8 gap-1.5 border-border/40 shrink-0"
+              className="h-9 px-3 gap-2 shrink-0"
               onClick={() => setConfirmCleanup(true)}
               disabled={cleanupRunning}
             >
@@ -681,7 +731,7 @@ export function SystemSettingsManager() {
               ) : (
                 <Trash2 className="h-4 w-4" aria-hidden="true" />
               )}
-              {cleanupRunning ? "Running..." : "Run Cleanup Now"}
+              {cleanupRunning ? "Running..." : "Run cleanup now"}
             </Button>
           </div>
           {cleanupResult && (
@@ -710,10 +760,10 @@ export function SystemSettingsManager() {
                                 key={key}
                                 className="text-xs text-muted-foreground"
                               >
-                                <span className="font-medium text-foreground">
-                                  {count}
+                                <span className="font-medium text-foreground tabular-nums">
+                                  {count.toLocaleString()}
                                 </span>{" "}
-                                {key.replace(/_/g, " ")}
+                                {CLEANUP_STAT_LABELS[key] ?? deCamel(key)}
                               </div>
                             ) : null,
                         )}
@@ -816,7 +866,7 @@ export function SystemSettingsManager() {
         title="Import Settings"
         description={
           importUnknownKeys.length > 0
-            ? `${importUnknownKeys.length} key(s) in that file are not recognized by this version and will be skipped: ${importUnknownKeys.join(", ")}.`
+            ? `${pluralize(importUnknownKeys.length, "key")} in that file are not recognized by this version and will be skipped: ${importUnknownKeys.join(", ")}.`
             : "Review and confirm every change from the imported file."
         }
         changes={importPreview ?? []}
@@ -825,12 +875,17 @@ export function SystemSettingsManager() {
         variant="destructive"
       />
 
-      {/* Retention cleanup: irreversible and database-wide, so it confirms. */}
+      {/* Retention cleanup: irreversible and database-wide, so it confirms,
+          and `danger` because it deletes. Without that prop ConfirmDialog
+          renders its blue ShieldCheck reassurance dialog, which is what this
+          one showed while the far milder "clear the error log" confirmation
+          two tabs over correctly showed the red one. */}
       <ConfirmDialog
         open={confirmCleanup}
         title="Run retention cleanup now?"
         description="This permanently deletes scan history and audit-log rows that are past their retention window, across every account on this instance, not just yours. It cannot be undone. Cleanup also runs on its own schedule, so this is only needed to force it early."
         confirmLabel="Delete expired rows"
+        danger
         onConfirm={runCleanup}
         onCancel={() => setConfirmCleanup(false)}
       />

@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -12,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { PaginationControl } from "@/components/ui/pagination-control";
 import {
   Trash2,
   RefreshCw,
@@ -19,19 +19,20 @@ import {
   Loader2,
   Share2,
   EyeOff,
-  ChevronLeft,
-  ChevronRight,
 } from "lucide-react";
 import {
   SaveConfirmationModal,
   type ChangeItem,
 } from "@/components/shared/save-confirmation-modal";
 import {
+  AdminPanelHeader,
   EmptyState,
+  StatusPill,
   TableScrollArea,
   DataTableSkeleton,
   Toast,
 } from "@/components/admin/shared";
+import { formatTimestamp } from "@/components/admin/utils";
 import { cn } from "@/lib/ui/utils";
 import { ROUTES } from "@/lib/config/client-constants";
 
@@ -71,6 +72,17 @@ interface ShareRow {
 
 type Tab = "hosts" | "shares";
 
+/** A share whose expiry has already passed still occupies a row here, but its
+ *  link is already dead: revoking it changes nothing a visitor would notice.
+ *  The list rendered no expiry at all, so an expired share and a live one that
+ *  exposes forty findings were the same grey row. */
+function isExpired(row: ShareRow): boolean {
+  return (
+    !!row.share_expires_at &&
+    new Date(row.share_expires_at).getTime() <= Date.now()
+  );
+}
+
 async function postAction(body: Record<string, unknown>) {
   const res = await fetch("/api/v3/admin/content", {
     method: "POST",
@@ -87,6 +99,7 @@ export function ContentManager() {
   const [shares, setShares] = useState<ShareRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [toast, setToast] = useState<{
@@ -104,12 +117,12 @@ export function ContentManager() {
   // total/totalPages after a newer one (Shares) -- fast tab toggling otherwise
   // binds one tab's page count to the other.
   const fetchReqRef = useRef(0);
-  const fetchPage = useCallback(async (t: Tab, p: number) => {
+  const fetchPage = useCallback(async (t: Tab, p: number, limit: number) => {
     const reqId = ++fetchReqRef.current;
     setLoading(true);
     try {
       const res = await fetch(
-        `/api/v3/admin/content?type=${t}&page=${p}&limit=20`,
+        `/api/v3/admin/content?type=${t}&page=${p}&limit=${limit}`,
       );
       const data = await res.json();
       if (reqId !== fetchReqRef.current) return;
@@ -132,8 +145,8 @@ export function ContentManager() {
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount/tab-or-page-change: fetchPage's setState calls only fire after its async request resolves, not synchronously in this effect
-    fetchPage(tab, page);
-  }, [tab, page, fetchPage]);
+    fetchPage(tab, page, pageSize);
+  }, [tab, page, pageSize, fetchPage]);
 
   function switchTab(next: Tab) {
     setTab(next);
@@ -158,7 +171,7 @@ export function ContentManager() {
     setBusyId(null);
     if (ok) {
       setPendingPurgeHost(null);
-      fetchPage("hosts", page);
+      fetchPage("hosts", page, pageSize);
     }
     return { ok, error: data?.error };
   }
@@ -178,7 +191,7 @@ export function ContentManager() {
         : { message: data.error || "Failed to unlist share", type: "error" },
     );
     setBusyId(null);
-    if (ok) fetchPage("shares", page);
+    if (ok) fetchPage("shares", page, pageSize);
   }
 
   async function handleRevokeShare() {
@@ -196,7 +209,7 @@ export function ContentManager() {
     setBusyId(null);
     if (ok) {
       setPendingRevokeShare(null);
-      fetchPage("shares", page);
+      fetchPage("shares", page, pageSize);
     }
     return { ok, error: data?.error };
   }
@@ -259,42 +272,25 @@ export function ContentManager() {
 
       {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
 
-      <div className="space-y-6">
-        <Card className="border-border/50 bg-card/50 overflow-hidden">
-          <CardHeader className="pb-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="p-2 rounded-lg bg-primary/10 shrink-0">
-                  {tab === "hosts" ? (
-                    <Globe
-                      aria-hidden="true"
-                      className="h-4 w-4 text-primary"
-                    />
-                  ) : (
-                    <Share2
-                      aria-hidden="true"
-                      className="h-4 w-4 text-primary"
-                    />
-                  )}
-                </div>
-                <div className="min-w-0">
-                  <CardTitle className="text-base font-semibold truncate">
-                    {tab === "hosts"
-                      ? "Public Host Directory"
-                      : "Public Shares"}
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {tab === "hosts"
-                      ? "Every host cached at /host/[hostname]: purge one to pull it from the public directory."
-                      : "Every scan that has ever had a share link: unlist from the public directory or revoke the link outright."}
-                  </p>
-                </div>
-              </div>
+      <div className="space-y-4">
+        {/* A hand-rolled rounded-xl pane rather than a <Card>: its CardHeader
+            also inherited ui/card.tsx's p-6, so this panel's header padding
+            was wider than every sibling's. */}
+        <div className="overflow-hidden rounded-xl border border-border/50 bg-card/50">
+          <AdminPanelHeader
+            icon={tab === "hosts" ? Globe : Share2}
+            title={tab === "hosts" ? "Public Host Directory" : "Public Shares"}
+            subtitle={
+              tab === "hosts"
+                ? "Every host cached at /host/[hostname]: purge one to pull it from the public directory."
+                : "Every scan that has ever had a share link. Unlisting hides it from the directory; revoking kills the link for everyone already holding it."
+            }
+            actions={
               <Button
                 variant="outline"
                 size="sm"
                 className="h-9 px-3 gap-2 border-border/40 shrink-0"
-                onClick={() => fetchPage(tab, page)}
+                onClick={() => fetchPage(tab, page, pageSize)}
                 disabled={loading}
                 aria-label="Refresh"
               >
@@ -304,9 +300,9 @@ export function ContentManager() {
                 />
                 <span className="hidden sm:inline">Refresh</span>
               </Button>
-            </div>
-
-            <div className="mt-4 inline-flex rounded-lg border border-border/40 bg-muted/30 p-1">
+            }
+          >
+            <div className="inline-flex rounded-lg border border-border/40 bg-muted/30 p-1">
               {/* a11y (SC 4.1.2): which half of this switcher is active was
                   carried in background and text colour only. */}
               <button
@@ -334,9 +330,9 @@ export function ContentManager() {
                 Public Shares
               </button>
             </div>
-          </CardHeader>
+          </AdminPanelHeader>
 
-          <CardContent className="p-0">
+          <div>
             {loading ? (
               <div className="p-4">
                 <DataTableSkeleton rows={6} />
@@ -391,7 +387,7 @@ export function ContentManager() {
                                 <Badge
                                   variant="outline"
                                   className={cn(
-                                    "text-[10px] px-1.5 py-0",
+                                    "text-[10px] px-1.5 py-0 tabular-nums",
                                     dangerBandClass(row.danger_score),
                                   )}
                                 >
@@ -408,10 +404,14 @@ export function ContentManager() {
                                 })}
                               </TableCell>
                               <TableCell className="px-4 py-2.5 text-right">
+                                {/* Purging a host's reputation is the
+                                    destructive action of this tab and used to
+                                    be a ghost h-7, lighter than the Refresh
+                                    button in the header above it. */}
                                 <Button
-                                  variant="ghost"
+                                  variant="outline"
                                   size="sm"
-                                  className="h-7 gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                  className="h-8 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
                                   onClick={() => setPendingPurgeHost(row.host)}
                                   disabled={busyId === row.host}
                                 >
@@ -452,7 +452,7 @@ export function ContentManager() {
                           <Badge
                             variant="outline"
                             className={cn(
-                              "text-[10px] px-1.5 py-0 shrink-0",
+                              "text-[10px] px-1.5 py-0 shrink-0 tabular-nums",
                               dangerBandClass(row.danger_score),
                             )}
                           >
@@ -471,9 +471,9 @@ export function ContentManager() {
                             )}
                           </span>
                           <Button
-                            variant="ghost"
+                            variant="outline"
                             size="sm"
-                            className="h-7 gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            className="h-8 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
                             onClick={() => setPendingPurgeHost(row.host)}
                             disabled={busyId === row.host}
                           >
@@ -506,95 +506,135 @@ export function ContentManager() {
               <>
                 <div className="hidden md:block">
                   <TableScrollArea maxHeight="28rem">
-                    <Table>
+                    <Table className="min-w-[720px]">
                       <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
                         <TableRow className="border-y border-border/50 hover:bg-transparent">
                           <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                            URL
+                            Share
                           </TableHead>
                           <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                             Owner
                           </TableHead>
+                          <TableHead className="px-4 h-9 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            Findings
+                          </TableHead>
                           <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                            Listed
+                            Status
                           </TableHead>
                           <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground" />
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {shares.map((row) => (
-                          <TableRow key={row.id} className="border-border/30">
-                            <TableCell className="px-4 py-2.5">
-                              <p
-                                className="text-xs font-mono text-foreground truncate max-w-[220px]"
-                                title={row.url}
+                        {/* The list query already selects scanned_at,
+                            findings_count and share_expires_at, and the row
+                            rendered none of them: a share exposing forty
+                            findings, a fresh one, and one whose link expired
+                            months ago were three identical grey rows. */}
+                        {shares.map((row) => {
+                          const expired = isExpired(row);
+                          return (
+                            <TableRow key={row.id} className="border-border/30">
+                              <TableCell className="px-4 py-2.5">
+                                <p
+                                  className="text-xs font-mono text-foreground truncate max-w-[260px]"
+                                  title={row.url}
+                                >
+                                  {row.url}
+                                </p>
+                                <p className="text-[11px] tabular-nums text-muted-foreground">
+                                  Scanned {formatTimestamp(row.scanned_at)}
+                                </p>
+                              </TableCell>
+                              <TableCell className="px-4 py-2.5">
+                                <p className="text-xs font-mono text-muted-foreground truncate max-w-[160px]">
+                                  {row.user_email || "Unknown owner"}
+                                </p>
+                              </TableCell>
+                              <TableCell
+                                className={cn(
+                                  "px-4 py-2.5 text-right text-sm tabular-nums",
+                                  row.findings_count > 0
+                                    ? "font-medium text-foreground"
+                                    : "text-muted-foreground",
+                                )}
                               >
-                                {row.url}
-                              </p>
-                            </TableCell>
-                            <TableCell className="px-4 py-2.5">
-                              <p className="text-xs font-mono text-muted-foreground truncate max-w-[160px]">
-                                {row.user_email || "Unknown owner"}
-                              </p>
-                            </TableCell>
-                            <TableCell className="px-4 py-2.5">
-                              {row.share_publicly_listed ? (
-                                <Badge
-                                  variant="outline"
-                                  className="text-[10px] px-1.5 py-0 border-primary/30 text-primary"
-                                >
-                                  Listed
-                                </Badge>
-                              ) : (
-                                <Badge
-                                  variant="outline"
-                                  className="text-[10px] px-1.5 py-0 border-border/50 text-muted-foreground"
-                                >
-                                  Unlisted
-                                </Badge>
-                              )}
-                            </TableCell>
-                            <TableCell className="px-4 py-2.5">
-                              <div className="flex justify-end gap-1.5">
-                                {row.share_publicly_listed && (
+                                {row.findings_count}
+                              </TableCell>
+                              <TableCell className="px-4 py-2.5">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  {row.share_publicly_listed ? (
+                                    <StatusPill tone="info">Listed</StatusPill>
+                                  ) : (
+                                    <StatusPill tone="neutral">
+                                      Unlisted
+                                    </StatusPill>
+                                  )}
+                                  {expired && (
+                                    <StatusPill tone="neutral">
+                                      Expired
+                                    </StatusPill>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell className="px-4 py-2.5">
+                                <div className="flex justify-end gap-1.5">
+                                  {/* Unlist is reversible and cosmetic, so it
+                                      stays a bare ghost control. Revoke breaks
+                                      a live link for everyone holding it and
+                                      cannot be undone, so it gets a container
+                                      and a destructive border rather than
+                                      differing from Unlist by text colour
+                                      alone. */}
+                                  {row.share_publicly_listed && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 gap-1.5 text-muted-foreground hover:text-foreground"
+                                      onClick={() => handleUnlistShare(row)}
+                                      disabled={busyId === row.id}
+                                    >
+                                      {busyId === row.id ? (
+                                        <Loader2
+                                          aria-hidden="true"
+                                          className="h-3.5 w-3.5 animate-spin"
+                                        />
+                                      ) : (
+                                        <EyeOff
+                                          aria-hidden="true"
+                                          className="h-3.5 w-3.5"
+                                        />
+                                      )}
+                                      Unlist
+                                    </Button>
+                                  )}
                                   <Button
-                                    variant="ghost"
+                                    variant="outline"
                                     size="sm"
-                                    className="h-7 gap-1.5 text-muted-foreground hover:text-foreground"
-                                    onClick={() => handleUnlistShare(row)}
+                                    className="h-8 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                    onClick={() => setPendingRevokeShare(row)}
                                     disabled={busyId === row.id}
                                   >
+                                    {/* Revoke used only to go disabled while
+                                        the request was in flight, so a click
+                                        produced no visible response at all. */}
                                     {busyId === row.id ? (
                                       <Loader2
                                         aria-hidden="true"
                                         className="h-3.5 w-3.5 animate-spin"
                                       />
                                     ) : (
-                                      <EyeOff
+                                      <Trash2
                                         aria-hidden="true"
                                         className="h-3.5 w-3.5"
                                       />
                                     )}
-                                    Unlist
+                                    Revoke
                                   </Button>
-                                )}
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                  onClick={() => setPendingRevokeShare(row)}
-                                  disabled={busyId === row.id}
-                                >
-                                  <Trash2
-                                    aria-hidden="true"
-                                    className="h-3.5 w-3.5"
-                                  />
-                                  Revoke
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   </TableScrollArea>
@@ -602,41 +642,69 @@ export function ContentManager() {
 
                 {/* Mobile cards */}
                 <div className="md:hidden divide-y divide-border/30">
-                  {shares.map((row) => (
-                    <div key={row.id} className="px-4 py-3">
-                      <p
-                        className="text-xs font-mono text-foreground wrap-break-word"
-                        title={row.url}
-                      >
-                        {row.url}
-                      </p>
-                      <div className="mt-1.5 flex items-center gap-2">
-                        <p className="text-xs font-mono text-muted-foreground truncate min-w-0">
-                          {row.user_email || "Unknown owner"}
+                  {shares.map((row) => {
+                    const expired = isExpired(row);
+                    return (
+                      <div key={row.id} className="px-4 py-3">
+                        <p
+                          className="text-xs font-mono text-foreground wrap-break-word"
+                          title={row.url}
+                        >
+                          {row.url}
                         </p>
-                        {row.share_publicly_listed ? (
-                          <Badge
-                            variant="outline"
-                            className="text-[10px] px-1.5 py-0 border-primary/30 text-primary shrink-0"
-                          >
-                            Listed
-                          </Badge>
-                        ) : (
-                          <Badge
-                            variant="outline"
-                            className="text-[10px] px-1.5 py-0 border-border/50 text-muted-foreground shrink-0"
-                          >
-                            Unlisted
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="mt-2 flex justify-end gap-1.5">
-                        {row.share_publicly_listed && (
+                        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                          <p className="text-xs font-mono text-muted-foreground truncate min-w-0">
+                            {row.user_email || "Unknown owner"}
+                          </p>
+                          {row.share_publicly_listed ? (
+                            <StatusPill tone="info" className="shrink-0">
+                              Listed
+                            </StatusPill>
+                          ) : (
+                            <StatusPill tone="neutral" className="shrink-0">
+                              Unlisted
+                            </StatusPill>
+                          )}
+                          {expired && (
+                            <StatusPill tone="neutral" className="shrink-0">
+                              Expired
+                            </StatusPill>
+                          )}
+                        </div>
+                        <p className="mt-1 text-[11px] tabular-nums text-muted-foreground">
+                          {row.findings_count}{" "}
+                          {row.findings_count === 1 ? "finding" : "findings"}
+                          {" · "}
+                          scanned {formatTimestamp(row.scanned_at)}
+                        </p>
+                        <div className="mt-2 flex justify-end gap-1.5">
+                          {row.share_publicly_listed && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 gap-1.5 text-muted-foreground hover:text-foreground"
+                              onClick={() => handleUnlistShare(row)}
+                              disabled={busyId === row.id}
+                            >
+                              {busyId === row.id ? (
+                                <Loader2
+                                  aria-hidden="true"
+                                  className="h-3.5 w-3.5 animate-spin"
+                                />
+                              ) : (
+                                <EyeOff
+                                  aria-hidden="true"
+                                  className="h-3.5 w-3.5"
+                                />
+                              )}
+                              Unlist
+                            </Button>
+                          )}
                           <Button
-                            variant="ghost"
+                            variant="outline"
                             size="sm"
-                            className="h-7 gap-1.5 text-muted-foreground hover:text-foreground"
-                            onClick={() => handleUnlistShare(row)}
+                            className="h-8 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            onClick={() => setPendingRevokeShare(row)}
                             disabled={busyId === row.id}
                           >
                             {busyId === row.id ? (
@@ -645,62 +713,41 @@ export function ContentManager() {
                                 className="h-3.5 w-3.5 animate-spin"
                               />
                             ) : (
-                              <EyeOff
+                              <Trash2
                                 aria-hidden="true"
                                 className="h-3.5 w-3.5"
                               />
                             )}
-                            Unlist
+                            Revoke
                           </Button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                          onClick={() => setPendingRevokeShare(row)}
-                          disabled={busyId === row.id}
-                        >
-                          <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
-                          Revoke
-                        </Button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </>
             )}
 
+            {/* The shared pager, not a hand-rolled Prev/Next pair. It also
+                brings the per-page selector, which is why the fetch takes its
+                limit from state instead of a hardcoded 20. */}
             {!loading && total > 0 && (
-              <div className="flex items-center justify-between gap-3 border-t border-border/40 px-4 py-3">
-                <p className="text-xs text-muted-foreground">
-                  Page {page} of {totalPages} &middot; {total} total
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 gap-1"
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={page <= 1}
-                  >
-                    <ChevronLeft aria-hidden="true" className="h-3.5 w-3.5" />
-                    Prev
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 gap-1"
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={page >= totalPages}
-                  >
-                    Next
-                    <ChevronRight aria-hidden="true" className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
+              <div className="border-t border-border/40 px-4 py-3">
+                <PaginationControl
+                  currentPage={page}
+                  totalPages={totalPages}
+                  onPageChange={setPage}
+                  pageSize={pageSize}
+                  onPageSizeChange={(s) => {
+                    setPageSize(s);
+                    setPage(1);
+                  }}
+                  totalItems={total}
+                />
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     </>
   );

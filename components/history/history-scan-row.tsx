@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/ui/utils";
+import { tourAnchor } from "@/lib/tour/anchors";
 import { SEVERITY_LEVELS } from "@/lib/config/client-constants";
 import { severityTone } from "@/components/scanner/severity-badge";
 import { SeverityPill } from "./severity-pill";
@@ -28,6 +29,7 @@ import {
   formatDate,
   getDomain,
   displayUrl,
+  isRecentScan,
   type TagMutationResult,
 } from "./history-types";
 
@@ -85,10 +87,25 @@ export function HistoryScanRow({
 
   const tone = severityTone(worst);
 
+  // Recency is half of what makes a row worth opening, and it was rendered as
+  // muted micro-text identical on a scan from ten minutes ago and one from
+  // last March. A scan inside the last day gets full-strength text: the
+  // difference in weight is the signal, and the exact time stays in the title.
+  const recent = isRecentScan(scan.scanned_at);
+
+  // The other half is severity, and in a list of fifty rows a 2px rail plus a
+  // small coloured pill was not enough to make "this one has a critical" jump
+  // out at a glance. Rows whose worst finding is critical or high get a faint
+  // wash of that severity. Held at /5 for the same contrast reason as
+  // SEVERITY_TONE.panel, and the hover/focus background replaces it outright
+  // rather than compositing, so the pointed-at row still reads as pointed at.
+  const isLoud = !isClean && (critical > 0 || high > 0);
+
   return (
     <div
       role="button"
       tabIndex={0}
+      {...tourAnchor("historyRow")}
       onClick={() => onView(scan)}
       onKeyDown={(e) => {
         if (e.target !== e.currentTarget) return;
@@ -97,7 +114,10 @@ export function HistoryScanRow({
           onView(scan);
         }
       }}
-      className="group relative flex cursor-pointer flex-col gap-3 border-l-2 border-transparent py-3.5 pl-4 pr-16 sm:pr-4 transition-colors hover:bg-muted/30 focus-visible:bg-muted/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:grid sm:grid-cols-[auto_1fr_auto_auto_auto_auto] sm:items-center sm:gap-4"
+      className={cn(
+        "group relative flex cursor-pointer flex-col gap-3 border-l-2 border-transparent py-3.5 pl-4 pr-16 sm:pr-4 transition-colors hover:bg-muted/30 focus-visible:bg-muted/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:grid sm:grid-cols-[auto_1fr_auto_auto_auto_auto] sm:items-center sm:gap-4",
+        isLoud && tone.panel,
+      )}
       style={{
         borderLeftColor: isClean
           ? "hsl(var(--success))"
@@ -153,9 +173,12 @@ export function HistoryScanRow({
         </div>
       </div>
 
-      {/* Source badge - desktop only */}
+      {/* Source - desktop only. Demoted from a bordered badge to plain small
+          caps: on nearly every row it reads "Web", and a bordered chip gave
+          that constant the same visual weight as the severity counts beside
+          it, which are the reason anyone scans this column. */}
       <div className="hidden sm:flex items-center justify-center w-20">
-        <span className="inline-flex items-center rounded border border-border bg-muted px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           {scan.source === "api" ? "API" : "Web"}
         </span>
       </div>
@@ -163,7 +186,7 @@ export function HistoryScanRow({
       {/* Severity pills - desktop */}
       <div className="hidden sm:flex items-center justify-center gap-1 w-40">
         {isClean ? (
-          <span className="inline-flex items-center gap-1.5 rounded border border-[hsl(var(--success))]/20 bg-[hsl(var(--success))]/10 px-2.5 py-1 text-xs font-semibold text-[hsl(var(--success))]">
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--success))]/20 bg-[hsl(var(--success))]/10 px-2.5 py-1 text-xs font-semibold text-[hsl(var(--success))]">
             <ShieldCheck className="h-3 w-3" />
             Clean
           </span>
@@ -200,7 +223,10 @@ export function HistoryScanRow({
       {/* Time - desktop only */}
       <div className="hidden sm:flex items-center justify-end w-20">
         <span
-          className="text-xs text-muted-foreground tabular-nums"
+          className={cn(
+            "text-xs tabular-nums",
+            recent ? "font-medium text-foreground" : "text-muted-foreground",
+          )}
           title={formatDate(scan.scanned_at)}
         >
           {formatRelativeTime(scan.scanned_at)}
@@ -267,10 +293,16 @@ export function HistoryScanRow({
           was worth opening, so the worst severity present is named beside it:
           "3 findings, worst high" is a triage signal, "3 findings" is not. */}
       <div className="flex sm:hidden items-center justify-between gap-2 text-xs text-muted-foreground ml-12">
-        <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           {scan.source === "api" ? "API" : "Web"}
         </span>
-        <span className="tabular-nums">
+        <span
+          className={cn(
+            "tabular-nums",
+            recent && "font-medium text-foreground",
+          )}
+          title={formatDate(scan.scanned_at)}
+        >
           {formatRelativeTime(scan.scanned_at)}
         </span>
         {isClean ? (

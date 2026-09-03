@@ -130,7 +130,13 @@ export function CrawlPagesInfo({
                                   tone.solid,
                                 )}
                               />
-                              <span className="min-w-0 flex-1 truncate text-xs text-foreground group-hover:text-primary">
+                              {/* The title is a check name from our own
+                                  catalogue, not a value from the scanned site.
+                                  The row is indented pl-8 and carries a
+                                  severity word on the right, so on a phone it
+                                  had under 150px and clipped titles to three
+                                  or four words. It wraps instead. */}
+                              <span className="min-w-0 flex-1 text-xs leading-snug text-foreground group-hover:text-primary">
                                 {finding.title}
                               </span>
                               <span

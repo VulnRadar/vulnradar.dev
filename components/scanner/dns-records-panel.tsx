@@ -1,27 +1,18 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import {
-  Check,
-  ChevronDown,
-  Clock,
-  Copy,
-  Crown,
-  Loader2,
-  Network,
-  RefreshCw,
-} from "lucide-react";
+import { Check, ChevronDown, Copy, Network } from "lucide-react";
 import type { DnsRecords } from "@/lib/scanner/dns-records";
 import { API } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
 import { copyToClipboard } from "@/lib/ui/clipboard";
-import { useAuth } from "@/components/providers/auth-provider";
+import { PREMIUM_FEATURES } from "@/components/modals/premium-upgrade-modal";
 import {
-  PremiumUpgradeModal,
-  PREMIUM_FEATURES,
-  hasFeatureAccess,
-} from "@/components/modals/premium-upgrade-modal";
-import { formatAge, formatRefreshAvailability } from "@/lib/ui/relative-time";
+  PanelActionBar,
+  PanelNotRunRow,
+  PanelRefreshError,
+  usePanelRefresh,
+} from "./panel-refresh";
 
 /**
  * Matches lib/scanner/dns-records.ts RECORDS_TTL_MS: a refresh within this
@@ -71,7 +62,7 @@ function ValueRow({ row }: { row: RecordRow }) {
   return (
     <div className="group/row flex items-center gap-2 px-4 py-1.5">
       {typeof row.priority === "number" && (
-        <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-muted-foreground">
+        <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-muted-foreground">
           {row.priority}
         </span>
       )}
@@ -85,7 +76,7 @@ function ValueRow({ row }: { row: RecordRow }) {
         // Hover-gated from sm up only: a touch device never produces hover, so
         // below that the copy button was permanently invisible. It also gets a
         // larger tap target on the phone layout.
-        className="shrink-0 rounded p-2.5 sm:p-1 text-muted-foreground transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring sm:opacity-0 sm:group-hover/row:opacity-100"
+        className="shrink-0 rounded-md p-2.5 sm:p-1 text-muted-foreground transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring sm:opacity-0 sm:group-hover/row:opacity-100"
       >
         {copied ? (
           <Check
@@ -107,40 +98,17 @@ export function DnsRecordsPanel({
 }: DnsRecordsPanelProps) {
   const panelId = useId();
   const [expanded, setExpanded] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const { me, isStaff } = useAuth();
-  const userPlan = me?.plan || "free";
   // Same premium gate as the subdomain refresh: staff always pass, everyone
   // else needs the dns_refetch plan (Pro). A free user gets the upgrade modal
-  // instead of a silent 402 from the route.
-  const canRefresh =
-    isStaff ||
-    hasFeatureAccess(userPlan, PREMIUM_FEATURES.dns_refetch.requiredPlan);
-
-  async function handleRefresh() {
-    if (!scanId || refreshing) return;
-    if (!canRefresh) {
-      setShowUpgradeModal(true);
-      return;
-    }
-    setRefreshing(true);
-    setError(null);
-    try {
-      const res = await fetch(API.SCAN_REFRESH_DNS(scanId), { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Could not refresh DNS records.");
-      } else if (data.dnsRecords) {
-        onRefreshed?.(data.dnsRecords);
-      }
-    } catch {
-      setError("Could not refresh DNS records.");
-    } finally {
-      setRefreshing(false);
-    }
-  }
+  // instead of a silent 402 from the route. See panel-refresh.tsx.
+  const refresh = usePanelRefresh<DnsRecords>({
+    scanId,
+    endpoint: API.SCAN_REFRESH_DNS,
+    responseKey: "dnsRecords",
+    feature: PREMIUM_FEATURES.dns_refetch,
+    failureMessage: "Could not refresh DNS records.",
+    onRefreshed,
+  });
 
   const groups = useMemo<RecordGroup[]>(() => {
     if (!records) return [];
@@ -195,72 +163,28 @@ export function DnsRecordsPanel({
   // the fetch on the owner's own surfaces (the ones that pass a scanId);
   // /shared and /host still render nothing.
   if (!records || groups.length === 0) {
-    if (!scanId) return null;
+    if (!refresh.offered) return null;
     return (
       <>
-        <PremiumUpgradeModal
-          open={showUpgradeModal}
-          onOpenChange={setShowUpgradeModal}
-          feature={PREMIUM_FEATURES.dns_refetch}
-          currentPlan={userPlan}
+        {refresh.modal}
+        <PanelNotRunRow
+          icon={Network}
+          title="DNS records"
+          status="Not fetched"
+          actionLabel="Fetch DNS records"
+          proLabel="Pro"
+          note="Resolves A, AAAA, MX, NS, TXT, CAA and SOA for this host. It is a plain DNS lookup: no scan quota, no live-browser minutes."
+          state={refresh}
         />
-        <div className="flex items-center gap-3 overflow-hidden rounded-xl border border-border bg-card px-4 py-3">
-          <Network
-            aria-hidden
-            className="h-4 w-4 shrink-0 text-muted-foreground"
-          />
-          <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-            DNS records
-          </span>
-          <span className="shrink-0 text-xs text-muted-foreground">
-            Not fetched
-          </span>
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className={cn(
-              "inline-flex shrink-0 items-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50",
-              canRefresh
-                ? "text-foreground hover:bg-muted"
-                : "text-primary hover:bg-primary/10",
-            )}
-          >
-            {refreshing ? (
-              <Loader2 aria-hidden className="h-3 w-3 animate-spin" />
-            ) : (
-              <RefreshCw aria-hidden className="h-3 w-3" />
-            )}
-            Fetch DNS records
-          </button>
-        </div>
-        {error && (
-          <p role="alert" className="px-1 text-xs text-destructive">
-            {error}
-          </p>
-        )}
       </>
     );
   }
 
   const total = groups.reduce((n, g) => n + g.rows.length, 0);
-  const fetchedAge = formatAge(records.resolvedAt);
-  const refreshAvail = records.resolvedAt
-    ? formatRefreshAvailability(
-        new Date(
-          new Date(records.resolvedAt).getTime() + REFRESH_COOLDOWN_MS,
-        ).toISOString(),
-      )
-    : null;
 
   return (
     <>
-      <PremiumUpgradeModal
-        open={showUpgradeModal}
-        onOpenChange={setShowUpgradeModal}
-        feature={PREMIUM_FEATURES.dns_refetch}
-        currentPlan={userPlan}
-      />
+      {refresh.modal}
       <div className="overflow-hidden rounded-xl border border-border bg-card">
         <button
           type="button"
@@ -280,7 +204,7 @@ export function DnsRecordsPanel({
             {groups.map((g) => (
               <span
                 key={g.type}
-                className="rounded border border-primary/20 bg-primary/10 px-1.5 py-0.5 font-mono text-[11px] text-primary"
+                className="rounded-md border border-primary/20 bg-primary/10 px-1.5 py-0.5 font-mono text-[11px] text-primary"
               >
                 {g.type}
               </span>
@@ -300,65 +224,21 @@ export function DnsRecordsPanel({
 
         {expanded && (
           <div id={panelId} className="border-t border-border">
-            {scanId && (
-              <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-4 py-1.5">
-                <span className="truncate font-mono text-[11px] font-semibold uppercase tracking-wide text-primary">
-                  {records.hostname}
-                </span>
-                <div className="ml-auto flex items-center gap-2">
-                  {fetchedAge && (
-                    <span className="hidden items-center gap-1 text-[11px] text-muted-foreground sm:inline-flex">
-                      <Clock
-                        aria-hidden
-                        className="h-3 w-3 text-[hsl(var(--warning))]"
-                      />
-                      Fetched {fetchedAge}
-                      {refreshAvail && ` · ${refreshAvail}`}
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={handleRefresh}
-                    disabled={refreshing}
-                    className={cn(
-                      "inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50",
-                      canRefresh
-                        ? "text-foreground hover:bg-muted"
-                        : "text-primary hover:bg-primary/10",
-                    )}
-                    title={
-                      canRefresh
-                        ? "Re-resolve DNS records now"
-                        : "Premium feature, upgrade to Pro"
-                    }
-                    aria-label={
-                      canRefresh
-                        ? "Re-resolve DNS records now"
-                        : "Premium feature, upgrade to Pro"
-                    }
-                  >
-                    {refreshing ? (
-                      <Loader2
-                        aria-hidden
-                        className="h-3.5 w-3.5 animate-spin"
-                      />
-                    ) : canRefresh ? (
-                      <RefreshCw aria-hidden className="h-3.5 w-3.5" />
-                    ) : (
-                      <Crown aria-hidden className="h-3.5 w-3.5" />
-                    )}
-                    <span className="hidden sm:inline">
-                      {canRefresh ? "Refresh" : "Pro"}
-                    </span>
-                  </button>
-                </div>
-              </div>
-            )}
-            {error && (
-              <p className="border-b border-border px-4 py-2 text-xs text-destructive">
-                {error}
-              </p>
-            )}
+            {/* The bar used to be gated on scanId, which hid the hostname AND
+                the "Fetched X ago" line from every read-only viewer: a shared
+                report showed DNS records with no clue how old they were. The
+                freshness line is for everyone; only the button is the owner's. */}
+            <PanelActionBar
+              state={refresh}
+              capturedAt={records.resolvedAt}
+              cooldownMs={REFRESH_COOLDOWN_MS}
+              refreshTitle="Re-resolve DNS records now"
+            >
+              <span className="min-w-0 truncate font-mono text-[11px] font-semibold uppercase tracking-wide text-primary">
+                {records.hostname}
+              </span>
+            </PanelActionBar>
+            <PanelRefreshError error={refresh.error} />
             <div className="max-h-96 overflow-auto">
               {groups.map((group) => (
                 <div

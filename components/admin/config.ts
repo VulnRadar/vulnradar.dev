@@ -306,7 +306,7 @@ export const ACTION_LABELS: Record<string, string> = {
   reset_free_github_trial: "Free GitHub review trial reset.",
 };
 
-// Audit log filter categories — defined in components/admin/utils.ts
+// Audit log filter categories: defined in components/admin/utils.ts
 // (re-exported from the barrel to avoid duplicate declarations)
 
 // Actions the admin API requires re-entering the calling admin's own

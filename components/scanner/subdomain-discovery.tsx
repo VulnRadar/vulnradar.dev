@@ -440,7 +440,7 @@ export function SubdomainDiscovery({
                     onClick={() => handleDiscover(true)}
                     disabled={refreshing}
                     className={cn(
-                      "inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors disabled:opacity-50",
+                      "inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors disabled:opacity-50",
                       canRefreshDNS
                         ? "text-foreground hover:bg-muted"
                         : "text-primary hover:bg-primary/10",
@@ -485,7 +485,7 @@ export function SubdomainDiscovery({
                     <span
                       key={source}
                       className={cn(
-                        "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border",
+                        "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium border",
                         SOURCE_BADGE,
                       )}
                     >
@@ -552,7 +552,10 @@ function SubdomainRow({
           STATUS_DOT[statusBucket(sub.statusCode)],
         )}
       />
-      <span className="text-[10px] sm:text-xs font-mono text-foreground truncate max-w-[140px] sm:max-w-none">
+      <span
+        title={sub.subdomain}
+        className="text-[10px] sm:text-xs font-mono text-foreground truncate max-w-[140px] sm:max-w-none"
+      >
         {sub.subdomain}
       </span>
       {/* Source tags */}
@@ -561,7 +564,7 @@ function SubdomainRow({
           <span
             key={source}
             className={cn(
-              "hidden sm:inline-flex px-1 py-px rounded text-[9px] font-medium border",
+              "hidden sm:inline-flex px-1 py-px rounded-md text-[9px] font-medium border",
               SOURCE_BADGE,
             )}
           >
@@ -585,7 +588,10 @@ function SubdomainRow({
         target="_blank"
         rel="noopener noreferrer"
         aria-label={`Open ${sub.subdomain} in a new tab`}
-        className="text-muted-foreground hover:text-primary transition-opacity shrink-0"
+        // The anchor had no box at all: just a 12px glyph, a 12x12 target in
+        // a list that can run to dozens of rows. The icon keeps its size, the
+        // hit area does not.
+        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-primary sm:h-6 sm:w-6"
       >
         <ExternalLink className="h-3 w-3" />
       </a>
@@ -593,7 +599,7 @@ function SubdomainRow({
         variant="ghost"
         size="sm"
         onClick={handleScanClick}
-        className="h-6 px-2 text-[10px] gap-1 shrink-0"
+        className="h-9 px-2 text-[10px] gap-1 shrink-0 sm:h-6"
       >
         <Radar className="h-3 w-3" />
         Scan
@@ -640,7 +646,7 @@ function UnreachableSection({
                   <span
                     key={source}
                     className={cn(
-                      "hidden sm:inline-flex px-1 py-px rounded text-[9px] font-medium border opacity-60",
+                      "hidden sm:inline-flex px-1 py-px rounded-md text-[9px] font-medium border opacity-60",
                       SOURCE_BADGE,
                     )}
                   >

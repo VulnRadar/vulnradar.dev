@@ -3,7 +3,10 @@ import pool from "@/lib/database/db";
 import { getSession } from "@/lib/auth";
 import { getClientIP } from "@/lib/rate-limiting/rate-limit";
 import { TURNSTILE_ENABLED } from "@/lib/config/constants";
-import { notifyStaffOfTicketActivity } from "@/lib/support/ticket-notify";
+import {
+  confirmTicketToUser,
+  notifyStaffOfTicketActivity,
+} from "@/lib/support/ticket-notify";
 import {
   TICKET_CATEGORIES,
   TICKET_SUBJECT_MAX,
@@ -188,15 +191,32 @@ export async function POST(request: NextRequest) {
 
   // Fire-and-forget so the response returns immediately (same shape the
   // /api/v3/contact route uses for its outbound mail).
+  // A throw inside a queueMicrotask callback is an UNCAUGHT exception, not a
+  // rejection a .catch() can take: it reaches process level and can end the
+  // worker. The notification is the least important thing happening on this
+  // request, so it gets the guard.
   queueMicrotask(() => {
-    void notifyStaffOfTicketActivity({
-      ticketId: ticket.id,
-      subject,
-      category,
-      fromEmail: session.email,
-      body: message,
-      isNew: true,
-    });
+    try {
+      void notifyStaffOfTicketActivity({
+        ticketId: ticket.id,
+        subject,
+        category,
+        fromEmail: session.email,
+        body: message,
+        isNew: true,
+      });
+      // The public contact form has always confirmed receipt; the in-app form
+      // did not, so a user had no record of the ticket number at all.
+      void confirmTicketToUser({
+        ticketId: ticket.id,
+        subject,
+        category,
+        ownerEmail: session.email,
+        body: message,
+      });
+    } catch (err) {
+      console.error("Ticket notifications failed:", err);
+    }
   });
 
   return NextResponse.json({ ticket }, { status: 201 });

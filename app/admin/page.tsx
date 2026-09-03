@@ -2,44 +2,25 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
-import type { LucideIcon } from "lucide-react";
 import {
   Users,
-  ShieldCheck,
   ShieldOff,
-  Shield,
-  Globe,
-  Settings,
-  UsersRound,
-  Bell,
-  Send,
   RefreshCw,
-  History,
-  Ban,
-  MessageCircle,
-  LifeBuoy,
-  Activity,
   KeyRound,
-  Share2,
-  DownloadCloud,
-  DatabaseBackup,
-  Bug,
-  Gauge,
-  ListOrdered,
-  Wallet,
-  Mail,
   Loader2,
   ServerCrash,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Header } from "@/components/scanner/header";
-import { Footer } from "@/components/scanner/footer";
+import { AppPageShell } from "@/components/shared/app-page-shell";
 import { cn } from "@/lib/ui/utils";
+import { API, ROUTES } from "@/lib/config/client-constants";
 import {
-  STAFF_ROLE_HIERARCHY,
-  API,
-  ROUTES,
-} from "@/lib/config/client-constants";
+  ADMIN_NAV_GROUPS,
+  VALID_TABS,
+  canSeeAdminNavItem,
+  type AdminNavItem,
+  type AdminTabKey,
+} from "@/components/admin/nav";
 import {
   getAllQueryParams,
   setQueryParam,
@@ -48,54 +29,31 @@ import {
 import {
   StatBarSkeleton,
   DataTableSkeleton,
+  FactPanelSkeleton,
   HealthCardSkeleton,
+  LogListSkeleton,
+  PanelCardSkeleton,
+  SettingsFieldsSkeleton,
   AdminMobileToc,
   AdminMobileSectionTrigger,
   type AdminTocItem,
   type SortDirection,
 } from "@/components/admin/shared";
-import { AdminSkeleton } from "@/components/admin/admin-skeleton";
+import { AdminDataSkeleton } from "@/components/admin/admin-skeleton";
 import { ACTION_LABELS } from "@/components/admin/config";
-import {
-  hasStaffPermission,
-  isStaffRole,
-  STAFF_PERMISSIONS,
-  type StaffPermission,
-} from "@/lib/auth/permissions-client";
+import { hasStaffPermission, isStaffRole } from "@/lib/auth/permissions-client";
 import { useAuth } from "@/components/providers/auth-provider";
 import { resolveAdminGate } from "@/lib/admin/admin-gate";
 import {
   buildHealthRows,
+  worseState,
   worstHealthState,
   type HealthMetrics,
+  type HealthState,
 } from "@/components/admin/features/health-overview-utils";
 
 // Matches queue-status-manager.tsx's own poll interval.
 const HEALTH_POLL_INTERVAL_MS = 45_000;
-
-const VALID_TABS = [
-  "overview",
-  "users",
-  "audit",
-  "admins",
-  "notifications",
-  "teams",
-  "access-rules",
-  "blocked-data",
-  "content",
-  "security-alerts",
-  "settings",
-  "broadcast",
-  "ai-chats",
-  "support-tickets",
-  "updater",
-  "backup",
-  "queue-status",
-  "error-logs",
-  "email-logs",
-  "engine-feedback",
-  "billing-overview",
-] as const;
 
 // Import from new admin architecture
 import type {
@@ -132,96 +90,177 @@ import type {
 // one panel renders at a time behind its `activeTab === ...` guard, so the
 // rest are fetched on demand. ssr:false because this whole page is a client
 // component behind an auth gate: there is nothing to server-render.
+//
+// The `loading` fallback is what actually renders on every visit to a tab, so
+// it matters more than app/admin/loading.tsx. It used to be one hardcoded
+// shape for all seventeen tabs: a four-cell stat strip over an avatar table,
+// with no panel header, inside a second border the panel does not have. Nine
+// tabs have no stat strip at all (the strip simply vanished), five have a
+// different cell count, and the five that own a purpose-built skeleton showed
+// three different shapes on the way to their content. Each panel now names its
+// own shape.
 const panel = (
   load: () => Promise<{ default: React.ComponentType }>,
+  shape: PanelShape = {},
 ): React.ComponentType =>
-  dynamic(load, { ssr: false, loading: () => <PanelSkeleton /> });
+  dynamic(load, { ssr: false, loading: () => <PanelSkeleton {...shape} /> });
 
-function PanelSkeleton() {
-  return (
+interface PanelShape {
+  /** Cells in the panel's stat strip, or one entry per strip for the panels
+   *  that stack two (the user directory does). Omitted means no strip. */
+  stats?: number | number[];
+  /** The panel's header carries a search field or filter row. */
+  filterRow?: boolean;
+  /** Body below the strip. Defaults to the six-row data table. */
+  body?: "table" | "settings" | "logs" | "none";
+  /** Panels that open with a fact grid (Backups, Updater). Set, this renders
+   *  the exact skeleton those panels show once mounted, so the sequence is one
+   *  shape rather than a table on the way to a fact grid. */
+  facts?: number;
+}
+
+function PanelSkeleton({
+  stats,
+  filterRow,
+  body = "table",
+  facts,
+}: PanelShape) {
+  // A fact grid is a whole panel shape rather than a body variant, so it
+  // replaces everything below rather than sitting inside the Card.
+  return facts !== undefined ? (
+    <FactPanelSkeleton facts={facts} />
+  ) : (
     <div className="space-y-4">
-      <StatBarSkeleton segments={4} />
-      <div className="rounded-xl border border-border/50 bg-card/50 p-4">
-        <DataTableSkeleton rows={6} />
-      </div>
+      {/* The strip sits above the Card, which is where every panel that has
+          one puts it (see components/admin/users/users-tab.tsx). */}
+      {stats !== undefined && (
+        <div className="space-y-3">
+          {(Array.isArray(stats) ? stats : [stats]).map((segments, i) => (
+            <StatBarSkeleton key={i} segments={segments} />
+          ))}
+        </div>
+      )}
+      <PanelCardSkeleton withFilterRow={filterRow}>
+        {body === "table" && <DataTableSkeleton rows={6} bordered={false} />}
+        {body === "settings" && (
+          <div className="p-4 sm:p-5">
+            <SettingsFieldsSkeleton />
+          </div>
+        )}
+        {body === "logs" && <LogListSkeleton />}
+      </PanelCardSkeleton>
     </div>
   );
 }
 
-const IPRulesManager = panel(() =>
-  import("@/components/admin/features/ip-rules-manager").then((m) => ({
-    default: m.IPRulesManager,
-  })),
+const IPRulesManager = panel(
+  () =>
+    import("@/components/admin/features/ip-rules-manager").then((m) => ({
+      default: m.IPRulesManager,
+    })),
+  { stats: 4, filterRow: true },
 );
-const BlockedDataManager = panel(() =>
-  import("@/components/admin/features/blocked-data-manager").then((m) => ({
-    default: m.BlockedDataManager,
-  })),
+const BlockedDataManager = panel(
+  () =>
+    import("@/components/admin/features/blocked-data-manager").then((m) => ({
+      default: m.BlockedDataManager,
+    })),
+  { stats: 3, filterRow: true },
 );
-const ContentManager = panel(() =>
-  import("@/components/admin/features/content-manager").then((m) => ({
-    default: m.ContentManager,
-  })),
+const ContentManager = panel(
+  () =>
+    import("@/components/admin/features/content-manager").then((m) => ({
+      default: m.ContentManager,
+    })),
+  { filterRow: true },
 );
-const SecurityAlertsManager = panel(() =>
-  import("@/components/admin/features/security-alerts-manager").then((m) => ({
-    default: m.SecurityAlertsManager,
-  })),
+const SecurityAlertsManager = panel(
+  () =>
+    import("@/components/admin/features/security-alerts-manager").then((m) => ({
+      default: m.SecurityAlertsManager,
+    })),
+  { stats: 5 },
 );
-const SystemSettingsManager = panel(() =>
-  import("@/components/admin/features/system-settings-manager").then((m) => ({
-    default: m.SystemSettingsManager,
-  })),
+const SystemSettingsManager = panel(
+  () =>
+    import("@/components/admin/features/system-settings-manager").then((m) => ({
+      default: m.SystemSettingsManager,
+    })),
+  { body: "settings", filterRow: true },
 );
-const MassEmailManager = panel(() =>
-  import("@/components/admin/features/mass-email-manager").then((m) => ({
-    default: m.MassEmailManager,
-  })),
+const MassEmailManager = panel(
+  () =>
+    import("@/components/admin/features/mass-email-manager").then((m) => ({
+      default: m.MassEmailManager,
+    })),
+  { stats: 3 },
 );
-const AIChatsManager = panel(() =>
-  import("@/components/admin/features/ai-chats-manager").then((m) => ({
-    default: m.AIChatsManager,
-  })),
+const AIChatsManager = panel(
+  () =>
+    import("@/components/admin/features/ai-chats-manager").then((m) => ({
+      default: m.AIChatsManager,
+    })),
+  { stats: 4, filterRow: true },
 );
-const SupportInbox = panel(() =>
-  import("@/components/admin/features/support-inbox").then((m) => ({
-    default: m.SupportInbox,
-  })),
+// Its own two-pane layout, so nothing below the header is a table.
+const SupportInbox = panel(
+  () =>
+    import("@/components/admin/features/support-inbox").then((m) => ({
+      default: m.SupportInbox,
+    })),
+  { body: "none" },
 );
-const UpdaterManager = panel(() =>
-  import("@/components/admin/features/updater-manager").then((m) => ({
-    default: m.UpdaterManager,
-  })),
+// Updater and Backups open with a fact grid, and each already renders its own
+// FactPanelSkeleton once mounted. Drawing a stat strip over a table here made
+// the load sequence three shapes deep; the same fact grid makes it one.
+const UpdaterManager = panel(
+  () =>
+    import("@/components/admin/features/updater-manager").then((m) => ({
+      default: m.UpdaterManager,
+    })),
+  { facts: 4 },
 );
-const BackupManager = panel(() =>
-  import("@/components/admin/features/backup-manager").then((m) => ({
-    default: m.BackupManager,
-  })),
+const BackupManager = panel(
+  () =>
+    import("@/components/admin/features/backup-manager").then((m) => ({
+      default: m.BackupManager,
+    })),
+  { facts: 3 },
 );
-const ErrorLogsManager = panel(() =>
-  import("@/components/admin/features/error-logs-manager").then((m) => ({
-    default: m.ErrorLogsManager,
-  })),
+const ErrorLogsManager = panel(
+  () =>
+    import("@/components/admin/features/error-logs-manager").then((m) => ({
+      default: m.ErrorLogsManager,
+    })),
+  { body: "logs", filterRow: true },
 );
-const EmailLogsManager = panel(() =>
-  import("@/components/admin/features/email-logs-manager").then((m) => ({
-    default: m.EmailLogsManager,
-  })),
+const EmailLogsManager = panel(
+  () =>
+    import("@/components/admin/features/email-logs-manager").then((m) => ({
+      default: m.EmailLogsManager,
+    })),
+  { body: "logs", filterRow: true },
 );
 const EngineFeedbackManager = panel(() =>
   import("@/components/admin/features/engine-feedback-manager").then((m) => ({
     default: m.EngineFeedbackManager,
   })),
 );
-const QueueStatusManager = panel(() =>
-  import("@/components/admin/features/queue-status-manager").then((m) => ({
-    default: m.QueueStatusManager,
-  })),
+const QueueStatusManager = panel(
+  () =>
+    import("@/components/admin/features/queue-status-manager").then((m) => ({
+      default: m.QueueStatusManager,
+    })),
+  { stats: 4, body: "none" },
 );
-const BillingOverviewManager = panel(() =>
-  import("@/components/admin/features/billing-overview-manager").then((m) => ({
-    default: m.BillingOverviewManager,
-  })),
+const BillingOverviewManager = panel(
+  () =>
+    import("@/components/admin/features/billing-overview-manager").then(
+      (m) => ({
+        default: m.BillingOverviewManager,
+      }),
+    ),
+  { stats: 5 },
 );
 const HealthOverview = dynamic(
   () =>
@@ -242,14 +281,14 @@ const NotificationsManager = dynamic(
     import("@/components/admin/notifications").then((m) => ({
       default: m.NotificationsManager,
     })),
-  { ssr: false, loading: () => <PanelSkeleton /> },
+  { ssr: false, loading: () => <PanelSkeleton {...{ stats: 4 }} /> },
 );
 const UserDetailPanel = dynamic(
   () =>
     import("@/components/admin/users").then((m) => ({
       default: m.UserDetailPanel,
     })),
-  { ssr: false, loading: () => <PanelSkeleton /> },
+  { ssr: false, loading: () => <PanelSkeleton {...{ body: "none" }} /> },
 );
 // Imported from its own path rather than the components/admin/users barrel:
 // the barrel would pull the 2,900-line user-detail-panel into the same chunk
@@ -260,46 +299,34 @@ const UsersTab = dynamic(
     import("@/components/admin/users/users-tab").then((m) => ({
       default: m.UsersTab,
     })),
-  { ssr: false, loading: () => <PanelSkeleton /> },
+  {
+    ssr: false,
+    loading: () => <PanelSkeleton {...{ stats: [5, 5], filterRow: true }} />,
+  },
 );
 const AuditLog = dynamic(
   () =>
     import("@/components/admin/audit").then((m) => ({ default: m.AuditLog })),
-  { ssr: false, loading: () => <PanelSkeleton /> },
+  {
+    ssr: false,
+    loading: () => <PanelSkeleton {...{ stats: 4, filterRow: true }} />,
+  },
 );
 const StaffList = dynamic(
   () =>
     import("@/components/admin/staff").then((m) => ({ default: m.StaffList })),
-  { ssr: false, loading: () => <PanelSkeleton /> },
+  { ssr: false, loading: () => <PanelSkeleton {...{ stats: 5 }} /> },
 );
 const TeamsList = dynamic(
   () =>
     import("@/components/admin/teams").then((m) => ({ default: m.TeamsList })),
-  { ssr: false, loading: () => <PanelSkeleton /> },
+  { ssr: false, loading: () => <PanelSkeleton {...{ filterRow: true }} /> },
 );
 
-type ActiveTab =
-  | "overview"
-  | "users"
-  | "audit"
-  | "admins"
-  | "notifications"
-  | "teams"
-  | "access-rules"
-  | "blocked-data"
-  | "content"
-  | "security-alerts"
-  | "settings"
-  | "broadcast"
-  | "ai-chats"
-  | "support-tickets"
-  | "updater"
-  | "backup"
-  | "queue-status"
-  | "error-logs"
-  | "email-logs"
-  | "engine-feedback"
-  | "billing-overview";
+// Derived from VALID_TABS in components/admin/nav.ts rather than hand-
+// maintained: it used to be a 21-member union repeating that tuple verbatim,
+// so the two could disagree about which destinations exist.
+type ActiveTab = AdminTabKey;
 
 type TeamMembersState = {
   team: Team;
@@ -886,213 +913,19 @@ function AdminContent() {
   // they close over has to live above those returns too, or the redirect
   // effect would violate rules-of-hooks (a different hook count on a
   // forbidden/loading render vs. a loaded one).
-  const NAV_GROUPS_RAW = [
-    {
-      label: "Operations",
-      items: [
-        {
-          // No permission gate: every role that reaches this page can see
-          // the overview, and the API decides which health rows that role
-          // is actually allowed to read.
-          key: "overview" as const,
-          label: "Overview",
-          icon: Activity,
-        },
-      ],
-    },
-    {
-      label: "User Management",
-      items: [
-        {
-          key: "users" as const,
-          label: "Users",
-          icon: Users,
-          permission: STAFF_PERMISSIONS.VIEW_USERS,
-        },
-        {
-          key: "teams" as const,
-          label: "Teams",
-          icon: UsersRound,
-          minHierarchy: STAFF_ROLE_HIERARCHY.moderator,
-        },
-        {
-          key: "admins" as const,
-          label: "Active Staff",
-          icon: Shield,
-          // section=active-admins is gated on VIEW_AUDIT_LOG server-side
-          // (app/api/v3/admin/route.ts). This tab carried no gate at all, so
-          // billing/content_manager/ops saw it and got a guaranteed 403.
-          permission: STAFF_PERMISSIONS.VIEW_AUDIT_LOG,
-        },
-      ],
-    },
-    {
-      label: "Security",
-      items: [
-        {
-          key: "access-rules" as const,
-          label: "Access Rules",
-          icon: Globe,
-          permission: STAFF_PERMISSIONS.TRIGGER_MAINTENANCE,
-        },
-        {
-          key: "blocked-data" as const,
-          label: "Blocked Data",
-          icon: Ban,
-          permission: STAFF_PERMISSIONS.TRIGGER_MAINTENANCE,
-        },
-        {
-          key: "security-alerts" as const,
-          label: "Alerts",
-          icon: ShieldCheck,
-          permission: STAFF_PERMISSIONS.TRIGGER_MAINTENANCE,
-        },
-        {
-          key: "audit" as const,
-          label: "Audit Log",
-          icon: History,
-          permission: STAFF_PERMISSIONS.VIEW_AUDIT_LOG,
-        },
-      ],
-    },
-    {
-      label: "Communications",
-      items: [
-        {
-          key: "broadcast" as const,
-          label: "Broadcast",
-          icon: Send,
-          permission: STAFF_PERMISSIONS.TRIGGER_MAINTENANCE,
-        },
-        {
-          key: "notifications" as const,
-          label: "Notifications",
-          icon: Bell,
-          permission: STAFF_PERMISSIONS.SEND_ANNOUNCEMENTS,
-        },
-        {
-          key: "ai-chats" as const,
-          label: "AI Chats",
-          icon: MessageCircle,
-          permission: STAFF_PERMISSIONS.MODERATE_CONTENT,
-        },
-        {
-          key: "support-tickets" as const,
-          label: "Support",
-          icon: LifeBuoy,
-          permission: STAFF_PERMISSIONS.MANAGE_SUPPORT_TICKETS,
-        },
-      ],
-    },
-    {
-      label: "Content",
-      items: [
-        {
-          key: "content" as const,
-          label: "Hosts & Shares",
-          icon: Share2,
-          permission: STAFF_PERMISSIONS.MODERATE_CONTENT,
-        },
-      ],
-    },
-    {
-      label: "Billing",
-      items: [
-        {
-          key: "billing-overview" as const,
-          label: "Billing Overview",
-          icon: Wallet,
-          permission: STAFF_PERMISSIONS.VIEW_BILLING_OVERVIEW,
-        },
-      ],
-    },
-    {
-      label: "System",
-      items: [
-        {
-          key: "settings" as const,
-          label: "Settings",
-          icon: Settings,
-          permission: STAFF_PERMISSIONS.TRIGGER_MAINTENANCE,
-        },
-        {
-          key: "updater" as const,
-          label: "Updater",
-          icon: DownloadCloud,
-          permission: STAFF_PERMISSIONS.TRIGGER_MAINTENANCE,
-        },
-        {
-          key: "backup" as const,
-          label: "Backups",
-          icon: DatabaseBackup,
-          permission: STAFF_PERMISSIONS.TRIGGER_MAINTENANCE,
-        },
-        {
-          key: "queue-status" as const,
-          label: "Scanner Queue",
-          icon: ListOrdered,
-          permission: STAFF_PERMISSIONS.VIEW_SYSTEM_STATS,
-        },
-        {
-          key: "error-logs" as const,
-          label: "Error Logs",
-          icon: Bug,
-          permission: STAFF_PERMISSIONS.VIEW_ERROR_LOGS,
-        },
-        {
-          key: "email-logs" as const,
-          label: "Email Logs",
-          icon: Mail,
-          permission: STAFF_PERMISSIONS.TRIGGER_MAINTENANCE,
-        },
-        {
-          key: "engine-feedback" as const,
-          label: "Engine Feedback",
-          icon: Gauge,
-          permission: STAFF_PERMISSIONS.MANAGE_ENGINE_FEEDBACK,
-        },
-      ],
-    },
-  ];
-
-  // Takes the widest item shape rather than an optional-only one: the
-  // Overview item carries neither gate (every role that reaches this page
-  // sees it), and TypeScript will not narrow a union member with no
-  // properties in common down to `{ permission?, minHierarchy? }`.
-  function canSeeNavItem(item: {
-    key: string;
-    label: string;
-    icon: LucideIcon;
-    permission?: StaffPermission;
-    minHierarchy?: number;
-  }): boolean {
-    if (
-      item.permission !== undefined &&
-      !hasStaffPermission(callerRole, item.permission)
-    ) {
-      return false;
-    }
-    if (
-      item.minHierarchy !== undefined &&
-      (STAFF_ROLE_HIERARCHY[callerRole] ?? 0) < item.minHierarchy
-    ) {
-      return false;
-    }
-    return true;
-  }
-
-  const NAV_GROUPS = NAV_GROUPS_RAW.map((group) => ({
+  // The destination table itself lives in components/admin/nav.ts, along with
+  // the reasoning for how the groups are cut. It used to be written out here
+  // three times over (VALID_TABS, the ActiveTab union, NAV_GROUPS_RAW) with
+  // nothing tying the three together. Only the per-role filtering is local,
+  // because only that depends on callerRole.
+  const NAV_GROUPS = ADMIN_NAV_GROUPS.map((group) => ({
     ...group,
-    items: group.items.filter(canSeeNavItem),
+    items: group.items.filter((item) =>
+      canSeeAdminNavItem(item, callerRole, hasStaffPermission),
+    ),
   })).filter((group) => group.items.length > 0);
 
-  const ALL_ADMIN_TABS: Array<{
-    key: string;
-    label: string;
-    icon: LucideIcon;
-  }> = NAV_GROUPS.reduce<
-    Array<{ key: string; label: string; icon: LucideIcon }>
-  >((acc, g) => [...acc, ...g.items], []);
+  const ALL_ADMIN_TABS: AdminNavItem[] = NAV_GROUPS.flatMap((g) => g.items);
 
   const handleTabChange = (tabKey: string) => {
     setActiveTab(tabKey as typeof activeTab);
@@ -1133,46 +966,38 @@ function AdminContent() {
   // deny screen below rather than a hint that the panel exists.
   if (loadFailedStatus !== null && !forbidden && viewerIsStaff) {
     return (
-      <div className="min-h-screen bg-background flex flex-col">
-        <Header />
-        <main
-          id="main-content"
-          tabIndex={-1}
-          className="flex-1 flex items-center justify-center px-4"
-        >
-          <div className="text-center flex flex-col items-center gap-4">
-            <div className="h-14 w-14 rounded-2xl bg-destructive/10 flex items-center justify-center">
-              <ServerCrash className="h-7 w-7 text-destructive" />
-            </div>
-            <div>
-              <h1 className="text-xl font-semibold tracking-tight">
-                Couldn&apos;t load the admin panel
-              </h1>
-              <p className="text-sm text-muted-foreground mt-1 max-w-xs">
-                The admin data request failed. This is a server or network
-                problem, not a permissions one, so your account is fine.
-              </p>
-              <p className="text-xs font-mono text-muted-foreground/70 mt-2">
-                {loadFailedStatus === 0
-                  ? "no response"
-                  : `HTTP ${loadFailedStatus}`}
-              </p>
-            </div>
-            <Button
-              size="sm"
-              className="h-8 gap-1.5"
-              onClick={() => {
-                setLoadFailedStatus(null);
-                fetchData(page, searchQuery, true, usersPageSize);
-              }}
-            >
-              <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
-              Retry
-            </Button>
+      <AppPageShell fullBleed className="flex items-center justify-center px-4">
+        <div className="text-center flex flex-col items-center gap-4">
+          <div className="h-14 w-14 rounded-lg bg-destructive/10 flex items-center justify-center">
+            <ServerCrash className="h-7 w-7 text-destructive" />
           </div>
-        </main>
-        <Footer />
-      </div>
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight">
+              Couldn&apos;t load the admin panel
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1 max-w-xs">
+              The admin data request failed. This is a server or network
+              problem, not a permissions one, so your account is fine.
+            </p>
+            <p className="text-xs font-mono text-muted-foreground mt-2">
+              {loadFailedStatus === 0
+                ? "no response"
+                : `HTTP ${loadFailedStatus}`}
+            </p>
+          </div>
+          <Button
+            size="sm"
+            className="h-8 gap-1.5"
+            onClick={() => {
+              setLoadFailedStatus(null);
+              fetchData(page, searchQuery, true, usersPageSize);
+            }}
+          >
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+            Retry
+          </Button>
+        </div>
+      </AppPageShell>
     );
   }
 
@@ -1180,62 +1005,49 @@ function AdminContent() {
   // already shows this viewer is not staff (so the skeleton never flashes).
   if (gate === "deny") {
     return (
-      <div className="min-h-screen bg-background flex flex-col">
-        <Header />
-        <main
-          id="main-content"
-          tabIndex={-1}
-          className="flex-1 flex items-center justify-center px-4"
-        >
-          <div className="text-center flex flex-col items-center gap-4">
-            <div className="h-14 w-14 rounded-2xl bg-destructive/10 flex items-center justify-center">
-              {twoFactorLockout ? (
-                <KeyRound className="h-7 w-7 text-destructive" />
-              ) : (
-                <ShieldOff className="h-7 w-7 text-destructive" />
-              )}
-            </div>
+      <AppPageShell fullBleed className="flex items-center justify-center px-4">
+        <div className="text-center flex flex-col items-center gap-4">
+          <div className="h-14 w-14 rounded-lg bg-destructive/10 flex items-center justify-center">
             {twoFactorLockout ? (
-              <div>
-                <h1 className="text-xl font-semibold tracking-tight">
-                  Two-Factor Authentication Required
-                </h1>
-                <p className="text-sm text-muted-foreground mt-1 max-w-xs">
-                  This instance requires 2FA for staff accounts, and yours
-                  isn&apos;t set up yet. Enable it in your account settings to
-                  regain access to the admin panel.
-                </p>
-              </div>
+              <KeyRound className="h-7 w-7 text-destructive" />
             ) : (
-              <div>
-                <h1 className="text-xl font-semibold tracking-tight">
-                  Access Denied
-                </h1>
-                <p className="text-sm text-muted-foreground mt-1 max-w-xs">
-                  You do not have administrator privileges to access this panel.
-                </p>
-              </div>
-            )}
-            {twoFactorLockout ? (
-              <Button asChild size="sm" className="h-8 gap-1.5">
-                <a href={`${ROUTES.PROFILE}?tab=security`}>
-                  Set Up Two-Factor Authentication
-                </a>
-              </Button>
-            ) : (
-              <Button
-                asChild
-                variant="outline"
-                size="sm"
-                className="h-8 gap-1.5"
-              >
-                <a href={ROUTES.DASHBOARD}>Back to Scanner</a>
-              </Button>
+              <ShieldOff className="h-7 w-7 text-destructive" />
             )}
           </div>
-        </main>
-        <Footer />
-      </div>
+          {twoFactorLockout ? (
+            <div>
+              <h1 className="text-xl font-semibold tracking-tight">
+                Two-Factor Authentication Required
+              </h1>
+              <p className="text-sm text-muted-foreground mt-1 max-w-xs">
+                This instance requires 2FA for staff accounts, and yours
+                isn&apos;t set up yet. Enable it in your account settings to
+                regain access to the admin panel.
+              </p>
+            </div>
+          ) : (
+            <div>
+              <h1 className="text-xl font-semibold tracking-tight">
+                Access Denied
+              </h1>
+              <p className="text-sm text-muted-foreground mt-1 max-w-xs">
+                You do not have administrator privileges to access this panel.
+              </p>
+            </div>
+          )}
+          {twoFactorLockout ? (
+            <Button asChild size="sm" className="h-8 gap-1.5">
+              <a href={`${ROUTES.PROFILE}?tab=security`}>
+                Set Up Two-Factor Authentication
+              </a>
+            </Button>
+          ) : (
+            <Button asChild variant="outline" size="sm" className="h-8 gap-1.5">
+              <a href={ROUTES.DASHBOARD}>Back to Scanner</a>
+            </Button>
+          )}
+        </div>
+      </AppPageShell>
     );
   }
 
@@ -1244,35 +1056,47 @@ function AdminContent() {
   // before a possible deny.
   if (gate === "auth-pending") {
     return (
-      <div className="min-h-screen bg-background flex flex-col">
-        <Header />
-        <main
-          id="main-content"
-          tabIndex={-1}
-          className="flex-1 flex items-center justify-center px-4"
-        >
-          <Loader2
-            className="h-6 w-6 animate-spin text-muted-foreground"
-            aria-hidden="true"
-          />
-          <span className="sr-only">Loading</span>
-        </main>
-        <Footer />
-      </div>
+      <AppPageShell fullBleed className="flex items-center justify-center px-4">
+        <Loader2
+          className="h-6 w-6 animate-spin text-muted-foreground"
+          aria-hidden="true"
+        />
+        <span className="sr-only">Loading</span>
+      </AppPageShell>
     );
   }
 
-  if (gate === "loading") {
-    return <AdminSkeleton />;
-  }
+  // The panel body, and only the panel body, waits: the sidebar is filtered by
+  // callerRole and the health card needs its own request. The title block
+  // above them is static, so it renders on the first frame rather than being
+  // torn down and redrawn as grey once the data lands.
+  const panelLoading = gate === "loading";
 
   const activeTabMeta = ALL_ADMIN_TABS.find((t) => t.key === activeTab);
 
   // Worst health state, mirrored onto the Overview nav item so a fault is
   // visible from whichever tab the operator happens to be on. Amber and red
   // only: a green dot on a healthy panel is noise.
-  const worstHealth = worstHealthState(
-    buildHealthRows(health, { updateAvailable }),
+  const healthRows = buildHealthRows(health, { updateAvailable });
+  const worstHealth = worstHealthState(healthRows);
+  const healthProblemCount = healthRows.filter(
+    (r) => r.state === "crit" || r.state === "warn",
+  ).length;
+  // ...and the same state mirrored onto the destination each row drills into,
+  // so the nav says WHICH tab is unhealthy rather than only that something is.
+  // Every health row already carries the tab that owns it (that is how the
+  // Overview list links out), so this costs nothing beyond the reduce. Two
+  // rows can share a tab (scanner queue and failed scans both point at
+  // queue-status), hence worseState rather than last-write-wins.
+  const healthByTab = healthRows.reduce<Record<string, HealthState>>(
+    (acc, row) => {
+      acc[row.tab] =
+        acc[row.tab] === undefined
+          ? row.state
+          : worseState(acc[row.tab], row.state);
+      return acc;
+    },
+    {},
   );
 
   // Site-wide section list for the mobile drawer, grouped the same way
@@ -1280,37 +1104,88 @@ function AdminContent() {
   const mobileSectionItems: AdminTocItem[] = NAV_GROUPS.reduce<AdminTocItem[]>(
     (acc, group) => [
       ...acc,
-      ...group.items.map((tab) => ({
-        id: tab.key,
-        label: tab.label,
-        group: group.label,
-        active: activeTab === tab.key,
-        onSelect: () => handleTabChange(tab.key),
-      })),
+      ...group.items.map((tab) => {
+        const state =
+          tab.key === "overview" ? worstHealth : healthByTab[tab.key];
+        return {
+          id: tab.key,
+          label: tab.label,
+          group: group.label,
+          active: activeTab === tab.key,
+          status:
+            state === "crit"
+              ? ("crit" as const)
+              : state === "warn"
+                ? ("warn" as const)
+                : undefined,
+          onSelect: () => handleTabChange(tab.key),
+        };
+      }),
     ],
     [],
   );
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <Header />
-      {/* max-w-6xl is the app's signed-in page width (history, assets, repos,
-          teams, shares and dashboard all use it). /admin was the only one at
-          max-w-7xl, 128px wider than every page you reach it from, so the
-          content edge jumped on entry and again on exit. */}
-      <main
-        id="main-content"
-        tabIndex={-1}
-        className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-8"
-      >
-        {/* Page Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight">Admin Panel</h1>
+    // max-w-6xl (AppPageShell's default) is the app's signed-in page width
+    // (history, assets, repos, teams, shares and dashboard all use it).
+    // /admin was the only one at max-w-7xl, 128px wider than every page you
+    // reach it from, so the content edge jumped on entry and again on exit.
+    <AppPageShell padding="py-8">
+      {/* Page header. The health verdict sits here rather than only on the
+            Overview tab: an operator who opened /admin?tab=error-logs from a
+            link never passes Overview, and this is the one element on screen
+            on every tab. It is a link, not a badge, so the fault is one click
+            from the summary that explains it. Nothing renders when everything
+            is healthy: a green "all clear" on every page is the noise that
+            makes a red one easy to miss. */}
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
+            Admin Panel
+          </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Manage users, monitor activity, and control system settings.
+            Every section here is filtered to what your role can act on.
           </p>
         </div>
+        {(worstHealth === "crit" || worstHealth === "warn") &&
+          activeTab !== "overview" && (
+            <a
+              href="/admin?tab=overview"
+              onClick={(e) => {
+                if (!e.ctrlKey && !e.metaKey) {
+                  e.preventDefault();
+                  handleTabChange("overview");
+                }
+              }}
+              className={cn(
+                "inline-flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors",
+                "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+                worstHealth === "crit"
+                  ? "border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15"
+                  : "border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] hover:bg-[hsl(var(--warning))]/15",
+              )}
+            >
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 rounded-full",
+                  worstHealth === "crit"
+                    ? "bg-destructive"
+                    : "bg-[hsl(var(--warning))]",
+                )}
+                aria-hidden="true"
+              />
+              <span className="tabular-nums">
+                {healthProblemCount}{" "}
+                {healthProblemCount === 1 ? "check needs" : "checks need"}{" "}
+                attention
+              </span>
+            </a>
+          )}
+      </div>
 
+      {panelLoading ? (
+        <AdminDataSkeleton />
+      ) : (
         <div className="flex flex-col lg:flex-row gap-6">
           {/* Sidebar */}
           <aside className="w-full min-w-0 lg:w-52 shrink-0">
@@ -1324,6 +1199,14 @@ function AdminContent() {
                 label={activeTabMeta?.label ?? "Admin Panel"}
                 isOpen={mobileNavOpen}
                 onToggle={() => setMobileNavOpen((o) => !o)}
+                status={
+                  worstHealth === "crit"
+                    ? "crit"
+                    : worstHealth === "warn"
+                      ? "warn"
+                      : undefined
+                }
+                statusLabel={`${healthProblemCount} ${healthProblemCount === 1 ? "check needs" : "checks need"} attention`}
               />
             </div>
             <AdminMobileToc
@@ -1347,64 +1230,73 @@ function AdminContent() {
                     {group.label}
                   </p>
                   <div className="flex flex-col gap-0.5">
-                    {group.items.map((tab) => (
-                      <a
-                        key={tab.key}
-                        // Real navigation (ctrl/meta-click opening a new
-                        // tab) reads this href directly and never runs the
-                        // onClick handler below -- it has to be the actual
-                        // ?tab= query param the page reads on load, not a
-                        // hash fragment nothing here ever parses.
-                        href={`/admin?tab=${tab.key}`}
-                        onClick={(e) => {
-                          if (!e.ctrlKey && !e.metaKey) {
-                            e.preventDefault();
-                            handleTabChange(tab.key);
+                    {group.items.map((tab) => {
+                      // Overview carries the aggregate (it is the drill-in for
+                      // everything); every other item carries only its own.
+                      const tabHealth =
+                        tab.key === "overview"
+                          ? worstHealth
+                          : healthByTab[tab.key];
+                      const showDot =
+                        tabHealth === "crit" || tabHealth === "warn";
+                      return (
+                        <a
+                          key={tab.key}
+                          // Real navigation (ctrl/meta-click opening a new
+                          // tab) reads this href directly and never runs the
+                          // onClick handler below -- it has to be the actual
+                          // ?tab= query param the page reads on load, not a
+                          // hash fragment nothing here ever parses.
+                          href={`/admin?tab=${tab.key}`}
+                          onClick={(e) => {
+                            if (!e.ctrlKey && !e.metaKey) {
+                              e.preventDefault();
+                              handleTabChange(tab.key);
+                            }
+                          }}
+                          // a11y (SC 4.1.2): which section is open was carried
+                          // in colour and weight only.
+                          aria-current={
+                            activeTab === tab.key ? "page" : undefined
                           }
-                        }}
-                        // a11y (SC 4.1.2): which section is open was carried
-                        // in colour and weight only.
-                        aria-current={
-                          activeTab === tab.key ? "page" : undefined
-                        }
-                        className={cn(
-                          "flex items-center gap-2.5 px-2.5 py-2 text-sm rounded-lg transition-all",
-                          "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
-                          activeTab === tab.key
-                            ? "bg-primary/10 text-primary font-medium"
-                            : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
-                        )}
-                      >
-                        <tab.icon
-                          className="h-4 w-4 shrink-0"
-                          aria-hidden="true"
-                        />
-                        <span className="flex-1">{tab.label}</span>
-                        {tab.key === "updater" && updateAvailable && (
-                          <span
-                            className="h-1.5 w-1.5 rounded-full bg-primary shrink-0"
-                            aria-label="Update available"
+                          className={cn(
+                            "flex items-center gap-2.5 px-2.5 py-2 text-sm rounded-lg transition-all",
+                            "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+                            activeTab === tab.key
+                              ? "bg-primary/10 text-primary font-medium"
+                              : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+                          )}
+                        >
+                          <tab.icon
+                            className="h-4 w-4 shrink-0"
+                            aria-hidden="true"
                           />
-                        )}
-                        {tab.key === "overview" &&
-                          (worstHealth === "crit" ||
-                            worstHealth === "warn") && (
+                          <span className="flex-1">{tab.label}</span>
+                          {/* One dot vocabulary across the whole nav: amber
+                              needs attention, red is critical, nothing at all
+                              is healthy. The updater used to own a separate
+                              blue dot meaning "update available"; that is a
+                              health row now (state "warn"), so it renders
+                              here like every other signal instead of teaching
+                              the operator a second colour. */}
+                          {showDot && (
                             <span
                               className={cn(
                                 "h-1.5 w-1.5 rounded-full shrink-0",
-                                worstHealth === "crit"
+                                tabHealth === "crit"
                                   ? "bg-destructive"
                                   : "bg-[hsl(var(--warning))]",
                               )}
                               aria-label={
-                                worstHealth === "crit"
-                                  ? "A health check is critical"
-                                  : "A health check needs attention"
+                                tabHealth === "crit"
+                                  ? `${tab.label}: critical`
+                                  : `${tab.label}: needs attention`
                               }
                             />
                           )}
-                      </a>
-                    ))}
+                        </a>
+                      );
+                    })}
                   </div>
                 </div>
               ))}
@@ -1563,10 +1455,9 @@ function AdminContent() {
             {activeTab === "billing-overview" && <BillingOverviewManager />}
           </div>
         </div>
-      </main>
-      <Footer />
+      )}
 
       {toast && <AdminToast toast={toast} onClose={() => setToast(null)} />}
-    </div>
+    </AppPageShell>
   );
 }

@@ -1,15 +1,21 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { PublicPageShell } from "@/components/shared/public-page-shell";
+// AppPageShell, the signed-in app chrome, not PublicPageShell. /badge was in
+// PUBLIC_PATHS and briefly rendered the public marketing nav to match; it is a
+// builder over the caller's own scan history, so it is signed-in only now (see
+// lib/config/public-paths.ts) and gets the app header the rest of the account
+// surface uses. The shell now stays mounted while the scans load, so the
+// loading state and the loaded page cannot disagree about the top bar.
+import { AppPageShell } from "@/components/shared/app-page-shell";
 import { API } from "@/lib/config/client-constants";
 import {
   BadgeScanList,
   BadgePreview,
   BadgeEmptyState,
+  BadgeDataSkeleton,
   type ScanEntry,
 } from "@/components/badge";
-import { BadgeSkeleton } from "@/components/badge/badge-skeleton";
 
 export default function BadgePage() {
   const [scans, setScans] = useState<ScanEntry[]>([]);
@@ -32,7 +38,15 @@ export default function BadgePage() {
           return;
         }
         const data = await res.json();
-        setScans(Array.isArray(data) ? data : []);
+        // The route returns { scans }. The bare-array form is still accepted
+        // so a cached client or a self-hoster mid-upgrade keeps working.
+        setScans(
+          Array.isArray(data)
+            ? data
+            : Array.isArray(data?.scans)
+              ? data.scans
+              : [],
+        );
       } catch {
         setScans([]);
       } finally {
@@ -84,12 +98,11 @@ export default function BadgePage() {
     );
   }
 
-  if (loading) {
-    return <BadgeSkeleton />;
-  }
-
   return (
-    <PublicPageShell maxWidth="max-w-5xl" padding="py-8 sm:py-10">
+    <AppPageShell maxWidth="max-w-5xl" padding="py-8 sm:py-10">
+      {/* Static, so it prints on the first frame rather than as grey bars:
+          the fetch below decides what goes under this header, not whether
+          the page has one. */}
       <header className="mb-8 max-w-xl">
         <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-balance text-foreground">
           Badge
@@ -102,7 +115,9 @@ export default function BadgePage() {
         </p>
       </header>
 
-      {scans.length === 0 ? (
+      {loading ? (
+        <BadgeDataSkeleton />
+      ) : scans.length === 0 ? (
         <BadgeEmptyState />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-start">
@@ -121,6 +136,6 @@ export default function BadgePage() {
           />
         </div>
       )}
-    </PublicPageShell>
+    </AppPageShell>
   );
 }

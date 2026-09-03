@@ -11,6 +11,7 @@
  */
 
 import { APP_NAME, PASSWORD_MIN_LENGTH } from "@/lib/config/client-constants";
+import { pluralize } from "@/lib/ui/plural";
 
 // TYPES & INTERFACES
 
@@ -370,13 +371,17 @@ function estimateCrackTime(entropyBits: number): number {
  * Convert seconds to human-readable format
  */
 function formatCrackTime(seconds: number): string {
+  // Every rung here rounds, and every rung can round to 1: 60 to 89 seconds is
+  // "1 minute", not "1 minutes". This string is shown under the password field
+  // on sign-up and password change.
   if (seconds < 1) return "less than 1 second";
-  if (seconds < 60) return `${Math.round(seconds)} seconds`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)} minutes`;
-  if (seconds < 86400) return `${Math.round(seconds / 3600)} hours`;
-  if (seconds < 2592000) return `${Math.round(seconds / 86400)} days`;
-  if (seconds < 31536000) return `${Math.round(seconds / 2592000)} months`;
-  return `${Math.round(seconds / 31536000)} years`;
+  if (seconds < 60) return pluralize(Math.round(seconds), "second");
+  if (seconds < 3600) return pluralize(Math.round(seconds / 60), "minute");
+  if (seconds < 86400) return pluralize(Math.round(seconds / 3600), "hour");
+  if (seconds < 2592000) return pluralize(Math.round(seconds / 86400), "day");
+  if (seconds < 31536000)
+    return pluralize(Math.round(seconds / 2592000), "month");
+  return pluralize(Math.round(seconds / 31536000), "year");
 }
 
 // MAIN ANALYSIS FUNCTION

@@ -10,6 +10,7 @@ import {
   Copy,
   Check,
   MoreHorizontal,
+  Timer,
   Bug,
   Globe,
   EyeOff,
@@ -51,6 +52,7 @@ export function SharesRow({
 }: SharesRowProps) {
   const [copied, setCopied] = useState(false);
   const severity = getSeverityInfo(share);
+  const expiry = formatExpiry(share.expiresAt);
 
   async function handleCopy() {
     if (await copyToClipboard(getShareUrl(share.token))) {
@@ -60,13 +62,10 @@ export function SharesRow({
   }
 
   return (
-    <div className="group relative flex flex-col gap-2 border-l-2 border-transparent py-3 pl-4 pr-4 transition-colors hover:bg-muted/30 sm:grid sm:grid-cols-[1fr_110px_100px_110px_80px] sm:items-center sm:gap-4 sm:py-3.5">
+    <div className="group relative flex flex-col gap-2 border-l-2 border-transparent py-3 pl-4 pr-4 transition-colors hover:bg-muted/30 sm:grid sm:grid-cols-[1fr_110px_100px_110px_120px_80px] sm:items-center sm:gap-4 sm:py-3.5">
       <span
         aria-hidden
-        className={cn(
-          "absolute inset-y-0 left-0 w-[3px]",
-          severity.bg.replace("/10", ""),
-        )}
+        className={cn("absolute inset-y-0 left-0 w-[3px]", severity.rail)}
       />
       {/* URL */}
       <div className="flex min-w-0 items-center gap-3">
@@ -106,12 +105,32 @@ export function SharesRow({
       </div>
 
       {/* Shared */}
-      <div className="flex flex-col gap-0.5 text-muted-foreground">
-        <span className="flex items-center gap-1.5 text-sm">
-          <Clock aria-hidden className="hidden h-3.5 w-3.5 sm:block" />
-          {formatRelativeTime(new Date(share.scannedAt))}
-        </span>
-        <span className="text-xs">{formatExpiry(share.expiresAt)}</span>
+      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+        <Clock aria-hidden className="hidden h-3.5 w-3.5 sm:block" />
+        {formatRelativeTime(new Date(share.scannedAt))}
+      </div>
+
+      {/* Expires.
+          This was a second line of inert text under the shared date, in a
+          column headed "Shared", so the one fact people come here to change
+          looked like a caption on a different fact. It gets its own column
+          and is the control that opens the share dialog, which is where the
+          expiry presets live: previously the only route there was hovering
+          the row to reveal the kebab and picking an item labelled "Share",
+          which says nothing about expiry. */}
+      <div className="flex items-center">
+        <button
+          type="button"
+          onClick={() => onOpenShareModal(share)}
+          aria-label={`${expiry.spoken}. Change when it expires.`}
+          title="Change when this link expires"
+          className="inline-flex min-h-11 items-center gap-1.5 rounded-md px-1.5 text-left text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring sm:min-h-0 sm:py-1"
+        >
+          <Timer aria-hidden className="h-3.5 w-3.5 shrink-0" />
+          <span className="underline decoration-dotted underline-offset-2">
+            {expiry.label}
+          </span>
+        </button>
       </div>
 
       {/* Actions */}
@@ -157,7 +176,7 @@ export function SharesRow({
                 rel="noopener noreferrer"
               >
                 <ExternalLink className="h-4 w-4 mr-2" />
-                View Report
+                View report
               </a>
             </DropdownMenuItem>
             <DropdownMenuItem
@@ -184,7 +203,7 @@ export function SharesRow({
               ) : (
                 <Trash2 className="h-4 w-4 mr-2" />
               )}
-              Revoke Access
+              Revoke access
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

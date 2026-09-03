@@ -1493,9 +1493,27 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
       </Section>
 
       {/* ─────────── Active sessions ─────────── */}
+      {/* "Sign out everywhere" used to be its own danger-zone panel at the
+          very bottom of this tab, below trusted devices and sign-in alerts.
+          It is a session action, so it belongs on the section that lists
+          sessions: someone who has just spotted a device they do not
+          recognize is looking here, not 600px further down. The destructive
+          outline plus the confirmation dialog still mark it as the drastic
+          option. */}
       <Section
         title="Active sessions"
-        blurb="Every device currently signed in. If you don't recognize one, sign it out."
+        blurb="Every device currently signed in. If you don't recognize one, sign it out. Signing out everywhere ends this session too."
+        aside={
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 gap-1.5 shrink-0 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={() => setShowLogoutModal(true)}
+          >
+            <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
+            Sign out everywhere
+          </Button>
+        }
       >
         {sessionsLoading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -1621,69 +1639,33 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
         </Section>
       )}
 
-      {/* ─────────── Sign-in alerts ─────────── */}
-      <Section
-        title="Sign-in alerts"
-        blurb="Choose which security events email you: new sign-ins, password changes, revoked sessions."
-      >
-        <Card className="border-border/50 bg-card/50">
-          <CardContent className="flex items-center justify-between gap-4 py-5">
-            <p className="text-sm text-foreground">
-              Managed from the Notifications tab.
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 gap-1.5 shrink-0"
-              asChild
-            >
-              <a
-                href={`${ROUTES.PROFILE}?tab=notifications`}
-                onClick={(e) => {
-                  if (!e.ctrlKey && !e.metaKey) {
-                    e.preventDefault();
-                    onTabChange("notifications");
-                  }
-                }}
-              >
-                Edit alert settings
-                <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-              </a>
-            </Button>
-          </CardContent>
-        </Card>
-      </Section>
-
-      {/* ─────────── Danger zone ─────────── */}
-      <section className="rounded-xl border border-destructive/25 bg-destructive/5 p-4 sm:p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0 max-w-xl">
-            <h2 className="text-base font-semibold tracking-tight text-foreground flex items-center gap-2">
-              <AlertTriangle
-                className="h-4 w-4 text-destructive"
-                aria-hidden="true"
-              />
-              Sign out everywhere
-            </h2>
-            <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
-              Ends every signed-in session on every device, including this one.
-              Use it if you think someone else has access.
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive gap-2 shrink-0"
-            onClick={() => setShowLogoutModal(true)}
-          >
-            <LogOut className="h-4 w-4" aria-hidden="true" />
-            Sign out everywhere
-          </Button>
-        </div>
-      </section>
+      {/* ─────────── Sign-in alerts ───────────
+          A pointer to another tab, not a setting. It used to be a full
+          Section plus a Card, which gave a signpost the same visual weight
+          as password and 2FA and added a fifth identical bordered box to the
+          stack. One line of prose with an inline link says the same thing. */}
+      <p className="text-sm text-muted-foreground leading-relaxed border-t border-border/50 pt-6">
+        Emails about new sign-ins, password changes and revoked sessions are set
+        up on the{" "}
+        <a
+          href={`${ROUTES.PROFILE}?tab=notifications`}
+          onClick={(e) => {
+            if (!e.ctrlKey && !e.metaKey) {
+              e.preventDefault();
+              onTabChange("notifications");
+            }
+          }}
+          className="inline-flex items-center gap-0.5 font-medium text-primary underline underline-offset-2 rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          Notifications tab
+          <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+        </a>
+        .
+      </p>
 
       {/* Sign out everywhere confirmation */}
       <Dialog open={showLogoutModal} onOpenChange={setShowLogoutModal}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent size="sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertTriangle
@@ -1692,13 +1674,13 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
               />
               Sign out everywhere?
             </DialogTitle>
-            <DialogDescription className="text-left">
+            <DialogDescription>
               This ends every session for {user?.email || "your account"},
               including the one you are using now. You will land on the sign-in
               page and need your password again on every device.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="flex-col-reverse sm:flex-row gap-2 sm:gap-2 mt-2">
+          <DialogFooter>
             <Button
               variant="outline"
               onClick={() => setShowLogoutModal(false)}

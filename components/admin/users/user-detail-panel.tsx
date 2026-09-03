@@ -52,12 +52,14 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/ui/utils";
+import { pluralize } from "@/lib/ui/plural";
 import {
   STAFF_ROLES,
   STAFF_ROLE_LABELS,
@@ -85,6 +87,9 @@ import {
   AdminMobileToc,
   AdminMobileTocTrigger,
   Skeleton,
+  StatBar,
+  StatBarSkeleton,
+  StatusPill,
   AdminPasswordConfirmDialog,
   type AdminTocItem,
 } from "@/components/admin/shared";
@@ -577,6 +582,10 @@ export function UserDetailPanel({
       : []),
     { id: "admin-notes", label: "Admin Notes" },
     { id: "support-actions", label: "Support Actions" },
+    // The jump list stopped at Support Actions, so the one section a phone
+    // could not reach without scrolling the whole panel was the destructive
+    // one. It renders under the same permission the card does.
+    ...(perms.canBanUsers ? [{ id: "danger-zone", label: "Danger Zone" }] : []),
   ];
 
   return (
@@ -587,51 +596,110 @@ export function UserDetailPanel({
         className="border-border/50 bg-card/50 overflow-hidden"
       >
         <CardContent className="p-5">
-          <div className="flex items-start gap-4">
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-8 w-8 shrink-0 -ml-1 -mt-0.5 border-border/60 bg-muted/40"
-              onClick={onClose}
-              aria-label="Back to user list"
-            >
-              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-            </Button>
-            <UserAvatar
-              name={u.name}
-              email={u.email}
-              avatarUrl={u.avatar_url}
-            />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-lg font-semibold tracking-tight">
-                  {u.name || "Unnamed User"}
-                </h2>
-                {u.role && u.role !== "user" && ROLE_BADGE_STYLES[u.role] && (
-                  <Badge
-                    className={cn(
-                      ROLE_BADGE_STYLES[u.role],
-                      "text-[10px] font-medium",
-                    )}
-                  >
-                    {STAFF_ROLE_LABELS[u.role] || u.role}
-                  </Badge>
-                )}
-                {u.disabled_at && (
-                  <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] font-medium">
-                    Disabled
-                  </Badge>
-                )}
-                {u.ai_chat_banned && (
-                  <Badge className="bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20 text-[10px] font-medium">
-                    AI banned
-                  </Badge>
-                )}
+          {/* Stacks below sm. This was one row at every width, and the
+              action column is shrink-0, so on a phone the identity block was
+              squeezed to whatever was left: the display name truncated
+              mid-word and the Disable account button overlapped it. Above sm
+              there is room for both, so the row returns. */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
+            <div className="flex min-w-0 items-start gap-3 sm:contents">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 shrink-0 -ml-1 -mt-0.5 border-border/60 bg-muted/40"
+                onClick={onClose}
+                aria-label="Back to user list"
+              >
+                <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              </Button>
+              <UserAvatar
+                name={u.name}
+                email={u.email}
+                avatarUrl={u.avatar_url}
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-lg font-semibold tracking-tight">
+                    {u.name || "Unnamed User"}
+                  </h2>
+                  {u.role && u.role !== "user" && ROLE_BADGE_STYLES[u.role] && (
+                    <Badge
+                      className={cn(
+                        ROLE_BADGE_STYLES[u.role],
+                        "text-[10px] font-medium",
+                      )}
+                    >
+                      {STAFF_ROLE_LABELS[u.role] || u.role}
+                    </Badge>
+                  )}
+                  {u.disabled_at && (
+                    <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] font-medium">
+                      Disabled
+                    </Badge>
+                  )}
+                  {u.ai_chat_banned && (
+                    <Badge className="bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20 text-[10px] font-medium">
+                      AI banned
+                    </Badge>
+                  )}
+                </div>
+                {/* wrap-anywhere, not truncate: an admin needs to read the
+                  whole address to match it against a support ticket, and a
+                  long one on a phone was being cut off with no way to see the
+                  rest. */}
+                <p className="mt-0.5 wrap-anywhere font-mono text-sm text-muted-foreground">
+                  {u.email}
+                </p>
               </div>
-              <p className="text-sm text-muted-foreground mt-0.5 font-mono">
-                {u.email}
-              </p>
             </div>
+
+            {/* The account-state toggle lives here, beside the badge that
+                reports that state, instead of in the Danger Zone four fifths
+                of the way down the panel. It is the most-used support action
+                on this screen and it is reversible, unlike the deletions it
+                used to sit next to, so grouping it with them was wrong twice
+                over: it buried the common case and it made an undoable action
+                look permanent. The deletions stay in the Danger Zone card and
+                the link beside this button goes straight to them. */}
+            {!detailLoading && perms.canBanUsers && (
+              <div className="flex shrink-0 flex-row items-center justify-between gap-3 sm:flex-col sm:items-end sm:gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={cn(
+                    "h-8 gap-1.5",
+                    u.disabled_at
+                      ? "border-[hsl(var(--success))]/30 text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/10 hover:text-[hsl(var(--success))]"
+                      : "border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive",
+                  )}
+                  onClick={() =>
+                    queueSupportAction(
+                      u.disabled_at ? "enable" : "disable",
+                      u.disabled_at ? "Re-enable Account" : "Disable Account",
+                      u.disabled_at
+                        ? `Allow ${u.name || u.email} to log in again`
+                        : `Suspend ${u.name || u.email} and force logout all sessions`,
+                      u.disabled_at ? "default" : "destructive",
+                    )
+                  }
+                >
+                  {u.disabled_at ? (
+                    <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  ) : (
+                    <Ban className="h-3.5 w-3.5" aria-hidden="true" />
+                  )}
+                  <span className="text-xs">
+                    {u.disabled_at ? "Re-enable account" : "Disable account"}
+                  </span>
+                </Button>
+                <a
+                  href="#danger-zone"
+                  className="rounded-sm text-[11px] text-muted-foreground transition-colors hover:text-destructive focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  Danger zone
+                </a>
+              </div>
+            )}
           </div>
 
           {detailLoading ? (
@@ -640,19 +708,11 @@ export function UserDetailPanel({
               aria-live="polite"
               aria-label="Loading user details"
             >
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-3 p-3 rounded-xl border border-border/40 bg-card/30"
-                  >
-                    <Skeleton className="h-7 w-7 rounded-lg shrink-0" />
-                    <div className="min-w-0 space-y-1.5">
-                      <Skeleton className="h-2.5 w-10" />
-                      <Skeleton className="h-3.5 w-12" />
-                    </div>
-                  </div>
-                ))}
+              {/* Matches the StatBar the loaded state renders. It used to be
+                  a 4-up grid of bordered icon tiles, which is not the shape
+                  that arrives, so the card reflowed as the request landed. */}
+              <div className="mt-5">
+                <StatBarSkeleton segments={4} />
               </div>
               <div className="mt-4 pt-4 border-t border-border/50">
                 <Skeleton className="h-2.5 w-16 mb-2.5" />
@@ -664,62 +724,50 @@ export function UserDetailPanel({
             </div>
           ) : (
             <>
-              {/* Quick stats */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
-                {[
-                  {
-                    label: "Scans",
-                    value: u.scan_count,
-                    icon: Activity,
-                    color: "text-primary",
-                    bg: "bg-primary/10",
-                  },
-                  {
-                    label: "API Keys",
-                    value: u.api_key_count,
-                    icon: Key,
-                    color: "text-[hsl(var(--severity-medium))]",
-                    bg: "bg-[hsl(var(--severity-medium))]/10",
-                  },
-                  {
-                    label: "Sessions",
-                    value: String(u.session_count),
-                    icon: Globe,
-                    color: "text-[hsl(var(--success))]",
-                    bg: "bg-[hsl(var(--success))]/10",
-                  },
-                  {
-                    label: "Joined",
-                    value: new Date(u.created_at).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                    }),
-                    icon: Clock,
-                    color: "text-muted-foreground",
-                    bg: "bg-muted/50",
-                  },
-                ].map((item) => (
-                  <div
-                    key={item.label}
-                    className="flex items-center gap-3 p-3 rounded-xl border border-border/40 bg-card/30"
-                  >
-                    <div className={cn("p-1.5 rounded-lg shrink-0", item.bg)}>
-                      <item.icon
-                        className={cn("h-3.5 w-3.5", item.color)}
-                        aria-hidden="true"
-                      />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                        {item.label}
-                      </p>
-                      <p className="text-sm font-semibold truncate">
-                        {item.value}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+              {/* Quick stats. This was a hand-rolled 4-up grid of bordered
+                  icon tiles, which meant the same four numbers rendered one
+                  way here and another way in the directory a click earlier,
+                  and none of them had tabular figures. It is the shared strip
+                  now, so the digits align, a zero greys itself, and the two
+                  screens agree. --severity-medium was also doing duty as a
+                  decorative tone on "API Keys"; severity tokens encode how bad
+                  a scan finding is, not how many keys someone has. */}
+              <div className="mt-5">
+                <StatBar
+                  items={[
+                    {
+                      label: "Scans",
+                      value: Number(u.scan_count),
+                      icon: Activity,
+                      tone: "primary",
+                    },
+                    {
+                      label: "API Keys",
+                      value: Number(u.api_key_count),
+                      icon: Key,
+                      tone: "orange",
+                    },
+                    {
+                      label: "Sessions",
+                      value: Number(u.session_count),
+                      icon: Globe,
+                      tone: "success",
+                    },
+                    {
+                      label: "Joined",
+                      value: new Date(u.created_at).toLocaleDateString(
+                        "en-US",
+                        {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        },
+                      ),
+                      icon: Clock,
+                      tone: "muted",
+                    },
+                  ]}
+                />
               </div>
 
               {/* Security status */}
@@ -727,58 +775,61 @@ export function UserDetailPanel({
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-2.5">
                   Security
                 </p>
+                {/* One tone vocabulary: green is satisfied, amber wants a
+                    look, red is a real gap, grey is "true but not a verdict".
+                    Every chip below now obeys it, which took three passes.
+                    2FA once painted from raw emerald-500, the only untokenised
+                    colour in a row of tokenised ones. Email and TOS borrowed
+                    --severity-high and --severity-medium, which encode how bad
+                    a scan finding is, not how bad an account state is. And
+                    most recently email, TOS and backup codes all rendered
+                    their SATISFIED state in the neutral chip, so a verified
+                    account that had agreed to the terms looked identical to
+                    one that had done neither and the row said nothing at a
+                    glance.
+
+                    2FA absent stays grey on purpose: it is optional here, so
+                    its absence is a fact rather than a verdict. */}
                 <div className="flex flex-wrap gap-2">
-                  <div
-                    className={cn(
-                      "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border",
-                      u.totp_enabled
-                        ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-500"
-                        : "bg-muted/50 border-border/50 text-muted-foreground",
-                    )}
+                  <StatusPill
+                    tone={u.totp_enabled ? "ok" : "neutral"}
+                    icon={u.totp_enabled ? ShieldCheck : ShieldOff}
+                    className="px-3 py-1.5 text-xs"
                   >
-                    {u.totp_enabled ? (
-                      <ShieldCheck className="h-3 w-3" aria-hidden="true" />
-                    ) : (
-                      <ShieldOff className="h-3 w-3" aria-hidden="true" />
-                    )}
-                    {u.totp_enabled ? "2FA Enabled" : "No 2FA"}
-                  </div>
+                    {u.totp_enabled ? "2FA enabled" : "No 2FA"}
+                  </StatusPill>
                   {u.totp_enabled && (
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-muted/50 border border-border/50 text-muted-foreground">
-                      <KeyRound className="h-3 w-3" aria-hidden="true" />
+                    <StatusPill
+                      tone={u.has_backup_codes ? "ok" : "warn"}
+                      icon={KeyRound}
+                      className="px-3 py-1.5 text-xs"
+                    >
                       {u.has_backup_codes
                         ? "Has backup codes"
                         : "No backup codes"}
-                    </div>
+                    </StatusPill>
                   )}
-                  <div
-                    className={cn(
-                      "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border",
-                      u.email_verified_at
-                        ? "bg-muted/50 border-border/50 text-muted-foreground"
-                        : "bg-[hsl(var(--severity-high))]/5 border-[hsl(var(--severity-high))]/20 text-[hsl(var(--severity-high))]",
-                    )}
+                  {/* Green when verified, amber when not. It was grey and
+                      red: grey said nothing about a satisfied state, and red
+                      overstated an unsatisfied one. An unverified address is
+                      a thing to look at (recovery will not work, it may be a
+                      typo), not a breach, which is what amber means here. */}
+                  <StatusPill
+                    tone={u.email_verified_at ? "ok" : "warn"}
+                    icon={u.email_verified_at ? MailCheck : MailX}
+                    className="px-3 py-1.5 text-xs"
                   >
-                    {u.email_verified_at ? (
-                      <MailCheck className="h-3 w-3" aria-hidden="true" />
-                    ) : (
-                      <MailX className="h-3 w-3" aria-hidden="true" />
-                    )}
                     {u.email_verified_at
-                      ? "Email Verified"
-                      : "Email Unverified"}
-                  </div>
-                  <div
-                    className={cn(
-                      "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border",
-                      u.tos_accepted_at
-                        ? "bg-muted/50 border-border/50 text-muted-foreground"
-                        : "bg-[hsl(var(--severity-medium))]/5 border-[hsl(var(--severity-medium))]/20 text-[hsl(var(--severity-medium))]",
-                    )}
+                      ? "Email verified"
+                      : "Email unverified"}
+                  </StatusPill>
+                  <StatusPill
+                    tone={u.tos_accepted_at ? "ok" : "warn"}
+                    icon={FileText}
+                    className="px-3 py-1.5 text-xs"
                   >
-                    <FileText className="h-3 w-3" aria-hidden="true" />
-                    {u.tos_accepted_at ? "TOS Accepted" : "TOS Not Accepted"}
-                  </div>
+                    {u.tos_accepted_at ? "TOS accepted" : "TOS not accepted"}
+                  </StatusPill>
                 </div>
               </div>
 
@@ -937,10 +988,11 @@ export function UserDetailPanel({
                     </span>
                   </div>
                   <span className="text-sm font-medium truncate">
+                    {/* Not italic. It was the only italic string anywhere in
+                        the panel, an orphan idiom for "this value is empty"
+                        that nothing else uses. */}
                     {u.name || (
-                      <span className="text-muted-foreground italic">
-                        Not set
-                      </span>
+                      <span className="text-muted-foreground">Not set</span>
                     )}
                   </span>
                 </div>
@@ -971,7 +1023,11 @@ export function UserDetailPanel({
                         Subscription Plan
                       </span>
                     </div>
-                    <span className="text-xs font-medium text-foreground flex items-center gap-2">
+                    {/* text-sm, matching Display Name and Email either side of
+                        it. The plan used to render a size smaller than its two
+                        neighbours in the same three-up grid, so the one paid
+                        fact on the row read as the least important. */}
+                    <span className="text-sm font-medium text-foreground flex items-center gap-2">
                       {(() => {
                         const effectivePlan = u.gifted_plan || u.plan;
                         const label = effectivePlan
@@ -981,7 +1037,7 @@ export function UserDetailPanel({
                           <>
                             {label}
                             {u.gifted_plan && (
-                              <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border border-[hsl(var(--warning))]/25">
                                 Gifted
                               </span>
                             )}
@@ -1013,7 +1069,7 @@ export function UserDetailPanel({
                         Display Name
                       </span>
                       {pendingChanges.name && (
-                        <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">
+                        <span className="text-[10px] text-primary font-medium px-1.5 py-0.5 rounded-full bg-primary/10">
                           Modified
                         </span>
                       )}
@@ -1058,7 +1114,7 @@ export function UserDetailPanel({
                           Email Address
                         </span>
                         {pendingChanges.email && (
-                          <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">
+                          <span className="text-[10px] text-primary font-medium px-1.5 py-0.5 rounded-full bg-primary/10">
                             Modified
                           </span>
                         )}
@@ -1108,7 +1164,7 @@ export function UserDetailPanel({
                       className={cn(
                         "flex flex-col gap-2 p-3 rounded-lg border transition-colors",
                         u.gifted_plan
-                          ? "bg-amber-500/5 border-amber-500/30"
+                          ? "bg-[hsl(var(--warning))]/5 border-[hsl(var(--warning))]/30"
                           : pendingChanges.plan
                             ? "bg-primary/5 border-primary/30"
                             : "bg-card/30 border-border/40",
@@ -1123,19 +1179,19 @@ export function UserDetailPanel({
                           Subscription Plan
                         </span>
                         {u.gifted_plan && (
-                          <span className="text-[9px] text-amber-500 font-medium px-1.5 py-0.5 rounded bg-amber-500/10">
+                          <span className="text-[10px] text-[hsl(var(--warning))] font-medium px-1.5 py-0.5 rounded-full bg-[hsl(var(--warning))]/10">
                             Gifted
                           </span>
                         )}
                         {pendingChanges.plan && !u.gifted_plan && (
-                          <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">
+                          <span className="text-[10px] text-primary font-medium px-1.5 py-0.5 rounded-full bg-primary/10">
                             Modified
                           </span>
                         )}
                       </div>
                       {u.gifted_plan ? (
                         <div className="flex flex-col gap-1.5">
-                          <div className="h-8 text-xs rounded-md border border-amber-500/30 bg-amber-500/5 px-2 flex items-center gap-2 text-amber-500">
+                          <div className="h-8 text-xs rounded-md border border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/5 px-2 flex items-center gap-2 text-[hsl(var(--warning))]">
                             <Gift className="h-3.5 w-3.5" aria-hidden="true" />
                             {getPlanById(u.gifted_plan)?.name || u.gifted_plan}
                           </div>
@@ -1214,7 +1270,7 @@ export function UserDetailPanel({
                   <Shield className="h-4 w-4 text-primary" aria-hidden="true" />
                   <p className="text-sm font-medium">Staff Role</p>
                   {pendingChanges.role && (
-                    <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">
+                    <span className="text-[10px] text-primary font-medium px-1.5 py-0.5 rounded-full bg-primary/10">
                       Modified
                     </span>
                   )}
@@ -1336,8 +1392,8 @@ export function UserDetailPanel({
                 )}
                 {pendingBadgeRevokes.length > 0 && (
                   <p className="text-[10px] text-destructive">
-                    {pendingBadgeRevokes.length} badge(s) will be removed on
-                    save
+                    {pluralize(pendingBadgeRevokes.length, "badge")} will be
+                    removed on save
                   </p>
                 )}
 
@@ -1385,9 +1441,9 @@ export function UserDetailPanel({
                   open={showBadgePicker}
                   onOpenChange={setShowBadgePicker}
                 >
-                  <DialogContent className="max-w-md">
+                  <DialogContent variant="shell" size="sm">
                     <DialogHeader>
-                      <DialogTitle className="flex items-center gap-2 text-base">
+                      <DialogTitle className="flex items-center gap-2">
                         <Award
                           className="h-4 w-4 text-primary"
                           aria-hidden="true"
@@ -1395,7 +1451,7 @@ export function UserDetailPanel({
                         Award Badge
                       </DialogTitle>
                     </DialogHeader>
-                    <div className="flex flex-col gap-3">
+                    <DialogBody className="flex flex-col gap-3">
                       <p className="text-xs text-muted-foreground">
                         Select badges to award. Changes will apply when you
                         save.
@@ -1463,11 +1519,11 @@ export function UserDetailPanel({
                       )}
                       {pendingBadgeAwards.length > 0 && (
                         <p className="text-[10px] text-primary">
-                          {pendingBadgeAwards.length} badge(s) queued to award
-                          on save
+                          {pluralize(pendingBadgeAwards.length, "badge")} queued
+                          to award on save
                         </p>
                       )}
-                    </div>
+                    </DialogBody>
                     <DialogFooter>
                       <Button
                         variant="outline"
@@ -1492,9 +1548,9 @@ export function UserDetailPanel({
                     }
                   }}
                 >
-                  <DialogContent className="max-w-md">
+                  <DialogContent variant="shell" size="sm">
                     <DialogHeader>
-                      <DialogTitle className="flex items-center gap-2 text-base">
+                      <DialogTitle className="flex items-center gap-2">
                         <Plus
                           className="h-4 w-4 text-primary"
                           aria-hidden="true"
@@ -1502,7 +1558,7 @@ export function UserDetailPanel({
                         Create New Badge
                       </DialogTitle>
                     </DialogHeader>
-                    <div className="flex flex-col gap-4">
+                    <DialogBody className="flex flex-col gap-4">
                       {/* Preview */}
                       {(newBadgeName || newBadgeDisplay) && (
                         <div className="flex items-center gap-2">
@@ -1566,14 +1622,21 @@ export function UserDetailPanel({
                       <div className="flex flex-col gap-2">
                         <label className="text-xs font-medium">Color</label>
                         <div className="flex flex-wrap gap-2">
+                          {/* A badge colour is author-chosen content, so these
+                              hexes are deliberately outside the theme. The set
+                              was still wrong: it offered Green, Emerald, Teal
+                              and Cyan, four swatches most people cannot tell
+                              apart at 28px, and Cyan is the exact hue this
+                              product spent a release removing from its own
+                              chrome. Twelve distinguishable steps instead, and
+                              anything else still goes through the native
+                              picker below. */}
                           {[
                             { color: "#ef4444", name: "Red" },
                             { color: "#f97316", name: "Orange" },
                             { color: "#eab308", name: "Yellow" },
                             { color: "#22c55e", name: "Green" },
-                            { color: "#10b981", name: "Emerald" },
                             { color: "#14b8a6", name: "Teal" },
-                            { color: "#06b6d4", name: "Cyan" },
                             { color: "#3b82f6", name: "Blue" },
                             { color: "#6366f1", name: "Indigo" },
                             { color: "#8b5cf6", name: "Violet" },
@@ -1586,11 +1649,16 @@ export function UserDetailPanel({
                               key={c.color}
                               type="button"
                               onClick={() => setNewBadgeColor(c.color)}
+                              // Selection was carried by a 2px border plus a
+                              // 10% scale, which is close to invisible on a
+                              // dark swatch and told a screen reader nothing.
+                              aria-pressed={newBadgeColor === c.color}
                               className={cn(
-                                "w-7 h-7 rounded-full transition-all border-2",
+                                "w-7 h-7 rounded-full transition-all",
+                                "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                                 newBadgeColor === c.color
-                                  ? "border-foreground scale-110 shadow-xs"
-                                  : "border-transparent hover:scale-105",
+                                  ? "ring-2 ring-foreground ring-offset-2 ring-offset-background"
+                                  : "hover:scale-105",
                               )}
                               style={{ backgroundColor: c.color }}
                               title={c.name}
@@ -1633,7 +1701,7 @@ export function UserDetailPanel({
                           </p>
                         </div>
                       </div>
-                    </div>
+                    </DialogBody>
                     <DialogFooter>
                       <Button
                         variant="outline"
@@ -1692,9 +1760,9 @@ export function UserDetailPanel({
                       if (!open) setPendingDeleteBadge(null);
                     }}
                   >
-                    <DialogContent className="max-w-md">
+                    <DialogContent variant="shell" size="sm">
                       <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2 text-base">
+                        <DialogTitle className="flex items-center gap-2">
                           <Trash2
                             className="h-4 w-4 text-destructive"
                             aria-hidden="true"
@@ -1702,7 +1770,7 @@ export function UserDetailPanel({
                           Manage All Badges
                         </DialogTitle>
                       </DialogHeader>
-                      <div className="flex flex-col gap-3">
+                      <DialogBody className="flex flex-col gap-3">
                         {/* Inline delete confirmation */}
                         {pendingDeleteBadge ? (
                           <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 flex flex-col gap-3">
@@ -1768,8 +1836,12 @@ export function UserDetailPanel({
                               Click the trash icon to permanently delete a badge
                               from the system.
                             </p>
+                            {/* No max-h-72 overflow-y-auto here any more: the
+                                shell's body band is the scroller, and capping
+                                the list inside it put a second scrollbar
+                                against the first. */}
                             {allBadges.length > 0 ? (
-                              <div className="flex flex-col gap-2 max-h-72 overflow-y-auto">
+                              <div className="flex flex-col gap-2">
                                 {allBadges.map((badge) => (
                                   <div
                                     key={badge.id}
@@ -1814,7 +1886,7 @@ export function UserDetailPanel({
                             )}
                           </>
                         )}
-                      </div>
+                      </DialogBody>
                       <DialogFooter>
                         <Button
                           variant="outline"
@@ -2035,7 +2107,7 @@ export function UserDetailPanel({
                     <ActionCard
                       icon={LogOut}
                       label="Force Logout"
-                      description={`Revoke all ${u.session_count} active session(s)`}
+                      description={`Revoke all ${pluralize(u.session_count, "active session")}`}
                       color="text-primary"
                       bg="bg-primary/10"
                       loading={isLoading("revoke_sessions")}
@@ -2043,22 +2115,27 @@ export function UserDetailPanel({
                         queueSupportAction(
                           "revoke_sessions",
                           "Force Logout",
-                          `Revoke all ${u.session_count} active session(s) for ${u.name || u.email}`,
+                          `Revoke all ${pluralize(u.session_count, "active session")} for ${u.name || u.email}`,
                         )
                       }
                     />
                     <ActionCard
                       icon={Key}
                       label="Revoke API Keys"
-                      description={`Invalidate all ${u.api_key_count} API key(s)`}
-                      color="text-[hsl(var(--severity-medium))]"
-                      bg="bg-[hsl(var(--severity-medium))]/10"
+                      description={`Invalidate all ${u.api_key_count} API key${u.api_key_count === 1 ? "" : "s"}. They cannot be recovered.`}
+                      color="text-destructive"
+                      bg="bg-destructive/10"
+                      // A revoked key is gone: the user has to issue a new one
+                      // and update whatever was calling us with the old one.
+                      // It rendered with a plain neutral border, the same as
+                      // "Reset AI Usage".
+                      variant="danger"
                       loading={isLoading("revoke_api_keys")}
                       onClick={() =>
                         queueSupportAction(
                           "revoke_api_keys",
                           "Revoke API Keys",
-                          `Invalidate all ${u.api_key_count} API key(s) for ${u.name || u.email}`,
+                          `Invalidate all ${pluralize(u.api_key_count, "API key")} for ${u.name || u.email}`,
                         )
                       }
                     />
@@ -2074,15 +2151,15 @@ export function UserDetailPanel({
                             ? "Unavailable: 2FA enabled"
                             : "Email a reset link"
                         }
-                        color="text-[hsl(var(--severity-medium))]"
-                        bg="bg-[hsl(var(--severity-medium))]/10"
+                        color="text-[hsl(var(--warning))]"
+                        bg="bg-[hsl(var(--warning))]/10"
                         disabled={u.totp_enabled}
                         loading={isLoading("reset_password")}
                         onClick={() =>
                           queueSupportAction(
                             "reset_password",
                             "Reset Password",
-                            `Send a password reset link to ${u.name || u.email}. They'll set their own new password -- you won't see it.`,
+                            `Send a password reset link to ${u.name || u.email}. They set their own new password, so you never see it.`,
                           )
                         }
                       />
@@ -2110,9 +2187,10 @@ export function UserDetailPanel({
                     <ActionCard
                       icon={UserX}
                       label="Force Logout All"
-                      description="Logout + revoke all API keys"
-                      color="text-[hsl(var(--severity-medium))]"
-                      bg="bg-[hsl(var(--severity-medium))]/10"
+                      description="Ends every session and revokes every API key"
+                      color="text-destructive"
+                      bg="bg-destructive/10"
+                      variant="danger"
                       loading={isLoading("force_logout_all")}
                       onClick={() =>
                         queueSupportAction(
@@ -2134,8 +2212,14 @@ export function UserDetailPanel({
                             ? "Unavailable: staff account"
                             : "Sign in as this user"
                         }
-                        color="text-amber-500"
-                        bg="bg-amber-500/10"
+                        color="text-[hsl(var(--warning))]"
+                        bg="bg-[hsl(var(--warning))]/10"
+                        // Signing in as another human, for an hour, on their
+                        // behalf. It carried no variant at all, so it rendered
+                        // with a plain neutral border: quieter than "Delete
+                        // Schedules" sitting two groups below it. amber-500
+                        // was also the only raw palette colour in this grid.
+                        variant="danger"
                         disabled={
                           (STAFF_ROLE_HIERARCHY[u.role || "user"] ?? 0) > 0
                         }
@@ -2151,6 +2235,32 @@ export function UserDetailPanel({
                     )}
                   </div>
                 </div>
+
+                {/* Sits directly under Session & Security, because it is the
+                    explanation for the greyed-out "Reset Password" card two
+                    rows above it. It used to be the very last element of this
+                    card, below the entire Danger Zone, roughly 500 lines from
+                    the control it explains. */}
+                {u.totp_enabled && (
+                  <div className="flex items-start gap-2.5 p-3 rounded-md bg-[hsl(var(--warning))]/5 border border-[hsl(var(--warning))]/25">
+                    <AlertTriangle
+                      className="h-4 w-4 text-[hsl(var(--warning))] shrink-0 mt-0.5"
+                      aria-hidden="true"
+                    />
+                    <div>
+                      <p className="text-sm font-medium">
+                        Password reset is unavailable for this user
+                      </p>
+                      <p className="text-xs text-muted-foreground leading-relaxed mt-1">
+                        This user has two-factor authentication enabled, so an
+                        admin can&apos;t reset their password. For account
+                        recovery, they need to use their own backup codes or
+                        their own account recovery flow. Admins can&apos;t
+                        remove a user&apos;s 2FA either, for the same reason.
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Usage & Limits */}
                 <div>
@@ -2321,11 +2431,11 @@ export function UserDetailPanel({
                     open={showNotifDialog}
                     onOpenChange={setShowNotifDialog}
                   >
-                    <DialogContent className="sm:max-w-md">
+                    <DialogContent variant="shell" size="sm">
                       <DialogHeader>
                         <DialogTitle>Send Notification</DialogTitle>
                       </DialogHeader>
-                      <div className="flex flex-col gap-3 py-2">
+                      <DialogBody className="flex flex-col gap-3">
                         <div className="flex flex-col gap-1.5">
                           <label
                             htmlFor={notifTitleId}
@@ -2360,8 +2470,8 @@ export function UserDetailPanel({
                         <p className="text-xs text-muted-foreground">
                           This will send an email notification to {u.email}.
                         </p>
-                      </div>
-                      <DialogFooter className="gap-2">
+                      </DialogBody>
+                      <DialogFooter>
                         <Button
                           variant="outline"
                           onClick={() => {
@@ -2476,183 +2586,160 @@ export function UserDetailPanel({
                     }}
                   />
                 )}
-
-                {/* Danger Zone */}
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider text-destructive/70 font-medium mb-2">
-                    Danger Zone
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                    <ActionCard
-                      icon={u.disabled_at ? CheckCircle2 : Ban}
-                      label={
-                        u.disabled_at ? "Re-enable Account" : "Disable Account"
-                      }
-                      description={
-                        u.disabled_at
-                          ? "Allow user to log in"
-                          : "Suspend and force-logout"
-                      }
-                      color={
-                        u.disabled_at
-                          ? "text-[hsl(var(--success))]"
-                          : "text-destructive"
-                      }
-                      bg={
-                        u.disabled_at
-                          ? "bg-[hsl(var(--success))]/10"
-                          : "bg-destructive/10"
-                      }
-                      variant={u.disabled_at ? "success" : "danger"}
-                      onClick={() =>
-                        queueSupportAction(
-                          u.disabled_at ? "enable" : "disable",
-                          u.disabled_at
-                            ? "Re-enable Account"
-                            : "Disable Account",
-                          u.disabled_at
-                            ? `Allow ${u.name || u.email} to log in again`
-                            : `Suspend ${u.name || u.email} and force logout all sessions`,
-                          u.disabled_at ? "default" : "destructive",
-                        )
-                      }
-                    />
-                    <ActionCard
-                      icon={BotOff}
-                      label={
-                        u.ai_chat_banned
-                          ? "Unban from AI Chat"
-                          : "Ban from AI Chat"
-                      }
-                      description={
-                        u.ai_chat_banned
-                          ? "Restore AI chat access"
-                          : "Block access to AI assistant"
-                      }
-                      color={
-                        u.ai_chat_banned
-                          ? "text-[hsl(var(--success))]"
-                          : "text-[hsl(var(--warning))]"
-                      }
-                      bg={
-                        u.ai_chat_banned
-                          ? "bg-[hsl(var(--success))]/10"
-                          : "bg-[hsl(var(--warning))]/10"
-                      }
-                      variant={u.ai_chat_banned ? "success" : "danger"}
-                      loading={isLoading("toggle_ai_ban")}
-                      onClick={() =>
-                        queueSupportAction(
-                          "toggle_ai_ban",
-                          u.ai_chat_banned
-                            ? "Unban from AI Chat"
-                            : "Ban from AI Chat",
-                          u.ai_chat_banned
-                            ? `Restore AI chat access for ${u.name || u.email}`
-                            : `Block ${u.name || u.email} from using the AI assistant`,
-                          u.ai_chat_banned ? "default" : "destructive",
-                        )
-                      }
-                    />
-                    {hasStaffPermission(
-                      callerRole,
-                      STAFF_PERMISSIONS.DELETE_ANY_SCAN,
-                    ) && (
-                      <ActionCard
-                        icon={Activity}
-                        label="Delete All Scans"
-                        description={`Remove all ${u.scan_count} scan(s)`}
-                        color="text-destructive"
-                        bg="bg-destructive/10"
-                        variant="danger"
-                        loading={isLoading("delete_scans")}
-                        onClick={() =>
-                          queueSupportAction(
-                            "delete_scans",
-                            "Delete All Scans",
-                            `Remove all ${u.scan_count} scan(s) for ${u.name || u.email}`,
-                            "destructive",
-                          )
-                        }
-                      />
-                    )}
-                    <ActionCard
-                      icon={Webhook}
-                      label="Delete Webhooks"
-                      description="Remove all webhooks"
-                      color="text-destructive"
-                      bg="bg-destructive/10"
-                      variant="danger"
-                      loading={isLoading("delete_webhooks")}
-                      onClick={() =>
-                        queueSupportAction(
-                          "delete_webhooks",
-                          "Delete Webhooks",
-                          `Remove all webhooks for ${u.name || u.email}`,
-                          "destructive",
-                        )
-                      }
-                    />
-                    <ActionCard
-                      icon={CalendarOff}
-                      label="Delete Schedules"
-                      description="Remove scheduled scans"
-                      color="text-destructive"
-                      bg="bg-destructive/10"
-                      variant="danger"
-                      loading={isLoading("delete_schedules")}
-                      onClick={() =>
-                        queueSupportAction(
-                          "delete_schedules",
-                          "Delete Schedules",
-                          `Remove all scheduled scans for ${u.name || u.email}`,
-                          "destructive",
-                        )
-                      }
-                    />
-                    {perms.canDeleteUsers && (
-                      <ActionCard
-                        icon={Trash2}
-                        label="Delete Account"
-                        description="Permanently remove user"
-                        color="text-destructive"
-                        bg="bg-destructive/10"
-                        variant="danger"
-                        onClick={() =>
-                          queueSupportAction(
-                            "delete",
-                            "Delete Account",
-                            `Permanently remove ${u.name || u.email}'s account. This cannot be undone.`,
-                            "destructive",
-                          )
-                        }
-                      />
-                    )}
-                  </div>
-                </div>
-
-                {u.totp_enabled && (
-                  <div className="flex items-start gap-2.5 p-3 rounded-lg bg-[hsl(var(--severity-medium))]/5 border border-[hsl(var(--severity-medium))]/20">
-                    <AlertTriangle
-                      className="h-4 w-4 text-[hsl(var(--severity-medium))] shrink-0 mt-0.5"
-                      aria-hidden="true"
-                    />
-                    <div>
-                      <p className="text-sm font-medium">
-                        Password reset is unavailable for this user
-                      </p>
-                      <p className="text-xs text-muted-foreground leading-relaxed mt-1">
-                        This user has two-factor authentication enabled, so an
-                        admin can&apos;t reset their password. For account
-                        recovery, they need to use their own backup codes or
-                        their own account recovery flow. Admins can&apos;t
-                        remove a user&apos;s 2FA either, for the same reason.
-                      </p>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Danger Zone.
+          It used to be the sixth sub-group inside the Support Actions card,
+          separated from "reset a usage counter" by nothing but a 10px
+          70%-opacity label, roughly four fifths of the way down a 3,000-line
+          panel, with no id and no entry in the jump list: nothing on the page
+          could take you to it. It is its own card now, with a red outline and
+          a sentence saying what the group means, and the profile header at the
+          top of the panel carries a link straight to it, so the most-used
+          action in it is reachable from the first viewport.
+          Two of these cards undo a dangerous state rather than causing one
+          (re-enable, unban), which is why they keep the success variant: they
+          belong beside the action they reverse, not in a separate group. */}
+      {!detailLoading && perms.canBanUsers && (
+        <Card
+          id="danger-zone"
+          className="border-destructive/30 bg-destructive/[0.03]"
+        >
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <AlertTriangle
+                className="h-4 w-4 text-destructive"
+                aria-hidden="true"
+              />
+              <p className="text-sm font-medium text-destructive">
+                Danger zone
+              </p>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              These change or remove access. Everything here asks for your own
+              password first, and the deletions cannot be undone.
+            </p>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {/* Disable / re-enable is NOT here: it moved to the profile
+                  header, next to the badge that reports the state it toggles.
+                  What is left in this card is the set of things nobody can
+                  take back. */}
+              <ActionCard
+                icon={BotOff}
+                label={
+                  u.ai_chat_banned ? "Unban from AI Chat" : "Ban from AI Chat"
+                }
+                description={
+                  u.ai_chat_banned
+                    ? "Restore AI chat access"
+                    : "Block access to AI assistant"
+                }
+                color={
+                  u.ai_chat_banned
+                    ? "text-[hsl(var(--success))]"
+                    : "text-[hsl(var(--warning))]"
+                }
+                bg={
+                  u.ai_chat_banned
+                    ? "bg-[hsl(var(--success))]/10"
+                    : "bg-[hsl(var(--warning))]/10"
+                }
+                variant={u.ai_chat_banned ? "success" : "danger"}
+                loading={isLoading("toggle_ai_ban")}
+                onClick={() =>
+                  queueSupportAction(
+                    "toggle_ai_ban",
+                    u.ai_chat_banned
+                      ? "Unban from AI Chat"
+                      : "Ban from AI Chat",
+                    u.ai_chat_banned
+                      ? `Restore AI chat access for ${u.name || u.email}`
+                      : `Block ${u.name || u.email} from using the AI assistant`,
+                    u.ai_chat_banned ? "default" : "destructive",
+                  )
+                }
+              />
+              {hasStaffPermission(
+                callerRole,
+                STAFF_PERMISSIONS.DELETE_ANY_SCAN,
+              ) && (
+                <ActionCard
+                  icon={Activity}
+                  label="Delete All Scans"
+                  description={`Remove all ${pluralize(u.scan_count, "scan")}`}
+                  color="text-destructive"
+                  bg="bg-destructive/10"
+                  variant="danger"
+                  loading={isLoading("delete_scans")}
+                  onClick={() =>
+                    queueSupportAction(
+                      "delete_scans",
+                      "Delete All Scans",
+                      `Remove all ${pluralize(u.scan_count, "scan")} for ${u.name || u.email}`,
+                      "destructive",
+                    )
+                  }
+                />
+              )}
+              <ActionCard
+                icon={Webhook}
+                label="Delete Webhooks"
+                description="Remove all webhooks"
+                color="text-destructive"
+                bg="bg-destructive/10"
+                variant="danger"
+                loading={isLoading("delete_webhooks")}
+                onClick={() =>
+                  queueSupportAction(
+                    "delete_webhooks",
+                    "Delete Webhooks",
+                    `Remove all webhooks for ${u.name || u.email}`,
+                    "destructive",
+                  )
+                }
+              />
+              <ActionCard
+                icon={CalendarOff}
+                label="Delete Schedules"
+                description="Remove scheduled scans"
+                color="text-destructive"
+                bg="bg-destructive/10"
+                variant="danger"
+                loading={isLoading("delete_schedules")}
+                onClick={() =>
+                  queueSupportAction(
+                    "delete_schedules",
+                    "Delete Schedules",
+                    `Remove all scheduled scans for ${u.name || u.email}`,
+                    "destructive",
+                  )
+                }
+              />
+              {perms.canDeleteUsers && (
+                <ActionCard
+                  icon={Trash2}
+                  label="Delete Account"
+                  description="Permanently remove user"
+                  color="text-destructive"
+                  bg="bg-destructive/10"
+                  variant="danger"
+                  onClick={() =>
+                    queueSupportAction(
+                      "delete",
+                      "Delete Account",
+                      `Permanently remove ${u.name || u.email}'s account. This cannot be undone.`,
+                      "destructive",
+                    )
+                  }
+                />
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
@@ -2692,7 +2779,7 @@ export function UserDetailPanel({
                     {detail.recentScans.map((scan) => (
                       <div
                         key={scan.id}
-                        className="flex items-center gap-3 py-3 px-2 border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors rounded-md"
+                        className="flex items-center gap-3 py-3 px-2 border-b border-border/50 last:border-0 hover:bg-muted/30 transition-colors"
                       >
                         <Globe
                           className="h-3.5 w-3.5 text-muted-foreground shrink-0"
@@ -2702,8 +2789,22 @@ export function UserDetailPanel({
                           <p className="text-xs font-medium font-mono truncate">
                             {scan.url}
                           </p>
+                          {/* The findings count is the one number on a scan
+                              row that says whether the scan is interesting,
+                              and it used to be the same 10px grey as the word
+                              "findings" beside it, so 0 and 47 read the same. */}
                           <p className="text-[10px] text-muted-foreground">
-                            {scan.findings_count} findings via {scan.source}
+                            <span
+                              className={cn(
+                                "font-mono tabular-nums",
+                                scan.findings_count > 0 &&
+                                  "font-medium text-foreground",
+                              )}
+                            >
+                              {scan.findings_count}
+                            </span>{" "}
+                            findings <span aria-hidden="true">&middot;</span>{" "}
+                            {scan.source}
                           </p>
                         </div>
                         <span className="text-[10px] text-muted-foreground shrink-0">
@@ -2760,7 +2861,7 @@ export function UserDetailPanel({
                       .map((key) => (
                         <div
                           key={key.id}
-                          className="flex items-center gap-3 py-3 px-2 border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors rounded-md"
+                          className="flex items-center gap-3 py-3 px-2 border-b border-border/50 last:border-0 hover:bg-muted/30 transition-colors"
                         >
                           <Key
                             className="h-3.5 w-3.5 text-muted-foreground shrink-0"
@@ -2774,7 +2875,17 @@ export function UserDetailPanel({
                               {key.key_prefix}...
                             </p>
                           </div>
-                          <span className="text-[10px] text-muted-foreground shrink-0">
+                          {/* A live credential nobody has ever called is
+                              worth a second look; it read as the same grey as
+                              "3 days ago". */}
+                          <span
+                            className={cn(
+                              "text-[10px] shrink-0 tabular-nums",
+                              key.last_used_at
+                                ? "text-muted-foreground"
+                                : "text-[hsl(var(--warning))]",
+                            )}
+                          >
                             {key.last_used_at
                               ? formatRelativeTime(new Date(key.last_used_at))
                               : "Never used"}
@@ -2814,7 +2925,7 @@ export function UserDetailPanel({
                   {detail.webhooks.map((webhook) => (
                     <div
                       key={webhook.id}
-                      className="flex items-center gap-3 py-3 px-2 border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors rounded-md"
+                      className="flex items-center gap-3 py-3 px-2 border-b border-border/50 last:border-0 hover:bg-muted/30 transition-colors"
                     >
                       <Webhook
                         className="h-3.5 w-3.5 text-muted-foreground shrink-0"
@@ -2826,12 +2937,17 @@ export function UserDetailPanel({
                           {webhook.url}
                         </p>
                       </div>
-                      <Badge
-                        variant={webhook.active ? "default" : "secondary"}
-                        className="text-[9px]"
+                      {/* This was the loudest badge on the whole panel, a
+                          solid bg-primary fill, for the most ordinary state a
+                          webhook can be in. Everything else here uses the soft
+                          tinted idiom, so "Active" shouted while "Disabled"
+                          on the account above it whispered. */}
+                      <StatusPill
+                        tone={webhook.active ? "ok" : "neutral"}
+                        className="shrink-0 text-[10px]"
                       >
                         {webhook.active ? "Active" : "Inactive"}
-                      </Badge>
+                      </StatusPill>
                     </div>
                   ))}
                 </div>
@@ -2873,7 +2989,7 @@ export function UserDetailPanel({
                     {detail.activeSessions.map((session) => (
                       <div
                         key={session.id}
-                        className="flex items-center gap-3 py-3 px-2 border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors rounded-md"
+                        className="flex items-center gap-3 py-3 px-2 border-b border-border/50 last:border-0 hover:bg-muted/30 transition-colors"
                       >
                         <Globe
                           className="h-3.5 w-3.5 text-muted-foreground shrink-0"

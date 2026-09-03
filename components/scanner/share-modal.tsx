@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { APP_NAME } from "@/lib/config/client-constants";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -132,27 +133,23 @@ export function ShareModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* No bg-card/border override here: DialogContent already sets the
-          panel surface and its --border edge.
-
-          flex-col + a scrolling body rather than the base grid: overflow-hidden
-          cancels the base overflow-y-auto, so on a short viewport (a landscape
-          phone, a small laptop) everything past max-h simply vanished with no
-          way to reach it. Now the header stays put and the body scrolls. */}
-      <DialogContent className="sm:max-w-md p-0 gap-0 flex flex-col max-h-[85vh] overflow-hidden">
-        <DialogHeader className="shrink-0 border-b border-border/50 p-5 pb-4">
+      {/* variant="shell", so the header stays put and only the body scrolls.
+          As a single padded box this modal lost everything past its max-height
+          on a short viewport (a landscape phone, a small laptop) with no way to
+          reach it. The surface, the padding, the divider and the max-height are
+          the grammar's now, so nothing here restates them. */}
+      <DialogContent variant="shell" size="sm">
+        <DialogHeader>
           <div className="flex items-center gap-2.5">
             <Share2 aria-hidden className="h-4 w-4 shrink-0 text-primary" />
-            <DialogTitle className="text-base font-semibold">
-              {title}
-            </DialogTitle>
+            <DialogTitle>{title}</DialogTitle>
           </div>
-          <DialogDescription className="text-sm text-muted-foreground">
+          <DialogDescription>
             Anyone with this link can view the report. No account needed.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-5">
+        <DialogBody className="flex flex-col gap-5">
           {publiclyListed !== undefined && onPubliclyListedChange && (
             <div className="flex items-start justify-between gap-4 rounded-lg border border-border bg-muted/30 p-3">
               <div className="min-w-0">
@@ -179,8 +176,12 @@ export function ShareModal({
           )}
 
           {/* URL input with copy */}
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
+          {/* Stacked below sm. An <input> resists shrinking below its
+              intrinsic size (roughly 180px, plus 48px of padding here) and the
+              Copy button is pinned at min-w-[92px], so the pair had about
+              330px of hard minimum inside a dialog a phone renders at ~290. */}
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="relative min-w-0 flex-1">
               <Link2
                 aria-hidden
                 className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
@@ -196,7 +197,7 @@ export function ShareModal({
             <Button
               onClick={handleCopy}
               className={cn(
-                "min-w-[92px] gap-2 font-medium transition-colors",
+                "w-full gap-2 font-medium transition-colors sm:w-auto sm:min-w-[92px]",
                 copied &&
                   "bg-[hsl(var(--success))] hover:bg-[hsl(var(--success))]",
               )}
@@ -245,6 +246,16 @@ export function ShareModal({
               >
                 {EXPIRY_PRESETS.map((preset) => {
                   const active = selectedDays === preset.days;
+                  // The guard here used to be `if (!active)`, which combined
+                  // with activePreset's old always-pick-something behaviour to
+                  // make the highlighted button inert on exactly the links that
+                  // needed changing (see the docblock on activePreset). It is
+                  // now narrowed to the one press that genuinely cannot change
+                  // anything: Never on a link that already has no expiry.
+                  // Pressing a timed preset ALWAYS re-issues it, so clicking
+                  // "30 days" on a 30-day link with three days left restarts
+                  // the window rather than doing nothing.
+                  const isNoOp = preset.days === null && !expiresAt;
                   return (
                     <button
                       key={preset.label}
@@ -253,10 +264,14 @@ export function ShareModal({
                       aria-checked={active}
                       disabled={updatingExpiry}
                       onClick={() => {
-                        if (!active) onExpiryChange(preset.days);
+                        if (!isNoOp) onExpiryChange(preset.days);
                       }}
                       className={cn(
-                        "flex-1 basis-16 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors",
+                        // a11y (SC 2.5.5): px-3 py-1.5 on text-xs was a 26px
+                        // target, the smallest interactive element left in the
+                        // product. Same h-11-down-to-a-denser-size-at-sm shape
+                        // the rest of the app now uses.
+                        "flex h-11 flex-1 basis-16 items-center justify-center rounded-md border px-3 text-xs font-medium transition-colors sm:h-9",
                         "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
                         "disabled:cursor-not-allowed disabled:opacity-60",
                         active
@@ -272,8 +287,8 @@ export function ShareModal({
               <p className="text-xs leading-relaxed text-muted-foreground">
                 {expiresAt
                   ? expired
-                    ? `This link stopped working on ${formatExpiry(expiresAt)}. Pick a new window to issue a fresh one.`
-                    : `Stops working on ${formatExpiry(expiresAt)}. Choose Never to keep it open indefinitely.`
+                    ? `This link stopped working on ${formatExpiry(expiresAt)}. Pick a window to issue a fresh one.`
+                    : `Stops working on ${formatExpiry(expiresAt)}. Picking a window restarts it from today, and Never keeps the link open until you revoke it.`
                   : "This link keeps working until you revoke it."}
               </p>
             </div>
@@ -333,7 +348,7 @@ export function ShareModal({
               More sharing options
             </Button>
           )}
-        </div>
+        </DialogBody>
       </DialogContent>
     </Dialog>
   );

@@ -6,167 +6,19 @@ import Link from "next/link";
 import { AuthLayout } from "@/components/auth/auth-layout";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2 } from "lucide-react";
-import { UnsubscribeSkeleton } from "@/components/auth/unsubscribe-skeleton";
-
-type PrefKey =
-  | "email_security"
-  | "email_new_login"
-  | "email_password_change"
-  | "email_2fa_change"
-  | "email_session_revoked"
-  | "email_scan_complete"
-  | "email_critical_findings"
-  | "email_regression_alert"
-  | "email_schedules"
-  | "email_api_keys"
-  | "email_api_limit_warning"
-  | "email_webhooks"
-  | "email_webhook_failure"
-  | "email_data_requests"
-  | "email_account_deletion"
-  | "email_team_invite"
-  | "email_team_changes"
-  | "email_product_updates"
-  | "email_tips_guides";
-
-type EmailPrefs = Record<PrefKey, boolean>;
-
-type PrefRow = {
-  key: PrefKey;
-  label: string;
-  description: string;
-};
-
-type PrefGroup = {
-  label: string;
-  rows: PrefRow[];
-};
-
-const PREF_GROUPS: PrefGroup[] = [
-  {
-    label: "Security",
-    rows: [
-      {
-        key: "email_security",
-        label: "Security Alerts",
-        description:
-          "Critical account security events and compromise warnings.",
-      },
-      {
-        key: "email_new_login",
-        label: "Login Alerts",
-        description: "When someone signs in from a new device or location.",
-      },
-      {
-        key: "email_password_change",
-        label: "Password Changes",
-        description: "When your password is changed or a reset is requested.",
-      },
-      {
-        key: "email_2fa_change",
-        label: "2FA Changes",
-        description: "When two-factor authentication is enabled or disabled.",
-      },
-      {
-        key: "email_session_revoked",
-        label: "Session Alerts",
-        description: "When active sessions are revoked.",
-      },
-    ],
-  },
-  {
-    label: "Scanning",
-    rows: [
-      {
-        key: "email_scan_complete",
-        label: "Scan Completed",
-        description: "When a vulnerability scan finishes.",
-      },
-      {
-        key: "email_critical_findings",
-        label: "Critical Issues Found",
-        description:
-          "Immediate alert when critical vulnerabilities are detected.",
-      },
-      {
-        key: "email_regression_alert",
-        label: "Regression Alerts",
-        description: "When new issues appear in a previously clean scan.",
-      },
-      {
-        key: "email_schedules",
-        label: "Scheduled Scans",
-        description: "When your scheduled scans finish.",
-      },
-    ],
-  },
-  {
-    label: "API & Integrations",
-    rows: [
-      {
-        key: "email_api_keys",
-        label: "API Key Activity",
-        description: "When API keys are created or revoked.",
-      },
-      {
-        key: "email_api_limit_warning",
-        label: "API Limit Warnings",
-        description: "When your API usage nears rate limits or quotas.",
-      },
-      {
-        key: "email_webhooks",
-        label: "Webhook Events",
-        description: "When webhooks are created, modified, or disabled.",
-      },
-      {
-        key: "email_webhook_failure",
-        label: "Webhook Failures",
-        description: "When webhook deliveries fail repeatedly.",
-      },
-    ],
-  },
-  {
-    label: "Account",
-    rows: [
-      {
-        key: "email_data_requests",
-        label: "Data Export Updates",
-        description: "When your data export is ready for download.",
-      },
-      {
-        key: "email_account_deletion",
-        label: "Account Deletion",
-        description: "Confirmations when account deletion is requested.",
-      },
-      {
-        key: "email_team_invite",
-        label: "Team Invites",
-        description: "When you are invited to join a team.",
-      },
-      {
-        key: "email_team_changes",
-        label: "Team Changes",
-        description: "Membership changes and role updates in your teams.",
-      },
-    ],
-  },
-  {
-    label: "Product",
-    rows: [
-      {
-        key: "email_product_updates",
-        label: "Product Updates",
-        description: "New features, improvements, and release notes.",
-      },
-      {
-        key: "email_tips_guides",
-        label: "Tips & Guides",
-        description: "Tips on getting the most out of VulnRadar.",
-      },
-    ],
-  },
-];
+import {
+  UnsubscribePrefsSkeleton,
+  UnsubscribeSkeleton,
+} from "@/components/auth/unsubscribe-skeleton";
+// The table lives in components/auth so the placeholder can count the same
+// rows this renders. See components/auth/unsubscribe-prefs.ts.
+import {
+  PREF_GROUPS,
+  type EmailPrefs,
+  type PrefKey,
+} from "@/components/auth/unsubscribe-prefs";
 
 function redactEmail(email: string): string {
   const atIdx = email.indexOf("@");
@@ -297,10 +149,6 @@ function UnsubscribeContent() {
     }
   }
 
-  if (loading) {
-    return <UnsubscribeSkeleton />;
-  }
-
   if (invalid) {
     return (
       <div className="space-y-6">
@@ -354,88 +202,102 @@ function UnsubscribeContent() {
       className="space-y-8"
       style={{ animation: "fade-in 0.2s ease-out both" }}
     >
+      {/* Which screen this is never waited on the token: only the address it
+          is managing did. So the heading stays put and the subtitle alone
+          holds a placeholder, instead of the whole view being replaced by a
+          skeleton and then replaced again. */}
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">
           Email preferences
         </h1>
-        <p className="text-sm text-muted-foreground mt-1.5">
-          Managing preferences for{" "}
-          <span className="font-medium text-foreground break-all">
-            {redactEmail(email)}
-          </span>
-          .
-        </p>
-      </div>
-
-      <div className="space-y-6">
-        {PREF_GROUPS.map((group) => (
-          <div key={group.label}>
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-              {group.label}
-            </p>
-            <div className="divide-y divide-border/40 rounded-lg border border-border/50 overflow-hidden">
-              {group.rows.map(({ key, label, description }) => (
-                // The Switch itself is a 24px-tall target with the row's
-                // padding outside its hit area, which is well under the 44px
-                // touch minimum. The whole row is the target now, and the
-                // Switch stops swallowing pointer events so the two cannot
-                // both fire; it stays focusable, so Tab plus Space still works.
-                <div
-                  key={key}
-                  onClick={() => {
-                    if (!saving) handleToggle(key, !(prefs?.[key] ?? true));
-                  }}
-                  className="flex items-start justify-between gap-4 px-4 py-3.5 bg-card/30 cursor-pointer transition-colors hover:bg-card/60"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground">
-                      {label}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                      {description}
-                    </p>
-                  </div>
-                  <Switch
-                    checked={prefs?.[key] ?? true}
-                    onCheckedChange={(val) => handleToggle(key, val)}
-                    disabled={saving}
-                    aria-label={label}
-                    className="shrink-0 mt-0.5 pointer-events-none"
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="flex items-start justify-between gap-4 pt-2">
-        {/* Check `saving` first: otherwise, once savedAt is set on the first
-            save, the "Saving..." indicator never shows again on later saves. */}
-        {saving ? (
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground/60">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            <span>Saving...</span>
-          </div>
-        ) : saveError ? (
-          <p className="text-xs text-destructive">{saveError}</p>
-        ) : savedAt ? (
-          <p className="text-xs text-[hsl(var(--success))]">Saved.</p>
+        {loading ? (
+          <Skeleton className="mt-1.5 h-4 w-56" />
         ) : (
-          <span />
+          <p className="text-sm text-muted-foreground mt-1.5">
+            Managing preferences for{" "}
+            <span className="font-medium text-foreground break-all">
+              {redactEmail(email)}
+            </span>
+            .
+          </p>
         )}
-
-        {/* Was a ~16px, 60%-opacity text target. It is the destructive action
-            on this screen, so it gets a real 44px button. */}
-        <button
-          type="button"
-          onClick={handleUnsubscribeAll}
-          disabled={saving}
-          className="shrink-0 inline-flex h-11 items-center rounded-md px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          Unsubscribe from all
-        </button>
       </div>
+
+      {loading ? (
+        <UnsubscribePrefsSkeleton />
+      ) : (
+        <>
+          <div className="space-y-6">
+            {PREF_GROUPS.map((group) => (
+              <div key={group.label}>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                  {group.label}
+                </p>
+                <div className="divide-y divide-border/40 rounded-lg border border-border/50 overflow-hidden">
+                  {group.rows.map(({ key, label, description }) => (
+                    // The Switch itself is a 24px-tall target with the row's
+                    // padding outside its hit area, which is well under the 44px
+                    // touch minimum. The whole row is the target now, and the
+                    // Switch stops swallowing pointer events so the two cannot
+                    // both fire; it stays focusable, so Tab plus Space still works.
+                    <div
+                      key={key}
+                      onClick={() => {
+                        if (!saving) handleToggle(key, !(prefs?.[key] ?? true));
+                      }}
+                      className="flex items-start justify-between gap-4 px-4 py-3.5 bg-card/30 cursor-pointer transition-colors hover:bg-card/60"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-foreground">
+                          {label}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                          {description}
+                        </p>
+                      </div>
+                      <Switch
+                        checked={prefs?.[key] ?? true}
+                        onCheckedChange={(val) => handleToggle(key, val)}
+                        disabled={saving}
+                        aria-label={label}
+                        className="shrink-0 mt-0.5 pointer-events-none"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-start justify-between gap-4 pt-2">
+            {/* Check `saving` first: otherwise, once savedAt is set on the first
+            save, the "Saving..." indicator never shows again on later saves. */}
+            {saving ? (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground/60">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                <span>Saving...</span>
+              </div>
+            ) : saveError ? (
+              <p className="text-xs text-destructive">{saveError}</p>
+            ) : savedAt ? (
+              <p className="text-xs text-[hsl(var(--success))]">Saved.</p>
+            ) : (
+              <span />
+            )}
+
+            {/* Was a ~16px, 60%-opacity text target. It is the destructive action
+            on this screen, so it gets a real 44px button. */}
+            <button
+              type="button"
+              onClick={handleUnsubscribeAll}
+              disabled={saving}
+              className="shrink-0 inline-flex h-11 items-center rounded-md px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Unsubscribe from all
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

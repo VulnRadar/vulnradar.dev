@@ -89,7 +89,7 @@ function RevealButton({
       className={cn(
         // The after: overlay widens the tap area to 44px without growing the
         // 28px icon box, which has to stay inside an h-9 field.
-        "absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors after:absolute after:-inset-2 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50",
+        "absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors after:absolute after:-inset-2 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50",
         FOCUS_RING,
       )}
       aria-label={shown ? `Hide ${label}` : `Show ${label}`}
@@ -319,7 +319,7 @@ export const InlineAuthForm = forwardRef<
                     disabled={disabled}
                     aria-pressed={active}
                     className={cn(
-                      "rounded px-2.5 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                      "rounded-md px-2.5 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
                       active
                         ? "bg-primary/10 text-primary"
                         : "bg-transparent text-muted-foreground hover:text-foreground",
@@ -584,7 +584,7 @@ export const InlineAuthForm = forwardRef<
                       disabled={disabled || cookies.length <= 1}
                       aria-label="Remove this cookie"
                       className={cn(
-                        "mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:text-destructive disabled:cursor-not-allowed disabled:opacity-30",
+                        "mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-destructive disabled:cursor-not-allowed disabled:opacity-30",
                         FOCUS_RING,
                       )}
                     >
@@ -597,7 +597,7 @@ export const InlineAuthForm = forwardRef<
                   onClick={addCookieRow}
                   disabled={disabled || cookies.length >= SCAN_AUTH.MAX_COOKIES}
                   className={cn(
-                    "inline-flex w-fit items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50",
+                    "inline-flex w-fit items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50",
                     FOCUS_RING,
                   )}
                 >

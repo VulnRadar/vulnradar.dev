@@ -31,13 +31,21 @@ export function LegalPageHeader({
 
   return (
     <div className="mb-10 border-b border-border/50 pb-6">
-      <p className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-primary/70">
+      {/* text-primary, not text-primary/70. The opacity form compiles to its
+          own class, so it never reaches the .text-primary remap in
+          globals.css and was painting the non-AA light-mode --primary at 70%
+          opacity: the least legible text on the page was the one naming
+          which legal document you are reading. */}
+      <p className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
         {kickerMap[type] || kickerMap.terms}
       </p>
-      <h1 className="text-3xl font-bold tracking-tight text-foreground">
+      {/* Tier A from CLAUDE.md, matching /legal, /pricing and /changelog.
+          This was text-3xl font-bold with no sm: step and no text-balance,
+          the one page title in the set that was set differently. */}
+      <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-balance text-foreground">
         {title}
       </h1>
-      <p className="mt-2 text-sm text-muted-foreground">
+      <p className="mt-3 text-sm text-muted-foreground">
         Last updated <time dateTime={lastUpdated}>{formatted}</time>
       </p>
     </div>

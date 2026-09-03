@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Check, Eye, EyeOff, Loader2, X } from "lucide-react";
+import { ArrowLeft, Check, Eye, EyeOff, Loader2, X } from "lucide-react";
 import { API, PASSWORD_MIN_LENGTH } from "@/lib/config/client-constants";
 import {
   analyzePassword,
@@ -18,6 +18,7 @@ import {
   AuthAlert,
   authFieldClass,
   authFocusRing,
+  authPillClass,
   PasswordStrengthMeter,
 } from "@/components/auth/auth-shell";
 
@@ -214,18 +215,12 @@ export function ResetPasswordForm({
         )}
       </Button>
 
-      <p className="text-sm text-muted-foreground">
-        Remembered it after all?{" "}
-        <Link
-          href="/login"
-          className={cn(
-            "text-primary font-medium rounded hover:underline underline-offset-4",
-            authFocusRing,
-          )}
-        >
-          Sign in
-        </Link>
-      </p>
+      {/* This screen had no way back other than an inline sentence link.
+          Same bordered-pill exit as forgot-password, the step before it. */}
+      <Link href="/login" className={cn(authPillClass, "mt-1")}>
+        <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+        Back to sign in
+      </Link>
     </form>
   );
 }

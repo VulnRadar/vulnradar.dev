@@ -209,6 +209,23 @@ function Toggle(
   `;
 }
 
+/**
+ * The current value of a section, printed in that section's own heading.
+ *
+ * Six of the eight sections have exactly one fact you would otherwise have to
+ * open the card to learn: which trigger is armed, how many families run, what
+ * the notification level is, which theme is set. Two sections already did this
+ * and the other six did not, so the page read as eight identical cards with no
+ * way in. The state is the thing that differs between them, so it is the thing
+ * the eye should catch when scanning down the column.
+ *
+ * `off` greys the chip. Before this it was a solid brand-blue fill in every
+ * case, which drew the word "off" in the most emphatic colour on the page.
+ */
+function StateChip(label: string, off = false): TemplateResult {
+  return html`<span class="count-chip ${off ? "off" : ""}">${label}</span>`;
+}
+
 // ---- Confirm dialog ----
 //
 // The two destructive actions on this page (Sign out, Clear local cache) used
@@ -516,7 +533,19 @@ function SectionAuth(): TemplateResult {
   return html`
     <section id="auth" class="section">
       <div class="section-header">
-        <h2 class="section-title">Authentication</h2>
+        <h2 class="section-title">
+          Authentication
+          ${
+            me
+              ? StateChip(
+                  authConnectionFailed
+                    ? "Connection failed"
+                    : planLabel(me.plan),
+                  authConnectionFailed,
+                )
+              : StateChip("Not connected", true)
+          }
+        </h2>
         <div class="section-desc">
           The extension authenticates with a VulnRadar API key (Bearer auth).
           Stored in extension storage on this device only, never synced across
@@ -676,10 +705,20 @@ function PauseControl(): TemplateResult {
 }
 
 function SectionAutoScan(): TemplateResult {
+  const paused =
+    settings.pauseUntil !== null && settings.pauseUntil > Date.now();
+  const trigger = AUTO_MODES.find((m) => m.id === settings.autoScan);
   return html`
     <section id="auto" class="section">
       <div class="section-header">
-        <h2 class="section-title">Auto-Scan</h2>
+        <h2 class="section-title">
+          Auto-Scan
+          ${
+            paused
+              ? StateChip("Paused", true)
+              : StateChip(trigger?.label ?? "Off", settings.autoScan === "off")
+          }
+        </h2>
         <div class="section-desc">
           When the extension should automatically scan pages in the background.
           Off by default.
@@ -844,10 +883,13 @@ const CARD_POSITIONS: ReadonlyArray<{ id: CardPosition; label: string }> = [
 function SectionSiteAlerts(): TemplateResult {
   const legacyMuted = Object.keys(mutedHosts).sort();
   const snoozes = activeSnoozes();
+  const alertsOn = settings.showScanResults || settings.showScanPrompts;
   return html`
     <section id="alerts" class="section">
       <div class="section-header">
-        <h2 class="section-title">Site Alerts</h2>
+        <h2 class="section-title">
+          Site Alerts ${StateChip(alertsOn ? "On" : "Off", !alertsOn)}
+        </h2>
         <div class="section-desc">
           The small card shown on the page itself when you visit a site:
           VulnRadar's last scan of it if there is one, or a one-click offer to
@@ -1076,7 +1118,10 @@ function SectionFamilies(): TemplateResult {
       <div class="section-header">
         <h2 class="section-title">
           Scan Families
-          <span class="count-chip">${enabledCount} / ${CATEGORIES.length}</span>
+          ${StateChip(
+            `${enabledCount} / ${CATEGORIES.length}`,
+            enabledCount === 0,
+          )}
         </h2>
         <div class="section-desc">
           Which scanner categories to run. Disable a family to skip those checks
@@ -1119,7 +1164,7 @@ function SectionProbes(): TemplateResult {
       <div class="section-header">
         <h2 class="section-title">
           Port Sweep
-          <span class="count-chip">${settings.portScan ? "on" : "off"}</span>
+          ${StateChip(settings.portScan ? "On" : "Off", !settings.portScan)}
         </h2>
         <div class="section-desc">
           A curated sweep of common ports and the services behind them, run
@@ -1164,10 +1209,19 @@ const NOTIFY_THRESHOLDS: ReadonlyArray<{
 ];
 
 function SectionNotifications(): TemplateResult {
+  const threshold = NOTIFY_THRESHOLDS.find(
+    (n) => n.id === settings.notifyThreshold,
+  );
   return html`
     <section id="notifications" class="section">
       <div class="section-header">
-        <h2 class="section-title">Notifications</h2>
+        <h2 class="section-title">
+          Notifications
+          ${StateChip(
+            threshold?.label ?? "Off",
+            settings.notifyThreshold === "off",
+          )}
+        </h2>
         <div class="section-desc">
           When to show a desktop notification after a scan completes.
         </div>
@@ -1234,7 +1288,9 @@ function SectionAppearance(): TemplateResult {
   return html`
     <section id="appearance" class="section">
       <div class="section-header">
-        <h2 class="section-title">Appearance</h2>
+        <h2 class="section-title">
+          Appearance ${StateChip(activeTheme?.label ?? "System")}
+        </h2>
         <div class="section-desc">Theme + density</div>
       </div>
       <div class="row" style="flex-direction:column;align-items:stretch">

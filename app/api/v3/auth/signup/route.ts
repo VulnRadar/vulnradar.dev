@@ -180,9 +180,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     setImmediate(() => {
       sendEmail({
         to: existing.email,
-        subject: noticeContent.subject,
-        text: noticeContent.text,
-        html: noticeContent.html,
+        ...noticeContent,
       }).catch((err) => {
         console.error(
           "[Email Error] Failed to send duplicate-signup notice:",
@@ -262,9 +260,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   setImmediate(() => {
     sendEmail({
       to: email,
-      subject: emailContent.subject,
-      text: emailContent.text,
-      html: emailContent.html,
+      ...emailContent,
     }).catch((err) => {
       console.error("[Email Error] Failed to send verification email:", err);
     });

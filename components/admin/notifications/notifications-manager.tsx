@@ -3,13 +3,12 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -17,10 +16,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { SaveConfirmationModal } from "@/components/shared/save-confirmation-modal";
+import { InlineAlert } from "@/components/shared/inline-alert";
+import { EmptyState } from "@/components/shared/empty-state";
 import {
+  AdminPanelHeader,
   StatBar,
   StatBarSkeleton,
-  EmptyState,
+  StatusPill,
   DataTableSkeleton,
 } from "@/components/admin/shared";
 import {
@@ -43,6 +45,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
+import { formatTimestamp } from "@/components/admin/utils";
 import { toLocalDatetimeInputValue } from "@/lib/notifications/local-datetime";
 
 interface AdminNotification {
@@ -70,11 +73,20 @@ interface AdminNotification {
   updated_at: string;
 }
 
+/**
+ * `rail` is spelled out rather than derived. The row's accent bar used to be
+ * built by rewriting this table's `border` string at render time
+ * (border-x/20 -> bg-x/60), so the class it produced only existed because
+ * every entry happened to end in "/20": the first token here written at any
+ * other opacity would have silently emitted a class Tailwind never generated,
+ * and the bar would have gone invisible with nothing to catch it.
+ */
 const VARIANT_CONFIG = {
   info: {
     bg: "bg-primary/10",
     text: "text-primary",
     border: "border-primary/20",
+    rail: "bg-primary",
     badgeBg: "bg-primary/10 text-primary border-primary/20",
     icon: Info,
     label: "Info",
@@ -83,6 +95,7 @@ const VARIANT_CONFIG = {
     bg: "bg-[hsl(var(--success))]/10",
     text: "text-[hsl(var(--success))]",
     border: "border-[hsl(var(--success))]/20",
+    rail: "bg-[hsl(var(--success))]",
     badgeBg:
       "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20",
     icon: CheckCircle,
@@ -92,6 +105,7 @@ const VARIANT_CONFIG = {
     bg: "bg-[hsl(var(--warning))]/10",
     text: "text-[hsl(var(--warning))]",
     border: "border-[hsl(var(--warning))]/20",
+    rail: "bg-[hsl(var(--warning))]",
     badgeBg:
       "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
     icon: AlertTriangle,
@@ -101,11 +115,28 @@ const VARIANT_CONFIG = {
     bg: "bg-destructive/10",
     text: "text-destructive",
     border: "border-destructive/20",
+    rail: "bg-destructive",
     badgeBg: "bg-destructive/10 text-destructive border-destructive/20",
     icon: XCircle,
     label: "Error",
   },
 };
+
+/**
+ * The three facts on a row answer three different questions, and only one of
+ * them can ever be urgent. They used to share one grey chip class, so the
+ * "Expiring Soon" counter above could say three notifications were about to
+ * lapse and the list below had no way to show which. Three weights instead:
+ * the type is a fixed taxonomy fact and stays quiet, the audience is the
+ * blast radius an operator actually scans for, and the end date turns amber
+ * inside the same 7-day window isExpiringSoon() counts.
+ */
+const CHIP =
+  "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium whitespace-nowrap";
+const CHIP_QUIET = "border-border/60 text-muted-foreground";
+const CHIP_FACT = "border-border bg-muted/50 text-foreground";
+const CHIP_WARN =
+  "border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))]";
 
 const TYPE_CONFIG = {
   banner: { icon: Megaphone, label: "Banner" },
@@ -132,9 +163,11 @@ function isExpiringSoon(notif: AdminNotification): boolean {
   return endsAt > now && endsAt < now + 7 * 24 * 60 * 60 * 1000;
 }
 
+// The colour was text-muted-foreground: an opacity step on a token already
+// tuned to sit just above AA, which put this label under it on every surface.
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="px-4 sm:px-5 pt-5 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 first:pt-0">
+    <p className="px-4 sm:px-5 pt-5 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground first:pt-0">
       {children}
     </p>
   );
@@ -402,23 +435,16 @@ export function NotificationsManager() {
     return (
       <div className="space-y-4">
         <StatBarSkeleton segments={4} />
-        <Card className="border-border/50 bg-card/50 overflow-hidden">
-          <CardContent className="p-4 sm:p-5">
-            <DataTableSkeleton rows={5} />
-          </CardContent>
-        </Card>
+        <div className="overflow-hidden rounded-xl border border-border/50 bg-card/50 p-4 sm:p-5">
+          <DataTableSkeleton rows={5} />
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      {error && (
-        <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
-          <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-          {error}
-        </div>
-      )}
+      {error && <InlineAlert tone="error">{error}</InlineAlert>}
 
       {/* Stats */}
       <StatBar
@@ -454,28 +480,25 @@ export function NotificationsManager() {
         ]}
       />
 
-      {/* Notifications list card */}
-      <Card className="border-border/50 bg-card/50 overflow-hidden">
-        <CardHeader className="pb-0">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <Bell className="h-4 w-4 text-primary" aria-hidden="true" />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-foreground">
-                  Site Notifications
-                </h3>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Manage banners, modals, toasts, and bell notifications
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
+      {/* Notifications list. A hand-rolled rounded-xl pane rather than a
+          <Card>: the StatBar directly above is rounded-xl and the two are the
+          same width, so a rounded-lg card under it visibly disagreed. */}
+      <div className="overflow-hidden rounded-xl border border-border/50 bg-card/50">
+        <AdminPanelHeader
+          icon={Bell}
+          tone={stats.expiring > 0 ? "warn" : "info"}
+          title="Site Notifications"
+          subtitle={
+            stats.expiring > 0
+              ? `${stats.expiring} ${stats.expiring === 1 ? "notification is" : "notifications are"} inside their last 7 days; the amber end date on a row is the one that is about to lapse.`
+              : "Banners, modals, toasts and bell notifications. Nothing is due to expire in the next 7 days."
+          }
+          actions={
+            <>
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-2 border-border/40"
+                className="h-9 shrink-0 gap-2 px-3 border-border/40"
                 onClick={fetchNotifications}
                 aria-label="Refresh notifications"
               >
@@ -485,16 +508,22 @@ export function NotificationsManager() {
                 />
                 <span className="hidden sm:inline">Refresh</span>
               </Button>
-              <Button size="sm" onClick={openCreateDialog} className="gap-1.5">
+              <Button
+                size="sm"
+                onClick={openCreateDialog}
+                className="h-9 shrink-0 gap-1.5 px-3"
+              >
                 <Plus className="h-4 w-4" aria-hidden="true" />
                 Create
               </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0 mt-4">
+            </>
+          }
+        />
+        <div>
           {filteredNotifications.length === 0 ? (
             <EmptyState
+              variant="inline"
+              size="sm"
               icon={Bell}
               title={
                 notifications.length === 0
@@ -513,35 +542,40 @@ export function NotificationsManager() {
                 const v = VARIANT_CONFIG[notif.variant];
                 const Icon = v.icon;
                 const TypeIcon = TYPE_CONFIG[notif.type].icon;
+                const expiringSoon = isExpiringSoon(notif);
                 return (
                   <div
                     key={notif.id}
-                    className={cn(
-                      "group relative flex items-start gap-3 p-4 transition-colors hover:bg-muted/20",
-                      !notif.is_active && "opacity-60",
-                    )}
+                    // An inactive row used to carry a blanket opacity-60,
+                    // which dropped the title, every chip and the icon below
+                    // contrast at once to say a thing the "Inactive" pill
+                    // beside the title already said. Only the variant tile is
+                    // desaturated now, so the row stays readable.
+                    className="group relative flex items-start gap-3 p-4 transition-colors hover:bg-muted/20"
                   >
-                    {/* Colored accent bar */}
+                    {/* Accent rail, coloured only while the notification is
+                        actually live. Same width and treatment as the support
+                        inbox's status rail. */}
                     <div
                       className={cn(
-                        "absolute inset-y-0 left-0 w-1 rounded-r-full",
-                        notif.is_active
-                          ? v.border
-                              .replace("border-", "bg-")
-                              .replace("/20", "/60")
-                          : "bg-muted",
+                        "absolute inset-y-0 left-0 w-0.5",
+                        notif.is_active ? v.rail : "bg-transparent",
                       )}
+                      aria-hidden="true"
                     />
 
                     {/* Variant icon */}
                     <div
                       className={cn(
                         "flex items-center justify-center h-10 w-10 rounded-lg shrink-0 ml-1",
-                        v.bg,
+                        notif.is_active ? v.bg : "bg-muted",
                       )}
                     >
                       <Icon
-                        className={cn("h-5 w-5", v.text)}
+                        className={cn(
+                          "h-5 w-5",
+                          notif.is_active ? v.text : "text-muted-foreground",
+                        )}
                         aria-hidden="true"
                       />
                     </div>
@@ -553,40 +587,36 @@ export function NotificationsManager() {
                           {notif.title}
                         </span>
                         {!notif.is_active && (
-                          <Badge
-                            variant="secondary"
-                            className="text-[10px] px-1.5 py-0 shrink-0"
-                          >
+                          <StatusPill tone="neutral" className="shrink-0">
                             Inactive
-                          </Badge>
+                          </StatusPill>
                         )}
                       </div>
 
-                      {/* Badges row */}
+                      {/* Facts row */}
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] px-2 py-0.5 gap-1 border-border bg-muted/50 text-foreground"
-                        >
+                        <span className={cn(CHIP, CHIP_QUIET)}>
                           <TypeIcon className="h-3 w-3" aria-hidden="true" />
                           {TYPE_CONFIG[notif.type].label}
-                        </Badge>
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] px-2 py-0.5 gap-1 border-border bg-muted/50 text-foreground"
-                        >
+                        </span>
+                        <span className={cn(CHIP, CHIP_FACT)}>
                           <Users className="h-3 w-3" aria-hidden="true" />
                           {AUDIENCE_LABELS[notif.audience]}
-                        </Badge>
+                        </span>
                         {notif.ends_at && (
-                          <Badge
-                            variant="outline"
-                            className="text-[10px] px-2 py-0.5 gap-1 border-border bg-muted/50 text-foreground"
+                          <span
+                            className={cn(
+                              CHIP,
+                              expiringSoon ? CHIP_WARN : CHIP_QUIET,
+                            )}
                           >
                             <Clock className="h-3 w-3" aria-hidden="true" />
-                            Expires{" "}
-                            {new Date(notif.ends_at).toLocaleDateString()}
-                          </Badge>
+                            {/* Was toLocaleDateString() with no options, so
+                                this one date rendered in the browser locale
+                                while every other admin timestamp is pinned to
+                                en-US by formatTimestamp. */}
+                            Expires {formatTimestamp(notif.ends_at)}
+                          </span>
                         )}
                       </div>
 
@@ -596,8 +626,11 @@ export function NotificationsManager() {
                       </p>
 
                       {/* Footer row */}
-                      <div className="flex items-center gap-3 pt-1">
-                        <span className="text-[11px] text-muted-foreground/70 font-mono">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1">
+                        {/* Was text-muted-foreground, i.e. an opacity step
+                            on an already-muted token, which lands under AA.
+                            break-all because a cookie id is one token. */}
+                        <span className="text-[11px] text-muted-foreground font-mono break-all">
                           ID: {notif.cookie_id}
                         </span>
                         {notif.action_url && (
@@ -621,11 +654,15 @@ export function NotificationsManager() {
                       </div>
                     </div>
 
-                    {/* Actions */}
-                    {/* md: prefix on the fade: touch devices have no hover, so an
-                        unprefixed opacity-0 left these actions permanently invisible
-                        while still hit-testable. Below md they are always shown. */}
-                    <div className="flex items-center gap-0.5 shrink-0 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity">
+                    {/* Actions. The two everyday controls stay visible at
+                        rest: the whole cluster used to fade in on hover, so on
+                        a desktop the way to turn a live site-wide banner off
+                        was invisible until you happened to point at its row.
+                        Only Delete keeps the fade, and the md: prefix stays on
+                        it because touch devices have no hover, where an
+                        unprefixed opacity-0 would leave it permanently
+                        invisible but still hit-testable. */}
+                    <div className="flex items-center gap-0.5 shrink-0">
                       <button
                         onClick={() => handleToggleActive(notif)}
                         title={notif.is_active ? "Deactivate" : "Activate"}
@@ -635,7 +672,7 @@ export function NotificationsManager() {
                             : "Activate notification"
                         }
                         className={cn(
-                          "flex items-center justify-center h-8 w-8 rounded-md transition-colors",
+                          "flex items-center justify-center h-11 w-11 sm:h-8 sm:w-8 rounded-md transition-colors",
                           focusRing,
                           notif.is_active
                             ? "text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/10"
@@ -653,18 +690,27 @@ export function NotificationsManager() {
                         title={`Edit ${notif.title}`}
                         aria-label={`Edit ${notif.title}`}
                         className={cn(
-                          "flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors",
+                          "flex items-center justify-center h-11 w-11 sm:h-8 sm:w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors",
                           focusRing,
                         )}
                       >
                         <Pencil className="h-4 w-4" aria-hidden="true" />
                       </button>
+                      {/* Delete is separated and tinted at rest. It was the
+                          same 8x8 bare glyph as the Edit pencil and the Eye
+                          toggle either side of it, so the one irreversible
+                          control in the row was indistinguishable from the
+                          two reversible ones until you read the tooltip. */}
                       <button
                         onClick={() => setPendingDelete(notif)}
                         title={`Delete ${notif.title}`}
                         aria-label={`Delete ${notif.title}`}
                         className={cn(
-                          "flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors",
+                          // `transition`, not `transition-colors transition-opacity`:
+                          // both set transition-property, so tailwind-merge
+                          // keeps only the last and the fade would not animate.
+                          "ml-1 flex items-center justify-center h-11 w-11 sm:h-8 sm:w-8 rounded-md border border-destructive/25 text-destructive/80 hover:border-destructive/40 hover:text-destructive hover:bg-destructive/10 transition",
+                          "md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 md:focus-visible:opacity-100",
                           focusRing,
                         )}
                       >
@@ -676,8 +722,8 @@ export function NotificationsManager() {
               })}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Create / Edit Dialog */}
       <Dialog
@@ -685,351 +731,359 @@ export function NotificationsManager() {
         onOpenChange={(open) => !open && closeDialog()}
         modal={true}
       >
-        <DialogContent className="w-full max-w-2xl max-h-[95dvh] sm:max-h-[85vh] overflow-y-auto gap-0 p-0 rounded-xl">
-          {/* Dialog header with variant color stripe */}
-          <div
-            className={cn(
-              "px-5 py-4 border-b border-border rounded-t-xl",
-              activeVariant.bg,
-            )}
-          >
-            <DialogHeader>
-              <DialogTitle
+        <DialogContent variant="shell" size="lg">
+          {/* The variant is previewed at tile size, not painted across the
+              whole header. Authoring an error-variant notification used to
+              turn this entire band destructive red, which is the product's
+              vocabulary for "this went wrong", not for "you picked a red
+              banner". The tile below tracks the Variant select live, so the
+              choice is still visible while it is being made. */}
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span
                 className={cn(
-                  "flex items-center gap-2 text-base",
+                  "flex h-7 w-7 items-center justify-center rounded-md shrink-0",
+                  activeVariant.bg,
                   activeVariant.text,
                 )}
               >
-                <activeVariant.icon className="h-5 w-5" aria-hidden="true" />
-                {editingNotification
-                  ? "Edit Notification"
-                  : "Create Notification"}
-              </DialogTitle>
-              <DialogDescription className="sr-only">
-                {editingNotification
-                  ? "Edit an existing notification"
-                  : "Create a new site-wide notification"}
-              </DialogDescription>
-            </DialogHeader>
-          </div>
+                <activeVariant.icon className="h-4 w-4" aria-hidden="true" />
+              </span>
+              {editingNotification
+                ? "Edit Notification"
+                : "Create Notification"}
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              {editingNotification
+                ? "Edit an existing notification"
+                : "Create a new site-wide notification"}
+            </DialogDescription>
+          </DialogHeader>
 
-          <div className="m-4 sm:m-6 rounded-lg border border-border/40 overflow-hidden divide-y divide-border/40">
-            {/* Content */}
-            <div>
-              <SectionLabel>Content</SectionLabel>
-              <div className="divide-y divide-border/40">
-                <div className="px-4 sm:px-5 py-3.5 space-y-1.5">
-                  <Label
-                    htmlFor="title"
-                    className="text-sm font-medium text-foreground"
-                  >
-                    Title
-                  </Label>
-                  <Input
-                    id="title"
-                    value={formData.title}
-                    onChange={(e) => set({ title: e.target.value })}
-                    placeholder="Notification title"
-                    className="bg-background/50 border-border/40 focus:border-primary/50 h-9"
-                  />
+          <DialogBody>
+            <div className="rounded-lg border border-border/40 overflow-hidden divide-y divide-border/40">
+              {/* Content */}
+              <div>
+                <SectionLabel>Content</SectionLabel>
+                <div className="divide-y divide-border/40">
+                  <div className="px-4 sm:px-5 py-3.5 space-y-1.5">
+                    <Label
+                      htmlFor="title"
+                      className="text-sm font-medium text-foreground"
+                    >
+                      Title
+                    </Label>
+                    <Input
+                      id="title"
+                      value={formData.title}
+                      onChange={(e) => set({ title: e.target.value })}
+                      placeholder="Notification title"
+                      className="bg-background/50 border-border/40 focus:border-primary/50 h-9"
+                    />
+                  </div>
+                  <div className="px-4 sm:px-5 py-3.5 space-y-1.5">
+                    <Label
+                      htmlFor="message"
+                      className="text-sm font-medium text-foreground"
+                    >
+                      Message
+                    </Label>
+                    <Textarea
+                      id="message"
+                      value={formData.message}
+                      onChange={(e) => set({ message: e.target.value })}
+                      placeholder="Notification message…"
+                      rows={3}
+                      className="bg-background/50 border-border/40 focus:border-primary/50 resize-none"
+                    />
+                  </div>
                 </div>
-                <div className="px-4 sm:px-5 py-3.5 space-y-1.5">
-                  <Label
-                    htmlFor="message"
-                    className="text-sm font-medium text-foreground"
-                  >
-                    Message
-                  </Label>
-                  <Textarea
-                    id="message"
-                    value={formData.message}
-                    onChange={(e) => set({ message: e.target.value })}
-                    placeholder="Notification message…"
-                    rows={3}
-                    className="bg-background/50 border-border/40 focus:border-primary/50 resize-none"
-                  />
-                </div>
               </div>
-            </div>
 
-            {/* Display */}
-            <div>
-              <SectionLabel>Display</SectionLabel>
-              <div className="divide-y divide-border/40">
-                <FieldRow
-                  htmlFor="notif-type"
-                  label="Type"
-                  help="Where this shows up: the bell dropdown, a top-of-page banner, a popup modal, or a corner toast."
-                >
-                  <select
-                    id="notif-type"
-                    value={formData.type}
-                    onChange={(e) =>
-                      set({ type: e.target.value as AdminNotification["type"] })
-                    }
-                    className="w-40 h-9 rounded-md border border-border/40 bg-background/50 px-2.5 text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-ring focus:border-primary/50"
-                  >
-                    <option value="bell">Bell Notification</option>
-                    <option value="banner">Banner</option>
-                    <option value="modal">Modal</option>
-                    <option value="toast">Toast</option>
-                  </select>
-                </FieldRow>
-                <FieldRow
-                  htmlFor="notif-variant"
-                  label="Variant"
-                  help="Color and icon used for this notification."
-                >
-                  <select
-                    id="notif-variant"
-                    value={formData.variant}
-                    onChange={(e) =>
-                      set({
-                        variant: e.target.value as AdminNotification["variant"],
-                      })
-                    }
-                    className={cn(
-                      "w-36 h-9 rounded-md border px-2.5 text-sm font-medium focus:outline-hidden focus:ring-2 focus:ring-ring",
-                      activeVariant.bg,
-                      activeVariant.text,
-                      activeVariant.border,
-                    )}
-                  >
-                    {(
-                      Object.entries(VARIANT_CONFIG) as [
-                        AdminNotification["variant"],
-                        typeof VARIANT_CONFIG.info,
-                      ][]
-                    ).map(([key, cfg]) => (
-                      <option key={key} value={key}>
-                        {cfg.label}
-                      </option>
-                    ))}
-                  </select>
-                </FieldRow>
-              </div>
-            </div>
-
-            {/* Targeting */}
-            <div>
-              <SectionLabel>Targeting</SectionLabel>
-              <div className="divide-y divide-border/40">
-                <FieldRow
-                  htmlFor="notif-audience"
-                  label="Audience"
-                  help="Who sees this notification."
-                >
-                  <select
-                    id="notif-audience"
-                    value={formData.audience}
-                    onChange={(e) =>
-                      set({
-                        audience: e.target
-                          .value as AdminNotification["audience"],
-                      })
-                    }
-                    className="w-40 h-9 rounded-md border border-border/40 bg-background/50 px-2.5 text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-ring focus:border-primary/50"
-                  >
-                    <option value="all">Everyone</option>
-                    <option value="authenticated">Logged In Users</option>
-                    <option value="unauthenticated">Guests Only</option>
-                    <option value="admin">Admins Only</option>
-                    <option value="staff">Staff Only</option>
-                  </select>
-                </FieldRow>
-                <FieldRow
-                  htmlFor="priority"
-                  label="Priority"
-                  help="Higher numbers are shown first when more than one notification is active."
-                >
-                  <Input
-                    id="priority"
-                    type="number"
-                    value={formData.priority}
-                    onChange={(e) => set({ priority: e.target.value })}
-                    placeholder="0"
-                    className="w-24 h-9 bg-background/50 border-border/40 focus:border-primary/50"
-                  />
-                </FieldRow>
-                <FieldRow
-                  htmlFor="path_pattern"
-                  label="Page filter"
-                  help="Only shows on matching pages. * is a wildcard, e.g. /dashboard*. Leave empty to show on every page."
-                >
-                  <Input
-                    id="path_pattern"
-                    value={formData.path_pattern}
-                    onChange={(e) => set({ path_pattern: e.target.value })}
-                    placeholder="/dashboard*"
-                    className="w-48 sm:w-56 h-9 bg-background/50 border-border/40 focus:border-primary/50"
-                  />
-                </FieldRow>
-              </div>
-            </div>
-
-            {/* Scheduling & Behavior */}
-            <div>
-              <SectionLabel>Scheduling &amp; Behavior</SectionLabel>
-              <div className="divide-y divide-border/40">
-                <FieldRow
-                  htmlFor="starts_at"
-                  label="Starts at"
-                  help="Won't appear before this time."
-                >
-                  <Input
-                    id="starts_at"
-                    type="datetime-local"
-                    value={formData.starts_at}
-                    onChange={(e) => set({ starts_at: e.target.value })}
-                    className="h-9 bg-background/50 border-border/40 focus:border-primary/50"
-                  />
-                </FieldRow>
-                <FieldRow
-                  htmlFor="ends_at"
-                  label="Ends at"
-                  help="Optional. Stops appearing after this time."
-                >
-                  <Input
-                    id="ends_at"
-                    type="datetime-local"
-                    value={formData.ends_at}
-                    onChange={(e) => set({ ends_at: e.target.value })}
-                    className="h-9 bg-background/50 border-border/40 focus:border-primary/50"
-                  />
-                </FieldRow>
-                <FieldRow
-                  htmlFor="is_active"
-                  label="Active"
-                  help="Turn off to hide it without deleting it."
-                >
-                  <Switch
-                    id="is_active"
-                    checked={formData.is_active}
-                    onCheckedChange={(v) => set({ is_active: v })}
-                  />
-                </FieldRow>
-                <FieldRow
-                  htmlFor="is_dismissible"
-                  label="Dismissible"
-                  help="Whether users can close it themselves."
-                >
-                  <Switch
-                    id="is_dismissible"
-                    checked={formData.is_dismissible}
-                    onCheckedChange={(v) => set({ is_dismissible: v })}
-                  />
-                </FieldRow>
-                {formData.is_dismissible && (
+              {/* Display */}
+              <div>
+                <SectionLabel>Display</SectionLabel>
+                <div className="divide-y divide-border/40">
                   <FieldRow
-                    htmlFor="dismiss_duration_hours"
-                    label="Re-show after dismiss"
-                    help="Hours until a dismissed notification reappears. Leave empty to dismiss it permanently."
+                    htmlFor="notif-type"
+                    label="Type"
+                    help="Where this shows up: the bell dropdown, a top-of-page banner, a popup modal, or a corner toast."
+                  >
+                    <select
+                      id="notif-type"
+                      value={formData.type}
+                      onChange={(e) =>
+                        set({
+                          type: e.target.value as AdminNotification["type"],
+                        })
+                      }
+                      className="w-40 h-9 rounded-md border border-border/40 bg-background/50 px-2.5 text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-ring focus:border-primary/50"
+                    >
+                      <option value="bell">Bell Notification</option>
+                      <option value="banner">Banner</option>
+                      <option value="modal">Modal</option>
+                      <option value="toast">Toast</option>
+                    </select>
+                  </FieldRow>
+                  <FieldRow
+                    htmlFor="notif-variant"
+                    label="Variant"
+                    help="Color and icon used for this notification."
+                  >
+                    <select
+                      id="notif-variant"
+                      value={formData.variant}
+                      onChange={(e) =>
+                        set({
+                          variant: e.target
+                            .value as AdminNotification["variant"],
+                        })
+                      }
+                      className={cn(
+                        "w-36 h-9 rounded-md border px-2.5 text-sm font-medium focus:outline-hidden focus:ring-2 focus:ring-ring",
+                        activeVariant.bg,
+                        activeVariant.text,
+                        activeVariant.border,
+                      )}
+                    >
+                      {(
+                        Object.entries(VARIANT_CONFIG) as [
+                          AdminNotification["variant"],
+                          typeof VARIANT_CONFIG.info,
+                        ][]
+                      ).map(([key, cfg]) => (
+                        <option key={key} value={key}>
+                          {cfg.label}
+                        </option>
+                      ))}
+                    </select>
+                  </FieldRow>
+                </div>
+              </div>
+
+              {/* Targeting */}
+              <div>
+                <SectionLabel>Targeting</SectionLabel>
+                <div className="divide-y divide-border/40">
+                  <FieldRow
+                    htmlFor="notif-audience"
+                    label="Audience"
+                    help="Who sees this notification."
+                  >
+                    <select
+                      id="notif-audience"
+                      value={formData.audience}
+                      onChange={(e) =>
+                        set({
+                          audience: e.target
+                            .value as AdminNotification["audience"],
+                        })
+                      }
+                      className="w-40 h-9 rounded-md border border-border/40 bg-background/50 px-2.5 text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-ring focus:border-primary/50"
+                    >
+                      <option value="all">Everyone</option>
+                      <option value="authenticated">Logged In Users</option>
+                      <option value="unauthenticated">Guests Only</option>
+                      <option value="admin">Admins Only</option>
+                      <option value="staff">Staff Only</option>
+                    </select>
+                  </FieldRow>
+                  <FieldRow
+                    htmlFor="priority"
+                    label="Priority"
+                    help="Higher numbers are shown first when more than one notification is active."
                   >
                     <Input
-                      id="dismiss_duration_hours"
+                      id="priority"
                       type="number"
-                      value={formData.dismiss_duration_hours}
-                      onChange={(e) =>
-                        set({ dismiss_duration_hours: e.target.value })
-                      }
-                      placeholder="Permanent"
-                      className="w-32 h-9 bg-background/50 border-border/40 focus:border-primary/50"
+                      value={formData.priority}
+                      onChange={(e) => set({ priority: e.target.value })}
+                      placeholder="0"
+                      className="w-24 h-9 bg-background/50 border-border/40 focus:border-primary/50"
                     />
                   </FieldRow>
-                )}
+                  <FieldRow
+                    htmlFor="path_pattern"
+                    label="Page filter"
+                    help="Only shows on matching pages. * is a wildcard, e.g. /dashboard*. Leave empty to show on every page."
+                  >
+                    <Input
+                      id="path_pattern"
+                      value={formData.path_pattern}
+                      onChange={(e) => set({ path_pattern: e.target.value })}
+                      placeholder="/dashboard*"
+                      className="w-48 sm:w-56 h-9 bg-background/50 border-border/40 focus:border-primary/50"
+                    />
+                  </FieldRow>
+                </div>
               </div>
-            </div>
 
-            {/* Action button */}
-            <div>
-              <SectionLabel>First action button (optional)</SectionLabel>
-              <div className="divide-y divide-border/40">
-                <FieldRow htmlFor="action_label" label="Button label">
-                  <Input
-                    id="action_label"
-                    value={formData.action_label}
-                    onChange={(e) => set({ action_label: e.target.value })}
-                    placeholder="Learn more"
-                    className="w-40 sm:w-48 h-9 bg-background/50 border-border/40 focus:border-primary/50"
-                  />
-                </FieldRow>
-                <FieldRow htmlFor="action_url" label="URL / path">
-                  <Input
-                    id="action_url"
-                    value={formData.action_url}
-                    onChange={(e) => set({ action_url: e.target.value })}
-                    placeholder="https:// or /path"
-                    className="w-40 sm:w-56 h-9 bg-background/50 border-border/40 focus:border-primary/50"
-                  />
-                </FieldRow>
-                {formData.action_url && (
-                  <FieldRow htmlFor="action_external" label="Open in new tab">
+              {/* Scheduling & Behavior */}
+              <div>
+                <SectionLabel>Scheduling &amp; Behavior</SectionLabel>
+                <div className="divide-y divide-border/40">
+                  <FieldRow
+                    htmlFor="starts_at"
+                    label="Starts at"
+                    help="Won't appear before this time."
+                  >
+                    <Input
+                      id="starts_at"
+                      type="datetime-local"
+                      value={formData.starts_at}
+                      onChange={(e) => set({ starts_at: e.target.value })}
+                      className="h-9 bg-background/50 border-border/40 focus:border-primary/50"
+                    />
+                  </FieldRow>
+                  <FieldRow
+                    htmlFor="ends_at"
+                    label="Ends at"
+                    help="Optional. Stops appearing after this time."
+                  >
+                    <Input
+                      id="ends_at"
+                      type="datetime-local"
+                      value={formData.ends_at}
+                      onChange={(e) => set({ ends_at: e.target.value })}
+                      className="h-9 bg-background/50 border-border/40 focus:border-primary/50"
+                    />
+                  </FieldRow>
+                  <FieldRow
+                    htmlFor="is_active"
+                    label="Active"
+                    help="Turn off to hide it without deleting it."
+                  >
                     <Switch
-                      id="action_external"
-                      checked={formData.action_external}
-                      onCheckedChange={(v) => set({ action_external: v })}
+                      id="is_active"
+                      checked={formData.is_active}
+                      onCheckedChange={(v) => set({ is_active: v })}
                     />
                   </FieldRow>
-                )}
-              </div>
-            </div>
-
-            {/* Second action button */}
-            <div>
-              <SectionLabel>Second action button (optional)</SectionLabel>
-              <div className="divide-y divide-border/40">
-                <FieldRow
-                  htmlFor="action_label_2"
-                  label="Button label"
-                  help="E.g. two install links: Add to Chrome and Add to Firefox."
-                >
-                  <Input
-                    id="action_label_2"
-                    value={formData.action_label_2}
-                    onChange={(e) => set({ action_label_2: e.target.value })}
-                    placeholder="Add to Firefox"
-                    className="w-40 sm:w-48 h-9 bg-background/50 border-border/40 focus:border-primary/50"
-                  />
-                </FieldRow>
-                <FieldRow htmlFor="action_url_2" label="URL / path">
-                  <Input
-                    id="action_url_2"
-                    value={formData.action_url_2}
-                    onChange={(e) => set({ action_url_2: e.target.value })}
-                    placeholder="https:// or /path"
-                    className="w-40 sm:w-56 h-9 bg-background/50 border-border/40 focus:border-primary/50"
-                  />
-                </FieldRow>
-                {formData.action_url_2 && (
-                  <FieldRow htmlFor="action_external_2" label="Open in new tab">
+                  <FieldRow
+                    htmlFor="is_dismissible"
+                    label="Dismissible"
+                    help="Whether users can close it themselves."
+                  >
                     <Switch
-                      id="action_external_2"
-                      checked={formData.action_external_2}
-                      onCheckedChange={(v) => set({ action_external_2: v })}
+                      id="is_dismissible"
+                      checked={formData.is_dismissible}
+                      onCheckedChange={(v) => set({ is_dismissible: v })}
                     />
                   </FieldRow>
-                )}
+                  {formData.is_dismissible && (
+                    <FieldRow
+                      htmlFor="dismiss_duration_hours"
+                      label="Re-show after dismiss"
+                      help="Hours until a dismissed notification reappears. Leave empty to dismiss it permanently."
+                    >
+                      <Input
+                        id="dismiss_duration_hours"
+                        type="number"
+                        value={formData.dismiss_duration_hours}
+                        onChange={(e) =>
+                          set({ dismiss_duration_hours: e.target.value })
+                        }
+                        placeholder="Permanent"
+                        className="w-32 h-9 bg-background/50 border-border/40 focus:border-primary/50"
+                      />
+                    </FieldRow>
+                  )}
+                </div>
+              </div>
+
+              {/* Action button */}
+              <div>
+                <SectionLabel>First action button (optional)</SectionLabel>
+                <div className="divide-y divide-border/40">
+                  <FieldRow htmlFor="action_label" label="Button label">
+                    <Input
+                      id="action_label"
+                      value={formData.action_label}
+                      onChange={(e) => set({ action_label: e.target.value })}
+                      placeholder="Learn more"
+                      className="w-40 sm:w-48 h-9 bg-background/50 border-border/40 focus:border-primary/50"
+                    />
+                  </FieldRow>
+                  <FieldRow htmlFor="action_url" label="URL / path">
+                    <Input
+                      id="action_url"
+                      value={formData.action_url}
+                      onChange={(e) => set({ action_url: e.target.value })}
+                      placeholder="https:// or /path"
+                      className="w-40 sm:w-56 h-9 bg-background/50 border-border/40 focus:border-primary/50"
+                    />
+                  </FieldRow>
+                  {formData.action_url && (
+                    <FieldRow htmlFor="action_external" label="Open in new tab">
+                      <Switch
+                        id="action_external"
+                        checked={formData.action_external}
+                        onCheckedChange={(v) => set({ action_external: v })}
+                      />
+                    </FieldRow>
+                  )}
+                </div>
+              </div>
+
+              {/* Second action button */}
+              <div>
+                <SectionLabel>Second action button (optional)</SectionLabel>
+                <div className="divide-y divide-border/40">
+                  <FieldRow
+                    htmlFor="action_label_2"
+                    label="Button label"
+                    help="E.g. two install links: Add to Chrome and Add to Firefox."
+                  >
+                    <Input
+                      id="action_label_2"
+                      value={formData.action_label_2}
+                      onChange={(e) => set({ action_label_2: e.target.value })}
+                      placeholder="Add to Firefox"
+                      className="w-40 sm:w-48 h-9 bg-background/50 border-border/40 focus:border-primary/50"
+                    />
+                  </FieldRow>
+                  <FieldRow htmlFor="action_url_2" label="URL / path">
+                    <Input
+                      id="action_url_2"
+                      value={formData.action_url_2}
+                      onChange={(e) => set({ action_url_2: e.target.value })}
+                      placeholder="https:// or /path"
+                      className="w-40 sm:w-56 h-9 bg-background/50 border-border/40 focus:border-primary/50"
+                    />
+                  </FieldRow>
+                  {formData.action_url_2 && (
+                    <FieldRow
+                      htmlFor="action_external_2"
+                      label="Open in new tab"
+                    >
+                      <Switch
+                        id="action_external_2"
+                        checked={formData.action_external_2}
+                        onCheckedChange={(v) => set({ action_external_2: v })}
+                      />
+                    </FieldRow>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
+          </DialogBody>
 
-          <DialogFooter className="flex-row px-4 sm:px-6 py-4 border-t border-border bg-muted/20 rounded-b-xl gap-2">
-            <Button
-              variant="outline"
-              onClick={closeDialog}
-              className="flex-1 sm:flex-none"
-            >
+          {/* No flex-1 on these: the footer band stacks with flex-col-reverse
+              on mobile, where flex-1 sets a zero flex-basis on the button's
+              HEIGHT and collapses it. Stretch alignment already gives them the
+              full width there. */}
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDialog}>
               Cancel
             </Button>
+            {/* A plain primary submit. This button used to wear the selected
+                variant's tokens, so drafting an error-variant notice handed
+                you a full destructive-red "Create Notification": saving a
+                draft is a benign, reversible act and must not be dressed as
+                the product's delete-this-forever colour. */}
             <Button
               onClick={handleSave}
               disabled={saving || !formData.title || !formData.message}
-              className={cn(
-                activeVariant.bg,
-                activeVariant.text,
-                activeVariant.border,
-                "border hover:opacity-90 flex-1 sm:flex-none",
-              )}
             >
               {saving && (
                 <Loader2

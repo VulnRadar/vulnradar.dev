@@ -12,6 +12,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/shared/empty-state";
 import { InlineAlert } from "@/components/shared/inline-alert";
@@ -21,6 +22,7 @@ import { API } from "@/lib/config/client-constants";
 import {
   TICKET_CATEGORY_LABELS,
   TICKET_MESSAGE_MAX,
+  TICKET_STATUSES,
   type TicketCategory,
   type TicketStatus,
   STAFF_TICKET_STATUS_LABELS,
@@ -75,12 +77,6 @@ const FILTERS: { key: string; label: string }[] = [
   { key: "all", label: "All" },
 ];
 
-/**
- * TICKET_STATUS_LABELS is written from the requester's point of view, so
- * `awaiting_user` reads "Awaiting your reply" there. In the staff inbox that
- * is backwards: it is the one status where nothing is waiting on us. Staff get
- * their own wording, matching the filter names directly above the list.
- */
 const STATUS_STYLES: Record<TicketStatus, string> = {
   open: "bg-primary/10 text-primary border-primary/20",
   awaiting_staff:
@@ -100,6 +96,12 @@ const STATUS_RAIL: Record<TicketStatus, string> = {
   closed: "bg-transparent",
 };
 
+/**
+ * TICKET_STATUS_LABELS is written from the requester's point of view, so
+ * `awaiting_user` reads "Awaiting your reply" there. In the staff inbox that
+ * is backwards: it is the one status where nothing is waiting on us. Staff get
+ * their own wording, matching the filter names directly above the list.
+ */
 function StatusBadge({ status }: { status: TicketStatus }) {
   return (
     <span
@@ -244,8 +246,11 @@ export function SupportInbox() {
     return counts[key] ?? 0;
   }
 
-  const activeFilterLabel =
-    FILTERS.find((f) => f.key === filter)?.label ?? "Active";
+  // When the filter pins one status, every row in the list has that status and
+  // the selected chip already names it, so a per-row badge repeats the same
+  // word down the whole column. Active and All are the mixed views, and those
+  // are the ones where the badge earns its place.
+  const filterPinsStatus = TICKET_STATUSES.includes(filter as TicketStatus);
   // Unanswered means open OR awaiting_staff, the same pair the Overview
   // health row counts. Reading awaiting_staff alone would have this line
   // claim nothing is waiting while brand new tickets sat untouched.
@@ -336,22 +341,30 @@ export function SupportInbox() {
             openId !== null && "hidden lg:flex",
           )}
         >
-          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border/60 bg-muted/20 px-4 py-2.5">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              {activeFilterLabel}
-            </span>
-            {tickets && (
-              <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
-                {tickets.length}
-              </span>
-            )}
-          </div>
-
+          {/* No title bar on this pane: the selected filter chip immediately
+              above it already carries the same label and the same count, so
+              the header was that pair written twice, a few pixels apart. */}
           <div className="min-h-0 flex-1 overflow-y-auto">
             {tickets === null ? (
-              <div className="flex items-center gap-2 px-4 py-6 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                Loading tickets...
+              // Four bands, in the order a real row draws them: subject and
+              // time, requester, the clamped last message, then the meta line.
+              // A single centred spinner told the reader nothing about the
+              // shape of what was coming.
+              <div role="status" aria-label="Loading tickets">
+                {[0, 1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className="flex flex-col gap-1.5 border-b border-border/40 px-4 py-3 pl-5 last:border-b-0"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <Skeleton className="h-3.5 w-1/2" />
+                      <Skeleton className="h-3 w-10 shrink-0" />
+                    </div>
+                    <Skeleton className="h-3 w-2/3" />
+                    <Skeleton className="h-3 w-full" />
+                    <Skeleton className="mt-0.5 h-3 w-1/3" />
+                  </div>
+                ))}
               </div>
             ) : tickets.length === 0 ? (
               <EmptyState
@@ -359,11 +372,10 @@ export function SupportInbox() {
                 size="sm"
                 icon={Inbox}
                 title="Nothing in this view"
-                description={
-                  filter === "awaiting_staff"
-                    ? "No ticket is waiting on a staff reply."
-                    : "Try another filter to see tickets in other states."
-                }
+                // The awaiting_staff wording used to be "No ticket is waiting
+                // on a staff reply", which is the sentence the header above
+                // already writes when that queue is clear.
+                description="Try another filter to see tickets in other states."
               />
             ) : (
               tickets.map((t) => (
@@ -411,7 +423,7 @@ export function SupportInbox() {
                     </span>
                   )}
                   <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <StatusBadge status={t.status} />
+                    {!filterPinsStatus && <StatusBadge status={t.status} />}
                     <span className="text-[11px] text-muted-foreground">
                       {TICKET_CATEGORY_LABELS[t.category]} &middot;{" "}
                       {t.message_count}{" "}
@@ -472,7 +484,12 @@ export function SupportInbox() {
                         against the account it came from meant copying the email,
                         switching to Users (which discards the open ticket),
                         pasting, and coming back. */}
-                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                    {/* wrap-anywhere, not truncate. The requester's address
+                        leads this line and the category and the opened-at
+                        stamp follow it, so one clipped line threw away both of
+                        the parts we wrote and kept only a fragment of the
+                        address. */}
+                    <p className="mt-0.5 wrap-anywhere text-xs text-muted-foreground">
                       {openTicket ? (
                         <a
                           href={`/admin?tab=users&user=${openTicket.owner_id}`}
@@ -561,8 +578,11 @@ export function SupportInbox() {
               </div>
 
               {thread.ticket.status === "closed" ? (
+                // Only the consequence, not the state: the Closed badge at the
+                // top of this same pane already names it, and this line used
+                // to open by repeating the word.
                 <p className="shrink-0 border-t border-border/60 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-                  This ticket is closed. Nobody can add to it.
+                  Nobody can add to this ticket. Resolve it to reply again.
                 </p>
               ) : (
                 <form

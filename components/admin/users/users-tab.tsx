@@ -16,7 +16,7 @@ import {
   Share2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/table";
 import { PaginationControl } from "@/components/ui/pagination-control";
 import { cn } from "@/lib/ui/utils";
+import { pluralize } from "@/lib/ui/plural";
 import { getPlanById } from "@/lib/billing/catalog";
 import {
   STAFF_ROLES,
@@ -36,6 +37,7 @@ import {
   ROLE_BADGE_STYLES,
 } from "@/lib/config/client-constants";
 import {
+  AdminPanelHeader,
   EmptyState,
   SortableHeader,
   TableScrollArea,
@@ -170,61 +172,52 @@ export function UsersTab({
       )}
 
       <Card className="border-border/50 bg-card/50 overflow-hidden">
-        <CardHeader className="pb-4 pt-5 px-5">
-          <div className="flex flex-col gap-4">
-            {/* Title row */}
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="p-2 rounded-lg bg-primary/10 shrink-0">
-                  <Users className="h-4 w-4 text-primary" aria-hidden="true" />
-                </div>
-                <div className="min-w-0">
-                  <CardTitle className="text-base font-semibold truncate">
-                    User Directory
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                    Manage and view all registered users
-                  </p>
-                </div>
-              </div>
-              <Badge
-                variant="secondary"
-                className="text-xs font-medium h-6 px-2.5 shrink-0"
-              >
-                {stats ? Number(stats.total_users).toLocaleString() : 0} users
-              </Badge>
-            </div>
-            {/* Search and actions row */}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-              <div className="relative flex-1">
-                <Search
-                  className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
-                  aria-hidden="true"
-                />
-                <Input
-                  placeholder="Search by name or email..."
-                  value={searchQuery}
-                  onChange={(e) => onSearchQueryChange(e.target.value)}
-                  aria-label="Search users by name or email"
-                  className="pl-9 h-10 bg-background/50 border-border/40 focus:border-primary/50"
-                />
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-10 px-3 gap-2 border-border/40 shrink-0"
-                aria-label="Refresh users"
-                onClick={onRefresh}
-              >
-                <RefreshCw
-                  className={cn("h-4 w-4", searchLoading && "animate-spin")}
-                  aria-hidden="true"
-                />
-                <span className="hidden sm:inline">Refresh</span>
-              </Button>
-            </div>
+        <AdminPanelHeader
+          icon={Users}
+          title="User Directory"
+          // The subtitle says the two things an operator gets wrong about
+          // this table, rather than restating the title: search covers both
+          // fields, and the sort is applied by the server across every
+          // account, not just the page on screen.
+          subtitle="Search matches name and email. Sorting applies across every account, not just this page."
+          status={
+            <Badge
+              variant="secondary"
+              className="text-[11px] font-medium h-5 px-2 shrink-0 tabular-nums"
+            >
+              {stats ? Number(stats.total_users).toLocaleString() : 0}
+            </Badge>
+          }
+          actions={
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 px-3 gap-2 border-border/40 shrink-0"
+              aria-label="Refresh users"
+              onClick={onRefresh}
+            >
+              <RefreshCw
+                className={cn("h-4 w-4", searchLoading && "animate-spin")}
+                aria-hidden="true"
+              />
+              <span className="hidden sm:inline">Refresh</span>
+            </Button>
+          }
+        >
+          <div className="relative">
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
+              aria-hidden="true"
+            />
+            <Input
+              placeholder="Search by name or email..."
+              value={searchQuery}
+              onChange={(e) => onSearchQueryChange(e.target.value)}
+              aria-label="Search users by name or email"
+              className="pl-9 h-9 bg-background/50 border-border/40 focus:border-primary/50"
+            />
           </div>
-        </CardHeader>
+        </AdminPanelHeader>
         <CardContent className="p-0">
           {/* Desktop table */}
           <div className="hidden md:block">
@@ -294,7 +287,15 @@ export function UsersTab({
                       <TableRow
                         key={u.id}
                         tabIndex={0}
-                        className="border-border/40 cursor-pointer group focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                        className={cn(
+                          "border-border/40 cursor-pointer group focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                          // A disabled account is the one exception this table
+                          // exists to surface, and it used to be carried by a
+                          // 10px badge in the third column. The row itself now
+                          // says it, so it is findable by scanning the left
+                          // edge instead of reading every Status cell.
+                          u.disabled_at && "bg-destructive/[0.04]",
+                        )}
                         onClick={() => onOpenUser(u.id)}
                         onKeyDown={(e) => {
                           if (e.target !== e.currentTarget) return;
@@ -304,7 +305,13 @@ export function UsersTab({
                           }
                         }}
                       >
-                        <TableCell className="px-5 py-4">
+                        <TableCell className="relative px-5 py-4 pl-6">
+                          {u.disabled_at && (
+                            <span
+                              className="absolute inset-y-0 left-0 w-0.5 bg-destructive"
+                              aria-hidden="true"
+                            />
+                          )}
                           <div className="flex items-center gap-3">
                             <UserAvatar
                               name={u.name}
@@ -312,7 +319,12 @@ export function UsersTab({
                               avatarUrl={u.avatar_url}
                             />
                             <div className="min-w-0">
-                              <p className="text-sm font-medium truncate">
+                              <p
+                                className={cn(
+                                  "text-sm font-medium truncate",
+                                  u.disabled_at && "text-muted-foreground",
+                                )}
+                              >
                                 {u.name || "Unnamed"}
                               </p>
                               <p className="text-xs text-muted-foreground truncate font-mono">
@@ -323,26 +335,31 @@ export function UsersTab({
                         </TableCell>
                         <TableCell className="px-4 py-4">
                           <div className="flex flex-col gap-0.5">
-                            <span className="text-sm font-medium">
+                            <span className="text-sm font-medium font-mono tabular-nums">
                               {u.scan_count}{" "}
-                              <span className="text-muted-foreground font-normal">
+                              <span className="text-muted-foreground font-sans font-normal">
                                 scans
                               </span>
                             </span>
                             <span className="text-xs text-muted-foreground">
-                              {u.api_key_count} API keys
+                              <span className="font-mono tabular-nums">
+                                {u.api_key_count}
+                              </span>{" "}
+                              API keys
                             </span>
                           </div>
                         </TableCell>
                         <TableCell className="px-4 py-4">
+                          {/* Exceptions only. An "Active" badge rendered on
+                              every non-disabled row, which is every row on a
+                              healthy page: an always-true badge carries no
+                              information and made the one row that IS disabled
+                              harder to find, not easier. Absence of a badge is
+                              now the normal state. */}
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            {u.disabled_at ? (
+                            {u.disabled_at && (
                               <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-2 py-0.5 font-medium">
                                 Disabled
-                              </Badge>
-                            ) : (
-                              <Badge className="bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20 text-[10px] px-2 py-0.5 font-medium">
-                                Active
                               </Badge>
                             )}
                             {u.role &&
@@ -367,8 +384,13 @@ export function UsersTab({
                                   <Badge
                                     className={cn(
                                       "text-[10px] px-2 py-0.5 font-medium",
+                                      // --warning, not amber-500. The detail
+                                      // panel already paints a gifted plan
+                                      // from the token; this copy was the
+                                      // untokenised one, so the same fact had
+                                      // two greens/ambers on adjacent screens.
                                       u.gifted_plan
-                                        ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                                        ? "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20"
                                         : "bg-primary/10 text-primary border-primary/20",
                                     )}
                                   >
@@ -380,13 +402,13 @@ export function UsersTab({
                               return null;
                             })()}
                             {u.totp_enabled && (
-                              <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-2 py-0.5 font-medium">
+                              <Badge className="bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20 text-[10px] px-2 py-0.5 font-medium">
                                 2FA
                               </Badge>
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className="px-4 py-4 text-sm text-muted-foreground whitespace-nowrap">
+                        <TableCell className="px-4 py-4 text-xs text-muted-foreground whitespace-nowrap font-mono tabular-nums">
                           {new Date(u.created_at).toLocaleDateString("en-US", {
                             month: "short",
                             day: "numeric",
@@ -394,11 +416,16 @@ export function UsersTab({
                           })}
                         </TableCell>
                         <TableCell className="px-5 py-4">
+                          {/* Visible at rest. It used to be opacity-0 until
+                              hover, so the column the header calls "Actions"
+                              was blank space on every row and the table had a
+                              dead right edge. It brightens on row hover
+                              instead of appearing from nothing. */}
                           <div className="flex items-center justify-end">
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity"
+                              className="h-8 gap-1.5 text-muted-foreground group-hover:text-foreground group-focus-within:text-foreground transition-colors"
                               asChild
                               onClick={(e) => e.stopPropagation()}
                             >
@@ -457,8 +484,17 @@ export function UsersTab({
                     onOpenUser(u.id);
                   }
                 }}
-                className="flex items-center gap-3 px-5 py-4 border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                className={cn(
+                  "relative flex items-center gap-3 px-5 py-4 pl-6 border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+                  u.disabled_at && "bg-destructive/[0.04]",
+                )}
               >
+                {u.disabled_at && (
+                  <span
+                    className="absolute inset-y-0 left-0 w-0.5 bg-destructive"
+                    aria-hidden="true"
+                  />
+                )}
                 <UserAvatar
                   name={u.name}
                   email={u.email}
@@ -466,39 +502,57 @@ export function UsersTab({
                   avatarUrl={u.avatar_url}
                 />
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <p className="text-sm font-medium truncate">
+                  {/* Disabled and role are no longer either/or. The ternary
+                      this replaces dropped the role badge the moment an
+                      account was disabled, so a disabled admin read as an
+                      ordinary disabled user on a phone. */}
+                  <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                    <p
+                      className={cn(
+                        "text-sm font-medium truncate",
+                        u.disabled_at && "text-muted-foreground",
+                      )}
+                    >
                       {u.name || "Unnamed"}
                     </p>
-                    {u.disabled_at ? (
+                    {u.disabled_at && (
                       <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5 shrink-0">
                         Disabled
                       </Badge>
-                    ) : u.role &&
+                    )}
+                    {u.role &&
                       u.role !== STAFF_ROLES.USER &&
-                      ROLE_BADGE_STYLES[u.role] ? (
-                      <Badge
-                        className={cn(
-                          ROLE_BADGE_STYLES[u.role],
-                          "text-[10px] px-1.5 shrink-0",
-                        )}
-                      >
-                        {STAFF_ROLE_LABELS[u.role]}
-                      </Badge>
-                    ) : null}
+                      ROLE_BADGE_STYLES[u.role] && (
+                        <Badge
+                          className={cn(
+                            ROLE_BADGE_STYLES[u.role],
+                            "text-[10px] px-1.5 shrink-0",
+                          )}
+                        >
+                          {STAFF_ROLE_LABELS[u.role]}
+                        </Badge>
+                      )}
                   </div>
                   <p className="text-xs text-muted-foreground truncate font-mono">
                     {u.email}
                   </p>
-                  <div className="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground">
-                    <span>{u.scan_count} scans</span>
-                    <span className="text-border">|</span>
-                    <span>
+                  <div className="flex items-center gap-2 mt-1.5 text-[11px] text-muted-foreground">
+                    <span className="font-mono tabular-nums">
+                      {pluralize(u.scan_count, "scan")}
+                    </span>
+                    <span aria-hidden="true">&middot;</span>
+                    <span className="font-mono tabular-nums">
                       {new Date(u.created_at).toLocaleDateString("en-US", {
                         month: "short",
                         day: "numeric",
                       })}
                     </span>
+                    {u.totp_enabled && (
+                      <>
+                        <span aria-hidden="true">&middot;</span>
+                        <span className="text-[hsl(var(--success))]">2FA</span>
+                      </>
+                    )}
                     {(() => {
                       const effectivePlan = u.gifted_plan || u.plan;
                       if (effectivePlan && effectivePlan !== "free") {
@@ -506,19 +560,16 @@ export function UsersTab({
                           getPlanById(effectivePlan)?.badge?.text ||
                           effectivePlan;
                         return (
-                          <>
-                            <span className="text-border">|</span>
-                            <Badge
-                              className={cn(
-                                "text-[10px] px-1.5 py-0",
-                                u.gifted_plan
-                                  ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
-                                  : "bg-primary/10 text-primary border-primary/20",
-                              )}
-                            >
-                              {label}
-                            </Badge>
-                          </>
+                          <Badge
+                            className={cn(
+                              "text-[10px] px-1.5 py-0",
+                              u.gifted_plan
+                                ? "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20"
+                                : "bg-primary/10 text-primary border-primary/20",
+                            )}
+                          >
+                            {label}
+                          </Badge>
                         );
                       }
                       return null;

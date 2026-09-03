@@ -356,14 +356,16 @@ export function CommandPalette() {
                     aria-hidden
                     className="h-4 w-4 shrink-0 text-muted-foreground"
                   />
-                  <span className="truncate">{entry.label}</span>
+                  {/* A nav name out of the palette registry, not user data, so
+                      there is nothing to clip it for. */}
+                  <span className="min-w-0">{entry.label}</span>
                 </CommandItem>
               ))}
             </CommandGroup>
           ))}
         </CommandList>
       </Command>
-      <div className="flex items-center justify-between gap-3 border-t border-border/60 px-4 py-2.5 text-[11px] text-muted-foreground">
+      <div className="flex items-center justify-between gap-3 border-t border-border/50 px-4 py-2.5 text-[11px] text-muted-foreground">
         <span>
           <kbd className="rounded border border-border/60 bg-muted px-1 py-0.5 font-mono">
             up

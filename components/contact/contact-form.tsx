@@ -5,12 +5,24 @@ import Link from "next/link";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { API, ROUTES, TURNSTILE_ENABLED } from "@/lib/config/client-constants";
+import {
+  API,
+  ROUTES,
+  SUPPORT_EMAIL,
+  TURNSTILE_ENABLED,
+} from "@/lib/config/client-constants";
 import { CATEGORIES, STAFF_ROLES } from "./contact-types";
 import { TurnstileWidget } from "@/components/shared/turnstile-widget";
+import { InlineAlert } from "@/components/shared/inline-alert";
 
+/* The select and the textarea are drawn by hand rather than by the Input
+   primitive, so they have to match it: rounded-md, not rounded-lg (this form
+   was showing two control radii side by side), and border-input, not
+   border-border. --input is the CONTROL edge and carries a real 3:1 floor;
+   --border is the softer container edge, so these two fields were the only
+   controls on the page drawn at container weight. */
 const FIELD_CLASS =
-  "w-full rounded-lg border border-border bg-background px-3 py-2 text-base sm:text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
+  "w-full rounded-md border border-input bg-background px-3 py-2 text-base sm:text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring";
 
 function getPlaceholder(category: string): string {
   const placeholders: Record<string, string> = {
@@ -18,16 +30,52 @@ function getPlaceholder(category: string): string {
     feature: "Describe the feature you'd like to see and how it would help...",
     security:
       "Please describe the vulnerability in detail. Include steps to reproduce if possible.",
-    help: "How can we help you?",
+    help: "What are you trying to do, and what is happening instead?",
     billing:
       "Describe your billing issue. Include transaction IDs if relevant...",
     enterprise:
       "Tell us about your organization, team size, and security needs...",
     staff_application:
       "Why do you want to join? Share your experience and motivation...",
-    feedback: "Share your thoughts, suggestions, or general feedback...",
+    feedback: "What works, what does not, and what you would change first.",
   };
-  return placeholders[category] || "How can we help you?";
+  return (
+    placeholders[category] ||
+    "What are you trying to do, and what is happening instead?"
+  );
+}
+
+/**
+ * The three category notes above the submit. They were four near-identical
+ * strips (`text-xs ... rounded-lg border ... px-3 py-2.5`) differing only in
+ * which colour token they named, so a copy or padding fix meant four edits.
+ *
+ * Deliberately NOT components/shared/inline-alert: these are advisory prose
+ * that is true before anything happens, not a report that something went
+ * wrong, so they carry no icon and no alert role. The one real alert in this
+ * form (the submit failure) does use InlineAlert.
+ */
+const NOTE_TONES = {
+  warning:
+    "border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))]",
+  muted: "border-border bg-muted/40 text-muted-foreground",
+  primary: "border-primary/20 bg-primary/10 text-primary",
+} as const;
+
+function CategoryNote({
+  tone,
+  children,
+}: {
+  tone: keyof typeof NOTE_TONES;
+  children: React.ReactNode;
+}) {
+  return (
+    <p
+      className={`text-xs leading-relaxed rounded-lg border px-3 py-2.5 ${NOTE_TONES[tone]}`}
+    >
+      {children}
+    </p>
+  );
 }
 
 interface ContactFormProps {
@@ -79,14 +127,17 @@ export function ContactForm({
     e.preventDefault();
 
     if (category === "staff_application" && !staffRole) {
-      setError("Please select a role you're applying for.");
-      onError("Please select a role you're applying for.");
+      const msg = "Pick the role you are applying for, then send this again.";
+      setError(msg);
+      onError(msg);
       return;
     }
 
     if (TURNSTILE_ENABLED && !turnstileToken) {
-      setError("Please complete the captcha verification.");
-      onError("Please complete the captcha verification.");
+      const msg =
+        "The bot check above has not finished. Wait for it to tick, then send this again.";
+      setError(msg);
+      onError(msg);
       return;
     }
 
@@ -124,8 +175,15 @@ export function ContactForm({
 
       if (!res.ok) {
         const data = await res.json().catch(() => null);
+        // Two different failures, and they used to share one sentence that
+        // named neither: the API refused the message (below), or the request
+        // never left the browser (the catch). Each now says which happened and
+        // what to do next, and both offer the address that bypasses this form
+        // entirely, since a broken contact form is the one bug a contact form
+        // cannot be used to report.
         const errorMsg =
-          data?.error || "Unable to send your message. Please try again.";
+          data?.error ||
+          `We could not accept that message and the server did not say why. Nothing was sent. Try again in a moment, or email ${SUPPORT_EMAIL} directly.`;
         setError(errorMsg);
         onError(errorMsg);
         return;
@@ -133,7 +191,7 @@ export function ContactForm({
 
       onSuccess();
     } catch {
-      const errorMsg = "Unable to send your message. Please try again.";
+      const errorMsg = `Your message never reached us: the request failed before it was sent. Check your connection and send again, or email ${SUPPORT_EMAIL} directly.`;
       setError(errorMsg);
       onError(errorMsg);
     } finally {
@@ -291,34 +349,30 @@ export function ContactForm({
           </div>
 
           {category === "security" && (
-            <p className="text-xs leading-relaxed rounded-lg border border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] px-3 py-2.5">
+            <CategoryNote tone="warning">
               Security reports jump the queue. We aim to acknowledge inside 24
               hours and will tell you what we did about it.
-            </p>
+            </CategoryNote>
           )}
 
           {category === "staff_application" && (
-            <p className="text-xs leading-relaxed rounded-lg border border-border bg-muted/40 text-muted-foreground px-3 py-2.5">
+            <CategoryNote tone="muted">
               Staff roles are voluntary and unpaid. There are no set hours and
               you can step down whenever you want. Submitting this means you
               understand it is a community contribution, not employment.
-            </p>
+            </CategoryNote>
           )}
 
           {category === "enterprise" && (
-            <p className="text-xs leading-relaxed rounded-lg border border-primary/20 bg-primary/10 text-primary px-3 py-2.5">
+            <CategoryNote tone="primary">
               Enterprise covers dedicated support, custom integrations, SSO, and
               volume pricing. Expect a reply within one business day.
-            </p>
+            </CategoryNote>
           )}
 
-          {error && (
-            <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5">
-              <p className="text-sm text-destructive" role="alert">
-                {error}
-              </p>
-            </div>
-          )}
+          {/* The app's one inline alert, rather than a fourth hand-rolled strip
+              that had to remember role="alert" for itself. */}
+          {error && <InlineAlert tone="error">{error}</InlineAlert>}
 
           <p className="text-[11px] text-muted-foreground leading-relaxed">
             Sending this form stores your name, email, and message so we can
@@ -332,22 +386,38 @@ export function ContactForm({
             .
           </p>
 
-          <div className="flex justify-center sm:justify-start">
-            <TurnstileWidget
-              onVerify={setTurnstileToken}
-              onExpire={() => setTurnstileToken(null)}
-              className="cf-turnstile"
-            />
+          {/* The submit sits at the end of the form, which is where a submit
+              belongs, but it used to be `self-end` after ~700px of fields and a
+              captcha widget: a small right-aligned control at the very bottom
+              of a long scroll. It is an action bar now, ruled off from the
+              fields, full width on mobile, and the reason it is disabled is
+              stated next to it instead of leaving the user to guess. */}
+          <div className="mt-1 pt-4 border-t border-border/50 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex justify-center sm:justify-start">
+              <TurnstileWidget
+                onVerify={setTurnstileToken}
+                onExpire={() => setTurnstileToken(null)}
+                className="cf-turnstile"
+              />
+            </div>
+            <div className="flex flex-col gap-2 sm:items-end">
+              <Button
+                type="submit"
+                className="w-full sm:w-auto gap-1.5"
+                disabled={
+                  isSubmitting || (TURNSTILE_ENABLED && !turnstileToken)
+                }
+              >
+                <Send className="h-3.5 w-3.5" aria-hidden="true" />
+                {isSubmitting ? "Sending" : "Send message"}
+              </Button>
+              {TURNSTILE_ENABLED && !turnstileToken && !isSubmitting && (
+                <p className="text-[11px] text-muted-foreground text-center sm:text-right">
+                  Send unlocks once the bot check passes.
+                </p>
+              )}
+            </div>
           </div>
-
-          <Button
-            type="submit"
-            className="w-full sm:w-auto self-end gap-1.5"
-            disabled={isSubmitting || (TURNSTILE_ENABLED && !turnstileToken)}
-          >
-            <Send className="h-3.5 w-3.5" aria-hidden="true" />
-            {isSubmitting ? "Sending" : "Send message"}
-          </Button>
         </form>
       </div>
     </section>

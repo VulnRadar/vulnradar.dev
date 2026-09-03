@@ -20,6 +20,7 @@ import {
   DocsCallout,
   CodeBlock,
   InlineCode,
+  METHOD_COLORS,
 } from "@/components/docs";
 import { useDocsContext } from "@/components/docs/docs-shell";
 import {
@@ -48,15 +49,19 @@ interface Operation {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the OpenAPI doc is an untyped JSON document walked structurally.
 type Spec = any;
 
-const METHOD_TONE: Record<string, string> = {
-  get: "bg-primary/10 text-primary border-primary/20",
-  post: "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/25",
-  put: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/25",
-  patch:
-    "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/25",
-  delete:
-    "bg-[hsl(var(--severity-high))]/10 text-[hsl(var(--severity-high))] border-[hsl(var(--severity-high))]/25",
-};
+/**
+ * The playground carried its own method palette, and it did not agree with
+ * the one the API reference next door uses: GET was brand blue here and
+ * --severity-low there, DELETE was --severity-high here and
+ * --severity-critical there, and PATCH had no colour of its own at all. Two
+ * pages a click apart, showing the same endpoints, colouring the methods
+ * differently. One table now, from components/docs/docs-types.ts; the spec
+ * gives methods in lower case, so the lookup uppercases.
+ */
+function methodTone(method: string): string {
+  const key = method.toUpperCase() as keyof typeof METHOD_COLORS;
+  return METHOD_COLORS[key] ?? "border-border bg-muted text-foreground";
+}
 
 function flattenOperations(spec: Spec): { baseUrl: string; ops: Operation[] } {
   const baseUrl: string = spec?.servers?.[0]?.url ?? "";
@@ -166,7 +171,7 @@ export default function ApiPlaygroundPage() {
   );
 
   return (
-    <div className="space-y-12">
+    <div className="space-y-12 sm:space-y-16">
       <DocsHero
         badge="v3 API"
         title="API Playground"
@@ -235,8 +240,18 @@ export default function ApiPlaygroundPage() {
       </DocsSection>
 
       <DocsSection id="endpoints" title="Endpoints">
+        {/* Wrapped rather than a bare <p>: DocsSection sets the paragraph
+            directly after its heading as the section lead, and an error that
+            only sometimes renders would inherit that treatment and lose its
+            colour. role="alert" also announces it, which a paragraph that
+            appears after a failed fetch was not doing. */}
         {error && (
-          <p className="text-sm text-[hsl(var(--severity-high))]">{error}</p>
+          <div
+            role="alert"
+            className="text-sm text-[hsl(var(--severity-high))]"
+          >
+            {error}
+          </div>
         )}
 
         {!spec && !error && (
@@ -342,21 +357,28 @@ function OperationCard({
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left transition-colors hover:bg-muted/40"
+        // flex-wrap, and the path takes its own line below sm. The path is the
+        // row's only identifier and it is a string we wrote, not user data:
+        // "/webhooks/{id}/rotate-secret" needs about 235px and a 320px screen
+        // left it 158px after the method badge and the chevron, so two
+        // endpoints clipped to the same visible text.
+        className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-3.5 py-2.5 text-left transition-colors hover:bg-muted/40"
       >
         <span
           className={cn(
             "inline-flex shrink-0 items-center rounded border px-2 py-0.5 text-[11px] font-semibold uppercase",
-            METHOD_TONE[op.method] ?? "border-border bg-muted text-foreground",
+            methodTone(op.method),
           )}
         >
           {op.method}
         </span>
-        <code className="min-w-0 flex-1 truncate font-mono text-sm text-foreground">
+        <code className="min-w-0 flex-1 wrap-anywhere font-mono text-sm text-foreground">
           {op.path}
         </code>
+        {/* lg, not sm. The summary is our copy too, and between 640 and
+            1024px it was competing with the path for the same row. */}
         {op.summary && (
-          <span className="hidden truncate text-xs text-muted-foreground sm:block">
+          <span className="hidden min-w-0 truncate text-xs text-muted-foreground lg:block">
             {op.summary}
           </span>
         )}

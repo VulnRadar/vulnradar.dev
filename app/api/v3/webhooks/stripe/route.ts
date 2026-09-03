@@ -6,6 +6,8 @@ import {
   sendEmail,
   paymentReceiptEmail,
   paymentFailedEmail,
+  creditPurchaseReceiptEmail,
+  creditRefundEmail,
   subscriptionChangedEmail,
   type SubscriptionChangeKind,
 } from "@/lib/email/email";
@@ -58,6 +60,77 @@ async function resolvePlanFromStripeProductId(
 }
 
 const PAID_PLAN_IDS: readonly PlanId[] = getPaidPlans().map((p) => p.id);
+
+/**
+ * Receipt and clawback notice for a one-time credit purchase.
+ *
+ * invoice.payment_succeeded (a subscription) has receipted since it was
+ * written. A credit purchase is a different Stripe flow entirely
+ * (payment_intent.succeeded) and had no email at all: money left the card, the
+ * balance moved, and the only record was a server log line the customer cannot
+ * read. Same for the reverse: a refund or a chargeback silently removed credit
+ * the customer can see in the UI.
+ *
+ * Both are transactional and are sent through sendEmail directly, like the
+ * subscription receipt above: a customer cannot opt out of the record of a
+ * charge on their own card. Best-effort, and never allowed to fail the
+ * webhook, which must still return 200 or Stripe retries the whole event.
+ */
+async function emailCreditReceipt(
+  userId: number,
+  build: (email: string) => { subject: string; text: string; html: string },
+): Promise<void> {
+  try {
+    const res = await pool.query<{ email: string }>(
+      "SELECT email FROM users WHERE id = $1",
+      [userId],
+    );
+    const email = res.rows[0]?.email;
+    if (!email) return;
+    await sendEmail({ to: email, ...build(email) });
+  } catch (err) {
+    console.error("[Stripe] credit receipt email failed:", err);
+  }
+}
+
+/**
+ * The clawback half. A refund or a chargeback removes credit the customer can
+ * see on their balance page, and said nothing at all, so the balance simply
+ * dropped. One message per ledger that actually reversed; in practice a
+ * PaymentIntent only ever carries one tier, so that is one message.
+ */
+async function emailCreditReversals(
+  reversals: Array<{
+    reversed: boolean;
+    userId?: number | null;
+    quantity: number;
+    creditLabel: string;
+  }>,
+  amountCents: number,
+  currency: string,
+  disputed: boolean,
+): Promise<void> {
+  // The whole loop is guarded, not just each send. This runs inside the
+  // handler's own try, whose catch returns 500 AND deletes the idempotency
+  // marker so Stripe retries the event: letting a receipt throw would mean
+  // re-running a clawback because an email failed.
+  try {
+    for (const r of reversals) {
+      if (!r.reversed || !r.userId) continue;
+      await emailCreditReceipt(r.userId, () =>
+        creditRefundEmail({
+          creditLabel: r.creditLabel,
+          quantity: r.quantity,
+          amountCents,
+          currency,
+          disputed,
+        }),
+      );
+    }
+  } catch (err) {
+    console.error("[Stripe] credit reversal notices failed:", err);
+  }
+}
 
 // Billing email helpers. Every send built on these runs best-effort AFTER the
 // event's business logic, wrapped in its own try/catch: the event is already
@@ -218,7 +291,7 @@ export async function POST(req: NextRequest) {
         // AI credit purchases no longer go through a Checkout Session at
         // all (see app/actions/stripe.ts's createAiCreditPaymentIntent,
         // which creates a real PaymentIntent directly and confirms it
-        // through Stripe Elements on app/checkout/credits/page.tsx) -- the
+        // through Stripe Elements on app/ai-credits/page.tsx) -- the
         // payment_intent.succeeded case below is where those get credited
         // now. Every session this route still sees here is a real
         // subscription checkout.
@@ -831,7 +904,8 @@ export async function POST(req: NextRequest) {
         // Backup path for a one-time AI credit purchase
         // (app/actions/stripe.ts's createAiCreditPaymentIntent) -- the
         // fast/primary path is confirmAiCreditPurchase, called the instant
-        // the client confirms payment on app/checkout/credits/page.tsx.
+        // the client confirms payment on app/ai-credits/page.tsx (the old
+        // /checkout/credits URL is now a 308 redirect stub).
         // This covers the closed-tab / lost-connection case, same
         // redundancy reasoning customer.subscription.created gives the
         // subscription flow.
@@ -868,6 +942,16 @@ export async function POST(req: NextRequest) {
           if (result.credited) {
             console.log(
               `[Stripe] Credited ${tier.tokens.toLocaleString()} AI tokens to user ID ${purchaserId} (tier ${tier.id}, payment_intent.succeeded)`,
+            );
+            await emailCreditReceipt(purchaserId, () =>
+              creditPurchaseReceiptEmail({
+                creditLabel: "AI analysis tokens",
+                quantity: tier.tokens,
+                amountCents: tier.priceInCents,
+                currency: paymentIntent.currency,
+                date: formatBillingDate(paymentIntent.created),
+                invoiceUrl: null,
+              }),
             );
           }
         } else {
@@ -913,6 +997,16 @@ export async function POST(req: NextRequest) {
               console.log(
                 `[Stripe] Credited ${githubTier.tokens.toLocaleString()} GitHub review tokens to user ID ${githubPurchaserId} (tier ${githubTier.id}, payment_intent.succeeded)`,
               );
+              await emailCreditReceipt(githubPurchaserId, () =>
+                creditPurchaseReceiptEmail({
+                  creditLabel: "GitHub review tokens",
+                  quantity: githubTier.tokens,
+                  amountCents: githubTier.priceInCents,
+                  currency: paymentIntent.currency,
+                  date: formatBillingDate(paymentIntent.created),
+                  invoiceUrl: null,
+                }),
+              );
             }
           } else {
             console.error(
@@ -953,6 +1047,16 @@ export async function POST(req: NextRequest) {
             if (result.credited) {
               console.log(
                 `[Stripe] Credited ${browserbaseTier.minutes} Browserbase minutes to user ID ${browserbasePurchaserId} (tier ${browserbaseTier.id}, payment_intent.succeeded)`,
+              );
+              await emailCreditReceipt(browserbasePurchaserId, () =>
+                creditPurchaseReceiptEmail({
+                  creditLabel: "Browserbase minutes",
+                  quantity: browserbaseTier.minutes,
+                  amountCents: browserbaseTier.priceInCents,
+                  currency: paymentIntent.currency,
+                  date: formatBillingDate(paymentIntent.created),
+                  invoiceUrl: null,
+                }),
               );
             }
           } else {
@@ -1003,6 +1107,28 @@ export async function POST(req: NextRequest) {
           console.log(
             `[Stripe] charge.refunded for ${refundPi} matched no credit purchase (likely a subscription refund) (event ${event.id})`,
           );
+        await emailCreditReversals(
+          [
+            {
+              ...aiR,
+              quantity: aiR.tokens ?? 0,
+              creditLabel: "AI analysis tokens",
+            },
+            {
+              ...ghR,
+              quantity: ghR.tokens ?? 0,
+              creditLabel: "GitHub review tokens",
+            },
+            {
+              ...bbR,
+              quantity: Math.round((bbR.seconds ?? 0) / 60),
+              creditLabel: "Browserbase minutes",
+            },
+          ],
+          charge.amount_refunded ?? charge.amount ?? 0,
+          charge.currency,
+          false,
+        );
         break;
       }
 
@@ -1038,6 +1164,28 @@ export async function POST(req: NextRequest) {
             console.log(
               `[Stripe] Dispute clawed back ${bbR.seconds}s of Browserbase credit from user ${bbR.userId} (event ${event.id})`,
             );
+          await emailCreditReversals(
+            [
+              {
+                ...aiR,
+                quantity: aiR.tokens ?? 0,
+                creditLabel: "AI analysis tokens",
+              },
+              {
+                ...ghR,
+                quantity: ghR.tokens ?? 0,
+                creditLabel: "GitHub review tokens",
+              },
+              {
+                ...bbR,
+                quantity: Math.round((bbR.seconds ?? 0) / 60),
+                creditLabel: "Browserbase minutes",
+              },
+            ],
+            dispute.amount,
+            dispute.currency,
+            true,
+          );
         }
         break;
       }

@@ -1,7 +1,13 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { AlertTriangle, Check, Copy, RotateCcw } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  Copy,
+  RotateCcw,
+  ShieldCheck,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
 import dynamic from "next/dynamic";
@@ -18,10 +24,22 @@ import { AuthenticatedBadge } from "./authenticated-badge";
 import { SubdomainDiscovery } from "./subdomain-discovery";
 import { ScanResultDetail, type CrawlInfo } from "./scan-result-detail";
 import { copyToClipboard } from "@/lib/ui/clipboard";
+import { tourAnchor } from "@/lib/tour/anchors";
 import { API } from "@/lib/config/client-constants";
 
-const ScanActionsMenu = dynamic(() =>
-  import("./scan-actions-menu").then((m) => ({ default: m.ScanActionsMenu })),
+// The trigger is an h-8 w-8 control in a header row, and without a fallback
+// the row rendered one button short until the chunk landed.
+const ScanActionsMenu = dynamic(
+  () =>
+    import("./scan-actions-menu").then((m) => ({ default: m.ScanActionsMenu })),
+  {
+    loading: () => (
+      <div
+        aria-hidden
+        className="h-8 w-8 animate-pulse rounded-md border border-border bg-card"
+      />
+    ),
+  },
 );
 const IssueDetail = dynamic(() =>
   import("./issue-detail").then((m) => ({ default: m.IssueDetail })),
@@ -43,6 +61,9 @@ interface DashboardResultsProps {
   onRemoveTag: (scanId: string | number, tag: string) => TagMutationResult;
   crawlInfo: CrawlInfo | null;
   authReport?: ScanAuthReport | null;
+  /** The visibility this scan was actually requested with. Undefined means the
+   *  server default (public). */
+  initialIsPublic?: boolean;
   onReset: () => void;
   onScanSubdomain: (url: string) => void;
   /** Resolves to null when saved, or the message to show on failure. */
@@ -63,6 +84,7 @@ export function DashboardResults({
   onRemoveTag,
   crawlInfo,
   authReport,
+  initialIsPublic,
   onReset,
   onScanSubdomain,
   onSaveNotes,
@@ -70,11 +92,14 @@ export function DashboardResults({
   onVerdictChanged,
 }: DashboardResultsProps) {
   const [copied, setCopied] = useState(false);
-  // scan_history.is_public defaults to true, and this view has no "start
-  // private" control yet, so a freshly completed scan is always public
-  // until toggled here -- local state is enough since nothing else on this
-  // page reads it.
-  const [isPublic, setIsPublic] = useState(true);
+  // Seeded from the visibility the scan was actually requested with, not from
+  // a flat `true`. The comment here used to say this view has no "start
+  // private" control, which stopped being true when ScanForm grew its "Keep
+  // this scan private" toggle: a scan the user deliberately ran private came
+  // back offering "Make private" behind a padlock, and nothing ever corrected
+  // it, so the only way to make that scan public was to leave the page.
+  // scan_history.is_public still defaults to true, so undefined means public.
+  const [isPublic, setIsPublic] = useState(initialIsPublic !== false);
   // Overrides result.aiSummary once a "Generate AI summary" action finishes,
   // so the summary shows up in ScanSummary immediately instead of only
   // after the next fetch of this scan. Undefined until then, so
@@ -126,7 +151,12 @@ export function DashboardResults({
       findingsWithRemediation.find((f) => f.id === selectedIssue.id) ??
       selectedIssue;
     return (
-      <div className="pt-6">
+      // The tour anchor sits here rather than inside IssueDetail because this
+      // wrapper is the one element that exists for exactly as long as a
+      // finding is open: it is what the "open a finding" step waits to appear,
+      // and unlike the evidence block or the fix snippet it is never
+      // conditional on what the finding happens to contain.
+      <div {...tourAnchor("findingDetail")} className="pt-6">
         <IssueDetail
           issue={displayIssue}
           onBack={() => onSelectIssue(null)}
@@ -160,33 +190,46 @@ export function DashboardResults({
       {/* Target + actions */}
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div className="flex min-w-0 items-center gap-2.5">
-          <button
-            type="button"
-            onClick={copyUrl}
-            aria-label="Copy scanned URL"
-            className="group flex min-w-0 items-center gap-2 rounded text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <span className="truncate font-mono text-base font-semibold text-foreground transition-colors group-hover:text-primary">
-              {displayUrl}
-            </span>
-            {copied ? (
-              <Check
-                aria-hidden
-                className="h-4 w-4 shrink-0 text-[hsl(var(--success))]"
-              />
-            ) : (
-              <Copy
-                aria-hidden
-                className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-              />
-            )}
-          </button>
+          {/* The scanned URL is the heading for this view. A finished scan
+              replaces the console, and the "Scan a host" h1 goes with it, so
+              /dashboard?scan=... had no h1 at all and the document lost its
+              title landmark at exactly the moment it had something to say.
+              Same defect and same fix as history-detail-header.tsx.
+
+              The h1 wraps the button rather than sitting inside it: a button
+              takes phrasing content and a heading is not phrasing content. */}
+          <h1 className="flex min-w-0 items-center">
+            <button
+              type="button"
+              onClick={copyUrl}
+              aria-label="Copy scanned URL"
+              className="group flex min-w-0 items-center gap-2 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span className="truncate font-mono text-base font-semibold text-foreground transition-colors group-hover:text-primary">
+                {displayUrl}
+              </span>
+              {copied ? (
+                <Check
+                  aria-hidden
+                  className="h-4 w-4 shrink-0 text-[hsl(var(--success))]"
+                />
+              ) : (
+                <Copy
+                  aria-hidden
+                  className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+                />
+              )}
+            </button>
+          </h1>
           {authReport?.status === "authenticated" && (
             <AuthenticatedBadge className="shrink-0" />
           )}
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
+        <div
+          {...tourAnchor("scanActions")}
+          className="flex shrink-0 flex-wrap items-center gap-2"
+        >
           <Button
             variant="outline"
             onClick={onReset}
@@ -254,12 +297,17 @@ export function DashboardResults({
         panelFooter={
           scanHistoryId ? (
             <>
-              <HistoryTagsCard
-                scanId={scanHistoryId}
-                tags={scanTags}
-                onAdd={onAddTag}
-                onRemove={onRemoveTag}
-              />
+              {/* HistoryTagsCard has a closed prop list and lives under
+                  components/history, so the tour's anchor goes on a wrapper
+                  here. Block-level, inside a column, so it changes no layout. */}
+              <div {...tourAnchor("scanTags")}>
+                <HistoryTagsCard
+                  scanId={scanHistoryId}
+                  tags={scanTags}
+                  onAdd={onAddTag}
+                  onRemove={onRemoveTag}
+                />
+              </div>
               <HistoryNotes
                 notes={scanNotes}
                 isOwner={true}
@@ -269,21 +317,39 @@ export function DashboardResults({
           ) : undefined
         }
         emptyFindings={
-          <EmptyState
-            title="Zero findings on this host"
-            description="Every enabled check ran and none of them fired. Add a note so you know what state the host was in, or scan another target."
-            action={
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onReset}
-                className="h-8 gap-1.5 bg-transparent"
-              >
-                <RotateCcw aria-hidden className="h-3.5 w-3.5" />
-                New scan
-              </Button>
-            }
-          />
+          /* Only when the scan actually finished. This override was passed
+             unconditionally, which made ScanResultDetail's own "no findings,
+             but this scan did not finish" branch unreachable on /dashboard:
+             a run whose DNS or TLS branch timed out with zero findings was
+             told "Every enabled check ran and none of them fired", directly
+             under a summary card that had correctly called it partial. The
+             other three surfaces that render a scan (history, shared, host)
+             pass no override and always got the warning.
+
+             A clean scan is the best result this product returns, so it is
+             drawn as a verdict (success tone, the same shield the summary
+             above uses) rather than as the grey "nothing here yet" box it
+             rendered as before, which read identically to an empty asset
+             list. */
+          (displayResult.incomplete ?? []).length > 0 ? undefined : (
+            <EmptyState
+              icon={ShieldCheck}
+              tone="success"
+              title="Zero findings on this host"
+              description="Every enabled check ran and none of them fired. Add a note so you know what state the host was in, or scan another target."
+              action={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onReset}
+                  className="h-8 gap-1.5 bg-transparent"
+                >
+                  <RotateCcw aria-hidden className="h-3.5 w-3.5" />
+                  New scan
+                </Button>
+              }
+            />
+          )
         }
       />
     </div>

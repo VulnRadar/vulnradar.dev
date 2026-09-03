@@ -79,6 +79,13 @@ interface SendNotificationEmailParams {
     subject: string;
     text: string;
     html: string;
+    /**
+     * Inbox preview line. Optional so a caller can hand this whole object
+     * straight from a template builder in lib/email/email.ts: every template
+     * writes one, and sendEmail falls back to deriving it from `text` for
+     * anything that does not.
+     */
+    preheader?: string;
   };
 }
 
@@ -106,9 +113,7 @@ export async function sendNotificationEmail({
 
   await sendEmail({
     to: userEmail,
-    subject: emailContent.subject,
-    text: emailContent.text,
-    html: emailContent.html,
+    ...emailContent,
     unsubscribeToken,
   });
 }

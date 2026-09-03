@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/ui/utils";
+import { tourAnchor } from "@/lib/tour/anchors";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,6 +36,20 @@ interface HistoryFiltersProps {
 // One trigger shape for all four dropdowns, so a filter row does not read as
 // four different controls that happen to sit next to each other.
 const TRIGGER_CLASS = "h-10 shrink-0 gap-2 bg-transparent";
+
+// An engaged filter is the single most important thing this row can tell you,
+// and all four triggers used to look identical whether or not one was on: a
+// list narrowed to "Has a critical" looked exactly like the full list, with the
+// only clue being the word inside the button. Active picks up the same
+// brand-blue chip treatment the findings list already uses for its active
+// severity and category filters, so the two filter rows in the product say
+// "on" the same way.
+const ACTIVE_TRIGGER_CLASS =
+  "border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary";
+
+function triggerClass(active: boolean): string {
+  return cn(TRIGGER_CLASS, active && ACTIVE_TRIGGER_CLASS);
+}
 
 /**
  * The history filter row.
@@ -69,6 +85,7 @@ export function HistoryFilters({
           className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
         />
         <Input
+          {...tourAnchor("historySearch")}
           placeholder="Search by URL..."
           value={query.search}
           onChange={(e) => onChange({ search: e.target.value })}
@@ -81,7 +98,11 @@ export function HistoryFilters({
         {allTags.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className={TRIGGER_CLASS}>
+              <Button
+                variant="outline"
+                size="sm"
+                className={triggerClass(!!query.tag)}
+              >
                 <Filter aria-hidden className="h-4 w-4" />
                 <span>{query.tag || "All tags"}</span>
               </Button>
@@ -101,7 +122,11 @@ export function HistoryFilters({
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className={TRIGGER_CLASS}>
+            <Button
+              variant="outline"
+              size="sm"
+              className={triggerClass(query.severity !== "any")}
+            >
               <ShieldAlert aria-hidden className="h-4 w-4" />
               <span>{SEVERITY_FILTER_LABELS[query.severity]}</span>
             </Button>
@@ -120,7 +145,11 @@ export function HistoryFilters({
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className={TRIGGER_CLASS}>
+            <Button
+              variant="outline"
+              size="sm"
+              className={triggerClass(query.date !== "any")}
+            >
               <Calendar aria-hidden className="h-4 w-4" />
               <span>{DATE_FILTER_LABELS[query.date]}</span>
             </Button>
@@ -139,7 +168,11 @@ export function HistoryFilters({
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className={TRIGGER_CLASS}>
+            <Button
+              variant="outline"
+              size="sm"
+              className={triggerClass(query.sort !== "newest")}
+            >
               <ArrowUpDown aria-hidden className="h-4 w-4" />
               <span>{SORT_LABELS[query.sort]}</span>
             </Button>

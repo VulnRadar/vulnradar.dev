@@ -1,3 +1,4 @@
+import { EXACT_CHECK_CATEGORY_COUNT } from "@/lib/config/check-stats.generated";
 import {
   APP_NAME,
   APP_URL,
@@ -10,7 +11,7 @@ import {
   SEO_ORG_FOUNDING_YEAR,
   SEO_LICENSE,
   SUPPORT_EMAIL,
-  DISCORD_INVITE_URL,
+  SOCIAL_PROFILE_URLS,
   TOTAL_CHECKS_LABEL,
   CHROME_WEB_STORE_URL,
   FIREFOX_ADDON_URL,
@@ -69,15 +70,23 @@ const WEBSITE_ID = `${APP_URL}/#website`;
 export function SiteStructuredData({ nonce }: { nonce?: string }) {
   // sameAs links the entity to its verified profiles elsewhere, which is what
   // answer engines use to resolve "VulnRadar" to one thing. All real and
-  // config-derived: the source repo, the community server, and the two
-  // published extension store listings. Store URLs are empty on a fork that
-  // has not published one, so filter(Boolean) drops them cleanly.
+  // config-derived: the source repo, every configured social account
+  // (SOCIAL_PROFILE_URLS, which includes the community Discord and already
+  // excludes both the unconfigured platforms and the RSS feed, since a feed
+  // is not an identity), and the two published extension store listings.
+  // Store URLs are empty on a fork that has not published one, so
+  // filter(Boolean) drops them cleanly. The Set guards against a deployment
+  // pointing two of these at the same URL, which would publish a duplicate.
   const sameAs = [
-    SEO_GITHUB_URL,
-    DISCORD_INVITE_URL,
-    CHROME_WEB_STORE_URL,
-    FIREFOX_ADDON_URL,
-  ].filter(Boolean);
+    ...new Set(
+      [
+        SEO_GITHUB_URL,
+        ...SOCIAL_PROFILE_URLS,
+        CHROME_WEB_STORE_URL,
+        FIREFOX_ADDON_URL,
+      ].filter(Boolean),
+    ),
+  ];
 
   return (
     <>
@@ -151,7 +160,7 @@ export function SoftwareStructuredData({
         isAccessibleForFree: true,
         publisher: { "@id": ORGANIZATION_ID },
         featureList: [
-          `${TOTAL_CHECKS_LABEL} security checks across 18 categories`,
+          `${TOTAL_CHECKS_LABEL} security checks across ${EXACT_CHECK_CATEGORY_COUNT} categories`,
           "Active injection testing: SQL injection, reflected XSS, SSTI, OS command injection, open redirect",
           "Security header, CSP and cookie analysis",
           "TLS and certificate inspection",

@@ -1,3 +1,4 @@
+import { ShieldCheck, AlertTriangle, ShieldAlert } from "lucide-react";
 import type { Vulnerability } from "@/lib/scanner/types";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
 import { SEVERITY_TONE } from "@/components/scanner/severity-badge";
@@ -38,16 +39,19 @@ const RATING_TONE = {
     text: SEVERITY_TONE.critical.text,
     surface: SEVERITY_TONE.critical.surface,
     label: "Unsafe",
+    icon: ShieldAlert,
   },
   caution: {
     text: SEVERITY_TONE.medium.text,
     surface: SEVERITY_TONE.medium.surface,
     label: "Caution",
+    icon: AlertTriangle,
   },
   safe: {
     text: "text-[hsl(var(--success))]",
     surface: "bg-[hsl(var(--success))]/10",
     label: "Safe",
+    icon: ShieldCheck,
   },
 } as const;
 
@@ -67,6 +71,20 @@ export function getSeverityLabel(scan: ScanEntry) {
   return ratingTone(scan).label;
 }
 
+/**
+ * The glyph for the rating, from the same RATING_TONE row as the colour and
+ * the label. The scan list used to pick it separately, off
+ * `findings_count === 0`, which is not the question the row is answering: a
+ * scan can carry a dozen hardening findings and still rate "safe" (see
+ * lib/scanner/safety-rating.ts, "unsafe only with evidence of something
+ * exploitable"). Almost every row therefore drew an amber warning triangle
+ * next to a green "Safe", and on a security product the louder of those two
+ * is the one that gets believed.
+ */
+export function getSeverityIcon(scan: ScanEntry) {
+  return ratingTone(scan).icon;
+}
+
 // Canonical relative-time formatter (see lib/ui/relative-time.ts).
 export { formatRelativeTime as getRelativeTime } from "@/lib/ui/relative-time";
 
@@ -78,21 +96,6 @@ export function getHostname(url: string) {
   }
 }
 
-export interface ParsedUrl {
-  subdomain: string | null;
-  host: string;
-  path: string;
-}
-
-export function parseUrl(url: string): ParsedUrl {
-  try {
-    const u = new URL(url);
-    const path = u.pathname === "/" ? "" : u.pathname + (u.search || "");
-    const parts = u.hostname.split(".");
-    const subdomain = parts.length > 2 ? parts[0] : null;
-    const host = subdomain ? parts.slice(1).join(".") : u.hostname;
-    return { subdomain, host, path };
-  } catch {
-    return { subdomain: null, host: url, path: "" };
-  }
-}
+// One splitter for the whole app, next to the component that renders its
+// output: components/shared/url-display.tsx.
+export { parseUrl, type ParsedUrl } from "@/components/shared/url-display";

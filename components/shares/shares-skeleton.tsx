@@ -1,70 +1,103 @@
-import { Header } from "@/components/scanner/header";
-import { Footer } from "@/components/scanner/footer";
+import { AppPageShell } from "@/components/shared/app-page-shell";
+import { StatStripSkeleton } from "@/components/shared/stat-strip";
+import { SkeletonRegion } from "@/components/shared/skeleton-shapes";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const STAT_COUNT = 4;
 const ROW_COUNT = 6;
 
-function SharesStatsSkeleton() {
-  return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-border overflow-hidden rounded-md border border-border">
-      {Array.from({ length: STAT_COUNT }).map((_, i) => (
-        <div key={i} className="flex items-center gap-3 px-4 py-3 bg-card">
-          <Skeleton className="h-9 w-9 rounded-lg shrink-0" />
-          <div className="space-y-1.5">
-            <Skeleton className="h-6 w-8" />
-            <Skeleton className="h-3 w-16" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
+/** The six-track layout SharesTable's header and SharesRow both key off. */
+const GRID = "sm:grid-cols-[1fr_110px_100px_110px_120px_80px]";
 
+/**
+ * The rows carry SharesRow's own container classes verbatim. The flat
+ * `flex items-center` copy that used to live here was right on desktop and
+ * badly wrong on a phone, where the real row stacks six blocks (target,
+ * status, findings, shared, expires, actions) into a column roughly three
+ * times the height this drew.
+ */
 function SharesTableSkeleton() {
   return (
-    <div className="rounded-xl border border-border overflow-hidden divide-y divide-border">
-      {Array.from({ length: ROW_COUNT }).map((_, i) => (
-        <div key={i} className="flex items-center gap-4 py-3.5 pl-4 pr-4">
-          <div className="flex-1 min-w-0 space-y-1.5">
-            <Skeleton className="h-4 w-44" />
-            <Skeleton className="h-3 w-28" />
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
+      {/* The desktop column-header band, which this skeleton did not have, so
+          every row sat ~37px too high until the table arrived. */}
+      <div
+        className={`hidden sm:grid ${GRID} gap-4 border-b border-border bg-muted/30 px-4 py-2.5`}
+      >
+        <Skeleton className="h-3.5 w-14" />
+        <Skeleton className="h-3.5 w-12" />
+        <Skeleton className="h-3.5 w-14" />
+        <Skeleton className="h-3.5 w-12" />
+        <Skeleton className="h-3.5 w-14" />
+        <Skeleton className="h-3.5 w-12 justify-self-end" />
+      </div>
+
+      <div className="divide-y divide-border">
+        {Array.from({ length: ROW_COUNT }).map((_, i) => (
+          <div
+            key={i}
+            // border-l-2 is the severity rail the loaded row carries, drawn
+            // transparent so the content keeps the same 2px inset.
+            className={`flex flex-col gap-2 border-l-2 border-transparent py-3 pl-4 pr-4 sm:grid ${GRID} sm:items-center sm:gap-4 sm:py-3.5`}
+          >
+            <div className="min-w-0 space-y-1.5">
+              <Skeleton className="h-4 w-44 max-w-full" />
+              <Skeleton className="h-3 w-28" />
+            </div>
+            <Skeleton className="h-4 w-16" />
+            <Skeleton className="h-4 w-20" />
+            <Skeleton className="h-4 w-20" />
+            {/* Expires is a 44px touch target below sm and a compact link
+                above it, so the wrapper carries that height, not the bar. */}
+            <div className="flex min-h-11 items-center sm:min-h-0">
+              <Skeleton className="h-4 w-16" />
+            </div>
+            <div className="flex items-center justify-end gap-2 sm:gap-1">
+              <Skeleton className="h-11 w-11 rounded-md sm:h-8 sm:w-8" />
+              <Skeleton className="h-11 w-11 rounded-md sm:h-8 sm:w-8" />
+            </div>
           </div>
-          <Skeleton className="hidden sm:block h-4 w-20" />
-          <Skeleton className="hidden sm:block h-4 w-16" />
-          <Skeleton className="hidden sm:block h-4 w-14" />
-          <Skeleton className="h-8 w-8 rounded-md shrink-0" />
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
 
 /**
- * Mirrors SharesPage's real layout (title, stat grid, share rows) so the
- * route-level loading.tsx and the client component's own pre-fetch state
- * render the same shape.
+ * Two exports over one shape, because a skeleton has two callers that want
+ * opposite things.
+ *
+ * app/shares/loading.tsx renders before the page component exists, so it needs
+ * the whole chrome. The page's own loading branch renders while that chrome is
+ * already on screen, so drawing it again would tear down a Header the user can
+ * see. The old single export did the second thing in both places.
  */
+export function SharesDataSkeleton() {
+  return (
+    <SkeletonRegion label="Loading your shared reports">
+      {/* The real stat strip's own placeholder, not a second hand-rolled copy
+          of it: the old local SharesStatsSkeleton drew the strip at rounded-md
+          with a rounded-lg icon nested inside it, so the placeholder had a
+          larger radius than its own container and neither matched the
+          rounded-xl strip that replaced it. */}
+      <StatStripSkeleton />
+      <SharesTableSkeleton />
+    </SkeletonRegion>
+  );
+}
+
 export function SharesSkeleton() {
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <Header />
-      <main
-        className="w-full max-w-6xl mx-auto flex-1 px-4 py-6 sm:px-6 sm:py-8"
-        role="status"
-        aria-live="polite"
-        aria-label="Loading shared reports"
-      >
-        <div className="flex flex-col gap-5">
-          <div className="pb-2 pt-2 sm:pt-4 space-y-2">
-            <Skeleton className="h-7 w-40" />
-            <Skeleton className="h-4 w-full max-w-md" />
-          </div>
-          <SharesStatsSkeleton />
-          <SharesTableSkeleton />
+    <AppPageShell className="flex flex-col gap-5">
+      {/* The page's title block is static, so the page itself renders it for
+          real. Here it is bars, because the page component has not mounted. */}
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3 pb-2 pt-2 sm:pt-4">
+        <div className="min-w-0 space-y-2">
+          <Skeleton className="h-7 w-44 sm:h-8" />
+          <Skeleton className="h-5 w-full max-w-2xl" />
         </div>
-      </main>
-      <Footer />
-    </div>
+        <Skeleton className="h-10 w-44 shrink-0" />
+      </div>
+      <SharesDataSkeleton />
+    </AppPageShell>
   );
 }

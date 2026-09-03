@@ -163,16 +163,17 @@ export function BillingVerificationModal({
         // no code was sent. Roll back so the user can retry, and surface it.
         setUserContinued(false);
         toast({
-          title: "Error sending code",
-          description: "Please try again in a moment",
+          title: "Could not send the code",
+          description:
+            "No code went out, so nothing is waiting in your inbox. Try again in a moment.",
           variant: "destructive",
         });
       }
     } catch {
       setUserContinued(false);
       toast({
-        title: "Error sending code",
-        description: "Please check your connection and try again",
+        title: "Could not reach the server",
+        description: "No code went out. Check your connection and try again.",
         variant: "destructive",
       });
     }
@@ -265,11 +266,11 @@ export function BillingVerificationModal({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-sm">
+      <DialogContent size="sm">
         {!userContinued ? (
           // Initial confirmation prompt
           <>
-            <DialogHeader className="gap-2">
+            <DialogHeader>
               <div className="flex items-center gap-2">
                 <ShieldAlert
                   className="h-5 w-5 text-[hsl(var(--warning))]"
@@ -315,7 +316,7 @@ export function BillingVerificationModal({
         ) : (
           // Code input area (shown after user clicks Continue)
           <>
-            <DialogHeader className="gap-2">
+            <DialogHeader>
               <div className="flex items-center gap-2">
                 <ShieldAlert
                   className="h-5 w-5 text-[hsl(var(--warning))]"

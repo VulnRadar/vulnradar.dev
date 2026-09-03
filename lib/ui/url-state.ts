@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useIsomorphicLayoutEffect } from "@/lib/ui/use-isomorphic-layout-effect";
 
 export const QUERY_CHANGE_EVENT = "vr:query-change";
 
@@ -223,4 +224,44 @@ export function useQueryParam<T extends string = string>(
   );
 
   return [value, update];
+}
+
+/**
+ * State whose real value comes from the query string, seeded so that the
+ * server and the client's first render agree.
+ *
+ * The tempting shape is `useState(() => getQueryParam("scope"))`. It is a
+ * hydration bug: `getQueryParam` returns null without a window, so the server
+ * renders the fallback and the client's first render renders the URL's value.
+ * React sees the two disagree, reports the markup as mismatched and regenerates
+ * the tree on the client, which re-enters the route's Suspense boundary and
+ * replays loading.tsx over whatever the page was already showing. That is the
+ * "two skeletons" you get on /assets?scope=all but never on plain /assets.
+ *
+ * So the first render is always the fallback, matching the server, and the real
+ * value is applied in a layout effect: after the DOM is built, before the
+ * browser paints. The fallback is therefore never visible, and hydration is
+ * clean. Seeded once on mount; keeping it in sync afterwards (popstate, the
+ * location bridge) stays the caller's job, as it already was.
+ */
+export function useQuerySeededState<T>(
+  parse: () => T,
+  ssrFallback: T,
+): [T, React.Dispatch<React.SetStateAction<T>>] {
+  const [value, setValue] = useState<T>(ssrFallback);
+
+  // Captured once in a useState initializer rather than held in a ref, so
+  // nothing is written during render and the seed does not depend on the
+  // caller memoising its parse function. It is only ever read at mount, so a
+  // later identity for it is genuinely irrelevant.
+  const [parseOnce] = useState(() => parse);
+
+  useIsomorphicLayoutEffect(() => {
+    const seeded = parseOnce();
+    // Object.is guard: with no param in the URL the seed equals the fallback,
+    // and re-setting it would cost every page using this an extra render.
+    setValue((prev) => (Object.is(prev, seeded) ? prev : seeded));
+  }, [parseOnce]);
+
+  return [value, setValue];
 }

@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { useIsomorphicLayoutEffect } from "@/lib/ui/use-isomorphic-layout-effect";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { AppPageShell } from "@/components/shared/app-page-shell";
 import { useToast } from "@/components/ui/use-toast";
-import { Header } from "@/components/scanner/header";
-import { Footer } from "@/components/scanner/footer";
 import { IssueDetail } from "@/components/scanner/issue-detail";
 import { ScanResultDetail } from "@/components/scanner/scan-result-detail";
 import { SubdomainDiscovery } from "@/components/scanner/subdomain-discovery";
@@ -17,6 +18,7 @@ import {
   usePagination,
 } from "@/components/ui/pagination-control";
 import { API, BILLING_HISTORY_RETENTION } from "@/lib/config/client-constants";
+import { pluralize } from "@/lib/ui/plural";
 import {
   getQueryParam,
   getQueryParamInt,
@@ -24,6 +26,7 @@ import {
   LOCATION_CHANGE_EVENT,
   removeQueryParam,
   setQueryParam,
+  useQuerySeededState,
 } from "@/lib/ui/url-state";
 import { useAuth } from "@/components/providers/auth-provider";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
@@ -41,6 +44,7 @@ import {
   HistoryNotes,
   HistoryTagsCard,
   HistoryViewTabs,
+  HistoryDataSkeleton,
   getDomain,
 } from "@/components/history";
 import {
@@ -49,7 +53,6 @@ import {
   filterHistory,
   type HistoryQuery,
 } from "@/components/history/history-filter-utils";
-import { HistorySkeleton } from "@/components/history/history-skeleton";
 import { HistoryDetailSkeleton } from "@/components/history/history-detail-skeleton";
 import {
   createScanParamTracker,
@@ -64,7 +67,7 @@ import { InlineAlert } from "@/components/shared/inline-alert";
 
 export default function HistoryPage() {
   const router = useRouter();
-  const { me } = useAuth();
+  const { me, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
 
   // List state
@@ -82,8 +85,9 @@ export default function HistoryPage() {
     [],
   );
   const [allTags, setAllTags] = useState<string[]>([]);
-  const [currentPage, setCurrentPage] = useState(
+  const [currentPage, setCurrentPage] = useQuerySeededState(
     () => getQueryParamInt("page") ?? 1,
+    1,
   );
   const [pageSize, setPageSize] = useState(10);
   const [rescanning, setRescanning] = useState<string | null>(null);
@@ -117,9 +121,16 @@ export default function HistoryPage() {
   const [scanDetailTags, setScanDetailTags] = useState<ScanTag[]>([]);
   const [crawlInfo, setCrawlInfo] = useState<CrawlInfo | null>(null);
 
-  // Retention info
+  // Retention info. The plan is only known once /auth/me lands, and this page
+  // is fetched independently of it, so `me?.plan || "free"` renders the FREE
+  // retention window as fact for a paying account until the two races settle
+  // (and forever if that fetch fails). On a line whose whole subject is how
+  // long we keep the reader's data, the free number is the worst one to guess:
+  // retentionKnown gates the claim rather than the fallback silently standing
+  // in for it.
   const isStaff =
     me?.role && ["admin", "moderator", "support"].includes(me.role);
+  const retentionKnown = !authLoading && (isStaff || me?.plan !== undefined);
   const userPlan = (me?.plan ||
     "free") as keyof typeof BILLING_HISTORY_RETENTION;
   const retentionDays = isStaff
@@ -136,10 +147,13 @@ export default function HistoryPage() {
 
   // page=1 is the implicit default, so it's left out of the URL entirely
   // rather than ever showing up as ?page=1.
-  const handlePageChange = useCallback((page: number) => {
-    setCurrentPage(page);
-    setQueryParam("page", page > 1 ? String(page) : null, { replace: true });
-  }, []);
+  const handlePageChange = useCallback(
+    (page: number) => {
+      setCurrentPage(page);
+      setQueryParam("page", page > 1 ? String(page) : null, { replace: true });
+    },
+    [setCurrentPage],
+  );
 
   // Guards against a last-response-wins race: rapid ?scan= switches (back/
   // forward, fast row clicks) fire overlapping loads, and an older response
@@ -237,9 +251,18 @@ export default function HistoryPage() {
     }
   }, [loadScanDetail, scanParam]);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reads the current URL query params (external to React) to seed selected-scan state, then subscribes below for future changes
+  // Seeded before paint, subscribed after. `selectedScanId` starts null, so
+  // the first render is always the list branch; landing on /history?scan=X
+  // used to paint the list skeleton, then swap to the scan-detail skeleton
+  // once a post-paint effect had read the param. Two different loading states
+  // for one navigation. A layout effect corrects the branch after the DOM is
+  // built and before the browser paints, so only the right one is ever shown,
+  // and the first render still matches the server HTML so hydration is clean.
+  useIsomorphicLayoutEffect(() => {
     handleQueryChange();
+  }, [handleQueryChange]);
+
+  useEffect(() => {
     const onChange = (e: Event) => {
       const detail = (e as CustomEvent<{ key: string }>).detail;
       if (detail.key === "scan") handleQueryChange();
@@ -272,7 +295,7 @@ export default function HistoryPage() {
       window.removeEventListener(LOCATION_CHANGE_EVENT, syncPageFromUrl);
       window.removeEventListener("popstate", syncPageFromUrl);
     };
-  }, []);
+  }, [setCurrentPage]);
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -562,164 +585,154 @@ export default function HistoryPage() {
   const effectivePage = Math.min(currentPage, Math.max(1, totalPages));
   const paginatedScans = getPage(effectivePage);
 
-  if (loading) {
-    return <HistorySkeleton />;
-  }
-
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <Header />
+    <AppPageShell className="flex flex-col gap-5">
+      {selectedScanId !== null ? (
+        /* Detail View */
+        <>
+          {/* The detail view has no page h1 for the strip to sit under, so
+              here it stays at the top where it was. */}
+          <HistoryViewTabs />
+          {detailLoading && <HistoryDetailSkeleton />}
 
-      <main
-        id="main-content"
-        tabIndex={-1}
-        className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col gap-5"
-      >
-        <HistoryViewTabs />
-
-        {selectedScanId !== null ? (
-          /* Detail View */
-          <>
-            {detailLoading && <HistoryDetailSkeleton />}
-
-            {!detailLoading && scanDetail && (
-              <div className="flex flex-col gap-4">
-                {/* Owner-only affordances. currentUserId must be a real
+          {!detailLoading && scanDetail && (
+            <div className="flex flex-col gap-4">
+              {/* Owner-only affordances. currentUserId must be a real
                     identity: null === null would otherwise mark a signed-out
                     viewer (or a transient /me fetch failure) as the "owner" of
                     an ownerless public scan and expose edit/refresh controls.
                     The API re-checks ownership regardless, so this only gates
                     the UI. */}
-                {(() => {
-                  const isOwner =
-                    currentUserId != null && scanOwnerId === currentUserId;
-                  return (
-                    <>
-                      {selectedIssue ? (
-                        <IssueDetail
-                          issue={selectedIssue}
-                          onBack={() => setSelectedIssue(null)}
-                          findingUrl={isOwner ? scanDetail.url : undefined}
-                          scanHistoryId={scanNumericId}
-                          onVerdictChanged={handleVerdictChanged}
-                          onRemediationChanged={handleRemediationChanged}
+              {(() => {
+                const isOwner =
+                  currentUserId != null && scanOwnerId === currentUserId;
+                return (
+                  <>
+                    {selectedIssue ? (
+                      <IssueDetail
+                        issue={selectedIssue}
+                        onBack={() => setSelectedIssue(null)}
+                        findingUrl={isOwner ? scanDetail.url : undefined}
+                        scanHistoryId={scanNumericId}
+                        onVerdictChanged={handleVerdictChanged}
+                        onRemediationChanged={handleRemediationChanged}
+                      />
+                    ) : (
+                      <>
+                        <HistoryDetailHeader
+                          scanDetail={scanDetail}
+                          scanId={selectedScanId}
+                          isOwner={isOwner}
+                          isPublic={scanIsPublic}
+                          onBack={handleBackToList}
+                          onDeleted={() => {
+                            setSelectedScanId(null);
+                            setScanDetail(null);
+                            // Clear ?scan= too (same as handleBackToList). Without
+                            // this the deleted id lingers in the URL and browser
+                            // Back re-loads it into a 404 skeleton bounce.
+                            updateUrlWithScan(null);
+                            fetchHistory();
+                          }}
+                          onVerified={handleFindingsUpdated}
+                          onSummaryGenerated={handleSummaryGenerated}
+                          onPrivacyChanged={handlePrivacyChanged}
                         />
-                      ) : (
-                        <>
-                          <HistoryDetailHeader
-                            scanDetail={scanDetail}
-                            scanId={selectedScanId}
-                            isOwner={isOwner}
-                            isPublic={scanIsPublic}
-                            onBack={handleBackToList}
-                            onDeleted={() => {
-                              setSelectedScanId(null);
-                              setScanDetail(null);
-                              // Clear ?scan= too (same as handleBackToList). Without
-                              // this the deleted id lingers in the URL and browser
-                              // Back re-loads it into a 404 skeleton bounce.
-                              updateUrlWithScan(null);
-                              fetchHistory();
-                            }}
-                            onVerified={handleFindingsUpdated}
-                            onSummaryGenerated={handleSummaryGenerated}
-                            onPrivacyChanged={handlePrivacyChanged}
-                          />
 
-                          <ScanResultDetail
-                            result={scanDetail}
-                            onSelectIssue={setSelectedIssue}
-                            canRemediate={isOwner}
-                            crawlInfo={crawlInfo}
-                            screenshotSrc={
-                              scanDetail.screenshot && scanNumericId
-                                ? API.SCAN_SCREENSHOT(selectedScanId)
-                                : undefined
-                            }
-                            screenshotRefreshScanId={
-                              isOwner ? selectedScanId : undefined
-                            }
-                            onScreenshotRefreshed={(screenshot) =>
-                              setScanDetail((prev) =>
-                                prev ? { ...prev, screenshot } : prev,
-                              )
-                            }
-                            refreshScanId={isOwner ? selectedScanId : undefined}
-                            onDnsRefreshed={(dnsRecords) =>
-                              setScanDetail((prev) =>
-                                prev ? { ...prev, dnsRecords } : prev,
-                              )
-                            }
-                            onPortRefreshed={(portScan) =>
-                              setScanDetail((prev) =>
-                                prev ? { ...prev, portScan } : prev,
-                              )
-                            }
-                            subdomain={
-                              <SubdomainDiscovery
-                                url={scanDetail.url}
-                                initialResult={scanDetail.subdomains ?? null}
+                        <ScanResultDetail
+                          result={scanDetail}
+                          onSelectIssue={setSelectedIssue}
+                          canRemediate={isOwner}
+                          crawlInfo={crawlInfo}
+                          screenshotSrc={
+                            scanDetail.screenshot && scanNumericId
+                              ? API.SCAN_SCREENSHOT(selectedScanId)
+                              : undefined
+                          }
+                          screenshotRefreshScanId={
+                            isOwner ? selectedScanId : undefined
+                          }
+                          onScreenshotRefreshed={(screenshot) =>
+                            setScanDetail((prev) =>
+                              prev ? { ...prev, screenshot } : prev,
+                            )
+                          }
+                          refreshScanId={isOwner ? selectedScanId : undefined}
+                          onDnsRefreshed={(dnsRecords) =>
+                            setScanDetail((prev) =>
+                              prev ? { ...prev, dnsRecords } : prev,
+                            )
+                          }
+                          onPortRefreshed={(portScan) =>
+                            setScanDetail((prev) =>
+                              prev ? { ...prev, portScan } : prev,
+                            )
+                          }
+                          subdomain={
+                            <SubdomainDiscovery
+                              url={scanDetail.url}
+                              initialResult={scanDetail.subdomains ?? null}
+                            />
+                          }
+                          panelFooter={
+                            <>
+                              <HistoryTagsCard
+                                scanId={selectedScanId}
+                                tags={scanDetailTags}
+                                onAdd={handleAddTag}
+                                onRemove={handleRemoveTag}
+                                readOnly={!isOwner}
                               />
-                            }
-                            panelFooter={
-                              <>
-                                <HistoryTagsCard
-                                  scanId={selectedScanId}
-                                  tags={scanDetailTags}
-                                  onAdd={handleAddTag}
-                                  onRemove={handleRemoveTag}
-                                  readOnly={!isOwner}
-                                />
-                                <HistoryNotes
-                                  notes={scanNotes}
-                                  isOwner={isOwner}
-                                  onSave={handleSaveNotes}
-                                />
-                              </>
-                            }
-                          />
-                        </>
-                      )}
-                    </>
-                  );
-                })()}
-              </div>
-            )}
-
-            {!detailLoading && !scanDetail && (
-              <div className="flex flex-col items-center gap-4 py-16 text-center">
-                <p className="text-sm text-muted-foreground">
-                  {detailError ??
-                    "This scan could not be loaded. It may have been deleted or fallen outside your retention window."}
-                </p>
-                <div className="flex flex-wrap items-center justify-center gap-2">
-                  {/* A 404 will not resolve on a retry, so only the server
-                      errors and the network case offer one. */}
-                  {detailError &&
-                    !detailError.startsWith("This scan could not be found") && (
-                      <Button
-                        variant="outline"
-                        onClick={() => loadScanDetail(selectedScanId)}
-                        className="bg-transparent"
-                      >
-                        Retry
-                      </Button>
+                              <HistoryNotes
+                                notes={scanNotes}
+                                isOwner={isOwner}
+                                onSave={handleSaveNotes}
+                              />
+                            </>
+                          }
+                        />
+                      </>
                     )}
-                  <Button
-                    variant="outline"
-                    onClick={handleBackToList}
-                    className="bg-transparent"
-                  >
-                    Back to history
-                  </Button>
-                </div>
+                  </>
+                );
+              })()}
+            </div>
+          )}
+
+          {!detailLoading && !scanDetail && (
+            <div className="flex flex-col items-center gap-4 py-16 text-center">
+              <p className="text-sm text-muted-foreground">
+                {detailError ??
+                  "This scan could not be loaded. It may have been deleted or fallen outside your retention window."}
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {/* A 404 will not resolve on a retry, so only the server
+                      errors and the network case offer one. */}
+                {detailError &&
+                  !detailError.startsWith("This scan could not be found") && (
+                    <Button
+                      variant="outline"
+                      onClick={() => loadScanDetail(selectedScanId)}
+                      className="bg-transparent"
+                    >
+                      Retry
+                    </Button>
+                  )}
+                <Button
+                  variant="outline"
+                  onClick={handleBackToList}
+                  className="bg-transparent"
+                >
+                  Back to history
+                </Button>
               </div>
-            )}
-          </>
-        ) : (
-          /* List View */
-          <>
-            {/* Clear All has moved twice. It began as an icon button in the
+            </div>
+          )}
+        </>
+      ) : (
+        /* List View */
+        <>
+          {/* Clear All has moved twice. It began as an icon button in the
                 filter row, beside the search input a user touches constantly,
                 which put deleting every scan on the account two clicks from
                 the middle of the workflow. It was then exiled to a labelled
@@ -729,24 +742,40 @@ export default function HistoryPage() {
                 header now, where a page-level action belongs, and the
                 type-DELETE confirmation added with the danger section is what
                 keeps it from being a one-click mistake. */}
-            <div className="mb-1 flex flex-col gap-3 pb-2 pt-6 sm:flex-row sm:items-start sm:justify-between sm:pt-8">
-              <div aria-label="Scan history">
-                <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
-                  History
-                </h1>
+          <div className="mb-1 flex flex-col gap-3 pb-2 pt-6 sm:flex-row sm:items-start sm:justify-between sm:pt-8">
+            <div aria-label="Scan history">
+              <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
+                History
+              </h1>
+              {/* The subtitle is three counts about the account, and every
+                    one of them is 0 until the fetch lands. Rendering it early
+                    would open the page by telling someone with 200 scans that
+                    they have none, which is the same lie the listError panel
+                    below exists to avoid. */}
+              {loading ? (
+                <Skeleton className="mt-1 h-5 w-64 max-w-full" />
+              ) : (
                 <p className="mt-1 text-sm text-muted-foreground">
                   {totalScans} {totalScans === 1 ? "scan" : "scans"} on record
                   {scans.length < totalScans
                     ? `, showing the ${scans.length} most recent`
                     : ""}
-                  , kept for{" "}
-                  {retentionDays === -1
-                    ? "as long as your account exists"
-                    : `${retentionDays} days`}
+                  {retentionKnown
+                    ? retentionDays === -1
+                      ? ", kept for as long as your account exists"
+                      : `, kept for ${pluralize(retentionDays, "day")}`
+                    : ""}
                 </p>
-              </div>
+              )}
+            </div>
 
-              {scans.length > 0 && (
+            {/* Reserved while loading rather than left out: below sm this
+                  button is a second row, so its arrival would move the stats,
+                  the filters and the list down with it. */}
+            {loading ? (
+              <Skeleton className="h-9 w-40 shrink-0 self-start" />
+            ) : (
+              scans.length > 0 && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -761,108 +790,118 @@ export default function HistoryPage() {
                   <Trash2 aria-hidden className="mr-2 h-4 w-4" />
                   {clearing ? "Clearing..." : "Clear all history"}
                 </Button>
-              )}
-            </div>
+              )
+            )}
+          </div>
 
-            {/* A failed load is never the empty state. With no rows to show,
+          {/* Under the title, matching /assets, /attack-surface and
+              /public-scans. The strip used to render above the h1 here, so
+              the same four-tab control sat at two different heights
+              depending on which tab you were on, and put nav chrome ahead of
+              the thing that names the page. It needs no data, so it is on
+              the first frame either way. */}
+          <HistoryViewTabs />
+
+          {/* A failed load is never the empty state. With no rows to show,
                 this replaces the list outright and says the scans are still
                 there; with rows already on screen (a refetch that failed) it
                 sits above them as a staleness warning instead. */}
-            {listError && scans.length === 0 ? (
-              <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-destructive/30 bg-destructive/5 px-4 py-14 text-center">
-                <AlertTriangle
-                  className="h-6 w-6 text-destructive/70"
-                  aria-hidden="true"
+          {loading ? (
+            <HistoryDataSkeleton />
+          ) : listError && scans.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-destructive/30 bg-destructive/5 px-4 py-14 text-center">
+              <AlertTriangle
+                className="h-6 w-6 text-destructive/70"
+                aria-hidden="true"
+              />
+              <p className="text-sm font-semibold text-foreground">
+                {listError}
+              </p>
+              <p className="max-w-xs text-xs text-muted-foreground">
+                Your scans have not been deleted. This is a problem reading
+                them, not a change to them.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="bg-transparent"
+                onClick={() => {
+                  setLoading(true);
+                  fetchHistory();
+                }}
+              >
+                Retry
+              </Button>
+            </div>
+          ) : (
+            <>
+              {listError && (
+                <InlineAlert tone="error">
+                  {listError} These rows are from the last successful load and
+                  may be out of date.
+                </InlineAlert>
+              )}
+
+              <HistoryStats scans={scans} capped={scans.length < totalScans} />
+
+              {scans.length > 0 && (
+                <HistoryFilters
+                  query={query}
+                  onChange={updateQuery}
+                  allTags={allTags}
                 />
-                <p className="text-sm font-semibold text-foreground">
-                  {listError}
-                </p>
-                <p className="max-w-xs text-xs text-muted-foreground">
-                  Your scans have not been deleted. This is a problem reading
-                  them, not a change to them.
-                </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="bg-transparent"
-                  onClick={() => {
-                    setLoading(true);
-                    fetchHistory();
-                  }}
-                >
-                  Retry
-                </Button>
-              </div>
-            ) : (
-              <>
-                {listError && (
-                  <InlineAlert tone="error">
-                    {listError} These rows are from the last successful load and
-                    may be out of date.
-                  </InlineAlert>
-                )}
+              )}
 
-                <HistoryStats scans={scans} />
-
-                {scans.length > 0 && (
-                  <HistoryFilters
-                    query={query}
-                    onChange={updateQuery}
-                    allTags={allTags}
-                  />
-                )}
-
-                {/* Search and tag filtering run over the rows this page loaded,
+              {/* Search and tag filtering run over the rows this page loaded,
                 which the API caps at HISTORY_LIST_MAX_ROWS. Saying so is the
                 difference between "no match" and "no match in the part we
                 looked at": without it a scan that is still inside retention
                 simply appears not to exist. Server-side search is the real
                 fix and is tracked separately; until then this at least does
                 not mislead. */}
-                {hasFilters && scans.length < totalScans && (
-                  <p className="rounded-md border border-[hsl(var(--warning))]/25 bg-[hsl(var(--warning))]/5 px-3 py-2 text-xs text-muted-foreground">
-                    Searching the {scans.length} most recent scans, not all{" "}
-                    {totalScans} on this account. An older scan may not appear
-                    here yet.
-                  </p>
-                )}
+              {hasFilters && scans.length < totalScans && (
+                <p className="rounded-lg border border-[hsl(var(--warning))]/25 bg-[hsl(var(--warning))]/5 px-3.5 py-2.5 text-xs text-muted-foreground">
+                  Searching the {scans.length} most recent scans, not all{" "}
+                  {totalScans} on this account. An older scan may not appear
+                  here yet.
+                </p>
+              )}
 
-                <HistoryEmptyState
-                  hasScans={scans.length > 0}
-                  hasFilters={hasFilters}
-                  hasResults={filtered.length > 0}
-                  onClearFilters={() => setQuery(DEFAULT_HISTORY_QUERY)}
+              <HistoryEmptyState
+                hasScans={scans.length > 0}
+                hasFilters={hasFilters}
+                hasResults={filtered.length > 0}
+                onClearFilters={() => setQuery(DEFAULT_HISTORY_QUERY)}
+              />
+
+              {paginatedScans.length > 0 && (
+                <HistoryScanList
+                  scans={paginatedScans}
+                  onViewScan={handleViewScan}
+                  onRescan={handleRescan}
+                  onAddTag={handleAddTag}
+                  onRemoveTag={handleRemoveTag}
+                  rescanningScanId={rescanning}
                 />
+              )}
 
-                {paginatedScans.length > 0 && (
-                  <HistoryScanList
-                    scans={paginatedScans}
-                    onViewScan={handleViewScan}
-                    onRescan={handleRescan}
-                    onAddTag={handleAddTag}
-                    onRemoveTag={handleRemoveTag}
-                    rescanningScanId={rescanning}
-                  />
-                )}
-
-                {filtered.length > 0 && (
-                  <PaginationControl
-                    currentPage={effectivePage}
-                    totalPages={totalPages}
-                    onPageChange={handlePageChange}
-                    pageSize={pageSize}
-                    onPageSizeChange={(s) => {
-                      setPageSize(s);
-                      handlePageChange(1);
-                    }}
-                    totalItems={filtered.length}
-                  />
-                )}
-              </>
-            )}
-          </>
-        )}
-      </main>
+              {filtered.length > 0 && (
+                <PaginationControl
+                  currentPage={effectivePage}
+                  totalPages={totalPages}
+                  onPageChange={handlePageChange}
+                  pageSize={pageSize}
+                  onPageSizeChange={(s) => {
+                    setPageSize(s);
+                    handlePageChange(1);
+                  }}
+                  totalItems={filtered.length}
+                />
+              )}
+            </>
+          )}
+        </>
+      )}
 
       <ConfirmDialog
         open={showClearConfirm}
@@ -909,8 +948,6 @@ export default function HistoryPage() {
           />
         </div>
       </ConfirmDialog>
-
-      <Footer />
-    </div>
+    </AppPageShell>
   );
 }

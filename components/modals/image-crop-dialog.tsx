@@ -3,6 +3,7 @@
 import React, { useRef, useState, useCallback, useEffect } from "react";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -190,7 +191,10 @@ export function ImageCropDialog({
         if (!o) onClose();
       }}
     >
-      <DialogContent className="sm:max-w-md">
+      {/* A cropper canvas plus its zoom control is content that can grow, and
+          Save has to stay reachable underneath it on a short viewport, so this
+          is the banded shell rather than one padded box. */}
+      <DialogContent variant="shell" size="sm">
         <DialogHeader>
           <DialogTitle>Edit Profile Picture</DialogTitle>
           <DialogDescription>
@@ -199,7 +203,7 @@ export function ImageCropDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col items-center gap-4">
+        <DialogBody className="flex flex-col items-center gap-4">
           {/* Canvas preview */}
           <div
             ref={containerRef}
@@ -261,9 +265,9 @@ export function ImageCropDialog({
               <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
             </Button>
           </div>
-        </div>
+        </DialogBody>
 
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter>
           <Button
             variant="outline"
             onClick={onClose}

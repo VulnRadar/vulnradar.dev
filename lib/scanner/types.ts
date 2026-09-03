@@ -180,6 +180,17 @@ export interface Vulnerability {
   /** CVSS 3.1 base score (0.0-10.0) computed from cvssVector via the spec's own Roundup formula. */
   cvssScore?: number;
   /**
+   * True when the owner marked this finding a false positive.
+   *
+   * lib/scanner/recompute-scan-score.ts already excludes such a finding from
+   * summary, findings_count and dangerScore, but scan_history.findings still
+   * holds it, so without this flag the verdict card and the list below it
+   * disagree: the card can read "Nothing found" over a visible finding.
+   * Attached server-side on an owner's own scan only, like remediation.
+   */
+  suppressed?: boolean;
+
+  /**
    * The OWNER's remediation tracking for this finding (Open / In progress /
    * Fixed / Accepted risk / Won't fix, plus an optional note and free-text
    * assignee). Distinct from `aiVerdict` and from the accuracy feedback:

@@ -201,4 +201,22 @@ describe("GET /api/v3/admin/backup", () => {
     expect(json.job).not.toBeNull();
     expect(json.job.status).toBe("running");
   });
+
+  // The Backups tab grades the newest file's age against the configured
+  // interval, the same way the health overview's backup row does, so that an
+  // old file reads as "the timer is dead" rather than as a date the operator
+  // has to do arithmetic on. It can only do that if the response says whether
+  // anything is promising a cadence at all: without scheduledEnabled the panel
+  // has to assume schedules are on, and cries wolf on a deployment that runs
+  // backups by hand.
+  it("reports the backup schedule so the panel can grade staleness", async () => {
+    withAdmin();
+    mockReaddir.mockResolvedValueOnce([]);
+    const res = await GET();
+    const json = await res.json();
+
+    expect(json).toHaveProperty("scheduledEnabled");
+    expect(typeof json.intervalMs).toBe("number");
+    expect(json.intervalMs).toBeGreaterThan(0);
+  });
 });

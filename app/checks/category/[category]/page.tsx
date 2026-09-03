@@ -146,39 +146,49 @@ export default async function CategoryPage({
           ))}
         </div>
 
+        {/* The list is already grouped by severity, so a severity pill on
+            every row restated its own heading forty times over and left a
+            phone about 263px for titles that are frequently one unbreakable
+            identifier. The severity is said once per group, in the product's
+            real severity colour, and carried down the group by a tinted rail;
+            the rows get the width back. */}
         <section className="mt-10 space-y-8">
           {bySeverity.map((group) => (
             <div key={group.sev}>
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-                {group.sev}
+              <h2 className="mb-3 flex items-baseline gap-2.5">
+                <SeverityPill severity={group.sev} />
+                <span className="text-sm text-muted-foreground tabular-nums">
+                  {group.items.length}{" "}
+                  {group.items.length === 1 ? "check" : "checks"}
+                </span>
               </h2>
-              <ul className="divide-y divide-border/50 border-y border-border/50">
-                {group.items.map((c) => (
-                  <li key={c.id}>
-                    <Link
-                      href={`/checks/${c.id}`}
-                      className="group flex items-start gap-3 py-3 hover:bg-muted/30 -mx-2 px-2 rounded-md transition-colors"
-                    >
-                      <SeverityPill
-                        severity={c.severity}
-                        className="scale-90 shrink-0 mt-0.5"
-                      />
-                      <span className="min-w-0">
+              <div
+                className="border-l-2 pl-4 sm:pl-5"
+                style={{
+                  borderColor: `hsl(var(--severity-${group.sev}) / 0.45)`,
+                }}
+              >
+                <ul className="divide-y divide-border/50">
+                  {group.items.map((c) => (
+                    <li key={c.id}>
+                      <Link
+                        href={`/checks/${c.id}`}
+                        className="group -mx-2 flex flex-col gap-0.5 rounded-md px-2 py-3 transition-colors hover:bg-muted/30"
+                      >
                         {/* wrap-break-word: some check titles are a single
-                            unbreakable identifier, and beside the shrink-0
-                            severity pill there is only ~263px for them on a
-                            phone. */}
-                        <span className="block font-medium text-foreground group-hover:text-primary transition-colors wrap-break-word">
+                            unbreakable identifier that line breaking will not
+                            break, and text-balance cannot break a word. */}
+                        <span className="font-medium text-foreground transition-colors group-hover:text-primary wrap-break-word">
                           {c.title}
                         </span>
-                        <span className="block text-sm text-muted-foreground leading-relaxed line-clamp-2">
+                        <span className="line-clamp-2 text-sm leading-relaxed text-muted-foreground">
                           {c.description}
                         </span>
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
           ))}
         </section>

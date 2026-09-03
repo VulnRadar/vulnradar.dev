@@ -70,9 +70,7 @@ export async function POST(_request: NextRequest) {
     const emailContent = billingVerificationCodeEmail(code);
     await sendEmail({
       to: user.email,
-      subject: emailContent.subject,
-      text: emailContent.text,
-      html: emailContent.html,
+      ...emailContent,
     });
 
     // Mask email for UI

@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 
-import { Header } from "@/components/scanner/header";
-import { Footer } from "@/components/scanner/footer";
+import { tourAnchor } from "@/lib/tour/anchors";
+import { AppPageShell } from "@/components/shared/app-page-shell";
 import { usePagination } from "@/components/ui/pagination-control";
 import { API, TEAM_ROLES } from "@/lib/config/client-constants";
 import {
@@ -21,8 +21,8 @@ import {
   TeamInviteForm,
   TeamMembersList,
   TeamMemberScans,
+  TeamsDataSkeleton,
 } from "@/components/teams";
-import { TeamsSkeleton } from "@/components/teams/teams-skeleton";
 import { copyToClipboard } from "@/lib/ui/clipboard";
 import { useQueryParam } from "@/lib/ui/url-state";
 import { InlineAlert } from "@/components/shared/inline-alert";
@@ -268,10 +268,12 @@ export default function TeamsPage() {
             });
             if (!ir.ok) {
               const idata = await ir.json().catch(() => ({}));
-              failed.push(`${inv.email} (${idata.error || "failed"})`);
+              failed.push(
+                `${inv.email}: ${idata.error || "the server rejected it"}`,
+              );
             }
           } catch {
-            failed.push(`${inv.email} (network error)`);
+            failed.push(`${inv.email}: could not reach the server`);
           }
         }
       }
@@ -280,7 +282,7 @@ export default function TeamsPage() {
       setShowCreate(false);
       if (failed.length > 0) {
         setActionError(
-          `Team created, but some invites didn't send: ${failed.join("; ")}`,
+          `Team created. These invites did not send: ${failed.join("; ")}. Invite them again from the team page.`,
         );
       }
     } catch {
@@ -388,11 +390,11 @@ export default function TeamsPage() {
       // an empty currentRole silently strips every management control from the
       // owner. Say the load failed instead of rendering a lie.
       setMembersError(
-        "This team's members could not be loaded. Nothing has changed, try again.",
+        "This team's members could not be loaded. Nothing has changed. Reopen the team to try again.",
       );
     } catch {
       setMembersError(
-        "Could not reach the server to load this team's members. Nothing has changed, try again.",
+        "Could not reach the server to load this team's members. Nothing has changed. Check your connection and reopen the team.",
       );
     } finally {
       setMembersLoading(false);
@@ -607,6 +609,22 @@ export default function TeamsPage() {
     }
   }
 
+  /** The picture changed. TeamAvatarPicker already did the PATCH, so this only
+   *  has to apply the new URL to both copies of the team: the open detail view
+   *  and the row behind it in the list, which would otherwise keep showing the
+   *  old picture until the next full load. */
+  function handleAvatarChange(avatarUrl: string | null) {
+    setActionError(null);
+    setSelectedTeam((prev) =>
+      prev ? { ...prev, avatar_url: avatarUrl } : prev,
+    );
+    setTeams((prev) =>
+      prev.map((t) =>
+        t.id === selectedTeam?.id ? { ...t, avatar_url: avatarUrl } : t,
+      ),
+    );
+  }
+
   async function handleViewMemberScans(member: Member) {
     // Guard against a last-response-wins race: clicking member A then quickly
     // member B could land A's response last, showing A's scans under B's name
@@ -659,10 +677,6 @@ export default function TeamsPage() {
     }
   }
 
-  if (loading) {
-    return <TeamsSkeleton />;
-  }
-
   // How many people the create dialog lets you invite up front: the owner's
   // plan seat cap minus the owner's own seat, clamped to a sane UI maximum.
   // No limits (billing off) or the plan's -1 "unlimited" both fall back to the
@@ -673,127 +687,158 @@ export default function TeamsPage() {
       : Math.min(10, Math.max(0, limits.teamMembers - 1));
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <Header />
-      <main
-        id="main-content"
-        tabIndex={-1}
-        className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col gap-6"
-      >
-        {loadError && <InlineAlert tone="error">{loadError}</InlineAlert>}
-        {actionError && (
-          <InlineAlert tone="error" onDismiss={() => setActionError(null)}>
-            {actionError}
-          </InlineAlert>
-        )}
-        {selectedTeam ? (
-          <div className="flex flex-col gap-6">
-            <TeamDetailHeader
-              team={selectedTeam}
-              currentRole={currentRole}
-              memberCount={members.length}
-              editingName={editingName}
-              nameInput={nameInput}
-              savingName={savingName}
-              onBack={closeTeam}
-              onEditName={() => {
-                setNameInput(selectedTeam.name);
-                setEditingName(true);
+    <AppPageShell className="flex flex-col gap-5">
+      {/* A load failure is a dead end without a way out of it: this alert
+          has no dismiss (the failure is a standing fact, not an event) and
+          the list behind it stays empty, so it carries the retry. The team
+          picker and the Shared page both already do this. */}
+      {loadError && (
+        <InlineAlert tone="error">
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <span>{loadError}</span>
+            <button
+              type="button"
+              onClick={() => {
+                setLoadError(null);
+                fetchTeams();
               }}
-              onNameInputChange={setNameInput}
-              onSaveName={handleRename}
-              onCancelEdit={() => setEditingName(false)}
-              onToggleInvite={() => {
-                setShowInvite(!showInvite);
+              className="shrink-0 font-medium underline underline-offset-2 rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Try again
+            </button>
+          </span>
+        </InlineAlert>
+      )}
+      {actionError && (
+        <InlineAlert tone="error" onDismiss={() => setActionError(null)}>
+          {actionError}
+        </InlineAlert>
+      )}
+      {/* Unlike /history and /shares, nothing here can render early: the page
+          title and the New team button belong to TeamsList, and TeamsList with
+          an empty array is not a placeholder, it is the "No teams yet" empty
+          state making a claim about the account. So the whole body waits, and
+          only the shell around it stays mounted. */}
+      {loading ? (
+        <TeamsDataSkeleton />
+      ) : selectedTeam ? (
+        <div className="flex flex-col gap-6">
+          <TeamDetailHeader
+            team={selectedTeam}
+            currentRole={currentRole}
+            memberCount={members.length}
+            editingName={editingName}
+            nameInput={nameInput}
+            savingName={savingName}
+            onBack={closeTeam}
+            onEditName={() => {
+              setNameInput(selectedTeam.name);
+              setEditingName(true);
+            }}
+            onNameInputChange={setNameInput}
+            onSaveName={handleRename}
+            onCancelEdit={() => setEditingName(false)}
+            onToggleInvite={() => {
+              setShowInvite(!showInvite);
+              setInviteToken(null);
+            }}
+            onDelete={() =>
+              setConfirmation({
+                kind: "deleteTeam",
+                teamId: selectedTeam.id,
+                teamName: selectedTeam.name,
+              })
+            }
+            onLeave={() =>
+              setConfirmation({
+                kind: "leaveTeam",
+                teamName: selectedTeam.name,
+              })
+            }
+            onAvatarChange={handleAvatarChange}
+            onAvatarError={setActionError}
+          />
+
+          {showInvite && canManage && (
+            <TeamInviteForm
+              inviteEmail={inviteEmail}
+              inviteRole={inviteRole}
+              inviting={inviting}
+              inviteToken={inviteToken}
+              copied={copied}
+              onEmailChange={setInviteEmail}
+              onRoleChange={setInviteRole}
+              onInvite={handleInvite}
+              onCopy={copyInviteLink}
+              onClose={() => {
+                setShowInvite(false);
                 setInviteToken(null);
               }}
-              onDelete={() =>
-                setConfirmation({
-                  kind: "deleteTeam",
-                  teamId: selectedTeam.id,
-                  teamName: selectedTeam.name,
-                })
-              }
-              onLeave={() =>
-                setConfirmation({
-                  kind: "leaveTeam",
-                  teamName: selectedTeam.name,
-                })
-              }
             />
+          )}
 
-            {showInvite && canManage && (
-              <TeamInviteForm
-                inviteEmail={inviteEmail}
-                inviteRole={inviteRole}
-                inviting={inviting}
-                inviteToken={inviteToken}
-                copied={copied}
-                onEmailChange={setInviteEmail}
-                onRoleChange={setInviteRole}
-                onInvite={handleInvite}
-                onCopy={copyInviteLink}
-                onClose={() => {
-                  setShowInvite(false);
-                  setInviteToken(null);
-                }}
+          <TeamMembersList
+            members={members}
+            invites={invites}
+            loading={membersLoading}
+            loadError={membersError}
+            currentRole={currentRole}
+            currentUserId={me?.userId}
+            onViewScans={handleViewMemberScans}
+            onChangeRole={handleChangeRole}
+            onRemoveMember={(userId) => {
+              const m = members.find((x) => x.user_id === userId);
+              setConfirmation({
+                kind: "removeMember",
+                userId,
+                label: m?.name || m?.email || "this member",
+              });
+            }}
+            onCancelInvite={handleCancelInvite}
+          />
+
+          {viewingMember && (
+            <TeamMemberScans
+              member={viewingMember}
+              scans={memberScans}
+              loading={scansLoading}
+              loadError={scansError}
+              page={scanPage}
+              pageSize={scansPageSize}
+              totalPages={scanTotalPages}
+              paginatedScans={paginatedScans as MemberScan[]}
+              onClose={() => setViewingMember(null)}
+              onPageChange={setScanPage}
+              onPageSizeChange={setScansPageSize}
+            />
+          )}
+        </div>
+      ) : (
+        // TeamsList takes a fixed prop list and lives outside this page, so
+        // the tour anchor goes on a wrapper. A plain block div in a flex
+        // column takes the list's place exactly, gap included.
+        <div {...tourAnchor("teamsList")}>
+          <TeamsList
+            teams={teams}
+            searchQuery={searchQuery}
+            teamLimit={limits?.teams ?? null}
+            // Rendered inside the list rather than above it so the page's h1
+            // comes first in the document and stays at the top of the screen
+            // when an invitation is waiting.
+            invitations={
+              <TeamInvitations
+                invitations={invitations}
+                busyId={inviteBusyId}
+                onAccept={handleAcceptInvite}
+                onDecline={handleDeclineInvite}
               />
-            )}
-
-            <TeamMembersList
-              members={members}
-              invites={invites}
-              loading={membersLoading}
-              loadError={membersError}
-              currentRole={currentRole}
-              currentUserId={me?.userId}
-              onViewScans={handleViewMemberScans}
-              onChangeRole={handleChangeRole}
-              onRemoveMember={(userId) => {
-                const m = members.find((x) => x.user_id === userId);
-                setConfirmation({
-                  kind: "removeMember",
-                  userId,
-                  label: m?.name || m?.email || "this member",
-                });
-              }}
-              onCancelInvite={handleCancelInvite}
-            />
-
-            {viewingMember && (
-              <TeamMemberScans
-                member={viewingMember}
-                scans={memberScans}
-                loading={scansLoading}
-                loadError={scansError}
-                page={scanPage}
-                pageSize={scansPageSize}
-                totalPages={scanTotalPages}
-                paginatedScans={paginatedScans as MemberScan[]}
-                onClose={() => setViewingMember(null)}
-                onPageChange={setScanPage}
-                onPageSizeChange={setScansPageSize}
-              />
-            )}
-          </div>
-        ) : (
-          <div className="flex flex-col gap-6">
-            <TeamInvitations
-              invitations={invitations}
-              busyId={inviteBusyId}
-              onAccept={handleAcceptInvite}
-              onDecline={handleDeclineInvite}
-            />
-            <TeamsList
-              teams={teams}
-              searchQuery={searchQuery}
-              onSearchChange={setSearchQuery}
-              onOpenTeam={openTeam}
-              onShowCreate={() => setShowCreate(true)}
-            />
-          </div>
-        )}
-      </main>
+            }
+            onSearchChange={setSearchQuery}
+            onOpenTeam={openTeam}
+            onShowCreate={() => setShowCreate(true)}
+          />
+        </div>
+      )}
 
       <TeamCreateDialog
         open={showCreate}
@@ -818,8 +863,6 @@ export default function TeamsPage() {
           onConfirm={runConfirmation}
         />
       )}
-
-      <Footer />
-    </div>
+    </AppPageShell>
   );
 }

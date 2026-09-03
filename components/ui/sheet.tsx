@@ -6,6 +6,14 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { X } from "lucide-react";
 
 import { cn } from "@/lib/ui/utils";
+import {
+  modalBand,
+  modalCloseChip,
+  modalCloseClearance,
+  modalCompact,
+  modalScrim,
+  type ModalTier,
+} from "@/components/ui/modal-grammar";
 
 const Sheet = SheetPrimitive.Root;
 
@@ -15,14 +23,17 @@ const SheetClose = SheetPrimitive.Close;
 
 const SheetPortal = SheetPrimitive.Portal;
 
+/** See components/ui/dialog.tsx for why the tier travels by context. */
+const SheetTierContext = React.createContext<ModalTier>("compact");
+
 const SheetOverlay = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Overlay>
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Overlay
     className={cn(
-      // Same scrim as DialogOverlay; see the comment there.
-      "fixed inset-0 z-50 bg-background/80 backdrop-blur-xs data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      modalScrim,
+      "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className,
     )}
     {...props}
@@ -32,18 +43,22 @@ const SheetOverlay = React.forwardRef<
 SheetOverlay.displayName = SheetPrimitive.Overlay.displayName;
 
 const sheetVariants = cva(
-  // bg-card for the same reason as DialogContent: the scrim is built from
-  // --background now, so the panel needs its own surface.
+  // Same surface as the dialog panel (components/ui/modal-grammar.ts), minus
+  // the radius and the max-height: a sheet is flush to a viewport edge and
+  // fills it, so a corner radius there would be arbitrary and a max-height
+  // would leave a gap. Everything else -- bg-card, the bare --border edge, the
+  // shadow -- is deliberately the same, so a sheet reads as the same object as
+  // a dialog seen from the side.
   //
-  // The single edge border is left bare. It was briefly border-input on the
-  // theory that the Tailwind v4 compat shim at the top of app/globals.css
+  // The edge border is left bare. It was briefly border-input on the theory
+  // that the Tailwind v4 compat shim at the top of app/globals.css
   // (`border-color: var(--color-gray-200, currentcolor)`) would otherwise
   // paint a near-white hairline. It does not: that shim and the
   // `* { @apply border-border }` rule are both single-`*` selectors in
   // @layer base, so source order decides, and border-border is emitted later
-  // and wins. A bare `border-b` here is --border, which is the right token
-  // for a panel edge. See DialogContent for why SC 1.4.11 does not reach it.
-  "fixed z-50 gap-4 bg-card p-6 shadow-lg transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
+  // and wins. See modal-grammar.ts for why SC 1.4.11 does not reach a panel
+  // edge.
+  "fixed z-50 flex flex-col bg-card shadow-lg transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
   {
     variants: {
       side: {
@@ -54,9 +69,16 @@ const sheetVariants = cva(
         right:
           "inset-y-0 right-0 h-full w-3/4 border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-sm",
       },
+      variant: {
+        // A sheet is tall and its content usually scrolls, so `shell` is the
+        // default here where it is the opt-in for a dialog.
+        shell: "overflow-hidden",
+        compact: "gap-4 overflow-y-auto p-6",
+      },
     },
     defaultVariants: {
       side: "right",
+      variant: "shell",
     },
   },
 );
@@ -69,62 +91,87 @@ interface SheetContentProps
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = "right", className, children, ...props }, ref) => (
-  <SheetPortal>
-    <SheetOverlay />
-    <SheetPrimitive.Content
-      ref={ref}
-      className={cn(sheetVariants({ side }), className)}
-      onOpenAutoFocus={(e) => {
-        // Same reasoning as components/ui/dialog.tsx's override -- don't
-        // auto-focus the first link/button inside (e.g. the mobile nav's
-        // first item), but do move focus into the panel so the sheet is
-        // announced and Tab starts inside it rather than on the trigger
-        // Radix has just hidden behind the scrim.
-        e.preventDefault();
-        (e.currentTarget as HTMLElement).focus();
-      }}
-      {...props}
-    >
-      {children}
-      {/* A real background chip (not just the bare icon) so this stays
-          legible over whatever's directly behind it, same fix as
-          components/ui/dialog.tsx's close button. */}
-      <SheetPrimitive.Close className="absolute right-4 top-4 z-10 flex h-7 w-7 items-center justify-center rounded-full border border-border/60 bg-background/90 text-muted-foreground backdrop-blur-xs transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
-      </SheetPrimitive.Close>
-    </SheetPrimitive.Content>
-  </SheetPortal>
-));
+>(
+  (
+    { side = "right", variant = "shell", className, children, ...props },
+    ref,
+  ) => (
+    <SheetPortal>
+      <SheetOverlay />
+      <SheetPrimitive.Content
+        ref={ref}
+        className={cn(sheetVariants({ side, variant }), className)}
+        onOpenAutoFocus={(e) => {
+          // Same reasoning as components/ui/dialog.tsx's override: don't
+          // auto-focus the first link/button inside (e.g. the mobile nav's
+          // first item), but do move focus into the panel so the sheet is
+          // announced and Tab starts inside it rather than on the trigger
+          // Radix has just hidden behind the scrim.
+          e.preventDefault();
+          (e.currentTarget as HTMLElement).focus();
+        }}
+        {...props}
+      >
+        <SheetTierContext.Provider value={variant ?? "shell"}>
+          {children}
+        </SheetTierContext.Provider>
+        <SheetPrimitive.Close className={modalCloseChip}>
+          <X className="h-4 w-4" />
+          <span className="sr-only">Close</span>
+        </SheetPrimitive.Close>
+      </SheetPrimitive.Content>
+    </SheetPortal>
+  ),
+);
 SheetContent.displayName = SheetPrimitive.Content.displayName;
 
 const SheetHeader = ({
   className,
   ...props
-}: React.HTMLAttributes<HTMLDivElement>) => (
-  <div
-    className={cn(
-      "flex flex-col space-y-2 text-center sm:text-left",
-      className,
-    )}
-    {...props}
-  />
-);
+}: React.HTMLAttributes<HTMLDivElement>) => {
+  const tier = React.useContext(SheetTierContext);
+  return (
+    <div
+      className={cn(
+        tier === "shell" ? modalBand.header : modalCompact.header,
+        modalCloseClearance[tier],
+        className,
+      )}
+      {...props}
+    />
+  );
+};
 SheetHeader.displayName = "SheetHeader";
+
+const SheetBody = ({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) => {
+  const tier = React.useContext(SheetTierContext);
+  return (
+    <div
+      className={cn(tier === "shell" ? modalBand.body : undefined, className)}
+      {...props}
+    />
+  );
+};
+SheetBody.displayName = "SheetBody";
 
 const SheetFooter = ({
   className,
   ...props
-}: React.HTMLAttributes<HTMLDivElement>) => (
-  <div
-    className={cn(
-      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
-      className,
-    )}
-    {...props}
-  />
-);
+}: React.HTMLAttributes<HTMLDivElement>) => {
+  const tier = React.useContext(SheetTierContext);
+  return (
+    <div
+      className={cn(
+        tier === "shell" ? modalBand.footer : modalCompact.footer,
+        className,
+      )}
+      {...props}
+    />
+  );
+};
 SheetFooter.displayName = "SheetFooter";
 
 const SheetTitle = React.forwardRef<
@@ -133,7 +180,10 @@ const SheetTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Title
     ref={ref}
-    className={cn("text-lg font-semibold text-foreground", className)}
+    className={cn(
+      "text-base font-semibold leading-tight tracking-tight text-foreground",
+      className,
+    )}
     {...props}
   />
 ));
@@ -145,7 +195,7 @@ const SheetDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Description
     ref={ref}
-    className={cn("text-sm text-muted-foreground", className)}
+    className={cn("text-sm leading-relaxed text-muted-foreground", className)}
     {...props}
   />
 ));
@@ -159,6 +209,7 @@ export {
   SheetClose,
   SheetContent,
   SheetHeader,
+  SheetBody,
   SheetFooter,
   SheetTitle,
   SheetDescription,

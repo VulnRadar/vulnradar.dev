@@ -22,6 +22,10 @@ interface EmailLogRow {
   created_at: string;
 }
 
+interface EmailLogDetailRow extends EmailLogRow {
+  redacted_html: string | null;
+}
+
 /**
  * GET /api/v3/admin/email-logs
  *
@@ -31,11 +35,12 @@ interface EmailLogRow {
  * `status` reflects the SMTP server's own accept/reject response --
  * plain SMTP gives no true inbox-delivery or read-receipt signal, so
  * "sent" means "accepted for delivery", not "the user has read it".
- * `redacted_preview` never contains a working link, code, or token (see
- * redactEmailPreview).
+ * Neither `redacted_preview` nor `redacted_html` contains a working
+ * link, code, or token (see redactEmailPreview and redactEmailHtml).
  *
  * Query params: page, limit, search (matches recipient or subject,
- * case-insensitive), status (sent|failed|skipped_not_configured).
+ * case-insensitive), status (sent|failed|skipped_not_configured), or
+ * `id` for the single-row detail the viewer opens.
  */
 export async function GET(request: NextRequest) {
   const admin = await requireAdmin();
@@ -47,6 +52,38 @@ export async function GET(request: NextRequest) {
   }
 
   const { searchParams } = new URL(request.url);
+
+  // The rendered copy of a message is kilobytes of markup, so it is fetched
+  // one row at a time when an admin actually opens one. Returning it on the
+  // list would put twenty of them in a payload the search box refetches on
+  // every keystroke.
+  const idParam = searchParams.get("id");
+  if (idParam !== null) {
+    const id = parseInt(idParam, 10);
+    if (!Number.isInteger(id) || id < 1) {
+      return NextResponse.json({ error: "Invalid id." }, { status: 400 });
+    }
+    try {
+      const detailRes = await pool.query<EmailLogDetailRow>(
+        `SELECT id, recipient, subject, status, error_message, redacted_preview, redacted_html, created_at
+           FROM email_logs
+          WHERE id = $1`,
+        [id],
+      );
+      const log = detailRes.rows[0];
+      if (!log) {
+        return NextResponse.json({ error: "Not found." }, { status: 404 });
+      }
+      return NextResponse.json({ log });
+    } catch (error) {
+      console.error("[admin/email-logs] Failed to fetch email log:", error);
+      return NextResponse.json(
+        { error: "Failed to fetch email log." },
+        { status: 500 },
+      );
+    }
+  }
+
   const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
   const requestedLimit = parseInt(
     searchParams.get("limit") || String(CONFIG_PAGINATION_DEFAULT_PAGE_SIZE),

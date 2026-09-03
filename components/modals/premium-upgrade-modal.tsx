@@ -4,8 +4,10 @@ import { Crown, Zap, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -15,10 +17,10 @@ import {
   ROUTES,
   AI_USAGE_WINDOW_HOURS,
   BILLING_ENABLED,
-  BILLING_PLAN_LIMITS,
   BILLING_HISTORY_RETENTION,
 } from "@/lib/config/client-constants";
 import { PLANS } from "@/lib/billing/plans";
+import { usePlanLimits } from "@/lib/hooks/use-plan-limits";
 
 export interface PremiumFeature {
   id: string;
@@ -75,26 +77,21 @@ const PLAN_PRICES: Record<string, number> = Object.fromEntries(
   PLANS.map((p) => [p.id, p.priceInCents / 100]),
 );
 
-const PLAN_API_LIMITS: Record<string, number> = Object.fromEntries(
-  PLANS.map((p) => [p.id, p.limits.apiRequestsPerDay]),
-);
-
-function formatApiLimit(planId: string): string {
-  const limit = PLAN_API_LIMITS[planId];
+// These take the resolved number rather than looking a plan id up in a map
+// built from the catalog copy. This modal quotes what someone gets for paying,
+// and the catalog is only what shipped: enforcement reads the admin-editable
+// BILLING_* settings, so a raised quota used to be charged but not advertised
+// (AUDIT-011#drift-10).
+function formatApiLimit(limit: number): string {
   if (limit === -1) return "Unlimited API access";
   return `${limit.toLocaleString()} API requests/day`;
 }
-
-const PLAN_AI_TOKENS: Record<string, number> = Object.fromEntries(
-  PLANS.map((p) => [p.id, p.limits.aiTokensPerWindow]),
-);
 
 // aiTokensPerWindow is never -1 (see the PlanLimits doc comment in
 // lib/billing/catalog.ts), so this only needs the token count plus the
 // reset cadence. Covers AI finding verification only -- chat and AI scan
 // summaries are free/unmetered on every plan, so they're not listed here.
-function formatAiUsage(planId: string): string {
-  const tokens = PLAN_AI_TOKENS[planId];
+function formatAiUsage(tokens: number): string {
   return `${tokens.toLocaleString()} AI verification tokens / ${AI_USAGE_WINDOW_HOURS}hr`;
 }
 
@@ -122,35 +119,54 @@ export function PremiumUpgradeModal({
   const requiredPlanLabel = PLAN_LABELS[feature.requiredPlan];
   const requiredPlanPrice = PLAN_PRICES[feature.requiredPlan];
 
-  // Get benefits dynamically from config
-  const getPlanBenefits = (planId: string): string[] => {
-    const scanLimit =
-      BILLING_PLAN_LIMITS[planId as keyof typeof BILLING_PLAN_LIMITS];
+  // Every number below is resolved from the settings the API enforces against
+  // rather than the catalog copy compiled into this bundle, so an admin who
+  // raises a quota is not left selling the old one (AUDIT-011#drift-10). The
+  // webhook and team-member lines were plain strings ("1 webhook alert",
+  // "Teams, up to 3 members", "Unlimited webhooks and scheduled scans") that
+  // could not track any change at all, in config or catalog.
+  const planLimits = usePlanLimits();
+
+  const getPlanBenefits = (
+    planId: PremiumFeature["requiredPlan"],
+  ): string[] => {
+    const limits = planLimits[planId];
     const retention = getRetentionLabel(planId);
+    const countOf = (n: number, one: string, many: string) =>
+      n === -1
+        ? `Unlimited ${many}`
+        : `${n.toLocaleString()} ${n === 1 ? one : many}`;
 
     if (planId === "core_supporter") {
       return [
-        `${scanLimit} scans per day`,
+        `${limits.dailyScans} scans per day`,
         retention,
-        "1 webhook alert",
-        formatAiUsage(planId),
+        countOf(limits.webhooks, "webhook alert", "webhook alerts"),
+        formatAiUsage(limits.aiTokensPerWindow),
         "Early access features",
       ];
     } else if (planId === "pro_supporter") {
       return [
-        `${scanLimit} scans per day`,
+        `${limits.dailyScans} scans per day`,
         retention,
-        "Teams, up to 3 members",
-        formatApiLimit(planId),
-        formatAiUsage(planId),
+        `Teams, up to ${limits.teamMembers} members`,
+        formatApiLimit(limits.apiRequestsPerDay),
+        formatAiUsage(limits.aiTokensPerWindow),
         "All Core features",
       ];
     } else if (planId === "elite_supporter") {
       return [
-        `${scanLimit} scans per day`,
-        formatApiLimit(planId),
-        "Unlimited webhooks and scheduled scans",
-        formatAiUsage(planId),
+        `${limits.dailyScans} scans per day`,
+        formatApiLimit(limits.apiRequestsPerDay),
+        // Both unlimited is the shipped case and reads better said once.
+        limits.webhooks === -1 && limits.scheduledScans === -1
+          ? "Unlimited webhooks and scheduled scans"
+          : `${countOf(limits.webhooks, "webhook", "webhooks")}, ${countOf(
+              limits.scheduledScans,
+              "scheduled scan",
+              "scheduled scans",
+            ).toLowerCase()}`,
+        formatAiUsage(limits.aiTokensPerWindow),
         "All Pro features",
       ];
     }
@@ -165,9 +181,12 @@ export function PremiumUpgradeModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      {/* The banded shell: the benefit list grows with the plan, and "Upgrade"
+          is the whole point of the modal, so it stays pinned in the footer
+          rather than scrolling away under a long list. */}
+      <DialogContent variant="shell" size="sm">
         <DialogHeader>
-          <div className="flex items-center gap-3 mb-2">
+          <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10">
               <Crown className="h-5 w-5 text-primary" aria-hidden="true" />
             </div>
@@ -176,13 +195,11 @@ export function PremiumUpgradeModal({
               Premium Feature
             </Badge>
           </div>
-          <DialogTitle className="text-xl">{feature.name}</DialogTitle>
-          <DialogDescription className="text-base">
-            {feature.description}
-          </DialogDescription>
+          <DialogTitle>{feature.name}</DialogTitle>
+          <DialogDescription>{feature.description}</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <DialogBody className="space-y-4">
           <div className="rounded-lg border border-border bg-muted/30 p-4">
             <div className="flex items-center justify-between mb-3">
               <span className="font-medium">{requiredPlanLabel} Plan</span>
@@ -207,19 +224,19 @@ export function PremiumUpgradeModal({
           <p className="text-xs text-muted-foreground text-center">
             Upgrade to {requiredPlanLabel} or higher to unlock this feature
           </p>
-        </div>
+        </DialogBody>
 
-        <div className="flex flex-col gap-2">
-          <Button asChild className="w-full">
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            Maybe later
+          </Button>
+          <Button asChild>
             <Link href={ROUTES.PRICING}>
               <Crown className="h-4 w-4 mr-2" aria-hidden="true" />
               Upgrade to {requiredPlanLabel}
             </Link>
           </Button>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Maybe later
-          </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

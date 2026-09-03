@@ -25,7 +25,7 @@ const tocItems: TocItem[] = [
 
 export default function SharingDocsPage() {
   return (
-    <div className="space-y-16">
+    <div className="space-y-12 sm:space-y-16">
       <DocsTocSpy items={tocItems} />
       <DocsHero
         id="top"

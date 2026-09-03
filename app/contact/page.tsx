@@ -52,11 +52,14 @@ export default function ContactPage() {
 
   return (
     <PublicPageShell maxWidth="max-w-2xl" padding="py-8 sm:py-12">
-      <header className="mb-8">
-        <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight mb-5 text-balance text-foreground">
+      {/* Tier A, verbatim: this page is the whole reason a visitor is here.
+          The trailing text-foreground the heading used to carry belongs to
+          Tier B, where the wrapper is muted; nothing mutes this one. */}
+      <header className={submitted ? "mb-8" : "mb-4"}>
+        <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight mb-5 text-balance">
           Contact
         </h1>
-        <p className="text-muted-foreground leading-relaxed mt-2">
+        <p className="text-muted-foreground leading-relaxed">
           Bugs, false positives, feature ideas, security disclosures, or
           enterprise deployments: pick a category and it goes to the right
           place.
@@ -66,25 +69,36 @@ export default function ContactPage() {
       {submitted ? (
         <ContactSuccess category={category} onReset={handleReset} />
       ) : (
-        <div className="flex flex-col gap-8">
-          <ContactQuickLinks />
-          <ContactCategorySelector
-            selected={category}
-            onSelect={handleCategoryChange}
-          />
-          {/* "Support Ticket" opens the tracked, two-way thread with staff
-              (SupportTickets manages its own state and sign-in prompt). Every
-              other category is the fire-and-forget anonymous contact form. */}
-          {category === "ticket" ? (
-            <SupportTickets />
-          ) : category ? (
-            <ContactForm
-              category={category}
-              onSuccess={() => setSubmitted(true)}
-              onError={setError}
+        /* Three weights, deliberately not one template three times: the quick
+           links are a sentence attached to the intro above (hence sitting in
+           the header's own spacing rather than as a third equal block), the
+           category picker is the panel that carries the page, and the form is
+           the card that appears once a choice is made. This was three stacked
+           blocks at gap-8, two of them opening with the same
+           `h2 text-sm font-medium` label. */
+        <>
+          <div className="mb-8">
+            <ContactQuickLinks />
+          </div>
+          <div className="flex flex-col gap-8">
+            <ContactCategorySelector
+              selected={category}
+              onSelect={handleCategoryChange}
             />
-          ) : null}
-        </div>
+            {/* "Support Ticket" opens the tracked, two-way thread with staff
+                (SupportTickets manages its own state and sign-in prompt). Every
+                other category is the fire-and-forget anonymous contact form. */}
+            {category === "ticket" ? (
+              <SupportTickets />
+            ) : category ? (
+              <ContactForm
+                category={category}
+                onSuccess={() => setSubmitted(true)}
+                onError={setError}
+              />
+            ) : null}
+          </div>
+        </>
       )}
     </PublicPageShell>
   );

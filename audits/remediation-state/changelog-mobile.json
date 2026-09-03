@@ -1,0 +1,26 @@
+[
+  {
+    "icon": "Smartphone",
+    "label": "Labels On A Phone Stop Cutting Themselves Short",
+    "desc": "A stat cell in the admin user panel printed \"SESSIO...\" because four cells were sharing a row that only fits two, and the same mistake was made in about thirty other places: the ellipsis is meant for a URL or an email address, which can be any length, and it had been pointed at labels we wrote ourselves. An admin panel's own heading clipped to \"Look Up Any H...\", the scan summary's SSL cell read \"SSL G...\", every check title on /checks was cut roughly in half on a phone, and two API endpoints in the playground could clip to the same visible text. Those containers are now sized to fit the words they hold, because we already know what the words are: stat cells sit two per row on a phone, panel headings take their own line above the buttons, and titles wrap instead of being trimmed. Only genuinely unbounded values still clip, and more of them now carry the full text as a tooltip.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Rows3",
+    "label": "Rows Stop Crushing Their Own Contents On A Phone",
+    "desc": "A row that keeps its buttons on the right at every screen width gives them what they need and leaves the value whatever is left. On a 320px screen that meant a verified domain had about zero pixels for the domain name, a webhook showed roughly ten characters of its endpoint, and a blocked-URL rule showed about seventy pixels of a full URL. Those rows now stack on a phone and go back to one line from tablet width up: domains, webhooks, blocked URLs and IP rules, the email log, backup files, staff invites, the Stripe event list, the repo page header and the share-link copy box. The browser session's network log drops its resource-type column on a phone so the request path has room, the gift-subscription form is one column so its date field is not clipped by the picker, and the daily-quota table in the rate-limit docs sits two across instead of squeezing four.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Pointer",
+    "label": "Controls You Can Hit With A Thumb",
+    "desc": "The notifications bell, the tour's pause button, the browser session's extend-time button, the subdomain list's open and scan controls, and the edit and delete buttons on the admin notification, team, IP-rule, broadcast, domain, webhook and schedule rows were all drawn at between 12 and 32 pixels, which is fine with a mouse and awkward with a finger. Each one keeps the icon exactly the size it was and grows only the area you can press, back to the desktop size from tablet width up.",
+    "category": "fixed"
+  },
+  {
+    "icon": "WrapText",
+    "label": "Long IDs Stop Pushing The Page Sideways",
+    "desc": "A session id, a user id, an IPv6 address, a cookie id and an updater job id are each one unbroken run of characters, and printed with nowhere to break they set the width of whatever they sat in and made the whole page scroll sideways. They wrap now. The admin lookup panel does the same with whatever URL was pasted into it, and a repository description reads as two lines of prose rather than one clipped line.",
+    "category": "fixed"
+  }
+]

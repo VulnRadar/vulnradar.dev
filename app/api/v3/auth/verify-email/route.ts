@@ -3,6 +3,7 @@ import pool from "@/lib/database/db";
 import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api/api-utils";
 import { SUCCESS_MESSAGES } from "@/lib/config/constants";
 import { authTokenHashCandidates } from "@/lib/auth/token-hash";
+import { sendEmail, emailVerifiedEmail } from "@/lib/email/email";
 
 // auth: hash the incoming token with the same function used at generation
 // so a DB dump can't replay raw tokens. The candidate list is the HMAC
@@ -84,6 +85,20 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     );
 
     await client.query("COMMIT");
+
+    // The verification mail covers the request; nothing covered the result, so
+    // a new account's first successful action produced silence. Sent once,
+    // because the already-verified branch above returns before reaching here.
+    void (async () => {
+      try {
+        await sendEmail({
+          to: verificationToken.email,
+          ...emailVerifiedEmail(verificationToken.name),
+        });
+      } catch (err) {
+        console.error("[Email Error] Verified-confirmation email failed:", err);
+      }
+    })();
 
     return ApiResponse.success({
       message: SUCCESS_MESSAGES.EMAIL_VERIFIED,

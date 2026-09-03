@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { buildTemplateCorpus } from "./_template-corpus";
 
 /**
  * Tests for lib/email/email.ts.
@@ -561,6 +564,77 @@ describe("email_logs (AUDIT-010)", () => {
     expect(preview).toContain("[REDACTED LINK]");
   });
 
+  it("stores the rendered document, so the admin viewer has something faithful to show", async () => {
+    configureSmtp();
+    sendMailMock.mockResolvedValueOnce(undefined);
+    const { sendEmail } = await loadEmail();
+
+    await sendEmail({
+      to: "u@x.com",
+      subject: "s",
+      text: "t",
+      html: "<h1>Confirm your email address</h1>",
+    });
+
+    const storedHtml = emailLogInserts[0][5] as string;
+    const sentHtml = sendMailMock.mock.calls[0][0].html as string;
+    expect(storedHtml).toContain("<h1>Confirm your email address</h1>");
+    // The branded shell, not just the fragment the template returned: what
+    // the recipient saw is the whole document, so that is what is kept.
+    expect(storedHtml).toContain("<!DOCTYPE html>");
+    expect(sentHtml).toContain("<h1>Confirm your email address</h1>");
+  });
+
+  it("stores the rendered document on the not-configured path too", async () => {
+    const { sendEmail } = await loadEmail();
+
+    await sendEmail({
+      to: "u@x.com",
+      subject: "s",
+      text: "t",
+      html: "<p>would have been sent</p>",
+    });
+
+    expect(emailLogInserts[0][2]).toBe("skipped_not_configured");
+    expect(emailLogInserts[0][5]).toContain("would have been sent");
+  });
+
+  it("redacts the stored document, never a working link", async () => {
+    configureSmtp();
+    sendMailMock.mockResolvedValueOnce(undefined);
+    const { sendEmail } = await loadEmail();
+
+    await sendEmail({
+      to: "u@x.com",
+      subject: "s",
+      text: "t",
+      html: '<a href="https://vulnradar.dev/reset?token=abc123def456ghi789jkl">Choose a new password</a>',
+    });
+
+    const storedHtml = emailLogInserts[0][5] as string;
+    expect(storedHtml).not.toContain("token=abc123def456ghi789jkl");
+    expect(storedHtml).toContain("Choose a new password");
+  });
+
+  it("drops the rendered copy rather than storing a truncated, broken one", async () => {
+    configureSmtp();
+    sendMailMock.mockResolvedValueOnce(undefined);
+    const { sendEmail } = await loadEmail();
+
+    await sendEmail({
+      to: "u@x.com",
+      subject: "s",
+      text: "t",
+      // Ordinary prose, not one long run: a single 120k-character word is a
+      // token, and redaction would collapse it back under the ceiling.
+      html: "<p>hello there</p>".repeat(8_000),
+    });
+
+    expect(emailLogInserts[0][5]).toBeNull();
+    // The row itself is still written, with its metadata and text preview.
+    expect(emailLogInserts[0][2]).toBe("sent");
+  });
+
   it("never throws or breaks sendEmail even if the DB write itself fails", async () => {
     configureSmtp();
     sendMailMock.mockResolvedValueOnce(undefined);
@@ -617,6 +691,79 @@ describe("redactEmailPreview", () => {
     expect(result).toContain("[REDACTED LINK]");
     expect(result).not.toContain("123456");
     expect(result).not.toContain("https://");
+  });
+});
+
+describe("redactEmailHtml", () => {
+  it("strips the token out of an href without disturbing the tag", async () => {
+    const { redactEmailHtml } = await loadEmail();
+    const result = redactEmailHtml(
+      '<a href="https://vulnradar.dev/reset?token=abc123" style="color: #93c5fd;">Reset</a>',
+    );
+    expect(result).not.toContain("token=abc123");
+    expect(result).toContain('style="color: #93c5fd;"');
+    expect(result).toContain(">Reset</a>");
+  });
+
+  it("handles an unquoted href", async () => {
+    const { redactEmailHtml } = await loadEmail();
+    const result = redactEmailHtml(
+      "<a href=https://vulnradar.dev/verify?t=secretvalue >Verify</a>",
+    );
+    expect(result).not.toContain("secretvalue");
+  });
+
+  it("redacts a one-time code that is readable in the body", async () => {
+    const { redactEmailHtml } = await loadEmail();
+    const result = redactEmailHtml(
+      '<div style="font-size: 34px;">482913</div>',
+    );
+    expect(result).not.toContain("482913");
+    expect(result).toContain("[REDACTED CODE]");
+    // The presentation survives, which is the whole point of a second pass.
+    expect(result).toContain('style="font-size: 34px;"');
+  });
+
+  it("redacts a copy-paste fallback URL printed as body text", async () => {
+    const { redactEmailHtml } = await loadEmail();
+    const result = redactEmailHtml(
+      "<p>Or paste this link: https://vulnradar.dev/verify?token=abc123def456ghi</p>",
+    );
+    expect(result).not.toContain("token=");
+    expect(result).toContain("[REDACTED LINK]");
+  });
+
+  it("leaves numeric attribute values and inline styles alone", async () => {
+    const { redactEmailHtml } = await loadEmail();
+    const result = redactEmailHtml(
+      '<table width="600" style="border-radius: 9999px; max-width: 1200px;"><tr><td>Hi</td></tr></table>',
+    );
+    expect(result).toContain('width="600"');
+    expect(result).toContain("border-radius: 9999px");
+    expect(result).toContain("max-width: 1200px");
+  });
+
+  it("leaves character references alone", async () => {
+    const { redactEmailHtml } = await loadEmail();
+    // The hidden preheader filler. Not content, and not a secret; the plain
+    // numeric rule would turn every one of these into &#[REDACTED CODE];.
+    const result = redactEmailHtml("<div>&#8199;&#65279;&#8199;</div>");
+    expect(result).toBe("<div>&#8199;&#65279;&#8199;</div>");
+  });
+
+  it("leaves a message with nothing sensitive in it byte-identical", async () => {
+    const { redactEmailHtml } = await loadEmail();
+    const html =
+      '<p style="color: #e5e7eb;">Your scan of example.com is complete.</p>';
+    expect(redactEmailHtml(html)).toBe(html);
+  });
+
+  it("leaves src alone, which the viewer blocks instead", async () => {
+    const { redactEmailHtml } = await loadEmail();
+    const result = redactEmailHtml(
+      '<img src="https://vulnradar.dev/logo.svg" width="30" />',
+    );
+    expect(result).toContain('src="https://vulnradar.dev/logo.svg"');
   });
 });
 
@@ -760,176 +907,162 @@ describe("teamInviteEmail link guard", () => {
     expect(result.html).toContain('href="#invalid"');
   });
 
-  // KNOWN BUG (not fixed here -- flagged in the test-session report):
-  // lib/email/email.ts's teamInviteEmail guards the button's `href` with
-  // safeInviteLink (http/https only, "#invalid" otherwise) but the
-  // "copy this link" fallback paragraph a few lines below interpolates
-  // the RAW `inviteLink` -- neither escaped via escapeHtml() nor passed
-  // through the same http(s) guard. Every other user-influenced field in
-  // this file goes through escapeHtml(); this one field doesn't, so a
-  // caller that ever passes an inviteLink containing markup (e.g.
-  // `<script>...`) would have it render unescaped in the email body. The
-  // one current caller (app/api/v3/teams/members/route.ts, ~line 179)
-  // builds inviteLink itself from APP_URL + a server-generated token, so
-  // it isn't exploitable today, but the function has no defense of its
-  // own if that ever changes.
-  it("documents a real bug: the 'copy this link' fallback text is neither escaped nor guarded", async () => {
+  // This test used to document a bug rather than forbid it: teamInviteEmail
+  // guarded the button's `href` with safeInviteLink (http/https only,
+  // "#invalid" otherwise) and then printed the RAW `inviteLink` two lines
+  // below in the "copy this link" fallback, neither escaped nor guarded, so
+  // an inviteLink carrying markup would have rendered it. It was not
+  // exploitable, because the one caller builds the URL itself from APP_URL
+  // and a server-generated token, but the function had no defence of its own.
+  //
+  // emailFallbackLink now escapes what it prints, which is the right place
+  // for it: a block that writes user-influenced text into a document should
+  // not depend on knowing all of its callers. The assertion is inverted to
+  // match.
+  it("escapes the 'copy this link' fallback text instead of printing markup verbatim", async () => {
     const email = await loadEmail();
     const result = email.teamInviteEmail(
       "Acme",
       "<script>alert(1)</script>",
       "Alice",
     );
-    // The button href IS guarded (falls back to #invalid)...
+    // The button href is still guarded (falls back to #invalid)...
     expect(result.html).toContain('href="#invalid"');
-    // ...but the raw, un-escaped value still appears verbatim elsewhere
-    // in the HTML body, in the copy-link fallback paragraph.
-    expect(result.html).toContain("<script>alert(1)</script>");
+    // ...and the fallback paragraph now renders the value as text.
+    expect(result.html).not.toContain("<script>alert(1)</script>");
+    expect(result.html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
   });
 });
 
-describe("remaining templates build without throwing and return a well-formed envelope", () => {
-  it("builds every remaining template with representative input", async () => {
+/**
+ * The quality bar, applied to every template at once.
+ *
+ * The list this replaced was hand-maintained inside this file and had to be
+ * remembered whenever a template was added, which is exactly the kind of list
+ * that goes stale: it asserted little more than "does not throw". The corpus
+ * now lives in ./_template-corpus.ts, shared with email-previews.test.ts, so
+ * the previews a human looks at and the assertions CI runs are the same set.
+ */
+describe("every template meets the same bar", () => {
+  async function corpus() {
     const email = await loadEmail();
-    const details = { ipAddress: "203.0.113.1", userAgent: "test-agent" };
-    const builders: Array<
-      () => { subject: string; text: string; html: string }
-    > = [
-      () => email.contactConfirmationEmail({ name: "Alice", category: "bug" }),
-      () => email.emailVerificationEmail("Alice", "https://x/verify?token=1"),
-      () => email.landingContactEmail({ email: "a@x.com", message: "hi" }),
-      () => email.landingContactConfirmationEmail("hi"),
-      () => email.profileNameChangedEmail("Old", "New", details),
-      () => email.profileEmailChangedEmail("old@x.com", "new@x.com", details),
-      () => email.profilePasswordChangedEmail(details),
-      () => email.twoFactorEnabledEmail(details),
-      () => email.twoFactorDisabledEmail(details),
-      () => email.backupCodesRegeneratedEmail(details),
-      () => email.apiKeyCreatedEmail("My Key", "vr_abc", details),
-      () => email.apiKeyDeletedEmail("My Key", details),
-      () =>
-        email.webhookCreatedEmail(
-          "My Webhook",
-          "https://x/hook",
-          "discord",
-          details,
-        ),
-      () => email.webhookDeletedEmail("My Webhook", details),
-      () => email.scheduleCreatedEmail("https://x.com", "daily", details),
-      () => email.scheduleDeletedEmail("https://x.com", details),
-      () => email.dataRequestCreatedEmail("export", details),
-      () => email.failedLoginAttemptsEmail(5, "203.0.113.1", details),
-      () => email.rateLimitedEmail("203.0.113.1", details),
-      () => email.apiKeyRotationEmail("My Key", "2026-01-01", details),
-      () => email.billingVerificationCodeEmail("112233"),
-      () => email.email2FAEnabledEmail(details),
-      () => email.email2FADisabledEmail(details),
-      () =>
-        email.adminNotificationEmail({
-          userName: "Alice",
-          adminName: "Admin",
-          title: "Notice",
-          message: "hello",
-          timestamp: new Date("2026-01-01T00:00:00Z"),
-        }),
-      () =>
-        email.scanCompleteEmail(
-          "https://x.com",
-          { critical: 1, high: 2, medium: 0, low: 0, info: 0, total: 3 },
-          1500,
-          42,
-        ),
-      () =>
-        email.criticalFindingsEmail(
-          "https://x.com",
-          [{ title: "New critical issue", severity: "critical" }],
-          [{ title: "Older high issue", severity: "high" }],
-          42,
-        ),
-      () =>
-        email.scheduledScanCompleteEmail(
-          "Nightly",
-          "https://x.com",
-          { critical: 0, high: 0, medium: 1, low: 0, info: 0, total: 1 },
-          800,
-          7,
-        ),
-      () =>
-        email.adminAccountChangeEmail({
-          userName: "Alice",
-          adminName: "Admin",
-          changes: [{ field: "plan", oldValue: "free", newValue: "pro" }],
-          timestamp: new Date("2026-01-01T00:00:00Z"),
-        }),
-      () =>
-        email.postureDigestEmail({
-          siteCount: 3,
-          newFindings: [
-            {
-              title: "Missing CSP",
-              severity: "critical",
-              url: "https://a.com",
-            },
-          ],
-          newFindingsTotal: 1,
-          newCriticalCount: 1,
-          newHighCount: 0,
-          currentOpenCount: 4,
-          previousOpenCount: 3,
-          trend: "up",
-          windowDays: 7,
-        }),
-      () =>
-        email.paymentReceiptEmail({
-          planName: "Pro Supporter",
-          amountCents: 1000,
-          currency: "usd",
-          date: "August 18, 2026",
-          invoiceUrl: "https://invoice.stripe.com/i/abc123",
-        }),
-      () =>
-        email.paymentFailedEmail({
-          planName: "Pro Supporter",
-          amountCents: 1000,
-          currency: "usd",
-          nextAttempt: "August 21, 2026",
-        }),
-      () =>
-        email.subscriptionChangedEmail({
-          kind: "upgraded",
-          planName: "Elite Supporter",
-          previousPlanName: "Pro Supporter",
-        }),
-      () =>
-        email.subscriptionChangedEmail({
-          kind: "downgraded",
-          planName: "Core Supporter",
-          previousPlanName: "Pro Supporter",
-        }),
-      () =>
-        email.subscriptionChangedEmail({
-          kind: "canceled",
-          planName: "Pro Supporter",
-        }),
-      () =>
-        email.subscriptionChangedEmail({
-          kind: "renewed",
-          planName: "Core Supporter",
-        }),
-      () => email.accountDeletedEmail("Alice"),
-      () => email.accountDeletedEmail(null),
-      () => email.sessionRevokedEmail(details),
-      () => email.teamMemberRemovedEmail("Acme"),
-      () => email.teamRoleChangedEmail("Acme", "viewer", "admin"),
-    ];
+    return buildTemplateCorpus(email);
+  }
 
-    for (const build of builders) {
-      const result = build();
-      expect(typeof result.subject).toBe("string");
-      expect(result.subject.length).toBeGreaterThan(0);
-      expect(result.html).toContain("<h1");
-      expect(result.text.length).toBeGreaterThan(0);
+  it("returns a subject, a preheader, a plain-text part and an HTML part", async () => {
+    const templates = await corpus();
+    expect(templates.length).toBeGreaterThanOrEqual(55);
+    for (const t of templates) {
+      expect(typeof t.subject, t.name).toBe("string");
+      expect(t.subject.trim().length, t.name).toBeGreaterThan(0);
+      expect(t.text.trim().length, t.name).toBeGreaterThan(40);
+      expect(t.html, t.name).toContain("<h1");
+      // The plain-text part is not a fallback nobody sees: some clients and
+      // most screen readers prefer it, so it has to read on its own rather
+      // than being a stripped copy of the markup.
+      expect(t.text, t.name).not.toContain("<");
     }
+  });
+
+  it("writes a preheader that says something the subject does not", async () => {
+    const templates = await corpus();
+    for (const t of templates) {
+      expect(typeof t.preheader, t.name).toBe("string");
+      const pre = (t.preheader ?? "").trim();
+      expect(pre.length, t.name).toBeGreaterThan(10);
+      // An inbox shows the subject and then this. Repeating the subject
+      // spends the second line saying nothing.
+      expect(pre.toLowerCase(), t.name).not.toBe(t.subject.toLowerCase());
+    }
+  });
+
+  // The preheader is the line a lock screen shows next to the sender, so the
+  // two templates whose subject IS a one-time code must not repeat it there.
+  // A blanket "no six-digit run" rule would be wrong: a credit receipt says
+  // "500000 AI analysis tokens" and that is not a secret.
+  it("keeps a one-time code out of the preheader", async () => {
+    const email = await loadEmail();
+    const code = email.email2FACodeEmail("418246", 10);
+    expect(code.subject).toContain("418246");
+    expect(code.preheader).not.toContain("418246");
+    const billing = email.billingVerificationCodeEmail("730914", 10);
+    expect(billing.subject).toContain("730914");
+    expect(billing.preheader).not.toContain("730914");
+  });
+
+  it("uses no em dash anywhere in user-facing copy", async () => {
+    const templates = await corpus();
+    for (const t of templates) {
+      for (const [part, value] of [
+        ["subject", t.subject],
+        ["preheader", t.preheader ?? ""],
+        ["text", t.text],
+        ["html", t.html],
+      ] as const) {
+        expect(value.includes("\u2014"), `${t.name}.${part}`).toBe(false);
+      }
+    }
+  });
+
+  it("renders inside the size email_logs will store", async () => {
+    configureSmtp();
+    const { sendEmail } = await loadEmail();
+    const templates = await corpus();
+    for (const t of templates) {
+      sendMailMock.mockReset();
+      sendMailMock.mockResolvedValue({ messageId: "x" });
+      await sendEmail({
+        to: "user@example.com",
+        subject: t.subject,
+        text: t.text,
+        html: t.html,
+        preheader: t.preheader,
+        unsubscribeToken: "11111111-2222-3333-4444-555555555555",
+      });
+      const sent = sendMailMock.mock.calls[0][0] as { html: string };
+      // EMAIL_LOG_HTML_MAX_CHARS in lib/email/email.ts. Above it the rendered
+      // copy is dropped rather than truncated, so a template that grew past
+      // this would silently stop being viewable in Admin > Email Logs.
+      expect(sent.html.length, t.name).toBeLessThan(100_000);
+    }
+  });
+});
+
+/**
+ * Source-level hygiene. The rendered output legitimately contains the app's
+ * name and the palette's hexes; what must not exist is a second copy of
+ * either, typed into a template, which is how a self-hoster ends up with our
+ * brand in their mail and how the colours drifted from the product before
+ * lib/config/brand.ts existed.
+ */
+describe("templates take the brand from config, never from a literal", () => {
+  // Comments are stripped first. Both files explain in prose why the palette
+  // moved into config, and quoting the values they are talking about is the
+  // point of those comments rather than a breach of the rule.
+  const read = (rel: string) =>
+    readFileSync(join(process.cwd(), rel), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^[ \t]*\/\/.*$/gm, "");
+
+  it("hardcodes no colour in lib/email/email.ts or lib/email/layout.ts", () => {
+    for (const rel of ["lib/email/email.ts", "lib/email/layout.ts"]) {
+      // Not preceded by "&", so an HTML character reference such as the
+      // preheader filler's &#8199; is not mistaken for a colour.
+      const colours = read(rel).match(/(?<!&)#[0-9a-fA-F]{3,8}\b/g) ?? [];
+      expect(colours, rel).toEqual([]);
+    }
+  });
+
+  it("hardcodes the app name nowhere in lib/email/", () => {
+    for (const rel of ["lib/email/email.ts", "lib/email/layout.ts"]) {
+      expect(read(rel), rel).not.toMatch(/["'`]VulnRadar/);
+    }
+  });
+
+  it("takes the light and dark palettes from lib/config/brand.ts", () => {
+    const layout = read("lib/email/layout.ts");
+    expect(layout).toContain('from "@/lib/config/brand"');
+    expect(layout).toContain("BRAND.onLight");
   });
 });
 

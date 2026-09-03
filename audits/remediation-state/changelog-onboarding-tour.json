@@ -1,0 +1,20 @@
+[
+  {
+    "icon": "Sparkles",
+    "label": "The Product Tour Now Uses The Real App",
+    "desc": "The tour used to be eight slides of text in a box in the middle of the screen: it never pointed at anything and you could read the whole thing without the app open. It is now a guided walkthrough that dims the page, cuts a hole around the actual control it is talking about, and puts its note beside it. Steps that ask you to do something wait until you do it, so you type a real URL, press Scan on a real scan, open a real finding and click through to History, Compare, Profile and Teams yourself. It runs thirty-six steps grouped into eight chapters instead of eight slides.",
+    "category": "changed"
+  },
+  {
+    "icon": "Eye",
+    "label": "The Tour Follows You Across Pages",
+    "desc": "Because the tour now covers scanning, history, comparing two scans, API keys, scheduled scans, webhooks and teams, it has to move between pages with you. It keeps your place through every navigation and through a page reload, and when a step points at something that is not on the screen it says so and offers to take you there rather than highlighting empty space. A step that does not apply to your account is skipped without comment.",
+    "category": "changed"
+  },
+  {
+    "icon": "ShieldCheck",
+    "label": "Closing The Tour No Longer Burns It",
+    "desc": "The only way out of the old tour was a close button that marked onboarding finished for good, so one stray click or an absent-minded Escape spent it. Escape now pauses instead: the overlay comes down, your place is kept, and a small Resume pill sits in the corner. The tour is only marked finished when you reach the end or press End tour, and Replay product tour under Profile now works from whatever page you are on rather than only from the dashboard.",
+    "category": "fixed"
+  }
+]

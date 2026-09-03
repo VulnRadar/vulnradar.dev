@@ -9,6 +9,10 @@ export interface Team {
   owner_email: string;
   owner_name: string | null;
   owner_avatar_url: string | null;
+  /** The team's own picture: a same-origin /api/v3/teams/avatar/<id>?v=<stamp>
+   *  path, or null when nobody has set one. Built server-side from the
+   *  team_avatars row so it always matches what is actually stored. */
+  avatar_url: string | null;
   member_count: number;
   created_at: string;
   role: string;

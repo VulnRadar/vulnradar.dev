@@ -2,11 +2,11 @@
 
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
-import { Check, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { PRODUCTS, getPlanFromProductId } from "@/lib/billing/products";
 import { PLANS } from "@/lib/billing/plans";
+import { usePlanLimits } from "@/lib/hooks/use-plan-limits";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "@/lib/billing/subscription-status";
 import { isStaffRole } from "@/lib/auth/permissions-client";
 import Link from "next/link";
@@ -16,7 +16,9 @@ import {
   APP_NAME,
 } from "@/lib/config/client-constants";
 import { StripeCheckout } from "@/components/billing/stripe-checkout";
-import { CheckoutSkeleton } from "@/components/billing/checkout-skeleton";
+import { CheckoutShell } from "@/components/billing/checkout-shell";
+import { PaymentFormSkeleton } from "@/components/billing/checkout-status";
+import { CheckoutMessage } from "@/components/billing/checkout-message";
 
 export default function CheckoutPage({
   params,
@@ -33,6 +35,13 @@ export default function CheckoutPage({
   const product = PRODUCTS.find((p) => p.id === productId);
   const planId = product ? getPlanFromProductId(product.id) : null;
   const plan = planId ? PLANS.find((p) => p.id === planId) : null;
+  // The scan-a-day figure quoted on this page is the number the buyer is about
+  // to pay for, so it is read from the settings the API enforces rather than
+  // from the catalog copy compiled into the bundle (AUDIT-011#drift-10).
+  const planLimits = usePlanLimits();
+  const dailyScans = planId
+    ? planLimits[planId].dailyScans
+    : (plan?.limits.dailyScans ?? 0);
 
   // billing: PLANS is already ordered lowest-to-highest tier (free, core,
   // pro, elite) -- see components/pricing/pricing-cards.tsx's identical
@@ -86,174 +95,136 @@ export default function CheckoutPage({
 
   if (!BILLING_ENABLED) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center max-w-md px-4">
-          <h1 className="text-2xl font-semibold tracking-tight text-balance mb-2">
-            There is nothing to pay for
-          </h1>
-          <p className="text-muted-foreground mb-4">
-            Billing is switched off on this {APP_NAME} deployment, so every
-            account already has full access.
-          </p>
+      <CheckoutMessage
+        title="There is nothing to pay for"
+        description={`Billing is switched off on this ${APP_NAME} deployment, so every account already has full access.`}
+        action={
           <Button size="lg" className="h-11 px-6 gap-2" asChild>
             <Link href={ROUTES.DASHBOARD}>Go to Scanner</Link>
           </Button>
-        </div>
-      </div>
+        }
+      />
     );
   }
 
   if (isStaffAccount && isBelowStaffFloor) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center max-w-md px-4">
-          <h1 className="text-2xl font-semibold tracking-tight text-balance mb-2">
-            There is nothing to pay for
-          </h1>
-          <p className="text-muted-foreground mb-4">
-            Staff accounts already have Pro Supporter access, so there is no
-            need to subscribe to a lower plan. You can still upgrade to Elite
-            Supporter from the pricing page if you want it.
-          </p>
+      <CheckoutMessage
+        title="There is nothing to pay for"
+        description="Staff accounts already have Pro Supporter access, so there is no need to subscribe to a lower plan. You can still upgrade to Elite Supporter from the pricing page if you want it."
+        action={
           <Button size="lg" className="h-11 px-6 gap-2" asChild>
             <Link href={ROUTES.PRICING}>View plans</Link>
           </Button>
-        </div>
-      </div>
+        }
+      />
     );
   }
 
   if (!product || !plan) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center px-4">
-          <h1 className="text-2xl font-semibold tracking-tight text-balance mb-2">
-            That plan does not exist
-          </h1>
-          <p className="text-muted-foreground mb-4">
-            The link you followed does not match a current plan. Nothing has
-            been charged.
-          </p>
+      <CheckoutMessage
+        title="That plan does not exist"
+        description="The link you followed does not match a current plan. Nothing has been charged."
+        action={
           <Button size="lg" className="h-11 px-6 gap-2" asChild>
             <Link href={ROUTES.PRICING}>View plans</Link>
           </Button>
-        </div>
-      </div>
+        }
+      />
     );
-  }
-
-  if (loading) {
-    return <CheckoutSkeleton />;
   }
 
   if (checkoutComplete) {
     return (
-      <div
-        className="min-h-screen flex items-center justify-center bg-background"
-        role="status"
-      >
-        <div className="text-center px-4">
-          <div className="w-16 h-16 rounded-full bg-[hsl(var(--success))]/10 flex items-center justify-center mx-auto mb-6">
-            <Check
-              className="h-8 w-8 text-[hsl(var(--success))]"
-              aria-hidden="true"
-            />
-          </div>
-          <h1 className="text-2xl font-semibold tracking-tight text-balance mb-2">
-            You are subscribed
-          </h1>
-          <p className="text-muted-foreground mb-6">
+      <CheckoutMessage
+        tone="success"
+        title="You are subscribed"
+        description={
+          <>
             Your account is on{" "}
             <span className="font-medium text-foreground">{plan.name}</span>{" "}
             now. The new scan limit applies immediately.
-          </p>
+          </>
+        }
+        action={
           <Button size="lg" className="h-11 px-6 gap-2" asChild>
             <Link href={ROUTES.DASHBOARD}>Start scanning</Link>
           </Button>
-        </div>
-      </div>
+        }
+      />
     );
   }
 
+  // Everything below except the payment form is derived synchronously from
+  // PRODUCTS and PLANS, so none of it waits on anything: the heading, the
+  // order summary and the feature list are correct on the first frame. The
+  // auth request only decides whether Stripe is asked to start a subscription
+  // or an upgrade, so it is the payment column alone that holds a placeholder,
+  // and it holds the same PaymentFormSkeleton the Stripe form shows before it
+  // mounts. The page used to hand its entire body to CheckoutSkeleton while
+  // that one request was in flight, which spent the round trip drawing grey
+  // boxes over prices it already had.
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border bg-card/50 sticky top-[calc(var(--vr-banner-h,0px)+var(--vr-imp-banner-h,0px))] z-10 transition-[top] duration-300">
-        <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
-          <Link
-            href={ROUTES.PRICING}
-            className="inline-flex items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-            <span className="text-sm">Back to plans</span>
-          </Link>
-          <div className="w-4" />
-        </div>
-      </header>
-      {/* position: sticky reserves flow space at the header's unshifted
-          height only -- the extra top-(--vr-banner-h) offset that
-          pushes it down below a banner is a paint-only shift, so without
-          this the header visually overlaps the content below it. */}
+    <CheckoutShell>
       <div
-        className="h-[calc(var(--vr-banner-h,0px)+var(--vr-imp-banner-h,0px))] transition-[height] duration-300"
-        aria-hidden="true"
-      />
-
-      {/* Main content */}
-      <main
-        id="main-content"
-        tabIndex={-1}
-        className="w-full max-w-5xl mx-auto px-4 sm:px-6 py-12 sm:py-16"
+        className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-x-12 md:items-start"
+        /* The one md: breakpoint left on these pages, deliberately: every
+             other one moved to sm: to match the rest of app/, but this is the
+             split that gives the Stripe payment form its own column, and at
+             640px that column would be about 270px wide. Wide enough to
+             render the card fields, not wide enough to fill them in. */
       >
-        <div
-          className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-x-12 md:items-start"
-          /* The one md: breakpoint left on these pages, deliberately: every
-               other one moved to sm: to match the rest of app/, but this is the
-               split that gives the Stripe payment form its own column, and at
-               640px that column would be about 270px wide. Wide enough to
-               render the card fields, not wide enough to fill them in. */
-        >
-          {/* The heading is its own full-width grid row, so both panels below
+        {/* The heading is its own full-width grid row, so both panels below
               start on the same grid line whatever the heading wraps to. It
               used to live inside the left column with a hardcoded
               md:pt-[120px] pushing the right one down to match, which only
               lined up at the exact width where the heading happened to be
               120px tall. */}
-          <div className="md:col-span-2">
-            <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight mb-5 text-balance">
-              {isYearly
-                ? "Switch to yearly billing"
-                : "Start your subscription"}
-            </h1>
-            <p className="text-muted-foreground">
-              {product.name} runs {plan.limits.dailyScans} scans a day, starting
-              the moment payment goes through.
-            </p>
-          </div>
+        <div className="md:col-span-2">
+          <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight mb-5 text-balance">
+            {isYearly ? "Switch to yearly billing" : "Start your subscription"}
+          </h1>
+          <p className="text-muted-foreground">
+            {product.name} runs {dailyScans} scans a day, starting the moment
+            payment goes through.
+          </p>
+        </div>
 
-          {/* Left column - order summary */}
-          <div>
-            <div className="sticky top-24">
-              {/* Order Summary */}
-              <div className="relative overflow-hidden rounded-xl border border-border bg-card p-5 mb-6">
-                <span
-                  aria-hidden="true"
-                  className="absolute inset-y-0 left-0 w-1"
-                  style={{
-                    backgroundColor: plan.badge?.color || "hsl(var(--primary))",
-                  }}
-                />
-                <div className="pl-3">
-                  <div className="flex items-baseline justify-between gap-3">
-                    <p className="font-semibold text-lg">{product.name}</p>
-                    <p className="text-sm font-medium tabular-nums text-muted-foreground">
-                      {plan.limits.dailyScans} scans/day
-                    </p>
-                  </div>
-                  <p className="text-sm text-muted-foreground mt-0.5">
-                    {product.description}
+        {/* Left column - order summary */}
+        <div>
+          <div className="sticky top-24">
+            {/* Order Summary */}
+            <div className="relative overflow-hidden rounded-xl border border-border bg-card p-5">
+              {/* Not dead code and not a token bypass to remove: badge.color
+                    is real catalog data (lib/billing/catalog.ts gives core,
+                    pro and elite their own value) and it is the SAME per-plan
+                    accent the profile, admin and shared-report pages paint, so
+                    a plan reads as one colour everywhere. Only the free plan
+                    has no badge, and the free plan is never checked out, which
+                    is what makes the fallback look unreachable. A class cannot
+                    express a value that comes from data. */}
+              <span
+                aria-hidden="true"
+                className="absolute inset-y-0 left-0 w-1"
+                style={{
+                  backgroundColor: plan.badge?.color || "hsl(var(--primary))",
+                }}
+              />
+              {/* One pl-3 around the whole card, not just its header: the
+                    indent that clears the accent edge used to wrap the plan
+                    name only, so the name sat 12px to the right of the price
+                    rows under it and nothing in the panel shared a left edge. */}
+              <div className="pl-3">
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="font-semibold text-lg">{product.name}</p>
+                  <p className="text-sm font-medium tabular-nums text-muted-foreground">
+                    {dailyScans} scans/day
                   </p>
                 </div>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  {product.description}
+                </p>
 
                 <Separator className="my-4" />
 
@@ -297,45 +268,49 @@ export default function CheckoutPage({
                   separate setup fee.
                 </p>
               </div>
-
-              {/* Features */}
-              <div className="rounded-xl border border-border bg-card p-5">
-                <h2 className="text-sm font-medium text-muted-foreground mb-3">
-                  What&apos;s included
-                </h2>
-                <ul className="space-y-2">
-                  {plan.features.slice(0, 5).map((feature, i) => (
-                    <li key={i} className="flex items-center gap-2 text-sm">
-                      <Check
-                        className="h-4 w-4 text-[hsl(var(--success))] shrink-0"
-                        aria-hidden="true"
-                      />
-                      <span>{feature}</span>
-                    </li>
-                  ))}
-                  <li className="flex items-center gap-2 text-sm">
-                    <Check
-                      className="h-4 w-4 text-[hsl(var(--success))] shrink-0"
-                      aria-hidden="true"
-                    />
-                    <span>{plan.limits.dailyScans} scans per day</span>
-                  </li>
-                </ul>
-              </div>
-
-              <p className="text-center text-xs text-muted-foreground mt-4">
-                Payment handled by Stripe, not us. Cancel anytime, no lock-in.
-              </p>
             </div>
-          </div>
 
-          {/* Right column - payment form */}
-          <div>
-            <div className="sticky top-24">
-              <div className="rounded-xl border border-border bg-card p-6">
-                <h2 className="text-base font-semibold mb-5">
-                  Payment details
-                </h2>
+            {/* Supporting, not equal. This used to be a second
+                  `rounded-xl border bg-card p-5` panel stacked under the order
+                  summary, so the thing being bought and the footnote about it
+                  carried identical weight. It is now a plain list on the page:
+                  no border, no surface, and no column of six identical check
+                  glyphs, which carried no information the sentence beside them
+                  did not. The trailing "N scans per day" row is gone as well;
+                  the summary states that number four lines above. */}
+            <div className="mt-6">
+              <h2 className="text-sm font-medium text-foreground mb-2">
+                What&apos;s included
+              </h2>
+              <ul className="list-disc pl-4 space-y-1.5 text-sm text-muted-foreground marker:text-muted-foreground/50">
+                {plan.features.slice(0, 5).map((feature, i) => (
+                  <li key={i} className="leading-relaxed">
+                    {feature}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <p className="text-xs text-muted-foreground mt-6">
+              Payment handled by Stripe, not us. Cancel anytime, no lock-in.
+            </p>
+          </div>
+        </div>
+
+        {/* Right column - payment form */}
+        <div>
+          <div className="sticky top-24">
+            <div className="rounded-xl border border-border bg-card p-6">
+              <h2 className="text-base font-semibold mb-5">Payment details</h2>
+              {/* hasActiveSubscription is what the auth request is for, and
+                    it decides whether Stripe opens a new subscription or an
+                    upgrade, so the form cannot be mounted before it lands.
+                    PaymentFormSkeleton is what StripeCheckout itself renders
+                    while it waits for the theme, so the wait is one shape
+                    from here to the real card fields. */}
+              {loading ? (
+                <PaymentFormSkeleton />
+              ) : (
                 <StripeCheckout
                   productId={productId}
                   planName={plan.name}
@@ -343,29 +318,29 @@ export default function CheckoutPage({
                   hasActiveSubscription={hasActiveSubscription}
                   onSuccess={() => setCheckoutComplete(true)}
                 />
-              </div>
-
-              <p className="text-center text-xs text-muted-foreground mt-4">
-                By subscribing, you agree to our{" "}
-                <Link
-                  href="/legal/terms"
-                  className="underline hover:text-foreground"
-                >
-                  Terms of Service
-                </Link>{" "}
-                and{" "}
-                <Link
-                  href="/legal/privacy"
-                  className="underline hover:text-foreground"
-                >
-                  Privacy Policy
-                </Link>
-                .
-              </p>
+              )}
             </div>
+
+            <p className="text-center text-xs text-muted-foreground mt-4">
+              By subscribing, you agree to our{" "}
+              <Link
+                href="/legal/terms"
+                className="underline hover:text-foreground"
+              >
+                Terms of Service
+              </Link>{" "}
+              and{" "}
+              <Link
+                href="/legal/privacy"
+                className="underline hover:text-foreground"
+              >
+                Privacy Policy
+              </Link>
+              .
+            </p>
           </div>
         </div>
-      </main>
-    </div>
+      </div>
+    </CheckoutShell>
   );
 }

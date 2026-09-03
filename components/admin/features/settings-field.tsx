@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Loader2, RotateCcw, X } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { StatusPill } from "@/components/admin/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -139,7 +139,17 @@ export function SettingField({
         : null;
 
   return (
-    <div className="px-4 sm:px-5 py-4 hover:bg-muted/20 transition-colors">
+    <div
+      // An unsaved edit was a 6px dot, which is not findable on a tab holding
+      // forty rows: the only way to find what you had changed was to scroll
+      // and squint. The row itself now carries it, with a rail as a pseudo
+      // element so a pending row and a clean one keep the same text origin.
+      className={cn(
+        "relative px-4 sm:px-5 py-4 transition-colors hover:bg-muted/20",
+        isPending &&
+          "bg-primary/5 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-primary",
+      )}
+    >
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -149,24 +159,15 @@ export function SettingField({
             >
               {def.label}
             </label>
-            <Badge
-              variant="outline"
-              className={cn(
-                "text-[10px] px-1.5 py-0 font-normal",
-                isOverridden
-                  ? "bg-primary/10 text-primary border-primary/20"
-                  : "text-muted-foreground border-border/50",
-              )}
-            >
-              {isOverridden ? "Customized" : "Default"}
-            </Badge>
-            {isPending && (
-              <span
-                className="h-1.5 w-1.5 rounded-full bg-primary"
-                aria-label="Unsaved change"
-                title="Unsaved change"
-              />
-            )}
+            {/* Only rows that are actually customised or edited get a badge.
+                Every row used to carry one, "Default" included, so the badge
+                column was uniform texture down the whole tab and marked
+                nothing. Absence of a badge is now the default state. */}
+            {isPending ? (
+              <StatusPill tone="info">Unsaved</StatusPill>
+            ) : isOverridden ? (
+              <StatusPill tone="neutral">Customized</StatusPill>
+            ) : null}
           </div>
           <p className="text-xs text-muted-foreground mt-1 max-w-[52ch]">
             {def.help}

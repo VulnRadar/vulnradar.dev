@@ -1,0 +1,20 @@
+[
+  {
+    "icon": "Lock",
+    "label": "Compare And Badge Are Sign-In Only",
+    "desc": "Both pages work entirely off your own scan history, so signed out they showed a permanently empty list with no explanation. They now ask you to sign in first and take you straight back to the page you wanted, and they carry the same top bar as the rest of your account instead of the marketing one. Badges already embedded on your site are unaffected: the badge image itself is still public.",
+    "category": "changed"
+  },
+  {
+    "icon": "Users",
+    "label": "Teams Can Have A Picture",
+    "desc": "Teams showed an avatar with no way to set one. Anyone who can rename a team can now give it a picture: pick an image, crop it, and it is stored the same way profile pictures are. A team without one falls back to its initial rather than a broken image, and only members of the team can see it.",
+    "category": "added"
+  },
+  {
+    "icon": "Wrench",
+    "label": "Team List Names Its Owner Again",
+    "desc": "Every team you did not own was listed as \"owned by undefined\" over a blank placeholder, because the list never actually asked the server who the owner was. It does now, so each row shows the owner's name and face.",
+    "category": "fixed"
+  }
+]

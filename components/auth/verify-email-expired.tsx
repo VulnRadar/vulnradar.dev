@@ -14,6 +14,7 @@ import { cn } from "@/lib/ui/utils";
 import {
   AuthAlert,
   AuthOutcome,
+  AuthOutcomeHeader,
   authFieldClass,
   authFocusRing,
 } from "@/components/auth/auth-shell";
@@ -93,14 +94,16 @@ export function VerifyEmailExpired({ message }: VerifyEmailExpiredProps) {
 
   return (
     <div>
-      <div className="border-l-2 border-destructive pl-4 mb-7">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          That link expired
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
-          {message} Enter your email below and we will send a new one.
-        </p>
-      </div>
+      {/* Was a hand-rolled copy of the outcome keyline with an off-tier
+          `text-2xl` h1. Reuses the shell's header now, with no heading ref so
+          focus stays on the autofocused email field below. */}
+      <AuthOutcomeHeader
+        tone="negative"
+        title="That link expired"
+        className="mb-7"
+      >
+        <p>{message} Enter your email below and we will send a new one.</p>
+      </AuthOutcomeHeader>
 
       <form onSubmit={handleResend} className="flex flex-col gap-4" noValidate>
         <div className="flex flex-col gap-1.5">

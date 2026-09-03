@@ -26,13 +26,22 @@ interface ConfirmDialogProps {
 }
 
 /**
- * Confirmation dialog for dangerous/important admin actions.
+ * Confirmation dialog for dangerous or important admin actions.
  *
-migrated from a hand-rolled `<div>` overlay to
+ * Pass `danger` for anything irreversible. Without it this renders the blue
+ * ShieldCheck reassurance treatment, which on a dialog whose own copy says
+ * "this cannot be undone" is worse than no icon at all.
+ *
+ * Migrated from a hand-rolled `<div>` overlay to
  * `@radix-ui/react-alert-dialog`. Radix provides focus trap, escape-key
  * dismissal, click-outside-to-close, and `aria-modal`/`role="alertdialog"`
  * for free, so screen readers and keyboard users get the right semantics
  * without us maintaining them by hand.
+ *
+ * This is a strict subset of components/shared/confirm-dialog.tsx, which is
+ * the same dialog plus cancelLabel, an `error` slot, a caller-owned `busy`
+ * flag and confirmDisabled. New call sites should use that one; this stays
+ * only for the admin components already importing it.
  */
 export function ConfirmDialog({
   open,
@@ -83,7 +92,9 @@ export function ConfirmDialog({
                 />
               )}
             </div>
-            <div>
+            {/* min-w-0: without it this flex child refuses to shrink and a
+                long unbroken title pushes the panel wider than its rung. */}
+            <div className="min-w-0">
               <AlertDialogTitle>{title}</AlertDialogTitle>
               <AlertDialogDescription>{description}</AlertDialogDescription>
             </div>

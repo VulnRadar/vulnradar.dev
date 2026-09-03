@@ -1,6 +1,6 @@
 # VulnRadar Public Docs: AI Knowledge
 
-_Auto-compiled from `app/docs/*/page.tsx` on 2026-09-01._
+_Auto-compiled from `app/docs/*/page.tsx` on 2026-09-02._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about every public docs page. Edit
@@ -509,7 +509,7 @@ before pointing AI features at a local model.
 
 ### Notes
 - has a two-layer configuration model designed to keep secrets out of source code while making non-secret deployment settings easy to customize for self-hosters.
-- Edit lib/config/config-values.ts to change the shipped default for any of these. What that edit costs you depends on the setting&rsquo;s tier. General, Branding, and SEO values are build tier: editing the constant (or the NEXT_PUBLIC_* env var named in the field&rsquo;s help text) and rebuilding is the only way to change them. Most of the rest (rate limits, feature flags, billing, scan timeouts, auth windows, and more) are runtime tier and can also be overridden without touching source, from the Admin Settings Page below.
+- Edit lib/config/config-values.ts to change the shipped default for any of these. What that edit costs you depends on the setting&rsquo;s tier. General, Social, Branding, and SEO values are build tier: editing the constant (or the NEXT_PUBLIC_* env var named in the field&rsquo;s help text) and rebuilding is the only way to change them. Most of the rest (rate limits, feature flags, billing, scan timeouts, auth windows, and more) are runtime tier and can also be overridden without touching source, from the Admin Settings Page below.
 - All values are per-IP unless noted. The window is in minutes. Internally lib/config/constants.ts multiplies by 60 for the per-second window.
 - The /demo page lets unauthenticated visitors run scans. Rate-limited per IP.
 - Disable demo mode entirely with CONFIG_FEATURE_DEMO_MODE = false.
@@ -865,7 +865,7 @@ Read-only peek at an in-flight POST /scan/discover, for the requestId that call 
 ```
 
 #### `GET /history`: List Scan History
-Returns up to 100 most recent scans for the authenticated user. Retention is a per-plan admin setting and ships as unlimited on every plan, so by default nothing is aged out. GitHub repo scans are excluded from this list.
+The authenticated user's own scans, most recent first, 100 per page by default. Retention is a per-plan admin setting and ships as unlimited on every plan, so by default nothing is aged out. GitHub repo scans are excluded from this list.
 
 - **Response (200):**
 ```json
@@ -879,12 +879,15 @@ Returns up to 100 most recent scans for the authenticated user. Retention is a p
       "duration": 1423,
       "scanned_at": "2026-03-10T15:30:00.000Z",
       "source": "api",
+      "status": "completed",
       "tags": ["production", "weekly-scan"]
     }
   ],
-  "total": 7,
+  "total": 143,
   "limit": 100,
-  "truncated": false
+  "offset": 0,
+  "maxLimit": 100,
+  "truncated": true
 }
 ```
 
@@ -962,20 +965,25 @@ Permanently delete a single scan by ID. Owner only.
 }
 ```
 
-#### `PATCH /history/{id}`: Update Scan Notes
-Update the user note on a scan. Owner only.
+#### `PATCH /history/{id}`: Update a Scan's Notes, Visibility, or Teams
+Edit one past scan. Send only the fields you want to change; an absent field is left alone, and a body with none of them is a 400. This card used to document notes alone, which is why isPublic and team sharing looked like UI-only actions.
 
 - **Request body:**
 ```json
 {
-  "notes": "Investigating HSTS issue with infra team"
+  "notes": "Investigating HSTS issue with infra team",
+  "isPublic": false,
+  "teamIds": [7, 9]
 }
 ```
 
 - **Response (200):**
 ```json
 {
-  "success": true
+  "notes": "Investigating HSTS issue with infra team",
+  "isPublic": false,
+  "teamId": 7,
+  "teamIds": [7, 9]
 }
 ```
 
@@ -1175,6 +1183,16 @@ Set revoked_at on the key. The key stops working immediately.
 }
 ```
 
+#### `POST /keys/{id}/reset-binding`: Clear a Key's IP Binding
+Forget the IP a key pinned itself to on first use. Only relevant on deployments that have API-key IP binding switched on; on every other deployment there is nothing bound and this is a no-op that still returns 200.
+
+- **Response (200):**
+```json
+{
+  "success": true
+}
+```
+
 #### `GET /domains`: List Domains
 Your verified and pending domains, plus any assigned to a team you belong to.
 
@@ -1233,6 +1251,175 @@ Looks up the DNS TXT record right now and updates the domain's status. Safe to c
 
 #### `DELETE /domains?id={id}`: Remove a Domain
 Removes a domain. Active Probing stops being allowed against it (and its subdomains) immediately.
+
+- **Response (200):**
+```json
+{
+  "success": true
+}
+```
+
+#### `PATCH /domains/{id}`: Assign a Domain to a Team
+Share a verified domain with a team so its members' scans can use it, or send teamId: null to make it personal again.
+
+- **Request body:**
+```json
+{
+  "teamId": 7
+}
+```
+
+- **Response (200):**
+```json
+{
+  "id": 12,
+  "domain": "example.com",
+  "team_id": 7,
+  "status": "verified",
+  "verification_method": "dns-txt",
+  "created_at": "2026-08-01T00:00:00.000Z",
+  "verified_at": "2026-08-01T00:12:00.000Z",
+  "last_checked_at": "2026-08-30T04:00:00.000Z",
+  "last_check_error": null
+}
+```
+
+#### `GET /webhooks`: List Webhooks
+Your webhooks plus any assigned to a team you belong to. Team co-membership alone is enough to read them; all team roles can view.
+
+- **Response (200):**
+```json
+{
+  "webhooks": [
+    {
+      "id": 3,
+      "url": "https://hooks.example.com/vulnradar",
+      "name": "CI alerts",
+      "type": "generic",
+      "active": true,
+      "team_id": null,
+      "created_at": "2026-08-01T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+#### `POST /webhooks`: Create a Webhook
+Register a public HTTPS endpoint to be called when a scan completes.
+
+- **Request body:**
+```json
+{
+  "url": "https://hooks.example.com/vulnradar",
+  "name": "CI alerts",
+  "type": "auto"
+}
+```
+
+- **Response (200):**
+```json
+{
+  "id": 3,
+  "url": "https://hooks.example.com/vulnradar",
+  "name": "CI alerts",
+  "type": "generic",
+  "active": true,
+  "created_at": "2026-08-01T00:00:00.000Z",
+  "secret": "<64 hex chars, shown once>"
+}
+```
+
+#### `PATCH /webhooks`: Send a Test Payload
+Deliver a one-off test payload so you can confirm a webhook is wired up. This does NOT edit the webhook; PATCH /webhooks/{id} does that.
+
+- **Request body:**
+```json
+{
+  "id": 3
+}
+```
+
+- **Response (200):**
+```json
+{
+  "success": true,
+  "message": "Test webhook sent successfully"
+}
+```
+
+#### `PATCH /webhooks/{id}`: Edit, Pause, or Reassign a Webhook
+Update a webhook in place. Send at least one of active, url, name, type or teamId; an absent field is left alone.
+
+- **Request body:**
+```json
+{
+  "active": false
+}
+```
+
+- **Response (200):**
+```json
+{
+  "id": 3,
+  "url": "https://hooks.example.com/vulnradar",
+  "name": "CI alerts",
+  "type": "generic",
+  "active": false,
+  "team_id": null,
+  "created_at": "2026-08-01T00:00:00.000Z"
+}
+```
+
+#### `POST /webhooks/{id}/rotate-secret`: Rotate a Webhook's Signing Secret
+Issue a new HMAC signing secret in place: same row, same id, same URL.
+
+- **Response (200):**
+```json
+{
+  "id": 3,
+  "url": "https://hooks.example.com/vulnradar",
+  "name": "CI alerts",
+  "type": "generic",
+  "active": true,
+  "created_at": "2026-08-01T00:00:00.000Z",
+  "secret": "<new 64 hex chars, shown once>"
+}
+```
+
+#### `GET /webhooks/{id}/deliveries`: Read a Webhook's Delivery Log
+The 50 most recent delivery attempts, newest first, so a failing webhook can be diagnosed from what actually came back rather than by guessing.
+
+- **Response (200):**
+```json
+{
+  "deliveries": [
+    {
+      "id": 981,
+      "event_type": "scan.completed",
+      "http_status": 200,
+      "response_snippet": "ok",
+      "attempted_at": "2026-08-30T04:00:03.120Z"
+    },
+    {
+      "id": 980,
+      "event_type": "scan.completed",
+      "http_status": null,
+      "response_snippet": "Blocked: target resolves to a private address",
+      "attempted_at": "2026-08-29T04:00:02.480Z"
+    }
+  ]
+}
+```
+
+#### `DELETE /webhooks`: Delete a Webhook
+Remove a webhook so it stops being called.
+
+- **Request body:**
+```json
+{
+  "id": 3
+}
+```
 
 - **Response (200):**
 ```json
@@ -1452,12 +1639,18 @@ default: 25 on Free, 100 on Core Supporter, 5,000 on Pro Supporter,
 effectively unlimited on Elite Supporter. Rotating a key re-reads it
 from your current plan.
 
-> **INFO: Staff accounts have no limit**
-> Users with role admin,
-moderator, or
-support are exempt from daily quotas (
-daily-limits.ts returns
-Infinity).
+> **INFO: Staff accounts scan on a plan**
+> A user whose role is one of
+{STAFF_ROLES.map((role, i) => (
+
+{i > 0 && (i === STAFF_ROLES.length - 1 ? " or " : ", ")}
+{role}
+
+is resolved to the staff plan tag, which
+carries the same daily allowance as Pro Supporter. That is a plan,
+not an exemption: staff still spend against a quota and can still
+run out. Only running {APP_NAME} with billing turned off makes a
+daily limit genuinely unlimited.
 
 > **INFO: 2FA email resend is a cooldown, not a rate limit**
 > This table used to carry a row for
@@ -1518,7 +1711,7 @@ applies.
 - Two separate limit systems protect the platform. They are enforced in different places and behave differently on overflow.
 - Two separate counters: scans/day enforced for session-authenticated users, and API requests/day enforced for Bearer-authenticated API keys.
 - Daily quotas are defined in lib/billing/catalog.ts (one entry per plan: dailyScans and apiRequestsPerDay). A new key&rsquo;s daily_limit is your plan&rsquo;s apiRequestsPerDay, not a separate per-key default: 25 on Free, 100 on Core Supporter, 5,000 on Pro Supporter, effectively unlimited on Elite Supporter. Rotating a key re-reads it from your current plan.
-- Users with role admin, moderator, or support are exempt from daily quotas ( daily-limits.ts returns Infinity).
+- A user whose role is one of is resolved to the staff plan tag, which carries the same daily allowance as Pro Supporter. That is a plan, not an exemption: staff still spend against a quota and can still run out. Only running with billing turned off makes a daily limit genuinely unlimited.
 - Every named limit below is admin-editable and configured in lib/config/config-values.ts as a CONFIG_RATE_LIMIT_*_ATTEMPTS + _WINDOW_MINUTES pair (the map from limit name to registry keys is CONFIGURABLE_LIMITS in lib/rate-limiting/rate-limit.ts). The window is converted to seconds when the limit is resolved. Every number in the table below is therefore a shipped default, not a constant: the instance you are calling may have been tuned.
 - The Keyed on column is the part that matters when you are sizing a client or reasoning about abuse. A limit keyed on the user is not reset by changing IP; a limit keyed on the IP is shared by everyone behind the same NAT or proxy. This table previously listed IP for all of them, and omitted nine limits that are enforced.
 - This table used to carry a row for POST /api/v3/auth/2fa/email-send at 1 attempt / 1 minute, described as an IP limit configured by a CONFIG_RATE_LIMIT_* pair. No such pair exists, so an operator went looking for a setting that was never there. The route uses a different mechanism entirely: it reads EMAIL_2FA_RESEND_COOLDOWN_SECONDS (default 60, admin-editable) and refuses with a 429 if a code row for that user was created inside the window. It is keyed on the user id from the pending-2FA cookie, not the IP, and it does not use the sliding-window table at all.
@@ -2683,7 +2876,7 @@ individual URLs instead.
 | `/docs/extension` | ✓ | 10 | 2 | 0 | 0 | 0 | 0 | 13 | 2 |
 | `/docs/self-hosting` | - | 16 | 9 | 0 | 14 | 0 | 0 | 29 | 3 |
 | `/docs/config` | - | 9 | 4 | 0 | 2 | 0 | 0 | 30 | 0 |
-| `/docs/api` | - | 8 | 5 | 0 | 6 | 32 | 0 | 16 | 5 |
+| `/docs/api` | - | 8 | 5 | 0 | 6 | 41 | 0 | 17 | 5 |
 | `/docs/api/playground` | - | 2 | 1 | 0 | 0 | 0 | 0 | 3 | 0 |
 | `/docs/webhooks` | ✓ | 6 | 0 | 0 | 3 | 0 | 0 | 6 | 5 |
 | `/docs/rate-limits` | - | 6 | 6 | 0 | 4 | 0 | 0 | 11 | 3 |

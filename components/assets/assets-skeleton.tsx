@@ -1,69 +1,47 @@
-import { Header } from "@/components/scanner/header";
-import { Footer } from "@/components/scanner/footer";
-import { Skeleton } from "@/components/ui/skeleton";
-
-const STAT_COUNT = 4;
-const ROW_COUNT = 6;
-
-function AssetsStatsSkeleton() {
-  return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-border overflow-hidden rounded-md border border-border">
-      {Array.from({ length: STAT_COUNT }).map((_, i) => (
-        <div key={i} className="flex items-center gap-3 px-4 py-3 bg-card">
-          <Skeleton className="h-9 w-9 rounded-lg shrink-0" />
-          <div className="space-y-1.5">
-            <Skeleton className="h-6 w-8" />
-            <Skeleton className="h-3 w-16" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function AssetsTableSkeleton() {
-  return (
-    <div className="rounded-xl border border-border overflow-hidden divide-y divide-border">
-      {Array.from({ length: ROW_COUNT }).map((_, i) => (
-        <div key={i} className="flex items-center gap-4 py-3.5 pl-4 pr-4">
-          <div className="flex-1 min-w-0 space-y-1.5">
-            <Skeleton className="h-4 w-40" />
-            <Skeleton className="h-3 w-16" />
-          </div>
-          <Skeleton className="hidden sm:block h-4 w-16" />
-          <Skeleton className="hidden sm:block h-5 w-20 rounded" />
-          <Skeleton className="hidden sm:block h-3 w-14" />
-        </div>
-      ))}
-    </div>
-  );
-}
+import { AppPageShell } from "@/components/shared/app-page-shell";
+import { StatStripSkeleton } from "@/components/shared/stat-strip";
+import {
+  SkeletonRows,
+  SkeletonRegion,
+} from "@/components/shared/skeleton-shapes";
 
 /**
- * Mirrors AssetsPage's real layout (title, stat grid, table) so the
- * route-level loading.tsx and the client component's own pre-fetch state
- * render the same shape. See components/history/history-skeleton.tsx for
- * the sibling this was modeled on.
+ * Two exports over one shape, because a skeleton has two callers that want
+ * opposite things and conflating them is what broke this.
+ *
+ * app/assets/loading.tsx renders before the page component exists, so it needs
+ * the whole chrome. The page's own loading branch renders while that chrome is
+ * already on screen, so drawing it again would tear down a Header and a tab
+ * strip the user can see in order to replace them with grey. The old single
+ * export did the second thing in both places.
+ *
+ * So AssetsDataSkeleton is the region, AssetsSkeleton is that region inside the
+ * shell, and the shape is written once. Neither can drift from the other.
  */
+export function AssetsDataSkeleton() {
+  return (
+    <SkeletonRegion label="Loading your hosts">
+      {/* Three, not the default four: AssetsStats dropped its host-count cell
+          (the h1 subtitle above already states that number), so a four-cell
+          placeholder would reflow the moment the data lands. */}
+      <StatStripSkeleton cells={3} />
+      <SkeletonRows rows={6} trailing={[16, 20, 14]} />
+    </SkeletonRegion>
+  );
+}
+
 export function AssetsSkeleton() {
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <Header />
-      <main
-        className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col gap-5"
-        role="status"
-        aria-live="polite"
-        aria-label="Loading assets"
-      >
-        <div className="mb-1 pb-2 pt-6 sm:pt-8 space-y-2">
-          <Skeleton className="h-7 w-20" />
-          <Skeleton className="h-4 w-52" />
-        </div>
-
-        <AssetsStatsSkeleton />
-        <AssetsTableSkeleton />
-      </main>
-      <Footer />
-    </div>
+    <AppPageShell className="flex flex-col gap-5">
+      {/* The page's title block and tab strip are static, so loading.tsx can
+          draw them for real rather than as placeholders. This is the fix for
+          the visible bug: the old skeleton had no tab strip at all, so the
+          bar appeared on load and shoved the whole table down. */}
+      <div className="pb-1 space-y-2">
+        <div className="h-7 w-20 animate-pulse motion-reduce:animate-none rounded-md bg-muted" />
+        <div className="h-4 w-52 animate-pulse motion-reduce:animate-none rounded-md bg-muted" />
+      </div>
+      <AssetsDataSkeleton />
+    </AppPageShell>
   );
 }

@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/config/constants";
 import { STAFF_ROLE_HIERARCHY } from "@/lib/config/client-constants";
+// EXACT_CHECK_COUNT is deliberately not imported here. Prose uses
+// TOTAL_CHECKS_LABEL; the exact figure belongs only where a number is the
+// only valid shape, which on the docs site is the API reference's JSON
+// response sample.
 import {
   EXACT_LEGACY_CHECK_COUNT,
   EXACT_PAGE_CHECK_COUNT,
-  EXACT_CHECK_COUNT,
   EXACT_CHECK_CATEGORY_COUNT,
 } from "@/lib/config/check-stats.generated";
 import type { TocItem } from "@/components/docs/docs-types";
@@ -35,7 +38,7 @@ const tocItems: TocItem[] = [
 
 export default function ArchitecturePage() {
   return (
-    <div className="space-y-16">
+    <div className="space-y-12 sm:space-y-16">
       <DocsTocSpy items={tocItems} />
       <DocsHero
         id="top"

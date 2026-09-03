@@ -165,3 +165,63 @@ Do not start this while an agent owns `components/scanner/`.
     definition is user-facing and make both read from one constant. Do not
     simply add active-probes to ALL_CATEGORIES without checking what iterates
     it: that list drives which families run on a passive scan.
+
+---
+
+## Second owner sweep, 2026-09-01
+
+17. **`/compare` always said "One or both scans not found". FIXED.** My own
+    incomplete fix caused it. The API route was corrected earlier to resolve
+    `public_id`, but the PAGE still typed `ScanOption.id` as `number`, read the
+    URL with `getQueryParamInt` and passed numbers to `runCompare`. A 32-char
+    hex id was `parseInt`ed into a different scan or into `null`, so the value
+    sent matched nothing. Typed as `string` end to end; `tsc` then surfaced
+    eight further call sites the type lie had been hiding.
+
+18. **`/compare` must be behind auth**, and its navbar fixed to match.
+
+19. **`/badge` must be behind auth** (only needed when making a badge), navbar
+    fixed to match. Note it was moved onto `PublicPageShell` earlier today
+    precisely because it is in `PUBLIC_PATHS`; both need changing together, and
+    `tests/components/shared/public-page-shells.test.ts` asserts the current
+    state, so update it rather than deleting the assertion.
+
+20. **Checkout credit pages look bad**: `/checkout/credits`,
+    `/checkout/github-credits`, `/checkout/browser-credits`.
+
+21. **Credits IA is wrong.** `/credits` should be one page showing every credit
+    option. AI credits should live at `/ai-credits` so the naming matches the
+    others rather than AI being the unnamed default.
+
+22. **Every modal must match every other modal.** One shell, one header
+    grammar, one footer grammar.
+
+23. **A support ticket shows "closed" twice.** General rule the owner drew from
+    it: never state the same fact twice in one view.
+
+24. **Teams appear to have a profile image but there is no way to set one.**
+    Store it the same way every other image is stored (in the database), not a
+    new mechanism.
+
+25. **Data must be correct on first paint on every page.** No value that is
+    wrong until a second fetch resolves.
+
+26. **All skeletons must match what actually arrives.** Several already drifted
+    (the admin one did, and the checkout one did).
+
+27. **Remove white outline borders that do not match.** WCAG needs a visible
+    boundary on controls, so this is "make it belong", not "delete it". SC
+    1.4.11 applies to controls, not containers, which is the distinction that
+    caused the original overreach.
+
+28. **A hidden dev route for opening any modal directly** is explicitly
+    sanctioned, so modals can be reviewed without reproducing state. Must not
+    ship to production or appear in the public repo surface.
+
+29. **Extension UI must be as good as the app** (desktop first; mobile
+    optional).
+
+30. **Engine and features**: add to the scanner engine, and build genuinely
+    needed features, where they are real gaps rather than filler.
+
+31. **Documentation**: extend it wherever it is thin.

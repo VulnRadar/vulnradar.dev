@@ -65,24 +65,30 @@ export const messageMarkdownComponents: Components = {
         </code>
       );
     }
+    // wrap-break-word (overflow-wrap: break-word), never break-all. break-all
+    // takes a break opportunity at any character, so it split short commands
+    // to fill the line above them: the greeting's `/changelog` chip rendered
+    // as "/cha" at one line's end and "ngelog" at the next line's start, which
+    // is unreadable and cannot be copied. overflow-wrap: break-word only
+    // breaks a token that will not fit on a line *by itself*, so a command, a
+    // header name or a config key moves down whole and only something genuinely
+    // wider than the bubble is ever cut.
     return (
       <code
-        className="bg-background text-foreground px-1 py-0.5 rounded text-[0.82em] font-mono border border-border/60 break-all"
+        className="bg-background text-foreground px-1 py-0.5 rounded text-[0.82em] font-mono border border-border/60 wrap-break-word"
         {...props}
       >
         {children}
       </code>
     );
   },
-  // break-words on the link and break-all on inline code: the widget is a
-  // ~260px-wide bubble on a phone, and the model routinely emits a bare
-  // documentation URL or a header value like
-  // `Strict-Transport-Security: max-age=63072000; includeSubDomains` as one
-  // unbroken token. Without a break rule that token sets the bubble's min
-  // width and the whole chat panel scrolls sideways.
+  // Same rule on links: the widget is a ~260px-wide bubble on a phone and the
+  // model routinely emits a bare documentation URL as one unbroken token.
+  // Without a break rule that token sets the bubble's min width and the whole
+  // chat panel scrolls sideways.
   a: ({ node: _node, ...props }) => (
     <a
-      className="break-words text-primary underline underline-offset-2 hover:text-primary/80"
+      className="wrap-break-word text-primary underline underline-offset-2 hover:text-primary/80"
       target="_blank"
       rel="noopener noreferrer"
       {...props}

@@ -286,9 +286,7 @@ export const POST = withErrorHandling(async (request: Request) => {
       setImmediate(() => {
         sendEmail({
           to: user.email,
-          subject: emailContent.subject,
-          text: emailContent.text,
-          html: emailContent.html,
+          ...emailContent,
         }).catch((err) => console.error("Failed to send 2FA email code:", err));
       });
     }

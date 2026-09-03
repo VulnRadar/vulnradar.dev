@@ -73,6 +73,16 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
         description: "Teams the account belongs to. Session cookie auth.",
       },
       {
+        name: "Webhooks",
+        description:
+          "Outbound webhooks fired on scan completion, their signing secret, and their delivery log. Session cookie auth.",
+      },
+      {
+        name: "Browser",
+        description:
+          "Ephemeral remote browser sessions for manual inspection. Session cookie auth.",
+      },
+      {
         name: "System",
         description: "Unauthenticated service and catalogue endpoints.",
       },
@@ -190,11 +200,37 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
         get: {
           tags: ["History"],
           summary: "List scan history",
-          description: "The caller's own past scans, most recent first.",
+          description:
+            "The caller's own past scans, most recent first. Paginated: `limit` and `offset` are both optional and default to the first page at the deployment's maximum page size, which is what this returned before paging existed. Compare `offset + scans.length` with `total`, or just read `truncated`, to know whether to ask for another page.",
           security: [{ apiKey: ["scan:read"] }],
+          parameters: [
+            {
+              name: "limit",
+              in: "query",
+              required: false,
+              schema: { type: "integer", minimum: 1 },
+              description:
+                "Rows to return. Clamped to the deployment's maximum page size (reported back as `maxLimit`), which is 100 by default.",
+            },
+            {
+              name: "offset",
+              in: "query",
+              required: false,
+              schema: { type: "integer", minimum: 0, default: 0 },
+              description: "Rows to skip. Use it to walk past the first page.",
+            },
+          ],
           responses: {
-            "200": { description: "A page of past scans" },
+            "200": {
+              description: "A page of past scans",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/HistoryPage" },
+                },
+              },
+            },
             "401": { $ref: "#/components/responses/Unauthorized" },
+            "429": { $ref: "#/components/responses/RateLimited" },
           },
         },
         delete: {
@@ -234,9 +270,9 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
         },
         patch: {
           tags: ["History"],
-          summary: "Update a scan's notes, visibility, or team",
+          summary: "Update a scan's notes, visibility, or teams",
           description:
-            "Edit one past scan. Send only the fields you want to change: an absent field is left alone. Turning isPublic off revokes any existing share link.",
+            "Edit one past scan. Send only the fields you want to change: an absent field is left alone, and a body with none of them is a 400. Turning isPublic off revokes any existing share link. A scan can be shared with several teams at once: send `teamIds` as the complete set you want it shared with.",
           security: [{ apiKey: ["scan:write"] }],
           requestBody: {
             required: true,
@@ -247,7 +283,14 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
             },
           },
           responses: {
-            "200": { description: "The updated notes, visibility, and team" },
+            "200": {
+              description: "The updated notes, visibility, and teams",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ScanUpdateResult" },
+                },
+              },
+            },
             "400": { $ref: "#/components/responses/BadRequest" },
             "401": { $ref: "#/components/responses/Unauthorized" },
             "403": {
@@ -313,6 +356,234 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
             "400": { $ref: "#/components/responses/BadRequest" },
             "401": { $ref: "#/components/responses/Unauthorized" },
             "404": { $ref: "#/components/responses/NotFound" },
+          },
+        },
+      },
+      "/history/{id}/summary": {
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "integer" },
+          },
+          {
+            name: "regenerate",
+            in: "query",
+            required: false,
+            schema: { type: "boolean", default: false },
+            description:
+              "Force a fresh AI call and overwrite the cached summary.",
+          },
+        ],
+        post: {
+          tags: ["History"],
+          summary: "Generate an AI scan summary",
+          description:
+            "Summarise a completed scan you own in plain English and persist it onto the scan. Once a summary exists a plain call returns the cached one, with no AI call and no rate-limit cost; pass regenerate=true to replace it. Owner only. Unmetered against the AI token quota but still rate-limited per account.",
+          security: [{ apiKey: ["scan:write"] }],
+          responses: {
+            "200": {
+              description: "The summary text, and whether it was cached",
+            },
+            "400": { $ref: "#/components/responses/BadRequest" },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "403": {
+              description:
+                "AI is disabled in your settings, or the key is missing scan:write",
+            },
+            "404": { $ref: "#/components/responses/NotFound" },
+            "429": { $ref: "#/components/responses/RateLimited" },
+            "502": {
+              description: "The AI provider returned nothing usable",
+            },
+          },
+        },
+      },
+      "/scan/authenticated": {
+        post: {
+          tags: ["Scans"],
+          summary: "Scan a page behind a login",
+          description:
+            "Scan one page after logging in. Credentials live in memory for the duration of this call and are never written to a table, a log line, or an audit record. Unlike POST /scan this is synchronous, so there is nothing to poll, and it scans exactly one page rather than crawling. isPublic defaults to false here whatever the account's default is.",
+          security: [{ apiKey: ["scan:write"] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/AuthenticatedScanRequest",
+                },
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description: "The completed scan result plus an authReport",
+            },
+            "400": { $ref: "#/components/responses/BadRequest" },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "403": {
+              description:
+                "Authenticated scanning is disabled on this deployment, or the target is not scannable",
+            },
+            "422": {
+              description:
+                "Login failed or could not be confirmed; see authReport.reason",
+            },
+            "429": { $ref: "#/components/responses/RateLimited" },
+            "502": {
+              description:
+                "Login succeeded but the target could not be reached afterward",
+            },
+          },
+        },
+      },
+      "/scan/crawl/discover": {
+        post: {
+          tags: ["Scans"],
+          summary: "Discover URLs without scanning them",
+          description:
+            "List the links a crawl would cover, same-origin only, without scanning any of them. Does NOT consume a daily scan unit: discovery reads pages, it does not scan them. Rate-limited per user in its own bucket, separate from POST /scan.",
+          security: [{ apiKey: ["scan:write"] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/CrawlDiscoverRequest" },
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description:
+                "The discovered URLs. The body is exactly { urls }: there is no total, read urls.length.",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/CrawlDiscoverResult" },
+                },
+              },
+            },
+            "400": { $ref: "#/components/responses/BadRequest" },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "403": {
+              description: "The API key is missing the scan:write scope",
+            },
+            "429": { $ref: "#/components/responses/RateLimited" },
+          },
+        },
+      },
+      "/scan/discover/progress/{requestId}": {
+        parameters: [
+          {
+            name: "requestId",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+            description:
+              "The same requestId you passed in the POST /scan/discover body.",
+          },
+        ],
+        get: {
+          tags: ["Scans"],
+          summary: "Read discovery progress",
+          description:
+            "Peek at an in-flight POST /scan/discover while it is still open. Read-only: it never changes the POST's behaviour, and the POST's own response stays the source of truth. An unknown requestId reports stage `queued` rather than 404, so a poll that starts early is indistinguishable from a typo. Progress lives in process memory and is dropped two minutes after the last update, so behind a load balancer a poll can land on an instance that never saw the POST.",
+          security: [{ apiKey: ["scan:read"] }],
+          responses: {
+            "200": {
+              description: "The current stage",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/DiscoveryProgress" },
+                },
+              },
+            },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "403": {
+              description: "The API key is missing the scan:read scope",
+            },
+          },
+        },
+      },
+      "/scan/reputation": {
+        get: {
+          tags: ["Scans"],
+          summary: "Look up a host's reputation",
+          description:
+            "Has anyone ever scanned this host, and what did the latest scan find. Reads a host-keyed cache with no owner, so it answers for the host regardless of who scanned it. Pass `url` as well as `host` to get an exact-page match where one exists; without it you get the host-level fallback, whose scannedUrl is deliberately null so another user's scanned URL is never echoed back.",
+          security: [{ apiKey: ["scan:read"] }],
+          parameters: [
+            {
+              name: "host",
+              in: "query",
+              required: true,
+              schema: { type: "string" },
+              description: "The hostname to look up.",
+            },
+            {
+              name: "url",
+              in: "query",
+              required: false,
+              schema: { type: "string" },
+              description:
+                "A full URL on that host. When a scan of this exact page exists it is preferred over the host-level answer and matchType is `exact`.",
+            },
+          ],
+          responses: {
+            "200": {
+              description:
+                "The reputation record, or known: false when the host has never been scanned",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ReputationResult" },
+                },
+              },
+            },
+            "400": { $ref: "#/components/responses/BadRequest" },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "403": {
+              description: "The API key is missing the scan:read scope",
+            },
+            "429": { $ref: "#/components/responses/RateLimited" },
+          },
+        },
+      },
+      "/scan/verify-batch": {
+        post: {
+          tags: ["Scans"],
+          summary: "AI-verify a findings array",
+          description:
+            "Run the per-finding AI verification pipeline over an array you supply, without it having to belong to a stored scan. Nothing is persisted: the response is your array enriched in place. Shares one rate-limit bucket with POST /scan/verify, so calling both does not double your effective quota. Long-running, so set a generous client timeout.",
+          security: [{ apiKey: ["scan:write"] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/VerifyBatchRequest" },
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description:
+                "The same findings with aiVerdict / aiConfidence / aiReason applied",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/VerifyResult" },
+                },
+              },
+            },
+            "400": {
+              description:
+                "Missing url or findings[], or more findings than the deployment's batch cap",
+            },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "403": {
+              description:
+                "AI is disabled in your settings, or the key is missing scan:write",
+            },
+            "429": { $ref: "#/components/responses/RateLimited" },
           },
         },
       },
@@ -622,6 +893,30 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           },
         },
       },
+      "/keys/{id}/reset-binding": {
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "integer" },
+            description: "The key id whose IP binding to clear.",
+          },
+        ],
+        post: {
+          tags: ["API Keys"],
+          summary: "Clear a key's IP binding",
+          description:
+            "Forget the IP a key pinned itself to on first use, on deployments that have API-key IP binding switched on. Rotating the key used to be the only way out of a binding mismatch, which forces every consumer to be reconfigured for what is usually just a CI runner getting a different address. The next successful request re-adopts whichever subnet it comes from, so this is a recovery action, not a way to switch the feature off. Session cookie auth.",
+          security: [{ cookieAuth: [] }],
+          responses: {
+            "200": { description: "The binding was cleared" },
+            "400": { description: "Invalid key id" },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "404": { description: "Key not found or already revoked" },
+          },
+        },
+      },
       "/domains": {
         get: {
           tags: ["Domains"],
@@ -686,6 +981,41 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
             "403": {
               description: "You don't have permission to remove this domain",
             },
+            "404": { $ref: "#/components/responses/NotFound" },
+          },
+        },
+      },
+      "/domains/{id}": {
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "integer" },
+            description: "The domain id to reassign.",
+          },
+        ],
+        patch: {
+          tags: ["Domains"],
+          summary: "Assign a domain to a team",
+          description:
+            "Share a verified domain with a team, or send `teamId: null` to make it personal again. Owner-only, matching the rule on webhooks: a team member with write access may use a shared domain, but deciding who a proof of ownership is shared with belongs to whoever proved it. A domain that is not yours returns 404 rather than 403, since there is no read-only variant of this action to leak existence through. Session cookie auth.",
+          security: [{ cookieAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/TeamAssignRequest" },
+              },
+            },
+          },
+          responses: {
+            "200": { description: "The updated domain row" },
+            "400": {
+              description:
+                "Body carried no teamId, teamId was neither an integer nor null, or it names a team you cannot write into",
+            },
+            "401": { $ref: "#/components/responses/Unauthorized" },
             "404": { $ref: "#/components/responses/NotFound" },
           },
         },
@@ -879,6 +1209,275 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
           },
         },
       },
+      "/webhooks": {
+        get: {
+          tags: ["Webhooks"],
+          summary: "List webhooks",
+          description:
+            "Your webhooks plus any assigned to a team you belong to. The signing secret is never returned here: it is shown once at creation and once more on rotation. Session cookie auth.",
+          security: [{ cookieAuth: [] }],
+          responses: {
+            "200": { description: "The caller's webhooks" },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+          },
+        },
+        post: {
+          tags: ["Webhooks"],
+          summary: "Create a webhook",
+          description:
+            "Register a public HTTPS endpoint to be called when a scan completes. The response carries the HMAC signing secret, once: store it now, because nothing will return it again short of a rotation. The URL is checked against the same private-address guard the scanner uses, so a private or link-local target is refused. The number of webhooks you can hold is capped by your plan. Session cookie auth.",
+          security: [{ cookieAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/WebhookCreateRequest" },
+              },
+            },
+          },
+          responses: {
+            "201": {
+              description: "The created webhook, including its one-time secret",
+            },
+            "400": {
+              description:
+                "Missing or unparseable URL, a non-HTTPS or blocked target, or the plan limit is reached",
+            },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "403": {
+              description: "Webhooks are disabled on this deployment",
+            },
+          },
+        },
+        patch: {
+          tags: ["Webhooks"],
+          summary: "Send a test payload",
+          description:
+            "Deliver a one-off test payload to a webhook so you can confirm it is wired up. This does NOT edit the webhook: use PATCH /webhooks/{id} for that. The stored URL is re-validated against the private-address guard before the call, since DNS may have moved since registration. Needs write access. Session cookie auth.",
+          security: [{ cookieAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/WebhookIdRequest" },
+              },
+            },
+          },
+          responses: {
+            "200": { description: "The test payload was delivered" },
+            "400": {
+              description:
+                "Missing id, the target is now blocked, or the endpoint refused the delivery. The body is { success: false, error } rather than a bare { error }.",
+            },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "403": { description: "No write access to this webhook" },
+            "404": { $ref: "#/components/responses/NotFound" },
+          },
+        },
+        delete: {
+          tags: ["Webhooks"],
+          summary: "Delete a webhook",
+          description:
+            "Remove a webhook so it stops being called. Needs write access. Session cookie auth.",
+          security: [{ cookieAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/WebhookIdRequest" },
+              },
+            },
+          },
+          responses: {
+            "200": { description: "The webhook was deleted" },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "403": { description: "No write access to this webhook" },
+            "404": { $ref: "#/components/responses/NotFound" },
+          },
+        },
+      },
+      "/webhooks/{id}": {
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "integer" },
+            description: "The webhook id to edit.",
+          },
+        ],
+        patch: {
+          tags: ["Webhooks"],
+          summary: "Edit, pause, or reassign a webhook",
+          description:
+            "Update a webhook in place. Send at least one of active, url, name, type or teamId; an absent field is left alone. `active: false` pauses delivery without losing the id or the secret. Reassigning to a team is owner-only; the rest needs write access. Not to be confused with PATCH /webhooks, which sends a test payload. Session cookie auth.",
+          security: [{ cookieAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/WebhookUpdateRequest" },
+              },
+            },
+          },
+          responses: {
+            "200": { description: "The updated webhook" },
+            "400": {
+              description:
+                "Invalid id, a body with nothing to update, or a blocked URL",
+            },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "403": {
+              description:
+                "Read access but not write access (a viewer-role co-member)",
+            },
+            "404": { $ref: "#/components/responses/NotFound" },
+          },
+        },
+      },
+      "/webhooks/{id}/rotate-secret": {
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "integer" },
+            description: "The webhook id whose secret to replace.",
+          },
+        ],
+        post: {
+          tags: ["Webhooks"],
+          summary: "Rotate a webhook's signing secret",
+          description:
+            "Issue a new HMAC signing secret in place: same row, same id, same URL. The new secret is returned once and never again, exactly like key rotation. Owner-only rather than merely team-write, because rotating invalidates every signature the consumer is currently verifying. Session cookie auth.",
+          security: [{ cookieAuth: [] }],
+          responses: {
+            "200": {
+              description: "The webhook, including its new one-time secret",
+            },
+            "400": { description: "Invalid webhook id" },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "404": {
+              description: "Webhook not found, or you are not its owner",
+            },
+          },
+        },
+      },
+      "/webhooks/{id}/deliveries": {
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "integer" },
+            description: "The webhook id whose attempts to read.",
+          },
+        ],
+        get: {
+          tags: ["Webhooks"],
+          summary: "Read a webhook's delivery log",
+          description:
+            "The 50 most recent delivery attempts, newest first, so a failing webhook can be diagnosed from what actually came back. `httpStatus` is null on a network error or a blocked target, in which case the snippet carries the error text instead. Neither field ever contains the request payload. Read access follows the list: the owner, or a co-member of the team it is assigned to. Session cookie auth.",
+          security: [{ cookieAuth: [] }],
+          responses: {
+            "200": {
+              description: "The most recent delivery attempts",
+            },
+            "400": { description: "Invalid webhook id" },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "404": { $ref: "#/components/responses/NotFound" },
+          },
+        },
+      },
+      "/browser/sessions": {
+        post: {
+          tags: ["Browser"],
+          summary: "Start a browser session",
+          description:
+            "Open an ephemeral remote browser on a URL and return the metadata needed to embed its live view. The provider API key is server-side only and never reaches the client. Session cookie auth.",
+          security: [{ cookieAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/BrowserSessionCreateRequest",
+                },
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description:
+                "The session plus expiresInSeconds, which echoes the CLAMPED ttl actually applied rather than the one you asked for",
+            },
+            "400": {
+              description:
+                "url is neither a public http(s) URL nor a public IPv4, or it failed the target safety check",
+            },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "402": {
+              description:
+                "The plan's monthly browser-minute allowance is spent. The only 402 in this API, and retrying does not clear it before the quota resets.",
+            },
+            "429": { $ref: "#/components/responses/RateLimited" },
+            "502": {
+              description: "The provider returned a session with no id",
+            },
+            "503": {
+              description:
+                "Two meanings, distinguished by the message: 'not configured' is permanent for this deployment, 'capacity is full' is transient. Branch on the message, not the status.",
+            },
+          },
+        },
+        get: {
+          tags: ["Browser"],
+          summary: "Read a browser session",
+          description:
+            "The session's current status, URL and viewer URL. Ownership is checked against the stored row, so another user's session id is a 403 rather than a 404. Session cookie auth.",
+          security: [{ cookieAuth: [] }],
+          parameters: [
+            {
+              name: "id",
+              in: "query",
+              required: true,
+              schema: { type: "string" },
+              description: "The session id returned by POST.",
+            },
+          ],
+          responses: {
+            "200": { description: "The session metadata" },
+            "400": { description: "Missing session id" },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "403": { description: "That session belongs to another user" },
+            "502": { description: "The provider read failed" },
+            "503": { description: "Not configured on this server" },
+          },
+        },
+        delete: {
+          tags: ["Browser"],
+          summary: "End a browser session",
+          description:
+            "End a session early. Idempotent, so it is safe to fire from an unload handler. This call is what bills the metered seconds and releases the concurrency slot: a session nobody ends is only reclaimed by the periodic sweep, so calling it promptly frees capacity for everyone on the deployment. Session cookie auth.",
+          security: [{ cookieAuth: [] }],
+          parameters: [
+            {
+              name: "id",
+              in: "query",
+              required: true,
+              schema: { type: "string" },
+              description: "The session id to end.",
+            },
+          ],
+          responses: {
+            "200": { description: "The session was ended" },
+            "400": { description: "Missing session id" },
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "403": { description: "That session belongs to another user" },
+            "503": { description: "Not configured on this server" },
+          },
+        },
+      },
       "/health": {
         get: {
           tags: ["System"],
@@ -993,6 +1592,18 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
             categoriesCompleted: { type: "integer" },
             categoriesTotal: { type: "integer" },
             elapsedMs: { type: "integer" },
+            partialFindings: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  title: { type: "string" },
+                  severity: { type: "string" },
+                },
+              },
+              description:
+                "Findings discovered so far, severity and title only, sent only while status is pending or running. Deliberately absent once the scan completes: deduplication runs after the last category, so this list can be LONGER than the final one. Label it 'found so far' and let result.findings replace it wholesale.",
+            },
             error: {
               type: "string",
               description: "Present only when status is failed.",
@@ -1007,8 +1618,96 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
                 summary: { $ref: "#/components/schemas/Summary" },
                 findings: {
                   type: "array",
-                  items: { type: "object" },
+                  items: { $ref: "#/components/schemas/Finding" },
                 },
+                responseHeaders: {
+                  type: "object",
+                  additionalProperties: { type: "string" },
+                  description: "The target's response headers, when captured.",
+                },
+                scanHistoryId: {
+                  type: "integer",
+                  description:
+                    "The numeric scan id. The feedback route needs this form.",
+                },
+                scanPublicId: {
+                  type: "string",
+                  description:
+                    "The opaque, non-enumerable id. This is what /history lists and what a share URL carries.",
+                },
+                tags: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      tag: { type: "string" },
+                      source: { type: "string" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        // A partial description on purpose: a finding carries a good deal more
+        // (fix steps, code examples, evidence excerpts, CVE enrichment) and
+        // pinning all of it here would guarantee this drifts. What is listed is
+        // the part a gate script keys on, above all `id` and `remediation`.
+        Finding: {
+          type: "object",
+          properties: {
+            id: {
+              type: "string",
+              description:
+                "The stable finding id, `<checkId>--<hash>`. Stable across rescans of the same target, which is what makes it usable as the thing a build gate names.",
+              example: "hsts-missing--a1b2c3d4",
+            },
+            title: { type: "string" },
+            severity: {
+              type: "string",
+              enum: ["critical", "high", "medium", "low", "info"],
+            },
+            category: { type: "string" },
+            description: { type: "string" },
+            evidence: { type: "string" },
+            cwe: { type: "string", example: "CWE-79" },
+            owasp: { type: "string", example: "A03:2021" },
+            confidence: {
+              type: "integer",
+              description:
+                "0-100: how certain the engine is this is a true positive.",
+            },
+            aiVerdict: {
+              type: "string",
+              enum: ["confirmed", "possible_fp", "uncertain"],
+              description:
+                "Present only after AI verification has run over this scan.",
+            },
+            aiConfidence: { type: "integer" },
+            aiReason: { type: "string" },
+            suppressed: {
+              type: "boolean",
+              description:
+                "The owner marked this a false positive. Suppressed findings are excluded from summary counts and the danger score, so a gate should skip them too.",
+            },
+            remediation: {
+              type: "object",
+              description:
+                "The owner's own triage state for this finding, attached by finding id so it survives rescans. Absent when nothing has been recorded, which means open. Owner-only: a teammate or a shared view never sees it.",
+              properties: {
+                status: {
+                  type: "string",
+                  enum: [
+                    "open",
+                    "in_progress",
+                    "fixed",
+                    "accepted_risk",
+                    "wont_fix",
+                  ],
+                },
+                note: { type: ["string", "null"] },
+                assignee: { type: ["string", "null"] },
+                dueAt: { type: ["string", "null"] },
               },
             },
           },
@@ -1095,6 +1794,12 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
               description:
                 "Bypass the 24h per-domain cache and re-run discovery.",
               example: false,
+            },
+            requestId: {
+              type: "string",
+              description:
+                "A caller-generated id for THIS request. Supply one and you can poll GET /scan/discover/progress/{requestId} while this call is still in flight. Omit it and there is nothing to poll: the progress endpoint has no other way to find the run. Either way this call still blocks until discovery finishes.",
+              example: "a3f9c1e2-7b04-4d8a-9c31-5e6f0b2a8d47",
             },
           },
         },
@@ -1340,6 +2045,8 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
         },
         ScanUpdateRequest: {
           type: "object",
+          description:
+            "At least one field is required; a body with none of them is a 400.",
           properties: {
             notes: {
               type: "string",
@@ -1354,10 +2061,318 @@ export function buildOpenApiSpec(baseUrl: string): Record<string, unknown> {
                 "Whether the scan has a public share link. Setting it to false revokes the existing link.",
               example: false,
             },
+            teamIds: {
+              type: "array",
+              items: { type: "integer" },
+              description:
+                "The complete set of teams this scan is shared with, not a list to add. Send [] to unshare it entirely. Every id must name a team you can share into; one you cannot is a 400 for the whole request rather than a partial apply.",
+              example: [7, 9],
+            },
             teamId: {
               type: ["integer", "null"],
               description:
-                "Assign the scan to a team you can share to, or null to unassign it.",
+                "The single-team form, still accepted for clients written before multi-team sharing. Equivalent to teamIds: [teamId], or teamIds: [] for null. Send teamIds instead in new code.",
+            },
+          },
+        },
+        ScanUpdateResult: {
+          type: "object",
+          description:
+            "Returned flat, with no { success } or { data } wrapper. teamIds is reported whether or not this request changed it, so a client can read back the current sharing set without a second call.",
+          properties: {
+            notes: { type: ["string", "null"] },
+            isPublic: { type: "boolean" },
+            teamId: {
+              type: ["integer", "null"],
+              description:
+                "The primary team: the first entry of teamIds, kept for clients written against the single-team contract.",
+            },
+            teamIds: {
+              type: "array",
+              items: { type: "integer" },
+            },
+          },
+        },
+        HistoryPage: {
+          type: "object",
+          properties: {
+            scans: {
+              type: "array",
+              items: { $ref: "#/components/schemas/HistoryEntry" },
+            },
+            total: {
+              type: "integer",
+              description:
+                "Every scan on the account within retention, not the length of this page. Advisory: if the count query fails the page length is returned instead rather than failing the request.",
+            },
+            limit: {
+              type: "integer",
+              description: "The page size actually applied to this request.",
+            },
+            offset: { type: "integer", description: "Rows skipped." },
+            maxLimit: {
+              type: "integer",
+              description:
+                "The largest page size this deployment will serve. A larger `limit` is clamped to it, not rejected.",
+            },
+            truncated: {
+              type: "boolean",
+              description: "True when there are rows after this page.",
+            },
+          },
+        },
+        HistoryEntry: {
+          type: "object",
+          properties: {
+            id: {
+              type: "string",
+              description:
+                "The scan's opaque public id. Every /history subroute accepts it, and so does the legacy numeric id.",
+            },
+            url: { type: "string" },
+            summary: { $ref: "#/components/schemas/Summary" },
+            findings_count: { type: "integer" },
+            duration: { type: "integer" },
+            scanned_at: { type: "string", format: "date-time" },
+            source: { type: "string" },
+            status: {
+              type: "string",
+              enum: ["pending", "running", "completed", "failed"],
+              description:
+                "A row is inserted as pending before any work starts, so a scan the user navigated away from appears here with an empty summary rather than as a clean result.",
+            },
+            tags: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  tag: { type: "string" },
+                  source: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        AuthenticatedScanRequest: {
+          type: "object",
+          required: ["url", "auth"],
+          properties: {
+            url: { type: "string", example: "https://example.com/dashboard" },
+            scanners: {
+              type: "array",
+              items: { type: "string" },
+              description:
+                "Restrict web checks to these categories, exactly as on POST /scan.",
+              example: ["headers", "cookies", "content"],
+            },
+            isPublic: {
+              type: "boolean",
+              default: false,
+              description:
+                "Defaults to false here, unlike every other scan-creation path: an authenticated scan sees whatever a logged-in area renders, so neither the account default nor the column default can make it public. Only an explicit true does.",
+            },
+            auth: {
+              type: "object",
+              required: ["method"],
+              description:
+                "Nothing under this key is ever written to a table, a log line, or an audit record.",
+              properties: {
+                method: {
+                  type: "string",
+                  enum: ["form", "header", "cookie"],
+                  description:
+                    "form opens an ephemeral real browser session so a JavaScript-rendered login page can appear before the form is submitted; header and cookie attach the given values to every request instead.",
+                },
+                loginUrl: { type: "string" },
+                username: { type: "string" },
+                password: { type: "string" },
+              },
+            },
+          },
+        },
+        CrawlDiscoverRequest: {
+          type: "object",
+          required: ["url"],
+          properties: {
+            url: {
+              type: "string",
+              description:
+                "The entry point. http and https only, unlike POST /scan's wider protocol set. Discovery is pinned to this hostname, so no subdomain or cross-host URL can enter the result.",
+              example: "https://example.com",
+            },
+          },
+        },
+        CrawlDiscoverResult: {
+          type: "object",
+          properties: {
+            urls: {
+              type: "array",
+              items: { type: "string" },
+            },
+          },
+        },
+        DiscoveryProgress: {
+          type: "object",
+          properties: {
+            stage: {
+              type: "string",
+              enum: [
+                "queued",
+                "querying_sources",
+                "brute_force",
+                "dns_resolution",
+                "reachability",
+                "done",
+              ],
+              description:
+                "`queued` also covers a requestId this instance has never seen, so an early poll and a typo look the same.",
+            },
+            stageIndex: {
+              type: "integer",
+              description:
+                "The stage's 0-based position, and stagesTotal once stage is done, so stageIndex / stagesTotal is a usable fraction.",
+            },
+            stagesTotal: { type: "integer", example: 4 },
+          },
+        },
+        ReputationResult: {
+          type: "object",
+          properties: {
+            known: { type: "boolean" },
+            host: { type: "string" },
+            dangerScore: { type: ["number", "null"] },
+            verdict: {
+              type: ["string", "null"],
+              enum: ["safe", "caution", "unsafe", null],
+              description:
+                "The canonical tier. Read this rather than re-deriving one from severityCounts: a naive `high > 0` rule cannot tell an exploitable high from a hardening high such as a lone missing HSTS, and flags hosts the real scorer considers safe.",
+            },
+            severityCounts: {
+              anyOf: [
+                { $ref: "#/components/schemas/Summary" },
+                { type: "null" },
+              ],
+            },
+            lastScannedAt: { type: ["string", "null"], format: "date-time" },
+            scanId: {
+              type: ["integer", "null"],
+              description:
+                "Null once the scan behind this record has been deleted.",
+            },
+            matchType: {
+              type: ["string", "null"],
+              enum: ["exact", "host", null],
+              description:
+                "`exact` when this reflects a scan of the precise page you asked about, `host` when it is a scan of a different page on the same host.",
+            },
+            scannedUrl: {
+              type: ["string", "null"],
+              description:
+                "Only ever the URL you supplied yourself, on an exact match. Null on a host-level match, because that is someone else's scan of a page you never named and its query string could carry their tokens.",
+            },
+          },
+        },
+        VerifyBatchRequest: {
+          type: "object",
+          required: ["url", "findings"],
+          properties: {
+            url: { type: "string", example: "https://example.com" },
+            findings: {
+              type: "array",
+              items: { type: "object" },
+              description:
+                "The findings to verify. Capped by the deployment's AI verify batch setting, which ships at 50; over it is a 400 naming the limit.",
+            },
+          },
+        },
+        WebhookCreateRequest: {
+          type: "object",
+          required: ["url"],
+          properties: {
+            url: {
+              type: "string",
+              format: "uri",
+              description: "A public HTTPS endpoint. http is refused.",
+              example: "https://hooks.example.com/vulnradar",
+            },
+            name: {
+              type: "string",
+              description: 'A label. Defaults to "Default".',
+              example: "CI alerts",
+            },
+            type: {
+              type: "string",
+              enum: ["auto", "discord", "slack", "generic"],
+              description:
+                "The payload format. Omit it, or send auto, to detect it from the URL.",
+            },
+          },
+        },
+        WebhookIdRequest: {
+          type: "object",
+          required: ["id"],
+          properties: {
+            id: { type: "integer", example: 3 },
+          },
+        },
+        WebhookUpdateRequest: {
+          type: "object",
+          description:
+            "At least one field is required; a body with none of them is a 400.",
+          properties: {
+            active: {
+              type: "boolean",
+              description:
+                "false pauses delivery while keeping the id and the secret.",
+            },
+            url: { type: "string", format: "uri" },
+            name: { type: "string" },
+            type: {
+              type: "string",
+              enum: ["auto", "discord", "slack", "generic"],
+            },
+            teamId: {
+              type: ["integer", "null"],
+              description:
+                "Share with a team, or null to make it personal. Owner only.",
+            },
+          },
+        },
+        BrowserSessionCreateRequest: {
+          type: "object",
+          required: ["url"],
+          properties: {
+            url: {
+              type: "string",
+              description: "A public http(s) URL or public IPv4 to open.",
+              example: "https://example.com",
+            },
+            ttlSeconds: {
+              type: "integer",
+              description:
+                "Requested lifetime. Clamped to a 30 second floor and the deployment's ceiling, which ships at 360. Read expiresInSeconds in the response rather than assuming this was honoured. `ttl` is accepted as a legacy alias; this wins if both are sent.",
+              example: 360,
+            },
+            viewport: {
+              type: "object",
+              description:
+                "The remote browser's resolution. Defaults to 1920x1080, which is deliberately smaller than the provider's own default so the embedded viewer is legible.",
+              properties: {
+                width: { type: "integer", example: 1920 },
+                height: { type: "integer", example: 1080 },
+              },
+            },
+          },
+        },
+        TeamAssignRequest: {
+          type: "object",
+          required: ["teamId"],
+          properties: {
+            teamId: {
+              type: ["integer", "null"],
+              description:
+                "A team you can write into, or null to make the resource personal again.",
+              example: 7,
             },
           },
         },

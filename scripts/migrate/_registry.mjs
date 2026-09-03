@@ -275,6 +275,7 @@ export const VERSIONS = [
         "system_error_logs",
         "system_settings",
         "team_invites",
+        "team_avatars",
         "team_members",
         "teams",
         "user_ai_configs",

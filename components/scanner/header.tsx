@@ -3,7 +3,14 @@
 import { LogOut, Menu } from "lucide-react";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetBody,
+  SheetContent,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
@@ -13,6 +20,7 @@ import { backdrops, transitions } from "@/lib/ui/animations";
 import { ThemedLogo } from "@/components/shared/themed-logo";
 import { NotificationBell } from "@/components/shared/notification-center";
 import { useAuth, clearAuthCache } from "@/components/providers/auth-provider";
+import { tourAnchor, type TourAnchor } from "@/lib/tour/anchors";
 
 // Deep-links straight to the Developer tab of the profile page. Scheduled
 // scans, Webhooks, Domains, and API keys all live there as sub-tabs
@@ -23,15 +31,24 @@ import { useAuth, clearAuthCache } from "@/components/providers/auth-provider";
 // live, under Profile. Removing that entry also removed the query-string
 // state and soft-navigation handling it needed, which is why this nav no
 // longer reads window.location at all.
-const NAV_LINKS = [
+// `tour` is the product tour's anchor name for the link, declared here rather
+// than in the render because both the desktop row and the mobile sheet map over
+// this list and the tour has to be able to find whichever one is on screen.
+// Only the destinations the tour actually walks through carry one; see
+// lib/tour/anchors.ts.
+const NAV_LINKS: {
+  href: string;
+  label: string;
+  tour?: TourAnchor;
+}[] = [
   { href: ROUTES.DASHBOARD, label: "Scanner" },
-  { href: ROUTES.HISTORY, label: "History" },
+  { href: ROUTES.HISTORY, label: "History", tour: "navHistory" },
   { href: ROUTES.REPOS, label: "Repos" },
-  { href: ROUTES.COMPARE, label: "Compare" },
-  { href: ROUTES.SHARES, label: "Shared" },
-  { href: ROUTES.TEAMS, label: "Teams" },
+  { href: ROUTES.COMPARE, label: "Compare", tour: "navCompare" },
+  { href: ROUTES.SHARES, label: "Shared", tour: "navShares" },
+  { href: ROUTES.TEAMS, label: "Teams", tour: "navTeams" },
   { href: ROUTES.BADGE, label: "Badge" },
-  { href: ROUTES.PROFILE, label: "Profile" },
+  { href: ROUTES.PROFILE, label: "Profile", tour: "navProfile" },
 ];
 
 export function Header() {
@@ -118,13 +135,14 @@ export function Header() {
             aria-label="Main"
             className="hidden lg:flex items-center gap-0.5 absolute left-1/2 -translate-x-1/2"
           >
-            {NAV_LINKS.map(({ href, label }) => {
+            {NAV_LINKS.map(({ href, label, tour }) => {
               const active = isNavActive(href);
               return (
                 <Link
                   key={href}
                   href={href}
                   aria-current={active ? "page" : undefined}
+                  {...(tour ? tourAnchor(tour) : {})}
                   className={cn(
                     "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm transition-colors",
                     active
@@ -189,13 +207,12 @@ export function Header() {
 
         {/* Mobile overlay menu */}
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-          <SheetContent
-            side="right"
-            className="w-64 bg-background p-0 border-l border-border flex flex-col"
-          >
+          <SheetContent side="right" className="w-64">
             <SheetTitle className="sr-only">Navigation menu</SheetTitle>
-            {/* Sheet header */}
-            <div className="flex items-center gap-2.5 px-4 h-16 border-b border-border shrink-0">
+            {/* The one deliberate override on this band: h-16 lines the sheet's
+                header up with the site header bar it slid out from, so the logo
+                does not jump when the panel opens. */}
+            <SheetHeader className="h-16 flex-row items-center gap-2.5 space-y-0">
               <ThemedLogo
                 width={22}
                 height={22}
@@ -205,57 +222,58 @@ export function Header() {
               <span className="font-mono font-semibold text-foreground tracking-tight">
                 {APP_NAME}
               </span>
-            </div>
+            </SheetHeader>
             {/* Links */}
-            <nav
-              aria-label="Mobile"
-              className="flex flex-col gap-0.5 p-3 flex-1 overflow-y-auto"
-            >
-              {NAV_LINKS.map(({ href, label }) => {
-                const active = isNavActive(href);
-                return (
+            <SheetBody className="p-3">
+              <nav aria-label="Mobile" className="flex flex-col gap-0.5">
+                {NAV_LINKS.map(({ href, label, tour }) => {
+                  const active = isNavActive(href);
+                  return (
+                    <Link
+                      key={href}
+                      href={href}
+                      aria-current={active ? "page" : undefined}
+                      {...(tour ? tourAnchor(tour) : {})}
+                      onClick={() => setMobileOpen(false)}
+                      className={cn(
+                        "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                        active
+                          ? "bg-primary/10 text-primary font-medium"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted",
+                      )}
+                    >
+                      {label}
+                    </Link>
+                  );
+                })}
+                {isStaff && (
                   <Link
-                    key={href}
-                    href={href}
-                    aria-current={active ? "page" : undefined}
+                    href={ROUTES.ADMIN}
+                    aria-current={
+                      pathname === ROUTES.ADMIN ? "page" : undefined
+                    }
                     onClick={() => setMobileOpen(false)}
                     className={cn(
-                      "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
-                      active
-                        ? "bg-primary/10 text-primary font-medium"
-                        : "text-muted-foreground hover:text-foreground hover:bg-muted",
+                      "flex items-center px-3 py-2 rounded-md text-sm transition-colors",
+                      pathname === ROUTES.ADMIN
+                        ? "bg-destructive/10 text-destructive font-medium"
+                        : "text-destructive/70 hover:text-destructive hover:bg-muted",
                     )}
                   >
-                    {label}
+                    Admin
                   </Link>
-                );
-              })}
-              {isStaff && (
-                <Link
-                  href={ROUTES.ADMIN}
-                  aria-current={pathname === ROUTES.ADMIN ? "page" : undefined}
-                  onClick={() => setMobileOpen(false)}
-                  className={cn(
-                    "flex items-center px-3 py-2 rounded-md text-sm transition-colors",
-                    pathname === ROUTES.ADMIN
-                      ? "bg-destructive/10 text-destructive font-medium"
-                      : "text-destructive/70 hover:text-destructive hover:bg-muted",
-                  )}
-                >
-                  Admin
-                </Link>
-              )}
-            </nav>
-            {/* Footer */}
-            <div className="p-3 border-t border-border shrink-0">
+                )}
+              </nav>
+            </SheetBody>
+            <SheetFooter className="p-3">
               <button
                 onClick={handleLogout}
-                className="flex items-center gap-2 w-full px-3 py-2 rounded-md text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
               >
                 <LogOut className="h-4 w-4" />
                 Log out
               </button>
-            </div>
+            </SheetFooter>
           </SheetContent>
         </Sheet>
       </header>

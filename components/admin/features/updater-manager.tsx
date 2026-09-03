@@ -1,11 +1,17 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { AdminPasswordConfirmDialog } from "@/components/admin/shared";
+import {
+  AdminPanelHeader,
+  AdminPasswordConfirmDialog,
+  FactPanelSkeleton,
+  StatusPill,
+  StatusValue,
+  type AdminStatusTone,
+} from "@/components/admin/shared";
 import {
   DownloadCloud,
   RefreshCw,
@@ -53,6 +59,43 @@ interface UpdaterJob {
   cosignVerified: "verified" | "skipped" | "failed" | null;
   startedAt: string;
   finishedAt: string | null;
+}
+
+/**
+ * The job's raw enum is a wire value ("completed", "failed", "migrating"),
+ * and it used to be printed straight into a Badge: lowercase, and every
+ * in-progress status falling through to the same grey a plain count badge
+ * uses, so a job that was still copying files looked identical to one that
+ * had finished. A human label plus a tone, so the state reads at a glance.
+ */
+const JOB_STATUS_META: Record<
+  string,
+  { label: string; tone: AdminStatusTone }
+> = {
+  pending: { label: "Queued", tone: "neutral" },
+  downloading: { label: "Downloading", tone: "info" },
+  verifying: { label: "Verifying", tone: "info" },
+  extracting: { label: "Extracting", tone: "info" },
+  installing: { label: "Installing", tone: "info" },
+  migrating: { label: "Migrating", tone: "info" },
+  completed: { label: "Completed", tone: "ok" },
+  failed: { label: "Failed", tone: "crit" },
+};
+
+/** The freshly-started job is stored as a bare `{ id }` until the first poll
+ *  answers, so `status` is genuinely undefined for a moment: that rendered as
+ *  an empty badge before. Anything unrecognised reads as in-progress rather
+ *  than as a verdict. */
+function jobStatusMeta(status: string | undefined): {
+  label: string;
+  tone: AdminStatusTone;
+} {
+  return (
+    JOB_STATUS_META[status ?? ""] ?? {
+      label: status || "Starting",
+      tone: "info",
+    }
+  );
 }
 
 const STEP_LABELS: Record<string, string> = {
@@ -213,20 +256,18 @@ export function UpdaterManager() {
     !!job && job.status !== "completed" && job.status !== "failed";
 
   if (loading) {
-    return (
-      <Card className="border-border/50 bg-card/50">
-        <CardContent className="p-8 flex items-center justify-center text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin mr-2" aria-hidden="true" />
-          Loading updater status...
-        </CardContent>
-      </Card>
-    );
+    // Same reason as the Backups panel: the old centred spinner in a p-8 box
+    // was a fraction of the height of the loaded card, so the tab resized
+    // under the cursor when the status landed.
+    return <FactPanelSkeleton facts={4} />;
   }
+
+  const behind = status?.status === "behind";
 
   return (
     <div className="space-y-6">
       {status && !status.supported && (
-        <div className="flex items-start gap-3 p-4 rounded-xl border border-border/50 bg-muted/30">
+        <div className="flex items-start gap-3 p-4 rounded-lg border border-border/50 bg-muted/30">
           <Info
             className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5"
             aria-hidden="true"
@@ -237,17 +278,22 @@ export function UpdaterManager() {
         </div>
       )}
 
-      {status?.status === "behind" && (
-        <div className="flex items-start gap-3 p-4 rounded-xl border border-primary/20 bg-primary/5">
-          <div className="p-2 rounded-lg bg-primary/10 shrink-0">
+      {/* Amber, not brand blue. An install sitting behind the published
+          release is missing whatever security fixes that release carried, and
+          in primary/5 it read as a friendly product announcement, the same
+          tone this panel uses for "here is a link to the notes". */}
+      {behind && status && (
+        <div className="flex items-start gap-3 p-4 rounded-lg border border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/10">
+          <div className="p-2 rounded-md bg-[hsl(var(--warning))]/15 shrink-0">
             <DownloadCloud
-              className="h-4 w-4 text-primary"
+              className="h-4 w-4 text-[hsl(var(--warning))]"
               aria-hidden="true"
             />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-foreground">
-              A new version is available: v{status.latest}
+              A new version is available:{" "}
+              <span className="font-mono tabular-nums">v{status.latest}</span>
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
               {status.message}
@@ -257,29 +303,23 @@ export function UpdaterManager() {
       )}
 
       <Card className="border-border/50 bg-card/50 overflow-hidden">
-        <div className="px-4 sm:px-5 py-4 border-b border-border/50">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <DownloadCloud
-                  className="h-4 w-4 text-primary"
-                  aria-hidden="true"
-                />
-              </div>
-              <div>
-                <h3 className="text-base font-semibold text-foreground">
-                  Updater
-                </h3>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Pull and install the latest release from GitHub. You build and
-                  restart the server yourself once it finishes.
-                </p>
-              </div>
-            </div>
+        <AdminPanelHeader
+          icon={DownloadCloud}
+          tone={behind ? "warn" : "info"}
+          title="Updater"
+          subtitle="Pull and install the latest release from GitHub. You build and restart the server yourself once it finishes."
+          status={
+            behind ? (
+              <StatusPill tone="warn">Update available</StatusPill>
+            ) : status?.status === "up-to-date" ? (
+              <StatusPill tone="ok">Up to date</StatusPill>
+            ) : null
+          }
+          actions={
             <Button
               variant="outline"
               size="sm"
-              className="h-8 gap-1.5 border-border/40 shrink-0"
+              className="h-9 px-3 gap-2 border-border/40 shrink-0"
               onClick={handleManualRefresh}
               disabled={refreshing}
               aria-label="Refresh update status"
@@ -290,8 +330,8 @@ export function UpdaterManager() {
               />
               <span className="hidden sm:inline">Refresh</span>
             </Button>
-          </div>
-        </div>
+          }
+        />
 
         <CardContent className="p-4 sm:p-5 space-y-5">
           {!status && loadFailed && (
@@ -306,44 +346,66 @@ export function UpdaterManager() {
               </p>
             </div>
           )}
+          {/* All four of these used to render in the same plain font-medium,
+              so "Not found" (tar missing means the updater cannot run at all)
+              sat at exactly the weight of the version string next to it.
+              Versions are mono and tabular so the running and latest numbers
+              line up digit for digit; the two host tools carry a tone. */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
                 Running
               </p>
-              <p className="font-medium mt-0.5">v{status?.current ?? "?"}</p>
+              <p className="font-medium font-mono tabular-nums mt-0.5">
+                v{status?.current ?? "?"}
+              </p>
             </div>
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
                 Latest
               </p>
-              <p className="font-medium mt-0.5">
+              <p
+                className={cn(
+                  "font-medium mt-0.5",
+                  status?.latest
+                    ? "font-mono tabular-nums"
+                    : "text-muted-foreground",
+                )}
+              >
                 {status?.latest ? `v${status.latest}` : "Unknown"}
               </p>
             </div>
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
                 cosign
               </p>
-              <p className="font-medium mt-0.5">
+              <StatusValue
+                tone={
+                  !status ? "neutral" : status.cosignAvailable ? "ok" : "warn"
+                }
+                className="block mt-0.5"
+              >
                 {!status
                   ? "Unknown"
                   : status.cosignAvailable
                     ? "Available"
                     : "Not installed"}
-              </p>
+              </StatusValue>
             </div>
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
                 tar
               </p>
-              <p className="font-medium mt-0.5">
+              <StatusValue
+                tone={!status ? "neutral" : status.tarAvailable ? "ok" : "warn"}
+                className="block mt-0.5"
+              >
                 {!status
                   ? "Unknown"
                   : status.tarAvailable
                     ? "Available"
                     : "Not found"}
-              </p>
+              </StatusValue>
             </div>
           </div>
 
@@ -370,10 +432,16 @@ export function UpdaterManager() {
             </p>
           )}
 
-          <div className="flex items-center gap-3 pt-1">
+          <div className="flex flex-wrap items-center gap-3 pt-1">
+            {/* Destructive weight, matching the password dialog it opens
+                (variant="destructive" below). This was a default primary
+                button, visually identical to the Backups panel's "Back up
+                now", while what it actually does is overwrite this app's
+                files on disk, run npm ci, and migrate the database. */}
             <Button
+              variant="destructive"
               size="sm"
-              className="h-9 gap-1.5"
+              className="h-9 px-3 gap-2"
               disabled={
                 !status?.supported ||
                 !status?.tarAvailable ||
@@ -397,36 +465,21 @@ export function UpdaterManager() {
 
       {job && (
         <Card className="border-border/50 bg-card/50 overflow-hidden">
-          <div className="px-4 sm:px-5 py-4 border-b border-border/50 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <Terminal className="h-4 w-4 text-primary" aria-hidden="true" />
-              </div>
-              <div>
-                <h3 className="text-base font-semibold text-foreground">
-                  Update to{" "}
-                  {job.targetVersion
-                    ? `v${job.targetVersion.replace(/^v/, "")}`
-                    : "latest"}
-                </h3>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Job {job.id}
-                </p>
-              </div>
-            </div>
-            <Badge
-              variant="secondary"
-              className={cn(
-                "text-xs font-medium h-6 px-2.5",
-                job.status === "completed" &&
-                  "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20",
-                job.status === "failed" &&
-                  "bg-destructive/10 text-destructive border-destructive/20",
-              )}
-            >
-              {job.status}
-            </Badge>
-          </div>
+          <AdminPanelHeader
+            icon={Terminal}
+            tone={jobStatusMeta(job.status).tone}
+            title={`Update to ${
+              job.targetVersion
+                ? `v${job.targetVersion.replace(/^v/, "")}`
+                : "latest"
+            }`}
+            subtitle={<span className="font-mono break-all">Job {job.id}</span>}
+            status={
+              <StatusPill tone={jobStatusMeta(job.status).tone}>
+                {jobStatusMeta(job.status).label}
+              </StatusPill>
+            }
+          />
           <CardContent className="p-4 sm:p-5 space-y-4">
             {job.steps?.length > 0 && (
               <ul className="space-y-2">
@@ -456,28 +509,43 @@ export function UpdaterManager() {
                   aria-hidden="true"
                 />
                 <p className="text-sm text-[hsl(var(--success))]">
-                  Update applied. Run `npm run build`, then restart your server
-                  process, to run the new version.
+                  Update applied. Run{" "}
+                  <code className="font-mono text-xs px-1.5 py-0.5 rounded bg-background border border-border/60 text-foreground">
+                    npm run build
+                  </code>
+                  , then restart your server process, to run the new version.
                 </p>
               </div>
             )}
+            {/* The most dangerous message this panel can show, and it used to
+                wear the same quiet single-line callout as the success note
+                above, in --severity-medium, a token that encodes how bad a
+                scan FINDING is and has no meaning for an install state. Amber
+                warning tokens, a heavier border, and a heading line, because
+                the instruction that matters ("do not restart") has to survive
+                being skimmed. */}
             {job.status === "failed" &&
               job.steps?.some(
                 (s) => s.name === "copy" && s.status === "done",
               ) && (
-                <div className="flex items-start gap-3 p-3 rounded-lg border border-[hsl(var(--severity-medium))]/20 bg-[hsl(var(--severity-medium))]/5">
+                <div className="flex items-start gap-3 p-4 rounded-lg border-2 border-[hsl(var(--warning))]/40 bg-[hsl(var(--warning))]/10">
                   <AlertTriangle
-                    className="h-4 w-4 text-[hsl(var(--severity-medium))] shrink-0 mt-0.5"
+                    className="h-5 w-5 text-[hsl(var(--warning))] shrink-0 mt-0.5"
                     aria-hidden="true"
                   />
-                  <p className="text-sm text-[hsl(var(--severity-medium))]">
-                    Files were already copied onto this app's directory before
-                    this step failed, so the on-disk source is now a mix of old
-                    and new. Don't restart the server process yet: run "Update
-                    now" again first (copying is safe to repeat) so the install
-                    actually finishes, rather than restarting into a
-                    half-updated build.
-                  </p>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-[hsl(var(--warning))]">
+                      Do not restart the server: this install is half-updated
+                    </p>
+                    <p className="text-sm text-foreground/90 mt-1">
+                      Files were already copied onto this app&apos;s directory
+                      before this step failed, so the on-disk source is now a
+                      mix of old and new. Run &quot;Update now&quot; again first
+                      (copying is safe to repeat) so the install actually
+                      finishes, rather than restarting into a half-updated
+                      build.
+                    </p>
+                  </div>
                 </div>
               )}
             {job.status === "failed" && job.error && (

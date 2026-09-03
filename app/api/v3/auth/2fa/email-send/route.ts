@@ -79,9 +79,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const emailContent = email2FACodeEmail(code);
   await sendEmail({
     to: user.email,
-    subject: emailContent.subject,
-    text: emailContent.text,
-    html: emailContent.html,
+    ...emailContent,
   });
 
   // Mask email for UI

@@ -177,14 +177,28 @@ main#app {
   color: var(--vr-text-muted);
 }
 
+/* What a section is currently set to, printed in its own heading, so the page
+   can be read down the left edge instead of opened one card at a time.
+   It is information, so it takes the same 12% brand tint the nav uses for its
+   active item (5.27:1 on the card). It used to be a solid brand-blue fill in
+   every case, which printed the word "off" in the most emphatic colour on the
+   page: an inactive feature announcing itself louder than an active one. */
 .count-chip {
   font-size: 11px;
   font-weight: 600;
   padding: 2px 8px;
   border-radius: var(--vr-radius-pill);
-  background: var(--vr-primary);
-  color: var(--vr-primary-fg);
+  background: color-mix(in srgb, var(--vr-primary) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vr-primary) 32%, transparent);
+  color: var(--vr-primary-text);
   letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.count-chip.off {
+  background: var(--vr-muted-bg);
+  border-color: var(--vr-border);
+  color: var(--vr-text-muted);
 }
 
 .section-desc {
@@ -271,6 +285,10 @@ textarea.input {
   cursor: pointer;
   font-weight: 500;
   font-size: 13px;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
 }
 
 .btn:hover {
@@ -293,9 +311,13 @@ textarea.input {
   cursor: not-allowed;
 }
 
+/* auto-fill with a 170px CAP left a ragged right edge and a band of dead
+   space on any window wider than five columns, which made a set of four or
+   five mutually exclusive choices look like an unfinished list. 1fr lets the
+   row finish. */
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 170px));
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 8px;
 }
 
@@ -440,6 +462,9 @@ textarea.input {
   display: flex;
   align-items: center;
   gap: 10px;
+  /* Keyframes live in popup.css, which this file imports. Named in that
+     file's prefers-reduced-motion block. */
+  animation: vr-rise 180ms ease-out;
 }
 
 .status-banner.ok {
@@ -478,6 +503,9 @@ textarea.input {
   pointer-events: none;
 }
 
+/* Every setting on this page saves silently, so this is the only confirmation
+   there is. It used to blink into place fully formed, which at 13px in a
+   corner is easy to miss entirely: the movement is what catches the eye. */
 .toast {
   padding: 10px 14px;
   border-radius: var(--vr-radius);
@@ -487,6 +515,7 @@ textarea.input {
   font-weight: 500;
   z-index: 999;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  animation: vr-rise 160ms ease-out;
 }
 
 .muted {
@@ -757,6 +786,7 @@ textarea.input {
   justify-content: center;
   padding: 24px;
   background: rgba(0, 0, 0, 0.45);
+  animation: vr-fade 140ms ease-out;
 }
 
 .dialog {
@@ -767,6 +797,7 @@ textarea.input {
   border-radius: var(--vr-radius);
   background: var(--vr-card);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  animation: vr-rise 180ms ease-out;
 }
 
 .dialog-title {

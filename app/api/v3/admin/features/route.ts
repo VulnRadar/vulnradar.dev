@@ -27,6 +27,7 @@ const VALID_PREF_COLS = new Set([
   "email_critical_findings",
   "email_regression_alert",
   "email_schedules",
+  "email_posture_digest",
   "email_api_keys",
   "email_api_limit_warning",
   "email_webhooks",
@@ -98,8 +99,12 @@ async function deliverBroadcast(messageId: number): Promise<void> {
   let cursor = 0;
   for (;;) {
     const pageParams = [...queryParams, cursor, BROADCAST_PAGE_SIZE];
-    const page = await pool.query<{ id: number; email: string }>(
-      `SELECT u.id, u.email FROM users u
+    const page = await pool.query<{
+      id: number;
+      email: string;
+      unsubscribe_token: string | null;
+    }>(
+      `SELECT u.id, u.email, u.unsubscribe_token FROM users u
        ${safeCol ? "LEFT JOIN notification_preferences np ON np.user_id = u.id" : ""}
        WHERE ${conditions.join(" AND ")} AND u.id > $${queryParams.length + 1}
        ORDER BY u.id
@@ -141,12 +146,19 @@ async function deliverBroadcast(messageId: number): Promise<void> {
       await Promise.all(
         batch.map(async (recipient) => {
           try {
+            // A broadcast is the one message class Gmail's and Yahoo's bulk
+            // sender rules are actually written about, and it was the only
+            // one sent with no unsubscribe token: no "Manage email
+            // preferences" button in the body and no List-Unsubscribe
+            // header, which is a spam signal on exactly the mail that can
+            // least afford one. The admin preview even hardcoded the button,
+            // so what an admin previewed was not what recipients received.
             await sendEmail({
               to: recipient.email,
               subject: message.title,
               text: stripHtmlTags(message.content),
               html: message.content,
-              skipLayout: false,
+              unsubscribeToken: recipient.unsubscribe_token ?? undefined,
             });
             await pool.query(
               `UPDATE broadcast_recipients SET status = 'sent'

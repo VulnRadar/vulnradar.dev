@@ -26,10 +26,13 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/ui/utils";
 import { useAuth } from "@/components/providers/auth-provider";
 import {
+  AI_BOT_NAME,
   APP_NAME,
   AI_CHAT_HISTORY_DAYS,
   AI_CHAT_MAX_INPUT_LENGTH,
 } from "@/lib/config/client-constants";
+import { tourAnchor } from "@/lib/tour/anchors";
+import { useTourChromeSuppressed } from "@/lib/tour/tour-chrome";
 // The path form of the logo. constants' LOGO_URL is the absolute one, meant
 // for emails and structured data.
 import { CONFIG_LOGO_URL } from "@/lib/config/config-values";
@@ -73,7 +76,9 @@ type ProviderInfo = {
 const STORAGE_KEY = "vulnradar_ai_chat_v1";
 const PANEL_SIZE_KEY = "vulnradar_chat_size_v1";
 const MAX_AGE_MS = AI_CHAT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
-const BOT_NAME = "Vera";
+// Read from config rather than declared here, because the product tour names
+// the assistant too and a second literal is how a rename gets half-applied.
+const BOT_NAME = AI_BOT_NAME;
 
 function loadPanelSize() {
   if (typeof window === "undefined") return { width: 420, height: 520 };
@@ -183,7 +188,7 @@ function loadStored(): StoredChat {
 function saveHistory(sessionId: string, messages: ChatMessage[]) {
   if (typeof window === "undefined") return;
   try {
-    // Strip context messages — they're large and should not linger in storage
+    // Strip context messages: they are large and should not linger in storage
     const filtered = messages.filter(
       (m) => !m.contextCmd || m.contextCmd === "help",
     );
@@ -502,6 +507,11 @@ export function ChatWidget() {
   const pathname = usePathname();
 
   const [isOpen, setIsOpen] = useState(false);
+  // The product tour hides this launcher for every step that is not about it,
+  // and shows it for the ones that are. Read as a boolean from a module-level
+  // store so this widget needs to know nothing about the tour beyond "somebody
+  // wants the corner clear"; see lib/tour/tour-chrome.ts for why.
+  const tourWantsCornerClear = useTourChromeSuppressed();
   const [kbOffset, setKbOffset] = useState(0);
   // Same test the mobile bottom-sheet body-scroll-lock effect below uses:
   // narrow viewport or coarse (touch) pointer. Drives the render-time
@@ -558,8 +568,16 @@ export function ChatWidget() {
   // that is anchored to the bottom edge. Only runs while the launcher is the
   // thing on screen (the open panel covers that corner itself).
   const [barLift, setBarLift] = useState(0);
+  // The lift currently applied, read inside measure() without making it a
+  // dependency. measure() has to probe where the launcher would sit UNLIFTED:
+  // probing its actual position finds nothing once it has stepped clear, which
+  // sets the lift back to 0, which puts it back over the bar, on every DOM
+  // mutation. Same reason it re-measures from the base each time rather than
+  // adjusting the value it already has.
+  const barLiftRef = useRef(0);
   useEffect(() => {
     if (isOpen) {
+      barLiftRef.current = 0;
       // eslint-disable-next-line react-hooks/set-state-in-effect -- resets the measurement when the panel opens and the probe stops running; gated on isOpen so it fires on the state change, not every render
       setBarLift(0);
       return;
@@ -569,23 +587,44 @@ export function ChatWidget() {
     let frame = 0;
     const measure = () => {
       frame = 0;
+      const applied = barLiftRef.current;
       const r = el.getBoundingClientRect();
+      // The launcher's unlifted box: what it would cover with barLift at 0.
+      const baseBottom = r.bottom + applied;
       const stack = document.elementsFromPoint(
         r.left + r.width / 2,
-        r.top + r.height / 2,
+        r.top + r.height / 2 + applied,
       );
       let lift = 0;
-      for (const node of stack) {
+      for (const hit of stack) {
+        if (hit === el || hit.contains(el)) continue;
+        // Walk up from the hit node, not just the node itself. Every bottom
+        // action bar in this app is a `fixed ... pointer-events-none` wrapper
+        // around a `pointer-events-auto` card (app/profile/page.tsx's save
+        // bar, the two admin unsaved-changes bars, site-notifications,
+        // offline-banner). Hit testing skips a pointer-events-none box, so
+        // the only node of that pair the probe can ever see is the inner
+        // card, which is position: static. Inspecting just the hit node found
+        // no fixed element at all and left the lift at 0 on exactly the
+        // pages this exists for.
+        let node: Element | null = hit;
+        while (node && node !== document.body) {
+          if (getComputedStyle(node).position === "fixed") break;
+          node = node.parentElement;
+        }
+        if (!node || node === document.body) continue;
         if (node === el || node.contains(el)) continue;
-        if (getComputedStyle(node).position !== "fixed") continue;
         const nr = node.getBoundingClientRect();
-        // Only a bar sitting on the bottom edge can collide with a
+        // Only a bar sitting along the bottom can collide with a
         // bottom-anchored launcher; a fixed header or a full-screen scrim
-        // must not push it around.
-        if (nr.bottom < window.innerHeight - 24 || nr.top <= 0) continue;
-        lift = window.innerHeight - nr.top + 12;
+        // must not push it around. Measured against the launcher's own base
+        // rather than the viewport edge, so a bar already offset by the
+        // cookie notice still counts and its offset is not counted twice.
+        if (nr.bottom < baseBottom - 8 || nr.top <= 0) continue;
+        lift = Math.max(0, baseBottom - nr.top + 12);
         break;
       }
+      barLiftRef.current = lift;
       setBarLift((prev) => (prev === lift ? prev : lift));
     };
     const schedule = () => {
@@ -601,6 +640,23 @@ export function ChatWidget() {
       if (frame) cancelAnimationFrame(frame);
     };
   }, [isOpen, pathname]);
+
+  // Deliberately does NOT reflow the page.
+  //
+  // This used to set `paddingRight = panelWidth + 40` on <body> while the
+  // panel was open, to push the page's centred containers out from under it
+  // rather than let it cover them. It worked, and the cost was far too high:
+  // 460px of padding on a centred container moves the whole document 230px to
+  // the left, so opening a support panel re-wrapped every paragraph, resized
+  // every image and threw away the reader's place on the page. Closing it did
+  // all of that again in reverse. The thing being protected was a corner of
+  // one route; the thing being disturbed was every route.
+  //
+  // So the panel floats over the bottom-right corner, which is what every
+  // other chat widget does and what people already expect from that shape. A
+  // control the panel happens to cover is one Escape or one click on the
+  // launcher away, and that is a much smaller ask than relaying out the page
+  // underneath the reader.
 
   // Wipe in-memory state when the user signs out so no conversation data
   // lingers in the component (localStorage is cleared by clearAuthCache).
@@ -961,7 +1017,7 @@ export function ChatWidget() {
     const cmd = parts[0].toLowerCase();
     const arg = parts.slice(1).join(" ");
 
-    // /help renders a command list — the only command with visible output
+    // /help renders a command list, the only command with visible output
     if (cmd === "help") {
       const helpMsg: ChatMessage = {
         id: uid(),
@@ -976,7 +1032,7 @@ export function ChatWidget() {
       return [helpMsg];
     }
 
-    // All other commands inject context silently — no pills, no summaries
+    // All other commands inject context silently: no pills, no summaries
     setIsLoadingCmd(true);
     try {
       const url = new URL("/api/v3/ai/context", window.location.origin);
@@ -1073,7 +1129,7 @@ export function ChatWidget() {
     autoResize();
     inputRef.current?.focus();
 
-    // Slash command — load context, then stream an AI intro response. Only
+    // Slash command: load context, then stream an AI intro response. Only
     // for a RECOGNIZED command word: typing "/" followed by anything else
     // (a typo, a file path, a sentence that happens to start with a slash)
     // falls through to the regular message path below instead of being
@@ -1172,7 +1228,7 @@ export function ChatWidget() {
     setStreamingMsgId(aiMsgId);
 
     try {
-      // Build messages for AI — include context pills (they carry the <context> content)
+      // Build messages for AI, including context pills (they carry the <context> content)
       // but skip loading/error placeholders. autoCtx is appended explicitly because React
       // state hasn't flushed the setMessages calls from handleCommand yet.
       // Deduplicate context slots: when the same command was loaded twice, keep only the latest.
@@ -1275,23 +1331,31 @@ export function ChatWidget() {
             // Desktop: floating popup anchored bottom-right, sized by the
             // resizable panelWidth/panelHeight state via the style prop
             "sm:inset-x-auto sm:inset-y-auto sm:right-5 sm:bottom-20",
-            "sm:rounded-xl",
-            // Visuals
-            "bg-card border border-border/60",
-            "shadow-2xl shadow-black/50",
+            // The modal grammar's own surface (components/ui/modal-grammar.ts):
+            // rounded-lg per the radius ladder, a bare --border edge, shadow-lg.
+            // It was rounded-xl with a border-border/60 hairline and
+            // `shadow-2xl shadow-black/50`, which in the light theme painted a
+            // heavy black halo around a light panel. This widget is not a modal
+            // (no scrim, no focus trap, the page stays usable behind it), but it
+            // is a floating surface over the app and it should be made of the
+            // same material as one.
+            "sm:rounded-lg",
+            "border bg-card",
+            "shadow-lg",
             "overflow-hidden",
           )}
           role="dialog"
           aria-label={`${BOT_NAME} AI assistant`}
           tabIndex={-1}
+          {...tourAnchor("chatPanel")}
         >
-          {/* Resize handle — desktop only, drag left edge for width */}
+          {/* Resize handle, desktop only: drag the left edge for width */}
           <div
             onMouseDown={onWidthResizeStart}
             className="hidden sm:block absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-10 hover:bg-primary/20 transition-colors rounded-l-xl"
             title="Drag to resize width"
           />
-          {/* Resize handle — desktop only, drag top edge for height */}
+          {/* Resize handle, desktop only: drag the top edge for height */}
           <div
             onMouseDown={onHeightResizeStart}
             className="hidden sm:block absolute top-0 left-0 right-0 h-1 cursor-row-resize z-10 hover:bg-primary/20 transition-colors rounded-t-xl"
@@ -1487,6 +1551,7 @@ export function ChatWidget() {
                     id="chat-cmd-list"
                     role="listbox"
                     aria-label="Slash commands"
+                    {...tourAnchor("chatCommands")}
                     className="absolute bottom-full left-3 right-3 mb-1 bg-card border border-border/60 rounded-lg shadow-lg shadow-black/30 overflow-hidden z-10"
                   >
                     {cmdSuggestions.map((c, i) => {
@@ -1546,6 +1611,7 @@ export function ChatWidget() {
                       onKeyDown={handleKeyDown}
                       placeholder="Ask a question or type / for commands..."
                       aria-label={`Message ${BOT_NAME}`}
+                      {...tourAnchor("chatComposer")}
                       role="combobox"
                       aria-expanded={cmdSuggestions.length > 0}
                       aria-controls="chat-cmd-list"
@@ -1612,49 +1678,61 @@ export function ChatWidget() {
         </div>
       )}
 
-      {/* Launcher. Always mounted so it can double as the desktop close
-          control: once open, it swaps to an X in the same spot rather than
-          disappearing. On mobile the panel is a full-width bottom sheet with
-          its own top-right close button, so the launcher just gets out of
-          the way there instead of sitting on top of the sheet. */}
-      <button
-        ref={toggleRef}
-        onClick={() => setIsOpen((v) => !v)}
-        style={{
-          // 1.25rem is bottom-5. --vr-cookie-h is the cookie notice's measured
-          // height (components/shared/cookie-notice.tsx), the same offset the
-          // docs "Contents" trigger uses; barLift clears a page's own bottom
-          // action bar. Inline rather than an arbitrary Tailwind value because
-          // barLift is a runtime measurement.
-          bottom: `calc(1.25rem + var(--vr-cookie-h, 0px) + ${barLift}px)`,
-        }}
-        className={cn(
-          "fixed right-5 z-50",
-          "h-14 w-14 rounded-full flex items-center justify-center",
-          "bg-primary text-primary-foreground",
-          "hover:bg-primary/90",
-          "shadow-lg",
-          "transition-all duration-150 active:scale-95 touch-manipulation",
-          // a11y (SC 2.4.7): no ring colour of its own. This was
-          // focus-visible:ring-primary/60, a utility-layer rule that beat the
-          // base-layer remap in app/globals.css and drew a 60%-opacity
-          // --primary ring, inset, on a --primary fill: about 1.0:1 in both
-          // themes, i.e. no visible focus at all on the support launcher that
-          // sits on every page. Dropping it lets .bg-primary:focus-visible
-          // re-point --ring to --primary-foreground (7.06:1 / 7.65:1) the way
-          // it already does for every other primary button.
-          "focus:outline-hidden",
-          isOpen && "hidden sm:flex",
-        )}
-        aria-label={isOpen ? "Close chat" : `Open ${BOT_NAME}`}
-        aria-expanded={isOpen}
-      >
-        {isOpen ? (
-          <X className="h-6 w-6" />
-        ) : (
-          <MessageCircle className="h-6 w-6" />
-        )}
-      </button>
+      {/* Launcher. Mounted so it can double as the desktop close control: once
+          open, it swaps to an X in the same spot rather than disappearing. On
+          mobile the panel is a full-width bottom sheet with its own top-right
+          close button, so the launcher just gets out of the way there instead
+          of sitting on top of the sheet.
+
+          The one thing that takes it away entirely is the product tour, and
+          only while the tour is on a step about something else: a filled brand
+          circle glowing through the tour's scrim beside a callout pointing
+          somewhere else reads as a rendering fault. Unmounting the button
+          rather than hiding the whole widget keeps an open conversation
+          intact, and it shifts no layout because everything here is fixed. The
+          tour clears the flag when it pauses, ends or unmounts, so this is
+          never gone for longer than the tour is running. */}
+      {tourWantsCornerClear ? null : (
+        <button
+          ref={toggleRef}
+          onClick={() => setIsOpen((v) => !v)}
+          style={{
+            // 1.25rem is bottom-5. --vr-cookie-h is the cookie notice's measured
+            // height (components/shared/cookie-notice.tsx), the same offset the
+            // docs "Contents" trigger uses; barLift clears a page's own bottom
+            // action bar. Inline rather than an arbitrary Tailwind value because
+            // barLift is a runtime measurement.
+            bottom: `calc(1.25rem + var(--vr-cookie-h, 0px) + ${barLift}px)`,
+          }}
+          className={cn(
+            "fixed right-5 z-50",
+            "h-14 w-14 rounded-full flex items-center justify-center",
+            "bg-primary text-primary-foreground",
+            "hover:bg-primary/90",
+            "shadow-lg",
+            "transition-all duration-150 active:scale-95 touch-manipulation",
+            // a11y (SC 2.4.7): no ring colour of its own. This was
+            // focus-visible:ring-primary/60, a utility-layer rule that beat the
+            // base-layer remap in app/globals.css and drew a 60%-opacity
+            // --primary ring, inset, on a --primary fill: about 1.0:1 in both
+            // themes, i.e. no visible focus at all on the support launcher that
+            // sits on every page. Dropping it lets .bg-primary:focus-visible
+            // re-point --ring to --primary-foreground (7.06:1 / 7.65:1) the way
+            // it already does for every other primary button.
+            "focus:outline-hidden",
+            isOpen && "hidden sm:flex",
+          )}
+          aria-label={isOpen ? "Close chat" : `Open ${BOT_NAME}`}
+          aria-expanded={isOpen}
+          {...tourAnchor("chatLauncher")}
+        >
+          {isOpen ? (
+            <X className="h-6 w-6" />
+          ) : (
+            <MessageCircle className="h-6 w-6" />
+          )}
+        </button>
+      )}
     </>
   );
 }

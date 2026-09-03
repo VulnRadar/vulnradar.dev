@@ -1,0 +1,8 @@
+[
+  {
+    "icon": "Container",
+    "label": "The Self-Hosting Claim Now Points At The Test Behind It",
+    "desc": "The landing page says self-hosting is one Dockerfile and a Postgres connection string, and for a while that had quietly stopped being true: a fresh install exited before creating a single table, and the published image did not carry the migration scripts the docs tell operators to run. Both are fixed, and CI now proves it on every build by building the production image, booting it against an empty database, and failing if the schema does not come up. The landing page now names that check, because the one claim on the page a reader can only test by spending an hour on it should point at the thing that already tested it.",
+    "category": "changed"
+  }
+]

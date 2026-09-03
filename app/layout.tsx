@@ -34,6 +34,7 @@ import {
 } from "@/lib/config/constants";
 import { SiteStructuredData } from "@/components/seo/structured-data";
 import { ChatWidgetMount } from "@/components/shared/chat-widget-mount";
+import { TourMount } from "@/components/shared/tour/tour-mount";
 
 import "./globals.css";
 
@@ -167,14 +168,29 @@ export default async function RootLayout({
         <script
           nonce={nonce}
           dangerouslySetInnerHTML={{
-            // The staff-role list here must match isStaffRole()
-            // (lib/auth/permissions-client.ts), which auth-provider.tsx
-            // uses post-hydration for the same .vr-staff-only class --
-            // derived from STAFF_ROLES itself (every role except USER) so
-            // a role added there doesn't also need remembering here, the
-            // way the SSR fast-path drifted before (a 3-role hardcoded
-            // list, missing 5 of the then-current 8 staff roles).
-            __html: `try{var d=localStorage.getItem("vr_auth_cache");if(d&&d.length>2){var p=JSON.parse(d),s=document.createElement("style");s.id="vr-auth-css";var r="";if(p&&p.userId){r+=".vr-auth-only{visibility:visible!important;pointer-events:auto!important}"}if(p&&p.role&&${JSON.stringify(Object.values(STAFF_ROLES).filter((r) => r !== STAFF_ROLES.USER))}.includes(p.role)){r+=".vr-staff-only{display:flex!important}"}if(r){s.textContent=r;document.head.appendChild(s)}}}catch(e){}`,
+            // Stamps two data attributes on <html> from the cached session so
+            // the signed-in chrome is correct on the first paint instead of
+            // flashing in after /auth/me resolves. The matching rules are in
+            // app/globals.css.
+            //
+            // It sets attributes and nothing else. The previous version built
+            // a <style> element and appended it to document.head, which runs
+            // before React hydrates: React then found a node in <head> that
+            // its tree did not contain, reported the markup as mismatched and
+            // regenerated the whole tree on the client. That regeneration
+            // re-entered every route's Suspense boundary, which is why every
+            // page rendered its loading.tsx skeleton a second time on top of
+            // its own. <html> already carries suppressHydrationWarning, which
+            // is exactly what makes an attribute safe to set here.
+            //
+            // The staff-role list must match isStaffRole()
+            // (lib/auth/permissions-client.ts), which auth-provider.tsx uses
+            // post-hydration for the same .vr-staff-only class. Derived from
+            // STAFF_ROLES itself (every role except USER) so a role added
+            // there does not also need remembering here, the way the SSR
+            // fast-path drifted before (a 3-role hardcoded list, missing 5 of
+            // the then-current 8 staff roles).
+            __html: `try{var d=localStorage.getItem("vr_auth_cache");if(d&&d.length>2){var p=JSON.parse(d),e=document.documentElement;if(p&&p.userId){e.setAttribute("data-vr-auth","1");if(p.role&&${JSON.stringify(Object.values(STAFF_ROLES).filter((r) => r !== STAFF_ROLES.USER))}.includes(p.role)){e.setAttribute("data-vr-staff","1")}}}}catch(e){}`,
           }}
         />
       </head>
@@ -198,6 +214,12 @@ export default async function RootLayout({
             <ImpersonationBanner />
             <SiteNotificationsWrapper />
             <TosGate>{children}</TosGate>
+            {/* App-wide, not per page: the product tour walks the reader from
+                the scanner through History, Compare, Profile and Teams, and a
+                mount inside any one of those would unmount and restart it at
+                every crossing. TourMount keeps the tour's own code off the
+                ~790 public routes that will never run it. */}
+            <TourMount />
             <BackupCodesModal />
             <DiscordProfileModalWrapper />
             <GithubProfileModalWrapper />

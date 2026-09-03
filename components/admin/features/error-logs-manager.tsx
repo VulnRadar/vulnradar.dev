@@ -1,10 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { PaginationControl } from "@/components/ui/pagination-control";
 import {
@@ -16,12 +15,17 @@ import {
   ChevronUp,
 } from "lucide-react";
 import {
+  AdminPanelHeader,
   EmptyState,
-  DataTableSkeleton,
+  LogListSkeleton,
+  StatusPill,
   ConfirmDialog,
   Toast,
 } from "@/components/admin/shared";
-import { formatTimestamp as formatAdminTimestamp } from "@/components/admin/utils";
+import {
+  formatTimestamp as formatAdminTimestamp,
+  formatRelativeTime,
+} from "@/components/admin/utils";
 
 // Log views want second precision; the shared formatter defaults to minutes.
 const formatTimestamp = (iso: string) => formatAdminTimestamp(iso, true);
@@ -138,83 +142,78 @@ export function ErrorLogsManager() {
   return (
     <div className="space-y-6">
       <Card className="border-border/50 bg-card/50 overflow-hidden">
-        <CardHeader className="pb-4 pt-5 px-5">
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="p-2 rounded-lg bg-destructive/10 shrink-0">
-                  <Bug
-                    className="h-4 w-4 text-destructive"
-                    aria-hidden="true"
-                  />
-                </div>
-                <div className="min-w-0">
-                  <CardTitle className="text-base font-semibold truncate">
-                    Error Logs
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                    Every console.error call from the running server, most
-                    recent first.
-                  </p>
-                </div>
-              </div>
-              <Badge
-                variant="secondary"
-                className="text-xs font-medium h-6 px-2.5 shrink-0"
+        <AdminPanelHeader
+          icon={Bug}
+          // Amber rather than the permanent red tile this panel used to
+          // carry: a captured error is worth a look, but a tile that is red
+          // on every visit is texture, not signal. Whether the CURRENT volume
+          // is critical is the health list's call (it grades the last hour),
+          // and this endpoint only knows the all-time total.
+          tone={total > 0 ? "warn" : "ok"}
+          title="Error Logs"
+          subtitle="Every console.error call from the running server, most recent first."
+          status={
+            <StatusPill tone={total > 0 ? "warn" : "ok"}>
+              <span className="tabular-nums">{total.toLocaleString()}</span>
+              {total === 1 ? "entry" : "entries"}
+            </StatusPill>
+          }
+          actions={
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 px-3 gap-2 border-border/40"
+                onClick={() => fetchLogs(page, search, pageSize)}
+                disabled={refreshing}
+                aria-label="Refresh error logs"
               >
-                {total.toLocaleString()} {total === 1 ? "entry" : "entries"}
-              </Badge>
-            </div>
-
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-              <div className="relative flex-1">
-                <Search
-                  className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
+                <RefreshCw
+                  className={cn("h-4 w-4", refreshing && "animate-spin")}
                   aria-hidden="true"
                 />
-                <Input
-                  placeholder="Search error message or detail..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  aria-label="Search error logs"
-                  className="pl-9 h-10 bg-background/50 border-border/40 focus:border-primary/50"
-                />
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-10 px-3 gap-2 border-border/40"
-                  onClick={() => fetchLogs(page, search, pageSize)}
-                  disabled={refreshing}
-                  aria-label="Refresh error logs"
-                >
-                  <RefreshCw
-                    className={cn("h-4 w-4", refreshing && "animate-spin")}
-                    aria-hidden="true"
-                  />
-                  <span className="hidden sm:inline">Refresh</span>
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="h-10 px-3 gap-2"
-                  onClick={() => setConfirmOpen(true)}
-                  disabled={loading || total === 0}
-                >
-                  <Trash2 className="h-4 w-4" aria-hidden="true" />
-                  <span className="hidden sm:inline">Clear logs</span>
-                </Button>
-              </div>
-            </div>
+                <span className="hidden sm:inline">Refresh</span>
+              </Button>
+              {/* Outline, not the solid destructive fill this used to have.
+                  Purging a capture buffer is the least consequential action
+                  in the whole System area, and as the loudest control on the
+                  card it pulled the eye away from the failures listed below
+                  it. The destructive border still says what it does. */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 px-3 gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => setConfirmOpen(true)}
+                disabled={loading || total === 0}
+                aria-label="Clear all error logs"
+              >
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                <span className="hidden sm:inline">Clear logs</span>
+              </Button>
+            </>
+          }
+        >
+          <div className="relative">
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
+              aria-hidden="true"
+            />
+            <Input
+              placeholder="Search error message or detail..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label="Search error logs"
+              className="pl-9 h-9 bg-background/50 border-border/40 focus:border-primary/50"
+            />
           </div>
-        </CardHeader>
+        </AdminPanelHeader>
 
         <CardContent className="p-0">
           {loading ? (
-            <div className="p-4">
-              <DataTableSkeleton rows={6} />
-            </div>
+            // The list's own shape, not DataTableSkeleton: this panel has no
+            // table header and no avatar column, so that skeleton drew a
+            // layout the loaded panel never shows.
+            <LogListSkeleton rows={6} />
           ) : logs.length === 0 ? (
             <EmptyState
               icon={Bug}
@@ -228,47 +227,85 @@ export function ErrorLogsManager() {
           ) : (
             <div
               className={cn(
-                "divide-y divide-border/40 transition-opacity duration-200",
+                "divide-y divide-border/40 border-t border-border/50 transition-opacity duration-200",
                 refreshing && "opacity-40 pointer-events-none",
               )}
             >
               {logs.map((log) => {
                 const isExpanded = expandedId === log.id;
+                // The message is the row's subject and gets the weight; the
+                // time is metadata and gets the muted micro-line. Every row
+                // used to be one undifferentiated block of mono text at a
+                // single weight, which is why twenty of them read as a wall.
+                // Relative age leads because "3m ago" is the thing an
+                // operator triaging an incident is actually reading for; the
+                // absolute stamp stays next to it for the record.
+                const rowBody = (
+                  <>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground leading-snug wrap-break-word line-clamp-2">
+                        {log.message}
+                      </p>
+                      <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                        <time
+                          dateTime={log.created_at}
+                          className="tabular-nums"
+                        >
+                          {formatRelativeTime(log.created_at)}
+                        </time>
+                        <span
+                          aria-hidden="true"
+                          className="text-muted-foreground/40"
+                        >
+                          ·
+                        </span>
+                        <span className="tabular-nums text-muted-foreground">
+                          {formatTimestamp(log.created_at)}
+                        </span>
+                      </p>
+                    </div>
+                    {log.detail && (
+                      <div className="shrink-0 mt-0.5">
+                        {isExpanded ? (
+                          <ChevronUp
+                            className="h-4 w-4 text-muted-foreground"
+                            aria-hidden="true"
+                          />
+                        ) : (
+                          <ChevronDown
+                            className="h-4 w-4 text-muted-foreground"
+                            aria-hidden="true"
+                          />
+                        )}
+                      </div>
+                    )}
+                  </>
+                );
                 return (
                   <div key={log.id}>
-                    <button
-                      onClick={() => setExpandedId(isExpanded ? null : log.id)}
-                      className="w-full flex items-start gap-3 px-5 py-3.5 text-left hover:bg-muted/20 transition-colors"
-                      aria-expanded={isExpanded}
-                      disabled={!log.detail}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-mono text-foreground wrap-break-word line-clamp-2">
-                          {log.message}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {formatTimestamp(log.created_at)}
-                        </p>
+                    {/* A row with no stored detail has nothing to expand, so
+                        it renders as a plain row. It used to render as a
+                        DISABLED button, which kept the hover affordance's
+                        absence AND greyed the text, so roughly half the log
+                        looked broken rather than simply not expandable. */}
+                    {log.detail ? (
+                      <button
+                        onClick={() =>
+                          setExpandedId(isExpanded ? null : log.id)
+                        }
+                        className="w-full flex items-start gap-3 px-5 py-3.5 text-left hover:bg-muted/20 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                        aria-expanded={isExpanded}
+                      >
+                        {rowBody}
+                      </button>
+                    ) : (
+                      <div className="w-full flex items-start gap-3 px-5 py-3.5">
+                        {rowBody}
                       </div>
-                      {log.detail && (
-                        <div className="shrink-0 mt-0.5">
-                          {isExpanded ? (
-                            <ChevronUp
-                              className="h-4 w-4 text-muted-foreground"
-                              aria-hidden="true"
-                            />
-                          ) : (
-                            <ChevronDown
-                              className="h-4 w-4 text-muted-foreground"
-                              aria-hidden="true"
-                            />
-                          )}
-                        </div>
-                      )}
-                    </button>
+                    )}
                     {isExpanded && log.detail && (
                       <div className="px-5 pb-4 bg-muted/10 border-t border-border/30">
-                        <ScrollArea className="h-48 rounded-lg border border-border/40 bg-muted/20 mt-3">
+                        <ScrollArea className="h-48 rounded-md border border-border/40 bg-muted/20 mt-3">
                           <pre className="p-3 text-xs font-mono whitespace-pre-wrap break-all text-muted-foreground">
                             {log.detail}
                           </pre>

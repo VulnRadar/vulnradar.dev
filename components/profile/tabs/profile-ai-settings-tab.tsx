@@ -17,7 +17,14 @@ import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/ui/utils";
 import { API, APP_NAME } from "@/lib/config/client-constants";
 import { AI_MODEL_CATALOG, getModelSpec } from "@/lib/ai/model-catalog";
-import { Loader2, Eye, EyeOff, RotateCcw, Power } from "lucide-react";
+import {
+  Loader2,
+  Eye,
+  EyeOff,
+  RotateCcw,
+  Power,
+  AlertTriangle,
+} from "lucide-react";
 import { AiSettingsTabSkeleton } from "./ai-settings-tab-skeleton";
 import type { ProfileTabProps } from "../types";
 
@@ -44,6 +51,8 @@ export function ProfileAiSettingsTab({
 }: ProfileTabProps) {
   const [config, setConfig] = useState<AiConfig | null>(null);
   const [fetching, setFetching] = useState(true);
+  // Bumped by the retry button below to re-run the load effect.
+  const [reloadKey, setReloadKey] = useState(0);
 
   // Form state
   const [aiDisabled, setAiDisabled] = useState(false);
@@ -60,26 +69,36 @@ export function ProfileAiSettingsTab({
   const [resetting, setResetting] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
 
+  // A failed load leaves config null, and every default below it is a
+  // statement of fact about someone's account: aiDisabled=false renders "AI
+  // is on. Chat widget and scan verification are available." and
+  // useOwn=false renders "VulnRadar's built-in AI is active", which is the
+  // opposite of the truth for anyone running their own provider key. So a
+  // failure has to stay a failure here, not fall through to the defaults.
   useEffect(() => {
     if (loading) return;
     (async () => {
       try {
         const res = await fetch(API.ACCOUNT_AI_CONFIG);
-        if (res.ok) {
-          const data: AiConfig = await res.json();
-          setConfig(data);
-          setAiDisabled(data.aiDisabled ?? false);
-          setUseOwn(!data.useVulnradarAi);
-          if (data.provider) setSelectedProvider(data.provider);
-          if (data.modelId) setSelectedModel(data.modelId);
-        }
+        if (!res.ok) return;
+        const data: AiConfig = await res.json();
+        setConfig(data);
+        setAiDisabled(data.aiDisabled ?? false);
+        setUseOwn(!data.useVulnradarAi);
+        if (data.provider) setSelectedProvider(data.provider);
+        if (data.modelId) setSelectedModel(data.modelId);
       } catch {
-        // Non-fatal: we'll just show the default state
+        // Handled by the null-config branch below, which offers a retry.
       } finally {
         setFetching(false);
       }
     })();
-  }, [loading]);
+  }, [loading, reloadKey]);
+
+  function handleRetryLoad() {
+    setFetching(true);
+    setReloadKey((k) => k + 1);
+  }
 
   const providerDef = AI_MODEL_CATALOG.find((p) => p.id === selectedProvider);
   const modelSpec = getModelSpec(selectedProvider, selectedModel);
@@ -201,6 +220,38 @@ export function ProfileAiSettingsTab({
 
   if (loading || fetching) {
     return <AiSettingsTabSkeleton />;
+  }
+
+  // Fetching is done and nothing arrived: the request failed. Everything
+  // below reads as settled fact, so say what happened instead.
+  if (!config) {
+    return (
+      <div className="rounded-xl border border-border/50 bg-card/50 p-5 sm:p-6 flex flex-col gap-4">
+        <div className="flex items-start gap-3">
+          <AlertTriangle
+            className="h-4 w-4 text-destructive shrink-0 mt-0.5"
+            aria-hidden="true"
+          />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-foreground">
+              Your AI settings could not be loaded
+            </p>
+            <p className="text-sm text-muted-foreground mt-1 max-w-prose leading-relaxed">
+              They are not shown at all rather than shown as defaults, because
+              the defaults claim AI is on and that {APP_NAME}'s built-in AI is
+              the one analyzing your scans, which is wrong for anyone using
+              their own provider key.
+            </p>
+          </div>
+        </div>
+        <div>
+          <Button variant="outline" onClick={handleRetryLoad} className="gap-2">
+            <RotateCcw className="h-4 w-4" aria-hidden="true" />
+            Try again
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   // A stored key only counts as "existing" for the provider it was saved under.
@@ -374,7 +425,7 @@ export function ProfileAiSettingsTab({
                 </select>
               </div>
 
-              {/* Model select — only shown once a provider is picked */}
+              {/* Model select, only shown once a provider is picked */}
               {selectedProvider && (
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="model-select" className="text-sm font-medium">
@@ -539,17 +590,17 @@ export function ProfileAiSettingsTab({
           if (!open && !resetting) setConfirmReset(false);
         }}
       >
-        <AlertDialogContent className="sm:max-w-md">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remove your AI provider config?</AlertDialogTitle>
-            <AlertDialogDescription className="text-left">
+            <AlertDialogDescription>
               Your {config?.provider ? `${config.provider} ` : ""}API key and
               model choice are deleted. We never show a saved key back, so you
               will have to paste it again from your provider to set this up once
               more. Scans go back to using {APP_NAME} AI.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter className="flex-col-reverse sm:flex-row gap-2">
+          <AlertDialogFooter>
             <Button
               variant="outline"
               onClick={() => setConfirmReset(false)}

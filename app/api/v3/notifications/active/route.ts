@@ -39,7 +39,9 @@ export async function GET() {
       [now, isAuthenticated, isStaff],
     );
 
-    return Response.json(result.rows);
+    // Named envelope, like every other collection route. The client already
+    // accepted both shapes, so this needed no coordinated change there.
+    return Response.json({ notifications: result.rows });
   } catch (error) {
     console.error("Error fetching active notifications:", error);
     return Response.json(

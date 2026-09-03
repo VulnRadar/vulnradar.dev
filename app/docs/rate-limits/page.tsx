@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Card } from "@/components/ui/card";
 
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
+import { STAFF_ROLES } from "@/lib/rate-limiting/daily-limits";
 import { cn } from "@/lib/ui/utils";
 import type { TocItem } from "@/components/docs/docs-types";
 import { DocsTocSpy } from "../docs-toc-spy";
@@ -53,7 +54,7 @@ const dailyQuotas = [
 
 export default function RateLimitsPage() {
   return (
-    <div className="space-y-16">
+    <div className="space-y-12 sm:space-y-16">
       <DocsTocSpy items={tocItems} />
       <DocsHero
         id="top"
@@ -102,15 +103,16 @@ export default function RateLimitsPage() {
           for Bearer-authenticated API keys.
         </p>
 
-        <div className="flex divide-x divide-border/50 overflow-hidden rounded-lg border border-border/50 bg-card/50">
+        {/* Two per row on a phone. px-2.5 below sm had bought enough room for
+            four cells at 375px, but not at 320px: there each cell is about
+            52px of content box and "5,000/day" needs roughly 76px, so the last
+            cell was still being shaved off by the row's overflow-hidden. */}
+        <div className="flex flex-wrap divide-x divide-border/50 overflow-hidden rounded-lg border border-border/50 bg-card/50">
           {dailyQuotas.map((plan) => (
             <div
               key={plan.plan}
               className={cn(
-                // px-2.5 below sm: four cells at px-4 spend 128px on padding
-                // alone, which left the last cell's "/day" being shaved off
-                // by the row's overflow-hidden at 375px.
-                "flex min-w-0 flex-1 flex-col gap-0.5 px-2.5 py-3 sm:px-4",
+                "flex min-w-0 flex-1 basis-1/2 flex-col gap-0.5 px-2.5 py-3 sm:basis-0 sm:px-4",
                 plan.highlight && "bg-primary/5",
               )}
             >
@@ -125,7 +127,8 @@ export default function RateLimitsPage() {
                   /day
                 </span>
               </span>
-              <span className="truncate text-[11px] text-muted-foreground">
+              {/* A plan name we wrote, so it wraps rather than clips. */}
+              <span className="text-[11px] text-muted-foreground">
                 {plan.plan}
               </span>
             </div>
@@ -155,13 +158,33 @@ export default function RateLimitsPage() {
           </p>
         </DocsCallout>
 
-        <DocsCallout variant="info" title="Staff accounts have no limit">
+        {/* This said staff accounts have NO limit, and named three roles.
+            Both halves were wrong.
+
+            Wrong on the behaviour: resolveUserPlan() tags a staff role as
+            "staff", and getDailyLimit() resolves that tag to the Pro Supporter
+            plan's real limits. Staff are on a plan, not exempt. The old copy
+            promised Infinity, which is what the billing-disabled branch
+            returns, not what a staff role returns.
+
+            Wrong on the list: it named three of the seven roles in
+            STAFF_ROLES, so billing, security_analyst, content_manager and ops
+            were undocumented. The list is now rendered from that exported
+            constant, so a role added there cannot go missing here. */}
+        <DocsCallout variant="info" title="Staff accounts scan on a plan">
           <p>
-            Users with role <InlineCode>admin</InlineCode>,{" "}
-            <InlineCode>moderator</InlineCode>, or{" "}
-            <InlineCode>support</InlineCode> are exempt from daily quotas (
-            <InlineCode>daily-limits.ts</InlineCode> returns{" "}
-            <InlineCode>Infinity</InlineCode>).
+            A user whose role is one of{" "}
+            {STAFF_ROLES.map((role, i) => (
+              <span key={role}>
+                {i > 0 && (i === STAFF_ROLES.length - 1 ? " or " : ", ")}
+                <InlineCode>{role}</InlineCode>
+              </span>
+            ))}{" "}
+            is resolved to the <InlineCode>staff</InlineCode> plan tag, which
+            carries the same daily allowance as Pro Supporter. That is a plan,
+            not an exemption: staff still spend against a quota and can still
+            run out. Only running {APP_NAME} with billing turned off makes a
+            daily limit genuinely unlimited.
           </p>
         </DocsCallout>
       </DocsSection>

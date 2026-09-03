@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { buildOpenApiSpec } from "@/lib/api/openapi-spec";
 
@@ -104,6 +104,104 @@ describe("buildOpenApiSpec", () => {
     }
 
     expect(mismatches).toEqual([]);
+  });
+
+  // The check above compares the spec against the ROUTES it already names, so
+  // it is silent about a route the spec omits entirely. That is how the two
+  // hand-maintained descriptions of this API drifted: /docs/api gained cards
+  // for scan/authenticated, verify-batch, history/{id}/summary, crawl/discover,
+  // discover/progress, reputation and browser/sessions while the spec never
+  // did, and the docs playground reads the SPEC, so those endpoints were
+  // documented in prose and unreachable from the tool built to call them.
+  // ref: AUDIT-015#api-03
+  const DOCS_PAGE = join(process.cwd(), "app/docs/api/page.tsx");
+
+  /** Every { method, path } pair in the docs page's `endpoints` array. */
+  function docsEndpoints(): { method: string; path: string }[] {
+    const source = readFileSync(DOCS_PAGE, "utf8");
+    const out: { method: string; path: string }[] = [];
+    const re =
+      /method:\s*"(GET|POST|PUT|PATCH|DELETE)",\s*\n\s*path:\s*"([^"]+)"/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(source)) !== null) {
+      out.push({ method: m[1].toLowerCase(), path: m[2] });
+    }
+    return out;
+  }
+
+  it("finds the endpoint cards on the docs page (guards the parser below)", () => {
+    expect(docsEndpoints().length).toBeGreaterThan(30);
+  });
+
+  it("documents in the spec every v3 endpoint the docs page has a card for", () => {
+    // /api/version is deliberately outside the /api/v3 base URL (it has to be
+    // version-independent), so it cannot be a path in a spec whose server is
+    // /api/v3. It is the only legitimate exemption.
+    const EXEMPT = new Set(["/api/version (not under /api/v3)"]);
+    const missing: string[] = [];
+
+    for (const { method, path } of docsEndpoints()) {
+      if (EXEMPT.has(path)) continue;
+      // Cards write query strings into the path for readability
+      // ("/domains?id={id}"); the spec models those as parameters.
+      const specPath = path.split("?")[0];
+      const item = (spec.paths as Record<string, any>)[specPath];
+      if (!item?.[method]) {
+        missing.push(`${method.toUpperCase()} ${specPath}`);
+      }
+    }
+
+    expect(missing).toEqual([]);
+  });
+
+  // The other direction, for the endpoints that matter most: anything an API
+  // KEY can reach is by definition part of the integrator surface, so it has to
+  // be in the machine-readable description. A route that authenticates a Bearer
+  // key and is absent from the spec is an endpoint no generated client knows
+  // exists. ref: AUDIT-015#api-03
+  it("documents every non-admin route an API key can authenticate against", () => {
+    const root = join(process.cwd(), "app/api/v3");
+    // GET /auth/me accepts a key so the browser extension can identify the
+    // account behind one, but it is an identity read rather than part of the
+    // scan surface and the spec is deliberately a subset.
+    const EXEMPT = new Set(["/auth/me"]);
+
+    const routeFiles: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (entry.name === "admin") continue;
+          walk(full);
+        } else if (entry.name === "route.ts") {
+          routeFiles.push(full);
+        }
+      }
+    };
+    walk(root);
+
+    const missing: string[] = [];
+    let keyRoutes = 0;
+    for (const file of routeFiles) {
+      const source = readFileSync(file, "utf8");
+      if (!source.includes("validateApiKey")) continue;
+      keyRoutes++;
+      const specPath = file
+        .slice(root.length)
+        .replace(/\\/g, "/")
+        .replace(/\/route\.ts$/, "")
+        .replace(/\[(\w+)\]/g, "{$1}");
+      if (EXEMPT.has(specPath)) continue;
+      if (!(spec.paths as Record<string, any>)[specPath]) {
+        missing.push(specPath);
+      }
+    }
+
+    // Guards the walk itself: a broken traversal would find no key routes and
+    // pass with an empty `missing`, which is the failure mode a coverage test
+    // most needs to be immune to.
+    expect(keyRoutes).toBeGreaterThan(10);
+    expect(missing).toEqual([]);
   });
 
   it("declares the bearer API-key security scheme", () => {

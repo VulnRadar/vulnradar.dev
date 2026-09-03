@@ -51,5 +51,7 @@ export async function GET() {
         : row.findings || [],
   }));
 
-  return NextResponse.json(scans);
+  // Named envelope, like every other collection route. A bare array leaves
+  // nowhere to put a total or a cursor later without breaking callers.
+  return NextResponse.json({ scans });
 }

@@ -2,12 +2,11 @@
 
 import { useState, useEffect, useId } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -25,7 +24,7 @@ import {
   Clock,
   Users,
   MailOpen,
-  UserCog,
+  AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import {
@@ -37,12 +36,15 @@ import {
 import { getPaidPlans } from "@/lib/billing/catalog";
 import { SaveConfirmationModal } from "@/components/shared/save-confirmation-modal";
 import {
+  AdminPanelHeader,
   EmptyState,
   DataTableSkeleton,
   StatBar,
+  StatusPill,
   Toast,
   generateEmailPreviewHtml,
 } from "@/components/admin/shared";
+import { formatTimestamp } from "@/components/admin/utils";
 import type { ToastState } from "@/components/admin/types";
 
 interface Broadcast {
@@ -61,6 +63,13 @@ const SEGMENT_LABELS: Record<string, string> = {
   free: "Free Users",
   ...Object.fromEntries(getPaidPlans().map((p) => [p.id, p.name])),
   specific: "Specific Email",
+};
+
+/** The DB enum was rendered straight into the row with `capitalize`, so the
+ *  column showed the column value rather than a label anyone chose. */
+const STATUS_LABELS: Record<string, string> = {
+  draft: "Draft",
+  sent: "Sent",
 };
 
 const CATEGORY_OPTIONS: { value: string; label: string }[] = [
@@ -293,32 +302,21 @@ export function MassEmailManager() {
             active: historyFilter === "sent",
             icon: CheckCircle2,
           },
-          {
-            label: "Contributors",
-            value: new Set(messages.map((m) => m.created_by_name)).size,
-            icon: UserCog,
-          },
+          // A "Contributors" segment used to sit here: a new Set(...).size over
+          // created_by_name, with no tone, nothing filtering on it and no
+          // decision it could inform. Every other segment in this strip filters
+          // the list below it.
         ]}
       />
 
-      {/* Compose card */}
-      <Card className="border-border/50 bg-card/50 overflow-hidden">
-        <div className="flex items-center justify-between px-4 sm:px-5 py-4 border-b border-border/50">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <Mail className="h-4 w-4 text-primary" aria-hidden="true" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">
-                Compose Broadcast
-              </h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Write and send emails to user segments
-              </p>
-            </div>
-          </div>
-        </div>
-        <CardContent className="p-4 sm:p-5 space-y-4">
+      {/* Compose */}
+      <div className="overflow-hidden rounded-xl border border-border/50 bg-card/50">
+        <AdminPanelHeader
+          icon={Mail}
+          title="Compose Broadcast"
+          subtitle="Saving only stores a draft. Nothing reaches an inbox until you send it from the list below."
+        />
+        <div className="p-4 sm:p-5 space-y-4">
           <div>
             <label
               htmlFor={subjectId}
@@ -363,7 +361,9 @@ export function MassEmailManager() {
                 id={segmentId}
                 value={segment}
                 onChange={(e) => setSegment(e.target.value)}
-                className="w-full h-10 rounded-lg border border-border/40 bg-background/50 px-3 py-2 text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                // rounded-md: a select is a control, and every other one in
+                // the admin panel is drawn on that rung of the radius ladder.
+                className="w-full h-10 rounded-md border border-border/40 bg-background/50 px-3 py-2 text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/20"
               >
                 {Object.entries(SEGMENT_LABELS).map(([value, label]) => (
                   <option key={value} value={value}>
@@ -401,7 +401,9 @@ export function MassEmailManager() {
                 id={categoryId}
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                className="w-full h-10 rounded-lg border border-border/40 bg-background/50 px-3 py-2 text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                // rounded-md: a select is a control, and every other one in
+                // the admin panel is drawn on that rung of the radius ladder.
+                className="w-full h-10 rounded-md border border-border/40 bg-background/50 px-3 py-2 text-sm text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/20"
               >
                 {CATEGORY_OPTIONS.map(({ value, label }) => (
                   <option key={value} value={value}>
@@ -412,11 +414,29 @@ export function MassEmailManager() {
             </div>
           </div>
 
-          <div className="flex items-start gap-2.5 rounded-lg border border-primary/20 bg-primary/5 px-3.5 py-3">
-            <Users
-              className="h-4 w-4 text-primary shrink-0 mt-0.5"
-              aria-hidden="true"
-            />
+          {/* The recipient readout escalates with the blast radius. It was
+              the calm brand tint at every setting, so "All Users", which is
+              every registered account and the one selection that cannot be
+              taken back, was drawn exactly like sending to one address. */}
+          <div
+            className={cn(
+              "flex items-start gap-2.5 rounded-lg border px-3.5 py-3",
+              segment === "all"
+                ? "border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/10"
+                : "border-primary/20 bg-primary/5",
+            )}
+          >
+            {segment === "all" ? (
+              <AlertTriangle
+                className="h-4 w-4 text-[hsl(var(--warning))] shrink-0 mt-0.5"
+                aria-hidden="true"
+              />
+            ) : (
+              <Users
+                className="h-4 w-4 text-primary shrink-0 mt-0.5"
+                aria-hidden="true"
+              />
+            )}
             <div className="min-w-0">
               <p className="text-xs font-semibold text-foreground">
                 Sends to:{" "}
@@ -424,6 +444,11 @@ export function MassEmailManager() {
                   ? specificEmail || "no address entered yet"
                   : SEGMENT_LABELS[segment]}
               </p>
+              {segment === "all" && (
+                <p className="text-xs text-[hsl(var(--warning))] mt-0.5">
+                  Every registered account, free and paid.
+                </p>
+              )}
               {category !== "none" && (
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Only users opted into{" "}
@@ -445,31 +470,40 @@ export function MassEmailManager() {
                   Preview
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-5xl max-h-[90vh] overflow-auto">
-                <DialogHeader className="pb-4">
+              {/* An email body is rendered at its real width and no size rung
+                  matches it, so the width stays a bare class. The ladder in
+                  modal-grammar.ts is unprefixed for exactly this: tailwind-merge
+                  only drops a conflicting class within the same modifier, so a
+                  responsive rung could not be overridden by a plain width. */}
+              <DialogContent variant="shell" className="max-w-5xl">
+                <DialogHeader>
                   <DialogTitle>Email Preview</DialogTitle>
                 </DialogHeader>
-                <iframe
-                  srcDoc={generateEmailPreviewHtml({
-                    title,
-                    bodyHtml:
-                      content || "<p>Email content will appear here...</p>",
-                    appName: APP_NAME,
-                    appUrl: APP_URL,
-                    logoSrc: LOGO_URL,
-                    supportEmail: SUPPORT_EMAIL,
-                    // Every broadcast recipient has an unsubscribe token, so
-                    // the real message always carries this button. The preview
-                    // used to omit it entirely, which is how an admin could
-                    // sign off on a footer the recipient never sees. The href
-                    // is the real page, unresolvable without a token, and the
-                    // iframe is sandboxed so it is not clickable anyway.
-                    unsubscribeUrl: `${APP_URL}/unsubscribe`,
-                  })}
-                  sandbox=""
-                  className="w-full h-[700px] border border-border/50 rounded-lg"
-                  title="Email Preview"
-                />
+                <DialogBody>
+                  <iframe
+                    srcDoc={generateEmailPreviewHtml({
+                      title,
+                      bodyHtml:
+                        content || "<p>Email content will appear here...</p>",
+                      appName: APP_NAME,
+                      appUrl: APP_URL,
+                      logoSrc: LOGO_URL,
+                      supportEmail: SUPPORT_EMAIL,
+                      // Every broadcast recipient has an unsubscribe token, so
+                      // the real message always carries this button. The preview
+                      // used to omit it entirely, which is how an admin could
+                      // sign off on a footer the recipient never sees. The href
+                      // is the real page, unresolvable without a token, and the
+                      // iframe is sandboxed so it is not clickable anyway.
+                      unsubscribeUrl: `${APP_URL}/unsubscribe`,
+                    })}
+                    sandbox=""
+                    // rounded-xl: a 700px full-bleed content surface is a panel,
+                    // not a small card.
+                    className="w-full h-[700px] border border-border/50 rounded-xl"
+                    title="Email Preview"
+                  />
+                </DialogBody>
               </DialogContent>
             </Dialog>
 
@@ -486,41 +520,35 @@ export function MassEmailManager() {
               Save as Draft
             </Button>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Broadcasts list card */}
-      <Card className="border-border/50 bg-card/50 overflow-hidden">
-        <div className="flex items-center justify-between px-4 sm:px-5 py-4 border-b border-border/50">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <Send className="h-4 w-4 text-primary" aria-hidden="true" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">
-                Broadcasts
-              </h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {messages.length} total, {drafts.length} draft
-                {drafts.length !== 1 ? "s" : ""}, {sent.length} sent
-              </p>
-            </div>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-2 border-border/40 shrink-0"
-            onClick={fetchMessages}
-            disabled={loading}
-            aria-label="Refresh broadcasts"
-          >
-            <RefreshCw
-              className={cn("h-4 w-4", loading && "animate-spin")}
-              aria-hidden="true"
-            />
-            <span className="hidden sm:inline">Refresh</span>
-          </Button>
         </div>
+      </div>
+
+      {/* Broadcasts list */}
+      <div className="overflow-hidden rounded-xl border border-border/50 bg-card/50">
+        <AdminPanelHeader
+          icon={Send}
+          title="Broadcasts"
+          // The subtitle used to reprint the strip 200px above it ("N total,
+          // N drafts, N sent"), so the same three numbers appeared twice on
+          // one screen. It says what the list does instead.
+          subtitle="Sending is immediate and cannot be undone. A resend goes to the whole audience again, including everyone who already received it."
+          actions={
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 px-3 gap-2 border-border/40 shrink-0"
+              onClick={fetchMessages}
+              disabled={loading}
+              aria-label="Refresh broadcasts"
+            >
+              <RefreshCw
+                className={cn("h-4 w-4", loading && "animate-spin")}
+                aria-hidden="true"
+              />
+              <span className="hidden sm:inline">Refresh</span>
+            </Button>
+          }
+        />
 
         {loading && messages.length === 0 ? (
           <div className="p-4 sm:p-5">
@@ -577,26 +605,19 @@ export function MassEmailManager() {
                       <p className="text-sm font-medium text-foreground truncate">
                         {msg.title}
                       </p>
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          "text-[10px] px-2 py-0.5 font-medium capitalize shrink-0",
-                          isDraft
-                            ? "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20"
-                            : "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20",
-                        )}
-                      >
-                        {msg.status}
-                      </Badge>
+                      <StatusPill tone={isDraft ? "warn" : "ok"}>
+                        {STATUS_LABELS[msg.status] ?? msg.status}
+                      </StatusPill>
                     </div>
+                    {/* One timestamp format, from formatTimestamp. This row
+                        used to print three: a date-only created stamp, a
+                        date-plus-time sent stamp, and the delete modal's
+                        locale-dependent toLocaleDateString, none of them
+                        tabular. */}
                     <div className="flex items-center gap-3 mt-1 flex-wrap">
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <span className="text-xs text-muted-foreground flex items-center gap-1 tabular-nums">
                         <Clock className="h-3 w-3" aria-hidden="true" />
-                        {new Date(msg.created_at).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                        })}
+                        {formatTimestamp(msg.created_at)}
                       </span>
                       {msg.created_by_name && (
                         <span className="text-xs text-muted-foreground">
@@ -607,15 +628,9 @@ export function MassEmailManager() {
                         </span>
                       )}
                       {!isDraft && msg.sent_at && (
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground flex items-center gap-1 tabular-nums">
                           <Send className="h-3 w-3" aria-hidden="true" />
-                          Sent{" "}
-                          {new Date(msg.sent_at).toLocaleString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
+                          Sent {formatTimestamp(msg.sent_at)}
                           {msg.sent_by_name && (
                             <span>
                               by{" "}
@@ -629,16 +644,20 @@ export function MassEmailManager() {
                     </div>
                   </div>
 
-                  {/* Actions */}
-                  {/* md: prefix on the fade: touch devices have no hover, so an
-                      unprefixed opacity-0 left these actions permanently invisible
-                      while still hit-testable. Below md they are always shown. */}
-                  <div className="flex items-center gap-2 shrink-0 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 md:focus-visible:opacity-100 transition-opacity">
+                  {/* Actions. The row's primary action stays visible at rest,
+                      the way the support inbox's Resolve and Close do: the
+                      whole cluster used to fade in on hover, so on a desktop
+                      the only way to find out a draft could be sent was to
+                      point at its row. Only Delete keeps the fade, and it
+                      keeps the md: prefix because touch devices have no
+                      hover, where an unprefixed opacity-0 would leave it
+                      permanently invisible but still hit-testable. */}
+                  <div className="flex items-center gap-2 shrink-0">
                     {isDraft ? (
                       <>
                         <Button
                           size="sm"
-                          className="h-8 gap-1.5 text-xs"
+                          className="h-8 gap-1.5 px-3 text-xs"
                           onClick={() => setPendingSend(msg)}
                           disabled={isSending || isDeleting}
                         >
@@ -650,12 +669,20 @@ export function MassEmailManager() {
                           ) : (
                             <Send className="h-3.5 w-3.5" aria-hidden="true" />
                           )}
-                          Send
+                          Send now
                         </Button>
+                        {/* Deleting a draft is reversible in the sense that
+                            nothing left the building; sending is not. This
+                            button used to be the heavier of the two, an
+                            outlined destructive control beside a plain filled
+                            Send, which had the hierarchy exactly backwards. */}
                         <Button
                           size="sm"
-                          variant="outline"
-                          className="h-8 w-8 p-0 border-border/40 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          variant="ghost"
+                          className={cn(
+                            "h-11 w-11 sm:h-8 sm:w-8 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10",
+                            "md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 md:focus-visible:opacity-100 transition",
+                          )}
                           onClick={() => setPendingDelete(msg)}
                           disabled={isSending || isDeleting}
                           title="Delete draft"
@@ -675,10 +702,13 @@ export function MassEmailManager() {
                         </Button>
                       </>
                     ) : (
+                      // Resend emails the whole audience a second time. With a
+                      // RefreshCw glyph on a neutral outline it read as a
+                      // reload button, which is the one thing it is not.
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-8 gap-1.5 text-xs border-border/40"
+                        className="h-8 gap-1.5 px-3 text-xs border-[hsl(var(--warning))]/30 text-[hsl(var(--warning))] hover:bg-[hsl(var(--warning))]/10 hover:text-[hsl(var(--warning))]"
                         onClick={() => setPendingSend(msg)}
                         disabled={isSending}
                       >
@@ -688,12 +718,9 @@ export function MassEmailManager() {
                             aria-hidden="true"
                           />
                         ) : (
-                          <RefreshCw
-                            className="h-3.5 w-3.5"
-                            aria-hidden="true"
-                          />
+                          <Send className="h-3.5 w-3.5" aria-hidden="true" />
                         )}
-                        Resend
+                        Send again
                       </Button>
                     )}
                   </div>
@@ -702,7 +729,7 @@ export function MassEmailManager() {
             })}
           </div>
         )}
-      </Card>
+      </div>
 
       {/* Delete Confirmation Modal */}
       <SaveConfirmationModal
@@ -723,15 +750,16 @@ export function MassEmailManager() {
                 {
                   field: "status",
                   label: "Status",
-                  oldValue: pendingDelete.status,
+                  oldValue:
+                    STATUS_LABELS[pendingDelete.status] ?? pendingDelete.status,
                   newValue: "Deleted",
                 },
                 {
                   field: "created_at",
                   label: "Created",
-                  oldValue: new Date(
-                    pendingDelete.created_at,
-                  ).toLocaleDateString(),
+                  // Was toLocaleDateString() with no locale, so this one date
+                  // followed the browser while the row above it is pinned.
+                  oldValue: formatTimestamp(pendingDelete.created_at),
                   newValue: "Removed",
                 },
               ]

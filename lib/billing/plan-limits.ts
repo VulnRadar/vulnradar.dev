@@ -148,6 +148,72 @@ export async function getPlanLimitsForPlan(
   };
 }
 
+/** Every plan's limits, keyed by plan id. What the pricing table advertises. */
+export type AllPlanLimits = Record<PlanId, PlanLimits>;
+
+/**
+ * Resolve every plan's limits in one settings read, for the surfaces that
+ * advertise them rather than enforce them (the pricing comparison table, the
+ * upgrade modal, the checkout summary).
+ *
+ * Those surfaces used to render lib/billing/catalog.ts's hardcoded PLANS[]
+ * copy while enforcement resolved these 48 admin-editable settings, so any
+ * one edit in /admin silently desynchronised what was advertised from what
+ * was charged, and the table carried a comment asserting that could not
+ * happen (AUDIT-011#drift-10). Reading the same resolver both halves use is
+ * what actually makes that true.
+ *
+ * Unlike getPlanLimitsForPlan this does NOT collapse to null when billing is
+ * disabled: a plan comparison still has to state each tier's numbers, and
+ * "billing is off so everything is unlimited" is a fact about the deployment,
+ * not about the plans.
+ */
+export async function getAllPlanLimits(): Promise<AllPlanLimits> {
+  const everyKey = Object.values(PLAN_LIMIT_KEYS).flatMap(
+    (keys) => Object.values(keys) as SettingKey[],
+  );
+  const resolved = await getSettings(everyKey);
+
+  const forPlan = (planId: PlanId): PlanLimits => {
+    const keys = PLAN_LIMIT_KEYS[planId];
+    const shipped = PLANS.find((p) => p.id === planId)?.limits;
+    // A setting that fails to resolve falls back to the shipped catalog value
+    // rather than rendering NaN in a price comparison. typeof, not Number():
+    // Number(null) and Number("") are both 0, and 0 is the "this tier does not
+    // get the feature at all" sentinel, so coercing would advertise a missing
+    // setting as a withheld feature. Every int setting resolves through
+    // coerceSettingValue's zod schema, so a real value is always a number.
+    const read = (field: keyof PlanLimits): number => {
+      const value = resolved[keys[field]];
+      return typeof value === "number" && Number.isFinite(value)
+        ? value
+        : (shipped?.[field] ?? 0);
+    };
+    return {
+      dailyScans: read("dailyScans"),
+      apiKeys: read("apiKeys"),
+      apiRequestsPerDay: read("apiRequestsPerDay"),
+      teams: read("teams"),
+      teamMembers: read("teamMembers"),
+      webhooks: read("webhooks"),
+      scheduledScans: read("scheduledScans"),
+      bulkScanUrls: read("bulkScanUrls"),
+      crawlPages: read("crawlPages"),
+      githubReviewTokensPerWindow: read("githubReviewTokensPerWindow"),
+      aiTokensPerWindow: read("aiTokensPerWindow"),
+      browserbaseMinutesPerMonth: read("browserbaseMinutesPerMonth"),
+      concurrentScans: read("concurrentScans"),
+    };
+  };
+
+  return {
+    free: forPlan("free"),
+    core_supporter: forPlan("core_supporter"),
+    pro_supporter: forPlan("pro_supporter"),
+    elite_supporter: forPlan("elite_supporter"),
+  };
+}
+
 /** -1 means unlimited, 0 means the plan does not include this at all. */
 export function withinPlanLimit(current: number, limit: number): boolean {
   if (limit === -1) return true;

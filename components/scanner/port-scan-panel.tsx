@@ -1,25 +1,17 @@
 "use client";
 
 import { useId, useState } from "react";
-import {
-  ChevronDown,
-  ChevronRight,
-  Clock,
-  Crown,
-  Loader2,
-  RefreshCw,
-  Server,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, Server } from "lucide-react";
 import type { ClosedPort, PortScanResult } from "@/lib/scanner/port-scan";
 import { API } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
-import { useAuth } from "@/components/providers/auth-provider";
+import { PREMIUM_FEATURES } from "@/components/modals/premium-upgrade-modal";
 import {
-  PremiumUpgradeModal,
-  PREMIUM_FEATURES,
-  hasFeatureAccess,
-} from "@/components/modals/premium-upgrade-modal";
-import { formatAge, formatRefreshAvailability } from "@/lib/ui/relative-time";
+  PanelActionBar,
+  PanelNotRunRow,
+  PanelRefreshError,
+  usePanelRefresh,
+} from "./panel-refresh";
 
 /**
  * Matches lib/scanner/port-scan.ts PORT_SCAN_TTL_MS: a refresh within this
@@ -62,41 +54,16 @@ export function PortScanPanel({
 }: PortScanPanelProps) {
   const panelId = useId();
   const [expanded, setExpanded] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const { me, isStaff } = useAuth();
-  const userPlan = me?.plan || "free";
-  // Premium gate (Pro): staff always pass. A free user gets the upgrade modal
-  // instead of a silent 402 from the route.
-  const canRefresh =
-    isStaff ||
-    hasFeatureAccess(userPlan, PREMIUM_FEATURES.port_refetch.requiredPlan);
-
-  async function handleRefresh() {
-    if (!scanId || refreshing) return;
-    if (!canRefresh) {
-      setShowUpgradeModal(true);
-      return;
-    }
-    setRefreshing(true);
-    setError(null);
-    try {
-      const res = await fetch(API.SCAN_REFRESH_PORTS(scanId), {
-        method: "POST",
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Could not refresh the port sweep.");
-      } else if (data.portScan) {
-        onRefreshed?.(data.portScan);
-      }
-    } catch {
-      setError("Could not refresh the port sweep.");
-    } finally {
-      setRefreshing(false);
-    }
-  }
+  // Owner gate, plan gate, in-flight state and the keep-stale-on-failure rule
+  // all come from the shared hook; see components/scanner/panel-refresh.tsx.
+  const refresh = usePanelRefresh<PortScanResult>({
+    scanId,
+    endpoint: API.SCAN_REFRESH_PORTS,
+    responseKey: "portScan",
+    feature: PREMIUM_FEATURES.port_refetch,
+    failureMessage: "Could not refresh the port sweep.",
+    onRefreshed,
+  });
 
   // Absent field: the port sweep is opt-in at scan time (lib/scanner/
   // execute-scan.ts only runs it when the portScan flag is set), so a scan
@@ -112,74 +79,29 @@ export function PortScanPanel({
   // sweep instead, but only on the owner's own surfaces: /shared and /host
   // pass no scanId, and there it is still correct to render nothing.
   if (!portScan) {
-    if (!scanId) return null;
+    if (!refresh.offered) return null;
     return (
       <>
-        <PremiumUpgradeModal
-          open={showUpgradeModal}
-          onOpenChange={setShowUpgradeModal}
-          feature={PREMIUM_FEATURES.port_refetch}
-          currentPlan={userPlan}
+        {refresh.modal}
+        <PanelNotRunRow
+          icon={Server}
+          title="Open ports"
+          status="Not scanned"
+          actionLabel="Run port sweep"
+          proLabel="Pro"
+          note="Probes a curated list of common service ports on this host. It spends no scan quota and no live-browser minutes, but the domain has to be verified under Profile > Domains first."
+          state={refresh}
         />
-        <div className="flex items-center gap-3 overflow-hidden rounded-xl border border-border bg-card px-4 py-3">
-          <Server
-            aria-hidden
-            className="h-4 w-4 shrink-0 text-muted-foreground"
-          />
-          <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-            Open ports
-          </span>
-          <span className="shrink-0 text-xs text-muted-foreground">
-            Not scanned
-          </span>
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className={cn(
-              "inline-flex shrink-0 items-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50",
-              canRefresh
-                ? "text-foreground hover:bg-muted"
-                : "text-primary hover:bg-primary/10",
-            )}
-          >
-            {refreshing ? (
-              <Loader2 aria-hidden className="h-3 w-3 animate-spin" />
-            ) : (
-              <RefreshCw aria-hidden className="h-3 w-3" />
-            )}
-            Run port sweep
-          </button>
-        </div>
-        {error && (
-          <p role="alert" className="px-1 text-xs text-destructive">
-            {error}
-          </p>
-        )}
       </>
     );
   }
 
   const openCount = portScan.open.length;
   const closed = portScan.closed ?? [];
-  const showRefresh = Boolean(scanId);
-  const fetchedAge = formatAge(portScan.scannedAt);
-  const refreshAvail = portScan.scannedAt
-    ? formatRefreshAvailability(
-        new Date(
-          new Date(portScan.scannedAt).getTime() + REFRESH_COOLDOWN_MS,
-        ).toISOString(),
-      )
-    : null;
 
   return (
     <>
-      <PremiumUpgradeModal
-        open={showUpgradeModal}
-        onOpenChange={setShowUpgradeModal}
-        feature={PREMIUM_FEATURES.port_refetch}
-        currentPlan={userPlan}
-      />
+      {refresh.modal}
       <div className="overflow-hidden rounded-xl border border-border bg-card">
         <button
           type="button"
@@ -199,7 +121,7 @@ export function PortScanPanel({
             {portScan.open.slice(0, 8).map((p) => (
               <span
                 key={p.port}
-                className="rounded border border-primary/20 bg-primary/10 px-1.5 py-0.5 font-mono text-[11px] text-primary"
+                className="rounded-md border border-primary/20 bg-primary/10 px-1.5 py-0.5 font-mono text-[11px] text-primary"
               >
                 {p.port}
               </span>
@@ -224,8 +146,15 @@ export function PortScanPanel({
 
         {expanded && (
           <div id={panelId} className="border-t border-border">
-            {/* Sticky action bar: host + open count, plus the owner refresh. */}
-            <div className="sticky top-0 flex items-center gap-2 bg-muted/40 px-4 py-1.5 backdrop-blur-sm">
+            {/* Host + open count on the left, freshness and the owner refresh
+                on the right. The freshness line is NOT gated on ownership:
+                /shared and /host still need to know how old this sweep is. */}
+            <PanelActionBar
+              state={refresh}
+              capturedAt={portScan.scannedAt}
+              cooldownMs={REFRESH_COOLDOWN_MS}
+              refreshTitle="Re-run the port sweep now"
+            >
               {/* min-w-0 + truncate: a hostname is one unbreakable token, so
                   without them a long host pushed the open count and the
                   Refresh button out of the card, which is overflow-hidden.
@@ -237,62 +166,11 @@ export function PortScanPanel({
               <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
                 {openCount} open
               </span>
-              {showRefresh && (
-                <div className="ml-auto flex items-center gap-2">
-                  {fetchedAge && (
-                    <span className="hidden items-center gap-1 text-[11px] text-muted-foreground sm:inline-flex">
-                      <Clock
-                        aria-hidden
-                        className="h-3 w-3 text-[hsl(var(--warning))]"
-                      />
-                      Fetched {fetchedAge}
-                      {refreshAvail && ` · ${refreshAvail}`}
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={handleRefresh}
-                    disabled={refreshing}
-                    className={cn(
-                      "inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50",
-                      canRefresh
-                        ? "text-foreground hover:bg-muted"
-                        : "text-primary hover:bg-primary/10",
-                    )}
-                    title={
-                      canRefresh
-                        ? "Re-run the port sweep now"
-                        : "Premium feature, upgrade to Pro"
-                    }
-                    aria-label={
-                      canRefresh
-                        ? "Re-run the port sweep now"
-                        : "Premium feature, upgrade to Pro"
-                    }
-                  >
-                    {refreshing ? (
-                      <Loader2
-                        aria-hidden
-                        className="h-3.5 w-3.5 animate-spin"
-                      />
-                    ) : canRefresh ? (
-                      <RefreshCw aria-hidden className="h-3.5 w-3.5" />
-                    ) : (
-                      <Crown aria-hidden className="h-3.5 w-3.5" />
-                    )}
-                    <span className="hidden sm:inline">
-                      {canRefresh ? "Refresh" : "Pro"}
-                    </span>
-                  </button>
-                </div>
-              )}
-            </div>
+            </PanelActionBar>
 
-            {error && (
-              <p className="border-b border-border px-4 py-2 text-xs text-destructive">
-                {error}
-              </p>
-            )}
+            {/* Under the bar, above the ports: a failed refresh explains itself
+                without disturbing the sweep already on screen. */}
+            <PanelRefreshError error={refresh.error} />
 
             {openCount === 0 && closed.length === 0 ? (
               <p className="px-4 py-3 text-xs text-muted-foreground">
@@ -309,7 +187,7 @@ export function PortScanPanel({
                       {portScan.open.map((p) => (
                         <div key={p.port} className="px-4 py-1.5">
                           <div className="flex items-center gap-2">
-                            <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-foreground">
+                            <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-foreground">
                               {p.port}
                             </span>
                             <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
@@ -375,7 +253,7 @@ function ClosedSection({ ports }: { ports: ClosedPort[] }) {
               key={p.port}
               className="flex items-center gap-2 rounded-md px-2 py-1"
             >
-              <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-muted-foreground">
+              <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-muted-foreground">
                 {p.port}
               </span>
               <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground">

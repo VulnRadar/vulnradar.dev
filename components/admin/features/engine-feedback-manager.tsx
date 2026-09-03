@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useId } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -23,17 +22,19 @@ import {
   ExternalLink,
 } from "lucide-react";
 import {
+  AdminPanelHeader,
   EmptyState,
   DataTableSkeleton,
   TableScrollArea,
   SortableHeader,
+  StatusPill,
   nextSortDirection,
   Toast,
   type SortDirection,
 } from "@/components/admin/shared";
 import type { ToastState } from "@/components/admin/types";
 import { SeverityBadge, toSeverity } from "@/components/scanner/severity-badge";
-import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
+import { ModalShell } from "@/components/ui/modal-shell";
 import { cn } from "@/lib/ui/utils";
 
 interface AiTagCandidateExample {
@@ -87,6 +88,49 @@ function FlaggedBadge({ flagged }: { flagged: boolean }) {
       <AlertTriangle className="h-2.5 w-2.5" aria-hidden="true" />
       Flagged
     </Badge>
+  );
+}
+
+/**
+ * "Narrow this list" in the shape the rest of the panel already uses. Both
+ * tables carried a raw `<input type="checkbox">` for this, which was a third
+ * control grammar for the same job on a page that also has a search field and
+ * sortable headers, and it could not carry its own count. The pill can, so the
+ * size of the flagged queue is readable without selecting it, exactly like the
+ * support inbox's filter row.
+ */
+function FlaggedOnlyPill({
+  pressed,
+  count,
+  onToggle,
+  label,
+}: {
+  pressed: boolean;
+  count: number;
+  onToggle: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={pressed}
+      aria-label={label}
+      onClick={onToggle}
+      className={cn(
+        "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors duration-200 ease-out",
+        "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+        pressed
+          ? "border-primary bg-primary/10 text-primary"
+          : count > 0
+            ? "border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15"
+            : "border-border text-muted-foreground hover:bg-muted/40 hover:text-foreground",
+      )}
+    >
+      Flagged only
+      <span className="font-mono text-[11px] tabular-nums opacity-70">
+        {count}
+      </span>
+    </button>
   );
 }
 
@@ -260,101 +304,98 @@ export function EngineFeedbackManager() {
     setTagSortDirection(next.direction);
   };
 
+  const totalFlagged = flaggedCheckCount + flaggedTagCount;
+
   return (
-    <div className="space-y-6">
-      <div className="max-w-2xl">
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          Real feedback from real scans, rolled up so a human can decide what to
-          retune. Nothing here is machine learning and nothing here changes a
-          detection rule by itself: the left table is every check&apos;s share
-          of false_positive verdicts from{" "}
-          <code className="text-xs">scan_finding_feedback</code>, the right
-          table is how often each{" "}
-          <code className="text-xs">lib/tags/auto-tags.ts</code> rule gets
-          dismissed as wrong.
-          {thresholdPercent !== null && minSampleSize !== null && (
-            <>
-              {" "}
-              A row is flagged at {thresholdPercent}%+ with at least{" "}
-              {minSampleSize} sample{minSampleSize === 1 ? "" : "s"}, both
-              configurable in Settings &gt; Advanced.
-            </>
-          )}
-        </p>
+    <div className="space-y-4">
+      {/* The panel used to open with a 130-word paragraph and no summary at
+          all, so the two numbers that decide whether anything on this page
+          needs doing were buried inside the tables below it. The verdict goes
+          first, in the support inbox's shape, and the explanation follows it. */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">
+            Engine feedback
+          </h2>
+          <p className="max-w-prose text-sm text-muted-foreground">
+            {loading
+              ? "Reading submitted finding verdicts and auto-tag dismissals."
+              : totalFlagged === 0
+                ? "Nothing is flagged for retuning right now."
+                : `${flaggedCheckCount} ${flaggedCheckCount === 1 ? "check" : "checks"} and ${flaggedTagCount} auto-tag ${flaggedTagCount === 1 ? "rule" : "rules"} are flagged for retuning.`}{" "}
+            These are verdicts humans already submitted, rolled up. Nothing here
+            is machine learning and nothing here edits a detection rule by
+            itself: a person reads the numbers and edits{" "}
+            <code className="text-xs">lib/scanner/checks-data/*.json</code> or{" "}
+            <code className="text-xs">lib/tags/auto-tags.ts</code> by hand.
+            {thresholdPercent !== null && minSampleSize !== null && (
+              <>
+                {" "}
+                A row is flagged at {thresholdPercent}%+ with at least{" "}
+                {minSampleSize} sample{minSampleSize === 1 ? "" : "s"}, both
+                configurable in Settings &gt; Advanced.
+              </>
+            )}
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9 shrink-0 gap-2 px-3 border-border/40"
+          onClick={() => fetchData()}
+          disabled={refreshing}
+          aria-label="Refresh engine feedback"
+        >
+          <RefreshCw
+            className={cn("h-4 w-4", refreshing && "animate-spin")}
+            aria-hidden="true"
+          />
+          <span className="hidden sm:inline">Refresh</span>
+        </Button>
       </div>
 
       {/* Check accuracy */}
-      <Card className="border-border/50 bg-card/50 overflow-hidden">
-        <CardHeader className="pb-4 pt-5 px-5">
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="p-2 rounded-lg bg-primary/10 shrink-0">
-                  <Gauge className="h-4 w-4 text-primary" aria-hidden="true" />
-                </div>
-                <div className="min-w-0">
-                  <CardTitle className="text-base font-semibold truncate">
-                    Check Accuracy
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                    False-positive rate per check, from submitted finding
-                    feedback.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {flaggedCheckCount > 0 && (
-                  <Badge
-                    variant="secondary"
-                    className="text-xs font-medium h-6 px-2.5"
-                  >
-                    {flaggedCheckCount} flagged
-                  </Badge>
-                )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 px-3 gap-2 border-border/40"
-                  onClick={() => fetchData()}
-                  disabled={refreshing}
-                  aria-label="Refresh engine feedback"
-                >
-                  <RefreshCw
-                    className={cn("h-4 w-4", refreshing && "animate-spin")}
-                    aria-hidden="true"
-                  />
-                  <span className="hidden sm:inline">Refresh</span>
-                </Button>
-              </div>
+      <div className="overflow-hidden rounded-xl border border-border/50 bg-card/50">
+        <AdminPanelHeader
+          icon={Gauge}
+          tone={flaggedCheckCount > 0 ? "crit" : "info"}
+          title="Check Accuracy"
+          subtitle="False-positive rate per check, from submitted finding feedback."
+          status={
+            flaggedCheckCount > 0 ? (
+              // The most important number on the page. It was a grey
+              // variant="secondary" Badge, the same grey as everything around
+              // it, while FlaggedBadge two lines below already had the right
+              // treatment for exactly this fact.
+              <StatusPill tone="crit" icon={AlertTriangle}>
+                {flaggedCheckCount} flagged
+              </StatusPill>
+            ) : null
+          }
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="relative flex-1">
+              <Search
+                className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
+                aria-hidden="true"
+              />
+              <Input
+                placeholder="Search by check name, id, or category..."
+                value={checkSearch}
+                onChange={(e) => setCheckSearch(e.target.value)}
+                aria-label="Search checks"
+                className="pl-9 h-9 bg-background/50 border-border/40 focus:border-primary/50"
+              />
             </div>
-
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-              <div className="relative flex-1">
-                <Search
-                  className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
-                  aria-hidden="true"
-                />
-                <Input
-                  placeholder="Search by check name, id, or category..."
-                  value={checkSearch}
-                  onChange={(e) => setCheckSearch(e.target.value)}
-                  aria-label="Search checks"
-                  className="pl-9 h-10 bg-background/50 border-border/40 focus:border-primary/50"
-                />
-              </div>
-              <label className="flex items-center gap-2 text-sm text-muted-foreground shrink-0 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={checkFlaggedOnly}
-                  onChange={(e) => setCheckFlaggedOnly(e.target.checked)}
-                  className="h-4 w-4 rounded border-border accent-primary"
-                />
-                Flagged only
-              </label>
-            </div>
+            <FlaggedOnlyPill
+              pressed={checkFlaggedOnly}
+              count={flaggedCheckCount}
+              onToggle={() => setCheckFlaggedOnly((v) => !v)}
+              label="Show flagged checks only"
+            />
           </div>
-        </CardHeader>
-        <CardContent className="p-0">
+        </AdminPanelHeader>
+        <div>
           {loading ? (
             <div className="p-4">
               <DataTableSkeleton rows={6} />
@@ -469,16 +510,37 @@ export function EngineFeedbackManager() {
                               </span>
                             )}
                           </TableCell>
-                          <TableCell className="px-4 py-3 text-right text-sm tabular-nums">
+                          {/* Confirmed is the good number and False Pos. is
+                              the bad one, and the four counts used to render
+                              identically, so the only column carrying any
+                              meaning was N/A and it was differentiated
+                              downward. Each verdict now takes its own tone
+                              once it is non-zero; a zero stays quiet so the
+                              colour marks a real count, not an empty cell. */}
+                          <TableCell
+                            className={cn(
+                              "px-4 py-3 text-right text-sm tabular-nums",
+                              c.confirmed > 0
+                                ? "text-[hsl(var(--success))]"
+                                : "text-muted-foreground",
+                            )}
+                          >
                             {c.confirmed}
                           </TableCell>
-                          <TableCell className="px-4 py-3 text-right text-sm tabular-nums">
+                          <TableCell
+                            className={cn(
+                              "px-4 py-3 text-right text-sm tabular-nums",
+                              c.falsePositive > 0
+                                ? "text-destructive"
+                                : "text-muted-foreground",
+                            )}
+                          >
                             {c.falsePositive}
                           </TableCell>
                           <TableCell className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
                             {c.notApplicable}
                           </TableCell>
-                          <TableCell className="px-4 py-3 text-right text-sm tabular-nums">
+                          <TableCell className="px-4 py-3 text-right text-sm font-medium tabular-nums text-foreground">
                             {c.total}
                           </TableCell>
                           <TableCell className="px-5 py-3">
@@ -525,10 +587,28 @@ export function EngineFeedbackManager() {
                     </div>
                     <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                       <span>{c.category ?? "Unknown"}</span>
-                      <span>Confirmed {c.confirmed}</span>
-                      <span>False pos. {c.falsePositive}</span>
-                      <span>N/A {c.notApplicable}</span>
-                      <span>Total {c.total}</span>
+                      <span
+                        className={cn(
+                          "tabular-nums",
+                          c.confirmed > 0 && "text-[hsl(var(--success))]",
+                        )}
+                      >
+                        Confirmed {c.confirmed}
+                      </span>
+                      <span
+                        className={cn(
+                          "tabular-nums",
+                          c.falsePositive > 0 && "text-destructive",
+                        )}
+                      >
+                        False pos. {c.falsePositive}
+                      </span>
+                      <span className="tabular-nums">
+                        N/A {c.notApplicable}
+                      </span>
+                      <span className="tabular-nums text-foreground">
+                        Total {c.total}
+                      </span>
                       <span
                         className={cn(
                           "font-semibold tabular-nums",
@@ -543,49 +623,33 @@ export function EngineFeedbackManager() {
               </div>
             </>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Auto-tag dismissal rates */}
-      <Card className="border-border/50 bg-card/50 overflow-hidden">
-        <CardHeader className="pb-4 pt-5 px-5">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="p-2 rounded-lg bg-primary/10 shrink-0">
-                <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
-              </div>
-              <div className="min-w-0">
-                <CardTitle className="text-base font-semibold truncate">
-                  Auto-Tag Dismissals
-                </CardTitle>
-                <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                  How often each auto-tag rule (lib/tags/auto-tags.ts) gets
-                  dismissed as wrong on a scan.
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 shrink-0">
-              {flaggedTagCount > 0 && (
-                <Badge
-                  variant="secondary"
-                  className="text-xs font-medium h-6 px-2.5"
-                >
-                  {flaggedTagCount} flagged
-                </Badge>
-              )}
-              <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={tagFlaggedOnly}
-                  onChange={(e) => setTagFlaggedOnly(e.target.checked)}
-                  className="h-4 w-4 rounded border-border accent-primary"
-                />
-                Flagged only
-              </label>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
+      <div className="overflow-hidden rounded-xl border border-border/50 bg-card/50">
+        <AdminPanelHeader
+          icon={Sparkles}
+          tone={flaggedTagCount > 0 ? "crit" : "info"}
+          title="Auto-Tag Dismissals"
+          subtitle="How often each auto-tag rule (lib/tags/auto-tags.ts) gets dismissed as wrong on a scan."
+          status={
+            flaggedTagCount > 0 ? (
+              <StatusPill tone="crit" icon={AlertTriangle}>
+                {flaggedTagCount} flagged
+              </StatusPill>
+            ) : null
+          }
+          actions={
+            <FlaggedOnlyPill
+              pressed={tagFlaggedOnly}
+              count={flaggedTagCount}
+              onToggle={() => setTagFlaggedOnly((v) => !v)}
+              label="Show flagged auto-tag rules only"
+            />
+          }
+        />
+        <div>
           {loading ? (
             <div className="p-4">
               <DataTableSkeleton rows={4} />
@@ -601,118 +665,144 @@ export function EngineFeedbackManager() {
               }
             />
           ) : (
-            <TableScrollArea maxHeight="40vh">
-              <Table className="min-w-[600px]">
-                <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
-                  <TableRow className="border-y border-border/50 hover:bg-transparent">
-                    <TableHead className="px-5 h-10">
-                      <SortableHeader
-                        label="Tag"
-                        active={tagSortColumn === "tag"}
-                        direction={
-                          tagSortColumn === "tag" ? tagSortDirection : null
-                        }
-                        onClick={() => toggleTagSort("tag")}
-                      />
-                    </TableHead>
-                    <TableHead className="px-4 h-10 text-right">
-                      <SortableHeader
-                        label="Total Fired"
-                        align="right"
-                        active={tagSortColumn === "totalFired"}
-                        direction={
-                          tagSortColumn === "totalFired"
-                            ? tagSortDirection
-                            : null
-                        }
-                        onClick={() => toggleTagSort("totalFired")}
-                      />
-                    </TableHead>
-                    <TableHead className="px-4 h-10 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      Dismissed
-                    </TableHead>
-                    <TableHead className="px-5 h-10 text-right">
-                      <SortableHeader
-                        label="Dismissal Rate"
-                        align="right"
-                        active={tagSortColumn === "dismissalRate"}
-                        direction={
-                          tagSortColumn === "dismissalRate"
-                            ? tagSortDirection
-                            : null
-                        }
-                        onClick={() => toggleTagSort("dismissalRate")}
-                      />
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredTags.map((t) => (
-                    <TableRow key={t.tag} className="border-border/40">
-                      <TableCell className="px-5 py-3 text-sm font-medium">
+            <>
+              {/* Desktop table plus an md:hidden card list, the pattern Check
+                  Accuracy above already uses. Without the card list this table
+                  shipped to phones as a min-w-[600px] sideways scroll. */}
+              <div className="hidden md:block">
+                <TableScrollArea maxHeight="40vh">
+                  <Table className="min-w-[600px]">
+                    <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
+                      <TableRow className="border-y border-border/50 hover:bg-transparent">
+                        <TableHead className="px-5 h-10">
+                          <SortableHeader
+                            label="Tag"
+                            active={tagSortColumn === "tag"}
+                            direction={
+                              tagSortColumn === "tag" ? tagSortDirection : null
+                            }
+                            onClick={() => toggleTagSort("tag")}
+                          />
+                        </TableHead>
+                        <TableHead className="px-4 h-10 text-right">
+                          <SortableHeader
+                            label="Total Fired"
+                            align="right"
+                            active={tagSortColumn === "totalFired"}
+                            direction={
+                              tagSortColumn === "totalFired"
+                                ? tagSortDirection
+                                : null
+                            }
+                            onClick={() => toggleTagSort("totalFired")}
+                          />
+                        </TableHead>
+                        <TableHead className="px-4 h-10 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Dismissed
+                        </TableHead>
+                        <TableHead className="px-5 h-10 text-right">
+                          <SortableHeader
+                            label="Dismissal Rate"
+                            align="right"
+                            active={tagSortColumn === "dismissalRate"}
+                            direction={
+                              tagSortColumn === "dismissalRate"
+                                ? tagSortDirection
+                                : null
+                            }
+                            onClick={() => toggleTagSort("dismissalRate")}
+                          />
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredTags.map((t) => (
+                        <TableRow key={t.tag} className="border-border/40">
+                          <TableCell className="px-5 py-3 text-sm font-medium">
+                            {t.tag}
+                          </TableCell>
+                          <TableCell className="px-4 py-3 text-right text-sm tabular-nums">
+                            {t.totalFired}
+                          </TableCell>
+                          <TableCell className="px-4 py-3 text-right text-sm tabular-nums">
+                            {t.dismissedCount}
+                          </TableCell>
+                          <TableCell className="px-5 py-3">
+                            <div className="flex items-center justify-end gap-2">
+                              <span
+                                className={cn(
+                                  "text-sm font-semibold tabular-nums",
+                                  t.flagged
+                                    ? "text-destructive"
+                                    : "text-foreground",
+                                )}
+                              >
+                                {t.dismissalRate}%
+                              </span>
+                              <FlaggedBadge flagged={t.flagged} />
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableScrollArea>
+              </div>
+
+              {/* Mobile cards */}
+              <div className="md:hidden divide-y divide-border/40">
+                {filteredTags.map((t) => (
+                  <div key={t.tag} className="px-4 py-3.5">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-sm font-medium wrap-break-word">
                         {t.tag}
-                      </TableCell>
-                      <TableCell className="px-4 py-3 text-right text-sm tabular-nums">
-                        {t.totalFired}
-                      </TableCell>
-                      <TableCell className="px-4 py-3 text-right text-sm tabular-nums">
-                        {t.dismissedCount}
-                      </TableCell>
-                      <TableCell className="px-5 py-3">
-                        <div className="flex items-center justify-end gap-2">
-                          <span
-                            className={cn(
-                              "text-sm font-semibold tabular-nums",
-                              t.flagged
-                                ? "text-destructive"
-                                : "text-foreground",
-                            )}
-                          >
-                            {t.dismissalRate}%
-                          </span>
-                          <FlaggedBadge flagged={t.flagged} />
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableScrollArea>
+                      </p>
+                      <FlaggedBadge flagged={t.flagged} />
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      <span className="tabular-nums">Fired {t.totalFired}</span>
+                      <span className="tabular-nums">
+                        Dismissed {t.dismissedCount}
+                      </span>
+                      <span
+                        className={cn(
+                          "font-semibold tabular-nums",
+                          t.flagged ? "text-destructive" : "text-foreground",
+                        )}
+                      >
+                        Dismissal rate {t.dismissalRate}%
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* AI tag candidates */}
-      <Card className="border-border/50 bg-card/50 overflow-hidden">
-        <CardHeader className="pb-4 pt-5 px-5">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10 shrink-0">
-              <ArrowUpCircle
-                className="h-4 w-4 text-primary"
-                aria-hidden="true"
-              />
-            </div>
-            <div className="min-w-0">
-              <CardTitle className="text-base font-semibold truncate">
-                AI Tag Candidates
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Tags lib/ai/auto-tag-suggest.ts generated for a scan that
-                matched none of the built-in rules, grouped by tag text.
-                {minCandidateScans !== null && (
-                  <>
-                    {" "}
-                    Only shown once a tag has appeared on {minCandidateScans}+
-                    distinct scans.
-                  </>
-                )}{" "}
-                Promoting one saves it as a permanent, free, deterministic rule.
-                No more AI calls needed for that concept.
-              </p>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
+      <div className="overflow-hidden rounded-xl border border-border/50 bg-card/50">
+        <AdminPanelHeader
+          icon={ArrowUpCircle}
+          title="AI Tag Candidates"
+          subtitle={
+            <>
+              Tags lib/ai/auto-tag-suggest.ts generated for a scan that matched
+              none of the built-in rules, grouped by tag text.
+              {minCandidateScans !== null && (
+                <>
+                  {" "}
+                  Only shown once a tag has appeared on {minCandidateScans}+
+                  distinct scans.
+                </>
+              )}{" "}
+              Promoting one saves it as a permanent, free, deterministic rule.
+              No more AI calls needed for that concept.
+            </>
+          }
+        />
+        <div>
           {loading ? (
             <div className="p-4">
               <DataTableSkeleton rows={3} />
@@ -724,76 +814,136 @@ export function EngineFeedbackManager() {
               description="No AI-generated tag has recurred on enough distinct scans to surface here yet."
             />
           ) : (
-            <TableScrollArea maxHeight="40vh">
-              <Table className="min-w-[600px]">
-                <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
-                  <TableRow className="border-y border-border/50 hover:bg-transparent">
-                    <TableHead className="px-5 h-10">Tag</TableHead>
-                    <TableHead className="px-4 h-10 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      Scans
-                    </TableHead>
-                    <TableHead className="px-4 h-10 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      Users
-                    </TableHead>
-                    <TableHead className="px-4 h-10">Examples</TableHead>
-                    <TableHead className="px-5 h-10 text-right">
-                      Action
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {aiCandidates.map((c) => (
-                    <TableRow key={c.tag} className="border-border/40">
-                      <TableCell className="px-5 py-3 text-sm font-medium">
-                        {c.tag}
-                      </TableCell>
-                      <TableCell className="px-4 py-3 text-right text-sm tabular-nums">
-                        {c.scanCount}
-                      </TableCell>
-                      <TableCell className="px-4 py-3 text-right text-sm tabular-nums">
-                        {c.userCount}
-                      </TableCell>
-                      <TableCell className="px-4 py-3">
-                        <div className="flex flex-col gap-1">
-                          {c.examples.map((ex) => (
-                            <a
-                              key={ex.scanId}
-                              href={`/api/v3/history/${ex.scanId}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs text-primary hover:underline inline-flex items-center gap-1 w-fit"
+            <>
+              <div className="hidden md:block">
+                <TableScrollArea maxHeight="40vh">
+                  <Table className="min-w-[600px]">
+                    <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
+                      <TableRow className="border-y border-border/50 hover:bg-transparent">
+                        {/* Tag, Examples and Action carried no className, so
+                            they fell back to ui/table.tsx's h-12 14px
+                            sentence-case default: two type treatments inside
+                            one header row, and a row 48px tall next to the
+                            40px ones on the panels above. */}
+                        <TableHead className="px-5 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Tag
+                        </TableHead>
+                        <TableHead className="px-4 h-10 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Scans
+                        </TableHead>
+                        <TableHead className="px-4 h-10 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Users
+                        </TableHead>
+                        <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Examples
+                        </TableHead>
+                        <TableHead className="px-5 h-10 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Action
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {aiCandidates.map((c) => (
+                        <TableRow key={c.tag} className="border-border/40">
+                          <TableCell className="px-5 py-3 text-sm font-medium">
+                            {c.tag}
+                          </TableCell>
+                          <TableCell className="px-4 py-3 text-right text-sm tabular-nums">
+                            {c.scanCount}
+                          </TableCell>
+                          <TableCell className="px-4 py-3 text-right text-sm tabular-nums">
+                            {c.userCount}
+                          </TableCell>
+                          <TableCell className="px-4 py-3">
+                            <div className="flex flex-col gap-1">
+                              {c.examples.map((ex) => (
+                                <a
+                                  key={ex.scanId}
+                                  href={`/api/v3/history/${ex.scanId}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-primary hover:underline inline-flex items-center gap-1 w-fit"
+                                >
+                                  {hostnameOf(ex.url)}
+                                  <ExternalLink
+                                    className="h-3 w-3 shrink-0"
+                                    aria-hidden="true"
+                                  />
+                                </a>
+                              ))}
+                            </div>
+                          </TableCell>
+                          <TableCell className="px-5 py-3 text-right">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 gap-1.5 border-border/40"
+                              onClick={() => setPromoteTarget(c)}
                             >
-                              {hostnameOf(ex.url)}
-                              <ExternalLink
-                                className="h-3 w-3 shrink-0"
+                              <ArrowUpCircle
+                                className="h-3.5 w-3.5"
                                 aria-hidden="true"
                               />
-                            </a>
-                          ))}
-                        </div>
-                      </TableCell>
-                      <TableCell className="px-5 py-3 text-right">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 gap-1.5 border-border/40"
-                          onClick={() => setPromoteTarget(c)}
+                              Promote
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableScrollArea>
+              </div>
+
+              {/* Mobile cards */}
+              <div className="md:hidden divide-y divide-border/40">
+                {aiCandidates.map((c) => (
+                  <div key={c.tag} className="px-4 py-3.5">
+                    <p className="text-sm font-medium wrap-break-word">
+                      {c.tag}
+                    </p>
+                    <p className="mt-1 text-xs tabular-nums text-muted-foreground">
+                      {c.scanCount} {c.scanCount === 1 ? "scan" : "scans"}
+                      {" · "}
+                      {c.userCount} {c.userCount === 1 ? "user" : "users"}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                      {c.examples.map((ex) => (
+                        <a
+                          key={ex.scanId}
+                          href={`/api/v3/history/${ex.scanId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-primary hover:underline inline-flex items-center gap-1"
                         >
-                          <ArrowUpCircle
-                            className="h-3.5 w-3.5"
+                          {hostnameOf(ex.url)}
+                          <ExternalLink
+                            className="h-3 w-3 shrink-0"
                             aria-hidden="true"
                           />
-                          Promote
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableScrollArea>
+                        </a>
+                      ))}
+                    </div>
+                    <div className="mt-3 flex justify-end">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 gap-1.5 border-border/40"
+                        onClick={() => setPromoteTarget(c)}
+                      >
+                        <ArrowUpCircle
+                          className="h-3.5 w-3.5"
+                          aria-hidden="true"
+                        />
+                        Promote
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {promoteTarget && (
         <PromoteTagModal
@@ -860,11 +1010,6 @@ function PromoteTagModal({
   const minSeverityId = useId();
   const minCountId = useId();
 
-  const { dialogProps, titleProps } = useModalA11y({
-    open: true,
-    onClose,
-  });
-
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -887,116 +1032,18 @@ function PromoteTagModal({
     }
   };
 
+  // `open` is unconditional: the parent only mounts this while promoteTarget
+  // is set, so the modal's lifetime is its visibility.
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
-      onClick={onClose}
-    >
-      {/* max-h + overflow-y-auto match every other admin modal. Without them
-          a short viewport clipped the Promote to Rule button, the modal's
-          whole purpose, with no way to scroll to it. */}
-      <div
-        className="bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-2xl max-h-[80vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-        {...dialogProps}
-      >
-        <h3
-          className="text-base font-semibold text-foreground mb-1"
-          {...titleProps}
-        >
-          Promote &quot;{candidate.tag}&quot;
-        </h3>
-        <p className="text-xs text-muted-foreground mb-4">
-          Saves this as a permanent rule in computeAutoTags. Fields below are
-          pre-filled from a frequency analysis of the {candidate.scanCount} scan
-          {candidate.scanCount === 1 ? "" : "s"} that produced this tag. Review
-          before saving.
-        </p>
-
-        <div className="space-y-3">
-          <div>
-            <label
-              htmlFor={cwesId}
-              className="text-xs font-medium text-muted-foreground mb-1 block"
-            >
-              CWE ids (comma-separated, e.g. CWE-79, CWE-89)
-            </label>
-            <Input
-              id={cwesId}
-              value={cwes}
-              onChange={(e) => setCwes(e.target.value)}
-              placeholder="CWE-79, CWE-89"
-              className="h-9 text-sm"
-            />
-          </div>
-          <div>
-            <label
-              htmlFor={categoriesId}
-              className="text-xs font-medium text-muted-foreground mb-1 block"
-            >
-              Categories (comma-separated)
-            </label>
-            <Input
-              id={categoriesId}
-              value={categories}
-              onChange={(e) => setCategories(e.target.value)}
-              placeholder="dns, email"
-              className="h-9 text-sm"
-            />
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="flex-1">
-              <label
-                htmlFor={minSeverityId}
-                className="text-xs font-medium text-muted-foreground mb-1 block"
-              >
-                Minimum severity
-              </label>
-              <select
-                id={minSeverityId}
-                value={minSeverity}
-                onChange={(e) => setMinSeverity(e.target.value)}
-                className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
-              >
-                {SEVERITY_OPTIONS.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex-1">
-              <label
-                htmlFor={minCountId}
-                className="text-xs font-medium text-muted-foreground mb-1 block"
-              >
-                Minimum matching findings
-              </label>
-              <Input
-                id={minCountId}
-                type="number"
-                min={1}
-                value={minCount}
-                onChange={(e) =>
-                  setMinCount(Math.max(1, Number(e.target.value) || 1))
-                }
-                className="h-9 text-sm"
-              />
-            </div>
-          </div>
-          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={requireBoth}
-              onChange={(e) => setRequireBoth(e.target.checked)}
-              className="h-4 w-4 rounded border-border accent-primary"
-            />
-            Require BOTH a matching CWE and category on the same finding
-            (default: either alone qualifies)
-          </label>
-        </div>
-
-        <div className="flex items-center justify-end gap-2 mt-6">
+    <ModalShell
+      open
+      onClose={onClose}
+      size="sm"
+      title={`Promote "${candidate.tag}"`}
+      description={`Saves this as a permanent rule in computeAutoTags. Fields below are pre-filled from a frequency analysis of the ${candidate.scanCount} scan${candidate.scanCount === 1 ? "" : "s"} that produced this tag. Review before saving.`}
+      bodyClassName="space-y-3"
+      footer={
+        <>
           <Button variant="ghost" size="sm" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
@@ -1009,8 +1056,89 @@ function PromoteTagModal({
             <ArrowUpCircle className="h-3.5 w-3.5" aria-hidden="true" />
             {saving ? "Promoting..." : "Promote to Rule"}
           </Button>
+        </>
+      }
+    >
+      <div>
+        <label
+          htmlFor={cwesId}
+          className="text-xs font-medium text-muted-foreground mb-1 block"
+        >
+          CWE ids (comma-separated, e.g. CWE-79, CWE-89)
+        </label>
+        <Input
+          id={cwesId}
+          value={cwes}
+          onChange={(e) => setCwes(e.target.value)}
+          placeholder="CWE-79, CWE-89"
+          className="h-9 text-sm"
+        />
+      </div>
+      <div>
+        <label
+          htmlFor={categoriesId}
+          className="text-xs font-medium text-muted-foreground mb-1 block"
+        >
+          Categories (comma-separated)
+        </label>
+        <Input
+          id={categoriesId}
+          value={categories}
+          onChange={(e) => setCategories(e.target.value)}
+          placeholder="dns, email"
+          className="h-9 text-sm"
+        />
+      </div>
+      <div className="flex items-center gap-4">
+        <div className="flex-1">
+          <label
+            htmlFor={minSeverityId}
+            className="text-xs font-medium text-muted-foreground mb-1 block"
+          >
+            Minimum severity
+          </label>
+          <select
+            id={minSeverityId}
+            value={minSeverity}
+            onChange={(e) => setMinSeverity(e.target.value)}
+            className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
+          >
+            {SEVERITY_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex-1">
+          <label
+            htmlFor={minCountId}
+            className="text-xs font-medium text-muted-foreground mb-1 block"
+          >
+            Minimum matching findings
+          </label>
+          <Input
+            id={minCountId}
+            type="number"
+            min={1}
+            value={minCount}
+            onChange={(e) =>
+              setMinCount(Math.max(1, Number(e.target.value) || 1))
+            }
+            className="h-9 text-sm"
+          />
         </div>
       </div>
-    </div>
+      <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={requireBoth}
+          onChange={(e) => setRequireBoth(e.target.checked)}
+          className="h-4 w-4 rounded border-border accent-primary"
+        />
+        Require BOTH a matching CWE and category on the same finding (default:
+        either alone qualifies)
+      </label>
+    </ModalShell>
   );
 }

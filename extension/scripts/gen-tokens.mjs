@@ -67,10 +67,19 @@ function metricsBlock(indent) {
 // theme a label drawn in its own tint's hue lands between 3.6:1 and 4.3:1,
 // under the 4.5:1 SC 1.4.3 asks of it, and darkening --vr-sev to fix that
 // darkens the tint with it and gains almost nothing. See tokens.json's comment.
+//
+// The `[data-sev]` half exists because the chip was not the only thing painted
+// by severity: the result panel's score and its risk word, and each finding
+// row's left rail, took their colour from severityHex() in JS, which is the
+// SOLID ramp (the dark theme's) whatever theme is actually showing. On the
+// light card that put the risk word between 1.76:1 and 3.35:1. Anything that
+// carries a severity now marks itself with data-sev and reads the same two
+// variables the chip does, so it follows the theme.
 function severityChips() {
   return SEVERITY_KEYS.map((k) =>
     [
-      `.badge.${k} {`,
+      `.badge.${k},`,
+      `[data-sev="${k}"] {`,
       `  --vr-sev: var(--vr-sev-${k});`,
       `  --vr-sev-text: var(--vr-sev-${k}-text);`,
       `}`,

@@ -7,6 +7,23 @@ const nextConfig = {
   // relying on a standalone bundle: the image is larger but `npm start`
   // works the same everywhere.
   serverExternalPackages: ["fs", "path"],
+  // Development-only routes. A file named `page.dev.tsx` is a page outside
+  // production and nothing at all inside it, so app/dev/modals (the modal
+  // workbench, which renders every dialog in the product on demand including
+  // the admin ones) is absent from the production route list rather than
+  // present and 404ing. Its component chunk is never emitted either.
+  //
+  // The workbench's own `process.env.NODE_ENV === "production"` guard stays as
+  // the second layer: this list is the kind of thing a future edit reorders
+  // without noticing. tests/app/dev-modals-gate.test.ts asserts both, plus that
+  // "/dev" is not in PUBLIC_PATHS and is in DISALLOWED_PATHS.
+  pageExtensions: [
+    "tsx",
+    "ts",
+    "jsx",
+    "js",
+    ...(process.env.NODE_ENV === "production" ? [] : ["dev.tsx"]),
+  ],
   typescript: {
     // removed `ignoreBuildErrors: true`. Typecheck errors
     // must block the build. CI runs `tsc --noEmit` separately as a hard

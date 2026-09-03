@@ -155,7 +155,7 @@ export function ProfileDeveloperTab({
   setWebhooks: parentSetWebhooks,
   setSchedules: parentSetSchedules,
 }: ProfileTabProps) {
-  const { me, isStaff } = useAuth();
+  const { me, isStaff, isLoading: authLoading } = useAuth();
   // Staff get every premium limit/feature this tab gates behind a plan,
   // same as the server already does (userMeetsScheduleFrequency and every
   // other plan-tier check bypasses for role=staff/admin/etc.) -- without
@@ -163,6 +163,14 @@ export function ProfileDeveloperTab({
   // staff don't need a paid subscription) would show every plan-gated
   // control here as locked, contradicting what the backend actually allows.
   const effectivePlan = isStaff ? "elite_supporter" : (me?.plan ?? "free");
+  // `me?.plan ?? "free"` is a guess while /auth/me is still in flight, and
+  // every consumer below spent it as fact: a paying account saw "1/1 active"
+  // in a red pill with Create disabled and "You are using all 1 key slots",
+  // and saw hourly scans as locked behind an upgrade it had already bought.
+  // isStaff is derived from the same response, so an unresolved `me` is the
+  // only thing that has to be waited on. Sections take null for "not known
+  // yet" and simply do not gate on it.
+  const planKnown = !authLoading && !!me;
   const apiKeyLimit = getPlanById(effectivePlan)?.limits.apiKeys ?? 1;
 
   // Use preloaded data from parent, with local state as fallback
@@ -261,8 +269,14 @@ export function ProfileDeveloperTab({
   const activeKeys = apiKeys.filter(
     (k) => k && typeof k === "object" && !k.revoked_at,
   );
+  // Not "at the limit" until the limit is actually known: the server checks
+  // this too, so letting a create through on an unknown plan costs a clear
+  // error at worst, where blocking it on a guess costs a paying user a key
+  // they are entitled to.
   const atKeyLimit =
-    apiKeyLimit !== UNLIMITED_API_KEYS && activeKeys.length >= apiKeyLimit;
+    planKnown &&
+    apiKeyLimit !== UNLIMITED_API_KEYS &&
+    activeKeys.length >= apiKeyLimit;
 
   // Pull focus to a freshly issued key: it is shown once, so it must not be
   // possible to scroll past it without noticing.
@@ -708,7 +722,7 @@ export function ProfileDeveloperTab({
       {activeSection === "api-keys" && (
         <ApiKeysSection
           apiKeys={apiKeys}
-          maxActiveKeys={apiKeyLimit}
+          maxActiveKeys={planKnown ? apiKeyLimit : null}
           newKeyName={newKeyName}
           onNewKeyNameChange={setNewKeyName}
           newKeyScopes={newKeyScopes}
@@ -804,7 +818,7 @@ export function ProfileDeveloperTab({
           onAddSchedule={handleAddSchedule}
           onRequestConfirm={setConfirmAction}
           scheduleTimestamp={scheduleTimestamp}
-          userPlan={effectivePlan}
+          userPlan={planKnown ? effectivePlan : null}
           onToggleSchedule={handleToggleSchedule}
           togglingScheduleId={togglingScheduleId}
         />
@@ -820,14 +834,14 @@ export function ProfileDeveloperTab({
         }}
       >
         {confirmAction && confirmCopy && (
-          <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>{confirmCopy.title}</AlertDialogTitle>
-              <AlertDialogDescription className="text-left">
+              <AlertDialogDescription>
                 {confirmCopy.description}
               </AlertDialogDescription>
             </AlertDialogHeader>
-            <AlertDialogFooter className="flex-col-reverse sm:flex-row gap-2">
+            <AlertDialogFooter>
               <Button
                 variant="outline"
                 onClick={() => setConfirmAction(null)}

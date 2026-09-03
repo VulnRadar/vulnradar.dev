@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
+import { rateLimitedResponse } from "@/lib/api/rate-limit-response";
 import {
   ERROR_MESSAGES,
   SUCCESS_MESSAGES,
@@ -30,6 +31,38 @@ const RETENTION_SETTING_KEYS: Record<string, SettingKey> = {
   pro_supporter: "BILLING_PRO_SUPPORTER_RETENTION",
   elite_supporter: "BILLING_ELITE_SUPPORTER_RETENTION",
 };
+
+/**
+ * Read `limit` / `offset` off the query string.
+ *
+ * The list has always been hard-capped at HISTORY_LIST_MAX_ROWS and has always
+ * reported `total` and `truncated: true` alongside it, so an API client with
+ * more scans than the cap was told there was more and given no way to ask for
+ * it: page 2 did not exist (AUDIT-015#api-01). The web UI paginates in the
+ * browser over the rows it already has, which is why this never showed up
+ * there.
+ *
+ * Both parameters are optional and absence is the previous behaviour exactly
+ * (first page, cap-sized), so no existing caller changes. An out-of-range or
+ * unparseable value is clamped rather than rejected: this is a read, and a
+ * 400 for `?limit=0` would be a worse answer than the first page.
+ */
+function parsePaging(
+  searchParams: URLSearchParams,
+  maxRows: number,
+): { limit: number; offset: number } {
+  const rawLimit = Number(searchParams.get("limit"));
+  const limit =
+    Number.isFinite(rawLimit) && rawLimit >= 1
+      ? Math.min(Math.floor(rawLimit), maxRows)
+      : maxRows;
+
+  const rawOffset = Number(searchParams.get("offset"));
+  const offset =
+    Number.isFinite(rawOffset) && rawOffset > 0 ? Math.floor(rawOffset) : 0;
+
+  return { limit, offset };
+}
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   // Auth: check API key first (Bearer token), then fall back to session cookie
@@ -65,10 +98,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       keyData.dailyLimit,
     );
     if (!rateLimit.allowed) {
-      return ApiResponse.error(
-        `Rate limit exceeded. Daily limit reached. Resets at ${rateLimit.resetsAt}`,
-        429,
-      );
+      return rateLimitedResponse(rateLimit);
     }
 
     apiKeyId = keyData.keyId;
@@ -109,6 +139,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     ? -1
     : Number(retentionSettings[retentionSettingKey]);
   const historyMaxRows = Number(retentionSettings.HISTORY_LIST_MAX_ROWS);
+  const { limit: pageLimit, offset: pageOffset } = parsePaging(
+    request.nextUrl.searchParams,
+    historyMaxRows,
+  );
 
   // GitHub repo scans (sh.scan_type = 'github') are excluded here: they get
   // their own dedicated history at /repos (app/api/v3/scan/github/history),
@@ -131,7 +165,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
        FROM scan_history sh
        WHERE sh.user_id = $1 AND (sh.scan_type IS NULL OR sh.scan_type != 'github')
        ORDER BY sh.scanned_at DESC
-       LIMIT $2`
+       LIMIT $2 OFFSET $3`
       : `SELECT sh.public_id AS id, sh.url, sh.summary, sh.findings_count, sh.duration, sh.scanned_at, sh.source, sh.status,
          COALESCE(
            (SELECT json_agg(json_build_object('tag', st.tag, 'source', st.source) ORDER BY st.source, st.tag)
@@ -142,10 +176,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
        WHERE sh.user_id = $1 AND (sh.scan_type IS NULL OR sh.scan_type != 'github')
          AND sh.scanned_at > NOW() - ($2 * INTERVAL '1 day')
        ORDER BY sh.scanned_at DESC
-       LIMIT $3`,
+       LIMIT $3 OFFSET $4`,
     retentionDays <= 0
-      ? [authedUserId, historyMaxRows]
-      : [authedUserId, Math.floor(retentionDays), historyMaxRows],
+      ? [authedUserId, pageLimit, pageOffset]
+      : [authedUserId, Math.floor(retentionDays), pageLimit, pageOffset],
   );
 
   // The list above is capped at HISTORY_LIST_MAX_ROWS, so scans.length is a
@@ -187,8 +221,15 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   return ApiResponse.success({
     scans: result.rows,
     total,
-    limit: historyMaxRows,
-    truncated: total > result.rows.length,
+    // The page size actually applied, not the ceiling: a caller that asked for
+    // ?limit=10 was previously told `limit: 100` because this reported the cap
+    // rather than the number of rows it was willing to return.
+    limit: pageLimit,
+    offset: pageOffset,
+    maxLimit: historyMaxRows,
+    // "There are rows after this page", which for the default offset of 0 is
+    // the same boolean it has always been.
+    truncated: pageOffset + result.rows.length < total,
   });
 });
 
@@ -228,10 +269,7 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
       keyData.dailyLimit,
     );
     if (!rateLimit.allowed) {
-      return ApiResponse.error(
-        `Rate limit exceeded. Daily limit reached. Resets at ${rateLimit.resetsAt}`,
-        429,
-      );
+      return rateLimitedResponse(rateLimit);
     }
 
     apiKeyId = keyData.keyId;

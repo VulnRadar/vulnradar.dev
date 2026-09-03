@@ -1,278 +1,513 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Play } from "lucide-react";
+import { API } from "@/lib/config/client-constants";
+import { LOCATION_CHANGE_EVENT } from "@/lib/ui/url-state";
 import { cn } from "@/lib/ui/utils";
+import { focus as focusRing } from "@/lib/ui/animations";
 import {
-  Radar,
-  Shield,
-  Clock,
-  GitCompareArrows,
-  Key,
-  Bell,
-  Users,
-  ChevronRight,
-  ChevronLeft,
-  Check,
-  X,
-  Sparkles,
-} from "lucide-react";
-import { TOTAL_CHECKS_LABEL, API } from "@/lib/config/client-constants";
-import { refreshAuthCache } from "@/components/providers/auth-provider";
-import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
+  refreshAuthCache,
+  useAuth,
+} from "@/components/providers/auth-provider";
+import { Button } from "@/components/ui/button";
+import { resolveAnchor, TOUR_ANCHORS } from "@/lib/tour/anchors";
+import { padRect } from "@/lib/tour/placement";
+import {
+  matchesRoute,
+  TOUR_CHAPTERS,
+  TOUR_STEPS,
+  type TourStep,
+} from "@/lib/tour/steps";
+import { tourSession } from "@/lib/tour/tour-session";
+import { setTourChromeSuppressed } from "@/lib/tour/tour-chrome";
+import { useAnchorRect } from "@/lib/tour/use-anchor-rect";
+import { TourCallout } from "./tour/tour-callout";
+import { TourSpotlight } from "./tour/tour-spotlight";
 
-// This modal is the first VulnRadar interface a new account sees, and it used
-// to contradict everything the landing page does: a per-step colour taken off
-// the --chart-* data ramp (four unrelated hues, repeating after step 5, so
-// they encoded nothing), an icon in a tinted rounded square on every step, and
-// Title Case benefit copy ("Scan Any Website", "You're All Set!"). Icons now
-// carry no colour of their own, so the one accent marks position and nothing
-// else, and every title is a sentence-case statement with a mechanism under it
-// rather than a benefit.
-const STEPS = [
-  {
-    icon: Radar,
-    title: "What this is",
-    description: `A scanner that reads a live URL and tells you what is wrong with the response. ${TOTAL_CHECKS_LABEL} checks, nothing to install, and the whole engine is in the public repo.`,
-  },
-  {
-    icon: Shield,
-    title: "Paste a URL and hit Scan",
-    description: `${TOTAL_CHECKS_LABEL} checks run in parallel against the live response, from our servers rather than your browser. Every finding comes back with the bytes it fired on and a config snippet you can paste.`,
-  },
-  {
-    icon: Clock,
-    title: "Every scan is kept",
-    description:
-      "History holds all of them. Filter by URL or tag, and a tag like production or staging survives a rescan so the next run lands in the same place.",
-  },
-  {
-    icon: GitCompareArrows,
-    title: "Diff two scans of the same URL",
-    description:
-      "Finding IDs do not change between runs, so the diff is the list of things that actually changed rather than a second read of the whole report.",
-  },
-  {
-    icon: Key,
-    title: "API keys live in your profile",
-    description:
-      "One key, one POST, the same JSON the dashboard renders. Enough to gate a build or run a scan from cron without opening the app.",
-  },
-  {
-    icon: Bell,
-    title: "Webhooks and schedules",
-    description:
-      "Point a schedule at a URL and it rescans on its own. New findings go to Discord, Slack, or any endpoint that accepts JSON.",
-  },
-  {
-    icon: Users,
-    title: "Share scans with a team",
-    description:
-      "Invite members, set who can run scans and who can only read them, and every team scan lands in one list.",
-  },
-  {
-    icon: Sparkles,
-    title: "Go run one",
-    description:
-      "Nothing else to configure. Docs and the contact form are in the nav if you get stuck.",
-  },
-];
+/**
+ * The product tour.
+ *
+ * This used to be a centred modal holding eight slides of prose. It never
+ * pointed at anything, never asked for anything, and could be read start to
+ * finish with the app closed, which is a fair description of a brochure and not
+ * of a tour. What it is now: a scrim with a hole cut in the real control, a
+ * callout anchored beside it, and steps that wait for the reader to type a URL,
+ * press Scan, open a finding and cross into History rather than counting down.
+ *
+ * Four things are load bearing.
+ *
+ * MOUNTED IN THE ROOT LAYOUT, NOT ON THE DASHBOARD. The tour crosses six
+ * routes. Mounted per page it would unmount and restart on each of them; in the
+ * layout it survives every client-side navigation, so a step index is just
+ * React state for the whole run. lib/tour/tour-session.ts mirrors the index to
+ * sessionStorage for the cases where even the layout remounts (a hard reload, a
+ * middleware redirect, back into a server-rendered page).
+ *
+ * NOT A MODAL, ON PURPOSE. No aria-modal, no focus trap, and the page behind
+ * is not inert. All three are correct for a dialog and all three are wrong
+ * here: the entire premise is that the reader operates the real control, and a
+ * trap would make the highlighted button unreachable by keyboard. That is also
+ * why it is not built on components/ui/modal-grammar.ts and why the modal guard
+ * test does not apply to it: nothing here is a DialogContent, and the scrim is
+ * built from --background exactly as the grammar requires anyway.
+ *
+ * TWO EXITS, AND THEY SAY WHICH THEY ARE. The old version's only exit was a
+ * POST that marked onboarding complete, so a stray click on the scrim or a
+ * reflexive Escape spent a one-time thing. There are two now and they are
+ * labelled: the pause chip in the callout's corner (and Escape) takes the
+ * overlay down, keeps the step and leaves a resume pill; End tour, in the
+ * footer of every step, spends it for good.
+ *
+ * The chip used to be an X that paused, which is the worst of both. An X is
+ * read as "get me out of this", so somebody who wanted out pressed it, got a
+ * pill back, and had to work out that the pill's own button was the real exit.
+ * A pause glyph that pauses and a button that says End tour is the whole fix,
+ * and it is why End tour is rendered on every step including the ones that are
+ * blocked waiting on the reader: an exit that is only available once the tour
+ * is happy is not an exit.
+ *
+ * REPLAY WORKS FROM ANYWHERE. Profile's "Replay product tour" button flips the
+ * server flag and calls refreshAuthCache(). The old component read that flag
+ * once, in a mount effect with an empty dependency list, so replay only worked
+ * because it also navigated to the dashboard and forced a remount; pressing it
+ * while already on the dashboard did nothing at all. This watches useAuth()
+ * instead, so the flag flipping is enough on its own and the tour starts on
+ * whatever page the reader is standing on, /profile included.
+ */
+
+type Phase = "off" | "running" | "paused";
+
+/** How much room the spotlight leaves around the element it highlights. */
+const SPOTLIGHT_PAD = 6;
+
+/** Text entry, where stealing focus to the callout would interrupt typing. */
+function isTextEntry(el: Element | null): boolean {
+  if (!(el instanceof HTMLElement)) return false;
+  if (el.isContentEditable) return true;
+  const tag = el.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
+
+/** The first thing inside `el` a keyboard can reach, or `el` itself. */
+function focusTarget(el: HTMLElement | null): HTMLElement | null {
+  if (!el) return null;
+  if (
+    el.matches(
+      'button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    )
+  ) {
+    return el;
+  }
+  return el.querySelector<HTMLElement>(
+    'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+  );
+}
+
+/** What the callout says while a step is waiting on the reader. */
+function waitingMessage(step: TourStep): string | null {
+  if (step.advance.kind === "next") return null;
+  if (step.waitLabel) return step.waitLabel;
+  switch (step.advance.kind) {
+    case "click":
+      return "Waiting for that click.";
+    case "input":
+      return `Waiting for at least ${step.advance.minLength} characters.`;
+    case "appear":
+      return "Waiting for it to show up.";
+    case "disappear":
+      return "Waiting for this to be dealt with.";
+    case "route":
+      return "Waiting for you to open it.";
+  }
+}
 
 export function OnboardingTour() {
-  const [show, setShow] = useState(false);
-  const [step, setStep] = useState(0);
+  const { me } = useAuth();
+  const router = useRouter();
+  const [phase, setPhase] = useState<Phase>("off");
+  const [index, setIndex] = useState(0);
+  const [takeFocus, setTakeFocus] = useState(true);
+  const [announcement, setAnnouncement] = useState("");
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  const [radius, setRadius] = useState(8);
+  const [loc, setLoc] = useState({ pathname: "", search: "" });
+  const replayRef = useRef(false);
+  // Set the moment the reader finishes or ends the tour, so the boot effect
+  // below does not immediately reopen it in the window between our POST and
+  // the auth cache catching up with the new flag. Cleared as soon as the
+  // server agrees, which is also what lets a later replay through.
+  const dismissedRef = useRef(false);
+
+  const step = TOUR_STEPS[index];
+  const active = phase === "running";
+
+  // Decide whether the tour should be running at all. Watching useAuth()
+  // rather than doing a one-shot fetch on mount is what makes replay work:
+  // the Profile button flips the flag server-side and calls refreshAuthCache,
+  // and this sees the new value wherever the reader happens to be standing.
+  useEffect(() => {
+    if (!me?.userId) return;
+    if (me.onboardingCompleted) {
+      dismissedRef.current = false;
+      // Drop any half-finished session. The flag being true means the tour was
+      // finished, here or in another tab, and a leftover index would otherwise
+      // make TourMount load the tour on the next page for a run that is over.
+      tourSession.write(null);
+      return;
+    }
+    if (dismissedRef.current) return;
+    const saved = tourSession.read();
+    if (saved) {
+      replayRef.current = saved.replay;
+      setIndex(saved.step);
+      setPhase(saved.paused ? "paused" : "running");
+      return;
+    }
+    replayRef.current = false;
+    tourSession.write({ step: 0, paused: false, replay: false });
+    setIndex(0);
+    setPhase("running");
+  }, [me]);
+
+  // The location, read from the URL rather than from useSearchParams. The
+  // bridge in lib/ui/url-state.ts already patches pushState/replaceState and
+  // popstate into one event, so this catches a Link, a router.push, the back
+  // button, and the profile page writing its own ?tab= and ?dtab= params,
+  // which is the one a hook reading the router's params would miss the timing
+  // of. It also keeps this component out of the Suspense boundary
+  // useSearchParams would require of every route in the layout.
+  useEffect(() => {
+    function sync() {
+      setLoc({
+        pathname: window.location.pathname,
+        search: window.location.search,
+      });
+    }
+    sync();
+    window.addEventListener(LOCATION_CHANGE_EVENT, sync);
+    return () => window.removeEventListener(LOCATION_CHANGE_EVENT, sync);
+  }, []);
 
   useEffect(() => {
-    fetch(API.AUTH.ME)
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.userId && !d.onboardingCompleted) {
-          setShow(true);
-        }
-      })
+    function measure() {
+      setViewport({ width: window.innerWidth, height: window.innerHeight });
+    }
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+
+  const {
+    rect,
+    state: anchorState,
+    element,
+  } = useAnchorRect(step.anchor, active);
+
+  // Match the hole to the shape of the thing in it. A pill-shaped button
+  // inside a square hole looks like a rendering fault, and every radius in the
+  // app is on the ladder in CLAUDE.md, so copying the computed value lands on
+  // one of four sane numbers rather than an arbitrary one.
+  useEffect(() => {
+    if (!element) {
+      setRadius(8);
+      return;
+    }
+    const raw = parseFloat(
+      window.getComputedStyle(element).borderTopLeftRadius,
+    );
+    setRadius(Number.isFinite(raw) ? Math.min(raw + SPOTLIGHT_PAD, 28) : 8);
+  }, [element]);
+
+  const persist = useCallback((next: number, paused: boolean) => {
+    tourSession.write({ step: next, paused, replay: replayRef.current });
+  }, []);
+
+  const complete = useCallback(() => {
+    dismissedRef.current = true;
+    setPhase("off");
+    tourSession.write(null);
+    // Fire and forget. A failed POST means the tour offers itself again on the
+    // next visit, which is a far better failure than a reader who cannot get
+    // out of it because the network blipped.
+    fetch(API.AUTH.ONBOARDING, { method: "POST" })
+      .then(() => refreshAuthCache())
       .catch(() => {});
   }, []);
 
-  async function handleComplete() {
-    setShow(false);
-    await fetch(API.AUTH.ONBOARDING, { method: "POST" });
-    // onboardingCompleted is part of MeResponse -- keep the app-wide
-    // useAuth() cache in sync too, defensively, even though this
-    // component currently re-checks via its own direct fetch rather than
-    // that cache (see the matching note in app/profile/page.tsx).
-    refreshAuthCache();
+  const goTo = useCallback(
+    (next: number) => {
+      if (next >= TOUR_STEPS.length) {
+        complete();
+        return;
+      }
+      const clamped = Math.max(0, next);
+      // Keep the reader in the field they are typing in. The callout takes
+      // focus on every other step so a screen reader announces it; when it
+      // cannot, the live region below carries the same announcement instead.
+      const typing = isTextEntry(document.activeElement);
+      setTakeFocus(!typing);
+      setAnnouncement(
+        typing
+          ? `Step ${clamped + 1} of ${TOUR_STEPS.length}. ${TOUR_STEPS[clamped].title}`
+          : "",
+      );
+      setIndex(clamped);
+      persist(clamped, false);
+    },
+    [complete, persist],
+  );
+
+  const advance = useCallback(() => goTo(index + 1), [goTo, index]);
+
+  const pause = useCallback(() => {
+    setPhase("paused");
+    persist(index, true);
+  }, [index, persist]);
+
+  // Escape leaves the takeover immediately, which is what a keyboard user is
+  // entitled to, without spending the tour. See the note at the top of the
+  // file: this is the regression the old single-exit design had.
+  useEffect(() => {
+    if (!active) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      pause();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [active, pause]);
+
+  // The advance conditions. One effect, re-armed per step, because only one
+  // condition is ever live at a time and tearing all of them down together is
+  // the only way to be sure a stale listener cannot skip a step.
+  useEffect(() => {
+    if (!active) return;
+    const adv = step.advance;
+
+    if (adv.kind === "click") {
+      const selector = `[data-tour="${TOUR_ANCHORS[adv.on]}"]`;
+      // Capture phase: the anchor's own handler may unmount it (pressing Scan
+      // swaps the form out for the progress panel), and by the bubble phase
+      // the element the click started on is gone and closest() finds nothing.
+      const onClick = (e: MouseEvent) => {
+        const target = e.target;
+        if (target instanceof Element && target.closest(selector)) advance();
+      };
+      document.addEventListener("click", onClick, true);
+      return () => document.removeEventListener("click", onClick, true);
+    }
+
+    if (adv.kind === "input") {
+      const selector = `[data-tour="${TOUR_ANCHORS[adv.on]}"]`;
+      const onInput = (e: Event) => {
+        const target = e.target;
+        if (!(target instanceof HTMLInputElement)) return;
+        if (!target.closest(selector)) return;
+        if (target.value.trim().length >= adv.minLength) advance();
+      };
+      document.addEventListener("input", onInput, true);
+      return () => document.removeEventListener("input", onInput, true);
+    }
+
+    if (adv.kind === "appear" || adv.kind === "disappear") {
+      // Polled rather than observed: a MutationObserver on document.body with
+      // subtree:true fires on every keystroke anywhere in the app, and the
+      // thing being waited for here is a scan that takes seconds. One
+      // querySelector a frame is cheaper and has no teardown subtleties.
+      //
+      // The two kinds are one poll because they are one question asked with
+      // opposite signs, and because "disappear" has to be able to resolve on
+      // its very first frame. A step waiting for a dialog that this account
+      // never sees must not stall the tour, and it must not sit through the
+      // missing-anchor grace window either: absent is the answer, immediately.
+      const wanted = adv.kind === "appear";
+      let frame = requestAnimationFrame(function poll() {
+        if (!!resolveAnchor(adv.of) === wanted) {
+          advance();
+          return;
+        }
+        frame = requestAnimationFrame(poll);
+      });
+      return () => cancelAnimationFrame(frame);
+    }
+
+    return;
+  }, [active, index, step.advance, advance]);
+
+  // Route advances are separate because they are driven by the location
+  // effect's state rather than by a listener of their own.
+  useEffect(() => {
+    if (!active) return;
+    if (step.advance.kind !== "route") return;
+    if (!loc.pathname) return;
+    if (
+      matchesRoute(
+        step.advance.to,
+        loc.pathname,
+        new URLSearchParams(loc.search),
+      )
+    ) {
+      advance();
+    }
+  }, [active, step.advance, loc, advance]);
+
+  // An optional step whose anchor never turned up does not apply to this
+  // account, so it goes by without saying anything. A required one degrades to
+  // a card instead, which is handled in the render.
+  //
+  // This and the advance conditions above can both fire on the same step, and
+  // that is fine rather than merely tolerated. A `disappear` step is normally
+  // also `optional`, and when its anchor never mounts both paths mean the same
+  // thing: the poll answers on the first frame, the grace window would answer
+  // two and a half seconds later, and both call advance() with the same
+  // captured index, so the second one is a no-op setIndex to a value already
+  // set. What matters is that neither path can wait forever: a step is only
+  // ever held open by an anchor that IS on the page.
+  useEffect(() => {
+    if (!active || !step.optional) return;
+    if (anchorState !== "missing") return;
+    advance();
+  }, [active, step.optional, anchorState, advance]);
+
+  // Get the app's own floating chrome out of the way, except on the steps that
+  // are about it. Today that is the AI assistant's launcher: a filled circle
+  // fixed to the corner of every page, which glows through the scrim beside a
+  // callout pointing somewhere else and reads as a rendering fault.
+  //
+  // Pausing is covered by `active` being in the expression rather than by a
+  // cleanup, and that is deliberate: a cleanup here would set false and then
+  // immediately set true again on every single step change, which is a
+  // launcher that blinks once per step.
+  useEffect(() => {
+    setTourChromeSuppressed(active && !step.usesFloatingChrome);
+  }, [active, step.usesFloatingChrome]);
+
+  // Teardown, separately, so it runs once and only on the way out. This is
+  // what guarantees the tour cannot hide a control it does not own for longer
+  // than it is on screen: ending it, finishing it, signing out and the chunk
+  // being torn down all land here.
+  useEffect(() => {
+    return () => setTourChromeSuppressed(false);
+  }, []);
+
+  if (phase === "paused") {
+    return (
+      <div className="fixed bottom-4 left-4 z-100 flex items-center gap-1 rounded-full border border-border bg-card/95 py-1 pl-3 pr-1 shadow-lg backdrop-blur-xs">
+        <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+          Tour paused, {index + 1} of {TOUR_STEPS.length}
+        </span>
+        <Button
+          size="sm"
+          onClick={() => {
+            setTakeFocus(true);
+            setPhase("running");
+            persist(index, false);
+          }}
+          className="h-7 gap-1 rounded-full px-2.5 text-xs"
+        >
+          <Play className="h-3 w-3" aria-hidden="true" />
+          Resume
+        </Button>
+        {/* Worded, not an X. The pill is where somebody who wanted out of the
+            tour and pressed the pause chip ends up, so the way out has to be
+            readable rather than inferred from a glyph. */}
+        <button
+          type="button"
+          onClick={complete}
+          className={cn(
+            "flex h-7 items-center rounded-full px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+            focusRing.ring,
+          )}
+        >
+          End tour
+        </button>
+      </div>
+    );
   }
 
-  function handleSkip() {
-    handleComplete();
-  }
+  if (!active || viewport.width === 0) return null;
 
-  const current = STEPS[step];
-  const Icon = current.icon;
-  const isLast = step === STEPS.length - 1;
-  const isFirst = step === 0;
+  const found = anchorState === "found" && rect !== null;
+  const degraded = anchorState === "missing" && !step.optional;
+  const padded = found ? padRect(rect, SPOTLIGHT_PAD, viewport) : null;
+  // Three states, three sentences, and the middle one is the reason this is
+  // not a boolean. Found: say what the step is waiting on. Never turned up:
+  // say so, in the degraded card, rather than claiming to wait for a click on
+  // something that is not there. Still looking: say THAT, because the grace
+  // window is a couple of seconds and a card sitting silently in the middle of
+  // the screen for two seconds reads as the tour having lost its place.
+  const waiting = found
+    ? waitingMessage(step)
+    : anchorState === "resolving"
+      ? "Looking for it on this page."
+      : null;
 
-  const { dialogProps, titleProps, descriptionProps } = useModalA11y({
-    open: show,
-    onClose: handleSkip,
-    hasDescription: true,
-  });
+  const chapter = TOUR_CHAPTERS.find((c) => c.id === step.chapter);
+  // A step that asks for something cannot be stepped over. The tour is a
+  // chain: the URL typed in one step is what the next one scans, the scan is
+  // what the verdict reads, the verdict's findings are what the finding
+  // chapter opens. Skipping a link does not skip one step, it invalidates
+  // every step after it and lands the reader in the degraded card over and
+  // over. So Next is offered only where reading IS the step, and the two real
+  // ways forward from a waiting step are to do the thing or to end the tour.
+  const blocked = step.advance.kind !== "next";
 
-  if (!show) return null;
+  const offRoute =
+    loc.pathname !== "" &&
+    !matchesRoute(step.route, loc.pathname, new URLSearchParams(loc.search));
+
+  const anchorFocusTarget = focusTarget(element);
 
   return (
-    <div className="fixed inset-0 z-100 flex items-center justify-center bg-background/80 backdrop-blur-xs p-4">
-      <div className="relative w-full sm:max-w-2xl">
-        {/* Card */}
-        <div
-          {...dialogProps}
-          // max-h + a y scroll: the card had overflow-hidden and no height
-          // cap, and its parent is a centring flex container which does not
-          // scroll, so on a short phone a long step description pushed the
-          // Back / Next row off the bottom with no way to reach it. dvh
-          // rather than vh because 100vh on iOS Safari is the large viewport.
-          className="bg-card border border-border rounded-xl shadow-lg max-h-[calc(100dvh-2rem)] overflow-y-auto overflow-x-hidden overscroll-contain outline-hidden flex flex-col sm:flex-row"
-        >
-          {/* Close */}
-          <button
-            type="button"
-            onClick={handleSkip}
-            className="absolute top-3.5 right-3.5 z-10 text-muted-foreground hover:text-foreground transition-colors"
-            aria-label="Skip tour"
-          >
-            <X className="h-4 w-4" aria-hidden="true" />
-          </button>
+    <>
+      <TourSpotlight
+        rect={padded}
+        radius={radius}
+        waiting={waiting !== null}
+        viewport={viewport}
+      />
 
-          {/* Feature list -- lets you see the whole shape of the tour and
-              jump anywhere, instead of a dot-pager that says nothing about
-              what's actually in it. Collapses to an icon strip on mobile. */}
-          <div className="flex sm:hidden items-center gap-1 px-4 pt-4 overflow-x-auto">
-            {STEPS.map((s, i) => {
-              const StepIcon = s.icon;
-              return (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => setStep(i)}
-                  aria-current={i === step ? "step" : undefined}
-                  aria-label={s.title}
-                  className={cn(
-                    "shrink-0 p-2 rounded-md transition-colors",
-                    i === step ? "bg-muted" : "opacity-40 hover:opacity-70",
-                  )}
-                >
-                  <StepIcon
-                    className={cn(
-                      "h-4 w-4",
-                      i === step ? "text-primary" : "text-muted-foreground",
-                    )}
-                    aria-hidden="true"
-                  />
-                </button>
-              );
-            })}
-          </div>
+      {/* Carries the step change to a screen reader in the one case the
+          callout cannot: when focus was deliberately left in a field the
+          reader is typing into. Empty the rest of the time, so it never
+          double-announces what the dialog itself already said. */}
+      <span aria-live="polite" className="sr-only">
+        {announcement}
+      </span>
 
-          <div className="hidden sm:flex sm:flex-col sm:w-[210px] sm:shrink-0 sm:border-r sm:border-border/60 sm:py-5 sm:px-2.5 sm:gap-0.5">
-            <p className="px-2.5 pb-2 text-[10px] font-mono uppercase tracking-[0.14em] text-muted-foreground">
-              What&apos;s here
-            </p>
-            {STEPS.map((s, i) => {
-              const StepIcon = s.icon;
-              const visited = i < step;
-              return (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => setStep(i)}
-                  aria-current={i === step ? "step" : undefined}
-                  className={cn(
-                    "w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-left text-xs font-medium transition-colors",
-                    i === step
-                      ? "bg-muted text-foreground"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
-                  )}
-                >
-                  <StepIcon
-                    className={cn(
-                      "h-3.5 w-3.5 shrink-0",
-                      i === step ? "text-primary" : "text-muted-foreground",
-                    )}
-                    aria-hidden="true"
-                  />
-                  <span className="truncate flex-1">{s.title}</span>
-                  {visited && (
-                    <Check
-                      className="h-3 w-3 shrink-0 text-muted-foreground/40"
-                      aria-hidden="true"
-                    />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Detail pane */}
-          <div className="flex-1 min-w-0 flex flex-col">
-            <div className="flex-1 px-6 sm:px-7 pt-6 sm:pt-7 pb-6">
-              <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1.5">
-                {step + 1} / {STEPS.length}
-              </p>
-
-              {/* Icon inline before the title rather than in a tinted plate
-                  above it: an icon in a rounded square on every step is the
-                  grammar CLAUDE.md names as the giveaway. */}
-              <h2
-                {...titleProps}
-                className="flex items-center gap-2 text-lg font-semibold tracking-tight text-foreground mb-2 text-balance"
-              >
-                <Icon
-                  className="h-4 w-4 shrink-0 text-primary"
-                  aria-hidden="true"
-                />
-                {current.title}
-              </h2>
-
-              <p
-                {...descriptionProps}
-                className="text-sm text-muted-foreground leading-relaxed text-pretty"
-              >
-                {current.description}
-              </p>
-            </div>
-
-            {/* Navigation */}
-            <div className="px-6 sm:px-7 py-4 border-t border-border/40 flex items-center justify-between gap-3">
-              <Button
-                variant="outline"
-                size="sm"
-                className="bg-transparent gap-1"
-                onClick={() => setStep(step - 1)}
-                disabled={isFirst}
-              >
-                <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
-                Back
-              </Button>
-
-              {isLast ? (
-                <Button size="sm" className="gap-1" onClick={handleComplete}>
-                  Start scanning
-                  <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  className="gap-1"
-                  onClick={() => setStep(step + 1)}
-                >
-                  Next
-                  <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-                </Button>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+      <TourCallout
+        rect={padded}
+        viewport={viewport}
+        placement={step.placement ?? "auto"}
+        index={index}
+        total={TOUR_STEPS.length}
+        chapterLabel={chapter?.label ?? ""}
+        title={step.title}
+        body={step.body}
+        takeFocus={takeFocus}
+        waitingFor={waiting}
+        missingOn={degraded ? step.route : null}
+        canGoBack={index > 0}
+        isLast={index === TOUR_STEPS.length - 1}
+        blocked={blocked}
+        onBack={() => goTo(index - 1)}
+        onAdvance={advance}
+        onPause={pause}
+        onEnd={complete}
+        onFocusAnchor={
+          anchorFocusTarget ? () => anchorFocusTarget.focus() : null
+        }
+        // router.push rather than a location assign: a full page load would
+        // throw away the React state this whole design leans on, and the
+        // session mirror would then have to reconstruct a step the reader had
+        // not actually left.
+        onGoToRoute={
+          degraded && offRoute ? () => router.push(step.route) : null
+        }
+      />
+    </>
   );
 }

@@ -69,6 +69,27 @@ export function formatDate(dateStr: string) {
   });
 }
 
+/**
+ * Whether a scan happened inside the last day, which is what the history row
+ * uses to give a fresh scan full-strength type instead of the same muted
+ * micro-text every other row gets.
+ *
+ * Lives here rather than inline in the row for the same reason
+ * formatRelativeTime does: reading the clock is impure, and the React Compiler
+ * lint (react-hooks/purity) refuses a bare Date.now() in a render body. Both
+ * functions are equally "wrong" by that rule and equally fine in practice --
+ * the value is re-derived on every render from a prop, and a row that crosses
+ * the 24h line while the page is open simply keeps the weight it had until the
+ * next render, which is exactly what the relative-time string beside it does.
+ */
+const DAY_MS = 86_400_000;
+
+export function isRecentScan(scannedAt: string, now = Date.now()): boolean {
+  const at = new Date(scannedAt).getTime();
+  if (Number.isNaN(at)) return false;
+  return now - at < DAY_MS;
+}
+
 export function displayUrl(url: string) {
   try {
     const u = new URL(url);

@@ -203,14 +203,24 @@ export function getAvatarColorIndex(email: string): number {
 }
 
 /**
- * Avatar color classes array
+ * Avatar colour rotation, indexed by getAvatarColorIndex above.
+ *
+ * This is decoration: the hue means nothing except "a different person".
+ * Three of the five entries used to come from the --severity-* scale, which
+ * encodes how bad a scan finding is, so an admin table showed avatars in
+ * critical orange and medium yellow next to real severity chips using the
+ * same colours for a real verdict. The fourth was raw emerald-500, the only
+ * untokenised colour left in this file. --chart-2 through --chart-5 are the
+ * categorical ramp, which is what a "tell these apart" palette is for.
+ * --chart-1 is deliberately skipped: it is the 190deg vestige of the old cyan
+ * brand and is the one hue this product does not paint anything in.
  */
 export const AVATAR_COLORS = [
   "bg-primary/15 text-primary",
-  "bg-emerald-500/15 text-emerald-500",
-  "bg-[hsl(var(--severity-medium))]/15 text-[hsl(var(--severity-medium))]",
-  "bg-[hsl(var(--severity-high))]/15 text-[hsl(var(--severity-high))]",
-  "bg-[hsl(var(--severity-low))]/15 text-[hsl(var(--severity-low))]",
+  "bg-[hsl(var(--chart-2))]/15 text-[hsl(var(--chart-2))]",
+  "bg-[hsl(var(--chart-3))]/15 text-[hsl(var(--chart-3))]",
+  "bg-[hsl(var(--chart-4))]/15 text-[hsl(var(--chart-4))]",
+  "bg-[hsl(var(--chart-5))]/15 text-[hsl(var(--chart-5))]",
 ];
 
 /**

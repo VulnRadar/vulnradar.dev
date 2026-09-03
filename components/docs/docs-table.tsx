@@ -33,8 +33,21 @@ function TableScroller({
 }
 
 const headCell =
-  "whitespace-nowrap px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground";
-const bodyCell = "px-3 py-2.5 align-top text-xs text-muted-foreground";
+  "whitespace-nowrap px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground";
+// 13px, not 12px. Docs prose is 14px and the tables carry the same kind of
+// sentence, so text-xs made the reference material the least readable thing
+// on the page. leading-relaxed matters more here than in prose: a description
+// cell wraps to three or four lines against a narrow column.
+const bodyCell =
+  "px-3 py-2.5 align-top text-[13px] leading-relaxed text-muted-foreground";
+// The key column. Every docs table is a lookup (a plan, a status, a constant,
+// an endpoint, an error code) and the reader scans one column to find their
+// row, so that column is a row header, not another muted cell.
+const keyCell =
+  "px-3 py-2.5 text-left align-top text-[13px] font-medium leading-relaxed text-foreground";
+// Reading a wide row means tracking across a 900px table. The hairline rules
+// give you the row; the hover tint tells you which one your pointer is on.
+const bodyRow = "border-t border-border/50 transition-colors hover:bg-muted/40";
 
 interface Column {
   key: string;
@@ -75,12 +88,22 @@ export function DocsTable<T extends Record<string, unknown>>({
         </thead>
         <tbody>
           {data.map((row, i) => (
-            <tr key={i} className="border-t border-border/50">
-              {columns.map((col) => (
-                <td key={col.key} className={cn(bodyCell, col.className)}>
-                  {String(row[col.key] ?? "")}
-                </td>
-              ))}
+            <tr key={i} className={bodyRow}>
+              {columns.map((col, colIndex) =>
+                colIndex === 0 ? (
+                  <th
+                    key={col.key}
+                    scope="row"
+                    className={cn(keyCell, col.className)}
+                  >
+                    {String(row[col.key] ?? "")}
+                  </th>
+                ) : (
+                  <td key={col.key} className={cn(bodyCell, col.className)}>
+                    {String(row[col.key] ?? "")}
+                  </td>
+                ),
+              )}
             </tr>
           ))}
         </tbody>
@@ -132,12 +155,12 @@ export function ParamTable({
         </thead>
         <tbody>
           {params.map((param) => (
-            <tr key={param.name} className="border-t border-border/50">
+            <tr key={param.name} className={bodyRow}>
               <th
                 scope="row"
                 className="px-3 py-2.5 text-left align-top font-normal"
               >
-                <InlineCode>{param.name}</InlineCode>
+                <InlineCode className="text-[13px]">{param.name}</InlineCode>
               </th>
               <td className={cn(bodyCell, "whitespace-nowrap font-mono")}>
                 {param.type}
@@ -167,6 +190,13 @@ interface EndpointTableRow {
   endpoint: string;
   method: string;
   description: string;
+  /**
+   * Anchor for the endpoint's full reference further down the page. The
+   * index on /docs/api was captioned "with a link to its full reference" and
+   * had none: the fastest route from the summary table to the card was to
+   * read the path, then scroll thirty cards looking for it again.
+   */
+  href?: string;
 }
 
 export function EndpointTable({
@@ -197,7 +227,7 @@ export function EndpointTable({
         </thead>
         <tbody>
           {endpoints.map((row, i) => (
-            <tr key={i} className="border-t border-border/50">
+            <tr key={i} className={bodyRow}>
               <td
                 className={cn(
                   bodyCell,
@@ -207,7 +237,18 @@ export function EndpointTable({
                 {row.method}
               </td>
               <td className="min-w-0 px-3 py-2.5 align-top">
-                <InlineCode className="break-all">{row.endpoint}</InlineCode>
+                {row.href ? (
+                  <a
+                    href={row.href}
+                    className="rounded-sm underline-offset-4 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <InlineCode className="break-all text-primary">
+                      {row.endpoint}
+                    </InlineCode>
+                  </a>
+                ) : (
+                  <InlineCode className="break-all">{row.endpoint}</InlineCode>
+                )}
               </td>
               <td className={bodyCell}>{row.description}</td>
             </tr>
@@ -252,12 +293,12 @@ export function FieldTable({
         </thead>
         <tbody>
           {fields.map((row, i) => (
-            <tr key={i} className="border-t border-border/50">
+            <tr key={i} className={bodyRow}>
               <th
                 scope="row"
                 className="px-3 py-2.5 text-left align-top font-normal"
               >
-                <InlineCode>{row.field}</InlineCode>
+                <InlineCode className="text-[13px]">{row.field}</InlineCode>
               </th>
               <td className={cn(bodyCell, "whitespace-nowrap font-mono")}>
                 {row.type}

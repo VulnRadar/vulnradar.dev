@@ -55,6 +55,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { pipeline } from "node:stream/promises";
 import { loadEnv, requireDatabaseUrl, ROOT } from "./_lib/_lib.env.mjs";
 import { splitDbUrlForEnv } from "./_lib/_lib.db-url.mjs";
@@ -316,7 +317,15 @@ async function runBackup() {
   success("Backup complete.");
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// pathToFileURL, not a "file://" template. On Windows process.argv[1] is a
+// backslashed drive path (C:\repo\scripts\backup-db.mjs), so the template
+// produced "file://C:\repo\..." while import.meta.url is
+// "file:///C:/repo/...". The two could never be equal, so this guard was false
+// and the script exited 0 having done nothing at all: no output, no error, and
+// an admin panel that reported a successful backup. It matched on Linux, which
+// is why it shipped. pathToFileURL does the drive-letter and separator
+// normalisation that makes the comparison correct on every platform.
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   runBackup().catch((err) => {
     error(err.message);
     process.exit(1);
