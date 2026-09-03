@@ -8,7 +8,7 @@
 # with `node:22.11.0-alpine@sha256:<digest>`: pull
 # `node:22.11.0-alpine` locally and grab the digest via
 # `docker images --digests node:22.11.0-alpine`.
-FROM node:22.11.0-alpine AS builder
+FROM node:22.23.2-alpine AS builder
 
 WORKDIR /app
 
@@ -115,7 +115,7 @@ RUN npm prune --omit=dev --ignore-scripts
 FROM gcr.io/projectsigstore/cosign:v2.4.1 AS cosign
 
 # ── Production stage ───────────────────────────────────────────
-FROM node:22.11.0-alpine AS runner
+FROM node:22.23.2-alpine AS runner
 
 LABEL org.opencontainers.image.source="https://github.com/VulnRadar/vulnradar.dev"
 LABEL org.opencontainers.image.description="VulnRadar - Website Security Scanner"
