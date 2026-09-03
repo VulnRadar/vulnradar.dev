@@ -157,6 +157,38 @@ jobs:
           cd dist-chrome && zip -r "${ARTIFACT_DIR}/vulnradar-chrome-v${EXT_VERSION}.zip" . && cd ..
           cd dist-firefox && zip -r "${ARTIFACT_DIR}/vulnradar-firefox-v${EXT_VERSION}.zip" . && cd ..
 
+      - name: Pack the CLI tarball
+        # The release already ships the extension; the CLI was the one
+        # first-party artifact you could not get from the release page, even
+        # though it is the piece a CI pipeline consumes. npm is the primary
+        # install path, but a tarball attached here means an airgapped or
+        # registry-pinned consumer can fetch exactly what a given tag shipped
+        # and verify it against sha256sums.txt like everything else.
+        #
+        # Packed from `git archive` of the TAG rather than the checkout, for
+        # the same reason the extension is: it guarantees the artifact matches
+        # what was actually tagged. The CLI has no dependencies, so there is
+        # nothing to install first.
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.vars.outputs.tag }}"
+          ARTIFACT_DIR="${RUNNER_TEMP}/release-artifacts"
+          mkdir -p "${ARTIFACT_DIR}"
+
+          CLI_DIR="${RUNNER_TEMP}/cli-src"
+          rm -rf "${CLI_DIR}"
+          mkdir -p "${CLI_DIR}"
+          git archive "${TAG}" -- cli | tar -x -C "${CLI_DIR}"
+          cd "${CLI_DIR}/cli"
+
+          CLI_VERSION=$(node -p "require('./package.json').version")
+          echo "CLI_VERSION=${CLI_VERSION}" >> "$GITHUB_ENV"
+
+          # --pack-destination writes straight into ARTIFACT_DIR, so nothing
+          # has to be moved afterwards.
+          npm pack --pack-destination "${ARTIFACT_DIR}"
+          ls -l "${ARTIFACT_DIR}"/vulnradar-*.tgz
+
       - name: Generate extension SBOM (CycloneDX, JSON)
         # release: docker-publish.yml's SBOM is generated against the server
         # IMAGE, so it describes nothing about the two extension zips
@@ -261,7 +293,9 @@ jobs:
           # and with pipefail that silently kills this whole step (the
           # old `2>/dev/null` hid the message but not the exit code).
           shopt -s nullglob
-          SUM_FILES=(*.tar.gz *.zip *.cdx.json)
+          # *.tgz is the CLI: npm pack emits that extension, not .tar.gz, so
+          # without it the tarball would ship unverifiable.
+          SUM_FILES=(*.tar.gz *.tgz *.zip *.cdx.json)
           shopt -u nullglob
           sha256sum "${SUM_FILES[@]}" | sort -k2 > sha256sums.txt
           cat sha256sums.txt
@@ -305,6 +339,7 @@ jobs:
             "vulnradar-chrome-v${EXT_VERSION}.zip" \
             "vulnradar-firefox-v${EXT_VERSION}.zip" \
             "vulnradar-extension-v${EXT_VERSION}.sbom.cdx.json" \
+            "vulnradar-${CLI_VERSION}.tgz" \
             "sha256sums.txt" \
             "sha256sums.txt.cert"; do
             if [ -f "$f" ]; then

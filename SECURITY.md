@@ -87,9 +87,14 @@ Every tagged release on GitHub is accompanied by:
   `vulnradar-firefox-vE.E.E.zip`): built from the same tag. These carry the
   extension's own version, which is not the app version, so do not assume
   `vX.Y.Z` here
+- **CLI package** (`vulnradar-C.C.C.tgz`): the npm tarball for the
+  `vulnradar` CLI, packed from the same tag. Like the extension zips it
+  carries its own version, not the app version. npm is the primary install
+  path (`npx vulnradar`); this is here so a registry-pinned or airgapped
+  consumer can take exactly what a given tag shipped and verify it
 - **`sha256sums.txt`** (lowercase, exactly): checksums for every release
-  artifact, i.e. the tarball, both extension zips, and both SBOMs. The updater
-  looks this file up by exact name, so the case matters
+  artifact, i.e. the tarball, both extension zips, the CLI package, and both
+  SBOMs. The updater looks this file up by exact name, so the case matters
 - **CycloneDX SBOMs**: `vulnradar-vX.Y.Z.sbom.cdx.json` for the app image and
   `vulnradar-extension-vE.E.E.sbom.cdx.json` for the browser extension. Neither
   is individually signed; both are covered by their entry in `sha256sums.txt`
