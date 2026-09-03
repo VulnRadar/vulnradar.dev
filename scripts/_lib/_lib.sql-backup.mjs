@@ -236,7 +236,6 @@ const COPY_ESCAPES = {
  */
 export function encodeCopyValue(value) {
   if (value === null || value === undefined) return "\\N";
-  // eslint-disable-next-line no-control-regex
   return String(value).replace(/[\\\b\f\n\r\t\v]/g, (ch) => COPY_ESCAPES[ch]);
 }
 
@@ -650,7 +649,11 @@ export async function getIndexes(client) {
        )
      ORDER BY c.relname, i.relname
   `);
-  return res.rows.map((r) => ({ table: r.table_name, name: r.name, def: r.def }));
+  return res.rows.map((r) => ({
+    table: r.table_name,
+    name: r.name,
+    def: r.def,
+  }));
 }
 
 /** Functions and procedures in public, excluding anything an extension owns. */
@@ -682,7 +685,11 @@ export async function getTriggers(client) {
      WHERE n.nspname = 'public' AND NOT t.tgisinternal
      ORDER BY c.relname, t.tgname
   `);
-  return res.rows.map((r) => ({ table: r.table_name, name: r.name, def: r.def }));
+  return res.rows.map((r) => ({
+    table: r.table_name,
+    name: r.name,
+    def: r.def,
+  }));
 }
 
 /** Views in public. */
@@ -793,7 +800,9 @@ export function parseMarker(line) {
  * parent was not, which is a restore that fails on a foreign key.
  *
  * @param {object} input
- * @param {import("pg").PoolClient} input.client
+ * @param {{query: Function}} input.client a `pg` Client or PoolClient. Typed by the
+ *   only method either function uses, matching _lib.schema-introspect.mjs, so a
+ *   test can pass a recorder without reimplementing 30 unrelated members
  * @param {{appVersion?: string}} [input.meta]
  * @param {boolean} [input.allowIncomplete] write the file even when the
  *   database holds objects this dumper cannot represent
@@ -910,18 +919,16 @@ export async function* generateSqlDump({
     }
     yield headerLines.join("\n") + "\n\n";
 
-    yield (
-      marker("DUMP", {
-        format: DUMP_FORMAT,
-        version: DUMP_FORMAT_VERSION,
-        appVersion: meta.appVersion ?? null,
-        schemaVersion: schemaVersion ?? null,
-        createdAt: new Date().toISOString(),
-        tables: plan.order,
-        skipped: plan.skipped.map((s) => s.table),
-        incomplete: unsupported,
-      }) + "\n"
-    );
+    yield marker("DUMP", {
+      format: DUMP_FORMAT,
+      version: DUMP_FORMAT_VERSION,
+      appVersion: meta.appVersion ?? null,
+      schemaVersion: schemaVersion ?? null,
+      createdAt: new Date().toISOString(),
+      tables: plan.order,
+      skipped: plan.skipped.map((s) => s.table),
+      incomplete: unsupported,
+    }) + "\n";
 
     for (const stmt of DUMP_PREAMBLE) {
       yield `${marker("STMT")}\n${stmt};\n`;
@@ -931,10 +938,8 @@ export async function* generateSqlDump({
     yield `\n${marker("SECTION", "pre-data")}\n`;
 
     for (const ext of extensions) {
-      yield (
-        `${marker("STMT")}\nCREATE EXTENSION IF NOT EXISTS ` +
-        `${quoteIdent(ext.name)} WITH SCHEMA ${quoteIdent(ext.schema)};\n`
-      );
+      yield `${marker("STMT")}\nCREATE EXTENSION IF NOT EXISTS ` +
+        `${quoteIdent(ext.name)} WITH SCHEMA ${quoteIdent(ext.schema)};\n`;
     }
 
     for (const fn of functions) {
@@ -949,35 +954,27 @@ export async function* generateSqlDump({
     }
 
     for (const table of tables) {
-      yield (
-        `${marker("STMT")}\n` +
-        `${renderCreateTable(table, columnsByTable[table] || [])}\n`
-      );
+      yield `${marker("STMT")}\n` +
+        `${renderCreateTable(table, columnsByTable[table] || [])}\n`;
     }
 
     for (const seq of sequences) {
       if (seq.ownedByIdentity || !seq.ownerTable) continue;
-      yield (
-        `${marker("STMT")}\nALTER SEQUENCE ${qualify(seq.name)} OWNED BY ` +
-        `${qualify(seq.ownerTable)}.${quoteIdent(seq.ownerColumn)};\n`
-      );
+      yield `${marker("STMT")}\nALTER SEQUENCE ${qualify(seq.name)} OWNED BY ` +
+        `${qualify(seq.ownerTable)}.${quoteIdent(seq.ownerColumn)};\n`;
     }
 
     for (const table of tables) {
       for (const col of columnsByTable[table] || []) {
         if (col.generated === "s" || col.identity || !col.defaultExpr) continue;
-        yield (
-          `${marker("STMT")}\nALTER TABLE ONLY ${qualify(table)} ` +
-          `ALTER COLUMN ${quoteIdent(col.name)} SET DEFAULT ${col.defaultExpr};\n`
-        );
+        yield `${marker("STMT")}\nALTER TABLE ONLY ${qualify(table)} ` +
+          `ALTER COLUMN ${quoteIdent(col.name)} SET DEFAULT ${col.defaultExpr};\n`;
       }
     }
 
     for (const view of views) {
-      yield (
-        `${marker("STMT")}\nCREATE VIEW ${qualify(view.name)} AS\n` +
-        `${view.def.replace(/;?\s*$/, "")};\n`
-      );
+      yield `${marker("STMT")}\nCREATE VIEW ${qualify(view.name)} AS\n` +
+        `${view.def.replace(/;?\s*$/, "")};\n`;
     }
 
     // ── Data ──────────────────────────────────────────────────────────────
@@ -1005,10 +1002,8 @@ export async function* generateSqlDump({
         );
       }
 
-      yield (
-        `${marker("COPY", { table, columns: names })}\n` +
-        `${renderCopyHeader(table, names)}\n`
-      );
+      yield `${marker("COPY", { table, columns: names })}\n` +
+        `${renderCopyHeader(table, names)}\n`;
 
       const keyTypes = usablePk.map((k) => typeOf.get(k));
       const keyIndexes = usablePk.map((k) => names.indexOf(k));
@@ -1037,8 +1032,7 @@ export async function* generateSqlDump({
         for (const row of res.rows) {
           // Without a primary key the trailing ctid is pagination state, not
           // data, so it is trimmed before the row is written.
-          const values =
-            usablePk.length > 0 ? row : row.slice(0, names.length);
+          const values = usablePk.length > 0 ? row : row.slice(0, names.length);
           const line = encodeCopyRow(values) + "\n";
           pageBytes += line.length;
           chunk += line;
@@ -1066,10 +1060,8 @@ export async function* generateSqlDump({
 
     for (const con of constraints) {
       if (con.type === "f") continue; // foreign keys come last
-      yield (
-        `${marker("STMT")}\nALTER TABLE ONLY ${qualify(con.table)} ` +
-        `ADD CONSTRAINT ${quoteIdent(con.name)} ${con.def};\n`
-      );
+      yield `${marker("STMT")}\nALTER TABLE ONLY ${qualify(con.table)} ` +
+        `ADD CONSTRAINT ${quoteIdent(con.name)} ${con.def};\n`;
     }
 
     for (const idx of indexes) {
@@ -1080,10 +1072,8 @@ export async function* generateSqlDump({
     // a foreign key added after every row exists cannot be violated by it.
     for (const con of constraints) {
       if (con.type !== "f") continue;
-      yield (
-        `${marker("STMT")}\nALTER TABLE ONLY ${qualify(con.table)} ` +
-        `ADD CONSTRAINT ${quoteIdent(con.name)} ${con.def};\n`
-      );
+      yield `${marker("STMT")}\nALTER TABLE ONLY ${qualify(con.table)} ` +
+        `ADD CONSTRAINT ${quoteIdent(con.name)} ${con.def};\n`;
     }
 
     for (const trg of triggers) {
@@ -1220,7 +1210,9 @@ export function readDumpLines(gzPath) {
  * conversion is identical.
  *
  * @param {object} input
- * @param {import("pg").PoolClient} input.client
+ * @param {{query: Function}} input.client a `pg` Client or PoolClient. Typed by the
+ *   only method either function uses, matching _lib.schema-introspect.mjs, so a
+ *   test can pass a recorder without reimplementing 30 unrelated members
  * @param {AsyncIterable<string>} input.lines
  * @param {(message: string) => void} [input.onLog]
  * @returns {Promise<{statements: number, tables: number, rows: number, header: object|null}>}
@@ -1388,11 +1380,14 @@ export async function restoreSqlDump({ client, lines, onLog }) {
     }
 
     await client.query("COMMIT");
-    // The file's preamble ran `set_config('search_path', '', false)` at
-    // SESSION scope, exactly as pg_dump writes it. Anything the caller does
-    // next on this client (repairAllSequences resolves sequences by bare
-    // name) would otherwise resolve nothing.
-    await client.query("RESET search_path").catch(() => {});
+    // The file's preamble ran `set_config('search_path', '', false)` and a
+    // row of SETs at SESSION scope, exactly as pg_dump writes them, and a
+    // COMMIT makes those stick on this connection. RESET ALL rather than
+    // RESET search_path because the connection goes back to a pool: the next
+    // borrower must not inherit statement_timeout = 0 either. The immediate
+    // need is search_path, without which repairAllSequences (which resolves
+    // sequences by bare name) would find nothing.
+    await client.query("RESET ALL").catch(() => {});
     return { statements, tables: tablesLoaded, rows: rowsLoaded, header };
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});

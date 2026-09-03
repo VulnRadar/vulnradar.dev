@@ -1,0 +1,32 @@
+[
+  {
+    "icon": "DatabaseBackup",
+    "label": "Backups No Longer Need pg_dump Installed",
+    "desc": "Database backups shelled out to pg_dump, so on any host without the postgresql-client package the command failed outright and the install had no backup at all. That is not a rare corner: Pterodactyl and Pelican panel installs run VulnRadar from source on a Node egg whose image the operator does not control and has no root inside, so postgresql-client can never be added there. Backups now fall back automatically to a dumper built into the app that talks to PostgreSQL over the connection it already has and needs no binaries at all. pg_dump is still used wherever it is installed, because it is the more complete tool, and the run says plainly which path it took.",
+    "category": "added"
+  },
+  {
+    "icon": "FileCode2",
+    "label": "The Built-In Backup Is Ordinary SQL, Not A VulnRadar-Only Format",
+    "desc": "The file the built-in dumper writes is plain SQL in the same shape pg_dump --format=plain produces: a SET preamble, the schema read out of the live catalog, COPY blocks for the data, then constraints, indexes, foreign keys and setval calls. It imports with psql, pgAdmin, DBeaver or a managed provider's import tool exactly like a pg_dump file does, so a backup never depends on VulnRadar still working to be useful. Values are written as PostgreSQL's own text output and read back by the matching input function, so jsonb, bytea, numeric, arrays, timestamptz and the difference between NULL and an empty string all survive unchanged rather than being routed through a JavaScript value on the way.",
+    "category": "added"
+  },
+  {
+    "icon": "Undo2",
+    "label": "Restore Works On A Box With No psql Either",
+    "desc": "A backup you cannot restore is not a backup, and the hosts that have no pg_dump have no psql either. npm run db:restore now recognises which of the two formats a file is by reading it rather than by trusting its name, and applies a built-in dump through the same database connection, in one transaction, with no child process. A failure at any point rolls the whole thing back, a file missing its end marker is refused instead of half-applied, and every sequence is moved to its recorded position afterwards so the first insert after a restore does not collide on a primary key.",
+    "category": "added"
+  },
+  {
+    "icon": "Gauge",
+    "label": "A Large Table No Longer Has To Fit In Memory To Be Backed Up",
+    "desc": "The built-in dumper walks each table with keyset pagination on its primary key, inside a single repeatable-read snapshot, and adapts the page size down when rows turn out to be large. Nothing is ever held whole in memory, which matters on the memory-capped containers this path exists for, and the snapshot means a row committed while the dump is running cannot be missed or written without its parent.",
+    "category": "improved"
+  },
+  {
+    "icon": "ShieldAlert",
+    "label": "The Built-In Backup Says What It Does Not Contain",
+    "desc": "It covers the public schema: extensions, sequences, tables, columns, defaults, constraints, indexes, functions, triggers, views and all table data. It does not capture roles, ownership, GRANTs, row-level security policies, materialized views, partitioned tables, custom types or large objects, and pg_dump does. That is stated in the command's output, in the file's own header, and again during a restore, so nobody is left believing they have more than they do. If a database actually contains one of the things it cannot write out, the backup refuses to run rather than quietly producing a file that is missing it.",
+    "category": "added"
+  }
+]

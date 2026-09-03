@@ -6,6 +6,7 @@ import {
   createBackupCipher,
   createBackupDecipher,
   describePgDumpError,
+  pgDumpAvailable,
 } from "../../scripts/backup-db.mjs";
 
 describe("backupFileName", () => {
@@ -191,6 +192,17 @@ describe("a failed backup leaves no artefact", () => {
     }
   });
 
+  it("cleans up on the built-in dumper's path too, not just pg_dump's", () => {
+    // The window check above covers both branches because both live between
+    // createWriteStream and success(). Named separately so a future
+    // refactor that lifts the JavaScript branch out of that window has to
+    // notice it is dropping the cleanup with it.
+    const from = src.indexOf("const pool = createPool()");
+    const to = src.indexOf("success(");
+    expect(from, "the built-in dumper branch is gone").toBeGreaterThan(-1);
+    expect(src.slice(from, to)).toContain("discardPartial()");
+  });
+
   it("rejects a dump too small to contain anything", () => {
     // pg_dump can exit 0 having written only a gzip header. Keeping that is
     // the same lie as keeping a failed run's file.
@@ -198,5 +210,48 @@ describe("a failed backup leaves no artefact", () => {
     expect(src).toMatch(/written\.size < MIN_USABLE_BACKUP_BYTES/);
     const declared = src.match(/MIN_USABLE_BACKUP_BYTES = (\d+)/)?.[1];
     expect(Number(declared)).toBeGreaterThan(20);
+  });
+});
+
+/**
+ * The fallback has to be AUTOMATIC.
+ *
+ * The audience for the built-in dumper is Pterodactyl and Pelican panel
+ * installs, where postgresql-client cannot be added and pg_dump has therefore
+ * never worked. A fallback sitting behind a flag somebody has to discover is
+ * not a backup for them, so the flag exists as an override and the missing
+ * binary is what actually triggers the switch.
+ */
+describe("choosing between pg_dump and the built-in dumper", () => {
+  const src = readFileSync("scripts/backup-db.mjs", "utf8");
+
+  it("probes for pg_dump without throwing, whether or not it is installed", async () => {
+    // This machine may or may not have pg_dump; the probe has to answer
+    // either way rather than rejecting or hanging, because it runs before
+    // anything else on every backup.
+    await expect(pgDumpAvailable()).resolves.toBeTypeOf("boolean");
+  });
+
+  it("switches on the probe, not on a flag", () => {
+    expect(src).toMatch(
+      /usePgDump\s*=\s*forceJs\s*\?\s*false\s*:\s*await pgDumpAvailable\(\)/,
+    );
+  });
+
+  it("offers both a flag and an env var, because the admin panel passes no argv", () => {
+    // lib/backup/run-backup.ts spawns this script with no arguments, so a
+    // flag alone would be unreachable from the Backups page.
+    expect(src).toContain('args.includes("--js")');
+    expect(src).toContain('process.env.BACKUP_FORCE_JS === "1"');
+  });
+
+  it("shares gzip, encryption and the destination between both paths", () => {
+    // Encryption, retention and offsite upload must not quietly become
+    // pg_dump-only features: on the hosts this exists for, the built-in path
+    // is the only one that ever runs.
+    const tail = src.slice(src.indexOf("const tail = [gzip]"));
+    expect(tail).toContain("createBackupCipher(encryptionKey)");
+    expect(tail).toContain("pipeline([pgDump.stdout, ...tail])");
+    expect(tail).toContain("pipeline([source, ...tail])");
   });
 });

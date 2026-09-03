@@ -146,9 +146,6 @@ export function psqlQuery(connArg, env, sql) {
  * contains DROP statements, so restoring on top of an existing schema fails on
  * every CREATE. This one uses the `pg` connection because the hosts the
  * built-in dumper exists for have no psql to ask.
- *
- * Returns the table count. Throws rather than exiting, so the caller's temp
- * directory cleanup still runs.
  */
 export async function countPublicTables(pool) {
   const res = await pool.query(
