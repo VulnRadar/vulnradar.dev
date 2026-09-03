@@ -173,7 +173,7 @@ jobs:
         # release: CycloneDX SBOM is the most widely consumed format.
         # `anchore/sbom-action` runs syft on the built image and writes
         # the SBOM next to the build artifacts.
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:
           image: ghcr.io/${{ env.OWNER_LC }}/vulnradar:${{ github.ref_name }}
           format: cyclonedx-json
