@@ -139,7 +139,7 @@ interface Release {
 const CHANGELOG: Release[] = [
   {
     version: "3.8.0",
-    date: "August 29, 2026",
+    date: "September 3, 2026",
     title: "Self-Hosting Works, Scans Tell the Truth, and Nothing Runs Free",
     highlights: true,
     summary:
@@ -487,7 +487,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "3.7.2",
-    date: "August 25, 2026",
+    date: "August 26, 2026",
     title: "The AI Assistant Stops Forgetting Loaded Context",
     highlights: false,
     summary:
@@ -503,7 +503,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "3.7.1",
-    date: "August 25, 2026",
+    date: "August 26, 2026",
     title: "History Overflow, Dashboard Layout, Discord Sign-In, Staff 2FA",
     highlights: false,
     summary:
@@ -537,7 +537,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "3.7.0",
-    date: "August 24, 2026",
+    date: "August 26, 2026",
     title: "Support Tickets, Report Exports, Attack Surface, GitHub Scanner",
     highlights: true,
     summary:
@@ -926,7 +926,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "3.6.1",
-    date: "August 21, 2026",
+    date: "August 22, 2026",
     title: "Billing Correctness, Discoverability, Mobile Live Viewer",
     highlights: true,
     summary:
@@ -1003,7 +1003,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "3.6.0",
-    date: "August 20, 2026",
+    date: "August 21, 2026",
     title: "Security and Detection Hardening, Live Browser Redesign",
     highlights: true,
     summary:
@@ -1107,7 +1107,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "3.5.0",
-    date: "August 17, 2026",
+    date: "August 20, 2026",
     title: "Domain Verification, Live-Browser Metering, Quota Bypass Fixes",
     highlights: true,
     summary:
@@ -1384,7 +1384,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "3.4.0",
-    date: "August 15, 2026",
+    date: "August 16, 2026",
     title: "Team-Scoped Resources, Admin Security Hardening",
     highlights: true,
     summary:
@@ -1623,7 +1623,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "3.3.1",
-    date: "August 12, 2026",
+    date: "August 13, 2026",
     title: "Self-Updating Badges, False-Positive Risk Scoring",
     highlights: false,
     summary:
@@ -1663,7 +1663,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "3.3.0",
-    date: "August 12, 2026",
+    date: "August 13, 2026",
     title:
       "Scanner Accuracy Overhaul, ~40 New Checks, One Trust Verdict Everywhere",
     highlights: true,
@@ -2003,7 +2003,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "3.1.0",
-    date: "August 11, 2026",
+    date: "August 12, 2026",
     title: "In-App Self-Updater, Auto-Tagged Scans, and a Blue Rebrand",
     highlights: true,
     summary:
@@ -2202,7 +2202,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "3.0.1",
-    date: "August 10, 2026",
+    date: "August 11, 2026",
     title: "SSRF Fix, Admin App URL Finally Works, AI and Extension Fixes",
     highlights: true,
     summary:
@@ -2648,7 +2648,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "2.3.1",
-    date: "June 20, 2026",
+    date: "June 23, 2026",
     title: "Tooling Hardening, Node 22 LTS, Schema Version Gate",
     highlights: false,
     summary:
@@ -3511,7 +3511,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "2.0.5",
-    date: "March 16, 2026",
+    date: "March 17, 2026",
     title: "API Rate Limiting Complete & Enhanced Legal Documentation",
     highlights: true,
     summary:
@@ -3780,7 +3780,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "2.0.0",
-    date: "March 12, 2026",
+    date: "March 13, 2026",
     title:
       "Stripe Billing, Discord Integration, Admin Notifications & Design System Overhaul",
     highlights: false,
@@ -3901,7 +3901,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "1.9.5",
-    date: "March 7, 2026",
+    date: "March 8, 2026",
     title: "API v1 Versioning, Developer SDK Support & Finding Types Endpoint",
     highlights: false,
     changes: [
@@ -3977,7 +3977,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "1.9.4",
-    date: "February 26, 2026",
+    date: "February 27, 2026",
     title:
       "UI Consistency, Docker Build-Time Vars, Discord Giveaway & Encryption-First API Keys",
     highlights: false,
@@ -4016,7 +4016,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "1.9.3",
-    date: "February 24, 2026",
+    date: "February 25, 2026",
     title: "Admin Version Monitoring & Enhanced Admin Controls",
     highlights: false,
     changes: [
@@ -4236,7 +4236,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "1.7.4",
-    date: "February 19, 2026",
+    date: "February 20, 2026",
     title: "Docker Production Ready, Mobile UX Overhaul & Error Pages",
     highlights: false,
     changes: [
@@ -4468,7 +4468,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "1.6.8",
-    date: "February 16, 2026",
+    date: "February 17, 2026",
     title: "Metadata & Social Preview Fixes",
     highlights: false,
     changes: [
@@ -4526,7 +4526,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "1.6.6",
-    date: "February 15, 2026",
+    date: "February 16, 2026",
     title: "Subdomain Discovery Depth & Deep Scan Prefix",
     highlights: false,
     changes: [
@@ -4546,7 +4546,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "1.6.5",
-    date: "February 15, 2026",
+    date: "February 16, 2026",
     title: "Scan Depth & Performance Improvements",
     highlights: false,
     changes: [
@@ -4572,7 +4572,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "1.6.4",
-    date: "February 14, 2026",
+    date: "February 16, 2026",
     title: "Subdomain Discovery & Real-Time Progress",
     highlights: false,
     changes: [
@@ -4598,7 +4598,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "1.6.3",
-    date: "February 14, 2026",
+    date: "February 16, 2026",
     title: "Scanner Category Visualization",
     highlights: false,
     changes: [
@@ -4618,7 +4618,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "1.6.2",
-    date: "February 13, 2026",
+    date: "February 15, 2026",
     title: "Expanded Security Coverage",
     highlights: false,
     changes: [
@@ -4638,7 +4638,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "1.6.1",
-    date: "February 12, 2026",
+    date: "February 15, 2026",
     title: "Export & Sharing Enhancements",
     highlights: false,
     changes: [
@@ -4658,7 +4658,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "1.6.0",
-    date: "February 11, 2026",
+    date: "February 15, 2026",
     title: "Deep Crawl Scanning",
     highlights: false,
     changes: [
@@ -4684,7 +4684,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "1.5.0",
-    date: "February 10, 2026",
+    date: "February 14, 2026",
     title: "Scheduled Scanning & Bulk Operations",
     highlights: false,
     changes: [
@@ -4710,7 +4710,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "1.4.0",
-    date: "February 10, 2026",
+    date: "February 14, 2026",
     title: "Team Collaboration",
     highlights: false,
     changes: [
@@ -4736,7 +4736,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "1.3.0",
-    date: "February 9, 2026",
+    date: "February 11, 2026",
     title: "API Access & Webhooks",
     highlights: false,
     changes: [
@@ -4762,7 +4762,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "1.2.0",
-    date: "February 9, 2026",
+    date: "February 10, 2026",
     title: "Comparison & History",
     highlights: false,
     changes: [
@@ -4788,7 +4788,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "1.1.2",
-    date: "February 9, 2026",
+    date: "February 10, 2026",
     title: "Safety Rating Indicator",
     highlights: false,
     changes: [
@@ -4808,7 +4808,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "1.1.1",
-    date: "February 9, 2026",
+    date: "February 10, 2026",
     title: "Metadata & Branding Polish",
     highlights: false,
     changes: [
@@ -4834,7 +4834,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "1.1.0",
-    date: "February 9, 2026",
+    date: "February 10, 2026",
     title: "Contact System & UI Enhancements",
     highlights: false,
     changes: [
@@ -4890,7 +4890,7 @@ const CHANGELOG: Release[] = [
   },
   {
     version: "1.0.0",
-    date: "February 8, 2026",
+    date: "February 9, 2026",
     title: "First Release",
     highlights: false,
     changes: [

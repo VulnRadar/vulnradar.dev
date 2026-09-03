@@ -18,7 +18,7 @@ and full description.
 
 ---
 
-## v3.8.0 - August 29, 2026 **(highlights)**
+## v3.8.0 - September 3, 2026 **(highlights)**
 **Self-Hosting Works, Scans Tell the Truth, and Nothing Runs Free**
 
 The release that acts on a full audit of the codebase, top to bottom. Four things in here matter most. Self-hosting was broken end to end: the Docker image tag in our own compose file was never published, the app refused to start against an empty database, and the command it told you to run to fix that was not in the container. All three are fixed, so `docker compose up -d` against a blank Postgres now works the way the docs always said it did. A scan that did not finish could show as a clean result, which on a security scanner is the worst thing that can happen; an unfinished scan now says so. Three patterns in the scan engine could be made catastrophically slow by the site being scanned, the worst of them letting a single anonymous scan stall the server for minutes. And crawl scans run through an API key were charging nothing at all against your daily limit, so the number you saw was not the number you were using. Plus a new CI job that builds the real image and boots it against an empty database, which is the check that would have caught the self-hosting failures before they ever shipped.
@@ -137,7 +137,7 @@ The release that acts on a full audit of the codebase, top to bottom. Four thing
 
 ---
 
-## v3.7.2 - August 25, 2026
+## v3.7.2 - August 26, 2026
 **The AI Assistant Stops Forgetting Loaded Context**
 
 A fix for the in-app AI assistant. Loading a large context block with a slash command, most visibly /changelog, then asking a question left the assistant answering as if nothing had loaded. The request-size guard added in the previous release trimmed the whole conversation to a character budget that a big context block, the changelog is around 250k characters, blew past on its own, so the block was dropped before it ever reached the model. Context blocks now get their own separate, generous budget and are no longer discarded to make room for recent chat turns, so /changelog, /docs, /checks, and /legal actually stay loaded for the questions that follow.
@@ -148,7 +148,7 @@ A fix for the in-app AI assistant. Loading a large context block with a slash co
 
 ---
 
-## v3.7.1 - August 25, 2026
+## v3.7.1 - August 26, 2026
 **History Overflow, Dashboard Layout, Discord Sign-In, Staff 2FA**
 
 A maintenance release cleaning up four things reported right after 3.7.0. On the history page, a scan whose URL carried a long query string no longer runs across the columns beside it; the path trims with an ellipsis instead. The dashboard's Recent Scans panel fills its card rather than leaving a gap under the last row when the column next to it runs taller. In the admin user panel, an account created with Sign in with Discord now shows as linked the same way Google and GitHub sign-ins already did (the account was always linked, only the admin display read the wrong source). And three admin endpoints that checked a caller's role without also applying the staff two-factor lockout now route through the same permission gate as the rest of the admin area.
@@ -165,7 +165,7 @@ A maintenance release cleaning up four things reported right after 3.7.0. On the
 
 ---
 
-## v3.7.0 - August 24, 2026 **(highlights)**
+## v3.7.0 - August 26, 2026 **(highlights)**
 **Support Tickets, Report Exports, Attack Surface, GitHub Scanner**
 
 A capability and openness release. Support moves in-app: anyone, including free accounts, can open a billing or scanning ticket and talk to staff directly, share a ticket with specific teammates, and get replies by both notification and email. Any finished scan can now be pulled straight from the API as a formatted report in SARIF, PDF, Markdown, a compliance summary, or raw JSON, and the compliance crosswalk adds HIPAA and GDPR alongside PCI, SOC 2, ISO 27001, and ASVS. A new Attack Surface page collects your verified domains into one portfolio, the public assets page can now browse every public host rather than only your own, and software inventory recognizes far more of a site's real stack (client frameworks, hosting, and cookies) and labels each with its actual brand icon. You can file a scan's findings straight to GitHub as an issue from the VulnRadar GitHub Scanner. Underneath, the extension and the AI knowledge base are now built and verified in CI on every change, and the project gains a Code of Conduct, Discussions, and a Wiki.
@@ -300,7 +300,7 @@ A capability and openness release. Support moves in-app: anyone, including free 
 
 ---
 
-## v3.6.1 - August 21, 2026 **(highlights)**
+## v3.6.1 - August 22, 2026 **(highlights)**
 **Billing Correctness, Discoverability, Mobile Live Viewer**
 
 A polish and correctness release. Billing gets safer: a staff account can no longer be charged through Stripe for a plan their role already grants, a refund or chargeback now reverses the one-time AI, GitHub, and Browserbase credits it paid for, the admin MRR estimate stops overstating yearly subscribers, and the Stripe webhook registers every event those paths depend on. Search results and AI answer engines now see the full capability set, including the active injection testing (SQL injection, XSS, template and command injection) they had been underreporting. The live browser session viewer finally works on a phone, the scanner warns before scanning a page it cannot actually reach, and the browser extension (now 0.1.8) gains a real onboarding page, keyboard-accessible history, and an instant first paint.
@@ -331,7 +331,7 @@ A polish and correctness release. Billing gets safer: a staff account can no lon
 
 ---
 
-## v3.6.0 - August 20, 2026 **(highlights)**
+## v3.6.0 - August 21, 2026 **(highlights)**
 **Security and Detection Hardening, Live Browser Redesign**
 
 A security and correctness release. Several ways to slip past the daily scan quota or get billed twice for API scans are closed, sign-in is now tied to the browser that started it, and team roles can no longer be pushed above your own. The scan engine is hardened against pages built to hang it, and a batch of detection fixes stop it from misreading cookie flags, SPF, DMARC, CSP, and TLS chains (Detection Engine bumped to 3.3.1). On the surface, the live browser session viewer is rebuilt to look like a real browser window with the network panel open and streaming, the extension can open in a full resizable tab, and a scan's reported duration finally matches how long you actually waited.
@@ -377,7 +377,7 @@ A patch release focused on the self-updater. It used to overlay a new release's 
 
 ---
 
-## v3.5.0 - August 17, 2026 **(highlights)**
+## v3.5.0 - August 20, 2026 **(highlights)**
 **Domain Verification, Live-Browser Metering, Quota Bypass Fixes**
 
 Active-probes scanning (real exploit-attempt payloads, not just passive checks) now requires proving you own the target domain first, via a DNS TXT record, the same model Google Search Console and ACME certificate issuance use. Three of the existing active probes (CORS origin reflection, dangerous HTTP methods, X-Forwarded-Host injection) turned out to run unconditionally on every scan instead of being gated behind that opt-in, so they're fixed alongside two new ones: OS command injection and open redirect. Live-browser sessions are now a real metered plan limit with an account-wide concurrency queue instead of an unbounded feature, and dependency scanning gained a live OSV.dev lookup on top of the old static CVE table. The rest is a run of real quota and account-safety bugs found by auditing every per-plan limit end to end: the daily scan quota was fully bypassable via API key, never enforced on crawl scans at all, and a rejected scan could still permanently burn a quota slot; the bulk-scan URL limit ignored your actual plan; and account deletion was completely broken for every account, full stop. Results also grew a lot richer this release: multi-source threat reputation, a curated open-port sweep, opt-in page screenshots, a software inventory with CVE correlation, and remediation status that survives rescans, all shown consistently on your own, shared, and public result pages. Authenticated scanning and crawling now reach the pages behind a login, credentials never leaving memory for the request, and compliance-mapping reports line findings up against PCI DSS, SOC 2, ISO 27001, and OWASP ASVS as prioritization guidance, not certification.
@@ -474,7 +474,7 @@ Active-probes scanning (real exploit-attempt payloads, not just passive checks) 
 
 ---
 
-## v3.4.0 - August 15, 2026 **(highlights)**
+## v3.4.0 - August 16, 2026 **(highlights)**
 **Team-Scoped Resources, Admin Security Hardening**
 
 A big one. Scans, webhooks, and scheduled scans can now be shared with a team instead of only living under one account, with real owner/admin/member/viewer permissions behind it. Alongside that: a proper audit of the admin panel's own security turned up and fixed a handful of real gaps, including a route that skipped 2FA enforcement entirely and a password re-entry prompt that was never actually checked server-side. A broader sweep for the same underlying bug, UI that claims success without checking whether the request behind it actually succeeded, found and fixed a dozen more instances across the admin panel, checkout, scan history, and every copy-to-clipboard button in the app. On top of that: roughly 1,200 real sites got bulk-scanned specifically to hunt down false positives at scale, the browser extension went live on both the Chrome Web Store and Firefox Add-ons, and self-hosted instances now get an automatic database backup before every migration plus an admin alert if a background worker starts failing silently.
@@ -562,7 +562,7 @@ A small patch release. The badge page listed every individual scan of a URL as i
 
 ---
 
-## v3.3.1 - August 12, 2026
+## v3.3.1 - August 13, 2026
 **Self-Updating Badges, False-Positive Risk Scoring**
 
 A patch release focused on real gaps found while dogfooding: the embeddable badge only ever showed a snapshot of whichever scan you picked when you made it, marking a finding false positive didn't change the risk score it was dragging down, AI verification was timing out on real-world scans with 50+ findings, and two checks (credit card pattern, hardcoded credentials) were flagging ordinary, safe code as Critical.
@@ -581,7 +581,7 @@ A patch release focused on real gaps found while dogfooding: the embeddable badg
 
 ---
 
-## v3.3.0 - August 12, 2026 **(highlights)**
+## v3.3.0 - August 13, 2026 **(highlights)**
 **Scanner Accuracy Overhaul, ~40 New Checks, One Trust Verdict Everywhere**
 
 Every one of the pre-existing checks got re-verified against real vulnerable and real safe examples: 205 findings had a wrong CWE, a description mismatched to what the detector actually looked for, a context-blind keyword match firing on documentation or defensive code, or a miscalibrated severity, and all of it got fixed. 16 checks with no real backing detector got removed outright. On top of that, roughly 40 new checks shipped across auth/API, headers, information disclosure, supply chain, email/DNS, client-side, secrets, and host-validation, each one checked in both directions before shipping. Separately, a host could show clean on its own results page but yellow ("review before trusting") in History or the browser extension, because each surface had its own ad-hoc logic instead of sharing one scorer; the server now computes the verdict once and every surface reads that same value. Admin-initiated 2FA reset is gone for good, a real account-takeover path closed rather than just hidden. Admin can now see whether a user has linked Discord, Google, or GitHub. Scan history is kept forever on every plan by default. And 52 more previously-hardcoded settings are now adjustable from Admin.
@@ -720,7 +720,7 @@ A fast follow to 3.1.0. GitHub repo AI review can now be topped up with purchase
 
 ---
 
-## v3.1.0 - August 11, 2026 **(highlights)**
+## v3.1.0 - August 12, 2026 **(highlights)**
 **In-App Self-Updater, Auto-Tagged Scans, and a Blue Rebrand**
 
 A wide release. Admin can now update VulnRadar straight from the app instead of SSHing in, scans get tagged automatically as they finish, and AI finding verification finally has a real per-plan usage quota instead of an informal limit. There's also a new Public Scans directory, an Engine Feedback dashboard for spotting noisy checks, a full mobile pass, and the primary color changed from cyan to blue across the app and extension. It also closes a real privacy gap caught before any of this shipped: the new Public Scans directory, along with sitemap.xml and robots.txt, was unreachable to logged-out visitors and crawlers, and a database default meant fixing that reachability would have retroactively published existing private shares. Below that: a pile of real bug fixes, including one where a fully successful account deletion was reporting itself as failed.
@@ -791,7 +791,7 @@ A wide release. Admin can now update VulnRadar straight from the app instead of 
 
 ---
 
-## v3.0.1 - August 10, 2026 **(highlights)**
+## v3.0.1 - August 11, 2026 **(highlights)**
 **SSRF Fix, Admin App URL Finally Works, AI and Extension Fixes**
 
 A fast follow to 3.0.0. A real SSRF gap in four scanner checks is closed, the app finally listens to the site URL you set in Admin instead of a hardcoded default, and a batch of AI summary/chat and browser extension bugs are fixed.
@@ -947,7 +947,7 @@ The full 3.0.0 release, covering everything shipped since 2.3.1. The headline ch
 
 ---
 
-## v2.3.1 - June 20, 2026
+## v2.3.1 - June 23, 2026
 **Tooling Hardening, Node 22 LTS, Schema Version Gate**
 
 A behind-the-scenes stability release with no changes to what you see or use day to day. We rebuilt our internal database update tooling to be more reliable, added a safety check so the app refuses to start with a clear error instead of behaving unpredictably if its database ever falls out of sync, and updated 75 of the software packages we depend on to their latest safe versions.
@@ -1282,7 +1282,7 @@ Redesigned every page you actually use, not just the admin side. Support staff a
 
 ---
 
-## v2.0.5 - March 16, 2026 **(highlights)**
+## v2.0.5 - March 17, 2026 **(highlights)**
 **API Rate Limiting Complete & Enhanced Legal Documentation**
 
 Every documented part of the API now correctly enforces your daily usage limit, not just some of it. Fixed how deep scans and bulk scans were being counted toward that limit, added a way to delete things through the API that was missing before, and improved our accessibility documentation.
@@ -1399,7 +1399,7 @@ Tuned the scanner to report fewer false alarms. Added caching so re-checking a s
 
 ---
 
-## v2.0.0 - March 12, 2026
+## v2.0.0 - March 13, 2026
 **Stripe Billing, Discord Integration, Admin Notifications & Design System Overhaul**
 
 Our biggest release yet. Added paid subscription plans, the ability to link your Discord account, a proper notification system for admins, and a full visual redesign across the app.
@@ -1449,7 +1449,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ---
 
-## v1.9.5 - March 7, 2026
+## v1.9.5 - March 8, 2026
 **API v1 Versioning, Developer SDK Support & Finding Types Endpoint**
 
 ### Changes
@@ -1483,7 +1483,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ---
 
-## v1.9.4 - February 26, 2026
+## v1.9.4 - February 27, 2026
 **UI Consistency, Docker Build-Time Vars, Discord Giveaway & Encryption-First API Keys**
 
 ### Changes
@@ -1500,7 +1500,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ---
 
-## v1.9.3 - February 24, 2026
+## v1.9.3 - February 25, 2026
 **Admin Version Monitoring & Enhanced Admin Controls**
 
 ### Changes
@@ -1595,7 +1595,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ---
 
-## v1.7.4 - February 19, 2026
+## v1.7.4 - February 20, 2026
 **Docker Production Ready, Mobile UX Overhaul & Error Pages**
 
 ### Changes
@@ -1694,7 +1694,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ---
 
-## v1.6.8 - February 16, 2026
+## v1.6.8 - February 17, 2026
 **Metadata & Social Preview Fixes**
 
 ### Changes
@@ -1722,7 +1722,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ---
 
-## v1.6.6 - February 15, 2026
+## v1.6.6 - February 16, 2026
 **Subdomain Discovery Depth & Deep Scan Prefix**
 
 ### Changes
@@ -1733,7 +1733,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ---
 
-## v1.6.5 - February 15, 2026
+## v1.6.5 - February 16, 2026
 **Scan Depth & Performance Improvements**
 
 ### Changes
@@ -1746,7 +1746,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ---
 
-## v1.6.4 - February 14, 2026
+## v1.6.4 - February 16, 2026
 **Subdomain Discovery & Real-Time Progress**
 
 ### Changes
@@ -1759,7 +1759,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ---
 
-## v1.6.3 - February 14, 2026
+## v1.6.3 - February 16, 2026
 **Scanner Category Visualization**
 
 ### Changes
@@ -1770,7 +1770,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ---
 
-## v1.6.2 - February 13, 2026
+## v1.6.2 - February 15, 2026
 **Expanded Security Coverage**
 
 ### Changes
@@ -1781,7 +1781,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ---
 
-## v1.6.1 - February 12, 2026
+## v1.6.1 - February 15, 2026
 **Export & Sharing Enhancements**
 
 ### Changes
@@ -1792,7 +1792,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ---
 
-## v1.6.0 - February 11, 2026
+## v1.6.0 - February 15, 2026
 **Deep Crawl Scanning**
 
 ### Changes
@@ -1805,7 +1805,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ---
 
-## v1.5.0 - February 10, 2026
+## v1.5.0 - February 14, 2026
 **Scheduled Scanning & Bulk Operations**
 
 ### Changes
@@ -1818,7 +1818,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ---
 
-## v1.4.0 - February 10, 2026
+## v1.4.0 - February 14, 2026
 **Team Collaboration**
 
 ### Changes
@@ -1831,7 +1831,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ---
 
-## v1.3.0 - February 9, 2026
+## v1.3.0 - February 11, 2026
 **API Access & Webhooks**
 
 ### Changes
@@ -1844,7 +1844,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ---
 
-## v1.2.0 - February 9, 2026
+## v1.2.0 - February 10, 2026
 **Comparison & History**
 
 ### Changes
@@ -1857,7 +1857,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ---
 
-## v1.1.2 - February 9, 2026
+## v1.1.2 - February 10, 2026
 **Safety Rating Indicator**
 
 ### Changes
@@ -1868,7 +1868,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ---
 
-## v1.1.1 - February 9, 2026
+## v1.1.1 - February 10, 2026
 **Metadata & Branding Polish**
 
 ### Changes
@@ -1881,7 +1881,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ---
 
-## v1.1.0 - February 9, 2026
+## v1.1.0 - February 10, 2026
 **Contact System & UI Enhancements**
 
 ### Changes
@@ -1904,7 +1904,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ---
 
-## v1.0.0 - February 8, 2026
+## v1.0.0 - February 9, 2026
 **First Release**
 
 ### Changes
@@ -1943,5 +1943,5 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 - **Total releases:** 65
 - **Total changes documented:** 700
-- **Latest:** v3.8.0 (August 29, 2026) - Self-Hosting Works, Scans Tell the Truth, and Nothing Runs Free
-- **Earliest in file:** v1.0.0 (February 8, 2026) - First Release
+- **Latest:** v3.8.0 (September 3, 2026) - Self-Hosting Works, Scans Tell the Truth, and Nothing Runs Free
+- **Earliest in file:** v1.0.0 (February 9, 2026) - First Release
