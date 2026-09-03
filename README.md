@@ -109,8 +109,8 @@ the [Config Reference](https://vulnradar.dev/docs/config) for every value):
 | **Environment**     | `.env` (or `docker-compose.yml` env) | A variable named exactly like the registry key pins a value without a database write. Also where secrets live.                  |
 | **Shipped default** | `lib/config/config-values.ts`        | The `CONFIG_*` constant the repo ships with. Edit and rebuild.                                                                  |
 
-Of the 268 settings in `lib/config/registry.ts`, 239 are runtime tier and take
-effect as soon as they are saved. The remaining 29 are build tier (app name,
+Of the 287 settings in `lib/config/registry.ts`, 249 are runtime tier and take
+effect as soon as they are saved. The remaining 38 are build tier (app name,
 branding, SEO metadata) and are baked into statically generated pages, so those
 need a rebuild before the change is visible.
 
@@ -140,8 +140,8 @@ See [docs/architecture](https://vulnradar.dev/docs/architecture) for:
 
 ## Development
 
-Prerequisites: **Node 22 LTS** (the `engines` field requires Node `>=22`; odd
-releases such as 21 and 23 are unsupported by `vitest@4`, see `.nvmrc`) and
+Prerequisites: **Node 22 LTS** (the `engines` field is `>=22.0.0 <23.0.0`, so
+Node 20 and every release from 23 up fail the check outright; see `.nvmrc`) and
 PostgreSQL 14+.
 
 ```bash

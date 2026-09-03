@@ -4,8 +4,8 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 3.7.x   | :white_check_mark: |
-| < 3.7   | :x:                |
+| 3.8.x   | :white_check_mark: |
+| < 3.8   | :x:                |
 
 ## Reporting a Vulnerability
 
@@ -88,15 +88,23 @@ Every tagged release on GitHub is accompanied by:
   extension's own version, which is not the app version, so do not assume
   `vX.Y.Z` here
 - **`sha256sums.txt`** (lowercase, exactly): checksums for every release
-  artifact, i.e. the tarball, both extension zips, and the SBOM. The updater
+  artifact, i.e. the tarball, both extension zips, and both SBOMs. The updater
   looks this file up by exact name, so the case matters
-- **CycloneDX SBOM** (`vulnradar-vX.Y.Z.sbom.cdx.json`): full
-  software bill of materials
-- **Cosign signature bundle** (`vulnradar-vX.Y.Z.tar.gz.cert`):
-  keyless signature via Sigstore Fulcio + Rekor, in cosign's unified
-  bundle format (certificate, signature, and Rekor entry in one
-  file). The matching Docker image is signed with `cosign sign` in
-  the same release.
+- **CycloneDX SBOMs**: `vulnradar-vX.Y.Z.sbom.cdx.json` for the app image and
+  `vulnradar-extension-vE.E.E.sbom.cdx.json` for the browser extension. Neither
+  is individually signed; both are covered by their entry in `sha256sums.txt`
+- **Cosign signature bundles**, two of them, keyless via Sigstore Fulcio +
+  Rekor and in cosign's unified bundle format (certificate, signature, and
+  Rekor entry in one file):
+  - `vulnradar-vX.Y.Z.tar.gz.cert` over the source tarball
+  - `sha256sums.txt.cert` over the checksum file itself. This one is the
+    anchor for everything else: on its own, `sha256sums.txt` is an unsigned
+    manifest served from the same host as the artifacts it describes, so
+    anyone who could replace a release asset could replace it too. Verify
+    this bundle first, then every hash in the file means something,
+    including the extension zips and the SBOMs
+
+  The matching Docker image is signed with `cosign sign` in the same release.
 
 ### Release flow
 
@@ -119,23 +127,35 @@ You can publish the release either way:
 To verify a release:
 
 ```bash
-# Verify the tarball.
-# sha256sums.txt lists every release artifact (tarball, both extension zips,
-# SBOM), so --ignore-missing is required: without it sha256sum reports the
-# artifacts you did not download as failures and exits non-zero on a
-# perfectly good release, which is indistinguishable from a real tamper
-# signal. Drop the flag only if you downloaded the full asset set.
-curl -sL https://github.com/VulnRadar/vulnradar.dev/releases/download/vX.Y.Z/sha256sums.txt | \
-  sha256sum --ignore-missing -c -
+# 1. Verify sha256sums.txt itself, FIRST. Skipping this step leaves you
+# comparing artifacts against a manifest fetched from the same host that
+# served them, which proves nothing about tampering.
+curl -sLO https://github.com/VulnRadar/vulnradar.dev/releases/download/vX.Y.Z/sha256sums.txt
+curl -sLO https://github.com/VulnRadar/vulnradar.dev/releases/download/vX.Y.Z/sha256sums.txt.cert
+cosign verify-blob \
+  --bundle sha256sums.txt.cert \
+  --certificate-identity-regexp 'https://github.com/VulnRadar/vulnradar.dev' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  sha256sums.txt
 
-# Verify the cosign signature (keyless, tied to the GitHub Actions OIDC)
+# 2. Now the hashes can be trusted. sha256sums.txt lists every release
+# artifact (tarball, both extension zips, both SBOMs), so --ignore-missing is
+# required: without it sha256sum reports the artifacts you did not download
+# as failures and exits non-zero on a perfectly good release, which is
+# indistinguishable from a real tamper signal. Drop the flag only if you
+# downloaded the full asset set.
+sha256sum --ignore-missing -c sha256sums.txt
+
+# 3. Verify the source tarball's own signature (keyless, tied to the GitHub
+# Actions OIDC). Step 2 already covers the tarball via its hash, so this is
+# belt and braces rather than a second requirement.
 cosign verify-blob \
   --bundle vulnradar-vX.Y.Z.tar.gz.cert \
   --certificate-identity-regexp 'https://github.com/VulnRadar/vulnradar.dev' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
   vulnradar-vX.Y.Z.tar.gz
 
-# Verify the Docker image
+# 4. Verify the Docker image
 cosign verify \
   --certificate-identity-regexp 'https://github.com/VulnRadar/vulnradar.dev/.github/workflows/docker-publish.yml' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \

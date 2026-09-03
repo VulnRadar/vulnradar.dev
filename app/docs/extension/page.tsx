@@ -25,6 +25,7 @@ const tocItems: TocItem[] = [
   { id: "overview", label: "Overview" },
   { id: "install", label: "Install" },
   { id: "scanning", label: "Scanning from the popup" },
+  { id: "reading-a-result", label: "Reading a result in the popup" },
   { id: "scan-a-link", label: "Scanning a link you haven't opened" },
   { id: "reputation-card", label: "The on-page card" },
   { id: "auto-scan", label: "Auto-scan modes" },
@@ -153,9 +154,14 @@ export default function ExtensionPage() {
           </p>
         </DocsCallout>
 
+        {/* The profile page keys its tabs off query params, not a hash, so
+            /profile#api-keys just opened the default tab. */}
         <p className="text-sm text-muted-foreground">
           Need an API key first? Generate one from{" "}
-          <InlineCode>{ROUTES.PROFILE}#api-keys</InlineCode> while logged in.
+          <InlineCode>
+            {ROUTES.PROFILE}?tab=developer&amp;dtab=api-keys
+          </InlineCode>{" "}
+          while logged in.
         </p>
       </DocsSection>
 
@@ -174,6 +180,33 @@ export default function ExtensionPage() {
           any other scan on your account and shows up in your regular scan
           history: there's no separate extension-only history to lose track of.
         </p>
+      </DocsSection>
+
+      <DocsSection id="reading-a-result" title="Reading a result in the popup">
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          The popup is not a summary you then go elsewhere to act on. Three
+          things happen without leaving it:
+        </p>
+        <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
+          <li>
+            <strong className="text-foreground">Expand any finding</strong> for
+            where it was found, why it matters, the numbered fix steps, and the
+            reference links. The API already returned all of that; the popup
+            used to render only the title and description and drop the rest.
+          </li>
+          <li>
+            <strong className="text-foreground">Export a saved scan</strong> as
+            PDF, SARIF, Markdown, or JSON. It calls the same{" "}
+            <InlineCode>GET /api/v3/history/[id]/report</InlineCode> the
+            dashboard and CI use, so the file is byte-identical rather than a
+            second formatter that can drift.
+          </li>
+          <li>
+            <strong className="text-foreground">Per-site history</strong>, where
+            each row shows the delta against the next-older scan of the same URL
+            (fewer or more findings) and carries an inline rescan button.
+          </li>
+        </ul>
       </DocsSection>
 
       <DocsSection id="scan-a-link" title="Scanning a link you haven't opened">
@@ -322,10 +355,13 @@ export default function ExtensionPage() {
       <DocsSection id="settings" title="Settings">
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
           Open the full settings page from the popup's gear icon. Everything
-          above (check families, service probes, auto-scan mode and throttle,
-          notification threshold, card position, mute lists, and theme) lives
-          there and is stored locally in the browser, not on your account, so
-          it's per-install rather than per-user.
+          above (check families, the port and service sweep, auto-scan mode and
+          throttle, notification threshold, card position, mute lists, and
+          theme) lives there and is stored locally in the browser, not on your
+          account, so it's per-install rather than per-user. The sweep is one
+          toggle now, not a per-service list: the old per-service panel
+          serialised a <InlineCode>probes</InlineCode> array the API had already
+          stopped reading, so configuring it did nothing.
         </p>
       </DocsSection>
 

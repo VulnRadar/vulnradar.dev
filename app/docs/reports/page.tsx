@@ -1,5 +1,9 @@
 import Link from "next/link";
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
+import {
+  FRAMEWORKS,
+  type FrameworkKey,
+} from "@/lib/reports/compliance-mappings";
 import type { TocItem } from "@/components/docs/docs-types";
 import { DocsTocSpy } from "../docs-toc-spy";
 import {
@@ -24,10 +28,10 @@ const reportEndpoint: Endpoint = {
   pathParams: [
     {
       name: "id",
-      type: "number",
+      type: "string",
       required: true,
       description:
-        "Scan (scan_history) id, the same id used by GET /history/{id}",
+        "The opaque scan id GET /history returns, the same id GET /history/{id} takes. The legacy integer id still resolves.",
     },
   ],
   queryParams: [
@@ -69,7 +73,8 @@ const reportEndpoint: Endpoint = {
     'Content-Type and download name track the format: application/sarif+json (.sarif), application/pdf (.pdf), text/markdown (.md, and -compliance.md for the crosswalk), application/json (.json). Every response sets Content-Disposition: attachment; filename="vulnradar-<host>.<ext>", where <host> is the scanned URL\'s hostname.',
     "Same auth and visibility as GET /history/{id}: a Bearer key with the scan:read scope, or a session cookie; the scan's owner or a team member with read access.",
     "The owner's report carries cross-rescan remediation status on each finding; a team-read viewer gets the stored findings as-is, because remediation state is private to the owner.",
-    "A Bearer request counts against that key's daily rate limit and is recorded as usage; a session request does not.",
+    "Both auth paths are throttled, just by different limiters. A Bearer request spends one of that key's daily requests and is recorded as usage. A session request spends from a per-user report-export bucket on the general API budget, because every format is built synchronously over the whole findings array and a signed-in user looping their largest export could otherwise stall the single Node process for everyone.",
+    "format=pdf can be switched off per deployment (FEATURE_PDF_REPORTS). When it is off the route answers 403 before it looks the scan up; the other four formats are unaffected.",
   ],
   errors: [
     { code: 400, description: "Unsupported format value" },
@@ -81,11 +86,40 @@ const reportEndpoint: Endpoint = {
     {
       code: 403,
       description:
-        "Bearer key is missing the scan:read scope, or Terms of Service are unaccepted",
+        "Bearer key is missing the scan:read scope, Terms of Service are unaccepted, or format=pdf on a deployment with PDF reports disabled",
     },
     { code: 404, description: "Scan not found, or not visible to this caller" },
-    { code: 429, description: "API key daily rate limit exceeded" },
+    {
+      code: 429,
+      description:
+        "API key daily limit reached, or too many session-authenticated exports (Retry-After says how long)",
+    },
   ],
+};
+
+/**
+ * Per-framework prose for the crosswalk table. Keyed by FrameworkKey so
+ * adding a framework to FRAMEWORKS is a type error here until this page
+ * describes it, rather than a row that silently goes missing.
+ */
+const FRAMEWORK_REFS: Record<FrameworkKey, string> = {
+  pci: "Requirement numbers (e.g. 6.2.4, 4.2.1)",
+  soc2: "2017 Common Criteria, CC series (e.g. CC6.1)",
+  iso27001: "Annex A controls (e.g. A.8.28)",
+  asvs: "Verification chapters V1 to V14 (e.g. V5)",
+  hipaa: "45 CFR Part 164 safeguards (e.g. 164.312(e)(1))",
+  gdpr: "Security-of-processing articles (e.g. 32(1)(a))",
+};
+
+const FRAMEWORK_MEANINGS: Record<FrameworkKey, string> = {
+  pci: "The requirements a finding is relevant to, not an assessed pass or fail.",
+  soc2: "The Common Criteria a Type II audit would gather evidence against.",
+  iso27001:
+    "The finding is in scope for that control, not that the control is implemented or broken.",
+  asvs: "The verification requirements that cover this class of finding.",
+  hipaa:
+    "The technical or administrative safeguard a finding touches. An external scan cannot judge policies, BAAs, or physical safeguards.",
+  gdpr: "The security obligation a finding touches, not lawful basis or data-subject rights.",
 };
 
 const tocItems: TocItem[] = [
@@ -109,7 +143,10 @@ export default function ReportsDocsPage() {
         description={`Every completed scan can be pulled back out as SARIF, PDF, Markdown, raw JSON, or a compliance crosswalk. One endpoint, one query param, the same auth as the scan itself. Point it at CI to gate a build, hand a PDF to a stakeholder, or generate an auditor-facing control summary from the same findings.`}
         stats={[
           { value: "5", label: "Export formats" },
-          { value: "6", label: "Compliance frameworks" },
+          {
+            value: String(FRAMEWORKS.length),
+            label: "Compliance frameworks",
+          },
           { value: "scan:read", label: "API key scope" },
         ]}
       />
@@ -241,12 +278,15 @@ export default function ReportsDocsPage() {
             layer.
           </li>
           <li>
-            <strong className="text-foreground">
-              Bearer usage is metered:
-            </strong>{" "}
+            <strong className="text-foreground">Both paths are metered:</strong>{" "}
             a key request counts against that key&apos;s daily rate limit and is
-            recorded as usage; a <InlineCode>429</InlineCode> means the key is
-            out of quota for the day. Session requests are not metered this way.
+            recorded as usage, so a <InlineCode>429</InlineCode> there means the
+            key is out of quota for the day. A session request is not free
+            either: it draws on a separate per-user report-export bucket and
+            gets its own <InlineCode>429</InlineCode> with a{" "}
+            <InlineCode>Retry-After</InlineCode> when you exhaust it. Every
+            format is generated synchronously over the whole findings array, so
+            an unmetered session path was a way to pin the process.
           </li>
         </ul>
       </DocsSection>
@@ -370,6 +410,11 @@ curl -sS -X POST "$DD_URL/api/v2/import-scan/" \\
         </p>
 
         <DocsSubSection title="Frameworks covered">
+          {/* Names and count come from FRAMEWORKS, the same array the report
+              generator loops over to build its sections, so this table cannot
+              list a framework the report does not emit (or miss one it does).
+              The example references stay hand-written: they are illustrative,
+              not the full control catalog. */}
           <DocsTable
             caption="Compliance frameworks in the crosswalk and what a mapping to each means"
             columns={[
@@ -381,44 +426,11 @@ curl -sS -X POST "$DD_URL/api/v2/import-scan/" \\
                 className: "w-full",
               },
             ]}
-            data={[
-              {
-                framework: "PCI DSS 4.0",
-                refs: "Requirement numbers (e.g. 6.2.4, 4.2.1)",
-                meaning:
-                  "The requirements a finding is relevant to, not an assessed pass or fail.",
-              },
-              {
-                framework: "SOC 2 (Trust Services Criteria)",
-                refs: "2017 Common Criteria, CC series (e.g. CC6.1)",
-                meaning:
-                  "The Common Criteria a Type II audit would gather evidence against.",
-              },
-              {
-                framework: "ISO/IEC 27001:2022",
-                refs: "Annex A controls (e.g. A.8.28)",
-                meaning:
-                  "The finding is in scope for that control, not that the control is implemented or broken.",
-              },
-              {
-                framework: "OWASP ASVS 4.0",
-                refs: "Verification chapters V1 to V14 (e.g. V5)",
-                meaning:
-                  "The verification requirements that cover this class of finding.",
-              },
-              {
-                framework: "HIPAA Security Rule",
-                refs: "45 CFR Part 164 safeguards (e.g. 164.312(e)(1))",
-                meaning:
-                  "The technical or administrative safeguard a finding touches. An external scan cannot judge policies, BAAs, or physical safeguards.",
-              },
-              {
-                framework: "GDPR (Art. 32)",
-                refs: "Security-of-processing articles (e.g. 32(1)(a))",
-                meaning:
-                  "The security obligation a finding touches, not lawful basis or data-subject rights.",
-              },
-            ]}
+            data={FRAMEWORKS.map((framework) => ({
+              framework: framework.name,
+              refs: FRAMEWORK_REFS[framework.key],
+              meaning: FRAMEWORK_MEANINGS[framework.key],
+            }))}
           />
         </DocsSubSection>
 

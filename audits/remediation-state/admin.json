@@ -11,9 +11,7 @@
     "effort": "large",
     "category": "admin restructure",
     "file": "app/admin/page.tsx",
-    "files": [
-      "app/admin/page.tsx"
-    ],
+    "files": ["app/admin/page.tsx"],
     "line": 689,
     "description": "The whole admin surface is one client component. `VALID_TABS` (app/admin/page.tsx:112-133) declares 20 destinations, `ActiveTab` (:152-172) repeats the same 20 as a union, and `NAV_GROUPS_RAW` (:689-835) sorts them into 6 groups: User Management (users, teams, admins), Security (access-rules, blocked-data, security-alerts, audit), Communications (broadcast, notifications, ai-chats, support-tickets), Content (content), Billing (billing-overview), System (settings, updater, backup, queue-status, error-logs, email-logs, engine-feedback). Every group name is a data-model noun, not a job. The System group alone holds 7 unrelated destinations that share nothing except not fitting elsewhere: an update installer, a backup runner, a scanner-queue gauge, two log viewers, a settings editor and a detection-tuning tool. Content is a group of one. Billing is a group of one. The panel body is 20 sibling `{activeTab === X && <Manager/>}` lines (:1182-1674) with no route split, and AUDIT-012#fe-11 already measured the cost: 22 eagerly imported managers in one 1,333 KB route. The growth is visible in the leftovers: a 31-entry toast-label map inlined at :530-562, a stale 5-tab table still exported from components/admin/config.ts:7-17 (AUDIT-013#dead-01), and an empty app/api/v3/admin/bulk directory (AUDIT-011#bulk-06).\n\nMeasured click cost of the three most common operator tasks today.\n\nA) Resolve a support ticket that needs the requester's account state. 1 click Support in the nav, 2 click the ticket, 3 select and copy the requester email (support-inbox.tsx:253 renders `owner_email` as plain text, no link), 4 click Users in the nav (handleTabChange at :869-876 calls setSelectedUser(null) and rewrites the URL, so the open ticket is gone), 5 click the search box and paste, wait the 300 ms debounce at :599, 6 click the user row, 7 click Support again, 8 click the ticket again to re-read it. Seven clicks plus a copy-paste, and the ticket view is rebuilt from scratch twice.\n\nB) The morning check, is anything wrong right now. The panel lands on `activeTab = \"users\"` (:203). Scanner Queue is 1 click, Error Logs 2, Security Alerts 3, Backups 4, Email Logs 5, Support 6. Six clicks, six panels that each refetch on mount with their own poll interval, and the operator does the staleness arithmetic on the backup date themselves. Only one of the 20 nav items carries any status indicator at all (the updater dot, :1087-1092).\n\nC) Apply a support fix to one user, for example reset a daily scan limit. Type in the search box, 1 click the row, then scroll past Overview, Account Management, Staff Role and Badges and Admin Notes to reach Support Actions (user-detail-panel.tsx:1872), 2 click the right card out of 21 laid out in a `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3` (:1894), 3 confirm. Three clicks, but the cost is scanning 21 near-identical cards, not the clicks.",
     "impact": "An operator cannot form a mental model of the panel from its navigation, because the navigation describes the database rather than the work. Cross-referencing is the normal case in support and the panel makes it the expensive case: task A costs seven clicks and destroys the operator's place twice. Task B, the one that protects the service, costs six clicks and is therefore skipped, which is how the failures AUDIT-012#obs-02 and AUDIT-012#obs-03 found stay invisible. New destinations get appended to whichever group is least wrong, so the drift compounds.",
@@ -37,9 +35,7 @@
     "effort": "medium",
     "category": "admin health view",
     "file": "app/admin/page.tsx",
-    "files": [
-      "app/admin/page.tsx"
-    ],
+    "files": ["app/admin/page.tsx"],
     "line": 1108,
     "description": "The panel opens on the users tab (app/admin/page.tsx:203) and the only thing above the user table is two StatBar rows of five counters each (:1108-1179): Total Users, Total Scans, Scans 24h, 2FA Enabled, Disabled, New Users 7d, Active API Keys, Active Webhooks, Schedules, Shared Scans. Every one is a plain COUNT from the stats query at app/api/v3/admin/route.ts:329-338. Not one can indicate a fault, and the code comment at app/admin/page.tsx:1103-1107 concedes they are not even clickable because the admin API takes only page, limit and search.\n\nThe signals that could go red exist but are each one nav click away and none is summarised anywhere. Scanner backlog: components/admin/features/queue-status-manager.tsx:72 computes `backedUp` and renders a destructive badge at :108-116, but only while that tab is mounted. Backup freshness: backup-manager.tsx:199-201 prints the newest file's mtime as plain text with no expected-interval comparison, so a backup that stopped running three weeks ago looks identical to one that ran this morning apart from a date the operator has to reason about. Security alerts, error logs, email delivery failures and support tickets are the same shape. Of the 20 nav items rendered at :1059-1094 exactly one carries a status indicator: the updater dot at :1087-1092.\n\nThis matters because AUDIT-012 found two failures that are silent by construction: #obs-02, a scheduled database backup that fails on every run still reports success to the failure escalator and writes no log line; #obs-03, worker failure escalation only sees pass-level throws, so a worker where every item failed resets its streak to zero and never alerts. Both are precisely the class of fault a health view exists to catch, and neither has any surface in the panel today.",
     "impact": "Nobody finds out the service is degraded from the admin panel. Backups can be dead for weeks (obs-02) and the Backups tab will show a stale date that reads as normal. A worker where every item errors (obs-03) shows no signal at all. The scanner queue can be backed up and the operator only learns when a user complains. On a service with about 50 real users and no on-call rotation, the admin panel is the whole monitoring story, and its front page is a vanity dashboard.",
@@ -63,9 +59,7 @@
     "effort": "medium",
     "category": "unreachable flow",
     "file": "app/api/v3/admin/staff-invites/route.ts",
-    "files": [
-      "app/api/v3/admin/staff-invites/route.ts"
-    ],
+    "files": ["app/api/v3/admin/staff-invites/route.ts"],
     "line": 134,
     "description": "POST /api/v3/admin/staff-invites builds `const inviteLink = `${APP_URL}/staff-invite/${token}`` (app/api/v3/admin/staff-invites/route.ts:134) and emails it via staffInviteEmail (lib/email/email.ts:611). There is no `app/staff-invite/` directory: `ls app/` lists no such route, and the only matching paths in the tree are the two API routes (app/api/v3/admin/staff-invites/ and app/api/v3/auth/staff-invite/). The API half is fully built -- app/api/v3/auth/staff-invite/[token]/route.ts has a GET that validates a token without consuming it and a POST that accepts it, including a `createdAccount` branch (lines 152-204) that creates a brand-new password account straight from the invite -- but nothing in components/ or app/ ever calls either verb (grep for `staff-invite` across .tsx returns only admin-side strings in components/admin/staff/staff-list.tsx). Worse, the two API routes are not in lib/config/public-paths.ts, so middleware.ts:330-338 307s an unauthenticated recipient -- exactly the audience the `createdAccount` branch exists for -- to /login before the route runs. A logged-in recipient following the emailed link lands on app/not-found.tsx.",
     "impact": "The whole staff-invite feature is non-functional end to end. An admin fills in the modal in components/admin/staff/staff-list.tsx, the invite row is written, the email goes out, and the recipient gets a 404 (or a login redirect they cannot satisfy because they have no account). The invite then expires unused. The feature reads as working from the admin panel -- the invite appears in the pending list -- so the failure is silent on the admin side, and onboarding a new staff member still requires the manual self-register-then-promote dance this feature was built to replace.",
@@ -89,9 +83,7 @@
     "effort": "medium",
     "category": "N+1 with sequential I/O",
     "file": "app/api/v3/admin/features/route.ts",
-    "files": [
-      "app/api/v3/admin/features/route.ts"
-    ],
+    "files": ["app/api/v3/admin/features/route.ts"],
     "line": 552,
     "description": "`const usersResult = await pool.query(userQuery, queryParams)` at app/api/v3/admin/features/route.ts:552 executes a query built from `SELECT u.id, u.email FROM users u WHERE u.email_verified_at IS NOT NULL` plus optional plan/preference filters -- no LIMIT, no batching, the whole verified user base materialized into Node memory. The loop at line 553 then runs, per recipient and strictly in order: a `SELECT 1 FROM broadcast_recipients WHERE message_id = $1 AND user_id = $2 AND status = 'sent' LIMIT 1` (line 558), an `await sendEmail(...)` (line 563), and an `INSERT INTO broadcast_recipients` (line 571). `broadcast_recipients` has only the separate single-column indexes `idx_broadcast_recipients_message` and `idx_broadcast_recipients_user` (instrumentation.ts:1160-1161), no `(message_id, user_id)` composite, so the dedupe check at 558 rescans one of those lists per iteration. The identical code is duplicated for the `resend` action at lines 714-743.",
     "impact": "Sending one broadcast to N users costs 1 + 2N database round trips and N sequential SMTP handshakes on a single pooled connection, inside one HTTP request. At today's ~50 users that is ~100 queries and a minute of blocking; the shape does not scale, and the request will time out long before the send finishes at any real size, leaving the broadcast half-delivered.",
@@ -115,9 +107,7 @@
     "effort": "small",
     "category": "admin / quotas",
     "file": "app/api/v3/admin/route.ts",
-    "files": [
-      "app/api/v3/admin/route.ts"
-    ],
+    "files": ["app/api/v3/admin/route.ts"],
     "line": 1523,
     "description": "app/api/v3/admin/route.ts:1523-1542 writes users.daily_scan_limit (instrumentation.ts:304) with a value from 0 to 10000 and audit-logs 'Set daily scan limit to N'. getDailyLimit() at lib/rate-limiting/daily-limits.ts:112-147 resolves the cap purely from getUserPlan() to a BILLING_* setting and never reads the column. Its only readers are the AI chat context (app/api/v3/ai/chat/route.ts:156, ai/context/route.ts:261, lib/ai/system-prompt.ts:94) and the GDPR export (data-request/route.ts:129). The action itself has no UI dispatch either; it appears in components/admin/config.ts only as an audit-log label.",
     "impact": "An admin action reports success, writes an audit row asserting the change, and enforces nothing. Worse, the AI assistant reads that column and confidently quotes a daily limit to the user that the system does not apply.",
@@ -141,9 +131,7 @@
     "effort": "small",
     "category": "threshold bypassing config",
     "file": "app/api/v3/admin/route.ts",
-    "files": [
-      "app/api/v3/admin/route.ts"
-    ],
+    "files": ["app/api/v3/admin/route.ts"],
     "line": 734,
     "description": "Every user-facing password path resolves the live setting and then runs the strength analyzer: app/api/v3/auth/signup/route.ts:68-:72 and :88-:89, app/api/v3/auth/reset-password/route.ts:36-:41 and :46-:47, app/api/v3/auth/update/route.ts:316 and :301-:302, app/api/v3/auth/staff-invite/[token]/route.ts:156 and :170-:171. All four call getSetting('PASSWORD_MIN_LENGTH') (default CONFIG_PASSWORD_MIN_LENGTH = 12, lib/config/config-values.ts:314, admin-editable at lib/config/registry.ts:2130) and reject analyzePassword(pw).score < 3. The admin case 'update_password' at app/api/v3/admin/route.ts:732-:753 does neither: it validates only `typeof newPassword !== 'string' || newPassword.length < 8`, hashes, writes, and revokes sessions. There is no getSetting call and no analyzePassword call anywhere in that branch.",
     "impact": "On a deployment where the operator raised PASSWORD_MIN_LENGTH to meet a policy, an admin resetting a user's password can still set an 8-character password, and 'Password123' passes because the analyzer never runs. The account then holds a credential the deployment's own configured policy forbids, and the audit log records it as a normal update_password action.",
@@ -167,9 +155,7 @@
     "effort": "small",
     "category": "missing permission gate",
     "file": "app/api/v3/admin/route.ts",
-    "files": [
-      "app/api/v3/admin/route.ts"
-    ],
+    "files": ["app/api/v3/admin/route.ts"],
     "line": 130,
     "description": "app/api/v3/admin/route.ts's GET gates only on requireStaff() at :81, which passes for any role at or above STAFF_ROLE_HIERARCHY.support = 10 (lib/config/client-constants.ts:39-49; ops/billing/security_analyst/content_manager are all 20). Two of its five sections then check nothing further: `section === \"user-detail\"` at :130 and the default stats+user-list branch at :325. The audit and active-admins sections DO gate, on hasStaffPermission(session.role, VIEW_AUDIT_LOG) at :249 and :294, which is the pattern the others are missing. user-detail returns, for any userId: email, role, plan, stripe_customer_id, subscription_status, google/github/discord identity columns, every active session row with ip_address and user_agent (:180-183), every api_keys row with prefix/limits (:168-171), webhooks, scheduled scans and internal admin notes. The ops role's grant list (lib/auth/permissions-client.ts:181-191) contains neither VIEW_USERS nor VIEW_USER_SESSIONS; billing (:145) and content_manager (:170) hold VIEW_USERS but not VIEW_USER_SESSIONS, yet all of them receive the session IP list. AUDIT-011#drift-18 flagged the matching UI cards in user-detail-panel.tsx; this is the API behind them, which a direct request reaches regardless of what the UI renders.",
     "impact": "Any of the four narrow specialist staff roles - which exist precisely so an ops or content person can reach one admin tab without user data - can read every user's email, billing identifiers, linked social accounts and last-known IP addresses by calling one URL. On a ~50-user production instance that is the entire user base's PII available to a role the operator deliberately scoped away from it.",
@@ -193,9 +179,7 @@
     "effort": "medium",
     "category": "unreachable auth flow",
     "file": "app/api/v3/admin/staff-invites/route.ts",
-    "files": [
-      "app/api/v3/admin/staff-invites/route.ts"
-    ],
+    "files": ["app/api/v3/admin/staff-invites/route.ts"],
     "line": 134,
     "description": "app/api/v3/admin/staff-invites/route.ts:134 builds `const inviteLink = `${APP_URL}/staff-invite/${token}`` and emails it (staffInviteEmail at :135). There is no app/staff-invite directory anywhere under app/ - the only matches for \"staff-invite\" are the two API route directories - so that URL 404s. The backing API pair app/api/v3/auth/staff-invite/[token]/route.ts exists and is fully implemented (GET validates a token without consuming it, POST accepts it and promotes or creates the account in one transaction), and its header at :22-30 calls itself \"Public accept endpoints for a staff invite\" - yet it is also absent from PUBLIC_PATHS, so even a hand-built page would be 307'd to /login for the invitee who has no account yet, which is the whole point of an invite. The admin-side UI is shipped and working: components/admin/staff/staff-list.tsx:117-127 lists pending invites and the modal creates them.",
     "impact": "Every staff invite an admin sends produces an email whose only call to action is a 404. There is no fallback path: the accept endpoints have no other caller. Adding staff therefore still requires an admin to edit the target account's role by hand in the admin panel, and the invite table accumulates rows nobody can act on.",
@@ -219,9 +203,7 @@
     "effort": "medium",
     "category": "unbounded COUNT on every page load",
     "file": "app/api/v3/admin/route.ts",
-    "files": [
-      "app/api/v3/admin/route.ts"
-    ],
+    "files": ["app/api/v3/admin/route.ts"],
     "line": 269,
     "description": "`COUNT(*)` in Postgres always scans the full matching set; a LIMIT on the sibling query does not bound it. Confirmed instances, all on growing tables: app/api/v3/admin/route.ts:269-271 counts all of `admin_audit_log`, awaited AFTER the paged select at :257-268 rather than alongside it, and that paged select uses `LIMIT $1 OFFSET $2` (line 266) so deep pages re-scan and discard every preceding row; :329-338 runs ten scalar sub-selects on the default admin dashboard including two full `scan_history` counts and a full `users` count; :344/:359 add a correlated `(SELECT COUNT(*) FROM scan_history sh WHERE sh.user_id = u.id)` per listed user; :371-375 counts `users` behind a leading-wildcard ILIKE; :300-321 runs three `admin_audit_log` counts per staff row in the polled active-admins section. Same sequential COUNT-then-page shape in app/api/v3/admin/error-logs/route.ts:66 (over an unindexable `message ILIKE '%..%'`), app/api/v3/admin/email-logs/route.ts:81, app/api/v3/admin/content/route.ts:56 and :76, app/api/v3/admin/support-tickets/route.ts:61 (a `GROUP BY status` with no WHERE at all), and app/api/v3/public-scans/route.ts:77 (perf-04).",
     "impact": "Opening the admin panel triggers several full-table counts, and the audit-log and email-log searches scan their whole table twice per keystroke-driven page load. The public-scans one is unauthenticated. As the instance ages every one of these gets linearly slower with no upper bound.",
@@ -273,9 +255,7 @@
     "effort": "small",
     "category": "focus handling",
     "file": "components/admin/teams/teams-list.tsx",
-    "files": [
-      "components/admin/teams/teams-list.tsx"
-    ],
+    "files": ["components/admin/teams/teams-list.tsx"],
     "line": 483,
     "description": "These row-action controls use `opacity-0 group-hover:opacity-100` with no focus variant: components/admin/teams/teams-list.tsx:483, :496, :514; components/admin/features/ip-rules-manager.tsx:804, :819; components/admin/users/user-detail-panel.tsx:1834; components/admin/audit/audit-log.tsx:462. `opacity-0` does not remove an element from the tab order, so the buttons stay focusable while remaining invisible, and the global focus ring at app/globals.css:370 is painted on a fully transparent element. Twenty-seven other hover-reveal sites in the same admin panel already pair the hover trigger with `group-focus-within:opacity-100` or `focus-visible:opacity-100` (for example components/admin/features/security-alerts-manager.tsx:367, components/admin/notifications/notifications-manager.tsx:625, app/admin/page.tsx:1463), so the fix pattern is established and these seven were just missed.",
     "impact": "A staff member tabbing through a team or IP-rule list hits stops where nothing is visible, including a delete action at teams-list.tsx:514, with no indication of what is focused or what Enter would do. WCAG 2.1 SC 2.4.7. Admin-only, so low.",
@@ -299,9 +279,7 @@
     "effort": "small",
     "category": "spacing scale / containers",
     "file": "app/admin/page.tsx",
-    "files": [
-      "app/admin/page.tsx"
-    ],
+    "files": ["app/admin/page.tsx"],
     "line": 1017,
     "description": "design-language.md C2 records `max-w-6xl mx-auto px-4 sm:px-6` as the default (33 uses) and max-w-7xl as footer-only. The signed-in pages disagree eight ways. app/history/page.tsx:443, app/assets/page.tsx, app/repos/page.tsx, app/teams/page.tsx and app/shares/page.tsx use `max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8`, which is the largest cluster. app/attack-surface/page.tsx:27 uses the same width with `px-4 py-8 sm:px-6` (no sm py step). app/dashboard/page.tsx:61 declares its own `const CONTAINER = \"w-full max-w-6xl mx-auto px-4 sm:px-6\"` and applies it with `pb-16` and no top padding at :882, and components/dashboard/dashboard-skeleton.tsx:6 declares the identical const a second time. app/profile/page.tsx uses `max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10`, the only page in the repo with an lg:px step. app/admin/page.tsx uses `max-w-7xl mx-auto px-4 sm:px-6 py-8`. app/badge/page.tsx:? uses `max-w-5xl ... py-8 sm:py-10`. app/admin/ai-chats/[id]/page.tsx:107 uses `max-w-4xl ... py-8`. app/pricing/page.tsx:77 uses `max-w-3xl ... py-20 sm:py-28`, which is not on the documented rhythm at all (the spec has py-16 sm:py-20 standard and py-16 sm:py-24 for at most two prominent sections). The checkout pages add a ninth, covered in dsn-05.",
     "impact": "Page content starts and ends at a different horizontal position on nearly every page, so the app never settles. /admin at max-w-7xl is 128px wider than its siblings, which is why AUDIT-011#docs-04 found the same class of drift in the docs shell. The duplicated CONTAINER const means the dashboard skeleton and the dashboard can drift apart silently.",
@@ -325,9 +303,7 @@
     "effort": "medium",
     "category": "confirmation and undo",
     "file": "components/admin/shared/confirm-dialog.tsx",
-    "files": [
-      "components/admin/shared/confirm-dialog.tsx"
-    ],
+    "files": ["components/admin/shared/confirm-dialog.tsx"],
     "line": 34,
     "description": "Eleven separate confirmation mechanisms are in use. Five are shared components: the Radix primitive components/ui/alert-dialog.tsx, rebuilt ad hoc with its own header, footer and state machine in eight places (app/shares/page.tsx:203, app/teams/page.tsx:648, app/history/page.tsx:640, components/scanner/scan-actions-menu.tsx:809, components/profile/tabs/developer/domains-section.tsx:479, components/profile/tabs/profile-developer-tab.tsx:807, components/profile/tabs/profile-social-tab.tsx:260 and :826); components/admin/shared/confirm-dialog.tsx, a complete documented generic used only inside components/admin; components/admin/shared/admin-password-confirm-dialog.tsx; components/shared/save-confirmation-modal.tsx; and a plain components/ui/dialog.tsx pressed into service as a confirmation at components/profile/tabs/profile-security-tab.tsx:1695. Six are bespoke one-offs: a hand-rolled overlay at components/profile/tabs/profile-billing-tab.tsx:1532, the inline danger-zone panel at components/profile/tabs/profile-privacy-tab.tsx:480, three inline expand-in-place password panels at components/profile/tabs/profile-security-tab.tsx:814, :911 and :1308, a nested inline confirm at components/admin/users/user-detail-panel.tsx:1576, a two-click \"click again\" pattern at components/admin/users/gift-subscription-modal.tsx:191, and raw window.confirm at extension/src/options/options.ts:199 and :1101, the only two in the codebase. Recorded here so the next audit does not re-derive it: the two most dangerous user-facing actions are correctly gated hardest, account deletion requiring both a typed DELETE and the current password (components/profile/tabs/profile-privacy-tab.tsx:502-537) and clear-history naming the exact scan count in its copy (app/history/page.tsx:659-664). Merged from qols-05, which additionally documents that the admin panel alone chooses between three different confirmation dialog components depending on the action.",
     "impact": "Eight copies of one dialog is eight places to fix when the copy, busy behaviour or focus handling changes, and it is why some handle failure and others cannot: app/history/page.tsx:667-669 renders clearError inside the dialog, while components/scanner/scan-actions-menu.tsx:809 has nowhere to put an error, which is part of why qolf-04 exists. The extension's window.confirm renders unstyled OS chrome inside an otherwise themed options page.",
@@ -351,9 +327,7 @@
     "effort": "medium",
     "category": "mobile density",
     "file": "components/admin/features/billing-overview-manager.tsx",
-    "files": [
-      "components/admin/features/billing-overview-manager.tsx"
-    ],
+    "files": ["components/admin/features/billing-overview-manager.tsx"],
     "line": 238,
     "description": "The house pattern is a hand-written mobile card list plus a desktop table, as in components/landing/landing-categories.tsx:42 and :81. Six admin surfaces follow it with a md:hidden card list: components/admin/teams/teams-list.tsx:327, components/admin/staff/staff-list.tsx:953, components/admin/audit/audit-log.tsx:350, components/admin/features/ip-rules-manager.tsx:704, components/admin/features/ai-chats-manager.tsx:281, and app/admin/page.tsx:1299 with its mobile list at :1497. Nine do not and rely on the overflow-auto in components/admin/shared/data-table.tsx:124-134 and components/ui/table.tsx:9 with no min-w, so columns compress rather than scrolling: components/admin/features/engine-feedback-manager.tsx:373 (nine columns), :557 and :680; components/admin/features/content-manager.tsx:333 and :422; components/admin/features/blocked-data-manager.tsx:562 and :834; and components/admin/features/billing-overview-manager.tsx:238 (six columns) and :305, which use a bare Table with no scroll area at all.",
     "impact": "At 390px the nine-column engine-feedback table gives each column about 40px, so its text-[11px] uppercase tracking-wider headers wrap letter by letter and the rows are unreadable. Admin is staff-only so the user count is tiny, but on-call moderation from a phone is exactly when it gets used.",
@@ -377,9 +351,7 @@
     "effort": "small",
     "category": "admin restructure",
     "file": "components/admin/config.ts",
-    "files": [
-      "components/admin/config.ts"
-    ],
+    "files": ["components/admin/config.ts"],
     "line": 7,
     "description": "Extends AUDIT-013#dead-01 with the exact current counts, because the restructure in qols-01 has to fix this to avoid recreating it. ADMIN_TABS (components/admin/config.ts:7-17) lists users, teams, notifications, admins, audit. The live panel has 20, declared three times over in app/admin/page.tsx: VALID_TABS at :112-133, the ActiveTab union at :152-172, and NAV_GROUPS_RAW at :689-835. ACTION_LABELS (config.ts:262-288) holds 25 toast strings; the map the panel actually reads is inlined in handleAction at app/admin/page.tsx:530-562 and holds 31, the six extras being notify_account_changes, toggle_ai_ban, verify_email, unverify_email, send_notification and send_email. ACTION_META (config.ts:27-259) is a third list, 37 entries, and it is the only one of the three that is genuinely live: audit-log.tsx reads it for badge rendering.",
     "impact": "The tab list has four declaration sites that must be edited together, and the toast-label map has two, so adding a destination or an action silently half-lands. That is the mechanism that produced the current 20-tab sprawl, and without fixing it the restructure will drift back the same way.",
@@ -403,9 +375,7 @@
     "effort": "medium",
     "category": "routes with no test file",
     "file": "app/api/v3/admin/content/route.ts",
-    "files": [
-      "app/api/v3/admin/content/route.ts"
-    ],
+    "files": ["app/api/v3/admin/content/route.ts"],
     "line": null,
     "description": "Mapping all 157 route.ts files against tests/app/ shows 142 with a corresponding test and 15 without: app/api/security-txt, app/api/v3/admin/content (61 statements, 0% coverage), app/api/v3/admin/updater/apply (covered separately in cov-06), app/api/v3/admin/updater/status, app/api/v3/ai/conversations (50 statements, 0%), app/api/v3/ai/info, app/api/v3/config/client, app/api/v3/finding-types, app/api/v3/openapi.json, app/api/v3/scan/discover/progress/[requestId], app/api/v3/scan/screenshot/[id] (16 statements, 0%), app/api/v3/shared/[token]/screenshot (14 statements, 0%), app/api/version, app/llms.txt (62 statements, 0%), and app/llms-full.txt (31 statements, 0%). Coverage confirms every one of them at 0%. Two are worth separating from the rest: app/api/v3/admin/content is a 61-statement admin mutation surface with no gate test, and the two screenshot routes serve stored scan artefacts addressed by a scan id and a share token respectively, which is the shape prior audits repeatedly found cross-tenant IDOR in (AUDIT-010 and the AUDIT-2 remediation both fixed one).",
     "impact": "For the two screenshot routes the concrete risk is an ownership check that regresses and lets one user fetch another user's scan screenshot by id, exactly the class of bug two prior audits already fixed elsewhere in this codebase. For admin/content it is an admin gate with no test. For llms.txt and llms-full.txt it is lower stakes, but the memory notes AI crawlers already have trouble discovering this project, so a route that silently starts 500ing is a real if quiet loss.",
@@ -429,9 +399,7 @@
     "effort": "small",
     "category": "built-but-unreachable UI",
     "file": "components/admin/shared/skeleton.tsx",
-    "files": [
-      "components/admin/shared/skeleton.tsx"
-    ],
+    "files": ["components/admin/shared/skeleton.tsx"],
     "line": 17,
     "description": "components/admin/shared/skeleton.tsx defines nine exports. Four are live: Skeleton (line 10), StatBarSkeleton (143), SettingsFieldsSkeleton (161) and DataTableSkeleton (184), used from components/admin/admin-skeleton.tsx:3, components/admin/audit/audit-log.tsx:209 and :329, components/admin/features/ai-chats-manager.tsx:165, components/admin/features/queue-status-manager.tsx:8 and components/admin/features/system-settings-manager.tsx:522. The other five are dead: UsersListSkeleton (line 17), AuditLogSkeleton (40), UserDetailSkeleton (63), StaffListSkeleton (96) and TeamsListSkeleton (120). Each was written to mirror the real shape of one admin section while it loads. The file is only reachable through the wildcard barrel components/admin/shared/index.ts:8 ('export * from \"./skeleton\"'), and no consumer of that barrel imports any of the five: the only occurrence of each of those five identifiers anywhere in the repo is its own declaration line. Dead range is lines 14-139, 126 lines.",
     "impact": "The bespoke per-section loading states were built and never wired, so the admin panel shows generic bar/table placeholders that do not match the content that replaces them, producing more layout shift than the author intended. Nobody can tell from the file that these are unwired, because the barrel re-exports them with a wildcard.",
@@ -455,9 +423,7 @@
     "effort": "small",
     "category": "orphaned file",
     "file": "components/admin/types.responses.ts",
-    "files": [
-      "components/admin/types.responses.ts"
-    ],
+    "files": ["components/admin/types.responses.ts"],
     "line": 1,
     "description": "I built the full import graph over app/ (314 files), lib/ (252), components/ (313) and hooks/ (1), resolving @/ and relative specifiers and following barrels, then walked it from every Next.js convention entry point (page/layout/route/error/loading/not-found/template/default/sitemap/robots/icon/opengraph-image, plus middleware.ts, instrumentation.ts, app/manifest.ts and app/actions/*). Exactly one file in those trees is unreachable and has no importer at all: components/admin/types.responses.ts. It declares ten exported interfaces (AdminUsersResponse, AdminAuditResponse, AdminStaffResponse, AdminTeamsResponse, AdminTeamDetailResponse, AdminUserDetailResponse, AdminBadgesResponse, AdminActionResponse, TeamRenameResponse, TeamDeleteResponse) and imports nine types from ./types. None of the ten names appears anywhere else in the repository, including tests. The only other references are inside graphify-out/, which is a gitignored analysis artifact. 60 lines.",
     "impact": "The admin fetch call sites type their API responses ad hoc instead, so the one file that documents the admin API's response envelopes is guaranteed to drift from reality with nothing to catch it. A developer who does find and use it may adopt a shape the API no longer returns.",
@@ -481,9 +447,7 @@
     "effort": "medium",
     "category": "duplicated helpers",
     "file": "components/admin/utils.ts",
-    "files": [
-      "components/admin/utils.ts"
-    ],
+    "files": ["components/admin/utils.ts"],
     "line": 218,
     "description": "I normalized every top-level function body in lib/, app/ and components/ (comments and whitespace stripped) and grouped identical ones over 120 characters. Thirty groups came back. The five in dup-01, dup-03, dup-05 and dup-11 are filed above. The rest, with the sites that should win:\n\nformatBytes: components/admin/utils.ts:218 is exported and has zero callers, while components/admin/features/backup-manager.tsx:39 defines a private one that is the only one used. The dead export is also wrong: its `sizes` array stops at \"GB\", so a value of 1 TB or more indexes past the end and it returns \"1 undefined\". The private copy handles TB and rounds differently (0 decimals at or above 10). The better implementation is the one that is not exported.\n\nparseCvssVector: lib/scanner/osv-check.ts:203 and lib/scanner/software-inventory.ts:685 are identical, each with its own CVSS_METRIC_VALUES table (osv-check.ts:185, software-inventory.ts:672). The score-to-severity band function is duplicated beside them under two different names, severityFromCvssScore (osv-check.ts:227) and severityFromScore (software-inventory.ts:707), so a grep for one does not find the other. Both hardcode the bands that lib/scanner/cvss.ts:307 already declares as the exported CVSS_SEVERITY_BAND, and both comments point at cvss.ts as the source. cvss.ts exports CvssMetrics, computeCvssBaseScore, formatCvssVector and the bands but no parser, which is why each caller wrote one.\n\nescapeHtml: three identical copies, lib/email/email.ts:98, lib/support/ticket-notify.ts:10 (whose comment says \"email.ts has its own private escaper; this mirrors it for the support paths\") and components/admin/shared/email-preview-html.ts:19. All three escape the same five characters today.\n\nformatTimestamp: four copies in one directory, components/admin/features/email-logs-manager.tsx:79 and error-logs-manager.tsx:36 (with seconds), backup-manager.tsx:51 and billing-overview-manager.tsx:81 (without), so the admin panel shows two different timestamp precisions.\n\nAlso: fnvHash duplicated at lib/scanner/async-checks.ts:75 despite lib/scanner/_helpers.ts:13 owning it; isSameOrigin (lib/scanner/safe-fetch.ts:373) duplicated as sameOrigin (lib/scanner/auth/login.ts:304); withDnsTimeout (lib/scanner/async-checks.ts:66) and withTimeout (lib/scanner/checks/dns.ts:93); isOAuthAuthorizeEndpoint in lib/scanner/checks/api.ts:64 and lib/scanner/checks/host-validation.ts:78; pathnameOf in lib/scanner/checks/page-checks/links.ts:108 and mixed-content.ts:44; tableMissingResponse in app/api/v3/scan/remediation/route.ts:37 and remediation/bulk/route.ts:37; asTrimmedString in app/api/v3/contact/route.ts:23 and landing-contact/route.ts:15; appendLog in lib/backup/job-store.ts:103 and lib/updater/job-store.ts:117; getRetentionLabel in app/pricing/page.tsx:26 and components/modals/premium-upgrade-modal.tsx:102; GithubIcon in app/repos/page.tsx:85, components/repos/github-repo-picker-modal.tsx:25 and components/repos/repo-detail.tsx:22; Cell in components/assets/assets-stats.tsx:9 and components/shares/shares-stats.tsx:17; three identical stats skeletons in components/assets/assets-skeleton.tsx:8, components/history/history-skeleton.tsx:8 and components/shares/shares-skeleton.tsx:8; and severityCounts in lib/reports/compliance-report.ts:49 and lib/reports/markdown-report.ts:45.",
     "impact": "Each pair is a place a fix lands once. The CVSS one matters most because it drives the severity assigned to a real advisory: a parser correction or a band change applied to lib/scanner/osv-check.ts leaves lib/scanner/software-inventory.ts scoring the same vector differently, and the two are used in the same scan. The formatBytes pair is the shape in miniature: the exported helper is dead, buggy at 1 TB, and looks like the one to reuse. Nothing here is currently producing a wrong result except the two admin timestamp precisions and the dead formatBytes.",
@@ -507,9 +471,7 @@
     "effort": "small",
     "category": "duplicated template",
     "file": "components/admin/shared/email-preview-html.ts",
-    "files": [
-      "components/admin/shared/email-preview-html.ts"
-    ],
+    "files": ["components/admin/shared/email-preview-html.ts"],
     "line": 28,
     "description": "components/admin/shared/email-preview-html.ts:1-15 says what it is: \"Client-side stand-in for the real branded email layout (lib/email/email.ts's `layout()`, server-only) ... This mirrors that layout's header, card, and footer; keep the two in step when either changes.\" generateEmailPreviewHtml (:28-80) renders the srcDoc for the preview iframes in components/admin/features/mass-email-manager.tsx:402 and components/admin/features/email-logs-manager.tsx:414.\n\nThe colour half of the mirroring did get consolidated: lib/config/brand.ts is the single palette and both lib/email/email.ts:19-47 (via its COLORS alias) and email-preview-html.ts:17 read it. The markup half has drifted in four ways against lib/email/email.ts's layout() at :106-179:\n\n  1. Logo. layout() uses LOGO_URL, absolutised if relative (:110-113). The preview hardcodes `${appUrl}/favicon.svg` (:55), so a deployment that sets a custom LOGO_URL previews the wrong logo.\n  2. Responsive rules. layout() ships a `@media (max-width: 600px)` block with `.vr-shell` and `.vr-card` padding overrides (:135-141) and puts those classes on the elements. The preview has neither, so the preview does not show the mobile rendering.\n  3. Preferences button. layout() renders a \"Manage email preferences\" button whenever an unsubscribeToken is present (:117-129). The preview never renders it.\n  4. Support line. layout()'s footer reads \"...or reach the team at <SUPPORT_EMAIL>\" (:167). The preview's footer stops at \"Choose what we send you in your account settings.\" (:69).\n\nThe preview also drops the `<title>`, the `supported-color-schemes` meta and the `a { color }` rule that layout() sets.",
     "impact": "An admin composing a broadcast in components/admin/features/mass-email-manager.tsx sees a footer with no unsubscribe control and no support address, then sends a message that has both, and sees the wrong logo if the deployment configured one. The preview also cannot show whether the message survives a 375px viewport, which is where the real layout's media query matters. Low severity because nothing sent is wrong, only what the admin was shown before sending.",
@@ -533,9 +495,7 @@
     "effort": "small",
     "category": "LIKE metacharacter injection",
     "file": "app/api/v3/admin/email-logs/route.ts",
-    "files": [
-      "app/api/v3/admin/email-logs/route.ts"
-    ],
+    "files": ["app/api/v3/admin/email-logs/route.ts"],
     "line": 70,
     "description": "app/api/v3/admin/email-logs/route.ts:67-71 does `params.push(`%${search}%`)` then `(recipient ILIKE $n OR subject ILIKE $n)`, and app/api/v3/admin/error-logs/route.ts:61-64 does `WHERE message ILIKE $1 OR detail ILIKE $1` with `[`%${search}%`]`. Neither escapes `%`, `_` or `\\` and neither adds `ESCAPE '\\'`. The sibling searches were fixed for exactly this: app/api/v3/admin/route.ts:127 (`const searchEscaped = search.replace(/[\\\\%_]/g, '\\\\$&')`, with the comment 'Without this, typing \"%\" returns all users (full table scan)') and app/api/v3/admin/teams/route.ts:37/:58 both use `ESCAPE '\\'`. These two were left behind. It is not SQL injection: the value is still a bound parameter.",
     "impact": "An admin searching email or error logs for a literal `_` or `%` gets wrong results (every underscore matches any character), and a search of `%` degrades to a full scan of system_error_logs / the email log table, which are the two highest-volume tables in the schema. Bounded to staff users.",
@@ -559,9 +519,7 @@
     "effort": "small",
     "category": "N+1 with an unbounded inner query",
     "file": "app/api/v3/admin/engine-feedback/ai-tag-candidates/route.ts",
-    "files": [
-      "app/api/v3/admin/engine-feedback/ai-tag-candidates/route.ts"
-    ],
+    "files": ["app/api/v3/admin/engine-feedback/ai-tag-candidates/route.ts"],
     "line": 171,
     "description": "`for (const row of counts.rows)` at app/api/v3/admin/engine-feedback/ai-tag-candidates/route.ts:171 puts a `Promise.all` inside the loop (line 172), so the loop itself is fully sequential -- two round trips per candidate tag. The second of those (lines 182-186) is `SELECT sh.findings FROM scan_tags st JOIN scan_history sh ON sh.id = st.scan_id WHERE st.tag = $1 AND st.source = 'ai'` with no LIMIT: it pulls the complete findings JSONB of every scan carrying that tag and then flatMaps the result in JavaScript at line 191.",
     "impact": "Staff-only and low frequency, so bounded in blast radius, but the page cost grows with total AI-tagged scan volume and each iteration transfers (scans with that tag) x (full findings blob) bytes. It is the same shape as perf-06's top-vulnerabilities query and will fail the same way at scale.",
@@ -585,9 +543,7 @@
     "effort": "small",
     "category": "bulk actions",
     "file": "components/admin/users/user-detail-panel.tsx",
-    "files": [
-      "components/admin/users/user-detail-panel.tsx"
-    ],
+    "files": ["components/admin/users/user-detail-panel.tsx"],
     "line": 1162,
     "description": "components/admin/users/user-detail-panel.tsx:1162 (literally commented 'Badges - multi select'), state at :160-161, revoke chips at :1177-1233, award dialog at :1270-1360, commit at :434-453. The shape is right: selections queue as a staged diff, surface in the save-confirmation modal as +3 badges / -2 badges, and can be unqueued before commit. Three defects: the toggles are plain buttons with no aria-pressed, so selected state is conveyed only by ring-2, line-through and a title attribute; the commit is Promise.all of N separate PATCHes with no transaction; and each fires its own toast (app/admin/page.tsx:568) while racing on the single shared actionLoading string (:516, :586).",
     "impact": "Low traffic, but a screen-reader user cannot tell which badges are staged, and a partial failure leaves partial awards with a burst of contradictory toasts.",
@@ -611,9 +567,7 @@
     "effort": "small",
     "category": "dead code",
     "file": "app/api/v3/admin/bulk",
-    "files": [
-      "app/api/v3/admin/bulk"
-    ],
+    "files": ["app/api/v3/admin/bulk"],
     "line": null,
     "description": "Empty directory left over from commit 52656312 ('remove bulk user actions'). Git does not track empty directories, so it survives only in the working tree. Useful precedent found alongside it: lib/changelog/data.ts:1063 records 'Removed Bulk User Actions' - the admin Users tab previously had exactly this kind of select-up-to-200 feature and it was deleted outright on blast-radius grounds.",
     "impact": "None functional. Noted because the precedent is directly relevant to the bulk-01 decision.",
@@ -637,9 +591,7 @@
     "effort": "small",
     "category": "admin",
     "file": "app/api/v3/admin/route.ts",
-    "files": [
-      "app/api/v3/admin/route.ts"
-    ],
+    "files": ["app/api/v3/admin/route.ts"],
     "line": 732,
     "description": "update_password (app/api/v3/admin/route.ts:732-754, sets a password and wipes sessions), revoke_all_sessions (:756-766, duplicating revoke_sessions at :824 which additionally emails), set_scan_limit (:1523, see drift-05), make_admin (:702) and remove_admin (:717, both superseded by set_role) all exist with no dispatch; they appear in components/admin/config.ts only as audit-log labels, and revoke_all_sessions is acknowledged as a naming bug at config.ts:303-306. export_data (:1272-1311, returns user, scans, apiKeys and badges) is likewise undispatched. Conversely app/admin/page.tsx:557 maps a send_email success toast for an action the PATCH switch has no case for, so it would 400. enable_user (:934) and delete_user/delete_account (:1985-1986) are unused aliases. Note the route's own comment at :779-786 argues against admin-set passwords, so update_password likely wants deleting rather than exposing.",
     "impact": "Dead server-side surface plus one UI path that can only fail. export_data is the one with genuine user value, since GDPR export currently has no admin-side equivalent.",
@@ -663,9 +615,7 @@
     "effort": null,
     "category": null,
     "file": "app/api/v3/admin/features/route.ts",
-    "files": [
-      "app/api/v3/admin/features/route.ts"
-    ],
+    "files": ["app/api/v3/admin/features/route.ts"],
     "line": null,
     "description": "The sent_by column is correctly bound where it's set, but the admin features route only sets it in the resend action branch, never in the initial send path. A broadcast's first send leaves sent_by NULL, so \"Sent by X\" only appears in the admin UI after a resend.",
     "impact": "",

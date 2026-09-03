@@ -265,7 +265,7 @@ export default function BillingDocsPage() {
           data={[
             {
               credit: "AI tokens",
-              pays: "AI chat, AI finding verification, and AI scan summaries, sharing one token budget.",
+              pays: "AI finding verification and AI scan summaries, once the window allowance is gone. Vera chat draws on the same window counter but never spends this balance.",
               included: "Per fixed window, by plan",
             },
             {

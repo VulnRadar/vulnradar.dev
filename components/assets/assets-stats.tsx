@@ -14,6 +14,14 @@ export function AssetsStats({ assets }: { assets: AssetRow[] }) {
 
   return (
     <StatStrip
+      // One per row on a phone. StatStrip's md track table maps a 3-cell strip
+      // to a flat `grid-cols-3`, which is the only count in that table with no
+      // phone-width step: on a 390px screen each cell is ~119px, and after the
+      // px-4 padding, the 32px icon and the gap that leaves ~43px of text
+      // column. "EXPLOITABLE" needs about 74px at 10px with tracking-wider and
+      // a four-digit count needs about 67px at 24px, so both the caption and
+      // the number were being clipped. Overridden here rather than in the
+      // component because /assets is the only 3-cell strip in the product.
       items={[
         // No "Hosts scanned" cell. The h1 subtitle directly above this strip
         // already states that number in a sentence ("37 distinct hosts across

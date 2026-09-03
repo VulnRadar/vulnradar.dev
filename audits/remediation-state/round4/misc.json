@@ -11,9 +11,7 @@
     "effort": "small",
     "category": "disaster recovery reports false success",
     "file": "scripts/restore-db.mjs",
-    "files": [
-      "scripts/restore-db.mjs"
-    ],
+    "files": ["scripts/restore-db.mjs"],
     "line": 96,
     "description": "runRestore spawns `psql [connArg]` with no `-v ON_ERROR_STOP=1`, no `--single-transaction`, and no `-q`. psql defaults ON_ERROR_STOP to off, so it prints each statement's error to stderr, continues with the next statement, and exits 0 as long as it consumed its input. The only failure check is `if (exitCode !== 0) throw` at line 108, which therefore never fires for SQL errors. backup-db.mjs produces the dump with `pg_dump --no-owner --no-privileges --format=plain` (line 219), which contains no DROP statements and no CREATE DATABASE, so restoring into the DATABASE_URL the app has already booted against means every CREATE TABLE fails with \"relation already exists\" and every COPY into a table with existing rows fails on the primary key. All of those are non-fatal to psql. The script then reaches line 112 and prints \"Restore complete.\" This is a different script and a different mechanism from AUDIT-012#obs-02 (which covers the scheduled backup job reporting success on failure); the backup artifact itself is correct here, plain-format pg_dump does capture schema, data and sequence setvals.",
     "impact": "The one command the project offers for disaster recovery cannot distinguish a complete restore from a total failure. The header comment tells operators to rehearse a restore against staging \"before trusting it in a real incident\", but the rehearsal will report success regardless of whether anything was actually restored, so the rehearsal proves nothing. In a real incident an operator will believe the database is recovered when it may contain none of the backed-up rows.",
@@ -61,9 +59,7 @@
     "effort": "small",
     "category": "docs / AI knowledge",
     "file": "scripts/compile-docs-knowledge.mjs",
-    "files": [
-      "scripts/compile-docs-knowledge.mjs"
-    ],
+    "files": ["scripts/compile-docs-knowledge.mjs"],
     "line": 274,
     "description": "scripts/compile-docs-knowledge.mjs:274 and :284 both apply `stripJsx(...).slice(0, 300)` to every DocsCallout body. Measured across app/docs/*/page.tsx, 52 callouts are extracted and 20 exceed 300 stripped characters, so they land in lib/ai/docs-knowledge.md cut mid-word: for example the API page's Scopes callout ends at \"returns 403 naming\" (docs-knowledge.md:997) and the CI/CD callout ends at \"before ch\" (:1009). The offending pages are app/docs/api (2), config (2), github (2), rate-limits (2), scheduled-scans (2), self-hosting (4), sharing (2), account-security, developers, teams and triage. stripJsx (:82-110) also never strips the JSX whitespace literal `{\" \"}` (64 occurrences survive into the output) and never decodes `&apos;`, `&#123;` or `&#125;` (19 occurrences), so those consume part of the same 300-char budget.",
     "impact": "lib/ai/docs-knowledge.md is what the in-product AI assistant answers from. Twenty of the most important \"be careful about this\" notes reach it as unfinished sentences, so the assistant either invents the missing half or drops the caveat. The Scopes callout in particular loses the sentence that tells the user a 403 names the missing scope.",
@@ -111,9 +107,7 @@
     "effort": "small",
     "category": "client/server limit mismatch",
     "file": "cli/lib.mjs",
-    "files": [
-      "cli/lib.mjs"
-    ],
+    "files": ["cli/lib.mjs"],
     "line": 11,
     "description": "cli/lib.mjs:5-:14 declares DEFAULTS with `timeout: 300` and `crawl: false`. cli/vulnradar.mjs:64 turns that into `const deadline = Date.now() + opts.timeout * 1000` and the poll loop at :65-:85 gives up at the deadline, printing 'Timed out after 300s waiting for scan ${scanId}.' at :88-:90 and calling process.exit(1) at :91. Server-side, 300 is exactly CONFIG_SCAN_TIMEOUT_SECONDS (lib/config/config-values.ts:544) for a single-URL scan, but a crawl runs under CONFIG_CRAWL_SCAN_TIMEOUT_SECONDS = 900 (:551), enforced by the crawl watchdog at lib/scanner/execute-crawl-scan.ts:361-:364. The CLI passes --crawl through but never adjusts its own deadline, and neither cli/lib.mjs:130 ('Give up waiting for the scan (default 300)') nor app/docs/cli/page.tsx:135 and :154 warns that --crawl needs a larger --timeout.",
     "impact": "A CI job that runs `vulnradar scan --crawl` against a site of any size fails red on a scan that is still running and will complete successfully. The user sees a timeout error, the pipeline blocks the merge, and the scan quietly finishes and lands in history a few minutes later, which reads as the tool being unreliable rather than as a default being wrong.",
@@ -161,9 +155,7 @@
     "effort": "small",
     "category": "unused dependency",
     "file": "package.json",
-    "files": [
-      "package.json"
-    ],
+    "files": ["package.json"],
     "line": 47,
     "description": "AUDIT-012#fe-13 found two of these (jspdf, jspdf-autotable). Extending that grep to all 86 declared packages, ripgrep for any quoted specifier (static import, `require(`, dynamic `import(`, type-only import) across app/, lib/, components/, tests/, scripts/, middleware.ts and every config file, with node_modules/.next/coverage/marketing/extension/cli/audits excluded, returns package.json itself as the only hit for twenty-five entries. Three groups, each with a different history. (1) Vercel AI SDK: `ai` (package.json:82), `@ai-sdk/anthropic` (:48) and `@ai-sdk/openai` (:49). `git log -S 'from \"ai\"' -- lib app components` returns nothing, so they were never wired in: the app talks to providers over raw fetch through lib/ai/provider.ts and hand-rolls SSE in lib/ai/anthropic.ts:212 (`createAnthropicSseTranscoder`, consumed at app/api/v3/ai/chat/route.ts:342). The 19 apparent hits for `ai` are the string literal 'ai' used as a profile tab id (app/profile/page.tsx:79) and as a `scan_tags.source` value (lib/tags/auto-tags.ts:878). (2) `jsonwebtoken` (:91) and `@types/jsonwebtoken` (:122): the only mentions in source are a comment at lib/scanner/checks/code.ts:1736 and a UI label at lib/scanner/checks/page-checks/jwt.ts:140. The app's one real JWT verification, lib/auth/staff-oidc.ts:24, imports `jose`. (3) shadcn/v0 scaffold leftovers from the initial commit 26e639c5, none of which ever got a components/ui wrapper (there is no command.tsx, calendar.tsx, carousel.tsx, drawer.tsx, resizable.tsx, input-otp.tsx, sonner.tsx, form.tsx, accordion.tsx, collapsible.tsx, context-menu.tsx, hover-card.tsx, menubar.tsx, navigation-menu.tsx, radio-group.tsx, toggle.tsx or toggle-group.tsx in components/ui/): `@hookform/resolvers` (:50), `@neondatabase/serverless` (:51, named only as prose in app/docs/architecture/page.tsx), `@radix-ui/react-accordion` (:52), `-aspect-ratio` (:54), `-collapsible` (:57), `-context-menu` (:58), `-hover-card` (:61), `-menubar` (:63), `-navigation-menu` (:64), `-radio-group` (:67), `-toggle` (:76), `-toggle-group` (:77), `cmdk` (:86), `date-fns` (:87), `embla-carousel-react` (:88), `input-otp` (:89), `react-day-picker` (:101), `react-hook-form` (:103, no `useForm` or `FormProvider` anywhere), `react-resizable-panels` (:106), `sonner` (:110, the app uses components/ui/toaster.tsx over @radix-ui/react-toast) and `vaul` (:116). Separately `tslib` (:115) was added by commit b8bc8f83 'to resolve import error in react-remove-scroll'; react-remove-scroll@2.7.2 still declares `tslib: ^2.1.0` itself, so the direct entry buys nothing and only freezes the hoisted copy at an exact 2.8.1. Walking the lockfile closure, these twenty-five roots plus the two jspdf packages are the sole path to 78 packages totalling 77.6 MB installed, the largest being jspdf 28.8 MB, date-fns 10.4 MB, ai 6.4 MB, html2canvas 3.2 MB, @ai-sdk/openai 2.8 MB, @ai-sdk/anthropic 2.1 MB, dompurify 1.7 MB, pako 1.6 MB, undici 1.6 MB, canvg 1.3 MB and core-js 1.3 MB. core-js is also one of only three packages in the entire tree with `hasInstallScript: true`.",
     "impact": "Every production install and every Docker image layer carries 78 packages that no line of code can reach, which is 78 more npm accounts whose compromise would land executable code in the runtime of a security product. core-js arrives with a postinstall script purely because jspdf wants canvg. Operationally the list also misleads: a reader of package.json reasonably concludes there is a PDF export path, a Vercel AI SDK integration and a Neon serverless driver, and will go looking for all three. The jsonwebtoken entry is the sharpest edge, because a contributor adding a signed token has a JWT library already installed and one grep away that is not the vetted one (`jose`) the auth layer standardised on, so the wrong library gets used with no review signal.",
@@ -187,9 +179,7 @@
     "effort": "small",
     "category": "misplaced dependency",
     "file": "package.json",
-    "files": [
-      "package.json"
-    ],
+    "files": ["package.json"],
     "line": 117,
     "description": "This extends AUDIT-012#fe-13, which named the misplacement but attributed the cost to `npm ci --omit=dev` in the Docker build. This Dockerfile does not use that flag. Two separate mechanisms compound. First, `vitest` 4.1.11 (package.json:117) and `@vitest/coverage-v8` 4.1.11 (:81) are declared under `dependencies`, not `devDependencies`. Resolving the lockfile closure of the `dependencies` list with and without those two roots, 82 packages / 42.9 MB are reachable only through them: `@rolldown/binding-win32-x64-msvc` at 20.4 MB (on a Linux runner the equivalent `@rolldown/binding-linux-x64-gnu`), `vite` 8.2.2 with its own nested `lightningcss` 1.33.0 and full 11-platform native matrix at 9.1 MB for the local binary, plus @babel/types, @babel/parser, rolldown, magic-string, magicast, istanbul-reports, chai and the rest of the runner. That second lightningcss is a straight duplicate: @tailwindcss/node 4.3.3 already brings lightningcss 1.32.0 with its own full platform matrix, so the tree carries two copies of an 11-binary native package. Second, Dockerfile:24 runs `npm ci --silent --ignore-scripts` with no `--omit=dev`, and Dockerfile:77 then does `COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules` into the runner stage. Measuring the lockfile's dev-flagged entries on disk gives 89 MB that is copied verbatim into the published ghcr image: typescript 23.2 MB, prettier 9.5 MB, lightningcss-win32-x64-msvc 9.1 MB, eslint-plugin-react-hooks 3.9 MB, axe-core 2.9 MB, eslint 2.8 MB, es-abstract 2.7 MB, @typescript-eslint/eslint-plugin 2.0 MB and so on.",
     "impact": "The published ghcr.io/vulnradar/vulnradar image ships a full test runner, a bundler with two native binaries, a TypeScript compiler, ESLint and Prettier into the runtime a self-hoster exposes to the internet. That is roughly 130 MB of pure image weight plus a much larger attack surface than the app needs, on a container that runs as a long-lived network service. It also means the fix AUDIT-012#fe-13 recommended (move the two packages to devDependencies) would not by itself shrink the image at all, because the Docker build installs dev dependencies unconditionally.",
@@ -213,9 +203,7 @@
     "effort": "medium",
     "category": "peer conflict papered over by an override",
     "file": "package.json",
-    "files": [
-      "package.json"
-    ],
+    "files": ["package.json"],
     "line": 146,
     "description": "package.json:130 declares `eslint: ^10.9.0`. eslint-config-next 16.3.2 (package.json:131) declares `peerDependencies: { eslint: \">=9.0.0\" }`, which ESLint 10 satisfies, but its own hard dependencies do not: the lockfile shows `node_modules/eslint-config-next/node_modules/eslint-plugin-import` 2.32.0 with `peerDependencies.eslint: \"^2 || ^3 || ^4 || ^5 || ^6 || ^7.2.0 || ^8 || ^9\"`, `eslint-plugin-jsx-a11y` 6.10.2 with `\"^3 || ^4 || ^5 || ^6 || ^7 || ^8 || ^9\"`, and `eslint-plugin-react` 7.37.5 with `\"^3 || ^4 || ^5 || ^6 || ^7 || ^8 || ^9.7\"`. ESLint 10 is outside all three. The `overrides` block at package.json:146-154 forces it in anyway with three nested `{ \"eslint\": \"$eslint\" }` entries, which is what makes `npm ci` resolve instead of throwing ERESOLVE. That override is not cosmetic: eslint.config.mjs:47-55 documents the first thing it broke, in the repo's own words, 'eslint-config-next sets settings.react.version to \"detect\", which makes eslint-plugin-react probe the filesystem via context.getFilename(). ESLint 10 removed that legacy context method, so detection crashes the whole run', worked around by hardcoding `react: { version: \"19.2.8\" }` at eslint.config.mjs:55. Two more unguarded uses of removed ESLint 10 context APIs remain in the installed plugin (eslint-plugin-react/lib/rules/forward-ref-uses-ref.js:60 `context.getSourceCode()`, jsx-filename-extension.js:64 `context.getFilename()`); those two rules are off in core-web-vitals today, so they are latent rather than live. Running `npx eslint .` in the current working tree reproduces the failure class end to end: `TypeError: scopeManager.addGlobals is not a function at addDeclaredGlobals (node_modules/eslint/lib/languages/js/source-code/source-code.js:221)`, zero files linted, whole run aborted. To be precise about what that proves: this workspace's node_modules has drifted to eslint 10.8.1 while the lockfile pins 10.9.0, and CI on main is green, so this exact crash is not what CI runs. What it demonstrates is that the plugin set has no floor under it, because ESLint 10 patch releases are free to keep removing legacy APIs that three unsupported plugins still call.",
     "impact": "`npm run lint` is a required, merge-blocking CI job (.github/workflows/ci.yml, the `lint` job), and it depends on three plugins that upstream does not claim to support on this ESLint major. When one of them next touches a removed API, lint does not report findings, it aborts with a TypeError and zero files checked. The failure mode is the bad one: a crash that reports no problems reads, to anyone skimming, a lot like a clean run, and the repo has already had to hand-patch one instance of it inside eslint.config.mjs.",
@@ -239,9 +227,7 @@
     "effort": "small",
     "category": "cross-manifest pin divergence",
     "file": "package.json",
-    "files": [
-      "package.json"
-    ],
+    "files": ["package.json"],
     "line": 137,
     "description": "`package.json:137` declares an `overrides` block that pins `postcss: \"8.5.26\"`, `sharp: \"^0.35.0\"`, `brace-expansion@1: \"1.1.18\"`, `brace-expansion@2: \"2.1.4\"`, and the four @typescript-eslint packages. npm `overrides` are scoped to the manifest that declares them and to that install tree only. `extension/` and `marketing/` are not npm workspaces (the root manifest has no `workspaces` field) and each has its own independent `package-lock.json`, so none of those pins reaches them. The divergence is already visible in the resolved trees: postcss is 8.5.26 in the root lock (the pinned value) and 8.5.23 in `extension/package-lock.json`, even though the extension still runs postcss on every build (`extension/vite.config.ts:39` sets `css.postcss.plugins: []`, which selects an empty plugin list, not a bypass of the postcss pipeline). brace-expansion resolves to 1.1.18 plus 5.0.9 at the root, 2.1.4 in extension, and 1.1.18 plus 2.1.4 in marketing. esbuild is 0.25.12 in extension and 0.28.1 in marketing. All of those specific versions happen to be past their known advisories today, so nothing is exploitable right now; the finding is the mechanism. The root overrides exist precisely because someone reacted to an advisory by pinning a transitive package, and that reflex will not protect the artifact that ships to users' browsers.",
     "impact": "The next time a transitive advisory is handled by adding an entry to the root `overrides` block, the browser extension keeps the vulnerable version and nothing reports it (see subdeps-02: the extension tree is not audited or watched at all). The operator will reasonably believe the pin covered the repo.",
@@ -265,9 +251,7 @@
     "effort": "medium",
     "category": "untracked dependency tree inside the repo",
     "file": ".gitignore",
-    "files": [
-      ".gitignore"
-    ],
+    "files": [".gitignore"],
     "line": 74,
     "description": "First, the question that sets the severity of everything else here: marketing/ is NOT built or deployed as part of the product. `.gitignore:74` ignores the whole `marketing/` directory, `git ls-files marketing` returns 0 files, and no workflow, `next.config`, `vercel.json`, `tsconfig.json` or root script references it (grep for \"marketing\" across `.github`, `next.config.*`, `vercel.json`, `package.json`, `tsconfig.json` returns nothing). It is a standalone Remotion asset-generation project run manually on the maintainer's machine. Its dependencies therefore carry no production risk. What they do carry is a blind spot. Because `marketing/package.json` and `marketing/package-lock.json` are untracked, Dependabot cannot see them (it needs a committed manifest), `npm audit` at the root never walks into them, and the CycloneDX SBOM built from the Docker image (`.github/workflows/docker-publish.yml:82`) excludes them. Measured on disk: `marketing/node_modules` is 648 MB across 401 lockfile entries, of which `node_modules/.remotion/chrome-headless-shell/win64/` is 270 MB, a Chromium headless-shell binary that @remotion/renderer downloads over the network on first render rather than at install, and `@remotion/compositor-win32-x64-msvc` is another 29 MB of native binary including a bundled `ffmpeg.exe`. That tree executes on a machine where `marketing/.env` (365 bytes, present on disk, correctly ignored) holds credentials, and `marketing/package.json:31` wires `npm run audio` to `node scripts/make-audio.mjs`, which is what consumes them. The tree is also drifting on its own: React 19.2.3 against the root's 19.2.8, @types/react 19.2.7 against 19.2.18, prettier 3.8.1 against 3.9.6, eslint 9.19.0 against the root's 10.9.0.",
     "impact": "Nobody is watching 401 packages plus two downloaded native binaries that run with full user privileges on the maintainer's workstation next to a credentials file. A malicious postinstall or a compromised Remotion transitive release would execute there and nothing in the repo's security automation would notice, because from git's point of view the directory does not exist. Separately, the project is unreproducible: no other contributor can restore the exact tree that rendered the shipped videos, since the lockfile is not in git.",
@@ -435,9 +419,7 @@
     "effort": "small",
     "category": "docs / AI knowledge tooling",
     "file": "scripts/compile-docs-knowledge.mjs",
-    "files": [
-      "scripts/compile-docs-knowledge.mjs"
-    ],
+    "files": ["scripts/compile-docs-knowledge.mjs"],
     "line": 614,
     "description": "scripts/compile-docs-knowledge.mjs:609 writes the output file, and :614-625 then compares `statSync(OUTPUT).mtimeMs` against the newest page.tsx mtime to warn when \"docs were edited N days after this knowledge file\". Because the stat runs after the write, knowledgeMtime is always the current time and newestPage is always in the past, so `daysStale` is always negative and the `> 30` branch is unreachable. Separately, listDocPages (:66-81) reads only the immediate children of app/docs, so app/docs/api/playground/page.tsx is silently skipped: the run compiles 19 of the 20 docs pages, and the generated extraction-summary table (lib/ai/docs-knowledge.md:2163-2181) lists 19 routes with no playground row.",
     "impact": "The guard that was written to catch exactly the drift this section audits for is dead code, and any future docs page nested one level deeper (the pattern app/docs/api/playground already established) is excluded from the AI assistant's knowledge with no warning.",
@@ -461,9 +443,7 @@
     "effort": "small",
     "category": "build-correctness",
     "file": "scripts/compile-legal-knowledge.mjs",
-    "files": [
-      "scripts/compile-legal-knowledge.mjs"
-    ],
+    "files": ["scripts/compile-legal-knowledge.mjs"],
     "line": 270,
     "description": "package.json's `prebuild` chains the four `scripts/compile-*-knowledge.mjs` scripts with `&&`, so a non-zero exit does fail `npm run build`. But each script only exits non-zero on total failure, never on partial failure. scripts/compile-legal-knowledge.mjs:269-272 warns \"missing <path>, skipping\" and `continue`s past a legal page that has moved, and only exits 1 if `totalSections === 0` across every page (lines 307-310). scripts/compile-checks-knowledge.mjs:143-147 warns and skips a checks-data JSON file that fails to parse or is not an array (`readJsonSafe` swallows the parse error at line 60). scripts/compile-docs-knowledge.mjs:545-546 exits 1 only when zero docs pages are found. The CI drift gate at .github/workflows/ci.yml:80-82 regenerates from the same tree and diffs, so it produces the identical truncated file and passes; I verified separately that `git diff --exit-code --ignore-matching-lines='compiled from'` does correctly ignore the date line and still exits 1 on a real content change, so that gate works as intended for its actual purpose (an edited source with a stale committed output). The only in-script drift detector is mtime-based (scripts/compile-docs-knowledge.mjs:614-623 and scripts/compile-checks-knowledge.mjs:295-306, both computing `daysStale > 30` from `statSync().mtimeMs`), and git does not record mtimes, so on any fresh clone (CI, the Docker build's `COPY . .`, a self-hoster's `git clone`) every file carries the checkout time and `daysStale` is approximately zero. That warning cannot fire in any environment that produces a shipped artifact, and it is a `console.warn` that would not fail the build even if it did.",
     "impact": "Renaming or breaking a single legal page or checks-data category silently shrinks the compiled AI knowledge, the build stays green, the CI drift gate stays green, and the assistant answers about retention policy or an entire check category from nothing. There is no signal anywhere.",
@@ -487,9 +467,7 @@
     "effort": "small",
     "category": "hardcoded branding / SEO asset",
     "file": "public/og-image.svg",
-    "files": [
-      "public/og-image.svg"
-    ],
+    "files": ["public/og-image.svg"],
     "line": 58,
     "description": "lib/config/config-values.ts:226 exposes CONFIG_SEO_OG_IMAGE = \"/og-image.png\" as a configurable SEO value, and lib/config/registry.ts registers SEO_OG_IMAGE, SEO_OG_IMAGE_WIDTH and SEO_OG_IMAGE_HEIGHT as admin-editable. The file the path points at is fixed content: public/og-image.svg:43 draws the wordmark \"VulnRadar\" and :58 draws \"vulnradar.dev\", and public/og-image.png is the 110 KB rasterisation of it. The config comment at :222-225 names the regeneration step (\"edit public/og-image.svg then run `node scripts/build-og-image.mjs`\"), but that instruction appears nowhere a self-hoster reads: grepping app/docs/ and README.md for \"og-image\" or \"build-og-image\" returns nothing, and the branding section of app/docs/config/page.tsx does not mention it.",
     "impact": "A renamed fork that changes CONFIG_APP_NAME and CONFIG_APP_URL still shares a social card reading \"VulnRadar / vulnradar.dev\" on every Twitter, LinkedIn, Slack and Discord unfurl of their own domain, which is the single most visible piece of branding the product emits. The fix is a two-minute SVG edit plus one script, but it is only discoverable by reading a comment in config-values.ts. On the pinned-image Docker path the asset cannot be changed at all, since public/ is baked into the image.",
@@ -513,9 +491,7 @@
     "effort": "small",
     "category": "hardcoded URL / CLI",
     "file": "cli/lib.mjs",
-    "files": [
-      "cli/lib.mjs"
-    ],
+    "files": ["cli/lib.mjs"],
     "line": 6,
     "description": "cli/lib.mjs:6 sets `apiBase: \"https://vulnradar.dev/api/v3\"` in DEFAULTS. parseArgs at :56-57 accepts `--api-base <url>`, and app/docs/cli/page.tsx:129-132 documents it as \"API base URL, for a self-hosted instance\", so the CLI is genuinely repointable, unlike the extension in hc-02. What is missing is the env form: the sibling value on the next line, :26, reads `apiKey: process.env.VULNRADAR_TOKEN || undefined`, and the docs at app/docs/cli/page.tsx:110-112 specifically tell CI users to prefer the environment variable over the flag. There is no VULNRADAR_API_BASE. app/docs/cli/page.tsx:131 also prints the literal \"https://vulnradar.dev/api/v3\" as the documented default rather than deriving it, so a self-hosted instance's own CLI docs page advertises the hosted origin.",
     "impact": "A self-hoster using the CLI in CI has to repeat `--api-base https://scanner.theirdomain.com/api/v3` on every invocation in every workflow file, while the token next to it comes from the environment. Forgetting it once sends a scan request, with their API key in the Authorization header, to vulnradar.dev, where the key is not valid: the key leaks to a third-party host in exchange for a 401. Low severity because the flag exists and the failure is loud, but the asymmetry with VULNRADAR_TOKEN is an easy trap.",
@@ -563,9 +539,7 @@
     "effort": "small",
     "category": "build context hygiene",
     "file": ".dockerignore",
-    "files": [
-      ".dockerignore"
-    ],
+    "files": [".dockerignore"],
     "line": 4,
     "description": "Static analysis. Docker matches .dockerignore patterns against the whole context-relative path using filepath.Match semantics, where * does not cross a /, and only ** crosses directories. So `.env`, `.env.*` and `.env*.local` at .dockerignore:4-6 exclude only root-level dotenv files, and `node_modules` at :1 excludes only the root node_modules. A directory listing of this working tree shows ./marketing/.env present, which is not matched by any pattern; .claude/ (which per the audit brief holds a full second checkout at .claude/worktrees/agent-ad8a7d09dcde23fcc/, including its own node_modules), audits/, databases/ (gitignored at .gitignore:12 and described there as holding real pre-migration database backups), and cli/ are not listed either. Dockerfile:27 is `COPY . .`, so all of that lands in the builder stage. It does NOT reach the published image: the runner stage copies only public, .next, node_modules, package.json and next.config.mjs (Dockerfile:75-79), so the final artifact is clean. The exposure is the build context transfer and the builder layer cache on whatever machine runs the documented `docker compose -f docker-compose.dev.yml up -d --build` (docker-compose.dev.yml:14).",
     "impact": "Local image builds copy hundreds of megabytes of irrelevant tree, including a second full checkout, into the daemon and the layer cache, slowing every build. A nested .env with real values sits in the builder layer, which is retained in the local build cache and would be pushed if anyone ever added a cache-export or a stage that copies more broadly. Real but bounded, because the shipped image is unaffected today.",
@@ -613,9 +587,7 @@
     "effort": "small",
     "category": "share preview tooling",
     "file": "scripts/build-og-image.mjs",
-    "files": [
-      "scripts/build-og-image.mjs"
-    ],
+    "files": ["scripts/build-og-image.mjs"],
     "line": 11,
     "description": "scripts/build-og-image.mjs:11 does `import sharp from \"sharp\"` and is the only way to regenerate public/og-image.png from public/og-image.svg. sharp appears in neither `dependencies` nor `devDependencies` of the root package.json; it resolves today only because it is an optional dependency of next (package-lock.json:9804 lists `\"sharp\": \"^0.34.3\"` under next), and the root `overrides` block pins it to ^0.35.0 without declaring it. Any install with `--omit=optional`, any next major that stops shipping sharp, or a platform where sharp's optional binary does not install, makes the script fail with MODULE_NOT_FOUND. The script's own header comment says it is deliberately not a build hook, so the failure only surfaces when someone next edits the card, which is the moment they least want to debug a toolchain.",
     "impact": "The OG image is, per AUDIT-011, one of the three strongest design artifacts the project owns, and the only script that can rebuild it depends on a package nothing declares. A self-hoster or contributor who rebrands by editing og-image.svg hits an install error rather than a rebuilt card. Low blast radius but it is squarely on the path of the seo-02 work, which will want the same sharp pipeline.",
@@ -663,9 +635,7 @@
     "effort": "small",
     "category": "sibling package coverage",
     "file": "cli/vulnradar.test.mjs",
-    "files": [
-      "cli/vulnradar.test.mjs"
-    ],
+    "files": ["cli/vulnradar.test.mjs"],
     "line": null,
     "description": "cli/ is a standalone dependency-free Node package excluded from the app's tsc, eslint, and vitest, with its own `node --test` suite that CI does run (.github/workflows/ci.yml, 'Run CLI unit tests'). The suite is one file, cli/vulnradar.test.mjs at 81 lines, against cli/lib.mjs (136 lines) plus cli/vulnradar.mjs (118 lines). No coverage is collected for it, so the tested fraction is unknown, but 81 lines of test against 254 lines of source that includes argument parsing, API-key handling, and output formatting is thin. marketing/ is a separate Remotion project with its own package.json and node_modules and no test setup or CI job at all; that is defensible for a video project and is noted for completeness rather than as an action item.",
     "impact": "The CLI is a published entry point that carries a user's API key. A regression in argument parsing or in how the key is read and sent is caught only if it happens to break the single existing suite. The blast radius is smaller than the extension's (cov-14) because a CLI fix ships immediately with no store review.",
@@ -689,9 +659,7 @@
     "effort": "small",
     "category": "unenforced package manager policy",
     "file": "package.json",
-    "files": [
-      "package.json"
-    ],
+    "files": ["package.json"],
     "line": 7,
     "description": "package.json:7-9 declares only `engines: { node: \">=22.0.0\" }`. There is no `packageManager` field in the root manifest or in cli/, extension/ or marketing/, and .npmrc (three lines: audit-level, fund, update-notifier) does not set `engine-strict`. The only statement of policy anywhere is the prose `npm install` in CONTRIBUTING.md:8 and README.md:127. This repo has two documented, repeatedly painful failures that a `packageManager` pin is exactly the mechanism for: a pnpm install breaks node_modules and loses lucide-react types, and a package-lock.json regenerated on Windows strips the Linux native bindings (@next/swc-linux-*, @img/sharp-linux-*, @tailwindcss/oxide-linux-*, lightningcss-linux-*) and breaks CI and deploy. Both are one wrong command away with nothing in the tree to stop it. The `engines` range is also open-ended upward while everything that actually runs the code is pinned to 22: .nvmrc and .node-version both say `22`, all five CI jobs pass `node-version: \"22\"`, and Dockerfile:11 and :62 use node:22.11.0-alpine.",
     "impact": "A new contributor, or an agent working in this repo, runs `pnpm install` or `yarn`, gets a plausible-looking result, and pushes a lockfile that fails only on the Linux CI runner or, worse, only at deploy. That has already happened here more than once, and the recovery is manual: graft the stripped native-binding entries back rather than re-resolve. The open `>=22.0.0` engines range separately means Node 24 or 25 passes the declared check while no CI job or image has ever exercised it.",
@@ -715,9 +683,7 @@
     "effort": "small",
     "category": "stale override",
     "file": "package.json",
-    "files": [
-      "package.json"
-    ],
+    "files": ["package.json"],
     "line": 137,
     "description": "Checking each entry in the `overrides` block at package.json:137-155 against the resolved tree in package-lock.json: (1) `\"brace-expansion@2\": \"2.1.4\"` (package.json:141) matches nothing. The only two brace-expansion copies in the tree are 5.0.9 (dev, via minimatch 10.2.6 which requests `^5.0.8`) and 1.1.18 (dev, via eslint-config-next's minimatch 3.1.5 which requests `^1.1.7`). No package requests a 2.x range, so this override is inert. Its sibling `brace-expansion@1` is live and does pin the 1.x copy. (2) `\"postcss\": \"8.5.26\"` (package.json:138) is live and load-bearing in a way worth noticing: `next@15.5.23` declares `postcss: \"8.4.31\"` as an exact, deliberate pin, and this override replaces it tree-wide with 8.5.26 for Next's own PostCSS pipeline. 8.4.31 is already the version that fixed the last postcss advisory, so the override is not buying a security fix; `npm audit` reports zero vulnerabilities either way. It also duplicates the direct devDependency pin at package.json:132. (3) `\"@typescript-eslint/eslint-plugin\"`, `\"parser\"`, `\"visitor-keys\"` and `\"types\"` are pinned to 8.67.0 (package.json:142-145) but the typescript-eslint packages ship in lockstep as a set of nine, and the other five are not pinned. The result in the lockfile is a split tree: `node_modules/@typescript-eslint/scope-manager` resolves to 8.66.0 (hoisted, via the `typescript-eslint` 8.66.0 that eslint-config-next depends on) while three nested copies under eslint-plugin, parser and type-utils are 8.67.0. The same split exists for typescript-estree, utils, project-service and tsconfig-utils.",
     "impact": "Small but real on each count. The dead brace-expansion@2 entry is a permanent false signal that a 2.x copy needs pinning. The postcss override silently overrides a framework's exact pin with no comment explaining why, which is the kind of thing that is impossible to safely remove later because nobody remembers what it was for. The typescript-eslint split installs two full copies of five packages and means the version a rule actually runs under depends on which config block loaded it, so pinning 8.67.0 does not actually put the whole lint run on 8.67.0.",
@@ -741,9 +707,7 @@
     "effort": "small",
     "category": "override on an unused optional dependency",
     "file": "package.json",
-    "files": [
-      "package.json"
-    ],
+    "files": ["package.json"],
     "line": 139,
     "description": "package.json:139 has `\"sharp\": \"^0.35.0\"` in `overrides`. The only consumer of sharp in the whole tree is `next@15.5.23`, which declares it as an optional dependency at `^0.34.3`. The override therefore does one thing: it pushes Next's image optimizer onto a sharp major it does not declare support for, resolving to 0.35.3 in the lockfile along with the @img/sharp-* prebuilt binaries (@img/sharp-linux-x64, @img/sharp-linuxmusl-x64, @img/sharp-libvips-linux-x64 are all present and installed by `npm ci` on the CI and Docker Linux runners). It is currently inert, because next.config.mjs:26 sets `images: { unoptimized: true }`, so Next never requires sharp at runtime and the mismatch cannot be exercised. That inertness is the problem, because AUDIT-012 recommends turning the optimizer on and explicitly cites this override as the reason it would be safe to do so ('sharp is already pinned in the package.json overrides, so enabling the optimizer with remotePatterns for the three provider CDNs would fix the existing stored URLs too').",
     "impact": "Nothing today. But the moment `unoptimized: true` is removed, Next 15.5's image optimizer starts calling a sharp major it was not tested against, and it does so on the avatar-rendering path for every signed-in user, with the failure surfacing only at request time rather than at build. The override also silently installs the sharp native stack into every image for a feature that is switched off.",
@@ -767,9 +731,7 @@
     "effort": "small",
     "category": "unmaintained dependency on the build path",
     "file": "package.json",
-    "files": [
-      "package.json"
-    ],
+    "files": ["package.json"],
     "line": 114,
     "description": "Checking `npm view <pkg> time.modified` for all 86 direct dependencies, exactly two have not been published in over two years: `server-only` 0.0.1 (2022-09-03), which is a deliberately frozen one-line marker package maintained by the Next.js team and is not a concern, and `tailwindcss-animate` 1.0.7 (package.json:114), last published 2023-08-28, three years ago. Unlike the twenty-five packages in deps-01 this one is genuinely wired in: tailwind.config.mjs:1 imports it and its last line registers it as `plugins: [tailwindcssAnimate]`, and app/globals.css:3 bridges that config into the v4 pipeline with `@config '../tailwind.config.mjs'`. Sixty-two call sites across components/ and app/ use utilities it provides (`animate-in`, `fade-in-*`, `zoom-in-*`, `slide-in-from-*`), for example components/ai-chat/chat-widget.tsx and components/billing/checkout-skeleton.tsx. The version mismatch is the sharper half: this is a plugin written for Tailwind v3's JS plugin API, while the project runs Tailwind v4 (`tailwindcss` and `@tailwindcss/postcss` both `^4.3.3`, package.json:121 and :134) and reaches it only through the v4 `@config` compatibility shim, which is the migration bridge rather than a supported long-term path.",
     "impact": "The animation utilities on 62 call sites depend on an abandoned package reached through a compatibility shim. When Tailwind drops `@config` support, or when the plugin's v3 API assumptions stop holding, the failure is silent CSS: the classes still parse, no build error is raised, and the animations simply stop, which is the kind of regression a test suite does not catch and a reviewer does not see in a diff.",
@@ -793,9 +755,7 @@
     "effort": "medium",
     "category": "heavy dependency for narrow use",
     "file": "package.json",
-    "files": [
-      "package.json"
-    ],
+    "files": ["package.json"],
     "line": 104,
     "description": "`react-icons` 5.7.0 (package.json:104) is 85 MB on disk, the second-largest package in node_modules after next (149 MB) and ahead of lucide-react (39 MB). It ships every icon set it wraps as generated JS modules. Actual use is nine files and sixty distinct glyphs: components/scanner/tech-icon.tsx:1-60 imports one `IconType`, `GrHeroku`, `FaMagento` and fifty-five `Si*` brand icons for the software-inventory panel, and the remaining eight files (components/auth/oauth-buttons.tsx:3-4, components/admin/users/user-detail-panel.tsx:47-48, components/profile/tabs/profile-social-tab.tsx:6-7, components/profile/tabs/profile-billing-tab.tsx:27, components/scanner/footer.tsx:5, components/modals/github-profile-modal.tsx:9, components/landing/landing-open-source.tsx:2, app/docs/developers/page.tsx:8) between them use exactly three: `FaGithub`, `FaDiscord`, `FcGoogle`. This is an install-size and cold-build cost, not a bundle-size one: the per-icon module layout tree-shakes cleanly, so AUDIT-012#fe-01 and #fe-02's client-bundle findings are not what this is about. The cost lands on the CI npm cache, the Docker builder layer and `npm ci` wall time on every one of the five CI jobs.",
     "impact": "85 MB of the 789 MB node_modules, restored and re-cached on every CI job and every image build, for sixty SVG paths. It also inflates the `npm ci` step that runs five times per push across the lint, typecheck, test, extension and build jobs.",
@@ -819,9 +779,7 @@
     "effort": "small",
     "category": "toolchain version drift",
     "file": "package.json",
-    "files": [
-      "package.json"
-    ],
+    "files": ["package.json"],
     "line": 131,
     "description": "package.json:95 pins `next: 15.5.23`; package.json:131 pins `eslint-config-next: 16.3.2`, which in turn hard-depends on `@next/eslint-plugin-next: 16.3.2` (per the lockfile entry for eslint-config-next). The jump was deliberate and is explained at eslint.config.mjs:3-6: eslint-config-next 16 is the first release with native flat config, so moving to it let the repo drop the `@eslint/eslintrc` FlatCompat shim, and eslint.config.mjs:13 imports `eslint-config-next/core-web-vitals` directly. The side effect is that the Next-specific rules being enforced are the Next 16 set: rules added or changed for Next 16 conventions run against a Next 15 codebase, and rules removed in 16 for patterns Next 15 still has are not enforced at all. This also puts the two out of dependabot's `next-stack` group's reach as a unit, since .github/dependabot.yml:75-77 ignores `next` majors while `eslint-config-next` has already taken one.",
     "impact": "Bounded and mostly latent: the lint job either flags a Next 16 idiom the app cannot adopt yet, or stops flagging a Next 15 anti-pattern because the rule was dropped in 16. Neither breaks the build, but it means the `lint` gate's Next coverage is not the coverage the running framework needs, and there is no signal anywhere that says so.",
@@ -845,9 +803,7 @@
     "effort": "small",
     "category": "authenticated encryption verified after use",
     "file": "scripts/restore-db.mjs",
-    "files": [
-      "scripts/restore-db.mjs"
-    ],
+    "files": ["scripts/restore-db.mjs"],
     "line": 84,
     "description": "For an .enc backup, runRestore builds `pipeline(source, decipher, decrypted)` at line 84 and immediately assigns the PassThrough to `source` (line 88), then at line 106 pipes it through gunzip into psql's stdin. AES-256-GCM emits plaintext as it decrypts and only validates the auth tag set at line 82 when the final block is processed, so by the time an authentication failure surfaces, every preceding block has already been gunzipped and executed by psql. The failure handler (line 85) prints \"Decryption failed\" and calls process.exit(1), leaving the already-executed statements committed, since psql is running without --single-transaction (see migrate-04).",
     "impact": "The whole point of authenticating the backup is to guarantee that a modified or truncated dump is never applied. As written, an attacker who can modify a backup file, or plain bit rot in cold storage, results in a partially applied dump plus an error message, rather than a clean refusal. Low severity because it requires an already-compromised or corrupted backup artifact, and because the operator does see a failure message.",
@@ -871,9 +827,7 @@
     "effort": "small",
     "category": "engine drift across manifests",
     "file": "cli/package.json",
-    "files": [
-      "cli/package.json"
-    ],
+    "files": ["cli/package.json"],
     "line": 16,
     "description": "`cli/package.json:16` declares `\"node\": \">=18\"`, `package.json:8` declares `\"node\": \">=22.0.0\"`, `extension/package.json:9` declares `\"node\": \">=22.0.0\"`, and `marketing/package.json` declares no `engines` field at all. The Node 18 claim is repeated to users in three places: `cli/README.md:5` (\"no dependencies (Node 18+ for global fetch)\"), `cli/vulnradar.mjs:4` (\"No dependencies: Node 18+ (global fetch) is all it needs\"), and the docs page at `app/docs/cli/page.tsx:95` (\"It needs Node 18 or newer\"). Node 18 reached end of life on 2025-04-30 and receives no security updates. It is also never exercised: the only place the CLI runs in CI is `.github/workflows/ci.yml:110`, `node --test` with `working-directory: cli`, inside the `test` job whose `setup-node` step pins `node-version: \"22\"` (line 47). So the supported-floor claim is asserted in three user-facing places and validated in none. Node's own `--test` runner also behaved differently in 18 (experimental, narrower default file-glob) than in 22, so `node --test` with no path argument is not guaranteed to discover `cli/vulnradar.test.mjs` there.",
     "impact": "A user or a CI pipeline pinned to Node 18 follows the documented floor, runs the CLI on a runtime that has had no security patches for over a year, and hits any regression alone because nothing tests that version. Meanwhile a contributor who reads the root manifest reasonably assumes Node 22 is the repo-wide floor and may use a Node 20-or-22-only API in cli/lib.mjs without any check catching it.",
@@ -897,9 +851,7 @@
     "effort": "small",
     "category": "unused / misplaced dependencies",
     "file": "package.json",
-    "files": [
-      "package.json"
-    ],
+    "files": ["package.json"],
     "line": 92,
     "description": "package.json:92-93 declares jspdf 4.2.1 and jspdf-autotable 5.0.8 as runtime dependencies. A repo-wide grep for jspdf/jsPDF across every .ts, .tsx and .mjs outside node_modules, .next and the stale worktree returns exactly one hit, and it is a comment: tests/lib/reports/pdf-report.test.ts:8 ('browser-rendering dependency here despite jspdf being in package.json for'). Nothing imports either package. Separately, @vitest/coverage-v8 4.1.11 (package.json:81) and vitest 4.1.11 (package.json:117) are listed under `dependencies` rather than devDependencies, so `npm ci --omit=dev` in a Docker build installs the whole test runner and its v8 coverage toolchain into the production image.",
     "impact": "Three unnecessary packages are installed, audited and shipped in every production install and Docker image. The two jspdf packages are also a live supply-chain surface for code that does not exist, and their presence implies a PDF export path that a reader of package.json would go looking for.",
@@ -971,9 +923,7 @@
     "effort": null,
     "category": null,
     "file": "package.json",
-    "files": [
-      "package.json"
-    ],
+    "files": ["package.json"],
     "line": null,
     "description": "engines allows Node 20 which reached EOL on 2026-04-30 per the Dockerfile comment. Yet package.json still accepts Node 20 dev environments.",
     "impact": "",
@@ -1285,9 +1235,7 @@
     "effort": "small",
     "category": "checked and fine",
     "file": "package-lock.json",
-    "files": [
-      "package-lock.json"
-    ],
+    "files": ["package-lock.json"],
     "line": null,
     "description": "Recording the negative results so the next audit does not redo them. `npm audit --json` on the full tree reports 0 vulnerabilities across 813 packages (369 prod, 363 dev, 137 optional, 1 peer) at every severity including info, so there is no reachability analysis to do: nothing is reported. `npm view <pkg> deprecated` across all 86 direct dependencies returns nothing, and no lockfile entry carries a `deprecated` field. Scanning all 814 lockfile entries, every single `resolved` URL points at https://registry.npmjs.org: there are no git URLs, no tarball URLs, no alternate registries and no `file:` links. Exactly three entries have `hasInstallScript: true` (core-js 3.49.0, fsevents 2.3.3 which is macOS-only and optional, and unrs-resolver 1.12.2 which is dev-only), and Dockerfile:24 runs with `--ignore-scripts` anyway (see deps-05). Most importantly given this repo's history: the committed lockfile still contains the full set of Linux native bindings that a Windows regeneration strips. Verified present: @next/swc-linux-x64-gnu, -x64-musl, -arm64-gnu and -arm64-musl all at 15.5.23; @img/sharp-linux-x64, @img/sharp-linuxmusl-x64 and @img/sharp-libvips-linux-x64; @tailwindcss/oxide-linux-x64-gnu and -musl at 4.3.3; @unrs/resolver-binding-linux-x64-gnu and -musl at 1.12.2; lightningcss-linux-x64-gnu and -musl at both 1.33.0 and 1.32.0. package-lock.json is tracked by git and .gitignore has no lock entry. The Node version story is consistent everywhere it is stated: .nvmrc `22`, .node-version `22`, all five ci.yml jobs `node-version: \"22\"`, Dockerfile:11 and :62 node:22.11.0-alpine, package.json:8 `>=22.0.0` (see deps-07 on tightening that upper bound).",
     "impact": "No action required. Two things here are worth an operator knowing: the lockfile is currently healthy on the exact axis that has broken this repo before, so whoever applies deps-01, deps-02 or deps-08 needs to regenerate it on Linux or graft entries by hand rather than running npm install on Windows; and `npm audit` being clean means the CI gate at ci.yml (`npm audit --audit-level=high --omit=dev`) is currently passing on merit rather than on a suppression.",
@@ -1311,9 +1259,7 @@
     "effort": "small",
     "category": "outdated packages",
     "file": "package.json",
-    "files": [
-      "package.json"
-    ],
+    "files": ["package.json"],
     "line": 95,
     "description": "`npm outdated --json` lists sixteen entries. Two are majors and both are held on purpose, documented in .github/dependabot.yml:73-81. (a) `next` 15.5.23 vs 16.3.3 (package.json:95), with `update-types: [\"version-update:semver-major\"]` ignored so the Next 16 jump arrives as a manual decision rather than an automated PR. Next 15.5.23 is well past the 15.2.3 that fixed the middleware-bypass advisory and npm audit reports nothing against it, so this is a planning item, not a security one, though see deps-13 for the eslint-config-next half of it having already moved. (b) `typescript` 6.0.3 vs 7.0.2 (package.json:135), held because `@typescript-eslint/*` 8.67.0 declares `typescript: \">=4.8.4 <6.1.0\"`, so TS 7 would break both the lint and typecheck CI jobs; dependabot.yml:78-81 states exactly this. The other fourteen are minors and patches with no advisory content: @ai-sdk/anthropic and @ai-sdk/openai and `ai` (all unused, see deps-01), @types/node 26.2.0 vs 26.4.0, @types/react-dom, @typescript-eslint/eslint-plugin and parser 8.67.0 vs 8.68.0, eslint-config-next 16.3.2 vs 16.3.3, lucide-react 1.34.0 vs 1.35.0, nodemailer 9.0.5 vs 9.0.6, stripe 22.5.0 vs 22.6.0, and zod 4.4.3 vs 4.5.2. Note that `npm outdated`'s `current` column here reflects a workspace whose node_modules has drifted below the lockfile in three places (eslint 10.8.1 installed against 10.9.0 locked, @ai-sdk/anthropic 4.0.40 against a `^4.0.41` floor, react-hook-form 7.85.0 against an exact 7.86.0 pin), which is a local-install artifact, not a repo state: `npm ci` on CI resolves the locked versions and the CI run on main is green.",
     "impact": "None urgent. The one thing worth tracking is the typescript hold: it is correctly reasoned and correctly documented today, but it couples the TypeScript version the whole codebase compiles against to a single lint plugin's peer range, so it needs revisiting when typescript-eslint ships TS 7 support rather than being left to drift.",
@@ -1361,9 +1307,7 @@
     "effort": "small",
     "category": "dead gitignore pattern",
     "file": ".gitignore",
-    "files": [
-      ".gitignore"
-    ],
+    "files": [".gitignore"],
     "line": 56,
     "description": "`.gitignore:56` contains `nscripts/storage/`, sitting at the end of the \"Dependency directories\" block after the four `.yarn/*` entries. There is no `nscripts` directory in the repo (`ls -d nscripts` returns nothing), so the pattern matches nothing. The intended pattern is present and correct three lines later at `.gitignore:59`, `scripts/storage/`, under its own \"FP audit temporary scan storage\" comment. The likely cause is a stray `n` from a keystroke landing at the start of a duplicated line. Note also that this is the only defect I found in gitignore coverage for the sub-projects: `git ls-files | grep node_modules` returns nothing, no `dist-chrome`, `dist-firefox` or `.zip` artifact is tracked, `extension/.gitignore` correctly covers `node_modules/`, `dist-chrome/`, `dist-firefox/`, `dist-build/`, `dist-tsc/`, `out/`, `*.tsbuildinfo` and `vulnradar-*.zip`, and the comment at `.gitignore:66` explaining why the root must not add `extension/*` is accurate.",
     "impact": "None functionally. It is a misleading line in a file people read when deciding what is and is not committed, and it looks like `scripts/storage/` is ignored twice when one of the two is dead.",
@@ -1411,9 +1355,7 @@
     "effort": null,
     "category": null,
     "file": "registry_all_keys.txt",
-    "files": [
-      "registry_all_keys.txt"
-    ],
+    "files": ["registry_all_keys.txt"],
     "line": null,
     "description": "A flat list of lib/config/registry.ts's setting keys, evidently a debug dump from an earlier audit/dev pass. Not imported or referenced by any source file, script, or test. Harmless but shouldn't ship in a v3.0.0 tag.",
     "impact": "",

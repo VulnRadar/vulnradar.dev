@@ -117,8 +117,9 @@ export default async function SecurityPage() {
             >
               contact form
             </Link>{" "}
-            reaches the same inbox, but email is faster and lets you attach a
-            proof of concept.
+            reaches us too, but it delivers to the general support mailbox
+            rather than this address, and it cannot carry an attachment. Email
+            is faster and lets you send a proof of concept.
           </p>
           <p>
             One report per issue is easier for both of us to track. If you found

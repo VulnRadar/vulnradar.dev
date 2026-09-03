@@ -6,7 +6,10 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { parseArgs, evaluateGate, DEFAULTS } from "./lib.mjs";
 
-const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), "vulnradar.mjs");
+const CLI = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "vulnradar.mjs",
+);
 
 /**
  * Run the real CLI executable against a throwaway HTTP server standing in for
@@ -112,8 +115,14 @@ test("parseArgs: --crawl raises the default timeout to the crawl budget", () => 
 });
 
 test("parseArgs: an explicit --timeout wins over the crawl default, in either flag order", () => {
-  assert.equal(parseArgs(["scan", "u", "--crawl", "--timeout", "60"]).timeout, 60);
-  assert.equal(parseArgs(["scan", "u", "--timeout", "60", "--crawl"]).timeout, 60);
+  assert.equal(
+    parseArgs(["scan", "u", "--crawl", "--timeout", "60"]).timeout,
+    60,
+  );
+  assert.equal(
+    parseArgs(["scan", "u", "--timeout", "60", "--crawl"]).timeout,
+    60,
+  );
 });
 
 test("parseArgs: a non-numeric --timeout does not count as explicit", () => {
@@ -175,10 +184,25 @@ test("evaluateGate: reasons name the count and the threshold", () => {
 
 test("cli: exits 0 and prints the summary when findings are under the thresholds", async () => {
   const { code, stdout } = await runCli(
-    ["scan", "https://target.example", "--api-key", "k", "--poll-interval", "0"],
+    [
+      "scan",
+      "https://target.example",
+      "--api-key",
+      "k",
+      "--poll-interval",
+      "0",
+    ],
     {
       routes: {
-        "/scan/status/": { body: completed({ critical: 0, high: 0, medium: 4, low: 1, total: 5 }) },
+        "/scan/status/": {
+          body: completed({
+            critical: 0,
+            high: 0,
+            medium: 4,
+            low: 1,
+            total: 5,
+          }),
+        },
         "/scan": { body: { scanId: "abc123" } },
       },
     },
@@ -190,10 +214,21 @@ test("cli: exits 0 and prints the summary when findings are under the thresholds
 
 test("cli: exits 1 and names every breached threshold", async () => {
   const { code, stderr } = await runCli(
-    ["scan", "https://target.example", "--api-key", "k", "--poll-interval", "0", "--max-medium", "1"],
+    [
+      "scan",
+      "https://target.example",
+      "--api-key",
+      "k",
+      "--poll-interval",
+      "0",
+      "--max-medium",
+      "1",
+    ],
     {
       routes: {
-        "/scan/status/": { body: completed({ critical: 2, high: 1, medium: 9 }) },
+        "/scan/status/": {
+          body: completed({ critical: 2, high: 1, medium: 9 }),
+        },
         "/scan": { body: { scanId: "s1" } },
       },
     },
@@ -206,23 +241,39 @@ test("cli: exits 1 and names every breached threshold", async () => {
 
 test("cli: --json prints the raw result and it parses", async () => {
   const { code, stdout } = await runCli(
-    ["scan", "https://target.example", "--api-key", "k", "--poll-interval", "0", "--json"],
+    [
+      "scan",
+      "https://target.example",
+      "--api-key",
+      "k",
+      "--poll-interval",
+      "0",
+      "--json",
+    ],
     {
       routes: {
-        "/scan/status/": { body: completed({ critical: 0, high: 0, total: 0 }) },
+        "/scan/status/": {
+          body: completed({ critical: 0, high: 0, total: 0 }),
+        },
         "/scan": { body: { scanId: "s2" } },
       },
     },
   );
   assert.equal(code, 0);
   const json = stdout.slice(stdout.indexOf("{"), stdout.lastIndexOf("}") + 1);
-  assert.deepEqual(JSON.parse(json).summary, { critical: 0, high: 0, total: 0 });
+  assert.deepEqual(JSON.parse(json).summary, {
+    critical: 0,
+    high: 0,
+    total: 0,
+  });
 });
 
 test("cli: a non-200 from the create call is reported with its status and body", async () => {
   const { code, stderr } = await runCli(
     ["scan", "https://target.example", "--api-key", "bad"],
-    { routes: { "/scan": { status: 401, body: { error: "Invalid API key" } } } },
+    {
+      routes: { "/scan": { status: 401, body: { error: "Invalid API key" } } },
+    },
   );
   assert.equal(code, 1);
   assert.match(stderr, /Failed to start scan \(HTTP 401\)/);
@@ -240,10 +291,19 @@ test("cli: a create response with no scanId is an error, not a hang", async () =
 
 test("cli: a failed scan reports the server's reason", async () => {
   const { code, stderr } = await runCli(
-    ["scan", "https://target.example", "--api-key", "k", "--poll-interval", "0"],
+    [
+      "scan",
+      "https://target.example",
+      "--api-key",
+      "k",
+      "--poll-interval",
+      "0",
+    ],
     {
       routes: {
-        "/scan/status/": { body: { status: "failed", error: "DNS lookup failed" } },
+        "/scan/status/": {
+          body: { status: "failed", error: "DNS lookup failed" },
+        },
         "/scan": { body: { scanId: "s3" } },
       },
     },
@@ -281,7 +341,12 @@ test("cli: no URL exits 1 and prints usage", async () => {
 });
 
 test("cli: an unknown command is rejected by name", async () => {
-  const { code, stderr } = await runCli(["scam", "https://target.example", "--api-key", "k"]);
+  const { code, stderr } = await runCli([
+    "scam",
+    "https://target.example",
+    "--api-key",
+    "k",
+  ]);
   assert.equal(code, 1);
   assert.match(stderr, /Unknown command: scam/);
 });

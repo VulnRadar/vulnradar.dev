@@ -565,12 +565,13 @@ describe("GET /api/v3/browser/sessions", () => {
     expect(json.session.liveViewerUrl).toBe("https://viewer.example/full");
   });
 
-  // Documented, intentional tradeoff (see the AUDIT-004#idor-01 comment in
-  // app/api/v3/browser/sessions/route.ts): a session row that predates the
-  // ownership check, or whose INSERT silently failed, has no owner record
-  // and is allowed through rather than denied. Not a new finding, just
-  // pinning the current behavior.
-  it("fails open when no ownership row exists for the session id", async () => {
+  // These two used to assert the opposite, pinning a fail-open the route
+  // documented as a transition-window allowance. The window closed and the
+  // allowance did not: this response carries wsUrl/debuggerUrl, i.e. live CDP
+  // control of the remote browser, so a session whose ownership row is missing
+  // or unreadable has to be denied. Same rule the sibling logs route already
+  // applies to the strictly weaker network-log payload.
+  it("fails closed (403) when no ownership row exists for the session id", async () => {
     mockQuery.mockResolvedValue({ rows: [] });
     mockGetBrowserSession.mockResolvedValue({
       id: "sess_legacy",
@@ -578,11 +579,12 @@ describe("GET /api/v3/browser/sessions", () => {
       url: "",
     });
     const res = await GET(getRequest("sess_legacy"));
-    expect(res.status).toBe(200);
-    expect(mockGetBrowserSession).toHaveBeenCalledWith("sess_legacy");
+    expect(res.status).toBe(403);
+    expect(mockGetBrowserSession).not.toHaveBeenCalled();
+    expect(mockGetBrowserLiveUrls).not.toHaveBeenCalled();
   });
 
-  it("fails open (not a 500) when the ownership lookup query itself throws", async () => {
+  it("fails closed (403) when the ownership lookup query itself throws", async () => {
     mockQuery.mockRejectedValue(new Error("connection reset"));
     mockGetBrowserSession.mockResolvedValue({
       id: "sess_dbfail",
@@ -590,7 +592,8 @@ describe("GET /api/v3/browser/sessions", () => {
       url: "",
     });
     const res = await GET(getRequest("sess_dbfail"));
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
+    expect(mockGetBrowserSession).not.toHaveBeenCalled();
   });
 
   it("surfaces a BrowserBaseError's status and message", async () => {
@@ -650,12 +653,23 @@ describe("DELETE /api/v3/browser/sessions", () => {
     expect(mockReleaseConcurrencySlot).toHaveBeenCalledTimes(1);
   });
 
-  it("fails open (ends the session) when no ownership row exists, and never releases a slot it never held", async () => {
+  // Also inverted from a fail-open. A row-less DELETE could be issued by any
+  // signed-in caller who knew the id, and had nothing legitimate left to do
+  // anyway: the row is gone because the retention sweep reaped it past
+  // expires_at, and both the slot release and the usage true-up read that row.
+  it("fails closed (403) when no ownership row exists, and never releases a slot it never held", async () => {
     mockQuery.mockResolvedValue({ rows: [] });
     const res = await DELETE(getRequest("sess_legacy"));
-    expect(res.status).toBe(200);
-    expect(mockEndBrowserSession).toHaveBeenCalledWith("sess_legacy");
+    expect(res.status).toBe(403);
+    expect(mockEndBrowserSession).not.toHaveBeenCalled();
     expect(mockReleaseConcurrencySlot).not.toHaveBeenCalled();
+  });
+
+  it("fails closed (403) when the ownership lookup query itself throws", async () => {
+    mockQuery.mockRejectedValue(new Error("connection reset"));
+    const res = await DELETE(getRequest("sess_dbfail"));
+    expect(res.status).toBe(403);
+    expect(mockEndBrowserSession).not.toHaveBeenCalled();
   });
 
   it("records the session's real elapsed duration as plan usage on end", async () => {
@@ -674,7 +688,10 @@ describe("DELETE /api/v3/browser/sessions", () => {
 
   it("never records usage when no ownership row exists to compute a duration from", async () => {
     mockQuery.mockResolvedValue({ rows: [] });
-    await DELETE(getRequest("sess_legacy"));
+    const res = await DELETE(getRequest("sess_legacy"));
+    // 403 now, per the fail-closed guard above; the assertion that matters
+    // here is unchanged: nothing is billed for a session with no owner row.
+    expect(res.status).toBe(403);
     expect(mockRecordBrowserbaseSeconds).not.toHaveBeenCalled();
   });
 });

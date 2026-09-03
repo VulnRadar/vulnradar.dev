@@ -335,11 +335,16 @@ export default function SharingDocsPage() {
       <DocsSection id="badges" title="Security badges">
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
           A badge is an SVG image that reads &quot;Secured by {APP_NAME}&quot;
-          alongside the latest verdict (Safe, Caution, or Unsafe) and scan date,
-          linking through to the full read-only report. The key property: a
-          badge is tied to a <em>URL</em>, not to one frozen scan. Every time
-          you scan that URL again, the same embedded image updates on its own.
-          Paste the snippet once and leave it.
+          alongside the site&rsquo;s latest grade (<InlineCode>A+</InlineCode>{" "}
+          through <InlineCode>F</InlineCode>) and scan date, linking through to
+          the full read-only report. The safe/caution/unsafe verdict is still
+          there, as the colour of the right-hand half: green, yellow, red. The
+          grade leads because every comparable free tool grades a site on that
+          scale, and &quot;caution&quot; on a README is something an owner
+          removes rather than keeps. The key property: a badge is tied to a{" "}
+          <em>URL</em>, not to one frozen scan. Every time you scan that URL
+          again, the same embedded image updates on its own. Paste the snippet
+          once and leave it.
         </p>
 
         <DocsSubSection title="Generating and embedding">

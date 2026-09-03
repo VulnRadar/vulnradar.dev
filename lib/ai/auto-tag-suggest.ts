@@ -54,7 +54,7 @@ import {
 import { isAnthropicProvider } from "@/lib/ai/provider";
 import { callAnthropicMessages } from "@/lib/ai/anthropic";
 import { resolveAnthropicThinkingBudget } from "@/lib/ai/reasoning";
-import { APP_NAME, APP_URL } from "@/lib/config/constants";
+import { APP_NAME, APP_URL, SEVERITY_PRIORITY } from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
 import { checkAiUsageQuota, recordAiTokens } from "@/lib/billing/ai-usage";
 
@@ -133,14 +133,6 @@ const BARE_FRAGMENT_WORDS = new Set([
   "ten",
 ]);
 
-const SEVERITY_RANK: Record<Severity, number> = {
-  critical: 0,
-  high: 1,
-  medium: 2,
-  low: 3,
-  info: 4,
-};
-
 const SYSTEM_PROMPT = `You are ${APP_NAME}'s auto-tag suggester. You are given one completed vulnerability scan's findings that did NOT match any of the product's ~50 built-in tagging rules -- only each finding's title, category, and severity, never full evidence.
 
 Produce 1 to 2 short tag names that name the SPECIFIC security concept these findings share, in the same style as tags this product already uses: "Weak TLS Cipher Suite", "Cookie Missing SameSite", "Missing Rate Limiting", "Sensitive Data in URL". Rules for each tag name:
@@ -154,8 +146,12 @@ If the findings given to you don't share any coherent, nameable concept, return 
 
 Return ONLY the tag names, one per line, nothing else -- no numbering, no bullets, no preamble, no explanation.`;
 
+/** Worst first, so the prompt spends its finding budget on what matters. An
+ *  unrecognised severity ranks below info rather than above critical, which is
+ *  what the local table this replaced achieved with its own inverted
+ *  convention and a `?? 5` fallback. ref: AUDIT-013#dup-02 */
 function severityRank(s: Severity): number {
-  return SEVERITY_RANK[s] ?? 5;
+  return SEVERITY_PRIORITY[s] ?? 0;
 }
 
 function buildPrompt(
@@ -163,7 +159,7 @@ function buildPrompt(
   topFindingsLimit: number,
 ): string {
   const lines = [...findings]
-    .sort((a, b) => severityRank(a.severity) - severityRank(b.severity))
+    .sort((a, b) => severityRank(b.severity) - severityRank(a.severity))
     .slice(0, topFindingsLimit)
     .map((f) => `- [${f.severity}] ${f.category}: ${f.title}`)
     .join("\n");

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { APP_NAME } from "@/lib/config/constants";
+import { APP_NAME, APP_URL } from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
 import {
   LegalPageHeader,
@@ -87,9 +87,7 @@ export default async function AccessibilityPage() {
             </>,
             <>
               <strong>Form Labels:</strong> Form inputs carry associated labels
-              or accessible names. A small number of inputs in the API
-              playground are still labelled only by placeholder text; that is
-              tracked as a bug.
+              or accessible names.
             </>,
             <>
               <strong>Skip Links:</strong> Skip navigation links allow users to
@@ -156,7 +154,7 @@ export default async function AccessibilityPage() {
             <>
               <strong>Contact Form:</strong>{" "}
               <Link href="/contact" className="text-primary hover:underline">
-                vulnradar.dev/contact
+                {APP_URL.replace(/^https?:\/\//, "")}/contact
               </Link>
             </>,
           ]}

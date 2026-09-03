@@ -99,6 +99,7 @@ Purely internal fixes (a test, a type, a comment) need no changelog entry.
 ## Final report
 
 In your reply give:
+
 - how many findings you fixed, skipped, and found already-correct
 - one line per fixed finding: `id: what changed`
 - anything you were blocked on and why

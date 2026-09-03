@@ -64,10 +64,59 @@ const STATIC_SUBSTITUTIONS = {
   termsUpdatedAt: "the last-updated date shown on this page",
 };
 
+// Retention windows. The Privacy Policy and the Terms used to type these as
+// literals ("90 days"), which lied on any deployment whose operator had
+// changed the setting, so both pages now render them from the live setting.
+// That leaves the compiled knowledge showing "{apiUsageDays} days", which is
+// worse than the literal it replaced, so resolve each binding back to the
+// CONFIG_* default it falls back to. Read out of config-values.ts rather than
+// retyped here, so there is still exactly one source of truth for the number.
+//
+// Unlike the emails and dates above, a number reads as nonsense when replaced
+// by a noun phrase ("the configured window days"), and the shipped default is
+// what a self-hoster who has changed nothing actually gets.
+const RETENTION_BINDINGS = {
+  apiUsageDays: "CONFIG_CLEANUP_API_USAGE_RETENTION_DAYS",
+  aiChatDays: "CONFIG_AI_CHAT_HISTORY_DAYS",
+  revokedKeyDays: "CONFIG_CLEANUP_REVOKED_API_KEYS_RETENTION_DAYS",
+  dataRequestDays: "CONFIG_CLEANUP_DATA_REQUESTS_RETENTION_DAYS",
+  securityAlertDays: "CONFIG_CLEANUP_SECURITY_ALERTS_RETENTION_DAYS",
+  feedbackDays: "CONFIG_CLEANUP_SCAN_FINDING_FEEDBACK_RETENTION_DAYS",
+  notificationDays: "CONFIG_CLEANUP_USER_NOTIFICATIONS_RETENTION_DAYS",
+  emailLogDays: "CONFIG_CLEANUP_EMAIL_LOG_RETENTION_DAYS",
+  adminNoteDays: "CONFIG_CLEANUP_ADMIN_USER_NOTES_RETENTION_DAYS",
+  auditLogDays: "CONFIG_CLEANUP_ADMIN_AUDIT_LOG_RETENTION_DAYS",
+  errorLogDays: "CONFIG_CLEANUP_SYSTEM_ERROR_LOGS_RETENTION_DAYS",
+};
+
+/** Shipped defaults for RETENTION_BINDINGS, resolved once from config-values.ts. */
+function readRetentionDefaults() {
+  const configPath = join(ROOT, "lib", "config", "config-values.ts");
+  if (!existsSync(configPath)) return {};
+  const src = readFileSync(configPath, "utf8");
+  const out = {};
+  for (const [binding, constant] of Object.entries(RETENTION_BINDINGS)) {
+    // Numeric literals only, optionally with _ separators (e.g. 80_000).
+    const m = src.match(
+      new RegExp(`${constant}\\s*=\\s*(\\d[\\d_]*)\\b(?!\\s*\\*)`),
+    );
+    // A binding that stops resolving means the constant was renamed. Leaving
+    // it out is right: substituteBareExpressions then leaves "{apiUsageDays}"
+    // in the output, which is visible in review, rather than silently
+    // publishing a stale number.
+    if (m) out[binding] = m[1].replace(/_/g, "");
+  }
+  return out;
+}
+
+const RETENTION_DEFAULTS = readRetentionDefaults();
+
 function substituteBareExpressions(s) {
-  return s.replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g, (full, name) =>
-    name in STATIC_SUBSTITUTIONS ? STATIC_SUBSTITUTIONS[name] : full,
-  );
+  return s.replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g, (full, name) => {
+    if (name in STATIC_SUBSTITUTIONS) return STATIC_SUBSTITUTIONS[name];
+    if (name in RETENTION_DEFAULTS) return RETENTION_DEFAULTS[name];
+    return full;
+  });
 }
 
 function stripJsx(s) {

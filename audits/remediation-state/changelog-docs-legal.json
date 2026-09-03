@@ -1,0 +1,68 @@
+[
+  {
+    "icon": "ShieldCheck",
+    "label": "The Privacy Policy Now Matches What Deleting Your Account Does",
+    "desc": "Two retention entries described behaviour the code stopped doing. The policy said that deleting your account left your finding feedback behind in de-identified form, and that email delivery logs kept your address for another thirty days because that table is keyed by the address rather than by your account. Neither is true: account deletion removes the feedback rows outright, including the URL you scanned and any notes you typed, and it purges the email log by recipient address at the same time. The page now says so.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Timer",
+    "label": "Retention Windows Are Read From The Setting, Not Retyped",
+    "desc": "Every retention period quoted in the Privacy Policy and the Terms was a number typed into the page. All of them are admin-configurable at runtime, so changing one in Admin > Settings left the published policy quietly stating a window the deployment no longer honoured. Both pages now render each window from the same setting the cleanup pass reads, so the two cannot disagree and an operator's own configured value is what visitors see.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Globe",
+    "label": "Every Service A Scan Talks To Is Named In The Privacy Policy",
+    "desc": "The policy said the live browser viewer was the single exception to \"nothing about the sites you scan leaves our servers\". It was not. A scan checks the target against public abuse feeds and vulnerability databases: Google Web Risk gets the full URL, URLhaus gets the hostname, Quad9 gets the hostname on every scan because it is a DNS resolver that needs no key, and OSV.dev and the NVD get the component names and versions the scan fingerprinted. All five are now listed with exactly what each one receives.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Fingerprint",
+    "label": "IP Addresses And User Agents Are Disclosed",
+    "desc": "The Privacy Policy listed session tokens but never mentioned that a sign-in also records the IP address and browser user agent, which is what makes the session list on your profile useful and what a security alert is attached to. Undisclosed collection of an IP address is exactly the sort of thing a privacy policy exists to state, so it is now stated, along with what it is and is not used for.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Link",
+    "label": "Privacy Policy Links That Landed On The Wrong Tab",
+    "desc": "\"Use your Profile settings\" under the GDPR section, the one instruction for exercising a data right, pointed at an anchor the profile page does not have, so it opened on the General tab instead of Privacy. Both profile links now use the query parameter the page actually reads.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Search",
+    "label": "The Disclaimer No Longer Calls Every Check Passive",
+    "desc": "The Disclaimer described the scanner as working \"based on publicly observable information\", which the Terms of Service on the next page over already contradicted: one category confirms a finding by sending a test payload to the target. The Disclaimer now describes both, including the two conditions that gate the active checks, so the two documents say the same thing about what a scan does to a site.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Accessibility",
+    "label": "Accessibility Statement Caught Up With A Fixed Bug",
+    "desc": "The statement still listed unlabelled inputs in the API playground as a known defect under Form Labels. Those inputs were given real labels some time ago. The caveat is gone, and the contact address in the feedback section is rendered from the configured app URL rather than hardcoded, so a self-hosted instance stops printing ours.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Mail",
+    "label": "The Security Page Stopped Promising A Shared Inbox",
+    "desc": "The disclosure page said the contact form \"reaches the same inbox\" as the security address. It does not: the form delivers to the general support mailbox, and it has no way to attach a proof of concept. Told accurately, the page still points researchers at email for the right reason instead of an incorrect one.",
+    "category": "fixed"
+  },
+  {
+    "icon": "FileCheck",
+    "label": "Release Verification Instructions That Actually Verify Something",
+    "desc": "SECURITY.md told you to download sha256sums.txt and check artifacts against it, without ever verifying the sums file itself, from the same host that served the artifacts it describes. The release has signed that file for a while now. The instructions verify the signature first, and the artifact list has caught up too: two cosign bundles, two SBOMs, and the supported-version table moved to 3.8.x.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Terminal",
+    "label": "Contributor Docs Point At Commands That Exist",
+    "desc": "AGENTS.md sent readers to a duplicate-ID script at a path it has not lived at, and gated its whole knowledge-graph workflow on a file that never exists under the current layout, which quietly turned \"always consult the graph\" into \"never\". CONTRIBUTING.md gave a CLI test command that skips the coverage the CI job relies on, and left out the integration suite entirely, which is the only thing in the repo that runs real SQL. The engines range was quoted as an open-ended >=22 in three files when it is bounded at 23, and the settings census in the README was off by nineteen.",
+    "category": "fixed"
+  },
+  {
+    "icon": "KeyRound",
+    "label": "Two Missing Variables In The Env Template",
+    "desc": "PREVIOUS_API_KEY_ENCRYPTION_KEY is how you rotate the encryption key without stranding every value already encrypted under the old one, and it was documented nowhere an operator would look, right next to a note warning about the consequences of rotating. ALLOW_INSECURE_HTTP is what makes a deliberately TLS-free internal deployment reachable at all. Both are now in .env.example with the caveats that belong to them.",
+    "category": "fixed"
+  }
+]

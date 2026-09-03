@@ -197,9 +197,21 @@ const FIXED_LABELS: [rel: string, label: string][] = [
   ["components/landing/landing-sample-finding.tsx", "{value}"],
   ["components/modals/discord-profile-modal.tsx", "Use Discord avatar"],
   ["components/modals/github-profile-modal.tsx", "Use GitHub avatar"],
-  // A check title comes out of the static catalogue, not from a user.
+  // A check title comes out of the static catalogue, not from a user. Every
+  // surface that ranks or lists findings prints one of these, and each was
+  // clipping it to a few words on a phone.
   ["app/checks/page.tsx", "{c.title}"],
   ["app/checks/[id]/page.tsx", "{c.title}"],
+  ["components/scanner/dashboard.tsx", "{v.title}"],
+  ["components/scanner/crawl-pages-info.tsx", "{finding.title}"],
+  ["components/compare/compare-findings-list.tsx", "{title}"],
+  // A check-family name on the progress checklist ("Information disclosure").
+  ["components/scanner/scanning-indicator.tsx", "{step}"],
+  // One of our own plan names, beside a limits line already commented as
+  // "should wrap, never clip".
+  ["components/profile/tabs/profile-billing-tab.tsx", "{billingInfo.planName}"],
+  // Our own sentence describing a slash command, next to a shrink-0 command.
+  ["components/ai-chat/chat-widget.tsx", "{c.description}"],
   // An OpenAPI route, the only thing telling two endpoint rows apart.
   ["app/docs/api/playground/page.tsx", "{op.path}"],
   ["app/docs/rate-limits/page.tsx", "{plan.plan}"],
@@ -262,12 +274,79 @@ describe("stat strips give their captions room", () => {
   it.each([
     "components/shared/stat-strip.tsx",
     "components/scanner/scan-summary.tsx",
+    // The placeholder has to agree with the strip it stands in for. Left at
+    // basis-24 it laid three cells across a 390px screen while the loaded
+    // strip lays two, so the verdict panel grew a row on resolve.
+    "components/scanner/scan-detail-skeleton.tsx",
   ])("%s does not lay cells out at basis-24", (rel) => {
     const src = code(rel);
     expect(src).toContain("basis-[calc(50%-1px)]");
     // Unprefixed only. `sm:basis-24` is the step back up once the row is wide
     // enough to hold four cells; it is the phone-width floor that was wrong.
     expect(src).not.toMatch(/(?<![:-])basis-24\b/);
+  });
+});
+
+/**
+ * Every cell count in the md strip's column table steps down on a phone.
+ *
+ * Three was the exception: a flat `grid-cols-3`, and /assets is the only
+ * 3-cell strip in the product. At 390px that put each cell at ~119px, and
+ * after px-4, the 32px icon and the gap that left ~43px of text column against
+ * an "EXPLOITABLE" caption needing ~74px and a four-digit count needing ~67px.
+ * Both were clipped.
+ *
+ * Asserted on the component rather than on its callers. It was first fixed by
+ * passing an override from assets-stats and assets-skeleton, which worked but
+ * put the layout rule in three places and made the two callers silently
+ * load-bearing: drop one and the placeholder and the loaded strip disagree.
+ * The rule belongs to the component, so the callers pass nothing.
+ */
+describe("the md stat strip steps down on a phone at every cell count", () => {
+  const src = code("components/shared/stat-strip.tsx");
+  const table = src.match(/const MD_COLS[^}]+}/s)?.[0] ?? "";
+
+  it("has a column table", () => {
+    expect(table, "MD_COLS not found in stat-strip.tsx").not.toBe("");
+  });
+
+  it.each([2, 3, 4, 5, 6])(
+    "%i cells is not a flat multi-column grid",
+    (count) => {
+      const line =
+        table.split("\n").find((l) => l.trim().startsWith(`${count}:`)) ?? "";
+      expect(line, `no MD_COLS entry for ${count}`).not.toBe("");
+      // A flat "grid-cols-N" with N >= 3 and no responsive prefix means the
+      // same N columns at 320px as at 1920px, which is what clipped /assets.
+      // Two is deliberately allowed: 2-up on a 320px screen is ~160px a cell,
+      // which is the shape the rest of the table steps down TO.
+      const flat = /"grid-cols-([3-9])"/.exec(line);
+      expect(
+        flat,
+        `MD_COLS[${count}] is ${line.trim()}, a flat multi-column grid with no ` +
+          `phone step. Captions and counts get clipped on a 320-390px screen.`,
+      ).toBeNull();
+    },
+  );
+
+  it("the 3-cell entry is one-up below sm", () => {
+    const line = table.split("\n").find((l) => l.trim().startsWith("3:")) ?? "";
+    expect(line).toContain("grid-cols-1");
+    expect(line).toContain("sm:grid-cols-3");
+  });
+
+  it("the caption is not truncated", () => {
+    // Our own uppercase label, not user data: it is known and short, so
+    // clipping it to "CAME BACK CLEA..." destroys meaning and buys nothing.
+    const caption = src.match(
+      /<span className="[^"]*text-\[10px\][^"]*">/,
+    )?.[0];
+    expect(caption, "caption span not found").toBeTruthy();
+    expect(
+      caption,
+      "the stat caption must wrap, not truncate: at grid-cols-2 on a 320px " +
+        "screen the text column is ~67px against 'CAME BACK CLEAN' at ~93px.",
+    ).not.toContain("truncate");
   });
 });
 
@@ -349,13 +428,47 @@ describe("icon-only controls clear 44px on a phone", () => {
     "components/profile/tabs/developer/webhooks-section.tsx",
     "components/profile/tabs/developer/schedules-section.tsx",
     "components/repos/repo-detail.tsx",
+    // The only route back to the user list on a touch screen (32px), and the
+    // edit/delete pair on an admin note (28px), which is always visible below
+    // md because a touch device has no hover to reveal it.
+    "components/admin/users/user-detail-panel.tsx",
+    // The only rename control on a team, and the only close on the invite
+    // form. Both were padding around a 14px glyph.
+    "components/teams/team-detail-header.tsx",
+    "components/teams/team-invite-form.tsx",
+    // Sits over the bottom of every page in the product, and both of its
+    // dismiss controls were under 44px.
+    "components/shared/cookie-notice.tsx",
   ])("%s steps its icon buttons down from h-11 w-11", (rel) => {
     // Two separate contains rather than one regex: the two halves are not
     // always adjacent in the class string (a shrink-0 or a colour token often
     // sits between them, and cn() splits some of these across lines).
     const src = code(rel);
     expect(src).toContain("h-11 w-11");
-    expect(src).toMatch(/sm:h-\d+ sm:w-\d+/);
+    // `auto` as well as a number: a control whose desktop size was padding
+    // rather than a box steps back to `sm:h-auto sm:w-auto sm:p-*`.
+    expect(src).toMatch(/sm:h-(?:\d+|auto) sm:w-(?:\d+|auto)/);
+  });
+});
+
+/**
+ * Controls that cannot grow, because they sit inside a field whose own height
+ * is smaller than the touch floor. components/scanner/inline-auth-form.tsx is
+ * the house pattern: an `after:` overlay widens the tap area without moving
+ * anything, so a 24-32px box still answers a 44px thumb.
+ *
+ * Listed separately from the h-11 group on purpose. Growing these boxes is the
+ * wrong fix (they would break out of the field), so a future reader should not
+ * "correct" them to h-11 w-11.
+ */
+describe("in-field controls widen their tap area instead of their box", () => {
+  it.each([
+    "components/scanner/inline-auth-form.tsx",
+    "components/scanner/results-list.tsx",
+    "app/checks/checks-filter.tsx",
+    "app/browser/[id]/page.tsx",
+  ])("%s carries an after: hit-area overlay", (rel) => {
+    expect(code(rel)).toMatch(/after:absolute after:-inset-[\d.]+/);
   });
 });
 

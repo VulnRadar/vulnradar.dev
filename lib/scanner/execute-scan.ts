@@ -27,8 +27,12 @@ import {
   clearCancel,
 } from "./scan-jobs";
 import pool from "@/lib/database/db";
-import type { Category, Severity, Vulnerability } from "./types";
-import { APP_NAME, SEVERITY_LEVELS } from "@/lib/config/constants";
+import type { Category, Vulnerability } from "./types";
+import {
+  APP_NAME,
+  SEVERITY_LEVELS,
+  SEVERITY_PRIORITY,
+} from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
 import { getProtocolFromUrl, getProtocolFindings } from "./protocols";
 import { runWebSocketChecks } from "./protocols/websocket";
@@ -77,14 +81,6 @@ import {
   analyzeSoftwareInventory,
   type SoftwareInventoryResult,
 } from "./software-inventory";
-
-const SEVERITY_ORDER: Record<Severity, number> = {
-  critical: 0,
-  high: 1,
-  medium: 2,
-  low: 3,
-  info: 4,
-};
 
 export const SUPPORTED_PROTOCOLS = [
   "http:",
@@ -701,9 +697,11 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
       ...(softwareInventory?.findings ?? []),
     ];
 
-    // Sort findings by severity
+    // Worst first. SEVERITY_PRIORITY counts UP with severity, so this
+    // comparator subtracts b from a, unlike the local table it replaced
+    // (which counted critical down from 0). ref: AUDIT-013#dup-02
     findings.sort(
-      (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity],
+      (a, b) => SEVERITY_PRIORITY[b.severity] - SEVERITY_PRIORITY[a.severity],
     );
 
     // Post-processing enrichment: attach CISA KEV / FIRST.org EPSS

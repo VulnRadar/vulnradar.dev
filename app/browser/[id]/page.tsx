@@ -693,7 +693,10 @@ export default function BrowserViewerPage({ params }: PageProps) {
               </span>
               <button
                 onClick={() => setShowLogs(false)}
-                className="ml-auto -mr-1 p-2 sm:p-1 rounded opacity-60 hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+                // The after: overlay lifts the tap area from 32px to 44px
+                // without growing the box, which shares a dense panel header
+                // with the LIVE pill.
+                className="relative ml-auto -mr-1 rounded p-2 text-muted-foreground opacity-60 transition-opacity after:absolute after:-inset-1.5 hover:opacity-100 hover:text-foreground sm:p-1 sm:after:hidden"
                 title="Close panel"
                 aria-label="Close network panel"
               >

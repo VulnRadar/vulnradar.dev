@@ -87,15 +87,7 @@
 import type { Pool, PoolClient } from "pg";
 import type { Category, Severity, Vulnerability } from "@/lib/scanner/types";
 import pool from "@/lib/database/db";
-import { APP_NAME } from "@/lib/config/constants";
-
-const SEVERITY_RANK: Record<Severity, number> = {
-  info: 0,
-  low: 1,
-  medium: 2,
-  high: 3,
-  critical: 4,
-};
+import { APP_NAME, SEVERITY_PRIORITY } from "@/lib/config/constants";
 
 interface AutoTagRule {
   tag: string;
@@ -617,7 +609,11 @@ function findingQualifies(finding: Vulnerability, rule: AutoTagRule): boolean {
     ? matchesCwe && matchesCategory
     : matchesCwe || matchesCategory;
   if (!matchesSignal) return false;
-  return SEVERITY_RANK[finding.severity] >= SEVERITY_RANK[rule.minSeverity];
+  // SEVERITY_PRIORITY also counts up with severity, so "at least as bad as"
+  // is unchanged by dropping the local copy. ref: AUDIT-013#dup-02
+  return (
+    SEVERITY_PRIORITY[finding.severity] >= SEVERITY_PRIORITY[rule.minSeverity]
+  );
 }
 
 /**

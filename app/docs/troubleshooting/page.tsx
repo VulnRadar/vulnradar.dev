@@ -1,6 +1,13 @@
 import Link from "next/link";
 
 import { APP_NAME } from "@/lib/config/constants";
+import {
+  CONFIG_SCAN_TIMEOUT_SECONDS,
+  CONFIG_CRAWL_SCAN_TIMEOUT_SECONDS,
+  CONFIG_BULK_SCAN_TIMEOUT_SECONDS,
+  CONFIG_SCAN_FETCH_TIMEOUT_MS,
+  CONFIG_CRAWL_PAGE_FETCH_TIMEOUT_MS,
+} from "@/lib/config/config-values";
 import type { TocItem } from "@/components/docs/docs-types";
 import { DocsTocSpy } from "../docs-toc-spy";
 import {
@@ -35,7 +42,10 @@ export default function TroubleshootingPage() {
         description="A scan that failed, timed out, was refused, or came back with nothing. What each outcome actually means, which of them are the target's behaviour rather than a bug, and what to do next."
         stats={[
           { value: "4", label: "Scan statuses" },
-          { value: "300s", label: "Default scan ceiling" },
+          {
+            value: `${CONFIG_SCAN_TIMEOUT_SECONDS}s`,
+            label: "Default scan ceiling",
+          },
           { value: "5", label: "Redirect hops followed" },
         ]}
       />
@@ -126,8 +136,9 @@ export default function TroubleshootingPage() {
               cause: "You stopped the scan. Nothing was recorded.",
             },
             {
-              message: "Scan exceeded the 300s time limit.",
-              cause: "The watchdog fired. See timeouts below.",
+              message: `Scan exceeded the ${CONFIG_SCAN_TIMEOUT_SECONDS}s time limit.`,
+              cause:
+                "The watchdog fired. A crawl says the same thing as “Crawl scan exceeded the ...s time limit.” against its own, larger budget. See timeouts below.",
             },
             {
               message:
@@ -163,15 +174,25 @@ export default function TroubleshootingPage() {
             { key: "limit", header: "Default ceiling" },
           ]}
           data={[
-            { kind: "Single URL", limit: "300 seconds" },
-            { kind: "Crawl", limit: "900 seconds" },
-            { kind: "Bulk batch", limit: "1800 seconds for the whole batch" },
+            {
+              kind: "Single URL",
+              limit: `${CONFIG_SCAN_TIMEOUT_SECONDS} seconds`,
+            },
+            {
+              kind: "Crawl",
+              limit: `${CONFIG_CRAWL_SCAN_TIMEOUT_SECONDS} seconds`,
+            },
+            {
+              kind: "Bulk batch",
+              limit: `${CONFIG_BULK_SCAN_TIMEOUT_SECONDS} seconds for the whole batch`,
+            },
           ]}
         />
         <p className="text-sm leading-relaxed text-muted-foreground">
-          Separately, each individual request has its own much shorter timeout,
-          around 15 seconds for a page fetch and 8 seconds for a crawled page. A
-          request hitting that limit does{" "}
+          Separately, each individual request has its own much shorter timeout:{" "}
+          {CONFIG_SCAN_FETCH_TIMEOUT_MS / 1000} seconds for a page fetch and{" "}
+          {CONFIG_CRAWL_PAGE_FETCH_TIMEOUT_MS / 1000} seconds for a crawled
+          page. A request hitting that limit does{" "}
           <strong className="text-foreground">not</strong> fail the scan: the
           affected group of checks is reported as incomplete and the rest of the
           scan continues.
@@ -417,7 +438,7 @@ export default function TroubleshootingPage() {
         <p className="text-sm leading-relaxed text-muted-foreground">
           Running your own instance? The same failures are visible under{" "}
           <strong className="text-foreground">
-            Admin &rarr; System &rarr; Error Logs
+            Admin &rarr; Operations &rarr; Error Logs
           </strong>{" "}
           with the underlying exception, and{" "}
           <strong className="text-foreground">Scanner Queue</strong> shows

@@ -1,6 +1,6 @@
 # VulnRadar Legal Pages: AI Knowledge
 
-_Auto-compiled from `app/legal/*/page.tsx` on 2026-09-02._
+_Auto-compiled from `app/legal/*/page.tsx` on 2026-09-03._
 
 This file is consumed by the AI system prompt at runtime (via the
 /legal slash command) so the assistant can answer questions about
@@ -97,9 +97,9 @@ API Reference
 
 ### 7. Data Retention &amp; Deletion
 Scan history is kept for as long as your account is active. API usage
-logs are retained for 90 days. Data export requests are retained for
-60 days. You may delete your account and all associated data at any
-time from your profile page; see the
+logs are retained for 90 days. Data export requests are
+retained for 60 days. You may delete your account and
+all associated data at any time from your profile page; see the
 
 Privacy Policy&apos;s Data Retention section
 
@@ -204,6 +204,15 @@ shows exactly what each role can do.
 your API keys.
 - Session data: session tokens stored as HTTP-only
 cookies.
+- IP address and browser user agent: recorded
+against each sign-in session (so you can see and revoke your own
+sessions from
+
+Profile > Security
+
+), against a device you mark as trusted, and against a security
+alert or an administrative action when one is raised. They are not
+used to profile you or build an advertising audience.
 - AI chat messages: if you use the AI assistant,
 your messages and its replies are stored so the conversation can
 continue across page loads.
@@ -213,10 +222,12 @@ Data We Do NOT Collect
 - We do not use analytics, tracking pixels, or third-party advertising cookies.
 - We do not sell, rent, or share your personal information for marketing purposes.
 - We do not collect data about websites you scan beyond what is
-necessary for the scan report, with one exception: the optional
-live browser viewer and browser-based authenticated login (see
-Section 4) route that one scan through a third-party
-remote-browser provider, which may briefly record the session.
+necessary for the scan report. Producing that report does send the
+URL or hostname you scanned to the threat-intelligence and
+vulnerability-database services listed in Section 4, and the
+optional live browser viewer and browser-based authenticated login
+route that one scan through a third-party remote-browser provider.
+Nothing beyond the scan itself is shared.
 - Login credentials you provide for an authenticated scan are used
 only in memory for that single scan and are never written to our
 database or logs.
@@ -313,6 +324,21 @@ access to whatever repos you authorize, even though the feature
 itself only reads the files you select.
 - Cloudflare Turnstile (CAPTCHA): Cloudflare may
 collect limited device data to prevent abuse.
+- Threat reputation lookups: a scan checks the
+target against public abuse feeds, which means the URL or its
+hostname leaves our infrastructure. Google Web Risk receives the
+full URL and URLhaus (abuse.ch) receives the hostname, both only
+when the operator has configured a key for them. Quad9 receives
+the hostname on every scan: it is a public security DNS resolver
+that needs no key, so the lookup is a plain DNS query and cannot
+be turned off by leaving a key unset. None of these receive your
+account, your email, or anything else about you.
+- Vulnerability databases (OSV.dev and the NVD):
+when a scan fingerprints a server, framework, or library version,
+that component name and version is sent to OSV.dev and the NVD
+REST API to correlate it with known CVEs. Names and version
+numbers only: neither receives the URL you scanned or anything
+about your account.
 - Remote Browser Sessions (Browserbase, Optional):
 Used when you open the live scan viewer or when authenticated
 scanning uses browser-based login. Browserbase runs a short-lived
@@ -362,52 +388,54 @@ of the architecture docs.
 - Scan history: kept for as long as your account is
 active, on every plan. Deleting your account deletes your scan
 history immediately.
-- API usage logs: 90 days, then automatically
-deleted.
-- AI chat history: 90 days, then automatically
-deleted.
+- API usage logs: 90 days, then
+automatically deleted.
+- AI chat history: 90 days, then
+automatically deleted. Deleting your account deletes it
+immediately rather than waiting for that window.
 - Expired sessions: removed by an automatic cleanup
 pass that runs every few minutes, and again on every server start;
 an expired session stops working immediately regardless of when
 the row is actually deleted.
-- Revoked API keys: 30 days after revocation, then
-automatically deleted.
-- Data export requests: 60 days, then automatically
-deleted.
+- Revoked API keys: 30 days after
+revocation, then automatically deleted.
+- Data export requests: 60 days,
+then automatically deleted.
 - Billing and invoice history: kept for as long as
 your account exists and deleted when you delete your account.
-- Security alerts: 180 days, then automatically
-deleted.
+- Security alerts: 180 days, then
+automatically deleted; deleting your account deletes them
+immediately.
 - Finding feedback: if you mark a finding
 confirmed, false positive, or not applicable, that verdict and any
-notes you add are kept for 90 days, then automatically deleted. If
-you delete your account first, the entry is kept (it also
-documents that finding&apos;s history for other users) but is
-de-identified rather than deleted.
+notes you add are kept for 90 days, then automatically
+deleted. Deleting your account deletes the entry immediately
+rather than waiting for that window, because it carries the URL
+you scanned and whatever you typed into the notes field.
 - In-app notifications: the notification-bell feed
-(e.g. "your scheduled scan finished") is kept for 90
-days, then automatically deleted; deleting your account deletes
-them immediately.
+(e.g. "your scheduled scan finished") is kept for
+90 days, then automatically deleted; deleting your
+account deletes them immediately.
 - Email delivery logs: a record that an email was
 attempted (recipient address, subject line, delivery status, and a
 redacted preview of the content, with links, codes, and tokens
 stripped out) is kept for 30 days for deliverability
-troubleshooting, then automatically deleted. Since this table is
-keyed by the recipient address rather than your account, deleting
-your account does not remove these rows early; they still age out
-on the normal 30-day schedule.
-- Admin notes: 365 days, then automatically
-deleted.
+troubleshooting, then automatically deleted. This table has no
+account column and is keyed only by the recipient address, so
+deleting your account purges it by that address instead, and the
+rows go at the same time as everything else.
+- Admin notes: 365 days, then
+automatically deleted.
 - Admin audit log: entries move from the active
-table to a permanent, indefinite compliance archive after 365
-days, rather than being deleted, so the platform keeps a lasting
-record of what administrative action was taken and by whom. If you
-delete your account, any entries still in the active table that
-reference you as the target of an admin action are de-identified
-(the link to your account is removed, the record of what happened
-is kept). Entries already moved to the archive before you delete
-your account keep their original data, since the archive exists
-specifically as an immutable historical record.
+table to a permanent, indefinite compliance archive after
+365 days, rather than being deleted, so the platform
+keeps a lasting record of what administrative action was taken and
+by whom. If you delete your account, any entries still in the
+active table that reference you as the target of an admin action
+are de-identified (the link to your account is removed, the record
+of what happened is kept). Entries already moved to the archive
+before you delete your account keep their original data, since the
+archive exists specifically as an immutable historical record.
 - System error logs: when a server-side error
 occurs, the diagnostic message is captured for troubleshooting
 with secrets and email addresses automatically redacted before
@@ -678,7 +706,11 @@ qualified cybersecurity professional.
 
 ### 3. Accuracy of Results
 VulnRadar performs the current check count (see /checks) automated vulnerability
-checks based on publicly observable information. Results may include:
+checks. Most read only what the target already returns: response
+headers, page content, certificates, and DNS records. A smaller set
+confirms a finding by sending a test payload to the target, and those
+run only when a scan asks for them by name and only against a domain
+verified on the requesting account. Results may include:
 
 - False positives: issues flagged that are not
 actual vulnerabilities in your context.
@@ -826,9 +858,7 @@ text where appropriate.
 - Responsive Design: Content is accessible across
 different screen sizes and zoom levels.
 - Form Labels: Form inputs carry associated labels
-or accessible names. A small number of inputs in the API
-playground are still labelled only by placeholder text; that is
-tracked as a bug.
+or accessible names.
 - Skip Links: Skip navigation links allow users to
 bypass repetitive content.
 
@@ -868,7 +898,7 @@ let us know if you encounter barriers:
 the support email address listed on this page
 - Contact Form:
 
-vulnradar.dev/contact
+{APP_URL.replace(/^https?:\/\//, "")}/contact
 
 We try to respond to accessibility feedback within 5 business days.
 

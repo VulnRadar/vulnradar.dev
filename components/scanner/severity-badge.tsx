@@ -1,5 +1,6 @@
 import { cn } from "@/lib/ui/utils";
 import type { Severity } from "@/lib/scanner/types";
+import { SEVERITY_ORDER } from "@/lib/config/client-constants";
 
 /**
  * Single source of severity styling for the whole product surface.
@@ -9,13 +10,11 @@ import type { Severity } from "@/lib/scanner/types";
  * hardcodes a Tailwind palette colour.
  */
 
-export const SEVERITY_ORDER: readonly Severity[] = [
-  "critical",
-  "high",
-  "medium",
-  "low",
-  "info",
-];
+/** Re-exported so the existing `from "@/components/scanner/severity-badge"`
+ *  imports keep working. The ordering itself lives beside SEVERITY_PRIORITY in
+ *  lib/config/client-constants.ts, because server-side renderers need it too
+ *  and cannot import a component module. ref: AUDIT-013#dup-02 */
+export { SEVERITY_ORDER };
 
 export interface SeverityTone {
   label: string;

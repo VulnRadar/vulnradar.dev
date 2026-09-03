@@ -606,7 +606,9 @@ export function UserDetailPanel({
               <Button
                 variant="outline"
                 size="icon"
-                className="h-8 w-8 shrink-0 -ml-1 -mt-0.5 border-border/60 bg-muted/40"
+                // 44px on a phone. This is the only route back to the user
+                // list on a touch screen and it was drawn at 32.
+                className="-ml-1 -mt-0.5 h-11 w-11 shrink-0 border-border/60 bg-muted/40 sm:h-8 sm:w-8"
                 onClick={onClose}
                 aria-label="Back to user list"
               >
@@ -1864,7 +1866,7 @@ export function UserDetailPanel({
                                     <Button
                                       variant="ghost"
                                       size="icon"
-                                      className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                      className="h-11 w-11 text-destructive hover:bg-destructive/10 hover:text-destructive sm:h-7 sm:w-7"
                                       onClick={() =>
                                         setPendingDeleteBadge(badge)
                                       }
@@ -2048,7 +2050,7 @@ export function UserDetailPanel({
                           onClick={() =>
                             setEditingNote({ id: note.id, text: note.note })
                           }
-                          className="flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                          className="flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:h-7 sm:w-7"
                           aria-label="Edit note"
                         >
                           <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
@@ -2060,7 +2062,7 @@ export function UserDetailPanel({
                               text: note.note,
                             })
                           }
-                          className="flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                          className="flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive sm:h-7 sm:w-7"
                           aria-label="Delete note"
                         >
                           <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />

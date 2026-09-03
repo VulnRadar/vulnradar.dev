@@ -1,25 +1,9 @@
-
 {
   "auditId": "AUDIT-011",
   "schemaNote": "Uses the finding schema specified in the audit brief (id, title, section, type, severity, effort, category, file, line, description, impact, recommendation). AUDIT-001..010 use an older repo-local shape (scope/summary/files/fix). Whoever builds the merged report.html must normalize the ten older files.",
-  "sectionsCovered": [
-    3,
-    4,
-    5,
-    6,
-    7,
-    8
-  ],
-  "sectionsComplete": [
-    3,
-    4,
-    8
-  ],
-  "sectionsPartial": [
-    5,
-    6,
-    7
-  ],
+  "sectionsCovered": [3, 4, 5, 6, 7, 8],
+  "sectionsComplete": [3, 4, 8],
+  "sectionsPartial": [5, 6, 7],
   "findings": [
     {
       "id": "scan-01",

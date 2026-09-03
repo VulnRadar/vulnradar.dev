@@ -58,7 +58,12 @@ const CONTAINER = "overflow-hidden rounded-xl border border-border bg-border";
 const MD_COLS: Record<number, string> = {
   1: "grid-cols-1",
   2: "grid-cols-2",
-  3: "grid-cols-3",
+  // The phone step matters most here, not least. Three cells at 390px are
+  // ~119px each, and after the padding and the icon that leaves ~43px of text
+  // column against an "EXPLOITABLE" caption needing ~74px and a four-digit
+  // count needing ~67px, so /assets clipped both the label and the number.
+  // Every other entry in this table already stepped down; this one did not.
+  3: "grid-cols-1 sm:grid-cols-3",
   4: "grid-cols-2 sm:grid-cols-4",
   5: "grid-cols-2 sm:grid-cols-5",
   6: "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6",
@@ -161,7 +166,13 @@ export function StatStrip({
                   ? item.value.toLocaleString()
                   : item.value}
               </span>
-              <span className="truncate text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              {/* Wraps rather than truncating. This is our own caption, not
+                  user data: the text is known, short and load-bearing, so
+                  clipping it to "CAME BACK CLEA..." destroys the meaning and
+                  buys nothing. At grid-cols-2 on a 320px screen the text
+                  column is ~67px against "CAME BACK CLEAN" at ~93px, so
+                  /history clipped it on the narrowest phones. */}
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                 {item.label}
               </span>
             </div>

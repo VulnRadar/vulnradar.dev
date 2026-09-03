@@ -157,9 +157,10 @@ export default function AccountSecurityDocsPage() {
           </p>
           <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
             <li>
-              Each code looks like{" "}
-              <InlineCode>ABCDE-12345-FGHIJ-67890</InlineCode> and works only
-              once. Using one consumes it.
+              Each code is 80 bits of randomness as 20 uppercase hex characters,
+              grouped in fives: <InlineCode>3F9A1-0C7E2-BD48F-16A05</InlineCode>
+              . There are no letters past F. Each one works exactly once; using
+              it consumes it.
             </li>
             <li>
               {APP_NAME} stores only a hash of each code, never the code itself,

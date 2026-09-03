@@ -22,5 +22,29 @@
     "label": "Long IDs Stop Pushing The Page Sideways",
     "desc": "A session id, a user id, an IPv6 address, a cookie id and an updater job id are each one unbroken run of characters, and printed with nowhere to break they set the width of whatever they sat in and made the whole page scroll sideways. They wrap now. The admin lookup panel does the same with whatever URL was pasted into it, and a repository description reads as two lines of prose rather than one clipped line.",
     "category": "fixed"
+  },
+  {
+    "icon": "ListTree",
+    "label": "Finding Names Are Printed In Full, Not Cut To Four Words",
+    "desc": "A check title is one of our own, out of the catalogue, so anywhere one is listed the row can simply be sized to hold it. Three places had it clipped instead: the dashboard's \"Most common findings\" ranking, where the numbering and the count column left about 185px for a name like \"Missing Content-Security-Policy header\" that needs 260; the per-page finding list under a crawl, indented and carrying a severity word; and the compare view, whose entire job is telling you which findings differ between two scans. They wrap onto a second line now. The scan progress checklist does the same with its check-family names, the billing panel with your plan name, and the chat's slash-command list with the sentence describing each command, which was being cut after about four words at every window size.",
+    "category": "fixed"
+  },
+  {
+    "icon": "LayoutGrid",
+    "label": "The Hosts Page Stat Strip Fits On A Phone",
+    "desc": "/assets is the only three-cell stat strip in the app, and three cells was the one count laid out the same way at every width. On a 390px screen that gave each cell about 119px, and after the padding and the icon roughly 43px of text: \"EXPLOITABLE\" needs about 74 and a four-digit count about 67, so both the caption and the number were clipped. The three cells stack on a phone and go back to a row from tablet width up, and the loading placeholder now matches, as does the scan summary's placeholder, which was drawing three readouts to a line where the real strip draws two.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Hand",
+    "label": "More Controls You Can Actually Hit",
+    "desc": "The back arrow out of an admin user's detail panel, the edit and delete buttons on an admin note, the delete button on a badge, the rename pencil on a team, the close button on the team invite form, and both dismiss controls on the cookie bar that sits over the bottom of every page were drawn between 24 and 32 pixels. They are 44 on a phone and back to their old size from tablet width up. Three controls that live inside a text field and so cannot grow (the finding search's clear button, the /checks filter's, and the browser session's close-panel button) keep their size and widen only the area that answers a thumb.",
+    "category": "fixed"
+  },
+  {
+    "icon": "KeyRound",
+    "label": "A Backup Code Is Never Shown Half-Printed",
+    "desc": "The two-factor backup codes are shown exactly once, and they were rendered in a box that would clip a code with an ellipsis rather than report that it did not fit. Copying still worked, but what you wrote down would have been wrong. A code that does not fit now wraps instead.",
+    "category": "fixed"
   }
 ]

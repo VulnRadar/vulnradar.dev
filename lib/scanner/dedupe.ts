@@ -13,15 +13,8 @@
  * detected by 2 other checks" and the count of distinct problems is honest.
  */
 
-import type { Severity, Vulnerability } from "./types";
-
-const SEVERITY_RANK: Record<Severity, number> = {
-  critical: 5,
-  high: 4,
-  medium: 3,
-  low: 2,
-  info: 1,
-};
+import type { Vulnerability } from "./types";
+import { SEVERITY_PRIORITY } from "@/lib/config/client-constants";
 
 /**
  * Groups of pre-existing check IDs that detect the same underlying issue.
@@ -172,8 +165,8 @@ function groupOf(
  * two scans of the same target stay diffable.
  */
 function better(a: Vulnerability, b: Vulnerability): Vulnerability {
-  const sevA = SEVERITY_RANK[a.severity] ?? 0;
-  const sevB = SEVERITY_RANK[b.severity] ?? 0;
+  const sevA = SEVERITY_PRIORITY[a.severity] ?? 0;
+  const sevB = SEVERITY_PRIORITY[b.severity] ?? 0;
   if (sevA !== sevB) return sevA > sevB ? a : b;
   const confA = a.confidence ?? 0;
   const confB = b.confidence ?? 0;

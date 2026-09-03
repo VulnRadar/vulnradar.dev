@@ -11,6 +11,13 @@ import {
 } from "@/lib/config/constants";
 import { ALL_CATEGORIES } from "@/lib/scanner/types";
 import { CRAWL_PAGE_SELECTION_LIMITS } from "@/lib/billing/crawl-page-limits";
+import { PLANS } from "@/lib/billing/catalog";
+import {
+  EXACT_CHECK_COUNT,
+  EXACT_LEGACY_CHECK_COUNT,
+  EXACT_PAGE_CHECK_COUNT,
+} from "@/lib/config/check-stats.generated";
+import { SETTINGS_REGISTRY } from "@/lib/config/registry";
 import type { TocItem } from "@/components/docs/docs-types";
 import { DocsTocSpy } from "../docs-toc-spy";
 import {
@@ -55,7 +62,11 @@ const coreEndpoints = [
   {
     endpoint: "/scan/bulk",
     method: "POST",
-    description: "Queue up to 100 URLs in one request, then poll each scan id",
+    // Same treatment as the crawl row below: the per-plan cap is read from
+    // the catalog, not typed out. "up to 100" was the deployment-wide
+    // MAX_URLS_BULK ceiling, which is not the limit any free or Core caller
+    // actually hits.
+    description: `Queue ${PLANS.map((p) => p.limits.bulkScanUrls).join("/")} URLs by plan in one request, then poll each scan id`,
   },
   {
     endpoint: "/scan/crawl",
@@ -79,7 +90,8 @@ const coreEndpoints = [
   {
     endpoint: "/history",
     method: "GET",
-    description: "List scan history (up to 100 most recent)",
+    description:
+      "List scan history, newest first, paged with ?limit= and ?offset= (read maxLimit and truncated off the response)",
   },
   {
     endpoint: "/history/[id]",
@@ -131,6 +143,16 @@ const findingTypeFields = [
   },
 ];
 
+/**
+ * Counted off SETTINGS_REGISTRY rather than typed out. The prose used to say
+ * "239 of the 268 settings"; both halves had drifted, and there is no reason
+ * a page that can import the registry should be quoting a snapshot of it.
+ */
+const SETTINGS_TOTAL = Object.keys(SETTINGS_REGISTRY).length;
+const SETTINGS_RUNTIME = Object.values(SETTINGS_REGISTRY).filter(
+  (entry) => entry.tier === "runtime",
+).length;
+
 const sdkChecklist = [
   "Bearer-token authentication via vr_live_ prefix",
   "Configurable base URL (defaults to APP_URL/api/v3)",
@@ -139,7 +161,7 @@ const sdkChecklist = [
   "Rate-limit handling with exponential backoff",
   "Honors X-RateLimit-Reset, Retry-After, X-RateLimit-Remaining",
   "Configurable timeout per request",
-  "Supports webhooks verification (HMAC if added later)",
+  "Verifies the X-VulnRadar-Signature webhook header (sha256=<hex>, HMAC-SHA256 of the raw body)",
   "Example usage in README",
   "Unit tests with mocked fetch responses",
 ];
@@ -229,10 +251,14 @@ export default function DevelopersPage() {
               <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
                 Response
               </h3>
+              {/* count is interpolated from the generated constant. The
+                  literal that used to sit here said 695 while the real
+                  catalogue had grown past it, and the same page then quoted
+                  two more stale numbers in the paragraph below. */}
               <CodeBlock
                 code={`{
   "success": true,
-  "count": 695,
+  "count": ${EXACT_CHECK_COUNT},
   "data": [
     {
       "id": "hsts-missing",
@@ -257,10 +283,11 @@ export default function DevelopersPage() {
               <p className="text-xs text-muted-foreground mt-2">
                 Backed by{" "}
                 <InlineCode>lib/scanner/checks-data/*.json</InlineCode>, one
-                file per category, for the 652 legacy checks. Adding one of
-                those means editing the JSON for its category and the matching
-                detector in <InlineCode>lib/scanner/checks/</InlineCode>. The
-                other 43 checks live on a newer{" "}
+                file per category, for the {EXACT_LEGACY_CHECK_COUNT} legacy
+                checks. Adding one of those means editing the JSON for its
+                category and the matching detector in{" "}
+                <InlineCode>lib/scanner/checks/</InlineCode>. The other{" "}
+                {EXACT_PAGE_CHECK_COUNT} checks live on a newer{" "}
                 <InlineCode>PageCheck</InlineCode> architecture under{" "}
                 <InlineCode>lib/scanner/checks/page-checks/</InlineCode> with
                 metadata declared inline; see{" "}
@@ -327,8 +354,16 @@ export default function DevelopersPage() {
             <p className="max-w-[68ch] text-sm text-muted-foreground">
               Each non-2xx response includes a JSON body with at minimum an{" "}
               <InlineCode>error</InlineCode> string. Map HTTP status to typed
-              exceptions (400 / 401 / 403 / 404 / 422 / 429 / 500). On 429,
-              honour the <InlineCode>Retry-After</InlineCode> header and the{" "}
+              exceptions. The v3 API uses 400, 401, 402, 403, 404, 409, 413,
+              422, 429, 500, 502 and 503; the{" "}
+              <Link
+                href="/docs/api#error-handling"
+                className="text-primary underline-offset-2 hover:underline"
+              >
+                API reference
+              </Link>{" "}
+              says what each one means here. On 429, honour the{" "}
+              <InlineCode>Retry-After</InlineCode> header and the{" "}
               <InlineCode>X-RateLimit-Reset</InlineCode> header.
             </p>
           </div>
@@ -816,16 +851,20 @@ npm run lint:fix    # auto-fix`}
             both derive from <InlineCode>config-values.ts</InlineCode>. Edit{" "}
             <InlineCode>config-values.ts</InlineCode> to move the shipped
             default, or change the value in Admin &rarr; Settings if it is
-            runtime tier, which 239 of the 268 settings are.
+            runtime tier, which {SETTINGS_RUNTIME} of the {SETTINGS_TOTAL}{" "}
+            settings are.
           </li>
           <li>
             <strong className="text-foreground">
               Adding a database table:
             </strong>{" "}
-            add the <InlineCode>CREATE TABLE IF NOT EXISTS</InlineCode> to{" "}
-            <InlineCode>instrumentation.ts</InlineCode> (the canonical source)
-            AND mirror it to{" "}
-            <InlineCode>scripts/migrate/versions/_snippets.mjs</InlineCode>.
+            add the <InlineCode>CREATE TABLE IF NOT EXISTS</InlineCode> to the
+            right file under <InlineCode>lib/database/schema/</InlineCode> (the
+            canonical source, and the same ordered list{" "}
+            <InlineCode>npm run db:create</InlineCode> runs) AND mirror it to{" "}
+            <InlineCode>scripts/migrate/versions/_snippets.mjs</InlineCode>. It
+            is no longer in <InlineCode>instrumentation.ts</InlineCode>, which
+            now only orders the boot phases.
           </li>
           <li>
             <strong className="text-foreground">Adding a new API route:</strong>{" "}

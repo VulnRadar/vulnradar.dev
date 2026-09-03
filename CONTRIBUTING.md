@@ -10,7 +10,8 @@ cp .env.example .env
 npm run dev
 ```
 
-Requires **Node 22** (the `engines` field is `>=22`; see `.nvmrc`).
+Requires **Node 22** (the `engines` field is `>=22.0.0 <23.0.0`, so 20 and
+anything from 23 up are both rejected; see `.nvmrc`).
 
 ### Use npm, and do not regenerate the lockfile
 
@@ -78,6 +79,18 @@ whole pipeline:
 npm run lint && npm run format:check && npm run typecheck && npm test && npm run build
 ```
 
+`npm test` deliberately excludes `tests/integration`, so none of the above
+runs a single line of real SQL. If you changed a query, a schema file, or a
+constraint, run the integration tier too, against a throwaway database:
+
+```bash
+INTEGRATION_DATABASE_URL=postgresql://... \
+  npx vitest run --config tests/integration/vitest.config.ts
+```
+
+It skips itself silently when that variable is unset, which is why a green
+`npm test` proves nothing about SQL. See `tests/README.md`.
+
 Then, depending on what you touched:
 
 - **Docs pages, changelog data, check definitions, or legal pages:** run
@@ -87,7 +100,10 @@ Then, depending on what you touched:
   without committing the regenerated output goes red on a step whose error
   message does not explain itself. This is the single most common surprise
   failure in this repo.
-- **`cli/`:** `cd cli && node --test`
+- **`cli/`:** `cd cli && npm test`. Use the package script, not a bare
+  `node --test`: the script adds `--experimental-test-coverage`, and that is
+  what CI runs, so a bare invocation reports a pass without telling you what
+  fraction of the CLI it actually covered.
 - **`extension/`:** `cd extension && npm ci && npm run typecheck && npm run format:check && npm run build:chrome && npm run build:firefox`
 
 `npm audit --audit-level=high --omit=dev` also gates a PR, so a dependency

@@ -25,24 +25,24 @@ complete, and **all twenty sections of the brief are done.**
 one completed. The remaining fifteen were re-dispatched from briefs preserved verbatim
 in `agent-briefs/`, which is why the restart was exact rather than approximate.
 
-| Agent | Section | Scope | Findings |
-|---|---|---|---|
-| `host` | 13 | self-host verification, Dockerfile, compose, first-run | 12 |
-| `ci` | 13 | pipeline secrets, gating, auto-merge, release and publish | 19 |
-| `apidoc` | 14 | 155 routes vs docs vs openapi, every code sample | 33 |
-| `doc` | 14 | README, CONTRIBUTING, SECURITY, env vars, dead links | 22 |
-| `hc` | 15 | domains, emails, ports, paths, third-party ids | 15 |
-| `magic` | 15 | timeouts, limits, expiries, flags, copy strings | 21 |
-| `a11y` | 18 | labels, keyboard, focus, ARIA, computed contrast | 19 |
-| `state` | 18 | empty, loading, error and forbidden states | 19 |
-| `seo` | 19 | metadata inventory, canonicals, sitemap, JSON-LD, previews | 24 |
-| `mkt` | 19 | value prop, copy, CTAs, screenshots, README | 15 |
-| `comp` | 20 | two ranked lists against a verified competitor set | 18 |
-| `dsn` | 5 | conformance of 71 app pages against the design language | 22 |
-| `dsnx` | 5 | emails, report renderers, extension, error pages, docs | 15 |
-| `scanui` | 6 | timer removal, replacement proposal, page rebuild | 10 |
-| `qols` | 7 | admin restructure, information hierarchy | 18 |
-| `qolf` | 7 | flows, shortcuts, confirmation, feedback, mobile density | 33 |
+| Agent    | Section | Scope                                                      | Findings |
+| -------- | ------- | ---------------------------------------------------------- | -------- |
+| `host`   | 13      | self-host verification, Dockerfile, compose, first-run     | 12       |
+| `ci`     | 13      | pipeline secrets, gating, auto-merge, release and publish  | 19       |
+| `apidoc` | 14      | 155 routes vs docs vs openapi, every code sample           | 33       |
+| `doc`    | 14      | README, CONTRIBUTING, SECURITY, env vars, dead links       | 22       |
+| `hc`     | 15      | domains, emails, ports, paths, third-party ids             | 15       |
+| `magic`  | 15      | timeouts, limits, expiries, flags, copy strings            | 21       |
+| `a11y`   | 18      | labels, keyboard, focus, ARIA, computed contrast           | 19       |
+| `state`  | 18      | empty, loading, error and forbidden states                 | 19       |
+| `seo`    | 19      | metadata inventory, canonicals, sitemap, JSON-LD, previews | 24       |
+| `mkt`    | 19      | value prop, copy, CTAs, screenshots, README                | 15       |
+| `comp`   | 20      | two ranked lists against a verified competitor set         | 18       |
+| `dsn`    | 5       | conformance of 71 app pages against the design language    | 22       |
+| `dsnx`   | 5       | emails, report renderers, extension, error pages, docs     | 15       |
+| `scanui` | 6       | timer removal, replacement proposal, page rebuild          | 10       |
+| `qols`   | 7       | admin restructure, information hierarchy                   | 18       |
+| `qolf`   | 7       | flows, shortcuts, confirmation, feedback, mobile density   | 33       |
 
 ---
 
@@ -51,17 +51,17 @@ in `agent-briefs/`, which is why the restart was exact rather than approximate.
 **307 findings: 3 critical, 45 high, 154 medium, 86 low, 19 info.** 159 distinct files
 cited. Sorted severity-descending as the brief requires.
 
-| Section | Findings |
-|---|---|
-| 5 Design consistency | 37 |
-| 6 The scanning page | 10 |
-| 7 UI quality of life | 49 |
-| 13 Build and deploy | 31 |
-| 14 Documentation | 54 |
-| 15 Hardcoded values | 36 |
-| 18 Accessibility and states | 35 |
-| 19 Discoverability and marketing | 37 |
-| 20 Competitive gaps | 18 |
+| Section                          | Findings |
+| -------------------------------- | -------- |
+| 5 Design consistency             | 37       |
+| 6 The scanning page              | 10       |
+| 7 UI quality of life             | 49       |
+| 13 Build and deploy              | 31       |
+| 14 Documentation                 | 54       |
+| 15 Hardcoded values              | 36       |
+| 18 Accessibility and states      | 35       |
+| 19 Discoverability and marketing | 37       |
+| 20 Competitive gaps              | 18       |
 
 ### The three criticals are one story
 
@@ -100,7 +100,7 @@ is a required check, so every "must block merges" comment in `ci.yml` is false.
 - **`state-01` (high).** `ScanResult.incomplete` is computed, persisted, typed and
   threaded to every surface, and **rendered by nothing**. Its own doc comment states
   the contract the UI breaks. A timed-out DNS or TLS branch makes a scan print
-  "Nothing exploitable found". `state-02` shows the upstream half: a *rejected* branch
+  "Nothing exploitable found". `state-02` shows the upstream half: a _rejected_ branch
   is recorded as complete at full confidence. On a security product, a partial scan
   displayed as a clean bill of health is the worst failure mode available.
 - **`qols-10` (medium).** The dashboard's headline risk number is
@@ -130,7 +130,7 @@ is a required check, so every "must block merges" comment in `ci.yml` is false.
   `system_settings` and read by nothing, while the admin banner promises they apply
   "after the next build and deploy".
 - **`doc-01` (high).** Four docs pages tell a fresh self-hoster to run
-  `UPDATE users SET role = 'admin'`, which *demotes* the auto-provisioned
+  `UPDATE users SET role = 'admin'`, which _demotes_ the auto-provisioned
   `super_admin` created at `lib/auth/auth.ts:284`, and no UI can restore it.
 - **`doc-04` (high).** `.github/SUPPORT.md:19` tells bug reporters to delete
   `package-lock.json` and run `npm install`, which is exactly the operation that
@@ -241,13 +241,13 @@ IaC, cloud, IAST and an internal scanning agent as permanent non-goals with reas
 
 All twenty sections are done across four audits.
 
-| Audit | Sections | Findings |
-|---|---|---|
-| AUDIT-011 | 3, 4, 8 complete; 5, 6, 7 partial | 117 |
-| AUDIT-012 | 1, 2, 9, 17 | 114 |
-| AUDIT-013 | 10, 11, 12, 16 | 114 |
-| AUDIT-014 | 5, 6, 7, 13, 14, 15, 18, 19, 20 | 307 |
-| **Total** | **all 20** | **652** |
+| Audit     | Sections                          | Findings |
+| --------- | --------------------------------- | -------- |
+| AUDIT-011 | 3, 4, 8 complete; 5, 6, 7 partial | 117      |
+| AUDIT-012 | 1, 2, 9, 17                       | 114      |
+| AUDIT-013 | 10, 11, 12, 16                    | 114      |
+| AUDIT-014 | 5, 6, 7, 13, 14, 15, 18, 19, 20   | 307      |
+| **Total** | **all 20**                        | **652**  |
 
 ---
 

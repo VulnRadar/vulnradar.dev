@@ -83,7 +83,11 @@ export default async function DisclaimerPage() {
       <LegalSection id="accuracy-of-results" title="3. Accuracy of Results">
         <p>
           {APP_NAME} performs {TOTAL_CHECKS_LABEL} automated vulnerability
-          checks based on publicly observable information. Results may include:
+          checks. Most read only what the target already returns: response
+          headers, page content, certificates, and DNS records. A smaller set
+          confirms a finding by sending a test payload to the target, and those
+          run only when a scan asks for them by name and only against a domain
+          verified on the requesting account. Results may include:
         </p>
         <LegalList
           items={[

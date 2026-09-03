@@ -11,10 +11,7 @@
     "effort": null,
     "category": null,
     "file": "middleware.ts",
-    "files": [
-      "middleware.ts",
-      "lib/api/csrf.ts"
-    ],
+    "files": ["middleware.ts", "lib/api/csrf.ts"],
     "line": null,
     "description": "Cross-site POST could ride the session cookie and change the victim's email.",
     "impact": "",
@@ -38,9 +35,7 @@
     "effort": "medium",
     "category": "self-update",
     "file": "lib/updater/environment.ts",
-    "files": [
-      "lib/updater/environment.ts"
-    ],
+    "files": ["lib/updater/environment.ts"],
     "line": 8,
     "description": "Static trace. isUpdaterSupported() (lib/updater/environment.ts:8-17) returns unsupported only when process.env.VERCEL is set; there is no container detection, so both app/api/v3/admin/updater/status/route.ts:37 and .../apply/route.ts:56 report the updater available inside the official image and the admin UI offers it. runUpdateJob then sets appRoot = process.cwd() (lib/updater/apply.ts:206), which is /app, and calls copyTreeOverlay(sourceRoot, appRoot) at :261 to write the release's full source tree there. /app is root:root because WORKDIR /app runs as root at Dockerfile:68 and the process runs as USER nextjs (uid 1001) from :102, so creating new top-level entries such as /app/lib or /app/app fails with EACCES, while pre-existing chowned files such as /app/package.json and /app/next.config.mjs would be overwritten in place first (overwriting an existing file needs write on the file, not the directory). The job then fails with a raw permission error after package.json has already been replaced with the new release's copy while node_modules and .next are still the old build. Even if the copy succeeded, the npm-ci step at :325 and the `npm run db:migrate -- --yes` step at :353 run against a tree with no scripts/ (host-02), and the final log line at :369 asks the admin to run `npm run build` and restart, which in a container means the next `docker compose pull && docker compose up -d` (app/docs/setup/page.tsx:684) throws the whole writable layer away. AUDIT-013#cov-06 recorded that this pipeline has 0% test coverage and AUDIT-013#migrate-01 that the migrate step it invokes stamps 3.0.0 on a schema missing 11 tables; this finding is about the updater being reachable at all in the deployment shape where it cannot work.",
     "impact": "A self-hosting admin sees an in-app Update button, clicks it, and gets a half-applied file copy plus an opaque EACCES in the job log, with package.json now describing a version whose code is not installed. In the worst case they then follow the log's advice and restart, and the update silently disappears on the next image pull.",
@@ -64,9 +59,7 @@
     "effort": "small",
     "category": "pricing communication",
     "file": "lib/billing/catalog.ts",
-    "files": [
-      "lib/billing/catalog.ts"
-    ],
+    "files": ["lib/billing/catalog.ts"],
     "line": 166,
     "description": "lib/billing/catalog.ts descriptions are the copy that appears under each plan name at components/pricing/pricing-cards.tsx:83-85: \"For individuals exploring security scanning\" (:103), \"Support VulnRadar development + 100 scans/day\" (:133), \"For power users - 150 scans/day\" (:166), \"Maximum power - 500 scans/day\" (:198). \"For power users\" and \"Maximum power\" are exactly the adjective-only benefit claims CLAUDE.md bans, and none of the four says what the extra scans let you do. The feature bullets are the same shape: \"Full vulnerability detection\", \"Security headers analysis\", \"SSL/TLS checks\", \"API access\" (:106-109) are category nouns with no consequence attached, and every one of them is true on every plan, so the free card spends four of its eight bullets on things that are not differentiators. Separately there is a factual error. CONFIG_BILLING_FREE_RETENTION through CONFIG_BILLING_ELITE_SUPPORTER_RETENTION are all -1, meaning unlimited (lib/config/config-values.ts:1209-1212), yet catalog.ts:110 still says \"30-day scan history\" and :137 says \"90-day scan history\". app/pricing/page.tsx:44 strips those strings with a /scan history/i filter, but app/checkout/[productId]/page.tsx:280 renders plan.features.slice(0, 5) with no filter, so the Core checkout page, the highest-intent page in the funnel, tells a buyer they are getting 90-day history when every plan including free already keeps everything. catalog.ts:170 then sells \"Unlimited scan history\" as a Pro upgrade over Core, which the free tier also has. Finally components/pricing/pricing-cards.tsx:78-79 renders a \"Most picked\" badge driven by the hardcoded `popular: libPlan.id === \"pro_supporter\"` at app/pricing/page.tsx:55, which is a claim about other customers' behaviour that is not measured from anything.",
     "impact": "A visitor cannot tell what changes when they pay, because the cards restate the same nouns at four price points and the one concrete difference they do state, retention, is wrong on the checkout page and identical across plans in reality. The Pro card's headline upgrade is something the free tier already includes. \"Most picked\" is an unbacked social-proof claim on a product with roughly 50 users, which is the kind of thing that is cheap to remove and expensive if noticed.",
@@ -90,9 +83,7 @@
     "effort": "medium",
     "category": "organic surface",
     "file": "lib/seo/routes.ts",
-    "files": [
-      "lib/seo/routes.ts"
-    ],
+    "files": ["lib/seo/routes.ts"],
     "line": 105,
     "description": "lib/seo/routes.ts:100-106 justifies excluding /host/ and /shared/ together: \"Tokenised or per-entity URLs (/shared/<token>, /browser/<id>, /host/<hostname>). Not enumerable ahead of time, so there is no fixed list to publish a sitemap entry or canonical for.\" That reasoning is correct for /shared/<token> and /browser/<id>, which are secrets. It is not correct for /host/<hostname>: app/api/v3/host/[hostname]/route.ts:99 reads from the `host_reputation` table keyed on `host`, so the full list is a single SELECT, and app/public-scans/page.tsx already renders a paginated, sitemapped, indexable directory of exactly this data. The data is public by construction, not by accident: app/api/v3/host/[hostname]/route.ts:140 gates the live findings on `is_public = true`, and the route's own comment states the host_reputation row is deleted when its source scan is made private. The page also already has a per-host trend chart (components/host/danger-score-trend.tsx). Today the page ships privatePageMetadata(\"Host Report\", \"/host\") (app/host/[hostname]/layout.tsx:8), so it has no per-host title, no per-host description, a canonical pointing at /host which is not a route, and noindex.",
     "impact": "\"<domain> security report\" and \"is <domain> safe\" are the highest-volume query shapes in this product category, and they are the entire organic strategy of Security Headers, SSL Labs, Mozilla Observatory and urlscan.io. The product already generates the pages that answer them, already restricts them to public data, already links them from an indexable directory, and then blocks all of them. The 749 /checks pages target \"how to fix X\" intent, which converts worse: someone searching a check name is fixing a problem they already found, while someone searching a domain is looking for a scanner.",
@@ -116,9 +107,7 @@
     "effort": "medium",
     "category": "untested metered third-party path",
     "file": "lib/browserbase/client.ts",
-    "files": [
-      "lib/browserbase/client.ts"
-    ],
+    "files": ["lib/browserbase/client.ts"],
     "line": 213,
     "description": "lib/browserbase/client.ts is the largest sub-50% file in the tree: 243 statements at 16.87% statements / 27.05%-adjacent branches, 662 lines, ten exports (createBrowserSession:112, getBrowserSession:165, getBrowserLiveUrls:189, endBrowserSession:213, pickLiveViewerUrl:273, isBrowserBaseConfigured:279, navigateBrowserSession:298, openCdpPageSession:416, getBrowserSessionLogs:573, parseNetworkRequests:594). tests/lib/browserbase/ contains one file, concurrency-queue.test.ts, which tests a different module. lib/browserbase/network-capture.ts is at 27.05% and lib/scanner/page-screenshot.ts at 7.44% (94 statements, 21.42% functions). endBrowserSession has three call sites that must run or the session keeps billing: app/api/v3/browser/sessions/route.ts:199 (the create-failed cleanup) and :325 (explicit delete), lib/scanner/auth/browser-login.ts:560, and lib/scanner/page-screenshot.ts:267. None of those teardown paths is exercised.",
     "impact": "Browserbase is a real paid third party billed by session-seconds, and the credit ledger charges the user for it. A regression where the teardown is skipped on an error path (the exact shape of the route.ts:199 cleanup) leaks a live session per failed scan. Nothing in the product notices: the scan reports a normal failure, the user is charged whatever the ledger recorded, and the overage shows up on the operator's Browserbase invoice at the end of the month. sessions/route.ts:199 already writes `.catch(() => {})`, so even a thrown teardown error is swallowed.",
@@ -142,9 +131,7 @@
     "effort": "medium",
     "category": "guard applied to a subset of siblings",
     "file": "lib/api/api-utils.ts",
-    "files": [
-      "lib/api/api-utils.ts"
-    ],
+    "files": ["lib/api/api-utils.ts"],
     "line": 176,
     "description": "lib/api/api-utils.ts:170-176 documents the cap as a deliberate fix: \"L-10: Hard cap on JSON request bodies. Without this, a client can send a multi-GB JSON body that the server will buffer before rejecting. 1 MiB is more than enough for our route shapes.\" It is enforced only inside parseBody (lib/api/api-utils.ts:181-228), which checks content-length against MAX_REQUEST_BODY_BYTES at :188-196 before calling request.json().\n\nI split every route.ts under app/api by which one it uses. 19 files call parseBody, 54 call `request.json()` or `req.json()` directly, and the two sets do not overlap at all. The 19 are almost entirely under app/api/v3/auth/, app/api/v3/account/, plus keys, browser/sessions, admin/staff-invites and admin/updater/apply, which is the shape of a fix applied by directory and never extended. The 54 include the whole scan surface (app/api/v3/scan/route.ts, scan/bulk, scan/crawl, scan/verify-batch, scan/import-spec, scan/remediation/bulk), the whole teams and support-ticket surface, app/api/v3/admin/route.ts, app/api/v3/webhooks/route.ts, app/api/v3/domains/route.ts, and the two contact forms.\n\nThere is no backstop underneath them: I checked next.config.mjs and middleware.ts and neither sets a body size limit, and Next.js App Router route handlers have no default one (the Pages Router's 1 MB bodyParser limit does not apply). app/api/v3/account/unsubscribe/route.ts is in PUBLIC_PATHS (lib/config/public-paths.ts:178) and reads its body raw, so at least one uncapped route is reachable with no session.",
     "impact": "Any signed-in account (signup is open) can POST an arbitrarily large JSON body to app/api/v3/scan/route.ts or any of the other 53 routes and the server buffers it in memory before any validation runs. On a deployment sized for ~50 users, a few concurrent multi-hundred-megabyte bodies are enough to OOM the process. The narrower and more likely cost is maintenance: the cap is written down as a security requirement in one helper that 74% of the body-reading routes do not go through, so the requirement is not actually a property of the API.",
@@ -168,9 +155,7 @@
     "effort": "small",
     "category": "incomplete consolidation",
     "file": "lib/ui/relative-time.ts",
-    "files": [
-      "lib/ui/relative-time.ts"
-    ],
+    "files": ["lib/ui/relative-time.ts"],
     "line": 32,
     "description": "lib/ui/relative-time.ts:22-31 documents a completed consolidation and names the defects it removed: \"The single source for this format: previously ~10 near-identical copies had drifted (some read '0m ago' instead of 'just now', one never fell back to a date and read '92d ago' forever, and the date fallback varied between 'Aug 12' and '8/12/2026').\" formatRelativeTime (:32-52) is the survivor, re-exported through components/admin/utils.ts:123 and components/assets/assets-types.ts:25 with \"Canonical relative-time formatter\" comments.\n\nThree files still hand-roll it, and two of them are the two named defects:\n\n1. components/admin/features/support-inbox.tsx:68 `timeAgo` ends at `return \\`${Math.round(hrs / 24)}d ago\\`` with no date fallback. That is the \"read '92d ago' forever\" bug, restored.\n2. components/contact/support-tickets.tsx:65 `timeAgo` falls back at 30 days to `new Date(iso).toLocaleDateString()`, which renders \"8/12/2026\". That is the \"varied between 'Aug 12' and '8/12/2026'\" bug, restored; the canonical formatter falls back at 7 days to `toLocaleDateString(\"en-US\", { month: \"short\", day: \"numeric\" })`, i.e. \"Aug 12\".\n\nThese two render the same objects. support-inbox.tsx is the staff view of a support ticket and support-tickets.tsx is the user's view of the same ticket, so one ticket's \"last activity\" reads \"412d ago\" to staff and \"8/12/2026\" to the user. The same pair also duplicates STATUS_STYLES and StatusBadge (support-inbox.tsx:79, support-tickets.tsx:89, identical bodies).\n\n3. components/scanner/subdomain-discovery.tsx:92 defines a private `formatAge` even though lib/ui/relative-time.ts:8 exports one, and lib/ui/relative-time.ts:2-4 names this very component as its consumer: \"shared by the result panels that show freshness (subdomain discovery, DNS records, port sweep). Matches the wording SubdomainDiscovery introduced.\" The two sibling panels do import it (components/scanner/port-scan-panel.tsx:22, components/scanner/dns-records-panel.tsx:24), and subdomain-discovery.tsx:22 imports formatRefreshAvailability from that same module in the same statement while shadowing formatAge. The bodies are currently identical, so this one is a live divergence risk rather than a current bug. A third, unrelated `formatAge(ageMs: number | null)` exists at components/admin/features/queue-status-utils.ts:41, so the name means two things.",
     "impact": "Staff triaging the support inbox see ages like \"412d ago\" that are unreadable as dates, on the one screen where knowing when a ticket last moved matters. The same ticket shows the user a different format. Beyond that, the consolidation is not actually done: the module presents itself as the single source and is not, so the next timestamp change is applied once and misses three screens, exactly as it did the last time.",
@@ -194,9 +179,7 @@
     "effort": "large",
     "category": "inconsistent response shapes across endpoints",
     "file": "lib/api/client.ts",
-    "files": [
-      "lib/api/client.ts"
-    ],
+    "files": ["lib/api/client.ts"],
     "line": 46,
     "description": "AUDIT-012#obs-09 inventoried the ERROR shapes (five of them, 117 of 155 routes bypassing ApiResponse/withErrorHandling). It did not cover the success side or the client side. I extracted the last success return from every GET handler in app/api (56 of them) and grouped them.\n\nEnvelopes in use:\n  1. Named-key object, the majority: `{ shares }`, `{ teams }`, `{ tickets }`, `{ notifications }`, `{ feedback }`, `{ teammates }`, `{ invitations }`, `{ remediation }`, `{ summaries }`, `{ repos }`.\n  2. Bare array, no envelope: app/api/v3/schedules/route.ts:60 (`result.rows`), app/api/v3/webhooks/route.ts:42 (`result.rows`), app/api/v3/badge/scans/route.ts (`scans`). A client cannot add a sibling field to these without a breaking change.\n  3. `{ success: true, data: {...} }`: app/api/v3/checkout/verify-subscription/route.ts. Nothing else uses it, and app/api/v3/finding-types/route.ts uses `{ success: false, error }` for its failure but a bare object for its success, so `success` is not a reliable discriminator anywhere.\n  4. Flat top-level fields with no envelope at all: app/api/v3/billing/route.ts, app/api/v3/config/client/route.ts, app/api/version/route.ts, app/api/v3/health/route.ts.\n\nPagination envelope keys diverge on one route: app/api/v3/admin/content/route.ts, app/api/v3/admin/email-logs/route.ts and app/api/v3/admin/error-logs/route.ts all return `{ <items>, page, totalPages, total }`, and app/api/v3/admin/teams/route.ts:71 returns `totalTeams` instead of `total` for the identical concept. components/admin/features/content-manager.tsx:107 reads `data.total || 0` to drive its \"N total\" footer; that pattern silently renders 0 against the teams endpoint, which is why components/admin/teams/teams-list.tsx:646 only consumes totalPages and drops the count. app/api/v3/admin/route.ts returns `total` with no page/totalPages at all.\n\nThe query-parameter side is, for the record, consistent: all seven paginated routes take `page` and `limit`, no route uses offset or cursor, so there is nothing to fix there.\n\nOn the client, lib/api/client.ts:44-49 is the shared reader that normalises `errorData.error` and falls back to the literal `API error: <status>`. It is imported by exactly 2 files under app/ and components/, while 94 files call `fetch(` directly and each re-implements its own `data.error || \"Something went wrong\"` handling. So the normalisation obs-09 recommends adopting has no adoption to build on.",
     "impact": "Every new client call site has to discover, per endpoint, whether the payload is the array itself, a named key, `data`, or flat fields, and whether the count is `total` or `totalTeams`. That is why the teams list drops its result count and why 94 files each carry their own error-unwrapping block. The three bare-array endpoints (schedules, webhooks, badge/scans) cannot gain pagination or a count without breaking their callers. Documented in app/docs/api, these inconsistencies are also the public API surface, so third-party integrators hit them too.",
@@ -220,9 +203,7 @@
     "effort": "small",
     "category": "table outside the canonical schema",
     "file": "lib/admin/staff-invites.ts",
-    "files": [
-      "lib/admin/staff-invites.ts"
-    ],
+    "files": ["lib/admin/staff-invites.ts"],
     "line": 33,
     "description": "instrumentation.ts is documented as the canonical schema and contains 64 CREATE TABLE IF NOT EXISTS statements. Two more tables exist that it never creates. (1) `staff_invites` is created by `ensureStaffInvitesTable()` (lib/admin/staff-invites.ts:33-48), whose own doc comment at :22-31 says it is \"intentionally NOT called from instrumentation.ts directly\" and instructs whoever wires the schema change to add the import there. That was never done: a repo-wide grep for `ensureStaffInvitesTable` finds it called only from the three handlers in app/api/v3/admin/staff-invites/route.ts (:75, :177, :216), never at boot. (2) `admin_audit_log_archive` is created by `ensureAuditLogArchiveTable()` (lib/database/audit-log-archive.ts:43-57), whose doc comment at :37-41 gives the same never-executed wiring instruction; the only real call site is inside `archiveAdminAuditLogBeforePurge` at :77, which runs it against the transactional client of the nightly cleanup pass (lib/database/cleanup.ts:308), so DDL executes inside the long cleanup transaction on every run. Neither table appears anywhere in scripts/create-fresh-db/ or scripts/migrate/ (grep for both names in those directories returns nothing), and neither is in lib/database/required-tables.ts, so the boot-time verification at instrumentation.ts:3515-3543 and GET /api/v3/health both report a healthy schema on a database that is missing them. The public accept endpoint app/api/v3/auth/staff-invite/[token]/route.ts queries `staff_invites` at :57, :104 and :208 without ever calling ensureStaffInvitesTable first.",
     "impact": "`npm run db:create` and `npm run db:migrate` both produce a database that is missing these two tables, and nothing reports it. The staff-invite feature only works because its admin route happens to create the table as a side effect of the first request. That side effect also means every GET, POST and DELETE on /api/v3/admin/staff-invites executes one CREATE TABLE IF NOT EXISTS plus two CREATE INDEX IF NOT EXISTS against the system catalogs before doing any work, which is the same per-request DDL antipattern AUDIT-003#misc-01 reported for ai/conversations and that was fixed there. Anyone reading instrumentation.ts to understand the schema, or diffing it against a production database, gets a wrong answer for two tables.",
@@ -246,9 +227,7 @@
     "effort": "medium",
     "category": "secret stored in plaintext at rest",
     "file": "lib/auth/auth.ts",
-    "files": [
-      "lib/auth/auth.ts"
-    ],
+    "files": ["lib/auth/auth.ts"],
     "line": 57,
     "description": "createSession generates 32 CSPRNG bytes (lib/auth/auth.ts:32-34), inserts them verbatim as the primary key at line 57 (`INSERT INTO sessions (id, ...) VALUES ($1, ...)`), and sets that same string as the cookie value at line 63. getSession looks it up with `WHERE s.id = $1` on the raw cookie (line 93). The file's own hashSessionId comment (lines 379-390) states the situation plainly: 'The `id` column is not a surrogate key: it is the literal bearer token stored in the httpOnly session cookie'. Every other bearer secret in this codebase is hashed before storage precisely so a database read cannot be replayed: password-reset tokens (app/api/v3/auth/forgot-password/route.ts:19,87), email-verification tokens (lib/auth/email-verification.ts:31), staff-invite tokens (app/api/v3/auth/staff-invite/[token]/route.ts:34), share tokens (AUDIT-004#secrets-01), and email 2FA codes, which even get a per-row salt (app/api/v3/auth/login/route.ts:222). API keys and TOTP seeds are at least AES-256-GCM encrypted (lib/auth/crypto.ts). Sessions are the only credential left in plaintext, and they are the highest-value one: lib/auth/impersonation.ts:103 also writes a second raw session id into the `imp_return_session` cookie.",
     "impact": "Any read of the sessions table -- a leaked backup, a read replica, a blind SQL injection anywhere in 155 API routes, or a support engineer with psql -- yields directly replayable, ready-to-use session cookies for every signed-in user, including admins, for up to SESSION_TIMEOUT_DAYS (7). No further work is needed by the attacker: paste the value into a `vulnradar_session` cookie. Every other token class in the app is already immune to exactly this, so the exposure is concentrated entirely in the one place it hurts most.",
@@ -272,9 +251,7 @@
     "effort": "medium",
     "category": "permissions",
     "file": "lib/auth/permissions-client.ts",
-    "files": [
-      "lib/auth/permissions-client.ts"
-    ],
+    "files": ["lib/auth/permissions-client.ts"],
     "line": 29,
     "description": "Dead constants in lib/auth/permissions-client.ts: VIEW_USER_API_KEYS (:29), DELETE_ANY_TEAM (:76), VIEW_REPORTS (:80) and RESOLVE_REPORTS (:81) - there is no reports feature or table at all - VIEW_DEBUG_INFO (:92), CLEAR_CACHE (:94), SEND_USER_EMAILS (:85), ACCESS_ADMIN_PANEL (:11), ACCESS_STAFF_PAGE (:12) granted to six roles while app/staff does not exist, VIEW_USER_SESSIONS (:27), VIEW_BADGES (:34), VIEW_ALL_SCANS (:41), VIEW_SCAN_STATS (:43), VIEW_SUBSCRIPTIONS (:47), MANAGE_SUBSCRIPTIONS (:48). requireModerator() at lib/auth/authorization.ts:102-122 has zero call sites. Separately, several cards render ungated where a permission exists for them: the API Keys card at user-detail-panel.tsx:2561, sessions at :2667, all-scans at :2507, and badges at admin/route.ts:281-286 which has no permission call unlike its neighbours at :249 and :294.",
     "impact": "An operator granting or withholding these permissions changes nothing, which is a security-adjacent false assurance. The ungated cards are the mirror image: data visible to staff roles that were never granted access to it.",
@@ -298,9 +275,7 @@
     "effort": "medium",
     "category": "billing / entitlements",
     "file": "lib/billing/crawl-page-limits.ts",
-    "files": [
-      "lib/billing/crawl-page-limits.ts"
-    ],
+    "files": ["lib/billing/crawl-page-limits.ts"],
     "line": 18,
     "description": "The crawl page-selection limit is hardcoded at lib/billing/crawl-page-limits.ts:18-23 (25/50/100/250) and enforced at app/api/v3/scan/crawl/route.ts:258, but a grep for CRAWL_PAGES in lib/config/registry.ts returns zero. It is the only per-plan entitlement with no registry key, so it is absent from Admin > Settings > Billing and from components/pricing/pricing-features.tsx, surfacing only at point of use (components/scanner/crawl-url-selector.tsx:50). githubReviewTokensPerWindow is enforced per plan but no plan's features array mentions GitHub review (only AI review tokens at lib/billing/catalog.ts:141,174,205), so a Free user hits a hard 403 with no prior signal. Separately, lib/billing/github-review-usage.ts:365-372 implements a free-plan trial whose own comment reads 'Hidden trial, never advertised on the pricing page', while Free's githubReviewTokensPerWindow of 0 makes components/pricing/pricing-features.tsx:85-89 render a cross for Free.",
     "impact": "Two invisible paywalls that users meet as a 403 rather than as a plan comparison, and a genuine free-tier benefit that the pricing page actively denies exists.",
@@ -350,9 +325,7 @@
     "effort": "small",
     "category": "robots.txt coverage",
     "file": "lib/seo/routes.ts",
-    "files": [
-      "lib/seo/routes.ts"
-    ],
+    "files": ["lib/seo/routes.ts"],
     "line": 107,
     "description": "app/admin/layout.tsx:7 sets privatePageMetadata(\"Admin\", \"/admin\") and its comment says \"Keeping it out of the index also saves crawl budget for the public pages that can actually rank.\" But lib/seo/routes.ts:107 DISALLOWED_PATHS lists /dashboard, /profile, /compare, /history, /assets, /attack-surface, /repos, /shares, /shared/, /host/, /teams, /checkout, /browser/, /badge, /verify-email, /reset-password, /forgot-password and /unsubscribe, and not /admin. app/robots.ts:60 spreads that list, so the published robots.txt permits /admin and /admin/ai-chats/<id>. The meta tag still keeps both out of the index, so this is a crawl-budget gap rather than an exposure: an anonymous fetch of /admin is bounced to /login by middleware.ts:337 and shows nothing.",
     "impact": "Crawlers spend fetches on an admin route that redirects, and each redirect lands on /login?redirect=/admin, which is the exact query-parameter duplicate shape the QUERY_DISALLOW rule at app/robots.ts:52 was added to stop after Search Console flagged it. Small, but it is the one hole in an otherwise complete list, and the file's own comment claims the opposite.",
@@ -376,9 +349,7 @@
     "effort": "small",
     "category": "thin content",
     "file": "lib/seo/alternatives.ts",
-    "files": [
-      "lib/seo/alternatives.ts"
-    ],
+    "files": ["lib/seo/alternatives.ts"],
     "line": 55,
     "description": "lib/seo/alternatives.ts:55 defines the `intelliradar` entry, one of five in ALTERNATIVES and therefore one of five sitemap entries at priority 0.6 (lib/seo/routes.ts:72). Its `summary` (line 57) is category-level, not product-level: \"IntelliRadar is a security scanning tool in the same broad space as VulnRadar: point it at a target and get back a list of findings. Products in this category differ mostly in what they inspect, how they price, and whether you can run them yourself.\" Its five ComparisonRow entries put \"Varies by product.\" in the competitor column three times (lines 71, 81, 86), \"Check the vendor's site; openness varies by product.\" once, and \"See the vendor's current pricing.\" once. Its `positioning` opens \"If you found VulnRadar while searching for IntelliRadar...\". The other four entries (detectify, intruder, probely, qualys) all carry real, specific, factual competitor descriptions, so this is a single outlier in an otherwise well-built cluster. The file's own header comment at lines 1-13 sets the rule the entry breaks: \"Competitor pricing is NEVER invented\" is honoured, but so is every other fact, leaving the page empty.",
     "impact": "A page whose entire competitor column is \"Varies by product\" is a doorway page for a brand name with no content behind it. In a five-page cluster, one page like this pulls down the perceived quality of the other four, which are genuinely good comparison pages that could rank for \"detectify alternative\" and \"probely alternative\". It also fails a human reader instantly, so anyone who does land on it bounces.",
@@ -402,9 +373,7 @@
     "effort": "small",
     "category": "non-constant-time compare / unindexed fallback scan",
     "file": "lib/api/api-keys.ts",
-    "files": [
-      "lib/api/api-keys.ts"
-    ],
+    "files": ["lib/api/api-keys.ts"],
     "line": 350,
     "description": "Two issues in the same function. (1) After the O(1) locator lookup, the key itself is checked with a plain `if (decrypted === key)` at lib/api/api-keys.ts:350 and again at :374 -- a short-circuiting comparison on a secret, in a file that otherwise reaches for keyed HMAC and bcrypt. Everywhere else in the auth surface a secret compare uses timingSafeEqual: lib/auth/password-hash.ts:92,117, lib/auth/totp.ts:179, lib/auth/pending-2fa.ts:346, lib/auth/oauth-state.ts:137, lib/auth/ipv4-echo-token.ts:248, app/api/v3/auth/2fa/verify/route.ts:233, and the nonce check at app/api/v3/auth/oauth/[provider]/callback/route.ts:131. (2) When the locator query returns no match -- which is every request carrying a wrong or made-up key -- control falls through to the legacy backfill query at line 366 (`WHERE ak.key_locator IS NULL AND ak.key_encrypted IS NOT NULL`, decrypting each returned row) and then the bcrypt fallback at line 393 (`WHERE ak.key_hash IS NOT NULL AND ak.key_locator IS NULL AND ak.key_encrypted IS NULL`, running bcrypt.compare per row at cost 12). Neither predicate is indexable, so both are sequential scans of api_keys, and both run on every single unauthenticated bad-Bearer request against any of the ~15 Bearer routes.",
     "impact": "The timing side of this is largely academic (the locator already narrows the candidate set to one row and the key has 256 bits of entropy), but it is a gratuitous deviation from the rule the rest of this codebase follows. The scan side is concrete: an unauthenticated attacker sending garbage Bearer tokens forces two full table scans of api_keys per request at zero cost to themselves, and if any legacy bcrypt rows exist, one bcrypt-cost-12 verification per row per request -- roughly 250ms of CPU per legacy row, on a route with no rate limit in front of it.",
@@ -428,9 +397,7 @@
     "effort": "large",
     "category": "inconsistent error shapes",
     "file": "lib/api/api-utils.ts",
-    "files": [
-      "lib/api/api-utils.ts"
-    ],
+    "files": ["lib/api/api-utils.ts"],
     "line": 263,
     "description": "lib/api/api-utils.ts already provides the canonical pieces: ApiResponse (:13-65) emits `{ error, status }` with a matching HTTP status for every 4xx/5xx class, and withErrorHandling (:263-274) converts an uncaught throw into `console.error(\"[API Error]\", error)` plus a fixed `\"An unexpected error occurred\"` 500. Only 38 of the 155 route.ts files under app/api reference either one; the other 117 build responses with bare NextResponse.json, and 47 route files contain no `catch` at all. The result is five distinct error shapes in production: `{ error }` (bare NextResponse.json, the majority of the 233 `error:`-keyed literals), `{ error, status }` (ApiResponse), `{ success: false, error }` (21 occurrences, e.g. app/api/v3/webhooks/route.ts:299-303 and app/api/v3/stripe/setup-products/route.ts:148-152), `{ error, details, statusCode }` (app/api/v3/scan/route.ts:287-294), and `{ message }` (app/api/v3/teams/members/route.ts:298). The shared client only understands one of them: lib/api/client.ts:46-49 reads `errorData.error` and otherwise falls back to the literal string `API error: <status>` set at :44, so a `{ message }` response surfaces to the user as \"API error: 400\".",
     "impact": "Client code cannot render a reliable message without knowing which route it called, which is how bare status strings end up in front of users. The 47 handler-less routes also mean an unexpected throw is formatted by Next.js rather than by the app, so those responses do not carry the `{ error }` key the client expects at all.",
@@ -454,9 +421,7 @@
     "effort": "small",
     "category": "monitoring",
     "file": "lib/admin/alert-webhook.ts",
-    "files": [
-      "lib/admin/alert-webhook.ts"
-    ],
+    "files": ["lib/admin/alert-webhook.ts"],
     "line": 41,
     "description": "sendAdminAlert (lib/admin/alert-webhook.ts:40-44) begins `const url = await getSetting(\"ADMIN_ALERT_WEBHOOK_URL\"); if (!url) return;` and the default is the empty string (lib/config/config-values.ts:429, registered at lib/config/registry.ts:2783). Every push signal in the app routes through it: the five worker escalators via lib/admin/failure-escalation.ts:100, and the boot-time schema, stale-scan and missing-table alerts at instrumentation.ts:139, :184, :198, :3491, :3531, :3631. Grepping ADMIN_ALERT_WEBHOOK across app/, components/ and lib/ finds only the config registry entries and alert-webhook.ts itself: there is no route, button, or admin action that sends a test alert, and the delivery failure paths (:50-56 for an unsafe URL, :86-90 for a non-2xx response) only console.error into a log the operator would have to already be reading.",
     "impact": "An operator who pastes a Slack or PagerDuty URL into the setting has no way to confirm it works. A typo, a revoked Slack webhook, or a URL that validateScanTarget (:47) now rejects produces a silent no-op, and the first time they find out is the incident the alert existed for. Until it is configured at all, the app has no push signal of any kind, which is the state a fresh install ships in.",
@@ -480,9 +445,7 @@
     "effort": "medium",
     "category": "observability",
     "file": "lib/webhooks/delivery.ts",
-    "files": [
-      "lib/webhooks/delivery.ts"
-    ],
+    "files": ["lib/webhooks/delivery.ts"],
     "line": 111,
     "description": "webhook_deliveries (instrumentation.ts:2328) is written on every attempt at lib/webhooks/delivery.ts:111 and never SELECTed; its index on (webhook_id, attempted_at DESC) is shaped for a UI that was never built. Already recorded as AUDIT-009 #185 and still open. admin_audit_log_archive (lib/database/audit-log-archive.ts:47) is created and INSERTed at :89, and a repo-wide grep returns only that file.",
     "impact": "A user whose webhook is failing has no way to see why, despite the data being captured. Purged compliance history is unviewable by any screen, route or export, which undermines the point of archiving it.",
@@ -506,9 +469,7 @@
     "effort": "small",
     "category": "api keys",
     "file": "lib/api/api-keys.ts",
-    "files": [
-      "lib/api/api-keys.ts"
-    ],
+    "files": ["lib/api/api-keys.ts"],
     "line": 615,
     "description": "api_keys.bound_ip (instrumentation.ts:382) is enforced under API_KEY_IP_BINDING_ENABLED and auto-pins on first use (lib/api/api-keys.ts:213-266, :234). getUserApiKeys at :615-626 does not select it, no component references it, and there is no reset path.",
     "impact": "When the feature is enabled, a key that worked yesterday starts returning 403 from a new network with no visible cause and no way to fix it short of issuing a new key.",
@@ -558,10 +519,7 @@
     "effort": null,
     "category": null,
     "file": "scripts/_lib/_lib.prompts.mjs",
-    "files": [
-      "scripts/_lib/_lib.prompts.mjs",
-      "scripts/_lib/_lib.target.mjs"
-    ],
+    "files": ["scripts/_lib/_lib.prompts.mjs", "scripts/_lib/_lib.target.mjs"],
     "line": null,
     "description": "Each prompt in _lib.prompts.mjs and _lib.target.mjs opens a brand-new readline.Interface and closes it after a single answer. When multiple newline-separated answers are piped into stdin at once, Node's readline greedily buffers the whole pipe into the first Interface; only the first line is consumed before that Interface is discarded, and every later prompt then blocks forever with no timeout or error. Reproduced twice. Both scripts must be run attached to a real TTY with a human typing each answer; they cannot be scripted, used in CI, or wired into an automated deploy step.",
     "impact": "",
@@ -585,9 +543,7 @@
     "effort": "small",
     "category": "verified correct",
     "file": "lib/support/ticket-constants.ts",
-    "files": [
-      "lib/support/ticket-constants.ts"
-    ],
+    "files": ["lib/support/ticket-constants.ts"],
     "line": 48,
     "description": "Recorded so the next audit does not re-derive it. lib/support/ticket-constants.ts:48-:49 exports TICKET_SUBJECT_MAX = 200 and TICKET_MESSAGE_MAX = 5000; the same two constants drive the client maxLength attributes (components/contact/support-tickets.tsx:362, :388, :611 and components/admin/features/support-inbox.tsx:346), the server validation (app/api/v3/support-tickets/route.ts:117, :129) and the error copy, which interpolates the constant rather than restating the number (:119). That is the shape every finding above is asking for. Two other areas check out clean: lib/scanner/adaptive-confidence.ts:82-:96 resolves both of its thresholds (ENGINE_FEEDBACK_MIN_SAMPLE_SIZE, ENGINE_FEEDBACK_NOISE_THRESHOLD_PERCENT) through getSetting and reuses the exact pair the admin panel already displays; and lib/billing/plan-limits.ts:129-:139 correctly guards the -1 unlimited sentinel in withinPlanLimit before planLimitMessage can ever interpolate it, with every caller re-checking `!== -1` as well (app/api/v3/scan/bulk/route.ts:527), so the '-1 days' class of bug fixed in commit 30c278bf is not present on the plan-limit message path. components/pricing/pricing-features.tsx:11-:14 and :35-:40 also guard it. The one place a raw plan limit still reaches the DOM unguarded is app/checkout/[productId]/page.tsx:204, :223, :294 and app/pricing/page.tsx:120 rendering dailyScans directly, which is latent only because no shipped plan sets dailyScans to -1 (lib/billing/catalog.ts:116, :148, :180, :211 are 25/100/150/500).",
     "impact": "None. This records verified-correct ground so a later audit spends its time elsewhere, and names the one latent -1 render site worth a guard if plan limits ever become fully admin-editable.",
@@ -611,9 +567,7 @@
     "effort": "small",
     "category": "negative results",
     "file": "lib/seo/metadata.ts",
-    "files": [
-      "lib/seo/metadata.ts"
-    ],
+    "files": ["lib/seo/metadata.ts"],
     "line": 58,
     "description": "Recording what I verified as correct so the next audit does not re-derive it. (1) Metadata coverage is complete: I walked all 71 page.tsx files and resolved each to the nearest metadata source. Zero fall back to the root default. 45 use pageMetadata (indexable, canonical, OG, Twitter, googleBot directives), 25 use privatePageMetadata (noindex, nofollow, nocache), and the only inline case is app/page.tsx, which is a bare `redirect(\"/landing\")` with no content of its own. (2) Hand-written copy is in range: across all 44 description strings and 61 title strings in app/**, zero titles exceed 60 characters with the \" | VulnRadar\" suffix, zero descriptions exceed 160 except one 163-character TechArticle description const at app/docs/api/playground/layout.tsx:11 (the meta description in the same file is 154), and no two pages share a description. (3) All 749 generated check descriptions are unique, and so are all 749 raw `description` fields in the checks-data JSON. (4) public/og-image.png is exactly 1200x630 at 107.6 KB, twitter.card is \"summary_large_image\" everywhere (lib/seo/metadata.ts:116), and metadataBase is set (app/layout.tsx:118) so relative image and canonical paths resolve absolute. (5) No indexable duplicate of a scan result exists: there is no /history/[id] page, and /shared/[token] and /host/[hostname] are both noindex, so the same report is never indexable at two URLs. (6) trailingSlash is not set in next.config.js, so Next 308-redirects /path/ to /path and there are no trailing-slash duplicates; the only query-parameter surface on an indexable page is /public-scans?page=N, which canonicalises to /public-scans. (7) The sitemap is 805 URLs (33 hand-listed, 18 categories, 5 alternatives, 749 checks), far under the 50,000-URL and 50 MB limits, so no sitemap index is needed yet. (8) /llms.txt and /llms-full.txt both exist as real routes (app/llms.txt/route.ts, app/llms-full.txt/route.ts) and are among the only 5 prerendered routes in the build. (9) Alt text is a non-issue for discoverability: there are 7 `<img>` elements in all of app/ and components/, and the only one on an indexable page is inside a code sample in app/docs/sharing/page.tsx:386 which already carries an alt. (10) app/layout.tsx:177 renders SiteStructuredData without a nonce while every other JSON-LD call site passes one; this is cosmetic, since a `script type=\"application/ld+json\"` is a data block that the HTML spec returns from before the CSP inline check, so it is not blocked.",
     "impact": "None. These are the checks a discoverability audit would otherwise repeat, and the SEO foundation here is genuinely above average for a project this size: a single pageMetadata helper, a routes.ts that derives the generated surfaces from the same loaders the pages use, real JSON-LD across six types, and llms.txt.",
@@ -637,9 +591,7 @@
     "effort": "medium",
     "category": "rate-limit precision",
     "file": "lib/rate-limiting/rate-limit.ts",
-    "files": [
-      "lib/rate-limiting/rate-limit.ts"
-    ],
+    "files": ["lib/rate-limiting/rate-limit.ts"],
     "line": 128,
     "description": "lib/rate-limiting/rate-limit.ts:127-128 quantises the bucket to `Math.floor(now.getTime() / windowMs) * windowMs` and the UPSERT at :137-144 counts against `UNIQUE (key, window_start)`. This is a fixed window, not a sliding one, so a caller who spends the full cap in the last instant of one bucket and the full cap in the first instant of the next gets 2 x maxAttempts within one window's duration. For login that is 10 attempts inside 15 minutes rather than 5 (lib/config/config-values.ts:457-458); for demo scans, 10 anonymous scans inside a 12-hour span. The quantisation itself is deliberate and fixes a worse bug the comment at :120-126 describes (N requests in 1 ms creating N distinct buckets), so this is the residual, well-understood trade-off rather than a regression. Noted for the record: the limiter is correctly fail-CLOSED (a pool.query rejection propagates out of checkRateLimit and every caller's try/catch or withErrorHandling turns it into a 5xx, never an allowed request), the store is Postgres and therefore survives deploys and multiple instances, and getDailyRequestCount at lib/rate-limiting/daily-limits.ts:157 reads `window_start >= CURRENT_DATE` while every writer uses `date_trunc('day', NOW())` -- consistent only while the database session timezone is UTC.",
     "impact": "Doubles the effective burst on every named limit at bucket boundaries. Matters most for the login and 2FA-verify gates, where the per-account counters (`login-fail:${user.id}`) are the real defence and this is the outer layer.",
@@ -663,9 +615,7 @@
     "effort": "small",
     "category": "spec deviation",
     "file": "lib/auth/staff-oidc.ts",
-    "files": [
-      "lib/auth/staff-oidc.ts"
-    ],
+    "files": ["lib/auth/staff-oidc.ts"],
     "line": 128,
     "description": "verifyStaffOidcIdToken calls `jwtVerify(idToken, jwks, { issuer: doc.issuer, audience: config.clientId })` at lib/auth/staff-oidc.ts:127-130, where `doc` is whatever came back from `${STAFF_OIDC_ISSUER_URL}/.well-known/openid-configuration` (getDiscoveryDocument, line 64). `doc.issuer` is never compared against `config.issuerUrl`, and getDiscoveryDocument's own validation at lines 82-86 checks only that authorization_endpoint, token_endpoint, and jwks_uri are present -- issuer is not in that list even though it is declared required on the DiscoveryDocument interface at line 51. OIDC Discovery 1.0 section 4.3 requires the returned `issuer` to exactly match the issuer used to build the discovery URL, precisely so this check is not circular. The rest of the flow is sound: the nonce is bound through a short-lived httpOnly cookie (app/api/v3/auth/staff-oidc/route.ts:168), state is HMAC-signed, and the callback never creates or promotes an account (callback lines 87-92).",
     "impact": "No exploitable path today: reaching the vulnerable condition requires the admin-configured STAFF_OIDC_ISSUER_URL to serve a discovery document naming a different issuer and pointing jwks_uri at that issuer's keys, which means the admin already pointed staff SSO at a hostile endpoint. Worth fixing because it is the one place in an otherwise careful OIDC implementation where the trust anchor is self-asserted, and because the interface already declares the field required while the validation does not check it.",

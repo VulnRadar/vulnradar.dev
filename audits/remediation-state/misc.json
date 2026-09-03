@@ -59,9 +59,7 @@
     "effort": "small",
     "category": "disaster recovery reports false success",
     "file": "scripts/restore-db.mjs",
-    "files": [
-      "scripts/restore-db.mjs"
-    ],
+    "files": ["scripts/restore-db.mjs"],
     "line": 96,
     "description": "runRestore spawns `psql [connArg]` with no `-v ON_ERROR_STOP=1`, no `--single-transaction`, and no `-q`. psql defaults ON_ERROR_STOP to off, so it prints each statement's error to stderr, continues with the next statement, and exits 0 as long as it consumed its input. The only failure check is `if (exitCode !== 0) throw` at line 108, which therefore never fires for SQL errors. backup-db.mjs produces the dump with `pg_dump --no-owner --no-privileges --format=plain` (line 219), which contains no DROP statements and no CREATE DATABASE, so restoring into the DATABASE_URL the app has already booted against means every CREATE TABLE fails with \"relation already exists\" and every COPY into a table with existing rows fails on the primary key. All of those are non-fatal to psql. The script then reaches line 112 and prints \"Restore complete.\" This is a different script and a different mechanism from AUDIT-012#obs-02 (which covers the scheduled backup job reporting success on failure); the backup artifact itself is correct here, plain-format pg_dump does capture schema, data and sequence setvals.",
     "impact": "The one command the project offers for disaster recovery cannot distinguish a complete restore from a total failure. The header comment tells operators to rehearse a restore against staging \"before trusting it in a real incident\", but the rehearsal will report success regardless of whether anything was actually restored, so the rehearsal proves nothing. In a real incident an operator will believe the database is recovered when it may contain none of the backed-up rows.",
@@ -85,9 +83,7 @@
     "effort": "small",
     "category": "test would pass with the feature removed",
     "file": "tests/app/api/v3/scan/route.test.ts",
-    "files": [
-      "tests/app/api/v3/scan/route.test.ts"
-    ],
+    "files": ["tests/app/api/v3/scan/route.test.ts"],
     "line": 71,
     "description": "Three route suites replace the two scan-target security gates with hard-coded always-allow stubs declared inline inside the vi.mock factory, so no test can override them and no test asserts they were even called. tests/app/api/v3/scan/route.test.ts:72 declares `validateScanTarget: vi.fn(async () => ({ safe: true }))` and :76 declares `checkAccessRules: vi.fn(async () => ({ allowed: true }))`. tests/app/api/v3/scan/authenticated/route.test.ts:68 and :75 do the same. tests/app/api/v3/scan/crawl/route.test.ts:57 does it for checkAccessRules. A scripted scan of all 4,494 it/test blocks found zero occurrences of `safe: false` or a checkAccessRules `allowed: false` override in any of those three files, and zero `expect(validateScanTarget).toHaveBeenCalled` style assertions. The gates they stand in for are real: app/api/v3/scan/route.ts:276 calls validateScanTarget and returns 400 on !safe, :285 calls checkAccessRules and returns 403 on !allowed; app/api/v3/scan/authenticated/route.ts:304 and :310 do the same; app/api/v3/scan/crawl/route.ts:341 does the checkAccessRules half. The exact mutation the suite does not catch: delete lines 275 to 295 of app/api/v3/scan/route.ts, lines 304 to 313 of app/api/v3/scan/authenticated/route.ts, and lines 340 to 352 of app/api/v3/scan/crawl/route.ts, and every one of the 697 lines of scan/route.test.ts plus both sibling suites still pass. For contrast, tests/app/api/v3/demo-scan/route.test.ts:179 does drive `mockCheckAccessRules.mockResolvedValue({ allowed: false })`, which is the pattern the three scan routes are missing.",
     "impact": "The SSRF gate on the main scan endpoint is the control that stops a user pointing a scan at 169.254.169.254 or an internal 10.x host, and the access-rule gate is the operator blocklist for restricted infrastructure. Both have been fixed by prior audits (AUDIT-011 demo-scan SSRF, AUDIT-012 rebinding work). Right now a refactor that drops either call from any of the three routes, or that moves the call after the scan is already dispatched, ships with a fully green CI run. The failure is silent until someone scans a metadata endpoint through the product.",
@@ -135,9 +131,7 @@
     "effort": "small",
     "category": "docs / AI knowledge",
     "file": "scripts/compile-docs-knowledge.mjs",
-    "files": [
-      "scripts/compile-docs-knowledge.mjs"
-    ],
+    "files": ["scripts/compile-docs-knowledge.mjs"],
     "line": 274,
     "description": "scripts/compile-docs-knowledge.mjs:274 and :284 both apply `stripJsx(...).slice(0, 300)` to every DocsCallout body. Measured across app/docs/*/page.tsx, 52 callouts are extracted and 20 exceed 300 stripped characters, so they land in lib/ai/docs-knowledge.md cut mid-word: for example the API page's Scopes callout ends at \"returns 403 naming\" (docs-knowledge.md:997) and the CI/CD callout ends at \"before ch\" (:1009). The offending pages are app/docs/api (2), config (2), github (2), rate-limits (2), scheduled-scans (2), self-hosting (4), sharing (2), account-security, developers, teams and triage. stripJsx (:82-110) also never strips the JSX whitespace literal `{\" \"}` (64 occurrences survive into the output) and never decodes `&apos;`, `&#123;` or `&#125;` (19 occurrences), so those consume part of the same 300-char budget.",
     "impact": "lib/ai/docs-knowledge.md is what the in-product AI assistant answers from. Twenty of the most important \"be careful about this\" notes reach it as unfinished sentences, so the assistant either invents the missing half or drops the caveat. The Scopes callout in particular loses the sentence that tells the user a 403 names the missing scope.",
@@ -185,9 +179,7 @@
     "effort": "small",
     "category": "client/server limit mismatch",
     "file": "cli/lib.mjs",
-    "files": [
-      "cli/lib.mjs"
-    ],
+    "files": ["cli/lib.mjs"],
     "line": 11,
     "description": "cli/lib.mjs:5-:14 declares DEFAULTS with `timeout: 300` and `crawl: false`. cli/vulnradar.mjs:64 turns that into `const deadline = Date.now() + opts.timeout * 1000` and the poll loop at :65-:85 gives up at the deadline, printing 'Timed out after 300s waiting for scan ${scanId}.' at :88-:90 and calling process.exit(1) at :91. Server-side, 300 is exactly CONFIG_SCAN_TIMEOUT_SECONDS (lib/config/config-values.ts:544) for a single-URL scan, but a crawl runs under CONFIG_CRAWL_SCAN_TIMEOUT_SECONDS = 900 (:551), enforced by the crawl watchdog at lib/scanner/execute-crawl-scan.ts:361-:364. The CLI passes --crawl through but never adjusts its own deadline, and neither cli/lib.mjs:130 ('Give up waiting for the scan (default 300)') nor app/docs/cli/page.tsx:135 and :154 warns that --crawl needs a larger --timeout.",
     "impact": "A CI job that runs `vulnradar scan --crawl` against a site of any size fails red on a scan that is still running and will complete successfully. The user sees a timeout error, the pipeline blocks the merge, and the scan quietly finishes and lands in history a few minutes later, which reads as the tool being unreliable rather than as a default being wrong.",
@@ -211,9 +203,7 @@
     "effort": "medium",
     "category": "untracked dependency tree inside the repo",
     "file": ".gitignore",
-    "files": [
-      ".gitignore"
-    ],
+    "files": [".gitignore"],
     "line": 74,
     "description": "First, the question that sets the severity of everything else here: marketing/ is NOT built or deployed as part of the product. `.gitignore:74` ignores the whole `marketing/` directory, `git ls-files marketing` returns 0 files, and no workflow, `next.config`, `vercel.json`, `tsconfig.json` or root script references it (grep for \"marketing\" across `.github`, `next.config.*`, `vercel.json`, `package.json`, `tsconfig.json` returns nothing). It is a standalone Remotion asset-generation project run manually on the maintainer's machine. Its dependencies therefore carry no production risk. What they do carry is a blind spot. Because `marketing/package.json` and `marketing/package-lock.json` are untracked, Dependabot cannot see them (it needs a committed manifest), `npm audit` at the root never walks into them, and the CycloneDX SBOM built from the Docker image (`.github/workflows/docker-publish.yml:82`) excludes them. Measured on disk: `marketing/node_modules` is 648 MB across 401 lockfile entries, of which `node_modules/.remotion/chrome-headless-shell/win64/` is 270 MB, a Chromium headless-shell binary that @remotion/renderer downloads over the network on first render rather than at install, and `@remotion/compositor-win32-x64-msvc` is another 29 MB of native binary including a bundled `ffmpeg.exe`. That tree executes on a machine where `marketing/.env` (365 bytes, present on disk, correctly ignored) holds credentials, and `marketing/package.json:31` wires `npm run audio` to `node scripts/make-audio.mjs`, which is what consumes them. The tree is also drifting on its own: React 19.2.3 against the root's 19.2.8, @types/react 19.2.7 against 19.2.18, prettier 3.8.1 against 3.9.6, eslint 9.19.0 against the root's 10.9.0.",
     "impact": "Nobody is watching 401 packages plus two downloaded native binaries that run with full user privileges on the maintainer's workstation next to a credentials file. A malicious postinstall or a compromised Remotion transitive release would execute there and nothing in the repo's security automation would notice, because from git's point of view the directory does not exist. Separately, the project is unreproducible: no other contributor can restore the exact tree that rendered the shipped videos, since the lockfile is not in git.",
@@ -237,9 +227,7 @@
     "effort": "small",
     "category": "test would pass with the feature removed",
     "file": "tests/lib/scanner/engine.test.ts",
-    "files": [
-      "tests/lib/scanner/engine.test.ts"
-    ],
+    "files": ["tests/lib/scanner/engine.test.ts"],
     "line": 72,
     "description": "tests/lib/scanner/engine.test.ts:72 is titled \"does not let one throwing check take down the whole scan\". Its body builds a pathological body string (`\"<\".repeat(5000) + \"html\".repeat(1000)`) and asserts exactly one thing: `expect(() => runSyncChecks(...)).not.toThrow()`. No detector in the run is made to throw: a grep for `throw new Error` in that file returns nothing, and no detector is stubbed or injected. The feature it is supposed to guard is the pair of per-check try/catch blocks in lib/scanner/engine.ts at lines 169 to 172 and 186 to 198 (the file's own comment at line 131 calls them \"the per-check try/catch below\"). The exact mutation the test does not catch: delete both try/catch wrappers in lib/scanner/engine.ts, and the test still passes, because none of the 800-plus registered detectors throws on that particular input. It also does not assert that findings are still produced, so a mutation that makes runSyncChecks return `{ findings: [] }` unconditionally also passes.",
     "impact": "The per-check try/catch is what stops one bad regex or one bad detector from aborting an entire scan. If it is removed or narrowed during a refactor, the suite says nothing, and the symptom in production is a scan that returns a 500 or an empty result for every user whose page happens to trip the throwing detector. The test also carries a documented flake: its own comment at lines 65 to 70 records that the default 5s timeout \"has been observed to flake under a full parallel suite run\", which is why it now runs with a 20s override, so a very expensive test is buying an assertion that cannot fail.",
@@ -407,9 +395,7 @@
     "effort": "small",
     "category": "docs / AI knowledge tooling",
     "file": "scripts/compile-docs-knowledge.mjs",
-    "files": [
-      "scripts/compile-docs-knowledge.mjs"
-    ],
+    "files": ["scripts/compile-docs-knowledge.mjs"],
     "line": 614,
     "description": "scripts/compile-docs-knowledge.mjs:609 writes the output file, and :614-625 then compares `statSync(OUTPUT).mtimeMs` against the newest page.tsx mtime to warn when \"docs were edited N days after this knowledge file\". Because the stat runs after the write, knowledgeMtime is always the current time and newestPage is always in the past, so `daysStale` is always negative and the `> 30` branch is unreachable. Separately, listDocPages (:66-81) reads only the immediate children of app/docs, so app/docs/api/playground/page.tsx is silently skipped: the run compiles 19 of the 20 docs pages, and the generated extraction-summary table (lib/ai/docs-knowledge.md:2163-2181) lists 19 routes with no playground row.",
     "impact": "The guard that was written to catch exactly the drift this section audits for is dead code, and any future docs page nested one level deeper (the pattern app/docs/api/playground already established) is excluded from the AI assistant's knowledge with no warning.",
@@ -433,9 +419,7 @@
     "effort": "small",
     "category": "build-correctness",
     "file": "scripts/compile-legal-knowledge.mjs",
-    "files": [
-      "scripts/compile-legal-knowledge.mjs"
-    ],
+    "files": ["scripts/compile-legal-knowledge.mjs"],
     "line": 270,
     "description": "package.json's `prebuild` chains the four `scripts/compile-*-knowledge.mjs` scripts with `&&`, so a non-zero exit does fail `npm run build`. But each script only exits non-zero on total failure, never on partial failure. scripts/compile-legal-knowledge.mjs:269-272 warns \"missing <path>, skipping\" and `continue`s past a legal page that has moved, and only exits 1 if `totalSections === 0` across every page (lines 307-310). scripts/compile-checks-knowledge.mjs:143-147 warns and skips a checks-data JSON file that fails to parse or is not an array (`readJsonSafe` swallows the parse error at line 60). scripts/compile-docs-knowledge.mjs:545-546 exits 1 only when zero docs pages are found. The CI drift gate at .github/workflows/ci.yml:80-82 regenerates from the same tree and diffs, so it produces the identical truncated file and passes; I verified separately that `git diff --exit-code --ignore-matching-lines='compiled from'` does correctly ignore the date line and still exits 1 on a real content change, so that gate works as intended for its actual purpose (an edited source with a stale committed output). The only in-script drift detector is mtime-based (scripts/compile-docs-knowledge.mjs:614-623 and scripts/compile-checks-knowledge.mjs:295-306, both computing `daysStale > 30` from `statSync().mtimeMs`), and git does not record mtimes, so on any fresh clone (CI, the Docker build's `COPY . .`, a self-hoster's `git clone`) every file carries the checkout time and `daysStale` is approximately zero. That warning cannot fire in any environment that produces a shipped artifact, and it is a `console.warn` that would not fail the build even if it did.",
     "impact": "Renaming or breaking a single legal page or checks-data category silently shrinks the compiled AI knowledge, the build stays green, the CI drift gate stays green, and the assistant answers about retention policy or an entire check category from nothing. There is no signal anywhere.",
@@ -459,9 +443,7 @@
     "effort": "small",
     "category": "dead tokens",
     "file": "tailwind.config.mjs",
-    "files": [
-      "tailwind.config.mjs"
-    ],
+    "files": ["tailwind.config.mjs"],
     "line": 64,
     "description": "Records design-language.md A3 item 8 as an actionable finding, verified against the current tree. app/globals.css:211-213 defines --surface-1, --surface-2 and --surface-3 for the light theme and :256-258 repeats them for dark. No file in app/, components/ or lib/ reads them, and tailwind.config.mjs does not map them to a utility either, so they are unreachable by any means. Separately, tailwind.config.mjs:64-73 declares a full `sidebar` colour group (DEFAULT, foreground, primary, primary-foreground, accent, accent-foreground, border, ring) resolving to hsl(var(--sidebar-background)) and seven siblings. None of those eight variables is defined anywhere in app/globals.css or any other stylesheet, and no component uses bg-sidebar, text-sidebar-foreground or any of the group. So the utilities exist, autocomplete offers them, and each resolves to hsl() with an empty argument, which is an invalid colour the browser drops.",
     "impact": "Six dead declarations in the critical CSS. More costly is the sidebar group: a developer building the next sidebar reaches for bg-sidebar because Tailwind's IntelliSense lists it, gets a transparent element with no error in the console or the build, and has to work out why. The product already has two sidebars (/profile and /admin) that both hand-rolled bg-primary/10 instead, which is what that group was presumably added for.",
@@ -485,9 +467,7 @@
     "effort": "small",
     "category": "hardcoded branding / SEO asset",
     "file": "public/og-image.svg",
-    "files": [
-      "public/og-image.svg"
-    ],
+    "files": ["public/og-image.svg"],
     "line": 58,
     "description": "lib/config/config-values.ts:226 exposes CONFIG_SEO_OG_IMAGE = \"/og-image.png\" as a configurable SEO value, and lib/config/registry.ts registers SEO_OG_IMAGE, SEO_OG_IMAGE_WIDTH and SEO_OG_IMAGE_HEIGHT as admin-editable. The file the path points at is fixed content: public/og-image.svg:43 draws the wordmark \"VulnRadar\" and :58 draws \"vulnradar.dev\", and public/og-image.png is the 110 KB rasterisation of it. The config comment at :222-225 names the regeneration step (\"edit public/og-image.svg then run `node scripts/build-og-image.mjs`\"), but that instruction appears nowhere a self-hoster reads: grepping app/docs/ and README.md for \"og-image\" or \"build-og-image\" returns nothing, and the branding section of app/docs/config/page.tsx does not mention it.",
     "impact": "A renamed fork that changes CONFIG_APP_NAME and CONFIG_APP_URL still shares a social card reading \"VulnRadar / vulnradar.dev\" on every Twitter, LinkedIn, Slack and Discord unfurl of their own domain, which is the single most visible piece of branding the product emits. The fix is a two-minute SVG edit plus one script, but it is only discoverable by reading a comment in config-values.ts. On the pinned-image Docker path the asset cannot be changed at all, since public/ is baked into the image.",
@@ -511,9 +491,7 @@
     "effort": "small",
     "category": "hardcoded URL / CLI",
     "file": "cli/lib.mjs",
-    "files": [
-      "cli/lib.mjs"
-    ],
+    "files": ["cli/lib.mjs"],
     "line": 6,
     "description": "cli/lib.mjs:6 sets `apiBase: \"https://vulnradar.dev/api/v3\"` in DEFAULTS. parseArgs at :56-57 accepts `--api-base <url>`, and app/docs/cli/page.tsx:129-132 documents it as \"API base URL, for a self-hosted instance\", so the CLI is genuinely repointable, unlike the extension in hc-02. What is missing is the env form: the sibling value on the next line, :26, reads `apiKey: process.env.VULNRADAR_TOKEN || undefined`, and the docs at app/docs/cli/page.tsx:110-112 specifically tell CI users to prefer the environment variable over the flag. There is no VULNRADAR_API_BASE. app/docs/cli/page.tsx:131 also prints the literal \"https://vulnradar.dev/api/v3\" as the documented default rather than deriving it, so a self-hosted instance's own CLI docs page advertises the hosted origin.",
     "impact": "A self-hoster using the CLI in CI has to repeat `--api-base https://scanner.theirdomain.com/api/v3` on every invocation in every workflow file, while the token next to it comes from the environment. Forgetting it once sends a scan request, with their API key in the Authorization header, to vulnradar.dev, where the key is not valid: the key leaks to a third-party host in exchange for a 401. Low severity because the flag exists and the failure is loud, but the asymmetry with VULNRADAR_TOKEN is an easy trap.",
@@ -561,9 +539,7 @@
     "effort": "small",
     "category": "build context hygiene",
     "file": ".dockerignore",
-    "files": [
-      ".dockerignore"
-    ],
+    "files": [".dockerignore"],
     "line": 4,
     "description": "Static analysis. Docker matches .dockerignore patterns against the whole context-relative path using filepath.Match semantics, where * does not cross a /, and only ** crosses directories. So `.env`, `.env.*` and `.env*.local` at .dockerignore:4-6 exclude only root-level dotenv files, and `node_modules` at :1 excludes only the root node_modules. A directory listing of this working tree shows ./marketing/.env present, which is not matched by any pattern; .claude/ (which per the audit brief holds a full second checkout at .claude/worktrees/agent-ad8a7d09dcde23fcc/, including its own node_modules), audits/, databases/ (gitignored at .gitignore:12 and described there as holding real pre-migration database backups), and cli/ are not listed either. Dockerfile:27 is `COPY . .`, so all of that lands in the builder stage. It does NOT reach the published image: the runner stage copies only public, .next, node_modules, package.json and next.config.mjs (Dockerfile:75-79), so the final artifact is clean. The exposure is the build context transfer and the builder layer cache on whatever machine runs the documented `docker compose -f docker-compose.dev.yml up -d --build` (docker-compose.dev.yml:14).",
     "impact": "Local image builds copy hundreds of megabytes of irrelevant tree, including a second full checkout, into the daemon and the layer cache, slowing every build. A nested .env with real values sits in the builder layer, which is retained in the local build cache and would be pushed if anyone ever added a cache-export or a stage that copies more broadly. Real but bounded, because the shipped image is unaffected today.",
@@ -611,9 +587,7 @@
     "effort": "small",
     "category": "share preview tooling",
     "file": "scripts/build-og-image.mjs",
-    "files": [
-      "scripts/build-og-image.mjs"
-    ],
+    "files": ["scripts/build-og-image.mjs"],
     "line": 11,
     "description": "scripts/build-og-image.mjs:11 does `import sharp from \"sharp\"` and is the only way to regenerate public/og-image.png from public/og-image.svg. sharp appears in neither `dependencies` nor `devDependencies` of the root package.json; it resolves today only because it is an optional dependency of next (package-lock.json:9804 lists `\"sharp\": \"^0.34.3\"` under next), and the root `overrides` block pins it to ^0.35.0 without declaring it. Any install with `--omit=optional`, any next major that stops shipping sharp, or a platform where sharp's optional binary does not install, makes the script fail with MODULE_NOT_FOUND. The script's own header comment says it is deliberately not a build hook, so the failure only surfaces when someone next edits the card, which is the moment they least want to debug a toolchain.",
     "impact": "The OG image is, per AUDIT-011, one of the three strongest design artifacts the project owns, and the only script that can rebuild it depends on a package nothing declares. A self-hoster or contributor who rebrands by editing og-image.svg hits an install error rather than a rebuilt card. Low blast radius but it is squarely on the path of the seo-02 work, which will want the same sharp pipeline.",
@@ -661,9 +635,7 @@
     "effort": "small",
     "category": "sibling package coverage",
     "file": "cli/vulnradar.test.mjs",
-    "files": [
-      "cli/vulnradar.test.mjs"
-    ],
+    "files": ["cli/vulnradar.test.mjs"],
     "line": null,
     "description": "cli/ is a standalone dependency-free Node package excluded from the app's tsc, eslint, and vitest, with its own `node --test` suite that CI does run (.github/workflows/ci.yml, 'Run CLI unit tests'). The suite is one file, cli/vulnradar.test.mjs at 81 lines, against cli/lib.mjs (136 lines) plus cli/vulnradar.mjs (118 lines). No coverage is collected for it, so the tested fraction is unknown, but 81 lines of test against 254 lines of source that includes argument parsing, API-key handling, and output formatting is thin. marketing/ is a separate Remotion project with its own package.json and node_modules and no test setup or CI job at all; that is defensible for a video project and is noted for completeness rather than as an action item.",
     "impact": "The CLI is a published entry point that carries a user's API key. A regression in argument parsing or in how the key is read and sent is caught only if it happens to break the single existing suite. The blast radius is smaller than the extension's (cov-14) because a CLI fix ships immediately with no store review.",
@@ -687,9 +659,7 @@
     "effort": "small",
     "category": "empty leftover directories",
     "file": "tests/app/api/v3/admin/bulk",
-    "files": [
-      "tests/app/api/v3/admin/bulk"
-    ],
+    "files": ["tests/app/api/v3/admin/bulk"],
     "line": null,
     "description": "AUDIT-011#bulk-06 filed the empty app/api/v3/admin/bulk/. Sweeping the whole working tree for empty directories (excluding node_modules, .git, .next, coverage, graphify-out, marketing and .claude) turns up four, of which two are new: tests/app/api/v3/admin/bulk/, the test directory that mirrored the same removed admin bulk endpoint, and tests/components/admin/users/, which has no counterpart suite anywhere (components/admin/users/ still exists with user-detail-panel.tsx, and its only test lives at tests/components/admin/utils.test.ts). The fourth, scripts/storage/json/, is a runtime output directory that .gitignore covers at 'scripts/storage/' and should be left alone. Note that git does not track empty directories, so none of these appear in git ls-files and a fresh clone will not have them: they are working-tree residue from deleted files, which is also why they survived AUDIT-011's fix of the sibling directory.",
     "impact": "Small but real: an empty tests/app/api/v3/admin/bulk/ next to a live tests/app/api/v3/admin/ makes it look as though bulk admin actions have route tests when they have none, and vitest's include glob 'tests/**/*.test.ts' silently collects nothing from them. Directory listings and editor file trees carry a feature that no longer exists.",
@@ -713,9 +683,7 @@
     "effort": "medium",
     "category": "static analysis blind spot",
     "file": "eslint.config.mjs",
-    "files": [
-      "eslint.config.mjs"
-    ],
+    "files": ["eslint.config.mjs"],
     "line": 32,
     "description": "eslint.config.mjs:22-36 sets ignores including 'scripts/**' and 'cli/**'. tsconfig.json includes only '**/*.ts', '**/*.tsx' and '**/*.d.ts' and excludes 'scripts/create-fresh-db/schemas/**' and 'cli/**', so the 51 .mjs files under scripts/ (13,161 lines per the brief's measurement of scripts/) are matched by neither: not by 'npm run lint' (CI, .github/workflows/ci.yml:39) and not by 'npx tsc --noEmit' (CI, ci.yml:63). The CLI does get its node:test suite run in CI (ci.yml:109-111) but no lint or typecheck. The practical consequence is dead-04: scripts/migrate/versions/_legacy-original.mjs:47 imports 22 symbols from './_lib.mjs', a path that does not resolve, and no gate in the repository notices. ESLint's default recommended set (reached here through eslint-config-next/core-web-vitals) carries no-unreachable, no-dupe-else-if, no-constant-condition and no-undef as errors, which is why app/, lib/ and components/ are clean of those classes: I found zero unreachable branches and zero duplicate else-if conditions there, and exactly two identical-arm ternaries (dead-07). scripts/ and cli/ have had no such sweep at any point. A second, smaller symptom in the same tree: scripts/migrate/_meta.mjs:82 exports META_TABLE_NAME (a re-export of the module-local META_TABLE) which nothing imports anywhere in the repo, the kind of thing an unused-export rule reports for free.",
     "impact": "Migration and database-repair scripts are the code with the highest blast radius in this repository and the least checking. A typo'd import, an unreachable branch, or a reference to a renamed helper in scripts/migrate/ or scripts/db-repair*.mjs fails at runtime on an operator's populated database rather than in CI, which is the same failure mode that dead-04 is already sitting on.",
@@ -739,9 +707,7 @@
     "effort": "small",
     "category": "authenticated encryption verified after use",
     "file": "scripts/restore-db.mjs",
-    "files": [
-      "scripts/restore-db.mjs"
-    ],
+    "files": ["scripts/restore-db.mjs"],
     "line": 84,
     "description": "For an .enc backup, runRestore builds `pipeline(source, decipher, decrypted)` at line 84 and immediately assigns the PassThrough to `source` (line 88), then at line 106 pipes it through gunzip into psql's stdin. AES-256-GCM emits plaintext as it decrypts and only validates the auth tag set at line 82 when the final block is processed, so by the time an authentication failure surfaces, every preceding block has already been gunzipped and executed by psql. The failure handler (line 85) prints \"Decryption failed\" and calls process.exit(1), leaving the already-executed statements committed, since psql is running without --single-transaction (see migrate-04).",
     "impact": "The whole point of authenticating the backup is to guarantee that a modified or truncated dump is never applied. As written, an attacker who can modify a backup file, or plain bit rot in cold storage, results in a partially applied dump plus an error message, rather than a clean refusal. Low severity because it requires an already-compromised or corrupted backup artifact, and because the operator does see a failure message.",
@@ -765,9 +731,7 @@
     "effort": "small",
     "category": "test asserts nothing meaningful",
     "file": "tests/lib/scanner/safety-rating.test.ts",
-    "files": [
-      "tests/lib/scanner/safety-rating.test.ts"
-    ],
+    "files": ["tests/lib/scanner/safety-rating.test.ts"],
     "line": 215,
     "description": "A scripted pass over all 4,494 it/test blocks found 14 whose every expect matcher is `not.toThrow`. Most are honest (\"does not throw on truncated markup\"), but two claim a behaviour they do not verify. tests/lib/scanner/safety-rating.test.ts:215 is titled \"falls back to a default weight for an unrecognized severity string\" and its whole body is `expect(() => getDangerScore([{ severity: \"unknown\", title: \"Something Odd\" }])).not.toThrow()`. The fallback it names is lib/scanner/safety-rating.ts:327, `const baseWeight = SEVERITY_WEIGHTS[sev] ?? 0.1`. Exact mutation not caught: change `?? 0.1` to `?? 10` and the test passes, while every scan containing one finding with an unrecognised severity string jumps to the top of the danger scale and the site is reported unsafe. tests/lib/scanner/html/tokenizer.test.ts:103 is titled \"does not create an element for an end tag with no matching start\" and asserts only `expect(() => toElements(tokenize(\"</div><p>ok</p>\"))).not.toThrow()`. Exact mutation not caught: make toElements emit an element for the stray `</div>`, and the test passes while every page check that counts or walks elements sees a phantom node. The other 12 are: tests/lib/api/playground.test.ts:67, tests/lib/api/request-utils.test.ts:93, tests/lib/auth/password-hash.test.ts:45, tests/lib/backup/job-store.test.ts:53 and :57, tests/lib/database/error-log-capture.test.ts:87, tests/lib/scanner/engine.test.ts:72 (filed separately as tq-03), tests/lib/scanner/html/tokenizer.test.ts:68, tests/lib/scanner/page-context.test.ts:144, tests/lib/scanner/scan-jobs.test.ts:155, tests/lib/ui/url-state.test.ts:66, tests/lib/updater/job-store.test.ts:52.",
     "impact": "Two named contracts, the danger-score fallback weight and the tokenizer's stray-end-tag handling, have a test that reads as covering them in a coverage review but cannot fail on a wrong answer, only on a crash. The danger score is the number shown to users as the site's safety rating, so a wrong fallback weight is directly user visible.",
@@ -791,9 +755,7 @@
     "effort": "small",
     "category": "test asserts nothing meaningful",
     "file": "tests/lib/scanner/checks-data/_schema.test.ts",
-    "files": [
-      "tests/lib/scanner/checks-data/_schema.test.ts"
-    ],
+    "files": ["tests/lib/scanner/checks-data/_schema.test.ts"],
     "line": 77,
     "description": "Scripted over all 4,494 blocks: 13 have no assertion stronger than a positive-existence matcher. The ones where the content is the actual contract: tests/lib/scanner/checks-data/_schema.test.ts:77 \"every entry has required fields\" loops the required list (id, title, category, severity, description, evidence, fixSteps, codeExamples) and asserts `expect(entry[field]).toBeDefined()` at lines 90 to 93, so an entry shipped with `description: \"\"`, `fixSteps: []`, or `codeExamples: []` passes the only required-fields guard the whole 750-plus check catalogue has. tests/lib/scanner/auth/logout-guard.test.ts:63 \"returns a non-secret reason for a destructive URL\" asserts only `expect(reason).toBeTruthy()`, so a reason that does leak a credential or query string passes, even though the sibling test at :55 to :60 does run a `not.toMatch(/password|cookie=|token=/i)` check for a different URL. tests/lib/scanner/registry.test.ts:119 is titled \"etag-inode uses the real headers.ts detector, not configuration.ts's disabled stub\" but asserts the fired finding is defined rather than asserting its identity, the way the sibling tests at :107 and :128 do. Three worker suites (tests/lib/backup/scheduled-backup-worker.test.ts:102, tests/lib/domains/reverify-worker.test.ts:167, tests/lib/notifications/posture-digest.test.ts:331) each assert `toBeDefined` on \"registers a timer and cleanly cancels it\" without asserting the interval passed to setInterval or that cancel actually clears the same handle. The remaining cases are weaker in form than in substance: tests/lib/auth/password-strength.test.ts:355 and :363 end in `toBeDefined` but pin the text inside the preceding `.find(w => w.includes(...))`, and the four in tests/lib/auth/authorization.test.ts (:128, :146, :159, :228) use `not.toBeNull` as an allow/deny signal that the `it.each` at :95 already backs with an exact object comparison.",
     "impact": "Each of these reads as covering a named behaviour but only fails if the code returns nothing at all. The _schema.test.ts:77 case is the widest: it is the single guard over the whole JSON check catalogue and it accepts empty strings and empty arrays for every required field, so a check shipped with a blank description or no fix steps reaches the ~750 public /checks SEO pages and the scan result UI with nothing to render.",
@@ -817,9 +779,7 @@
     "effort": "small",
     "category": "swallowed exception",
     "file": "eslint.config.mjs",
-    "files": [
-      "eslint.config.mjs"
-    ],
+    "files": ["eslint.config.mjs"],
     "line": 126,
     "description": "eslint.config.mjs's type-aware block enables `@typescript-eslint/no-floating-promises` (:126) and `no-misused-promises` (:122) only for the four globs listed at :108-113 (`lib/auth/**/*.ts`, `app/api/v3/auth/**/*.ts`, `app/api/v3/account/**/*.ts`, `app/api/v3/admin/**/*.ts`), and the main rules block (:58-92) enables no rule against empty catch blocks. A scan of the 965 source files under app/, lib/, components/, extension/src/, cli/ and scripts/ finds 8 statement-level `catch {}` blocks with a genuinely empty body, 183 with only a comment, and 86 inline `.catch(() => {})` / `.catch(() => null)` no-op handlers. Most of the 183 are deliberate and documented (a scanner check whose DNS lookup failing genuinely means no finding), which is exactly why the raw count is not itself the finding: the finding is that nothing distinguishes the deliberate ones from the ones filed above as obs-01 and obs-06, and nothing stops the next one being added.",
     "impact": "The swallowed-error findings in this section (obs-01 in the scan engine, obs-06 in metering and quota refunds) all live in directories the lint rules do not cover, and none of them would be flagged today. The pattern reproduces on every new file in lib/scanner, lib/billing, lib/webhooks and lib/email.",
@@ -843,9 +803,7 @@
     "effort": "small",
     "category": "test gap in the SSRF guard",
     "file": "tests/lib/scanner/safe-fetch.test.ts",
-    "files": [
-      "tests/lib/scanner/safe-fetch.test.ts"
-    ],
+    "files": ["tests/lib/scanner/safe-fetch.test.ts"],
     "line": 124,
     "description": "tests/lib/scanner/safe-fetch.test.ts is 231 lines and 18 cases. It mocks dns/promises (:6-9) and stubs global fetch (:127-131), and it does cover the things prior audits broke: IPv6 canonicalization of ::1 / ::ffff:127.0.0.1 / 64:ff9b:: forms (:21-79), resolve-to-private (:83), the metadata IP (:91), fail-closed on empty DNS (:104) and on DNS error (:204), the redirect-to-metadata and redirect-to-RFC1918 refusals (:141, :156), cross-host redirect refusal (:169), same-host rebind refusal (:184), and the non-http scheme refusal (:227). So the memory note that safeFetch had ZERO tests is stale.\n\nWhat is not covered maps one-to-one onto the defects filed above:\n- No case asserts any bound on the response body, in bytes or in time: the behaviour in ssrf-01 would pass the suite unchanged.\n- No case for the `allowedHostnames` parameter (lib/scanner/safe-fetch.ts:574-582), even though it is the stated containment for every active probe (lib/scanner/active-probes/shared.ts:14-19) and it is enforced only on the first hop, not on the www-apex redirect the loop permits.\n- No case for the `session` parameter's credential-drop-on-redirect behaviour (lib/scanner/safe-fetch.ts:671-680), the whole reason authenticated scanning is safe.\n- No case for 100.64/10, 198.18/15 or 192.0.0.0/24 (ssrf-03), nor for the fe80::/10 and fc00::/7 prefix widths (ssrf-05).\n- No case for pinToResolvedIp (lib/scanner/safe-fetch.ts:273) or for the fact that the HTTPS branch does not pin (ssrf-02).\n- No case for a hostname in decimal/octal/hex form, which currently relies entirely on getaddrinfo normalising before isPrivateIP runs.",
     "impact": "The guard is the single most consequential piece of code in the product, and the parts of it that are currently wrong are exactly the parts with no test. Any of the fixes recommended in ssrf-01 through ssrf-05 can be shipped, then silently regressed, with a green suite.",
@@ -917,10 +875,7 @@
     "effort": null,
     "category": null,
     "file": "scripts/_lib/_lib.prompts.mjs",
-    "files": [
-      "scripts/_lib/_lib.prompts.mjs",
-      "scripts/_lib/_lib.target.mjs"
-    ],
+    "files": ["scripts/_lib/_lib.prompts.mjs", "scripts/_lib/_lib.target.mjs"],
     "line": null,
     "description": "Each prompt in _lib.prompts.mjs and _lib.target.mjs opens a brand-new readline.Interface and closes it after a single answer. When multiple newline-separated answers are piped into stdin at once, Node's readline greedily buffers the whole pipe into the first Interface; only the first line is consumed before that Interface is discarded, and every later prompt then blocks forever with no timeout or error. Reproduced twice. Both scripts must be run attached to a real TTY with a human typing each answer; they cannot be scripted, used in CI, or wired into an automated deploy step.",
     "impact": "",
@@ -1208,9 +1163,7 @@
     "effort": "small",
     "category": "checked and fine",
     "file": "package-lock.json",
-    "files": [
-      "package-lock.json"
-    ],
+    "files": ["package-lock.json"],
     "line": null,
     "description": "Recording the negative results so the next audit does not redo them. `npm audit --json` on the full tree reports 0 vulnerabilities across 813 packages (369 prod, 363 dev, 137 optional, 1 peer) at every severity including info, so there is no reachability analysis to do: nothing is reported. `npm view <pkg> deprecated` across all 86 direct dependencies returns nothing, and no lockfile entry carries a `deprecated` field. Scanning all 814 lockfile entries, every single `resolved` URL points at https://registry.npmjs.org: there are no git URLs, no tarball URLs, no alternate registries and no `file:` links. Exactly three entries have `hasInstallScript: true` (core-js 3.49.0, fsevents 2.3.3 which is macOS-only and optional, and unrs-resolver 1.12.2 which is dev-only), and Dockerfile:24 runs with `--ignore-scripts` anyway (see deps-05). Most importantly given this repo's history: the committed lockfile still contains the full set of Linux native bindings that a Windows regeneration strips. Verified present: @next/swc-linux-x64-gnu, -x64-musl, -arm64-gnu and -arm64-musl all at 15.5.23; @img/sharp-linux-x64, @img/sharp-linuxmusl-x64 and @img/sharp-libvips-linux-x64; @tailwindcss/oxide-linux-x64-gnu and -musl at 4.3.3; @unrs/resolver-binding-linux-x64-gnu and -musl at 1.12.2; lightningcss-linux-x64-gnu and -musl at both 1.33.0 and 1.32.0. package-lock.json is tracked by git and .gitignore has no lock entry. The Node version story is consistent everywhere it is stated: .nvmrc `22`, .node-version `22`, all five ci.yml jobs `node-version: \"22\"`, Dockerfile:11 and :62 node:22.11.0-alpine, package.json:8 `>=22.0.0` (see deps-07 on tightening that upper bound).",
     "impact": "No action required. Two things here are worth an operator knowing: the lockfile is currently healthy on the exact axis that has broken this repo before, so whoever applies deps-01, deps-02 or deps-08 needs to regenerate it on Linux or graft entries by hand rather than running npm install on Windows; and `npm audit` being clean means the CI gate at ci.yml (`npm audit --audit-level=high --omit=dev`) is currently passing on merit rather than on a suppression.",
@@ -1258,9 +1211,7 @@
     "effort": "small",
     "category": "dead gitignore pattern",
     "file": ".gitignore",
-    "files": [
-      ".gitignore"
-    ],
+    "files": [".gitignore"],
     "line": 56,
     "description": "`.gitignore:56` contains `nscripts/storage/`, sitting at the end of the \"Dependency directories\" block after the four `.yarn/*` entries. There is no `nscripts` directory in the repo (`ls -d nscripts` returns nothing), so the pattern matches nothing. The intended pattern is present and correct three lines later at `.gitignore:59`, `scripts/storage/`, under its own \"FP audit temporary scan storage\" comment. The likely cause is a stray `n` from a keystroke landing at the start of a duplicated line. Note also that this is the only defect I found in gitignore coverage for the sub-projects: `git ls-files | grep node_modules` returns nothing, no `dist-chrome`, `dist-firefox` or `.zip` artifact is tracked, `extension/.gitignore` correctly covers `node_modules/`, `dist-chrome/`, `dist-firefox/`, `dist-build/`, `dist-tsc/`, `out/`, `*.tsbuildinfo` and `vulnradar-*.zip`, and the comment at `.gitignore:66` explaining why the root must not add `extension/*` is accurate.",
     "impact": "None functionally. It is a misleading line in a file people read when deciding what is and is not committed, and it looks like `scripts/storage/` is ignored twice when one of the two is dead.",
@@ -1308,9 +1259,7 @@
     "effort": null,
     "category": null,
     "file": "registry_all_keys.txt",
-    "files": [
-      "registry_all_keys.txt"
-    ],
+    "files": ["registry_all_keys.txt"],
     "line": null,
     "description": "A flat list of lib/config/registry.ts's setting keys, evidently a debug dump from an earlier audit/dev pass. Not imported or referenced by any source file, script, or test. Harmless but shouldn't ship in a v3.0.0 tag.",
     "impact": "",

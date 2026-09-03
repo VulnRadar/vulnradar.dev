@@ -11,9 +11,7 @@
     "effort": "medium",
     "category": "teams / capability drift",
     "file": "app/api/v3/history/[id]/route.ts",
-    "files": [
-      "app/api/v3/history/[id]/route.ts"
-    ],
+    "files": ["app/api/v3/history/[id]/route.ts"],
     "line": 350,
     "description": "PATCH /api/v3/history/[id] destructures teamId at :267, authorizes it at :313-326 and writes it at :349-352. That is the only write path to scan_history.team_id (instrumentation.ts:928) in the entire codebase. Every INSERT INTO scan_history omits the column: app/api/v3/scan/route.ts:368, scan/crawl/route.ts:440, scan/bulk/route.ts:278, scan/authenticated/route.ts:469, scan/github/route.ts:252, lib/scanner/scheduled-scans-worker.ts:280, lib/scanner/execute-crawl-scan.ts:633. No UI ever sends teamId: the only PATCH bodies sent are {notes} (app/history/page.tsx:394) and {isPublic} (components/scanner/scan-actions-menu.tsx:339); a repo-wide grep for 'share to team' / 'share with team' across .tsx returns zero. The sibling columns webhooks.team_id (instrumentation.ts:934) and scheduled_scans.team_id (:937) have the same shape: PATCH accepts teamId (webhooks/[id]/route.ts:201, schedules/route.ts:308) and no UI sends it.",
     "impact": "GET /api/v3/teams/member-scans queries WHERE user_id = $1 AND team_id = $2 (app/api/v3/teams/member-scans/route.ts:53-60) and can only ever return an empty array, yet the product ships a complete viewer for it with pagination (app/teams/page.tsx:469, components/teams/team-member-scans.tsx). Every getTeamResourceAccess team branch across history, share and report is unreachable. The feature is documented and sold at app/docs/teams/page.tsx:374-380. A paying team customer sees an empty panel with no explanation.",
@@ -37,9 +35,7 @@
     "effort": "medium",
     "category": "serialized independent gates",
     "file": "app/api/v3/scan/route.ts",
-    "files": [
-      "app/api/v3/scan/route.ts"
-    ],
+    "files": ["app/api/v3/scan/route.ts"],
     "line": 201,
     "description": "The route awaits its gates one after another, though nearly all are independent: `canMakeRequest` (line 201) -> `getDailyLimit` -> `getUserPlan` (lib/rate-limiting/daily-limits.ts:75, a `users LEFT JOIN gifted_subscriptions`) plus a `rate_limits` SUM; `checkConcurrentScanLimit` (line 223) -> `resolveConcurrentLimit` -> `getUserPlanLimits` -> `getUserPlan` again (2nd read of the same users row) plus a COUNT; `validateScanTarget` (line 276, a blocking `dns.lookup`); `checkAccessRules` (line 285, two sequential queries, see perf-23); `resolveScanIsPublic` (line 348) -> `SELECT scans_private_by_default FROM users WHERE id = $1` (lib/scanner/scan-privacy.ts:44, 3rd read); `reserveConcurrentScanSlot` (line 363) -> `resolveConcurrentLimit` -> `getUserPlan` a third time (4th read) then `pool.connect` + BEGIN + `pg_advisory_xact_lock` + COUNT + INSERT + COMMIT; `incrementDailyCountCapped` (line 397). `getSession` at line 151 has already fetched that same users row once more. The concurrency COUNT is also executed twice (lib/rate-limiting/concurrent-scans.ts:59 then :113).",
     "impact": "Roughly 14 serialized round trips plus one DNS resolution stand between the user clicking Scan and the server acknowledging it. On a co-located Postgres that is ~30ms; behind a managed instance or a connection pooler at 10-15ms RTT it is 150-250ms of dead time added to the front of every scan, before a single check has run. It also multiplies: app/api/v3/scan/bulk/route.ts pays a large part of it per URL (see perf-18).",
@@ -63,9 +59,7 @@
     "effort": "small",
     "category": "sharing",
     "file": "app/api/v3/history/[id]/share/route.ts",
-    "files": [
-      "app/api/v3/history/[id]/share/route.ts"
-    ],
+    "files": ["app/api/v3/history/[id]/share/route.ts"],
     "line": 24,
     "description": "The route accepts expiresInDays constrained to 7, 30, 90 or null (app/api/v3/history/[id]/share/route.ts:12, :21-32, :110-113, :142) and scan_history.share_expires_at (instrumentation.ts:1307) is enforced on every read path: app/api/v3/shared/[token]/route.ts:35, public-scans/route.ts:75, shares/route.ts:27. A repo-wide grep for expiresInDays outside app/api returns zero hits, and the share action POSTs no body at all (components/scanner/scan-actions-menu.tsx:290). The Shares page already renders the expiry via formatExpiry (components/shares/shares-types.ts:34, called at components/shares/shares-row.tsx:114), so it permanently prints 'Never expires' for every row.",
     "impact": "Every share link ever created is unlimited. A user who shares a scan with a contractor or a client has no way to time-limit it, on a feature where time-limiting is the main security control. The UI already has a slot showing the value it can never set.",
@@ -89,9 +83,7 @@
     "effort": "medium",
     "category": "config / feature flags",
     "file": "app/api/v3/config/client/route.ts",
-    "files": [
-      "app/api/v3/config/client/route.ts"
-    ],
+    "files": ["app/api/v3/config/client/route.ts"],
     "line": 20,
     "description": "Only FEATURE_PDF_REPORTS crosses to the browser (app/api/v3/config/client/route.ts:20,31 into use-client-config.ts into scan-actions-menu.tsx:545); a grep for each of the other eight in that route returns zero. Several also gate only half their surface, each verified individually: FEATURE_PDF_REPORTS hides the menu item but not the endpoint, since app/api/v3/history/[id]/report/route.ts has no getSetting reference and still serves ?format=pdf at :199-204; FEATURE_SCHEDULED_SCANS gates creation (schedules/route.ts:71) but not execution, since lib/scanner/scheduled-scans-worker.ts reads only its own concurrency settings, so existing schedules fire forever after the flag is off; FEATURE_WEBHOOKS gates registration (webhooks/route.ts:53) but not delivery, since lib/webhooks/*.ts contains no flag reference; FEATURE_TEAMS gates only POST (teams/route.ts:57) while GET, PATCH, DELETE, members/route.ts and app/teams/page.tsx are all ungated, contradicting the registry help at :665-672. By contrast POSTURE_DIGEST_ENABLED (posture-digest.ts:220) and DOMAIN_REVERIFY_ENABLED (reverify-worker.ts:60) do gate their workers correctly.",
     "impact": "Disabling a feature leaves its UI fully present and its background work running. The user discovers the flag only via a 403 on submit, and scheduled scans and webhook deliveries continue to fire for a feature the operator believes is off.",
@@ -143,9 +135,7 @@
     "effort": null,
     "category": null,
     "file": "lib/api/api-keys.ts",
-    "files": [
-      "lib/api/api-keys.ts"
-    ],
+    "files": ["lib/api/api-keys.ts"],
     "line": null,
     "description": "checkRateLimit + recordUsage were two separate statements. N concurrent requests at used=limit-1 all passed, all inserted.",
     "impact": "",
@@ -197,9 +187,7 @@
     "effort": null,
     "category": null,
     "file": "app/api/v3/auth/update/route.ts",
-    "files": [
-      "app/api/v3/auth/update/route.ts"
-    ],
+    "files": ["app/api/v3/auth/update/route.ts"],
     "line": null,
     "description": "A stolen session cookie remained valid for the full 7-day TTL even after the legitimate user rotated their password.",
     "impact": "",
@@ -223,9 +211,7 @@
     "effort": "medium",
     "category": "list (a) gap rank 3: the grading vocabulary and the badge flywheel",
     "file": "app/api/v3/badge/[token]/route.ts",
-    "files": [
-      "app/api/v3/badge/[token]/route.ts"
-    ],
+    "files": ["app/api/v3/badge/[token]/route.ts"],
     "line": 99,
     "description": "Four of the free peers grade a whole site on one A+ to F scale: MDN HTTP Observatory (A+ down to F, ten header tests), SecurityHeaders.com (A+ to F on response headers), Qualys SSL Labs (A+ to F plus T and M), and ImmuniWeb (grade-gated PDF certificate plus installable badge). VulnRadar has the scoring machinery but not the vocabulary. lib/scanner/ssl-grade.ts:1 already computes a real SSL-Labs-style A+/A/B/C/D/F letter, but only for the TLS handshake. The whole-scan verdict is a three-state safety rating (lib/scanner/safety-rating.ts:19, \"safe\" | \"caution\" | \"unsafe\") plus a 0-10 danger score (:306), and the embeddable badge renders exactly that three-state label (app/api/v3/badge/[token]/route.ts:99 to :115). Confirmed live this session: Snyk shut down the securityheaders.com API in April 2026 (announced January 2026), leaving only the free web scanner; the replacements ranking for \"securityheaders alternative\" are unknown micro-vendors (WebAudit, Guardr, detectzestack, myssl.info, sitesecurityscore). SSL Labs v4 requires an organizational email and forbids commercial use by default, and MDN Observatory dropped TLS entirely in October 2024. The auto-updating badge infrastructure already exists and is idempotent per (user, url) so an embed never breaks (app/api/v3/badge/site/route.ts:8).",
     "impact": "A README badge that says \"caution\" is a liability the owner removes; a badge that says \"A\" is a trophy the owner keeps and that links back. ImmuniWeb built 380M+ scans on exactly that mechanic and gates the certificate on the grade so people work to earn it. VulnRadar has the badge, the public host page, the API, and TLS plus DNS plus header coverage that the vacated SecurityHeaders niche wants, and cannot be compared against the incumbent because it does not speak the incumbent's scale.",
@@ -249,9 +235,7 @@
     "effort": "medium",
     "category": "list (a) gap rank 8: issue tracker integration",
     "file": "app/api/v3/scan/github-issue/route.ts",
-    "files": [
-      "app/api/v3/scan/github-issue/route.ts"
-    ],
+    "files": ["app/api/v3/scan/github-issue/route.ts"],
     "line": 26,
     "description": "Jira is universal across all eight commercial vendors, Slack near-universal, and the real differentiator is two-way sync: Detectify's Jira integration updates the finding when the ticket is resolved, and Probely/Snyk goes further, marking the Jira issue Done automatically triggers a retest of that finding. Linear appears only at Intruder (audits/AUDIT-014/research-competitors-commercial.md, \"Table stakes\" item 2). VulnRadar's entire ticketing surface is POST /api/v3/scan/github-issue (app/api/v3/scan/github-issue/route.ts:11), which files one issue per scan into one repo, listing at most 50 findings in the body (`MAX_FINDINGS_LISTED = 50`, :26). It is one-way and one-shot: nothing reads the issue's state back, nothing closes it when a rescan shows the finding gone, and there is no per-finding issue so no finding has its own trackable ticket. Notification delivery is limited to Discord, Slack and generic webhooks (lib/webhooks/detect-type.ts:7 to :14) plus email; there is no Jira, Linear, ServiceNow or Teams destination anywhere in lib/.",
     "impact": "For the developer this product targets, a single 50-item issue is a dump, not a workflow: it cannot be assigned, prioritised, or closed piecemeal, and once one finding is fixed the issue is stale but still open. For the small security team, the absence of any close-the-loop mechanism means the remediation state lives only inside VulnRadar (lib/scanner/remediation-store.ts) and inside the tracker separately, and the two drift.",
@@ -275,9 +259,7 @@
     "effort": "medium",
     "category": "self-update",
     "file": "lib/updater/environment.ts",
-    "files": [
-      "lib/updater/environment.ts"
-    ],
+    "files": ["lib/updater/environment.ts"],
     "line": 8,
     "description": "Static trace. isUpdaterSupported() (lib/updater/environment.ts:8-17) returns unsupported only when process.env.VERCEL is set; there is no container detection, so both app/api/v3/admin/updater/status/route.ts:37 and .../apply/route.ts:56 report the updater available inside the official image and the admin UI offers it. runUpdateJob then sets appRoot = process.cwd() (lib/updater/apply.ts:206), which is /app, and calls copyTreeOverlay(sourceRoot, appRoot) at :261 to write the release's full source tree there. /app is root:root because WORKDIR /app runs as root at Dockerfile:68 and the process runs as USER nextjs (uid 1001) from :102, so creating new top-level entries such as /app/lib or /app/app fails with EACCES, while pre-existing chowned files such as /app/package.json and /app/next.config.mjs would be overwritten in place first (overwriting an existing file needs write on the file, not the directory). The job then fails with a raw permission error after package.json has already been replaced with the new release's copy while node_modules and .next are still the old build. Even if the copy succeeded, the npm-ci step at :325 and the `npm run db:migrate -- --yes` step at :353 run against a tree with no scripts/ (host-02), and the final log line at :369 asks the admin to run `npm run build` and restart, which in a container means the next `docker compose pull && docker compose up -d` (app/docs/setup/page.tsx:684) throws the whole writable layer away. AUDIT-013#cov-06 recorded that this pipeline has 0% test coverage and AUDIT-013#migrate-01 that the migrate step it invokes stamps 3.0.0 on a schema missing 11 tables; this finding is about the updater being reachable at all in the deployment shape where it cannot work.",
     "impact": "A self-hosting admin sees an in-app Update button, clicks it, and gets a half-applied file copy plus an opaque EACCES in the job log, with package.json now describing a version whose code is not installed. In the worst case they then follow the log's advice and restart, and the update silently disappears on the next image pull.",
@@ -301,9 +283,7 @@
     "effort": "small",
     "category": "limits bypassing config",
     "file": "app/api/v3/auth/forgot-password/route.ts",
-    "files": [
-      "app/api/v3/auth/forgot-password/route.ts"
-    ],
+    "files": ["app/api/v3/auth/forgot-password/route.ts"],
     "line": 51,
     "description": "lib/rate-limiting/rate-limit.ts:247-:276 exposes seventeen named rate limits, each carrying a `limit` name so checkRateLimit resolves the live admin override (registry keys RATE_LIMIT_*_MAX_ATTEMPTS / _WINDOW_MINUTES). Four call sites bypass that entirely by passing raw numbers: app/api/v3/auth/forgot-password/route.ts:49-:53 (per-email reset cap, maxAttempts 3 / windowSeconds 60*60), app/api/v3/auth/signup/route.ts:130-:134 (per-email signup cap, 5 / 60*60), app/api/v3/domains/route.ts:69-:73 (domain add, 20 / 3600) and app/api/v3/domains/[id]/verify/route.ts:39-:42 (domain verify, 30 / 3600). None of the four has a registry key. This is distinct from AUDIT-009#dup-01, which was about routes importing the wrong RATE_LIMITS export; lib/config/constants.ts:352-:360 records that collision as resolved. These four never reference either export.",
     "impact": "An operator responding to a signup-flood or reset-flood incident can tighten every limiter in the admin panel and still leave the two per-email counters, which are the ones that actually stop the attack described in each site's own comment, at their compiled values. The two domain limiters are the documented numbers in app/docs/api/page.tsx:843 and :876, so the docs also become uneditable truth.",
@@ -327,9 +307,7 @@
     "effort": "small",
     "category": "pricing communication",
     "file": "lib/billing/catalog.ts",
-    "files": [
-      "lib/billing/catalog.ts"
-    ],
+    "files": ["lib/billing/catalog.ts"],
     "line": 166,
     "description": "lib/billing/catalog.ts descriptions are the copy that appears under each plan name at components/pricing/pricing-cards.tsx:83-85: \"For individuals exploring security scanning\" (:103), \"Support VulnRadar development + 100 scans/day\" (:133), \"For power users - 150 scans/day\" (:166), \"Maximum power - 500 scans/day\" (:198). \"For power users\" and \"Maximum power\" are exactly the adjective-only benefit claims CLAUDE.md bans, and none of the four says what the extra scans let you do. The feature bullets are the same shape: \"Full vulnerability detection\", \"Security headers analysis\", \"SSL/TLS checks\", \"API access\" (:106-109) are category nouns with no consequence attached, and every one of them is true on every plan, so the free card spends four of its eight bullets on things that are not differentiators. Separately there is a factual error. CONFIG_BILLING_FREE_RETENTION through CONFIG_BILLING_ELITE_SUPPORTER_RETENTION are all -1, meaning unlimited (lib/config/config-values.ts:1209-1212), yet catalog.ts:110 still says \"30-day scan history\" and :137 says \"90-day scan history\". app/pricing/page.tsx:44 strips those strings with a /scan history/i filter, but app/checkout/[productId]/page.tsx:280 renders plan.features.slice(0, 5) with no filter, so the Core checkout page, the highest-intent page in the funnel, tells a buyer they are getting 90-day history when every plan including free already keeps everything. catalog.ts:170 then sells \"Unlimited scan history\" as a Pro upgrade over Core, which the free tier also has. Finally components/pricing/pricing-cards.tsx:78-79 renders a \"Most picked\" badge driven by the hardcoded `popular: libPlan.id === \"pro_supporter\"` at app/pricing/page.tsx:55, which is a claim about other customers' behaviour that is not measured from anything.",
     "impact": "A visitor cannot tell what changes when they pay, because the cards restate the same nouns at four price points and the one concrete difference they do state, retention, is wrong on the checkout page and identical across plans in reality. The Pro card's headline upgrade is something the free tier already includes. \"Most picked\" is an unbacked social-proof claim on a product with roughly 50 users, which is the kind of thing that is cheap to remove and expensive if noticed.",
@@ -353,9 +331,7 @@
     "effort": "medium",
     "category": "scanning page: replacement for the timer",
     "file": "app/api/v3/scan/status/[id]/route.ts",
-    "files": [
-      "app/api/v3/scan/status/[id]/route.ts"
-    ],
+    "files": ["app/api/v3/scan/status/[id]/route.ts"],
     "line": 162,
     "description": "This is the replacement proposal AUDIT-011#scan-05 asked for and did not specify. It is scoped strictly to what the API produces today, verified by reading the endpoint and the producer.\n\nWHAT EXISTS NOW. GET /api/v3/scan/status/[id] builds `responseBody` at app/api/v3/scan/status/[id]/route.ts:162-168 with exactly five keys while a scan is live: `status`, `currentCategory`, `categoriesCompleted`, `categoriesTotal`, `elapsedMs`. On `completed` it adds the whole `result`; on `failed` it adds `error`. The client reads three of them (app/dashboard/page.tsx:146-150) and drops `elapsedMs` on the floor. The producer is `createProgressTracker` in lib/scanner/scan-jobs.ts:117-139, whose hook fires once per CATEGORY as `start` and once as `done`, writing `current_category` / `categories_completed` / `categories_total` to scan_history. The hook's type is `(category: string, phase) => void` (lib/scanner/types.ts:352-355): it carries no check count and no findings.\n\nSo of the three things the brief asked for, the API supports exactly one and a half today:\n1. \"Which check category is running\" -- SUPPORTED. `currentCategory` is a real Category id, and lib/scanner/category-meta.ts already holds a client-safe label and one-line blurb for all 18, importing only a type.\n2. \"How many of the ~797 checks are done\" -- NOT SUPPORTED as checks; supported as families. `categoriesCompleted / categoriesTotal` is real and exact (route.ts:332-339 derives the denominator from `getPlannedSyncCategories` plus `getPlannedAsyncBranches`, never estimated). Per-check counts are computed but only at the end: lib/scanner/engine.ts:206-211 returns `checksRun` and `checksSkipped` after the whole loop, and they reach the user only as the \"Checks run\" stat on the finished view (components/scanner/scan-summary.tsx:295-302).\n3. \"Findings streaming in as discovered\" -- NOT SUPPORTED AT ALL. `runSyncChecks` accumulates into a local `findings` array (engine.ts:156) and nothing reads it until `dedupeFindings` at :205. scan_history.findings is written once, by `finalizeScanSuccess` (scan-jobs.ts:240-245), in the same UPDATE that flips status to `completed`. There is no partial-findings column and no partial-findings field on the poll response.",
     "impact": "After scanui-01 the card would show a family name, a bar, and nothing else, which is less information than the clock it replaced. The scan is the product's whole value proposition and for its entire duration the user is shown zero of its output, then all of it at once, then (until AUDIT-011#scan-08 is fixed) a blur over the top of it. The visible work is a large part of a scanner's perceived worth and this page currently spends the wait proving nothing.",
@@ -379,9 +355,7 @@
     "effort": "medium",
     "category": "scanning page: navigate away and back",
     "file": "app/api/v3/dashboard/route.ts",
-    "files": [
-      "app/api/v3/dashboard/route.ts"
-    ],
+    "files": ["app/api/v3/dashboard/route.ts"],
     "line": 41,
     "description": "The scan's entire progress state lives in the DashboardContent component: `status`, `runningScanId` and `scanProgress` are all `useState` (app/dashboard/page.tsx:204, 219, 234) and the poll loop is a local `async` function. There is no persistence, no `sessionStorage`, and nothing that queries for the user's own in-flight scans. So a soft navigation, a refresh, or a phone backgrounding the tab long enough to be evicted drops the whole thing: coming back to /dashboard shows `status === \"idle\"`, the empty scan form, and no indication that a scan of theirs is still running server-side. It does keep running (that is the point of the background-job design, see app/api/v3/scan/route.ts:405-419) and it does eventually complete, so the user has no way to watch it and no signal that watching would even be possible.\n\nWhat they see instead is worse than nothing. The row is INSERTed as `pending` before any work starts (app/api/v3/scan/route.ts:365-379) and `scan_history.scanned_at` defaults to `NOW()` (instrumentation.ts:428), so it exists immediately and sorts to the top of every list ordered by `scanned_at DESC`. Neither list filters on status:\n  - app/api/v3/dashboard/route.ts:41-44 selects `public_id AS id, url, summary, findings_count, duration, scanned_at, source FROM scan_history WHERE user_id = $1 ORDER BY scanned_at DESC LIMIT $2`, with no `status` predicate. This feeds the \"Recent scans\" widget on the very page the user just came back to (components/scanner/dashboard.tsx).\n  - app/api/v3/history/route.ts:120-139 has the same shape and the same omission (`WHERE sh.user_id = $1 AND (sh.scan_type IS NULL OR sh.scan_type != 'github')`).\nThe column defaults at instrumentation.ts:420-423 are `summary '{}'`, `findings_count 0`, `duration 0`, and `finalizeScanSuccess` (lib/scanner/scan-jobs.ts:244-248) is the only thing that fills them. So a running scan, a cancelled scan (`finalizeScanFailure` at :363-381 sets `status='failed'` but never touches `summary` or `findings_count`) and a watchdog-killed scan all render identically to a genuinely clean result: the site's name, \"0 findings\", \"0.0s\".",
     "impact": "The most natural recovery action, going back to the scanner, is punished twice: the user loses the scan they were watching, and the page they land on tells them that scan found nothing. On a phone, where the browser evicting a background tab is routine, this is the normal path rather than the edge case. A cancelled scan leaves the same false clean-bill-of-health row permanently.",
@@ -405,9 +379,7 @@
     "effort": "small",
     "category": "untested money-reversal path",
     "file": "app/api/v3/webhooks/stripe/route.ts",
-    "files": [
-      "app/api/v3/webhooks/stripe/route.ts"
-    ],
+    "files": ["app/api/v3/webhooks/stripe/route.ts"],
     "line": 940,
     "description": "app/api/v3/webhooks/stripe/route.ts measures 68.18% statements and 58.3% branches over 264 statements. The handler switch has nine cases: checkout.session.completed (183), customer.subscription.created (296), updated (475), deleted (626), invoice.payment_succeeded (686), invoice.payment_failed (770), payment_intent.succeeded (803), charge.refunded (940), charge.dispute.created (982). Extracting the event-type string literals from tests/app/api/v3/webhooks/stripe/route.test.ts yields eight, and the two missing are charge.refunded and charge.dispute.created. Those two branches each call reverseAiCreditPurchase, reverseGithubCreditPurchase, and reverseBrowserbaseCreditPurchase in a Promise.all (lines 958-962 and 997-1001). The reversal functions themselves are well covered (lib/billing/ai-usage.ts 98.27%, browserbase-usage.ts 100%, github-review-usage.ts 98.59%), so what is untested is the wiring: the partial-refund early-break at line 947, the payment_intent extraction that must handle both a string and an expanded object (lines 953-956 and 989-992), and the dispatch itself. lib/billing/stripe-webhook-setup.ts:29-30 does register both events with Stripe, and tests/lib/billing/stripe-webhook-setup.test.ts covers REQUIRED_EVENTS, but nothing asserts the REQUIRED_EVENTS list and the switch labels agree.",
     "impact": "If either case label is renamed, or the payment_intent extraction breaks when Stripe sends an expanded object rather than a string, a refunded or charged-back customer keeps every AI token, GitHub review token, and Browserbase second they paid for. That is direct revenue loss on the exact transactions where the money has already left, and it is silent: the webhook still returns 200, the reversal functions still pass their own unit tests, and the only evidence is a console.log that never fires.",
@@ -431,9 +403,7 @@
     "effort": "medium",
     "category": "untested metered third-party path",
     "file": "lib/browserbase/client.ts",
-    "files": [
-      "lib/browserbase/client.ts"
-    ],
+    "files": ["lib/browserbase/client.ts"],
     "line": 213,
     "description": "lib/browserbase/client.ts is the largest sub-50% file in the tree: 243 statements at 16.87% statements / 27.05%-adjacent branches, 662 lines, ten exports (createBrowserSession:112, getBrowserSession:165, getBrowserLiveUrls:189, endBrowserSession:213, pickLiveViewerUrl:273, isBrowserBaseConfigured:279, navigateBrowserSession:298, openCdpPageSession:416, getBrowserSessionLogs:573, parseNetworkRequests:594). tests/lib/browserbase/ contains one file, concurrency-queue.test.ts, which tests a different module. lib/browserbase/network-capture.ts is at 27.05% and lib/scanner/page-screenshot.ts at 7.44% (94 statements, 21.42% functions). endBrowserSession has three call sites that must run or the session keeps billing: app/api/v3/browser/sessions/route.ts:199 (the create-failed cleanup) and :325 (explicit delete), lib/scanner/auth/browser-login.ts:560, and lib/scanner/page-screenshot.ts:267. None of those teardown paths is exercised.",
     "impact": "Browserbase is a real paid third party billed by session-seconds, and the credit ledger charges the user for it. A regression where the teardown is skipped on an error path (the exact shape of the route.ts:199 cleanup) leaks a live session per failed scan. Nothing in the product notices: the scan reports a normal failure, the user is charged whatever the ledger recorded, and the overage shows up on the operator's Browserbase invoice at the end of the month. sessions/route.ts:199 already writes `.catch(() => {})`, so even a thrown teardown error is swallowed.",
@@ -457,9 +427,7 @@
     "effort": "small",
     "category": "duplicated security primitive",
     "file": "app/api/v3/auth/2fa/setup/route.ts",
-    "files": [
-      "app/api/v3/auth/2fa/setup/route.ts"
-    ],
+    "files": ["app/api/v3/auth/2fa/setup/route.ts"],
     "line": 22,
     "description": "generateBackupCodes is defined identically in app/api/v3/auth/2fa/setup/route.ts:22 and app/api/v3/auth/2fa/backup-codes/route.ts:11: same `count = 8`, same `crypto.randomBytes(10)`, same hex/uppercase, same XXXXX-XXXXX-XXXXX-XXXXX split. Both carry a copy of the comment recording a prior hardening (\"10 bytes (80 bits) per code. The previous `randomBytes(4)` (32 bits) is below NIST 800-63B guidance for backup verification codes\"), and the comment itself has already drifted: the setup.ts copy adds \"The 2FA verify endpoint rate-limits to 5 attempts per 5 minutes per user+IP, so 32-bit codes were computationally in scope\" and the backup-codes.ts copy does not. Nothing links the two, so a future change to code length, alphabet, or count applies to enrolment or to regeneration but not both, and the two paths would then mint differently shaped codes into the same column.\n\nSeparately, lib/auth/pending-2fa.ts and lib/auth/ipv4-echo-token.ts each implement the whole signed-token primitive: signingKey() reading and length-checking API_KEY_ENCRYPTION_KEY (pending-2fa.ts:24, ipv4-echo-token.ts:24), computeTag() as HMAC-SHA256 over `${HMAC_DOMAIN}.${payloadB64}` with the same codeql suppression comment (pending-2fa.ts:34, ipv4-echo-token.ts:34), and a verify half that splits on the last dot, length-checks, timingSafeEquals the tag and base64url-JSON-decodes the payload (pending-2fa.ts:59-77, ipv4-echo-token.ts:66-92). ipv4-echo-token.ts:17 states the relationship outright: \"Format mirrors lib/auth/pending-2fa.ts: base64url(json).base64url(hmac).\" Only the domain string differs, and the two have already diverged on their security contract: verifyIpv4Token enforces max-age and a clock-skew floor inline (ipv4-echo-token.ts:88-90), while verifyPendingToken enforces no freshness at all and delegates it to callers (pending-2fa.ts:57).",
     "impact": "A fix to either primitive is applied to one site and silently missed on the other. For generateBackupCodes that means one of the two 2FA paths keeps weaker codes after the next hardening. For the token pair it means a padding, canonicalization, or replay fix to one signed-token format leaves the other exposed, and the split freshness contract is exactly the kind of asymmetry that produces a replay window: any new caller of verifyPendingToken that forgets its own `ts` check gets an eternally valid token, while the identically shaped ipv4 token cannot be replayed past 120 seconds.",
@@ -483,9 +451,7 @@
     "effort": "medium",
     "category": "guard applied to a subset of siblings",
     "file": "lib/api/api-utils.ts",
-    "files": [
-      "lib/api/api-utils.ts"
-    ],
+    "files": ["lib/api/api-utils.ts"],
     "line": 176,
     "description": "lib/api/api-utils.ts:170-176 documents the cap as a deliberate fix: \"L-10: Hard cap on JSON request bodies. Without this, a client can send a multi-GB JSON body that the server will buffer before rejecting. 1 MiB is more than enough for our route shapes.\" It is enforced only inside parseBody (lib/api/api-utils.ts:181-228), which checks content-length against MAX_REQUEST_BODY_BYTES at :188-196 before calling request.json().\n\nI split every route.ts under app/api by which one it uses. 19 files call parseBody, 54 call `request.json()` or `req.json()` directly, and the two sets do not overlap at all. The 19 are almost entirely under app/api/v3/auth/, app/api/v3/account/, plus keys, browser/sessions, admin/staff-invites and admin/updater/apply, which is the shape of a fix applied by directory and never extended. The 54 include the whole scan surface (app/api/v3/scan/route.ts, scan/bulk, scan/crawl, scan/verify-batch, scan/import-spec, scan/remediation/bulk), the whole teams and support-ticket surface, app/api/v3/admin/route.ts, app/api/v3/webhooks/route.ts, app/api/v3/domains/route.ts, and the two contact forms.\n\nThere is no backstop underneath them: I checked next.config.mjs and middleware.ts and neither sets a body size limit, and Next.js App Router route handlers have no default one (the Pages Router's 1 MB bodyParser limit does not apply). app/api/v3/account/unsubscribe/route.ts is in PUBLIC_PATHS (lib/config/public-paths.ts:178) and reads its body raw, so at least one uncapped route is reachable with no session.",
     "impact": "Any signed-in account (signup is open) can POST an arbitrarily large JSON body to app/api/v3/scan/route.ts or any of the other 53 routes and the server buffers it in memory before any validation runs. On a deployment sized for ~50 users, a few concurrent multi-hundred-megabyte bodies are enough to OOM the process. The narrower and more likely cost is maintenance: the cap is written down as a security requirement in one helper that 74% of the body-reading routes do not go through, so the requirement is not actually a property of the API.",
@@ -509,9 +475,7 @@
     "effort": "small",
     "category": "incomplete consolidation",
     "file": "lib/ui/relative-time.ts",
-    "files": [
-      "lib/ui/relative-time.ts"
-    ],
+    "files": ["lib/ui/relative-time.ts"],
     "line": 32,
     "description": "lib/ui/relative-time.ts:22-31 documents a completed consolidation and names the defects it removed: \"The single source for this format: previously ~10 near-identical copies had drifted (some read '0m ago' instead of 'just now', one never fell back to a date and read '92d ago' forever, and the date fallback varied between 'Aug 12' and '8/12/2026').\" formatRelativeTime (:32-52) is the survivor, re-exported through components/admin/utils.ts:123 and components/assets/assets-types.ts:25 with \"Canonical relative-time formatter\" comments.\n\nThree files still hand-roll it, and two of them are the two named defects:\n\n1. components/admin/features/support-inbox.tsx:68 `timeAgo` ends at `return \\`${Math.round(hrs / 24)}d ago\\`` with no date fallback. That is the \"read '92d ago' forever\" bug, restored.\n2. components/contact/support-tickets.tsx:65 `timeAgo` falls back at 30 days to `new Date(iso).toLocaleDateString()`, which renders \"8/12/2026\". That is the \"varied between 'Aug 12' and '8/12/2026'\" bug, restored; the canonical formatter falls back at 7 days to `toLocaleDateString(\"en-US\", { month: \"short\", day: \"numeric\" })`, i.e. \"Aug 12\".\n\nThese two render the same objects. support-inbox.tsx is the staff view of a support ticket and support-tickets.tsx is the user's view of the same ticket, so one ticket's \"last activity\" reads \"412d ago\" to staff and \"8/12/2026\" to the user. The same pair also duplicates STATUS_STYLES and StatusBadge (support-inbox.tsx:79, support-tickets.tsx:89, identical bodies).\n\n3. components/scanner/subdomain-discovery.tsx:92 defines a private `formatAge` even though lib/ui/relative-time.ts:8 exports one, and lib/ui/relative-time.ts:2-4 names this very component as its consumer: \"shared by the result panels that show freshness (subdomain discovery, DNS records, port sweep). Matches the wording SubdomainDiscovery introduced.\" The two sibling panels do import it (components/scanner/port-scan-panel.tsx:22, components/scanner/dns-records-panel.tsx:24), and subdomain-discovery.tsx:22 imports formatRefreshAvailability from that same module in the same statement while shadowing formatAge. The bodies are currently identical, so this one is a live divergence risk rather than a current bug. A third, unrelated `formatAge(ageMs: number | null)` exists at components/admin/features/queue-status-utils.ts:41, so the name means two things.",
     "impact": "Staff triaging the support inbox see ages like \"412d ago\" that are unreadable as dates, on the one screen where knowing when a ticket last moved matters. The same ticket shows the user a different format. Beyond that, the consolidation is not actually done: the module presents itself as the single source and is not, so the next timestamp change is applied once and misses three screens, exactly as it did the last time.",
@@ -535,9 +499,7 @@
     "effort": "large",
     "category": "inconsistent response shapes across endpoints",
     "file": "lib/api/client.ts",
-    "files": [
-      "lib/api/client.ts"
-    ],
+    "files": ["lib/api/client.ts"],
     "line": 46,
     "description": "AUDIT-012#obs-09 inventoried the ERROR shapes (five of them, 117 of 155 routes bypassing ApiResponse/withErrorHandling). It did not cover the success side or the client side. I extracted the last success return from every GET handler in app/api (56 of them) and grouped them.\n\nEnvelopes in use:\n  1. Named-key object, the majority: `{ shares }`, `{ teams }`, `{ tickets }`, `{ notifications }`, `{ feedback }`, `{ teammates }`, `{ invitations }`, `{ remediation }`, `{ summaries }`, `{ repos }`.\n  2. Bare array, no envelope: app/api/v3/schedules/route.ts:60 (`result.rows`), app/api/v3/webhooks/route.ts:42 (`result.rows`), app/api/v3/badge/scans/route.ts (`scans`). A client cannot add a sibling field to these without a breaking change.\n  3. `{ success: true, data: {...} }`: app/api/v3/checkout/verify-subscription/route.ts. Nothing else uses it, and app/api/v3/finding-types/route.ts uses `{ success: false, error }` for its failure but a bare object for its success, so `success` is not a reliable discriminator anywhere.\n  4. Flat top-level fields with no envelope at all: app/api/v3/billing/route.ts, app/api/v3/config/client/route.ts, app/api/version/route.ts, app/api/v3/health/route.ts.\n\nPagination envelope keys diverge on one route: app/api/v3/admin/content/route.ts, app/api/v3/admin/email-logs/route.ts and app/api/v3/admin/error-logs/route.ts all return `{ <items>, page, totalPages, total }`, and app/api/v3/admin/teams/route.ts:71 returns `totalTeams` instead of `total` for the identical concept. components/admin/features/content-manager.tsx:107 reads `data.total || 0` to drive its \"N total\" footer; that pattern silently renders 0 against the teams endpoint, which is why components/admin/teams/teams-list.tsx:646 only consumes totalPages and drops the count. app/api/v3/admin/route.ts returns `total` with no page/totalPages at all.\n\nThe query-parameter side is, for the record, consistent: all seven paginated routes take `page` and `limit`, no route uses offset or cursor, so there is nothing to fix there.\n\nOn the client, lib/api/client.ts:44-49 is the shared reader that normalises `errorData.error` and falls back to the literal `API error: <status>`. It is imported by exactly 2 files under app/ and components/, while 94 files call `fetch(` directly and each re-implements its own `data.error || \"Something went wrong\"` handling. So the normalisation obs-09 recommends adopting has no adoption to build on.",
     "impact": "Every new client call site has to discover, per endpoint, whether the payload is the array itself, a named key, `data`, or flat fields, and whether the count is `total` or `totalTeams`. That is why the teams list drops its result count and why 94 files each carry their own error-unwrapping block. The three bare-array endpoints (schedules, webhooks, badge/scans) cannot gain pagination or a count without breaking their callers. Documented in app/docs/api, these inconsistencies are also the public API surface, so third-party integrators hit them too.",
@@ -561,9 +523,7 @@
     "effort": "small",
     "category": "event-loop DoS",
     "file": "app/api/v3/history/[id]/report/route.ts",
-    "files": [
-      "app/api/v3/history/[id]/report/route.ts"
-    ],
+    "files": ["app/api/v3/history/[id]/report/route.ts"],
     "line": 200,
     "description": "GET /api/v3/history/[id]/report?format=pdf reaches `Buffer.from(generatePdfReport(result))` at app/api/v3/history/[id]/report/route.ts:200. generatePdfReport (lib/reports/pdf-report.ts:11) is a synchronous pure-JS PDF builder that iterates every finding with nested word-wrap loops (:321 `for (let i = 0; i < result.findings.length; i++)`, :380-386 per code example and per code line) and applies no cap to result.findings.length. The API-key branch of the route charges checkApiKeyRateLimit at :98-101, but the session-cookie branch starting at :111 has no limiter of any kind -- the file contains no import of lib/rate-limiting/rate-limit. Before the PDF is built, the handler also loads the full findings JSONB and runs attachRemediation over it (:150-156). The same route serves format=compliance and format=md through the same unlimited synchronous path.",
     "impact": "A signed-in user can loop the export of their own largest scan (a 250-page elite crawl merges findings across every page) and pin the single Node process's event loop in synchronous PDF construction, stalling every other user's requests and every in-flight scan's progress writes. There is no cost to the attacker and no server-side signal beyond CPU.",
@@ -587,9 +547,7 @@
     "effort": "small",
     "category": "concurrency bypass",
     "file": "app/api/v3/scan/bulk/route.ts",
-    "files": [
-      "app/api/v3/scan/bulk/route.ts"
-    ],
+    "files": ["app/api/v3/scan/bulk/route.ts"],
     "line": 278,
     "description": "Grepping checkConcurrentScanLimit / reserveConcurrentScanSlot across the repo returns hits only in app/api/v3/scan/route.ts (:223, :363) and app/api/v3/scan/crawl/route.ts (:191, :435). app/api/v3/scan/bulk/route.ts and app/api/v3/scan/authenticated/route.ts call neither. Bulk compounds this: its INSERT at :278-279 writes the completed row in one statement with no 'pending'/'running' phase (the comment at :325 says so explicitly), so a bulk scan is invisible to the counting query in lib/rate-limiting/concurrent-scans.ts:60-63 even while it is running. Bulk is bounded only by RATE_LIMITS.bulkScan (CONFIG_RATE_LIMIT_BULK_SCAN_REQUESTS = 10 per hour, lib/config/config-values.ts:472-473) and runs its URL list inline and sequentially inside the request; ten concurrent bulk requests therefore run ten scan chains at once for a free user whose concurrentScans is 1 (lib/billing/catalog.ts:127). scan/authenticated is bounded by RATE_LIMITS.scan (100/hour) and its own daily-quota charge at :356.",
     "impact": "The concurrency cap that lib/rate-limiting/concurrent-scans.ts describes as the process's real capacity limit is enforced on two of the four scan entry points. A single free user can hold ten simultaneous inline bulk scan chains, each doing full outbound check batteries, against a nominal cap of one -- and the tracking table shows zero running scans the whole time, so an operator watching concurrency has no visibility into the load.",
@@ -613,9 +571,7 @@
     "effort": "small",
     "category": "security feature unreachable",
     "file": "app/api/v3/auth/2fa/setup/route.ts",
-    "files": [
-      "app/api/v3/auth/2fa/setup/route.ts"
-    ],
+    "files": ["app/api/v3/auth/2fa/setup/route.ts"],
     "line": 109,
     "description": "createOAuthUser (lib/auth/auth.ts:295 and :320) inserts `password_hash = NULL`, and verifyPassword returns false on a null hash by design (lib/auth/password-hash.ts:81). Both 2FA enrollment endpoints unconditionally require and verify a current password against that null hash. app/api/v3/auth/2fa/setup/route.ts:109-123 rejects an empty `currentPassword` with 400 and then 403s on `!(await verifyPassword(currentPassword, pwRow.rows[0].password_hash))` -- always false for these accounts. app/api/v3/auth/2fa/email-setup/route.ts:250-259 does the same (`if (!password) return badRequest; const valid = await verifyPassword(password, rows[0].password_hash); if (!valid) return forbidden`). The client makes it worse: components/profile/tabs/profile-security-tab.tsx already knows `const hasPassword = user?.hasPassword ?? true` (line 335) and uses it to reshape the password form, but the 2FA card is rendered unconditionally and the enrollment button is `disabled={totpVerifyCode.length !== 6 || !setup2FAPassword || verifying2FA}` (line 1164), so an OAuth-only user is shown the QR code, scans it, and then cannot submit at all -- the Verify button never enables. app/api/v3/auth/update/route.ts:116-122 documents exactly this null-hash case and deliberately skips re-auth for it, so the codebase already has the intended rule; the 2FA routes just do not follow it. app/api/v3/auth/2fa/backup-codes/route.ts:178 and /2fa/disable/route.ts:51 have the same blocker.",
     "impact": "Every user who signed up with Google, GitHub, or Discord is locked out of two-factor authentication on a security product, with a UI that shows the feature as available and then dead-ends. They also cannot regenerate backup codes or disable 2FA. The only workaround is to notice the separate 'Set a password' form, set one, and come back -- which nothing in the 2FA card tells them. It also means ENFORCE_STAFF_2FA (lib/auth/authorization.ts:35) permanently locks any OAuth-created staff account out of every requireStaff/requireAdmin route, with no way to satisfy the gate.",
@@ -639,9 +595,7 @@
     "effort": "small",
     "category": "account-lockout DoS",
     "file": "app/api/v3/auth/login/route.ts",
-    "files": [
-      "app/api/v3/auth/login/route.ts"
-    ],
+    "files": ["app/api/v3/auth/login/route.ts"],
     "line": 95,
     "description": "app/api/v3/auth/login/route.ts:95-105 gates every login on `peekRateLimit({ key: `login-fail:${user.id}`, ...RATE_LIMITS.login })` and returns 429 'Too many failed attempts for this account' when the bucket is full. The bucket is filled by the wrong-password branch at line 117 with `checkRateLimit({ key: `login-fail:${user.id}` })`, keyed by account only, accumulating across all IPs -- which is the point, but the cap is the same 5-attempt bucket as the per-IP limit (CONFIG_RATE_LIMIT_LOGIN_ATTEMPTS = 5, CONFIG_RATE_LIMIT_LOGIN_WINDOW_MINUTES = 15, lib/config/config-values.ts:457-458). One attacker IP is allowed exactly 5 requests per window by the `login:${ip}` gate at line 67, and 5 wrong-password requests are exactly enough to fill the account bucket to 5. peekRateLimit rejects at `count >= maxAttempts` (lib/rate-limiting/rate-limit.ts:215). Buckets are fixed windows quantized to `floor(epoch_ms / windowMs) * windowMs` (line 128), so the attacker fires 5 requests at the top of each 15-minute bucket -- 480 requests a day -- and the victim is locked continuously. A successful login never resets `login-fail:${user.id}`, and there is no unlock-by-email path anywhere; the victim is refused even with the correct password and a valid 2FA code.",
     "impact": "Anyone who knows a user's email address can keep that user permanently signed out of VulnRadar for the cost of 20 HTTP requests an hour, from a single IP, with no account of their own. Scheduled scans keep running but the owner cannot reach the dashboard, the history, or the API-key page to react. For a staff or admin account the same trick locks an operator out of the admin panel during an incident.",
@@ -665,9 +619,7 @@
     "effort": "medium",
     "category": "secret stored in plaintext at rest",
     "file": "lib/auth/auth.ts",
-    "files": [
-      "lib/auth/auth.ts"
-    ],
+    "files": ["lib/auth/auth.ts"],
     "line": 57,
     "description": "createSession generates 32 CSPRNG bytes (lib/auth/auth.ts:32-34), inserts them verbatim as the primary key at line 57 (`INSERT INTO sessions (id, ...) VALUES ($1, ...)`), and sets that same string as the cookie value at line 63. getSession looks it up with `WHERE s.id = $1` on the raw cookie (line 93). The file's own hashSessionId comment (lines 379-390) states the situation plainly: 'The `id` column is not a surrogate key: it is the literal bearer token stored in the httpOnly session cookie'. Every other bearer secret in this codebase is hashed before storage precisely so a database read cannot be replayed: password-reset tokens (app/api/v3/auth/forgot-password/route.ts:19,87), email-verification tokens (lib/auth/email-verification.ts:31), staff-invite tokens (app/api/v3/auth/staff-invite/[token]/route.ts:34), share tokens (AUDIT-004#secrets-01), and email 2FA codes, which even get a per-row salt (app/api/v3/auth/login/route.ts:222). API keys and TOTP seeds are at least AES-256-GCM encrypted (lib/auth/crypto.ts). Sessions are the only credential left in plaintext, and they are the highest-value one: lib/auth/impersonation.ts:103 also writes a second raw session id into the `imp_return_session` cookie.",
     "impact": "Any read of the sessions table -- a leaked backup, a read replica, a blind SQL injection anywhere in 155 API routes, or a support engineer with psql -- yields directly replayable, ready-to-use session cookies for every signed-in user, including admins, for up to SESSION_TIMEOUT_DAYS (7). No further work is needed by the attacker: paste the value into a `vulnradar_session` cookie. Every other token class in the app is already immune to exactly this, so the exposure is concentrated entirely in the one place it hurts most.",
@@ -691,9 +643,7 @@
     "effort": "small",
     "category": "missing re-auth on sensitive action",
     "file": "app/api/v3/keys/route.ts",
-    "files": [
-      "app/api/v3/keys/route.ts"
-    ],
+    "files": ["app/api/v3/keys/route.ts"],
     "line": 32,
     "description": "POST /api/v3/keys (app/api/v3/keys/route.ts:32) checks only `getSession()` and a plan limit before calling generateApiKey (lib/api/api-keys.ts:65), which returns the raw `vr_live_...` key in the response body. There is no current-password check and no rate limit on the endpoint. Every other sensitive action in this codebase does gate on re-auth: email and password change (app/api/v3/auth/update/route.ts:70-115, with its own strict `profile-reauth` login bucket), enabling TOTP (app/api/v3/auth/2fa/setup/route.ts:107-123), enabling/disabling email 2FA (app/api/v3/auth/2fa/email-setup/route.ts:258, :325), disabling 2FA (app/api/v3/auth/2fa/disable/route.ts:51), regenerating backup codes (app/api/v3/auth/2fa/backup-codes/route.ts:178), and deleting the account (app/api/v3/account/delete/route.ts:70). The API key is the one credential of the set that is not merely long-lived but independent of the session that created it: DELETE /api/v3/auth/sessions (app/api/v3/auth/sessions/route.ts:62) deletes every sessions row and does not touch api_keys, and neither does a password change (app/api/v3/auth/update/route.ts:343-350 clears sessions and device_trust only).",
     "impact": "An attacker holding a session cookie for a few seconds -- an unlocked shared machine, a session lifted from a backup per auth-07, a support handoff -- creates an API key, reads it out of the JSON response, and keeps full scan/history/delete access on that account indefinitely. Every recovery action the victim knows about (sign out everywhere, change password, rotate 2FA) leaves the key working, and the only signal is one 'API key created' email that a user who did not create it is likely to dismiss. The key is also silently upgraded to the plan's real daily quota (line 93), so the cost lands on the victim.",
@@ -717,9 +667,7 @@
     "effort": "small",
     "category": "unoptimized remote images",
     "file": "lib/auth/oauth-userinfo.ts",
-    "files": [
-      "lib/auth/oauth-userinfo.ts"
-    ],
+    "files": ["lib/auth/oauth-userinfo.ts"],
     "line": 231,
     "description": "next.config.mjs:25-27 sets `images: { unoptimized: true }`, which turns every next/image into a pass-through <img> with no resizing and no format negotiation. lib/auth/oauth-userinfo.ts:231 builds the Discord sign-in avatar URL as `https://cdn.discordapp.com/avatars/${data.id}/${data.avatar}.png` with no size query parameter, so Discord's CDN serves the full-resolution PNG (the same file elsewhere in the codebase is requested with an explicit cap: components/profile/tabs/profile-social-tab.tsx:636 uses ?size=128 and app/api/v3/account/discord/route.ts:181 uses ?size=256). GitHub avatars at lib/auth/oauth-userinfo.ts:203 store the raw avatar_url, which githubusercontent serves at its default resolution. Those stored URLs are then rendered at thumbnail size: components/public-scans/public-scan-row.tsx:80 renders `<Image src={scan.scannedByAvatar} width={14} height={14}>` for every row of the public scans directory, and components/admin/shared/user-avatar.tsx:32 renders width={48} into `h-7 w-7` (28px) rows. Locally uploaded avatars are unaffected -- components/modals/image-crop-dialog.tsx:167 crops them to 256px before upload -- so this is specifically the OAuth-provider path.",
     "impact": "A page of the public scans directory can pull one full-resolution provider avatar per row to render 14x14 thumbnails. A Discord PNG at default resolution is commonly a few hundred kilobytes, so a 20-row listing can transfer several megabytes of avatar data for roughly 4 KB of rendered pixels, on a page anonymous visitors and crawlers hit.",
@@ -743,9 +691,7 @@
     "effort": "small",
     "category": "quota charged before validation",
     "file": "app/api/v3/scan/bulk/route.ts",
-    "files": [
-      "app/api/v3/scan/bulk/route.ts"
-    ],
+    "files": ["app/api/v3/scan/bulk/route.ts"],
     "line": 637,
     "description": "The bulk loop calls `const dailyQuota = await checkAndRecordRequest(authedUserId!)` at app/api/v3/scan/bulk/route.ts:637 -- an atomic check-AND-increment, so the slot is consumed at that moment -- and only afterwards calls runSingleScan at line 688. runSingleScan is where the URL is actually validated: validateScanTarget at line 104 (SSRF / private-address rejection) and checkAccessRules at line 114 (blacklist). Both return `{ success: false, error }` without ever running a scan, and there is no refund, no decrement, and no compensating call anywhere in the file. POST /api/v3/scan deliberately fixed this exact ordering and documents it at app/api/v3/scan/route.ts:196-200 (\"Charging up front used to burn a scan from the daily allowance for requests that were then rejected (concurrency 429, an invalid/SSRF-blocked URL, an unverified domain) with no refund path\") by moving the charge to :397, after validation and slot reservation; POST /api/v3/scan/authenticated does the same at :356. Bulk is the remaining outlier. This is a live instance of the prior 'M1 quota-charge-before-validation' backlog item (AUDIT full-audit 2026-08-25 notes).",
     "impact": "A user who submits a batch containing internal, private, or blacklisted hosts (http://localhost, http://192.168.1.1, 169.254.169.254, any admin-blacklisted domain) has one daily scan deducted for each of them even though nothing was scanned. On the Free plan (25/day) a single 25-URL batch of blocked targets zeroes the account's entire day with zero scans performed, and there is no way to get it back before midnight UTC. This is self-inflicted rather than cross-tenant, but it is a support-ticket generator and it makes the used/limit numbers reported by GET /api/v3/billing describe work that never happened.",
@@ -769,9 +715,7 @@
     "effort": "small",
     "category": "internals leaked to users",
     "file": "app/api/v3/scan/status/[id]/route.ts",
-    "files": [
-      "app/api/v3/scan/status/[id]/route.ts"
-    ],
+    "files": ["app/api/v3/scan/status/[id]/route.ts"],
     "line": 219,
     "description": "lib/scanner/execute-scan.ts:1112-1118 takes any non-cancellation throw from the whole scan pipeline and does `const message = error instanceof Error ? error.message : ...; await finalizeScanFailure(scanId, message)`. lib/scanner/execute-crawl-scan.ts:830-833 is identical. app/api/v3/scan/route.ts:430-433 does the same for a dispatch-time throw. finalizeScanFailure (lib/scanner/scan-jobs.ts:364-380) writes that string straight into `scan_history.error_message`. GET /api/v3/scan/status/[id] then returns it unmodified: `responseBody.error = row.error_message ?? \"The scan failed.\"` (app/api/v3/scan/status/[id]/route.ts:219). The dashboard renders it as-is in a monospace block at components/scanner/dashboard-error-state.tsx:257-259, next to a \"Copy error details\" button (:235) that copies it to the clipboard. Nothing between the throw and the screen sanitizes the string, so a pg driver message (`relation \"scan_tags\" does not exist`, `connect ECONNREFUSED 10.0.0.5:5432`), a Node DNS error naming an internal host, or an unexpected library stack message reaches the end user and is retained in the scan row. This is the same class AUDIT-011#brow-01 filed for the browser-session viewer, on a much higher-traffic path.",
     "impact": "A user hitting an internal server problem sees the server's own infrastructure details (internal hostnames, private IPs, table and column names) presented as their scan result, and the string is persisted in scan_history for the retention period. It also makes the error UI's classifyError (dashboard-error-state.tsx:44-80) misfire, since it substring-matches on words like \"invalid\" and \"private\" that appear in driver text for unrelated reasons.",
@@ -795,9 +739,7 @@
     "effort": "small",
     "category": "redundant queries on the hottest authenticated route",
     "file": "app/api/v3/auth/me/route.ts",
-    "files": [
-      "app/api/v3/auth/me/route.ts"
-    ],
+    "files": ["app/api/v3/auth/me/route.ts"],
     "line": 79,
     "description": "`getSession()` at app/api/v3/auth/me/route.ts:61 already runs `SELECT ... FROM sessions s JOIN users u ON s.user_id = u.id WHERE s.id = $1` (lib/auth/auth.ts:98-104). The route then runs a six-way `Promise.all` at line 79 which reads the same users row again (lines 80-88), reads `gifted_subscriptions` (lines 96-99), and calls `getUserPlanLimits(session.userId)` (line 110) which calls `getUserPlan` (lib/rate-limiting/daily-limits.ts:75) -- a third read of the users row joined against gifted_subscriptions a second time. Net: 7 queries, 6 of them concurrent out of a pool whose max is 10 (lib/config/config-values.ts:393), for data that is one users row, one badges join, and one discord row.",
     "impact": "This is the endpoint `AuthProvider` calls on every page navigation, so it is the highest-frequency authenticated query in the product. Every page view costs 7 database round trips instead of 3, and two simultaneous page loads from different users take 12-14 of the 10 available pool connections, forcing everything else in the process to queue.",
@@ -821,9 +763,7 @@
     "effort": "small",
     "category": "unbounded work on an unauthenticated failure path",
     "file": "lib/api/api-keys.ts",
-    "files": [
-      "lib/api/api-keys.ts"
-    ],
+    "files": ["lib/api/api-keys.ts"],
     "line": 392,
     "description": "`validateApiKey` tries the O(1) locator lookup first (lib/api/api-keys.ts:336), but when it matches nothing it does not return. It then runs `SELECT ... WHERE ak.key_locator IS NULL AND ak.key_encrypted IS NOT NULL` (line 362) and AES-decrypts every returned row, and then `SELECT ... WHERE ak.key_hash IS NOT NULL AND ak.key_locator IS NULL AND ak.key_encrypted IS NULL` (line 392) and calls `verifyKey(key, row.key_hash)` for every row in a `for` loop (line 404). `verifyKey` is `bcrypt.compare` from `bcryptjs` (lines 2 and 126) -- the pure-JavaScript implementation, which does its work on the main thread rather than the libuv pool -- against hashes generated at cost 12 (`const saltRounds = 12`, line 120). Only on a match is the locator backfilled (line 376), so a legacy key that is never used again keeps its row in the scanned set forever.",
     "impact": "Every request with a wrong, revoked or stale Bearer token costs three extra queries and one main-thread bcrypt-12 comparison per un-backfilled legacy row. bcryptjs at cost 12 is on the order of 200-400ms of JavaScript CPU per comparison, so a handful of legacy rows turns each bad token into a second or more of event-loop time in a single-process deployment -- and POST /api/v3/scan reaches this before any rate limiting applies (app/api/v3/scan/route.ts:65).",
@@ -847,9 +787,7 @@
     "effort": "medium",
     "category": "N+1 across a request loop",
     "file": "app/api/v3/scan/bulk/route.ts",
-    "files": [
-      "app/api/v3/scan/bulk/route.ts"
-    ],
+    "files": ["app/api/v3/scan/bulk/route.ts"],
     "line": 622,
     "description": "The bulk route loops `for (let i = 0; i < urlsToScan.length; i++)` at app/api/v3/scan/bulk/route.ts:622 with every step awaited in order. Per iteration: `checkAndRecordRequest` (line 637) costs `getDailyLimit` -> `getUserPlan` plus an UPSERT and possibly a re-read (lib/rate-limiting/daily-limits.ts:309/330/361/378) = 2-3 queries; `checkApiKeyRateLimit` (line 668) runs `pool.connect` + BEGIN + `SELECT id FROM api_keys WHERE id = $1 FOR UPDATE` (lib/api/api-keys.ts:489) + a 24h `COUNT(*)` over api_usage (line 505) + an INSERT (line 514) + COMMIT + an `UPDATE api_keys SET last_used_at` (line 528) + a `SELECT used_at ... LIMIT 1` (line 543) = 7 round trips holding a row lock; `runSingleScan` (line 688) adds `checkAccessRules` (2 queries) and an `INSERT INTO scan_history`. `MAX_URLS_BULK` defaults to 100 (lib/config/config-values.ts:543).",
     "impact": "A 100-URL bulk request performs on the order of 900-1000 serialized database round trips inside one HTTP handler, acquiring and releasing a `FOR UPDATE` lock on the same api_keys row 100 times, while holding pool connections throughout. Even at 2ms RTT that is two seconds of pure database latency layered on top of 100 sequential network scans.",
@@ -873,9 +811,7 @@
     "effort": "medium",
     "category": "unbounded SELECT",
     "file": "app/api/v3/shares/route.ts",
-    "files": [
-      "app/api/v3/shares/route.ts"
-    ],
+    "files": ["app/api/v3/shares/route.ts"],
     "line": 15,
     "description": "(a) app/api/v3/shares/route.ts:15-30 selects `summary, findings` for every share a user owns with no LIMIT, then JSON.parses each blob in JS at lines 32-36 -- and the only derived value is `findingsCount: findings.length` (line 50), which the `findings_count` column already stores. (b) app/api/v3/admin/audit-log/export/route.ts:79-88 runs `SELECT ... FROM admin_audit_log al LEFT JOIN users au ... LEFT JOIN users tu ... ORDER BY al.created_at DESC` with no WHERE and no LIMIT, buffers all rows into a JS array (line 81) and then `JSON.stringify(result.rows, null, 2)` (line 104) -- the entire audit table held in the Node heap twice. (c) lib/notifications/posture-digest.ts:80-93 runs `SELECT DISTINCT ON (url) url, findings FROM scan_history WHERE user_id = $1 AND status = 'completed' ORDER BY url, scanned_at DESC` with no LIMIT and no time bound, and it is called twice per user at lines 113-117. (d) app/api/v3/data-request/route.ts:167-174 selects `findings` for every scan the user ever ran.",
     "impact": "(b) is the sharpest: an admin clicking Export on a mature instance OOM-kills the single Node process that also runs every in-flight scan, since `admin_audit_log` grows on every staff action and there is no bound at all. (a) and (d) ship tens of megabytes per request for users with many scans. (c) makes the digest worker's cost scale with total history rather than with what the digest actually reports.",
@@ -899,9 +835,7 @@
     "effort": "small",
     "category": "pool saturation from one request",
     "file": "app/api/v3/data-request/route.ts",
-    "files": [
-      "app/api/v3/data-request/route.ts"
-    ],
+    "files": ["app/api/v3/data-request/route.ts"],
     "line": 123,
     "description": "`CONFIG_DB_POOL_MAX` is 10 (lib/config/config-values.ts:393), wired into the Pool at lib/database/db.ts:58. app/api/v3/data-request/route.ts:97-122 destructures 25 results from a single `Promise.all` at line 123, each of them a `pool.query` -- so one request asks for 25 connections at once and queues on itself for 15 of them, several of which are unbounded (sessions at :137-143, api_usage joined to api_keys at :155-164, all of scan_history with findings at :167-174, scan_tags at :178-183). app/api/v3/admin/route.ts:146 fans out exactly 10 in the `user-detail` branch, monopolizing the pool. app/api/v3/dashboard/route.ts:33 fans out 7 (perf-06), and app/api/v3/admin/billing-overview/route.ts:103 fans out 7 including three full `users` counts. Separately, lib/database/cleanup.ts:481-498 fires `2 x N` unawaited `.catch()`ed writes for expired browser sessions with no cap.",
     "impact": "Any one of these requests can starve every other request in the process -- including `getSession`, so an admin opening a user detail page can make other users' logins hang until `connectionTimeoutMillis` fires. The pool is a process-wide resource and nothing in the codebase budgets it per request.",
@@ -925,9 +859,7 @@
     "effort": "medium",
     "category": "blind SSRF / outbound attack proxy",
     "file": "app/api/v3/scan/authenticated/route.ts",
-    "files": [
-      "app/api/v3/scan/authenticated/route.ts"
-    ],
+    "files": ["app/api/v3/scan/authenticated/route.ts"],
     "line": 334,
     "description": "POST /api/v3/scan/authenticated accepts a target `url` plus an `auth` object carrying a username and password (app/api/v3/scan/authenticated/route.ts:298-303) and hands both to establishScanSession at :334. That walks to lib/scanner/auth/browser-login.ts:456-489, which builds `username=<caller value>&password=<caller value>` plus the target's own hidden fields and POSTs it to the discovered form action via safeFetch with `Content-Type: application/x-www-form-urlencoded`, `Referer`, `Origin` and an `X-CSRF-Token` scraped from the page. The only host restriction is `allowedHostnames: [hostnameOf(origin)]`: the caller's own chosen origin.\n\nThe domain-ownership gate at app/api/v3/scan/authenticated/route.ts:312-330 fires only when `requestsActiveProbing(scanners)` is true. A plain authenticated scan of a domain the caller has never verified is explicitly allowed. The outcome is reported back distinguishably: lib/scanner/auth/browser-login.ts:496-498 returns \"The target rejected the login request with 401\", :505-509 returns \"The login did not set or change any cookie\", :511-515 returns \"still showed a login form\", and success returns a completed scan: the route surfaces the reason verbatim at app/api/v3/scan/authenticated/route.ts:341-346. That is a clean three-way oracle for whether a credential pair is valid on a third-party site.\n\nThe only limits are checkGlobalRateLimit on `scan-authenticated:<userId>` (:200-207) and the per-account daily scan quota (:189, :208-215). Signup is free and open, so both scale with the number of accounts an attacker creates.",
     "impact": "VulnRadar's server IP becomes the origin of credential-stuffing attempts against arbitrary third-party login forms, with a built-in success oracle and CSRF-token handling already done for the attacker. The victim site's logs, lockouts and abuse reports point at VulnRadar, which for a service with a public reputation and a shared egress IP means blocklisting and abuse complaints. It also puts the operator in the position of having proxied unauthorised authentication attempts.",
@@ -951,9 +883,7 @@
     "effort": "small",
     "category": "bulk actions",
     "file": "app/api/v3/scan/remediation/bulk/route.ts",
-    "files": [
-      "app/api/v3/scan/remediation/bulk/route.ts"
-    ],
+    "files": ["app/api/v3/scan/remediation/bulk/route.ts"],
     "line": 83,
     "description": "app/api/v3/scan/remediation/bulk/route.ts:83-119 issues Promise.all over up to 200 independent pool.query calls with no transaction. Partial failure leaves partial state while the UI shows a generic 'Couldn't apply. Try again.' Separately lib/api/openapi-spec.ts:366 declares security: [{ apiKey: [] }] for this route (and :337 for the single route) but neither handler has a Bearer path, so an API-key client following the published spec gets a 401.",
     "impact": "A user who retries after a partial failure re-applies to findings already changed, and cannot tell which ones took. The endpoint has zero external consumers because the published spec is wrong about its auth.",
@@ -977,9 +907,7 @@
     "effort": "medium",
     "category": "permissions",
     "file": "lib/auth/permissions-client.ts",
-    "files": [
-      "lib/auth/permissions-client.ts"
-    ],
+    "files": ["lib/auth/permissions-client.ts"],
     "line": 29,
     "description": "Dead constants in lib/auth/permissions-client.ts: VIEW_USER_API_KEYS (:29), DELETE_ANY_TEAM (:76), VIEW_REPORTS (:80) and RESOLVE_REPORTS (:81) - there is no reports feature or table at all - VIEW_DEBUG_INFO (:92), CLEAR_CACHE (:94), SEND_USER_EMAILS (:85), ACCESS_ADMIN_PANEL (:11), ACCESS_STAFF_PAGE (:12) granted to six roles while app/staff does not exist, VIEW_USER_SESSIONS (:27), VIEW_BADGES (:34), VIEW_ALL_SCANS (:41), VIEW_SCAN_STATS (:43), VIEW_SUBSCRIPTIONS (:47), MANAGE_SUBSCRIPTIONS (:48). requireModerator() at lib/auth/authorization.ts:102-122 has zero call sites. Separately, several cards render ungated where a permission exists for them: the API Keys card at user-detail-panel.tsx:2561, sessions at :2667, all-scans at :2507, and badges at admin/route.ts:281-286 which has no permission call unlike its neighbours at :249 and :294.",
     "impact": "An operator granting or withholding these permissions changes nothing, which is a security-adjacent false assurance. The ungated cards are the mirror image: data visible to staff roles that were never granted access to it.",
@@ -1003,9 +931,7 @@
     "effort": "medium",
     "category": "capability drift",
     "file": "app/api/v3/domains/route.ts",
-    "files": [
-      "app/api/v3/domains/route.ts"
-    ],
+    "files": ["app/api/v3/domains/route.ts"],
     "line": 120,
     "description": "domains.team_id (instrumentation.ts:3176) is read for team access at app/api/v3/domains/route.ts:33, but the INSERT at :120 omits it, no PATCH exists anywhere under app/api/v3/domains/ (exports are GET, POST, DELETE plus verify POST), all four UPDATE/INSERT statements skip it, and components/profile/tabs/domains-section.tsx:147 hardcodes team_id: null - yet app/docs/teams/page.tsx:425 documents it as a feature. DEFAULT_API_KEY_DAILY_LIMIT (registry.ts:1527-1536) is admin-editable and read at lib/api/api-keys.ts:70 via `dailyLimit ?? await getSetting(...)`, but generateApiKey has exactly one production caller (app/api/v3/keys/route.ts:95) which always passes an explicit number, so the branch is dead; compounding, app/docs/api/page.tsx:738 and app/docs/rate-limits/page.tsx:173 tell users the default is 50 while the real value is the plan's apiRequestsPerDay, 25 on Free. access_rules.is_active = false is writable via the API but the list query filters WHERE is_active = true (admin/features/route.ts:168), so a deactivated rule vanishes and can never be reactivated. The empty-string state of CHROME_WEB_STORE_URL and FIREFOX_ADDON_URL (registry.ts:397-412) is documented as falling back to a packaged release, but the admin write goes through z.url() which rejects \"\", the env path skips empty overrides (runtime-config.ts:89), and reset restores a non-empty default - and the fallback UI does not exist either, since app/docs/extension/page.tsx:113,139 link unconditionally under a hardcoded 'Live' badge.",
     "impact": "Four documented behaviours that cannot occur. The API key limit case additionally publishes a wrong number to users in two docs pages.",
@@ -1029,9 +955,7 @@
     "effort": "medium",
     "category": "billing / entitlements",
     "file": "lib/billing/crawl-page-limits.ts",
-    "files": [
-      "lib/billing/crawl-page-limits.ts"
-    ],
+    "files": ["lib/billing/crawl-page-limits.ts"],
     "line": 18,
     "description": "The crawl page-selection limit is hardcoded at lib/billing/crawl-page-limits.ts:18-23 (25/50/100/250) and enforced at app/api/v3/scan/crawl/route.ts:258, but a grep for CRAWL_PAGES in lib/config/registry.ts returns zero. It is the only per-plan entitlement with no registry key, so it is absent from Admin > Settings > Billing and from components/pricing/pricing-features.tsx, surfacing only at point of use (components/scanner/crawl-url-selector.tsx:50). githubReviewTokensPerWindow is enforced per plan but no plan's features array mentions GitHub review (only AI review tokens at lib/billing/catalog.ts:141,174,205), so a Free user hits a hard 403 with no prior signal. Separately, lib/billing/github-review-usage.ts:365-372 implements a free-plan trial whose own comment reads 'Hidden trial, never advertised on the pricing page', while Free's githubReviewTokensPerWindow of 0 makes components/pricing/pricing-features.tsx:85-89 render a cross for Free.",
     "impact": "Two invisible paywalls that users meet as a 403 rather than as a plan comparison, and a genuine free-tier benefit that the pricing page actively denies exists.",
@@ -1107,9 +1031,7 @@
     "effort": null,
     "category": null,
     "file": "app/api/v3/auth/billing-verify/route.ts",
-    "files": [
-      "app/api/v3/auth/billing-verify/route.ts"
-    ],
+    "files": ["app/api/v3/auth/billing-verify/route.ts"],
     "line": null,
     "description": "Verification codes in billing_verification_codes are hashed without a per-row salt. If the table is leaked, codes can be cracked with a rainbow table over the small (typically 6-digit numeric) code space.",
     "impact": "",
@@ -1133,9 +1055,7 @@
     "effort": null,
     "category": null,
     "file": "app/api/v3/account/delete/route.ts",
-    "files": [
-      "app/api/v3/account/delete/route.ts"
-    ],
+    "files": ["app/api/v3/account/delete/route.ts"],
     "line": null,
     "description": "POST /api/v3/account/delete destroys the account immediately. No password re-entry, no email confirmation, no grace period.",
     "impact": "",
@@ -1159,9 +1079,7 @@
     "effort": null,
     "category": null,
     "file": "app/api/v3/auth/signup/route.ts",
-    "files": [
-      "app/api/v3/auth/signup/route.ts"
-    ],
+    "files": ["app/api/v3/auth/signup/route.ts"],
     "line": null,
     "description": "Per-IP signup throttling only. No per-email cap. Attacker can rotate IPs to enumerate which emails are registered (409 vs success differentiates them) and DoS by flooding signup tables.",
     "impact": "",
@@ -1240,9 +1158,7 @@
     "effort": null,
     "category": null,
     "file": "app/api/v3/auth/reset-password/route.ts",
-    "files": [
-      "app/api/v3/auth/reset-password/route.ts"
-    ],
+    "files": ["app/api/v3/auth/reset-password/route.ts"],
     "line": null,
     "description": "reset-password deletes sessions but NOT device_trust. An attacker who previously compromised the device (got the device_trust cookie planted) can still bypass 2FA on subsequent logins.",
     "impact": "",
@@ -1324,9 +1240,7 @@
     "effort": null,
     "category": null,
     "file": "lib/rate-limiting/rate-limit.ts",
-    "files": [
-      "lib/rate-limiting/rate-limit.ts"
-    ],
+    "files": ["lib/rate-limiting/rate-limit.ts"],
     "line": null,
     "description": "ON CONFLICT(key, window_start) matched exact ms; attacker firing N requests in 1ms got N buckets at count=1.",
     "impact": "",
@@ -1350,9 +1264,7 @@
     "effort": null,
     "category": null,
     "file": "app/api/v3/scan/route.ts",
-    "files": [
-      "app/api/v3/scan/route.ts"
-    ],
+    "files": ["app/api/v3/scan/route.ts"],
     "line": null,
     "description": "CONFIG_MAX_URL_LENGTH was defined but never enforced — a 50MB URL string hit DNS resolution and DB INSERT.",
     "impact": "",
@@ -1405,9 +1317,7 @@
     "effort": null,
     "category": null,
     "file": "app/api/v3/scan/bulk/route.ts",
-    "files": [
-      "app/api/v3/scan/bulk/route.ts"
-    ],
+    "files": ["app/api/v3/scan/bulk/route.ts"],
     "line": null,
     "description": "Self-hosters configuring MAX_URLS_IN_BULK got silent bypass.",
     "impact": "",
@@ -1431,9 +1341,7 @@
     "effort": null,
     "category": null,
     "file": "lib/auth/authorization.ts",
-    "files": [
-      "lib/auth/authorization.ts"
-    ],
+    "files": ["lib/auth/authorization.ts"],
     "line": null,
     "description": "Emails leaked in audit log long after the user changed or deleted their address.",
     "impact": "",
@@ -1457,9 +1365,7 @@
     "effort": "small",
     "category": "aria / modals",
     "file": "lib/hooks/use-modal-a11y.ts",
-    "files": [
-      "lib/hooks/use-modal-a11y.ts"
-    ],
+    "files": ["lib/hooks/use-modal-a11y.ts"],
     "line": 59,
     "description": "lib/hooks/use-modal-a11y.ts is the accessibility layer for eleven hand-rolled modals. Its comment at :58-61 says the Tab trap stops a keyboard user stepping out \"into the (aria-hidden) page behind it\", but nothing in the file ever sets aria-hidden or inert on anything: the three effects handle Escape (:45-56), Tab containment (:62-93) and focus save/restore (:96-118), and `dialogProps` (:121-128) applies only role, aria-modal, aria-labelledby, aria-describedby and tabIndex to the panel itself. The parenthetical describes behaviour that does not exist. Radix's Dialog, which components/ui/dialog.tsx wraps, does apply aria-hidden to sibling nodes, so the hand-rolled modals behave differently from the shadcn ones in the same app.",
     "impact": "A screen-reader user in browse mode can still arrow through the whole page behind an open modal, including the ToS gate (components/modals/tos-modal.tsx:164) whose entire purpose is to block interaction until accepted. Real but bounded: aria-modal=\"true\" causes most modern screen readers to constrain the virtual buffer anyway, so this is a belt-and-braces gap rather than an outright block.",
@@ -1483,9 +1389,7 @@
     "effort": "small",
     "category": "docs / error message",
     "file": "app/api/v3/scan/route.ts",
-    "files": [
-      "app/api/v3/scan/route.ts"
-    ],
+    "files": ["app/api/v3/scan/route.ts"],
     "line": 125,
     "description": "app/api/v3/scan/route.ts:123-130 returns `{ error: \"Rate limit exceeded. 50 requests per 24 hours.\", limit: rateLimit.limit, used, remaining, resets_at }`. The structured fields are correct, but the human-readable string is a literal 50 while the real limit is the key's daily_limit, itself set from the plan's apiRequestsPerDay (see apidoc-08): 25 on free, 100 on core, 5000 on pro, 999999 on elite. app/docs/api/page.tsx:1392-1399 documents the 429 body as carrying the true numbers, which it does, so only the message disagrees.",
     "impact": "A Pro user cut off after 5,000 requests reads that their key allows 50 and opens a support ticket; a free user cut off at 25 reads 50 and assumes a bug.",
@@ -1509,9 +1413,7 @@
     "effort": "large",
     "category": "list (a) gap rank 13: enterprise auth",
     "file": "app/api/v3/auth/staff-oidc/route.ts",
-    "files": [
-      "app/api/v3/auth/staff-oidc/route.ts"
-    ],
+    "files": ["app/api/v3/auth/staff-oidc/route.ts"],
     "line": 1,
     "description": "app/api/v3/auth/staff-oidc/route.ts:1 to :4 states the posture: the OIDC flow \"never creates or promotes an account; only signs into an existing staff-or-above account whose email matches the IdP's\". Customer sign-in is password plus 2FA plus Google, GitHub and Discord OAuth (app/api/v3/auth/oauth/[provider]/route.ts). A grep for saml or SAML across lib/ and app/ returns nothing. Among peers, Burp Suite DAST supports SAML, Okta and Entra ID, and Intruder lists Okta SSO; the rest are not documented to.",
     "impact": "SSO is the gate on selling to a company rather than a person. With paid tiers at $5 to $20 a month and roughly 50 registered users, no prospect in that band is blocked by its absence today, and the buyers who require SAML are buying at Burp and Snyk price points with procurement processes this product is not set up for.",
@@ -1535,9 +1437,7 @@
     "effort": "small",
     "category": "duplicated threshold",
     "file": "app/api/v3/auth/signup/route.ts",
-    "files": [
-      "app/api/v3/auth/signup/route.ts"
-    ],
+    "files": ["app/api/v3/auth/signup/route.ts"],
     "line": 89,
     "description": "analyzePassword returns a 0-4 style score (lib/auth/password-strength.ts:417). The cutoff that decides whether a password is accepted is written as the bare comparison `pwAnalysis.score < 3` in four server routes: app/api/v3/auth/signup/route.ts:89, app/api/v3/auth/reset-password/route.ts:47, app/api/v3/auth/update/route.ts:302 and app/api/v3/auth/staff-invite/[token]/route.ts:171. components/auth/reset-password-form.tsx:49 repeats `analysis.score < 3` client-side to drive the advisory meter. There is no exported constant and no registry key; a grep of lib/config for a password-score setting returns only PASSWORD_MIN_LENGTH. The comment at lib/auth/password-strength.ts:663 explicitly notes the score is 'useful for a strength meter, useless as' a gate on its own, yet five sites gate on it.",
     "impact": "Raising or lowering the strength bar means finding and editing five identical comparisons, and missing the client one leaves the meter green on a password the server will reject. The gate is also invisible to an operator: nothing in the admin panel or the docs states that a password can fail after passing the documented length check.",
@@ -1561,9 +1461,7 @@
     "effort": "medium",
     "category": "page sizes",
     "file": "app/api/v3/support-tickets/route.ts",
-    "files": [
-      "app/api/v3/support-tickets/route.ts"
-    ],
+    "files": ["app/api/v3/support-tickets/route.ts"],
     "line": 45,
     "description": "AUDIT-013#dup-15 verified that the seven properly paginated routes share one page/limit convention. These six do not participate in it and cap silently instead: app/api/v3/support-tickets/route.ts:45 (LIMIT 100 on a user's own tickets), app/api/v3/admin/support-tickets/route.ts:56 (LIMIT 200 on the staff inbox), app/api/v3/scan/remediation/route.ts:165 (LIMIT 500 on triage state), app/api/v3/teams/member-scans/route.ts:58 (LIMIT 50), app/api/v3/badge/scans/route.ts:34 (LIMIT 50) and app/api/v3/admin/blocked-data/route.ts:80 (LIMIT 100). None returns a total. Two of them then feed a client-side paginator that reports the capped array as the total: components/teams/team-member-scans.tsx:124 passes totalItems={scans.length} over the server-capped 50, and components/ui/pagination-control.tsx:11 offers page sizes of 10, 25, 50 and 100, so selecting 100 on the teammate-scans panel yields a single page that can never contain more than 50 rows. A related client blind spot: app/api/v3/scan/remediation/bulk/route.ts:31 caps the items array at 200 via zod, but components/scanner/results-list.tsx:176 sends `[...selected]` unchunked and its catch at :219-:221 sets a generic bulkError flag, so an over-cap submission fails with no explanation of the limit.",
     "impact": "A long-running account's support history, triage state and teammate activity are truncated with no indication, and the paginator actively asserts the truncated count is the total. On the staff inbox the 200-row cap means an older open ticket can drop off the only list staff have.",
@@ -1587,9 +1485,7 @@
     "effort": "small",
     "category": "dashboard hierarchy",
     "file": "app/api/v3/dashboard/route.ts",
-    "files": [
-      "app/api/v3/dashboard/route.ts"
-    ],
+    "files": ["app/api/v3/dashboard/route.ts"],
     "line": 102,
     "description": "The dashboard's 14-day activity strip renders a tooltip per bar at components/scanner/dashboard.tsx:320-328, whose second line is `{d.scans} scans` followed by, when `d.scans > 0`, ` · ${d.issues} issues` (:324-325). `issues` comes from the API's dailyActivity mapping at app/api/v3/dashboard/route.ts:99-105, which builds each row as `{ day: row.day, scans: Number(row.scans) || 0, issues: 0 }`. The literal 0 at :102 is the only value that field ever takes; the underlying query at :63-77 selects only day and a scan count and never touches findings. The client's own normalisation at dashboard.tsx:244-248 preserves it as 0.\n\nSo every tooltip on a day with any activity reads `3 scans · 0 issues`, on an account whose Findings by severity panel two hundred pixels below shows hundreds of findings.",
     "impact": "The tooltip states, for every active day, that the scans that day found nothing. It contradicts the rest of the page and it is the only per-day findings figure the product offers, so a user checking whether a bad week was actually bad is told no.",
@@ -1613,9 +1509,7 @@
     "effort": "small",
     "category": "thin content",
     "file": "lib/seo/alternatives.ts",
-    "files": [
-      "lib/seo/alternatives.ts"
-    ],
+    "files": ["lib/seo/alternatives.ts"],
     "line": 55,
     "description": "lib/seo/alternatives.ts:55 defines the `intelliradar` entry, one of five in ALTERNATIVES and therefore one of five sitemap entries at priority 0.6 (lib/seo/routes.ts:72). Its `summary` (line 57) is category-level, not product-level: \"IntelliRadar is a security scanning tool in the same broad space as VulnRadar: point it at a target and get back a list of findings. Products in this category differ mostly in what they inspect, how they price, and whether you can run them yourself.\" Its five ComparisonRow entries put \"Varies by product.\" in the competitor column three times (lines 71, 81, 86), \"Check the vendor's site; openness varies by product.\" once, and \"See the vendor's current pricing.\" once. Its `positioning` opens \"If you found VulnRadar while searching for IntelliRadar...\". The other four entries (detectify, intruder, probely, qualys) all carry real, specific, factual competitor descriptions, so this is a single outlier in an otherwise well-built cluster. The file's own header comment at lines 1-13 sets the rule the entry breaks: \"Competitor pricing is NEVER invented\" is honoured, but so is every other fact, leaving the page empty.",
     "impact": "A page whose entire competitor column is \"Varies by product\" is a doorway page for a brand name with no content behind it. In a five-page cluster, one page like this pulls down the perceived quality of the other four, which are genuinely good comparison pages that could rank for \"detectify alternative\" and \"probely alternative\". It also fails a human reader instantly, so anyone who does land on it bounces.",
@@ -1639,9 +1533,7 @@
     "effort": "small",
     "category": "dead condition, identical ternary arms",
     "file": "app/api/v3/auth/discord/callback/route.ts",
-    "files": [
-      "app/api/v3/auth/discord/callback/route.ts"
-    ],
+    "files": ["app/api/v3/auth/discord/callback/route.ts"],
     "line": 86,
     "description": "app/api/v3/auth/discord/callback/route.ts:83-88 reads: const reason = verified.reason === 'expired' ? 'discord_expired' : verified.reason === 'user-mismatch' ? 'discord_invalid_state' : 'discord_invalid_state'. Both arms of the second ternary are the string 'discord_invalid_state', so the 'user-mismatch' test on line 86 can never change the result and is dead. verifyDiscordState (lib/auth/discord-state.ts:75) returns four distinct reasons: 'malformed' (lines 79, 100, 109), 'bad-signature' (88, 91, 94), 'expired' (112, 121) and 'user-mismatch' (128). The user-mismatch branch is the one that fires when a validly signed state is presented by a different session than it was issued to, which is exactly the leaked-state-replay case the HMAC binding at line 81 was added to detect. It is reported to the user, and to anyone reading logs by error code, as an ordinary invalid state. This is a second instance of the class already filed as AUDIT-011#docs-06 (components/docs/docs-nav.ts:153, 'item.exact ? pathname === item.href : pathname === item.href'); I scanned every .ts/.tsx/.mjs file outside node_modules and tests for ternaries with textually identical arms and these two are the only ones in the tree.",
     "impact": "A user whose Discord link attempt is rejected because the state belongs to a different session sees the same generic message as someone whose state was truncated by an email client, so support cannot tell a benign copy-paste from an attempted state replay. The code reads as though the two cases are distinguished, which is worse than not branching at all.",
@@ -1665,9 +1557,7 @@
     "effort": "medium",
     "category": "inconsistent naming at the API boundary",
     "file": "app/api/v3/domains/route.ts",
-    "files": [
-      "app/api/v3/domains/route.ts"
-    ],
+    "files": ["app/api/v3/domains/route.ts"],
     "line": 132,
     "description": "Some routes hand back database rows verbatim and some map them to camelCase, and a few do both in the same file.\n\napp/api/v3/domains/route.ts is the clearest case. GET at :29-42 selects `id, domain, team_id, status, verification_method, created_at, verified_at, last_checked_at, last_check_error` and spreads the row, so the client receives snake_case. POST at :127-137 returns the same resource with `createdAt: row.created_at`. A third branch, the already-exists path at :103-115, returns neither. components/profile/tabs/developer/domains-section.tsx has to bridge all three: its DomainItem interface at :34-50 mixes snake_case (team_id, verification_method, created_at, verified_at, last_checked_at, last_check_error) with camelCase (verificationRecordName, verificationRecordValue), and its optimistic insert at :147-150 writes `team_id: null, verification_method: \"dns_txt\", created_at: data.createdAt ?? new Date().toISOString()`, hand-translating the POST shape into the GET shape and inventing the fields POST does not send.\n\nThe schedules pair has already cost a visible bug. app/api/v3/schedules/route.ts:28 selects `last_run_at, next_run_at`, but components/profile/types.ts:185-186 declares ScheduleItem with `last_run` and `next_run`, names no endpoint returns. components/profile/tabs/profile-developer-tab.tsx:121-132 works around it at runtime with a comment that states the problem: \"The schedules API returns `next_run_at` / `last_run_at` ... but the shared ScheduleItem type ... declares `next_run` / `last_run`. Read both spellings so 'when does this run' isn't silently blank because of a mismatch in a type this component doesn't own.\" The fix is a `sch as unknown as Record<string, string | null | undefined>` cast that reads `record[which] ?? record[`${which}_at`]`, which defeats the type entirely.\n\nThe scale: 46 client-side files declare 491 snake_case interface fields (largest: components/admin/types.ts 97, components/admin/notifications/notifications-manager.tsx 63, components/profile/types.ts 37, components/teams/teams-types.ts 18). Against that, four routes do map: app/api/v3/history/[id]/route.ts returns `scannedAt: scan.scanned_at`, app/api/v3/support-tickets/[id]/shares/route.ts returns `userId: r.user_id`, app/api/v3/ai/conversations/route.ts returns `sessionId: r.session_id`, app/api/v3/account/discord/route.ts returns `discordId`. So GET /api/v3/support-tickets returns raw `created_at` rows while its own sub-resource GET /api/v3/support-tickets/[id]/shares returns camelCase, to the same component.",
     "impact": "A client cannot assume a casing and has to check per endpoint, which is why one component ships a runtime dual-read cast and another hand-builds a snake_case row from a camelCase response. The ScheduleItem type is actively lying: TypeScript accepts `sch.next_run` and it is always undefined, so the compiler cannot catch the bug the cast works around. Any renaming of a database column also becomes a breaking public API change on the routes that spread rows, because the column name is the wire format.",
@@ -1691,9 +1581,7 @@
     "effort": "small",
     "category": "incomplete extraction",
     "file": "app/api/version/route.ts",
-    "files": [
-      "app/api/version/route.ts"
-    ],
+    "files": ["app/api/version/route.ts"],
     "line": 11,
     "description": "lib/updater/github-release.ts:1-8 states its purpose: \"Kept separate so app/api/version/route.ts and the admin updater routes can share the same 'ask GitHub about a release' code instead of each doing its own fetch + JSON shape assumptions.\" It exports fetchLatestRelease(), whose githubJson() helper (:52-62) uses a 10 second timeout and `cache: \"no-store\"` with the comment \"Never serve a stale cached release when the admin explicitly asked to check for or apply an update.\"\n\napp/api/version/route.ts does not import it. It fetches VERSION_CHECK_URL itself at :11-16 with `AbortSignal.timeout(5000)` and `next: { revalidate: 3600 }`, then re-implements toRelease's tag parsing at :34-38 (`tag_name.replace(/^v/, \"\")` and the `html_url || RELEASES_URL/tag/tagName` fallback). It does import the other extracted piece, compareVersions from lib/updater/version-compare.ts, which is what the admin route's own comment (app/api/v3/admin/updater/status/route.ts:22-24) points at when it says the two \"never disagree\".\n\nThey already differ on three axes: timeout 5,000 ms vs 10,000 ms; cache one-hour ISR revalidation vs no-store; and the output key `release_url` (app/api/version/route.ts:40, :52 and the no-op branch at :25) vs `releaseUrl` (app/api/v3/admin/updater/status/route.ts:56 and :70) for the same value. `release_url` is also the only snake_case key that route emits, next to camelCase-free flat fields.\n\n/api/version is not internal: it is the public unauthenticated version endpoint the browser extension calls (extension/src/lib/api.ts:200, typed at extension/src/lib/types.ts:199) and it is documented in app/docs/api and lib/ai/docs-knowledge.md.",
     "impact": "A self-hosted operator can see two different answers to \"is there an update\" depending on which surface they look at, because the public endpoint can serve an hour-stale GitHub response while the admin panel never caches. Any future change to how a release is parsed (pre-release filtering, draft handling, a tag-format change, a GitHub API version bump) is applied in lib/updater/github-release.ts and silently missed on the endpoint the extension and the docs point at. The extension only reads `current` today, so the naming split is not currently breaking it.",
@@ -1717,9 +1605,7 @@
     "effort": "small",
     "category": "background work leak",
     "file": "app/api/v3/demo-scan/route.ts",
-    "files": [
-      "app/api/v3/demo-scan/route.ts"
-    ],
+    "files": ["app/api/v3/demo-scan/route.ts"],
     "line": 219,
     "description": "app/api/v3/demo-scan/route.ts:215-219 builds `const asyncPromise = runAsyncChecks(url)` and races it against `new Promise(resolve => setTimeout(() => resolve([]), asyncChecksTimeoutMs))` (SCAN_ASYNC_CHECKS_TIMEOUT_MS default 15000, lib/config/config-values.ts:566). When the timeout wins, the handler returns but asyncPromise keeps executing -- runAsyncChecks fans out the full live-fetch battery (~23 exposed-file probes per lib/scanner/async-checks.ts:2724, plus GraphQL, bucket-listing and header probes) against the anonymous caller's chosen target with nothing left holding a reference to it. The timeoutPromise's setTimeout is never cleared, so the timer survives to its full 15 s even when the checks finish first. Contrast lib/scanner/execute-scan.ts:573-647, which keeps `asyncTimeoutHandle` and clears it in a finally.",
     "impact": "The one endpoint reachable with no account at all can leave outbound probe batteries running past the response, so the visible per-IP demo budget (5 per 12 hours) understates the real outbound volume, and slow targets accumulate detached work in the shared process. Bounded in practice by the per-fetch AbortSignal timeouts inside the checks, which is why this is low rather than higher.",
@@ -1743,9 +1629,7 @@
     "effort": "small",
     "category": "unauthenticated cost path",
     "file": "app/api/v3/host/[hostname]/route.ts",
-    "files": [
-      "app/api/v3/host/[hostname]/route.ts"
-    ],
+    "files": ["app/api/v3/host/[hostname]/route.ts"],
     "line": 70,
     "description": "app/api/v3/host/[hostname]/route.ts has no getSession call and no checkRateLimit import; its GET at :70 runs two Postgres queries per request -- a host_reputation lookup at :88-103 and, when source_scan_id is set, a scan_history lookup at :140 -- and returns the full findings JSONB plus result_meta. app/api/v3/host/[hostname]/trend/route.ts, app/api/v3/badge/[token]/route.ts and app/api/v3/whoami-ip/route.ts are in the same position (no session, no limiter), while the sibling public listing endpoint app/api/v3/public-scans/route.ts:48-51 does gate on `public-scans:${ip}` and documents per-IP as \"the only throttle available\" for exactly this shape of route.",
     "impact": "An anonymous caller can enumerate hostnames at line rate and pull the complete finding set for every publicly-listed scan, and each request costs two DB round trips plus a JSONB serialisation from a connection pool shared with the scan workers. It is free compute and free bulk export of the product's differentiating dataset, with no per-IP ceiling to make it slow. Low rather than higher because the data is public by design and both queries are indexed point lookups.",
@@ -1769,9 +1653,7 @@
     "effort": "medium",
     "category": "user enumeration",
     "file": "app/api/v3/auth/signup/route.ts",
-    "files": [
-      "app/api/v3/auth/signup/route.ts"
-    ],
+    "files": ["app/api/v3/auth/signup/route.ts"],
     "line": 149,
     "description": "app/api/v3/auth/signup/route.ts:147-150 does `const existing = await getUserByEmail(email); if (existing) return ApiResponse.conflict(ERROR_MESSAGES.DUPLICATE_EMAIL);` -- a deterministic 409-vs-200 split on whether an address has an account. The rest of the auth surface works hard to avoid exactly this: login returns one generic 401 for both 'no user' and 'wrong password' and burns a dummy scrypt hash to equalize timing (app/api/v3/auth/login/route.ts:78-86), forgot-password always returns the same 'If an account with that email exists' message (forgot-password/route.ts:64-76), and resend-verification returns the same string on all three outcomes (resend-verification/route.ts:221-236). The route's own comment at lines 124-128 names the problem ('an attacker who rotates IPs via residential proxy can enumerate which emails are registered (409 \"already in use\" vs 200 success differentiates them)') and answers it with a per-email limit of 5 per hour at line 130 -- which does not remove the oracle at all, because the FIRST request for any address already answers the question. The per-IP `signup:${ip}` bucket is 5 per 15 minutes, so a single residential-proxy pool tests thousands of addresses a day.",
     "impact": "Every enumeration defense elsewhere in the auth surface is nullified: an attacker confirms which of a scraped address list has VulnRadar accounts by posting each one to /signup once, then targets those addresses with credential stuffing or phishing that names the product. For a security-tools vendor, the membership list itself ('who at $COMPANY uses a vulnerability scanner') is the interesting output.",
@@ -1795,9 +1677,7 @@
     "effort": "small",
     "category": "incomplete revocation",
     "file": "app/api/v3/auth/2fa/disable/route.ts",
-    "files": [
-      "app/api/v3/auth/2fa/disable/route.ts"
-    ],
+    "files": ["app/api/v3/auth/2fa/disable/route.ts"],
     "line": 56,
     "description": "app/api/v3/auth/2fa/disable/route.ts:56-59 clears `totp_enabled`, `two_factor_method`, `totp_secret`, and `backup_codes`, and app/api/v3/auth/2fa/email-setup/route.ts:332-338 (DELETE) clears the first two plus email_2fa_codes -- neither deletes from device_trust. Rows written by upsertTrustedDevice (lib/auth/device-trust.ts:89-116) live for DEVICE_TRUST_DAYS, default 30 (lib/config/config-values.ts:266), and findTrustedDevice (line 14) only checks `user_id + device_fingerprint + expires_at > NOW()`. So a device trusted on day 1, with 2FA disabled on day 2 and re-enabled on day 3, still satisfies the trusted-device bypass at app/api/v3/auth/login/route.ts:187, app/api/v3/auth/oauth/[provider]/callback/route.ts:369, and app/api/v3/auth/discord/callback/route.ts:278 for the remaining 27 days. The two other places that rotate a credential do get this right and explicitly say why: app/api/v3/auth/reset-password/route.ts:231 and app/api/v3/auth/update/route.ts:348 both `DELETE FROM device_trust WHERE user_id = $1` alongside the session wipe, with a comment about not leaving a planted trust row behind.",
     "impact": "A user who turns 2FA off and back on -- the documented way to re-enroll a new authenticator app, since app/api/v3/auth/2fa/setup/route.ts:51-55 refuses to re-enroll while 2FA is active -- believes they have started clean. Any browser that was trusted before, including one an attacker had transient access to, keeps skipping the prompt. The trusted-devices UI (app/api/v3/auth/trusted-devices/route.ts) will list it, but nothing prompts the user to look there during re-enrollment.",
@@ -1821,9 +1701,7 @@
     "effort": "small",
     "category": "incomplete session invalidation",
     "file": "app/api/v3/auth/update/route.ts",
-    "files": [
-      "app/api/v3/auth/update/route.ts"
-    ],
+    "files": ["app/api/v3/auth/update/route.ts"],
     "line": 207,
     "description": "PATCH /api/v3/auth/update treats email and password as the same class of 'sensitive change' at line 68 and gates both behind the same re-auth + `profile-reauth` bucket (lines 70-115). The two branches then diverge. The password branch at lines 337-356 calls deleteAllSessions(), deletes every device_trust row, mints a fresh session, and tells the user 'All other sessions have been signed out for security'. The email branch at lines 207-216 runs `UPDATE users SET email = $1, email_verified_at = NULL` plus sendEmailVerification and stops -- no session wipe, no device_trust wipe. The address the account's password-reset, 2FA email codes, and every security notification are delivered to has just changed identity, and every session that existed a moment earlier is still valid.",
     "impact": "An attacker who has a session plus the password (or, for an OAuth-only account, just the session -- lines 116-122 skip the password check entirely there) repoints the account to their own address and keeps every device they were signed in on. The legitimate owner is notified at both addresses (lines 224-247), but if they respond by changing the password they will not think to also check active sessions, and the attacker's own session is not what gets killed. It is also an internal inconsistency: the handler's own comment at lines 201-206 explains that email change is an account-takeover vector, then does not apply the mitigation it applies one branch down.",
@@ -1847,9 +1725,7 @@
     "effort": "small",
     "category": "staff 2FA enforcement bypass",
     "file": "app/api/v3/stripe/setup-products/route.ts",
-    "files": [
-      "app/api/v3/stripe/setup-products/route.ts"
-    ],
+    "files": ["app/api/v3/stripe/setup-products/route.ts"],
     "line": 31,
     "description": "app/api/v3/stripe/setup-products/route.ts:24-36 does getSession() then `if (session.role !== STAFF_ROLES.ADMIN) return 403`, and app/api/v3/stripe/setup-webhook/route.ts:27-38 does getSession() then a raw `SELECT role FROM users` compared against the string literal \"admin\". Neither goes through lib/auth/authorization.ts's requireAdmin(), so neither runs passesTwoFactorEnforcement (:138): with ENFORCE_STAFF_2FA on, an admin account with totp_enabled false is refused everywhere else in the admin surface but can still call both of these and write to the live Stripe catalog (products.create / prices.create at setup-products:85 and :112) and create a live Stripe webhook endpoint (setup-webhook:85). The exact-string comparison also excludes super_admin, which every other admin route accepts via STAFF_ROLE_HIERARCHY - AUDIT-011#drift-21 noted that half; the 2FA-enforcement half is separate and unfiled.",
     "impact": "The one class of account the ENFORCE_STAFF_2FA toggle is meant to neutralise retains write access to the production Stripe catalog and webhook configuration. Low rather than medium because the caller is still a genuine admin and the operations are near-idempotent, but it is the same bypass pattern as authz-06 and it sits on the billing integration.",
@@ -1873,9 +1749,7 @@
     "effort": "small",
     "category": "unauthenticated enumeration",
     "file": "app/api/v3/scan/screenshot/[id]/route.ts",
-    "files": [
-      "app/api/v3/scan/screenshot/[id]/route.ts"
-    ],
+    "files": ["app/api/v3/scan/screenshot/[id]/route.ts"],
     "line": 38,
     "description": "app/api/v3/scan/screenshot/[id]/route.ts:38 sets `authorized = scan.is_public === true` and only falls back to a session + getTeamResourceAccess check when that is false. scan_history.is_public defaults to true (instrumentation.ts:2190), so most rows qualify. The route is not in PUBLIC_PATHS, but middleware.ts:325 lets any request through when `authorization` merely starts with \"Bearer \" - the string is never validated there, and this route never validates it either (it only calls getSession()). So `curl -H 'Authorization: Bearer x' https://host/api/v3/scan/screenshot/42` reaches the handler with no identity at all. resolveScanRow (lib/history/resolve-scan.ts:59-67) still matches a legacy numeric primary key alongside the opaque public_id, so the id space is `1..N` sequential. Every sibling per-scan route requires an authenticated owner or team-read (history/[id]/route.ts:117-166, history/[id]/report/route.ts:134-144); this one does not.",
     "impact": "An anonymous caller can walk ids 1..N and harvest the stored page screenshot of every public scan, and confirm which scan ids exist. The images are of publicly reachable sites so the content is low-sensitivity, but for a security product it is an unauthenticated enumeration of other tenants' scan activity, and it defeats the opaque public_id the rest of the codebase moved to precisely to stop id-walking.",
@@ -1899,9 +1773,7 @@
     "effort": "small",
     "category": "regular expression denial of service",
     "file": "lib/notifications/match-path.ts",
-    "files": [
-      "lib/notifications/match-path.ts"
-    ],
+    "files": ["lib/notifications/match-path.ts"],
     "line": 21,
     "description": "matchesPathPattern (lib/notifications/match-path.ts:12-22) escapes the regex metacharacters in an admin-configured `path_pattern`, replaces each `*` with `.*`, and evaluates `new RegExp(`^${escaped}$`).test(pathname)`. That is the identical construction to lib/scanner/crawl-discovery.ts:268-273 (inj-02) and has the same exponential worst case; the module comment says it is deliberately client-safe and used from both the bell dropdown and the site-wide banner renderer (components/shared/notification-center.tsx, components/shared/site-notifications.tsx), so it executes in every visitor's browser on every route change.",
     "impact": "An admin (or anyone who gains an admin session, or a compromised staff account) can set a notification targeting pattern such as `/a*a*a*a*a*a*a*a*b` that hangs the main thread of every signed-in visitor's tab. Bounded because the input is admin-only, and there is no cross-tenant consequence, but it is an unnecessary self-inflicted foot-gun in shipped client code.",
@@ -1925,9 +1797,7 @@
     "effort": "small",
     "category": "check-then-act TOCTOU",
     "file": "app/api/v3/schedules/route.ts",
-    "files": [
-      "app/api/v3/schedules/route.ts"
-    ],
+    "files": ["app/api/v3/schedules/route.ts"],
     "line": 134,
     "description": "POST /api/v3/schedules counts existing rows with `SELECT COUNT(*)::int as count FROM scheduled_scans WHERE user_id = $1` (app/api/v3/schedules/route.ts:134-137), compares it against planLimits.scheduledScans via withinPlanLimit at :139-147, and then does an unguarded `INSERT INTO scheduled_scans ...` at :167-173. There is no row lock, no unique constraint, and no conditional INSERT ... WHERE (SELECT COUNT(*) ...) < limit, so two requests that both read the same count before either inserts both pass the gate. The same shape exists for the team seat cap at app/api/v3/teams/members/route.ts:190-205 (count, then INSERT at :214) and the team-count cap at app/api/v3/teams/route.ts:78-91. Contrast lib/rate-limiting/daily-limits.ts, which closes exactly this race for the scan counter with a single guarded upsert (`ON CONFLICT ... DO UPDATE ... WHERE rate_limits.\"count\" < $2`, :366-368).",
     "impact": "A user (or a script) firing N parallel schedule-create requests lands N schedules where the plan allows one more, permanently over the cap until someone notices -- and each extra schedule then runs forever as an unmetered scan source (see logic-01). Bounded by how many requests overlap the same read, and self-limiting because the cap is re-read on the next single request, so the practical overshoot is small. The same argument applies to the team seat cap, where the overshoot is a paid-seat count.",
@@ -1951,9 +1821,7 @@
     "effort": "small",
     "category": "duplicated role list drifted from its source of truth",
     "file": "app/api/v3/webhooks/stripe/route.ts",
-    "files": [
-      "app/api/v3/webhooks/stripe/route.ts"
-    ],
+    "files": ["app/api/v3/webhooks/stripe/route.ts"],
     "line": 640,
     "description": "Three separate cancellation paths reset the plan with the same hand-written CASE: `plan = CASE WHEN role IN ('admin', 'moderator', 'support') THEN 'pro_supporter' ELSE 'free' END` -- app/api/v3/webhooks/stripe/route.ts:640 (customer.subscription.deleted), app/api/v3/billing/subscription/cancel/route.ts:74 (immediate cancel), and app/api/v3/billing/route.ts:425 (cancel_immediately action). The canonical staff-role list is STAFF_ROLES in lib/rate-limiting/daily-limits.ts:22-30, which contains seven roles: admin, moderator, support, billing, security_analyst, content_manager, ops. The CASE covers three of them and, separately, super_admin -- whose granted floor is elite_supporter, not pro_supporter (lib/billing/staff-plan.ts:49, 62-64) -- is in none of the lists. lib/billing/staff-plan.ts's grantStaffPlan/revokeStaffPlan, which own this policy, are not called from any of the three cancel paths.",
     "impact": "A billing/security_analyst/content_manager/ops staffer who cancels a real paid subscription has users.plan written to 'free' rather than the pro_supporter floor their role grants. Their enforced limits are mostly unaffected because getUserPlan (lib/rate-limiting/daily-limits.ts:89) tags any STAFF_ROLES member as 'staff' and every resolver substitutes pro_supporter, so this is mainly a wrong displayed plan. A super_admin is the real case: super_admin is deliberately excluded from STAFF_ROLES (:20-21), so getUserPlan falls through to the literal column and returns 'free' -- that account is genuinely dropped to the Free tier's 25 scans/day and free-tier caps after canceling, until the next process restart, when reconcileStaffPlans (lib/billing/staff-plan.ts:253) sweeps it back to elite_supporter (and only if pre_staff_plan is still NULL).",
@@ -1977,9 +1845,7 @@
     "effort": "small",
     "category": "entitlement revoked without checking the other grant path",
     "file": "app/api/v3/webhooks/stripe/route.ts",
-    "files": [
-      "app/api/v3/webhooks/stripe/route.ts"
-    ],
+    "files": ["app/api/v3/webhooks/stripe/route.ts"],
     "line": 583,
     "description": "The premium badge has two independent grant paths. The Stripe path calls grantPremiumBadge/revokePremiumBadge from lib/billing/badges.ts. The gift path awards it directly in app/api/v3/admin/route.ts:1674-1691 (SELECT the 'premium' badge id, INSERT INTO user_badges if absent) when an admin runs gift_subscription. revokePremiumBadge (lib/billing/badges.ts:32-48) is an unconditional `DELETE FROM user_badges WHERE user_id = $1 AND badge_id = $2` -- it never looks at gifted_subscriptions. It is called from customer.subscription.updated whenever the resolved plan is free (app/api/v3/webhooks/stripe/route.ts:583), from customer.subscription.deleted (:649), and from confirmSubscription (app/actions/stripe.ts:335). The symmetric case is handled correctly in the other direction: revoke_gift only removes the badge when the user is on the free plan (app/api/v3/admin/route.ts:1709-1721).",
     "impact": "A user who has both an active admin gift and a Stripe subscription that then lapses, is canceled, or expires loses the premium badge even though the gift is still live and still grants them the paid plan. The badge is user-visible on shared scans, public scans and the profile (the badges query in app/api/v3/shared/[token]/route.ts:114-119 reads user_badges directly), so the account silently stops being marked as a supporter while still holding a valid gifted subscription. Nothing re-grants it: the gift path only inserts at gift creation, so the badge stays missing until an admin re-issues the gift.",
@@ -2003,9 +1869,7 @@
     "effort": "large",
     "category": "inconsistent error shapes",
     "file": "lib/api/api-utils.ts",
-    "files": [
-      "lib/api/api-utils.ts"
-    ],
+    "files": ["lib/api/api-utils.ts"],
     "line": 263,
     "description": "lib/api/api-utils.ts already provides the canonical pieces: ApiResponse (:13-65) emits `{ error, status }` with a matching HTTP status for every 4xx/5xx class, and withErrorHandling (:263-274) converts an uncaught throw into `console.error(\"[API Error]\", error)` plus a fixed `\"An unexpected error occurred\"` 500. Only 38 of the 155 route.ts files under app/api reference either one; the other 117 build responses with bare NextResponse.json, and 47 route files contain no `catch` at all. The result is five distinct error shapes in production: `{ error }` (bare NextResponse.json, the majority of the 233 `error:`-keyed literals), `{ error, status }` (ApiResponse), `{ success: false, error }` (21 occurrences, e.g. app/api/v3/webhooks/route.ts:299-303 and app/api/v3/stripe/setup-products/route.ts:148-152), `{ error, details, statusCode }` (app/api/v3/scan/route.ts:287-294), and `{ message }` (app/api/v3/teams/members/route.ts:298). The shared client only understands one of them: lib/api/client.ts:46-49 reads `errorData.error` and otherwise falls back to the literal string `API error: <status>` set at :44, so a `{ message }` response surfaces to the user as \"API error: 400\".",
     "impact": "Client code cannot render a reliable message without knowing which route it called, which is how bare status strings end up in front of users. The 47 handler-less routes also mean an unexpected throw is formatted by Next.js rather than by the app, so those responses do not carry the `{ error }` key the client expects at all.",
@@ -2029,9 +1893,7 @@
     "effort": "small",
     "category": "monitoring",
     "file": "lib/admin/alert-webhook.ts",
-    "files": [
-      "lib/admin/alert-webhook.ts"
-    ],
+    "files": ["lib/admin/alert-webhook.ts"],
     "line": 41,
     "description": "sendAdminAlert (lib/admin/alert-webhook.ts:40-44) begins `const url = await getSetting(\"ADMIN_ALERT_WEBHOOK_URL\"); if (!url) return;` and the default is the empty string (lib/config/config-values.ts:429, registered at lib/config/registry.ts:2783). Every push signal in the app routes through it: the five worker escalators via lib/admin/failure-escalation.ts:100, and the boot-time schema, stale-scan and missing-table alerts at instrumentation.ts:139, :184, :198, :3491, :3531, :3631. Grepping ADMIN_ALERT_WEBHOOK across app/, components/ and lib/ finds only the config registry entries and alert-webhook.ts itself: there is no route, button, or admin action that sends a test alert, and the delivery failure paths (:50-56 for an unsafe URL, :86-90 for a non-2xx response) only console.error into a log the operator would have to already be reading.",
     "impact": "An operator who pastes a Slack or PagerDuty URL into the setting has no way to confirm it works. A typo, a revoked Slack webhook, or a URL that validateScanTarget (:47) now rejects produces a silent no-op, and the first time they find out is the incident the alert existed for. Until it is configured at all, the app has no push signal of any kind, which is the state a fresh install ships in.",
@@ -2055,9 +1917,7 @@
     "effort": "medium",
     "category": "observability",
     "file": "lib/webhooks/delivery.ts",
-    "files": [
-      "lib/webhooks/delivery.ts"
-    ],
+    "files": ["lib/webhooks/delivery.ts"],
     "line": 111,
     "description": "webhook_deliveries (instrumentation.ts:2328) is written on every attempt at lib/webhooks/delivery.ts:111 and never SELECTed; its index on (webhook_id, attempted_at DESC) is shaped for a UI that was never built. Already recorded as AUDIT-009 #185 and still open. admin_audit_log_archive (lib/database/audit-log-archive.ts:47) is created and INSERTed at :89, and a repo-wide grep returns only that file.",
     "impact": "A user whose webhook is failing has no way to see why, despite the data being captured. Purged compliance history is unviewable by any screen, route or export, which undermines the point of archiving it.",
@@ -2081,9 +1941,7 @@
     "effort": "small",
     "category": "webhooks",
     "file": "app/api/v3/webhooks/[id]/route.ts",
-    "files": [
-      "app/api/v3/webhooks/[id]/route.ts"
-    ],
+    "files": ["app/api/v3/webhooks/[id]/route.ts"],
     "line": 215,
     "description": "webhooks.secret (instrumentation.ts:2313) is returned once at creation (app/api/v3/webhooks/route.ts:123) and the only UPDATE (app/api/v3/webhooks/[id]/route.ts:215) cannot set it. API keys have both rotate and revoke routes.",
     "impact": "A leaked webhook secret can only be addressed by deleting the webhook and recreating it, which breaks the consumer's configuration.",
@@ -2107,9 +1965,7 @@
     "effort": "small",
     "category": "api keys",
     "file": "lib/api/api-keys.ts",
-    "files": [
-      "lib/api/api-keys.ts"
-    ],
+    "files": ["lib/api/api-keys.ts"],
     "line": 615,
     "description": "api_keys.bound_ip (instrumentation.ts:382) is enforced under API_KEY_IP_BINDING_ENABLED and auto-pins on first use (lib/api/api-keys.ts:213-266, :234). getUserApiKeys at :615-626 does not select it, no component references it, and there is no reset path.",
     "impact": "When the feature is enabled, a key that worked yesterday starts returning 403 from a new network with no visible cause and no way to fix it short of issuing a new key.",
@@ -2133,9 +1989,7 @@
     "effort": "small",
     "category": "capability drift",
     "file": "app/api/v3/contact/route.ts",
-    "files": [
-      "app/api/v3/contact/route.ts"
-    ],
+    "files": ["app/api/v3/contact/route.ts"],
     "line": 15,
     "description": "app/api/v3/contact/route.ts:15-21 defines CATEGORY_LABELS for bug, feature, security, help and staff_application, then :109 does CATEGORY_LABELS[category] || \"Other\". The form offers nine (components/contact/contact-types.ts:27-82); billing (:58), enterprise (:64) and feedback (:76) are POSTed verbatim and land in the support inbox labelled 'Other'. Others: source: \"bulk\" sent at app/dashboard/page.tsx:753 while app/api/v3/scan/route.ts:374 computes source itself, so bulk scans are recorded as ordinary Web scans; authenticated and staff query params sent by components/shared/notification-center.tsx:293-296 and components/shared/site-notifications.tsx:683-686 to a route that derives both from the session and never reads searchParams, with the comment at site-notifications.tsx:678-682 now actively wrong in claiming they are enforced server-side; message_type hardcoded by mass-email-manager.tsx:132 and never read; userId in the 2FA verify body (components/auth/login-2fa-form.tsx:70,72) deliberately not destructured; baseUrl in the AI-config save (profile-ai-settings-tab.tsx:115,139) used only as an equality check, so sending it can only ever produce a 400.",
     "impact": "The contact one is the only one with real user cost: triage information the user explicitly selected is discarded, and three categories are indistinguishable from 'Other' in the support inbox.",
@@ -2185,9 +2039,7 @@
     "effort": null,
     "category": null,
     "file": "lib/webhooks/detect-type.ts",
-    "files": [
-      "lib/webhooks/detect-type.ts"
-    ],
+    "files": ["lib/webhooks/detect-type.ts"],
     "line": null,
     "description": "detectWebhookType() (4 branches: discord.com, discordapp.com, hooks.slack.com, generic fallback) shared by the webhook create and edit routes has zero test coverage. Low risk, pure string-matching, no security implication, but trivial to close.",
     "impact": "",
@@ -2211,9 +2063,7 @@
     "effort": null,
     "category": null,
     "file": "lib/hooks/use-client-config.ts",
-    "files": [
-      "lib/hooks/use-client-config.ts"
-    ],
+    "files": ["lib/hooks/use-client-config.ts"],
     "line": null,
     "description": "useClientConfig() (fetches /api/v3/config/client, falls back to compiled defaults on failure or before the fetch resolves) has no corresponding test. Has real branch logic worth covering (successful fetch overriding defaults, fetch failure keeping defaults, unmount-during-fetch).",
     "impact": "",
@@ -2267,9 +2117,7 @@
     "effort": null,
     "category": null,
     "file": "app/api/v3/webhooks/route.ts",
-    "files": [
-      "app/api/v3/webhooks/route.ts"
-    ],
+    "files": ["app/api/v3/webhooks/route.ts"],
     "line": null,
     "description": "Replaces the canonical isPrivateIP check from safe-fetch.ts. Misses 127.0.0.2, 169.254.0.1, IPv6 ULA, IPv4-mapped IPv6, NAT64.",
     "impact": "",
@@ -2293,9 +2141,7 @@
     "effort": "small",
     "category": "verified correct",
     "file": "lib/support/ticket-constants.ts",
-    "files": [
-      "lib/support/ticket-constants.ts"
-    ],
+    "files": ["lib/support/ticket-constants.ts"],
     "line": 48,
     "description": "Recorded so the next audit does not re-derive it. lib/support/ticket-constants.ts:48-:49 exports TICKET_SUBJECT_MAX = 200 and TICKET_MESSAGE_MAX = 5000; the same two constants drive the client maxLength attributes (components/contact/support-tickets.tsx:362, :388, :611 and components/admin/features/support-inbox.tsx:346), the server validation (app/api/v3/support-tickets/route.ts:117, :129) and the error copy, which interpolates the constant rather than restating the number (:119). That is the shape every finding above is asking for. Two other areas check out clean: lib/scanner/adaptive-confidence.ts:82-:96 resolves both of its thresholds (ENGINE_FEEDBACK_MIN_SAMPLE_SIZE, ENGINE_FEEDBACK_NOISE_THRESHOLD_PERCENT) through getSetting and reuses the exact pair the admin panel already displays; and lib/billing/plan-limits.ts:129-:139 correctly guards the -1 unlimited sentinel in withinPlanLimit before planLimitMessage can ever interpolate it, with every caller re-checking `!== -1` as well (app/api/v3/scan/bulk/route.ts:527), so the '-1 days' class of bug fixed in commit 30c278bf is not present on the plan-limit message path. components/pricing/pricing-features.tsx:11-:14 and :35-:40 also guard it. The one place a raw plan limit still reaches the DOM unguarded is app/checkout/[productId]/page.tsx:204, :223, :294 and app/pricing/page.tsx:120 rendering dailyScans directly, which is latent only because no shipped plan sets dailyScans to -1 (lib/billing/catalog.ts:116, :148, :180, :211 are 25/100/150/500).",
     "impact": "None. This records verified-correct ground so a later audit spends its time elsewhere, and names the one latent -1 render site worth a guard if plan limits ever become fully admin-editable.",
@@ -2319,9 +2165,7 @@
     "effort": "medium",
     "category": "rate-limit precision",
     "file": "lib/rate-limiting/rate-limit.ts",
-    "files": [
-      "lib/rate-limiting/rate-limit.ts"
-    ],
+    "files": ["lib/rate-limiting/rate-limit.ts"],
     "line": 128,
     "description": "lib/rate-limiting/rate-limit.ts:127-128 quantises the bucket to `Math.floor(now.getTime() / windowMs) * windowMs` and the UPSERT at :137-144 counts against `UNIQUE (key, window_start)`. This is a fixed window, not a sliding one, so a caller who spends the full cap in the last instant of one bucket and the full cap in the first instant of the next gets 2 x maxAttempts within one window's duration. For login that is 10 attempts inside 15 minutes rather than 5 (lib/config/config-values.ts:457-458); for demo scans, 10 anonymous scans inside a 12-hour span. The quantisation itself is deliberate and fixes a worse bug the comment at :120-126 describes (N requests in 1 ms creating N distinct buckets), so this is the residual, well-understood trade-off rather than a regression. Noted for the record: the limiter is correctly fail-CLOSED (a pool.query rejection propagates out of checkRateLimit and every caller's try/catch or withErrorHandling turns it into a 5xx, never an allowed request), the store is Postgres and therefore survives deploys and multiple instances, and getDailyRequestCount at lib/rate-limiting/daily-limits.ts:157 reads `window_start >= CURRENT_DATE` while every writer uses `date_trunc('day', NOW())` -- consistent only while the database session timezone is UTC.",
     "impact": "Doubles the effective burst on every named limit at bucket boundaries. Matters most for the login and 2FA-verify gates, where the per-account counters (`login-fail:${user.id}`) are the real defence and this is the outer layer.",
@@ -2345,9 +2189,7 @@
     "effort": "small",
     "category": "spec deviation",
     "file": "lib/auth/staff-oidc.ts",
-    "files": [
-      "lib/auth/staff-oidc.ts"
-    ],
+    "files": ["lib/auth/staff-oidc.ts"],
     "line": 128,
     "description": "verifyStaffOidcIdToken calls `jwtVerify(idToken, jwks, { issuer: doc.issuer, audience: config.clientId })` at lib/auth/staff-oidc.ts:127-130, where `doc` is whatever came back from `${STAFF_OIDC_ISSUER_URL}/.well-known/openid-configuration` (getDiscoveryDocument, line 64). `doc.issuer` is never compared against `config.issuerUrl`, and getDiscoveryDocument's own validation at lines 82-86 checks only that authorization_endpoint, token_endpoint, and jwks_uri are present -- issuer is not in that list even though it is declared required on the DiscoveryDocument interface at line 51. OIDC Discovery 1.0 section 4.3 requires the returned `issuer` to exactly match the issuer used to build the discovery URL, precisely so this check is not circular. The rest of the flow is sound: the nonce is bound through a short-lived httpOnly cookie (app/api/v3/auth/staff-oidc/route.ts:168), state is HMAC-signed, and the callback never creates or promotes an account (callback lines 87-92).",
     "impact": "No exploitable path today: reaching the vulnerable condition requires the admin-configured STAFF_OIDC_ISSUER_URL to serve a discovery document naming a different issuer and pointing jwks_uri at that issuer's keys, which means the admin already pointed staff SSO at a hostile endpoint. Worth fixing because it is the one place in an otherwise careful OIDC implementation where the trust anchor is self-asserted, and because the interface already declares the field required while the validation does not check it.",

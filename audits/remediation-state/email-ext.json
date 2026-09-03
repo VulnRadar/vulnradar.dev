@@ -11,9 +11,7 @@
     "effort": "small",
     "category": "list (a) gap rank 6: OSS ecosystem interop",
     "file": "lib/reports/sarif-report.ts",
-    "files": [
-      "lib/reports/sarif-report.ts"
-    ],
+    "files": ["lib/reports/sarif-report.ts"],
     "line": 1,
     "description": "DefectDojo (4,911 stars, BSD-3-Clause, 500+ report parsers, actively pushed 2026-08-29) is the layer OSS-first teams aggregate scanners into, and it already parses ZAP, Nuclei, Trivy, Nikto, Burp, SSL Labs and Wapiti; Faraday (6,697 stars, GPL-3.0, 80+ tool plugins) is the same shape (audits/AUDIT-014/research-competitors.md, DefectDojo and Faraday sections, both verified live). VulnRadar already emits everything such a parser needs: a complete SARIF 2.1.0 report with per-rule descriptors, security-severity, tags and helpUri (lib/reports/sarif-report.ts:1 to :253), reachable over the API at GET /api/v3/history/[id]/report?format=sarif (app/api/v3/history/[id]/report/route.ts:174). Nothing in the repo, the docs (app/docs/reports/page.tsx), or .github/ mentions DefectDojo, Faraday, or any vulnerability-management destination. The word appears nowhere in the codebase.",
     "impact": "The self-hosting, GPL, small-security-team audience is precisely the DefectDojo audience, and it is also the audience most likely to install a second scanner rather than switch. Being absent from the 500-parser list means VulnRadar is the one tool in their stack whose findings have to be moved by hand, which is how a tool gets dropped at the next cleanup.",
@@ -37,9 +35,7 @@
     "effort": "medium",
     "category": "shipped product with no test suite",
     "file": "extension/package.json",
-    "files": [
-      "extension/package.json"
-    ],
+    "files": ["extension/package.json"],
     "line": null,
     "description": "extension/src/ holds 25 .ts files totalling 7,048 lines. `git ls-files 'extension/**'` matches zero files named *.test.* or *.spec.*, and extension/package.json declares no \"test\" script: its scripts are dev, build, build:chrome, build:firefox, icons, package, package:source, clean, typecheck, format, format:check. The CI extension job (.github/workflows/ci.yml) runs npm ci, typecheck, format:check, and build for Chrome and Firefox, and nothing else. The untested surface includes the pieces that make security decisions: lib/auth.ts (74 lines, API-key handling), lib/api.ts (259 lines, the calls to the VulnRadar API), lib/storage.ts (249), lib/scan-target.ts (62), lib/url-patterns.ts (108), plus popup/popup.ts at 1,116 lines and background/service-worker.ts. lib/scanner/scan-target-classify.ts in the main app carries an explicit comment that 'the browser extension keeps its own small copy of classifyScanTarget (it's a separate build)', so there is a deliberate duplicate of classification logic on both sides with a test on neither (the app-side copy measures 37.14% statements / 16% branches).",
     "impact": "The extension is a published Chrome and Firefox Web Store product with a review and rollback cycle measured in days, so a regression is far more expensive to correct than a web deploy. A typecheck-and-build gate cannot catch a wrong URL pattern that scans the wrong host, a storage change that drops a stored API key, or a classification drift where the extension and the app disagree about what a given URL is. Because the extension holds a user's API key, an api.ts regression that sends it to the wrong origin would also ship green.",
@@ -63,9 +59,7 @@
     "effort": "medium",
     "category": "unsupported major on the build toolchain",
     "file": "extension/package.json",
-    "files": [
-      "extension/package.json"
-    ],
+    "files": ["extension/package.json"],
     "line": 37,
     "description": "`extension/package.json:37` declares `\"vite\": \"^6.4.3\"`, resolved to 6.4.3 in `extension/package-lock.json`. `npm view vite dist-tags` returns `latest: 8.2.2` and `previous: 7.3.6`, so Vite 6 is neither the current nor the previous major and is outside the line that receives backported fixes. The same tree carries esbuild 0.25.12 (marketing's independent tree already resolves 0.28.1) and archiver 7.0.1 against latest 8.0.0 per `npm outdated --json`. This is not an ordinary application dependency: `extension/scripts/build.mjs:44` and `:59` call Vite's programmatic `build()` twice, once for the three HTML pages and once per entry for `background/service-worker.ts` and `content/detector.ts`, and those two IIFE bundles are what the manifest injects as the MV3 service worker and as a `content_scripts` entry matching `<all_urls>` (`extension/manifest/chrome.json:47`). The same `build.mjs` output is what `extension/scripts/package.mjs` zips and what `.github/workflows/release.yml:147` builds and attaches to the GitHub release for Chrome Web Store and AMO upload. Because the root's own Vite (8.2.2, pulled in transitively by vitest 4.1.11) is a completely separate install tree, the repo already proves Vite 8 works here for the rest of the codebase; only the extension is stuck. Combined with subdeps-02 (no Dependabot and no audit on this manifest), nothing will ever nudge this forward.",
     "impact": "The one toolchain that generates browser-privileged code for real users is on a major that will not get security fixes, and no automation watches it. A build-chain compromise or a Rollup/esbuild output bug lands directly in an extension with all-URLs content-script access, and the upgrade path only gets longer the further behind it drifts (a 6 to 8 jump is two sets of breaking changes at once).",
@@ -89,9 +83,7 @@
     "effort": null,
     "category": null,
     "file": "lib/email/email.ts",
-    "files": [
-      "lib/email/email.ts"
-    ],
+    "files": ["lib/email/email.ts"],
     "line": null,
     "description": "secure:false without requireTLS meant misconfigured relays could send password-reset + 2FA codes in cleartext.",
     "impact": "",
@@ -115,9 +107,7 @@
     "effort": "medium",
     "category": "list (a) gap rank 14: compliance workflow",
     "file": "lib/reports/compliance-mappings.ts",
-    "files": [
-      "lib/reports/compliance-mappings.ts"
-    ],
+    "files": ["lib/reports/compliance-mappings.ts"],
     "line": 43,
     "description": "lib/reports/compliance-mappings.ts:43 exposes six frameworks (pci, soc2, iso27001, asvs, hipaa, gdpr) and compliance-report.ts renders the crosswalk, but the output is a document a human downloads; nothing pushes it anywhere. Intruder offers one-click evidence push to Drata and Vanta and covers SOC 2, ISO 27001, PCI DSS, HIPAA and DORA. On attestation, the market is thin and expensive: Detectify resells a PCI ASV Attestation of Scan Compliance at EUR 500/yr but is not itself the ASV (it partners with Clone Systems), Intruder explicitly states it is not an ASV even though its underlying Tenable engine is, and nobody else in the eight issues one. Astra is the exception on the artifact side, issuing a publicly verifiable pentest certificate gated on passing reverification and valid 180 days (audits/AUDIT-014/research-competitors-commercial.md, \"Attestation artifacts\").",
     "impact": "Bounded. The GRC buyer who needs a Drata evidence connector is not shopping at $20/month. The real cost of the gap is that the crosswalk currently ends at a download, so the work it represents leaves no trace in the compliance tool where the auditor actually looks.",
@@ -141,9 +131,7 @@
     "effort": "small",
     "category": "email / brand lockup",
     "file": "lib/email/email.ts",
-    "files": [
-      "lib/email/email.ts"
-    ],
+    "files": ["lib/email/email.ts"],
     "line": 154,
     "description": "The email lockup at lib/email/email.ts:151-156 renders the logo image next to `<span style=\"... font-size: 19px; font-weight: 700; letter-spacing: -0.2px; ...\">VulnRadar</span>` with no font-family, so it inherits the body's sans stack from :145. Everywhere else the wordmark is monospace: components/landing/landing-nav.tsx:67 and the footer at :35 (recorded in audits/AUDIT-011/design-language.md B1, \"mono is load-bearing brand, not just code\"), app/not-found.tsx:27 `text-xl font-mono font-semibold`, app/error.tsx:42 the same, public/og-image.svg, and all five extension store PNGs. The weight is also off the scale: design-language B3 records three weights only (default, font-medium, font-semibold) and that font-bold appears nowhere in the strong work, while the email uses 700 here and again in emailHeading at :194. The logo image also carries `alt=\"\"` (:153), which is defensible because the wordmark text sits beside it, but combined with the fact that most clients block images by default it means the first thing a recipient sees is the sans wordmark alone.",
     "impact": "Email is the surface seen furthest from the product, in a list beside every other sender, and the one visual cue meant to identify VulnRadar at a glance is set in the same generic system sans as everything else in the inbox. The mono wordmark is the strongest single piece of brand equity the product has and it is absent from the only place a stranger sees the brand cold.",
@@ -167,9 +155,7 @@
     "effort": "medium",
     "category": "browser extension / store assets",
     "file": "extension/public/store/store_1.png",
-    "files": [
-      "extension/public/store/store_1.png"
-    ],
+    "files": ["extension/public/store/store_1.png"],
     "line": null,
     "description": "store_1.png's monospace footnote reads \"700+ checks across headers, TLS, DNS, email auth, secrets, and client-side code\" (transcribed from the PNG, and independently recorded in audits/AUDIT-011/design-language.md E3). The real figure is lib/config/check-stats.generated.ts:8, `GENERATED_CHECKS_LABEL = \"795+\"`, which flows through CONFIG_TOTAL_CHECKS_LABEL (lib/config/config-values.ts:133) into TOTAL_CHECKS_LABEL and is regenerated on every build by the knowledge-compile prebuild scripts. The five store PNGs are committed binaries with no source: extension/scripts/ holds only build.mjs, generate-icons.mjs, package.mjs and package-source.mjs, none of which reference store_*, and there is no .svg, .html or design file for them anywhere in the repo. So the one number in the marketing art has drifted 95 checks below the product and there is no mechanism to correct it short of rebuilding the art by hand. Design-language rule 8 requires numbers to be real and pulled from the registry at render time; a baked PNG cannot honour that, which is precisely why it needs a source. Merged from mkt-12, filed independently from the marketing surface. No source file exists that could regenerate the five store PNGs, so the correction is a manual re-export.",
     "impact": "The store listing undersells the scanner by roughly 12 percent to every prospective installer, and the number will keep drifting further with every new check family added. Because the art is unreproducible, correcting it is a design project rather than a one-line change, so in practice it will not be corrected and the gap will widen.",
@@ -193,9 +179,7 @@
     "effort": "small",
     "category": "unused exports in extension/src/lib",
     "file": "extension/src/lib/index.ts",
-    "files": [
-      "extension/src/lib/index.ts"
-    ],
+    "files": ["extension/src/lib/index.ts"],
     "line": 1,
     "description": "extension/src/lib/index.ts (13 lines) says it exists to keep 'the deep import paths out of the popup/options/background code', but nothing imports it: every consumer uses a deep path instead (extension/src/background/service-worker.ts:46 '../lib/auth', extension/src/options/options.ts:14 '../lib/auth', extension/src/popup/popup.ts:11 '../lib/auth', extension/src/lib/scan.ts:14 './auth', and so on). It is the only orphaned file in extension/src. Behind it, nine exported values have no reference anywhere in the repo other than their own declaration: extension/src/lib/format.ts isMoreSevere (18-20), meetsThreshold (22-30), summarizeCounts (83-91); extension/src/lib/theme.ts effectiveTheme (26-34), watchSystemTheme (41-50); extension/src/lib/categories.ts PROBES_BY_ID (204-212), severityLabel (214-227); extension/src/lib/auth.ts loadAuth (17-20); extension/src/lib/types.ts ALL_SEVERITIES (8-14). Two matter beyond tidiness. meetsThreshold implements the notification threshold rule ('off' | 'critical' | 'high' | 'medium' | 'all'), and extension/src/background/service-worker.ts:746-756 hand-rolls that exact rule again with its own rank map rather than calling it, so the two copies can drift. watchSystemTheme subscribes to prefers-color-scheme changes and its own doc comment says 'Use in popup/options startup to keep the UI in sync with the OS when the user has chosen system'; it is never called, so applyTheme (theme.ts:8) resolves 'system' once at open and the popup does not follow a live OS theme flip. Total: 13 + 21 + 30 + 23 + 4 + 7 = 98 lines.",
     "impact": "The barrel's stated contract is false, so a new contributor either adds another deep import or, worse, starts importing from the barrel and creates a second import convention. The threshold duplicate is a live drift risk on a user-facing setting: a fix applied to meetsThreshold would never reach the notification path. The unused theme watcher means the 'system' theme setting is a one-shot read, not a subscription.",
@@ -219,9 +203,7 @@
     "effort": "small",
     "category": "toolchain major drift across manifests",
     "file": "extension/package.json",
-    "files": [
-      "extension/package.json"
-    ],
+    "files": ["extension/package.json"],
     "line": 36,
     "description": "`package.json:135` pins the root to `\"typescript\": \"6.0.3\"`; `extension/package.json:36` declares `\"typescript\": \"^5.7.2\"`, resolved to 5.9.3; `marketing/package.json:22` pins 5.9.3. `extension/package.json:20` runs `tsc --noEmit` from the extension's own node_modules, so CI's extension typecheck (`.github/workflows/ci.yml:141`) uses 5.9.3. But the extension's source is also analyzed by the root toolchain: `eslint.config.mjs:22` lists ignores for `scripts/**`, `cli/**`, `dist/**` and others but not `extension/**`, and I verified the effect directly, `npx eslint --print-config extension/src/lib/api.ts` returns a full config while `npx eslint --print-config cli/lib.mjs` returns `undefined` (the marker for an ignored path). So `npm run lint` at the root parses extension TypeScript with @typescript-eslint 8.67.0 while CI type-checks it with tsc 5.9.3, and any editor opened at the repo root resolves the root's typescript 6.0.3 for those same files. The root's Dependabot config already acknowledges this class of problem at `.github/dependabot.yml`, where the ignore list holds TypeScript majors because \"@typescript-eslint ... peer range caps at <6.1.0\", but that reasoning was applied only to the root manifest.",
     "impact": "A developer editing extension/src sees diagnostics from TypeScript 6.0.3 in their editor that CI (5.9.3) does not produce, and vice versa. A syntax or type feature added in 6.0 compiles in the editor and fails the extension CI job, or a 5.9-only behaviour passes CI and shows as an editor error, in both cases with no obvious explanation because the version difference is invisible from the file being edited. Running eslint over the extension's build output is harmless today (I ran `npx eslint extension/dist-chrome/popup.js` and it reports nothing) but it is unintended coverage.",
@@ -245,9 +227,7 @@
     "effort": "small",
     "category": "missing license and attribution in a distributed artifact",
     "file": "extension/package.json",
-    "files": [
-      "extension/package.json"
-    ],
+    "files": ["extension/package.json"],
     "line": 5,
     "description": "`extension/package.json:5` declares `\"license\": \"GPL-3.0\"`, but there is no LICENSE file anywhere under `extension/` and none in the built output: `dist-chrome/` contains only assets, chunks, background.js, content.js, the three page bundles, their .map files, favicon.svg, icons/ and manifest.json. `extension/scripts/package.mjs:66` zips exactly that directory for store upload, so the Chrome Web Store and AMO packages ship with no license text. The two runtime dependencies are inlined into those bundles by the IIFE build at `extension/scripts/build.mjs:59`: `webextension-polyfill@0.12.0` is MPL-2.0 (verified from its package.json) and `lit-html@3.3.3` is BSD-3-Clause, and both appear as sources in the emitted map (`dist-chrome/content.js.map` lists `../node_modules/webextension-polyfill/dist/browser-polyfill.js` and `../node_modules/lit-html/lit-html.js` first in its `sources` array). MPL-2.0 section 3.2 requires that recipients of the binary be informed of the license and be able to obtain the source of the covered files. The source zip built by `extension/scripts/package-source.mjs` is submitted to AMO only, so Chrome Web Store users get neither a license notice nor a source pointer. That same script also has no LICENSE to include: it archives every top-level entry in `extension/` except node_modules, the dist dirs, out/, zips and tsbuildinfo, and there is no license file among them.",
     "impact": "Every Chrome Web Store install of a GPL-3.0 project receives a binary with no copy of the GPL and no notice for the MPL-2.0 code compiled into it. It is a compliance gap rather than a user-facing break, but it is an avoidable one for a project whose whole pitch is open source.",
@@ -271,9 +251,7 @@
     "effort": "small",
     "category": "shipped build artifacts",
     "file": "extension/vite.config.ts",
-    "files": [
-      "extension/vite.config.ts"
-    ],
+    "files": ["extension/vite.config.ts"],
     "line": 47,
     "description": "extension/vite.config.ts:47 sets `sourcemap: true` and extension/scripts/build.mjs:73 sets it again for the background/content bundles. extension/scripts/build.mjs:97 then does `cp(viteOut, dist, { recursive: true })`, and extension/scripts/package.mjs:53 zips the directory with `archive.directory(dist, false)` -- no filter. The current extension/dist-chrome accordingly contains 606 KB of .map files (background.js.map 178 KB, content.js.map 151 KB, popup.js.map 80 KB, constants chunk map 74 KB, options.js.map 64 KB, plans chunk map 50 KB, welcome.js.map 8 KB) against 192 KB of actual shipped code, and both vulnradar-chrome-v0.1.8.zip and vulnradar-firefox-v0.1.8.zip are 232 KB. Separately, extension/vite.config.ts:25 sets `publicDir: extension/public`, so everything under it is copied into the build output; extension/public/store/ was just added and holds five PNGs totalling 516 KB (store_1.png 119,755 bytes through store_5.png 72,067 bytes) that exist only for the Chrome Web Store listing. dist-chrome predates that addition, so the next `npm run build` will copy them into both dist folders and both zips.",
     "impact": "Users installing the extension download and store roughly three times the bytes the extension actually runs, and the next release will add another half megabyte of store-listing screenshots that the extension never references. Shipped source maps also hand a reviewer or a repackager the unminified source, which is not a secret in a GPL project but is not intentional either.",
@@ -297,9 +275,7 @@
     "effort": "small",
     "category": "list (a): hypotheses checked and closed",
     "file": "lib/reports/compliance-mappings.ts",
-    "files": [
-      "lib/reports/compliance-mappings.ts"
-    ],
+    "files": ["lib/reports/compliance-mappings.ts"],
     "line": 1,
     "description": "The prior session's candidate list (compliance reports, Jira integration, proof-based exploit evidence, CVE and port scanning, SSO/auth-flow scanning, cloud and container scanning, IAST agent) was a hypothesis. Five items are wrong or substantially wrong and are closed here. (1) Compliance reports EXIST and are complete: lib/reports/compliance-mappings.ts:43 covers PCI DSS 4.0, SOC 2 TSC, ISO/IEC 27001:2022 Annex A, OWASP ASVS 4.0, HIPAA and GDPR, with a documented OWASP-Top-10 backbone and an honest unmapped-findings path, rendered by lib/reports/compliance-report.ts and exported at app/api/v3/history/[id]/report/route.ts. (2) SARIF EXISTS and is complete: lib/reports/sarif-report.ts:1 to :253 emits SARIF 2.1.0 with rule descriptors, security-severity and tags, wired to both the export menu (components/scanner/scan-actions-menu.tsx:556) and the API. (3) CVE and port scanning EXIST: lib/scanner/port-scan.ts (749 lines), lib/scanner/protocols/banner.ts, lib/scanner/software-inventory.ts (1,202 lines), lib/scanner/osv-check.ts and lib/scanner/cve-enrichment.ts. (4) Authenticated scanning EXISTS in three modes with a real browser-rendered login path; see comp-05 for what is actually missing. (5) A GitHub Action EXISTS at .github/actions/scan-gate/action.yml (195 lines, complete poll-and-gate); see comp-02 for what it does not do. Also verified and worth recording: the SSL letter grade is computed in-house from a live handshake (lib/scanner/ssl-grade.ts:1 to :30) and is NOT derived from the SSL Labs API, so the SSL Labs v4 prohibition on commercial use does not apply to this product, a risk the research explicitly flagged for checking.",
     "impact": "None directly. Recording it prevents the next audit or roadmap session from re-filing five gaps that are already shipped, which is the failure mode that turns a competitive review into busywork.",

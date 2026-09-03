@@ -126,7 +126,10 @@ export function ChecksFilter({ children }: { children: React.ReactNode }) {
               type="button"
               onClick={() => setQuery("")}
               aria-label="Clear filter"
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
+              // The after: overlay widens the tap area to 44px without growing
+              // the 24px box, which has to stay inside the h-9 field. Same
+              // pattern as components/scanner/inline-auth-form.tsx.
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground after:absolute after:-inset-2.5 hover:text-foreground"
             >
               <X className="h-3.5 w-3.5" aria-hidden="true" />
             </button>

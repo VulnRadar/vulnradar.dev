@@ -1,0 +1,62 @@
+[
+  {
+    "icon": "Webhook",
+    "label": "The Webhooks Page Was Describing An Older Webhook System",
+    "desc": "Four things on it had stopped being true. Discord embeds are coloured by the scan's safe/caution/unsafe verdict now, three colours, not by counting severities into four; the page still listed an orange that no code emits. A lost signing secret was said to require deleting the webhook and creating a new one, which throws away the id your consumer is configured with, when rotating it in place has been an endpoint for a while. Editing was described as owner-only, ignoring team-assigned webhooks entirely. And deleting an id that does not exist was documented as a 404 when it answers 200. The delivery log and the rotate-secret endpoint are now named too.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Hash",
+    "label": "Docs That Quoted Numbers Instead Of Reading Them",
+    "desc": "The developer page's finding-types sample said the catalogue holds 695 checks and the paragraph under it said 652 of them are legacy, against a real 797 and 754. It counted 268 settings, of which 239 runtime, against a real 287 and 249. The architecture page said there are 16 scanner categories and listed 16, two paragraphs below a generated constant on the same page saying 18, and credited websocket.ts with 8 check IDs when the exported array holds 7. Every one of those now renders from the constant the application itself reads, and a test fails the build if a literal creeps back.",
+    "category": "fixed"
+  },
+  {
+    "icon": "ListChecks",
+    "label": "Hand-Copied Lists Now Render From The Code",
+    "desc": "The team role matrix was thirty cells transcribed from TEAM_ROLE_PERMISSIONS, the compliance crosswalk's frameworks were six rows transcribed from the array the report generator loops over, and the per-plan webhook cap was typed out in three separate places on one page. All of them are rendered from the source of truth now, so adding a role, a framework, or a plan updates the docs instead of silently dating them.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Database",
+    "label": "The Schema Moved And Two Pages Did Not",
+    "desc": "The whole database schema left instrumentation.ts for lib/database/schema/ some time ago. The architecture page still said 40 tables are created in instrumentation.ts by CREATE TABLE IF NOT EXISTS, and the contributor page still told you to add a new table there, next to a mirror step. Both now point at the ordered step list that boot and npm run db:create actually execute, and the boot-phase diagram matches the phases the file runs.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Coins",
+    "label": "What AI Chat And Summaries Really Cost You",
+    "desc": "\"Free\" was doing too much work. Chat, scan summaries and auto-tags are never refused for being over the plan's AI token budget, which is the part that matters, but the docs went on to say their tokens are never counted against the cap. They are: every one of them records into the same per-window counter, so a long chat session does leave less for finding verification. Summaries can also draw down a purchased credit balance once the window allowance is gone, and chat never can. The AI page and the billing page now say which is which.",
+    "category": "fixed"
+  },
+  {
+    "icon": "FileDown",
+    "label": "Report Exports Are Rate Limited On Both Paths",
+    "desc": "The reports page said a Bearer request is metered and a session request is not. Session exports have their own per-user limiter, because every format is built synchronously over the whole findings array and looping the export of a large scan could stall the single process for everyone. PDF export can also be switched off per deployment, which is a 403 neither the reports page nor the API reference listed. Both now document the 429 and the 403, and the report endpoint's id parameter is described as the opaque id the rest of the history API hands you rather than a number.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Radar",
+    "label": "The Port Sweep Replaced Per-Service Probes, And The Docs Caught Up",
+    "desc": "The old per-service probes array was collapsed into a single portScan boolean, and the architecture page was still teaching the array as a live request field and naming six supported probes. It now describes the curated, bounded port sweep that exists, gated on the same verified-domain check as active probing. The extension page's settings list picked up the same correction, and its link to the API-key screen now uses the query parameter the profile page reads instead of a hash anchor that landed on the default tab.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Award",
+    "label": "The Badge Shows A Grade, Not A Verdict",
+    "desc": "The sharing page described the embeddable badge as reading \"Secured by VulnRadar\" alongside Safe, Caution, or Unsafe. It has led with the A+ to F site grade for a while, with the verdict surviving as the colour of the badge's right-hand half. Described accurately, including why: every comparable free tool grades on that scale, and \"caution\" on a README is something an owner removes rather than keeps.",
+    "category": "fixed"
+  },
+  {
+    "icon": "GitBranch",
+    "label": "A Pinned Action SHA That Was Not A Commit",
+    "desc": "The CI/CD section tells you to pin the scan gate to a full 40-character commit SHA rather than a tag, then gave the annotated tag object's SHA, which is not a commit. Corrected, along with the bulk-scan endpoint's error list, which never mentioned the 403 you get when an operator has bulk scanning switched off or your key is missing scan:write. The SDK checklist stopped describing webhook signature verification as something that might be added later; it has been shipping as X-VulnRadar-Signature.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Puzzle",
+    "label": "Three Extension Features Nobody Had Written Down",
+    "desc": "The popup grew expandable findings, with the evidence, the reasons and the numbered fix steps that already came back on every scan; a one-click export of a saved scan as PDF, SARIF, Markdown or JSON through the same endpoint the dashboard and CI use; and a per-site history where each row shows the delta against the previous scan and carries a rescan button. The extension docs described none of it. They do now.",
+    "category": "added"
+  }
+]

@@ -111,6 +111,7 @@ Numbered so they can be referred to individually.
 ## Investigation notes, item 5 (evidence modal CSS)
 
 Ruled out so far, so nobody repeats it:
+
 - `components/scanner/ai-verify-result-modal.tsx` itself is **unchanged** this
   session (`git diff HEAD` is empty for it).
 - `components/ui/dialog.tsx` DID change (scrim `bg-black/80` to

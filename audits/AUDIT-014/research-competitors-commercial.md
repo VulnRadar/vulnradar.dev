@@ -13,6 +13,7 @@ THIRD-PARTY means an aggregator or review site. UNVERIFIED means unconfirmed.
 ---
 
 ## Detectify | pricing VERIFIED-LIVE
+
 Annual platform fee plus usage. Starter EUR 0/yr, Standard EUR 2,500+/yr, Professional
 EUR 5,000+/yr, Enterprise EUR 15,000+/yr. Usage billed separately per domain and per
 target. **PCI ASV EUR 500/yr.** API Scanning starts at EUR 90/month.
@@ -36,6 +37,7 @@ including expiring nameservers and cloud-hosted takeover.
 SaaS only.
 
 ## Intruder | pricing VERIFIED-LIVE (numbers withdrawn by vendor)
+
 Free tier is $0 forever. Cloud / Pro / Enterprise prices are **no longer displayed**;
 they removed the public calculator. Base fee plus per-target fee, and "a licence is
 used each time you scan a target, and stays used for 30 days".
@@ -56,8 +58,8 @@ results. Scanning engine is third-party (Tenable/Nessus, optionally OpenVAS/ZAP)
 which matters because VulnRadar builds its own.
 
 ## Probely | now Snyk
-**Major finding: acquired 12 Nov 2024, folded into Snyk API and Web, launched 22 Apr
-2025.** Confirmed live: `developers.probely.com` serves Snyk docs,
+
+**Major finding: acquired 12 Nov 2024, folded into Snyk API and Web, launched 22 Apr 2025.** Confirmed live: `developers.probely.com` serves Snyk docs,
 `help.probely.com` is titled "Snyk API and Web Help Center", the site brands itself
 "Probely, a Snyk business".
 
@@ -70,6 +72,7 @@ Notable inherited feature: the Jira integration is genuinely two-way and unusual
 **Assessment: treat Probely as a legacy brand and evaluate Snyk API and Web instead.**
 
 ## Pentest-Tools.com | VERIFIED-LIVE
+
 Per scanned asset, quota resets every 30 days. **NetSec from $95/month**, **WebNetSec
 from $140/month** (adds web and API DAST plus authenticated scans), **Pentest Suite
 from $190/month** (adds exploitation tools and the report generator). Annual pays 10
@@ -93,6 +96,7 @@ RBAC: Admin/Member/Viewer, unlimited workspaces and team members on every plan.
 credible paid entry at $95/mo.
 
 ## Acunetix / Invicti | pricing mostly quote-only
+
 Only published number is **Agentic Pentest at "$500 max per pentest", 24-hour
 delivery**. A target is a fully qualified domain name. THIRD-PARTY estimates put entry
 around $7,000/yr, range $7K to $37K+/yr. **Flagged unverified**; acunetix.com 403s.
@@ -115,6 +119,7 @@ chained attack strategies. Max $500 per pentest, 24h turnaround. Directly underc
 traditional PTaaS.
 
 ## Burp Suite DAST (PortSwigger) | renamed from Enterprise Edition, May 2025
+
 Burp Suite **Professional $499** and Community free. Burp Suite DAST is quote-only,
 with "no limits on the number of users" and explicitly **"you don't pay per URL"**,
 which distinguishes it from every per-FQDN competitor. THIRD-PARTY estimate $6,000 to
@@ -135,6 +140,7 @@ infrastructure VulnRadar would have to build. **No compliance framework mapping 
 which is a real hole in an otherwise strongest-in-class product.**
 
 ## Snyk (including Snyk API and Web) | VERIFIED-LIVE
+
 Priced **per contributing developer**. Free $0 (5 projects, **no DAST**), Team from
 $25/mo (**no DAST**), **Ignite from $1,260/yr per dev with DAST included**
 (THIRD-PARTY: capped at 50 devs and 10 DAST targets), Enterprise on quote.
@@ -156,6 +162,7 @@ platform.** But **DAST is paywalled to Ignite and above, which is exactly the se
 VulnRadar sits in.**
 
 ## Astra Security | most transparent pricing of the eight
+
 DAST: Scanner Lite **$69/mo or $699/yr**, Scanner **$199/mo or $1,999/yr** (unlimited
 scans, 1 target), Scanner Agency **$499/mo or $4,999/yr** (5-target pool).
 PTaaS: Pentest Basic $1,999/yr, Pentest Plus $5,999/yr. API DAST $199/mo. Cloud from

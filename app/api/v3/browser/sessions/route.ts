@@ -244,10 +244,24 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const id = (request.nextUrl.searchParams.get("id") || "").trim();
   if (!id) return ApiResponse.badRequest("Missing session id.");
 
-  // Ownership check: if a browser_sessions row exists and it belongs to
-  // a different user, deny the request (AUDIT-004#idor-01). Rows created
-  // before this check was introduced won't exist in the table — those
-  // sessions are allowed (fail-open for the brief transition window).
+  // Ownership check (AUDIT-004#idor-01). FAIL CLOSED, the same rule and for
+  // the same reason as the sibling logs route: a missing or unreadable
+  // ownership row is denied, not served.
+  //
+  // This used to deny only when a row existed AND named someone else, so a
+  // row-less session -- or a transient error on the SELECT, which
+  // `.catch(() => null)` turns into "no row" -- skipped the check entirely and
+  // fell through to the response below. That response carries wsUrl,
+  // debuggerUrl and debuggerFullscreenUrl: interactive CDP control of a live
+  // headless browser, which is strictly more than the network log the logs
+  // route already refuses to fail open on. The allowance was written for a
+  // transition window that has long since closed, and there are two ways a row
+  // is genuinely absent while the remote session is still reachable: the
+  // retention sweep in lib/database/cleanup.ts deletes on expires_at without
+  // calling endBrowserSession, and any database hiccup lands in the catch
+  // above. POST hard-fails the request when its ownership INSERT fails
+  // (see the comment there), so no session this route should serve is ever
+  // row-less.
   const ownerRow = await pool
     .query<{ user_id: number }>(
       "SELECT user_id FROM browser_sessions WHERE id = $1",
@@ -255,8 +269,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     )
     .catch(() => null);
   if (
-    ownerRow &&
-    ownerRow.rows.length > 0 &&
+    !ownerRow ||
+    ownerRow.rows.length === 0 ||
     ownerRow.rows[0].user_id !== session.userId
   ) {
     return ApiResponse.forbidden();
@@ -308,6 +322,14 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
   // Ownership check (AUDIT-004#idor-01). created_at is fetched in the same
   // query so the plan-usage true-up below has a real elapsed duration to
   // record without a second round trip.
+  //
+  // FAIL CLOSED, matching GET above. The old predicate denied only a row that
+  // named someone else, so a row-less session could be torn down by any signed-
+  // in caller who knew its id. Nothing is lost by refusing: the row is absent
+  // precisely because the retention sweep already reaped it past expires_at, by
+  // which point Browserbase has ended the session on its own timeoutSeconds,
+  // and both the concurrency-slot release and the usage true-up below key off
+  // that same row, so a row-less DELETE never had anything left to do.
   const ownerRow = await pool
     .query<{ user_id: number; created_at: string }>(
       "SELECT user_id, created_at FROM browser_sessions WHERE id = $1",
@@ -315,8 +337,8 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
     )
     .catch(() => null);
   if (
-    ownerRow &&
-    ownerRow.rows.length > 0 &&
+    !ownerRow ||
+    ownerRow.rows.length === 0 ||
     ownerRow.rows[0].user_id !== session.userId
   ) {
     return ApiResponse.forbidden();

@@ -242,6 +242,14 @@ const COMMON_PORTS: ReadonlyMap<number, string> = new Map<number, string>([
   [61616, "ActiveMQ"],
 ]);
 
+/**
+ * How many ports one sweep probes. Exported so a doc page can state the real
+ * number instead of restating a literal: /docs used to advertise "6 service
+ * probes" from a per-service `probes` array that was removed when the sweep
+ * was consolidated behind the single `portScan` boolean.
+ */
+export const COMMON_PORT_COUNT = COMMON_PORTS.size;
+
 // Bounds. Worst case (all curated ports filtered/silent) is
 // ceil(ports/concurrency) waves * connectTimeoutMs, kept comfortably under
 // overallDeadlineMs. The whole sweep runs concurrently with the rest of the

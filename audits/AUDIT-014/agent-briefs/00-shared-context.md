@@ -119,19 +119,19 @@ When you extend one of these, say what is new and cite it as `AUDIT-0NN#id`.
 
 One JSON object per finding, all keys present:
 
-- `id`      — readable `<scope>-NN` using the prefix in your task prompt.
-- `title`   — one specific sentence. What is wrong, not what area it is in.
+- `id` — readable `<scope>-NN` using the prefix in your task prompt.
+- `title` — one specific sentence. What is wrong, not what area it is in.
 - `section` — integer: 13, 14, 15, or 18. The section it truly belongs to.
-- `type`    — one of: bug, security, ssrf, ux, mobile, design, qol, removal, drift,
-              perf, test, deps, db, deploy, docs, config, cleanup, seo, gap,
-              opportunity
+- `type` — one of: bug, security, ssrf, ux, mobile, design, qol, removal, drift,
+  perf, test, deps, db, deploy, docs, config, cleanup, seo, gap,
+  opportunity
 - `severity`— critical | high | medium | low | info
-- `effort`  — small | medium | large
+- `effort` — small | medium | large
 - `category`— short grouping label. For `file: null`, this carries the scope.
-- `file`    — repo-relative path or null
-- `line`    — integer or null
+- `file` — repo-relative path or null
+- `line` — integer or null
 - `description` — what the code/doc/config actually does, with file:line per hop.
-- `impact`  — what goes wrong for a user, an operator, or the business. Concrete.
+- `impact` — what goes wrong for a user, an operator, or the business. Concrete.
 - `recommendation` — the specific fix: file, function, change.
 
 ## SEVERITY CALIBRATION

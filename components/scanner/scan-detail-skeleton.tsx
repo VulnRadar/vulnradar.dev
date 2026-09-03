@@ -18,7 +18,8 @@ import { SEVERITY_ORDER } from "@/components/scanner/severity-badge";
  * engine confidence, checks run, duration, scanned. Each is conditional on the
  * scan carrying that field, so this is the full-scan case rather than a
  * guaranteed count. It was 3, which on a phone is the difference between one
- * wrapped row and two, since the strip is flex-wrap with a basis-24 floor.
+ * wrapped row and two, since the strip is flex-wrap and its floor puts two
+ * cells on a phone line.
  */
 const READOUT_COUNT = 6;
 
@@ -74,7 +75,11 @@ export function ScanDetailSkeleton() {
           {Array.from({ length: READOUT_COUNT }).map((_, i) => (
             <div
               key={i}
-              className="flex min-w-0 flex-1 basis-24 flex-col gap-1.5 px-3.5 py-2.5 sm:px-4"
+              // Tracks ScanSummary's Readout cell exactly, including the
+              // phone-width floor. Left at basis-24 the placeholder laid three
+              // cells across a 390px screen while the loaded strip lays two,
+              // so the panel grew a row the moment the scan resolved.
+              className="flex min-w-0 flex-1 basis-[calc(50%-1px)] flex-col gap-1.5 px-3.5 py-2.5 sm:basis-32 sm:px-4"
             >
               <Skeleton className="h-4 w-12" />
               <Skeleton className="h-2.5 w-16" />

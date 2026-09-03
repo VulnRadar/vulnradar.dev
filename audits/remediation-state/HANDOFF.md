@@ -10,11 +10,11 @@ The repo is left green: `npx tsc --noEmit` exits 0 and the full suite passes.
 Everything ships as **one release, 3.8.0**. There is a single changelog block
 in `lib/changelog/data.ts`; the compiled AI copy is regenerated.
 
-| | |
-|---|---|
-| Findings open at session start | **802** |
-| Closed | **~275** |
-| Remaining | **~527** |
+|                                |          |
+| ------------------------------ | -------- |
+| Findings open at session start | **802**  |
+| Closed                         | **~275** |
+| Remaining                      | **~527** |
 
 Exact remaining counts by severity are recomputed by the snippet at the bottom
 of this file. Do not trust a number quoted from memory: several audits are old

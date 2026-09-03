@@ -1,6 +1,6 @@
 # VulnRadar Public Docs: AI Knowledge
 
-_Auto-compiled from `app/docs/*/page.tsx` on 2026-09-02._
+_Auto-compiled from `app/docs/*/page.tsx` on 2026-09-03._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about every public docs page. Edit
@@ -33,6 +33,7 @@ Paste a URL, get a ranked list of what is wrong with it and how to fix each one.
 ### Notes
 - portScan is optional. Leave it out and only the web checks run. Full request and response shapes are on the API reference .
 - detections live in lib/scanner/checks-data/, one JSON file per category, each paired with a detector module in lib/scanner/checks/. Every check has a stable id, so a finding you triage today keeps the same id on the next scan and in the API response.
+- The port sweep is separate and opt-in behind the single portScan boolean. It opens a bounded TCP socket against each of curated well-known ports, reads whatever greeting comes back, and reports reachability and version disclosure per service. It does not depend on the URL scheme: SSH on port 22 is probed the same way whether you asked for an https:// target or not.
 - Beyond the check catalogue, every scan also fingerprints the software the host runs (server, framework, CDN, analytics, and client-side libraries) and correlates any version it can read against known CVEs through OSV.dev and the NVD, enriched with CISA KEV and FIRST.org EPSS. A vulnerable version raises one aggregated finding that lists its CVE IDs.
 - The full catalogue is served, unauthenticated, from GET /api/v3/finding-types. Use it if you are building an SDK and want every id ahead of time. See Developer documentation for the payload shape.
 - When crawls a site for a multi-page scan, its crawler identifies itself as and reads /robots.txt before discovering pages. To keep specific paths out of a scan, add a group that names with Disallow rules:
@@ -114,8 +115,8 @@ headers assume HTTPS in production.
 
 ### Notes
 - Before you begin, ensure you have the following installed:
-- Allow-scripts for native packages (bcrypt, esbuild, sharp, unrs-resolver, core-js) are whitelisted in .npmrc.
-- The included docker-compose.yml provisions Postgres with credentials vulnradar:vulnradar on port 5432. See the Docker section below.
+- .npmrc sets engine-strict=true, so an install under a Node outside engines ( >=22.0.0 <23.0.0) fails instead of warning. It holds no install-script allow-list: npm has no such mechanism, and the Docker build installs with --ignore-scripts because nothing in the production tree needs one (sharp and the Next SWC binaries ship prebuilt as optional dependencies).
+- The included docker-compose.yml provisions Postgres as user vulnradar and database vulnradar by default. POSTGRES_PASSWORD has no default: compose refuses to start until you set it in .env. The database port is not published to the host at all, so it is reachable only from inside the compose network, at postgres:5432. See the Docker section below.
 - instrumentation.ts runs CREATE TABLE IF NOT EXISTS for every table on first server boot. No manual migration is required for a fresh database. For databases upgraded from an older schema, see Schema Migration .
 - Secrets and per-deployment overrides go in .env (or .env.local for local-only overrides; Next.js loads .env.local with higher precedence than .env ).
 - Open .env and fill in at minimum:
@@ -188,6 +189,7 @@ Scan the page you're actually looking at, without pasting a URL. The extension r
 - **Overview** (`#overview`)
 - **Install** (`#install`)
 - **Scanning from the popup** (`#scanning`)
+- **Reading a result in the popup** (`#reading-a-result`)
 - **Scanning a link you haven't opened** (`#scan-a-link`)
 - **The on-page card** (`#reputation-card`)
 - **Auto-scan modes** (`#auto-scan`)
@@ -221,12 +223,12 @@ is a development path and not the way to install the extension.
 - One click from the store. Updates itself from here on, no manual re-download.
 - One click from Firefox Add-ons. Updates itself from here on, no manual re-download.
 - Working on the extension, or want to run an unreleased build? In Chrome, chrome://extensions &rarr; Developer mode &rarr; Load unpacked, and pick the built folder. In Firefox, about:debugging#/runtime/this-firefox &rarr; Load Temporary Add-on &rarr; select any file inside it. A temporary add-on is removed when Firefox restarts, which is why this is a development path and not the way to install the extension.
-- Need an API key first? Generate one from #api-keys while logged in.
+- Need an API key first? Generate one from ?tab=developer&dtab=api-keys while logged in.
 - Click the toolbar icon on any page and hit Scan. Quick and Deep mirror the same two modes on the web app's scan form: Quick runs the fast header/TLS/content family checks, Deep also crawls linked pages on the same host. Which check families run is controlled from the extension's own Settings, independent of your web app defaults, so you can keep the popup fast day-to-day and still reach every check when you want it.
 - A scan started from the popup counts against the same daily limit as any other scan on your account and shows up in your regular scan history: there's no separate extension-only history to lose track of.
+- The popup is not a summary you then go elsewhere to act on. Three things happen without leaving it:
 - Right-click any link, anywhere, and choose Scan this link with . The scan runs against the link target without navigating to it, which is the point: you can check a search result, a forum post, or an emailed link before deciding whether to open it. It uses the same settings and the same daily limit as a popup scan, and finishes with the same desktop notification.
 - When enabled, a small card can appear in the corner of a page reporting one of two things: this host has been scanned before (and what its last result was), or it hasn't and you can scan it now. Site alerts are entirely separate from auto-scan below: this is about surfacing information, not triggering a scan on its own.
-- Off by default. Three modes decide when a scan fires without you clicking anything:
 
 ## Self-Hosting
 Route: /docs/self-hosting
@@ -418,8 +420,11 @@ docker compose build app && docker compose up -d
 
 # Schema changed: put the database back first, then the code.
 # Stop only the app so Postgres stays up for the restore.
+# db:restore does nothing without --file and --yes, and refuses a
+# database that still has tables unless you add --force.
 docker compose stop app
-docker compose run --rm app npm run db:restore   # the dump from step 1
+docker compose run --rm app npm run db:restore -- \\
+  --file=./backups/<the dump from step 1> --yes --force
 git checkout <previous-tag>
 docker compose build app && docker compose up -d
 ```
@@ -1459,7 +1464,7 @@ Remove a webhook so it stops being called.
 ```
 
 ```yaml
-- uses: <value>/.github/actions/scan-gate@7bdd3394793b13262f024e20a0fc081c56743616 # v3.7.2
+- uses: <value>/.github/actions/scan-gate@3de56cd1057eb61b1bec57587f72e6b1d03439d8 # v3.7.2
 ```
 
 ```yaml
@@ -1517,7 +1522,7 @@ counts against your quota.
 Route: /docs/webhooks
 
 # Webhooks
-Retrieve all webhooks for the authenticated user.
+Your own webhooks plus any assigned to a team you belong to. All team roles can read them.
 
 ### Sections
 - **Overview** (`#overview`)
@@ -1535,11 +1540,12 @@ Retrieve all webhooks for the authenticated user.
 - Local development: receive on webhook.site
 
 ### Notes
+- A webhook can also be assigned to a team. A team-assigned webhook is visible to every co-member, editable by those with write access, and fires on a teammate's scans as well as its creator's.
 - detects the platform by matching the URL pattern. Override with the type body field if needed.
 - Generic is the row most integrations end up on: anything that is not Discord or Slack gets the plain body, which is the one documented in Webhook Payloads below.
-- Manage webhooks through these session-authenticated endpoints (the /api/v3/webhooks family requires a logged-in user; API keys are not accepted).
+- Manage webhooks through these session-authenticated endpoints (the /api/v3/webhooks family requires a logged-in user; API keys are not accepted). Two more exist and are documented in full on the API reference : POST /webhooks/"}/rotate-secret (issue a new signing secret in place, owner only) and GET /webhooks/"}/deliveries (the 50 most recent delivery attempts with their status).
 - Each platform receives a tailored payload. The summary object is the same in all three: critical, high, medium, low, info, total.
-- Embed color: 0xef4444 (red, any critical), 0xf97316 (orange, any high), 0xeab308 (yellow, any medium), 0x22c55e (green, otherwise).
+- Embed color follows the scan&rsquo;s safety verdict, the same safe/caution/unsafe tier the badge and the host page use, not a raw severity count: 0x22c55e (green, safe), 0xeab308 (yellow, caution), 0xef4444 (red, unsafe). A count-based rule cannot tell an exploitable high from a hardening one like a missing HSTS header, so it used to paint scans red that the scorer calls safe.
 - Delivered with Content-Type: application/json, User-Agent: -Webhook/1.0, and (if the webhook has a secret) an X-VulnRadar-Signature header -- see Security below.
 
 ### Code examples
@@ -1811,8 +1817,7 @@ files.
 - is a Next.js 15 App Router application with a single-process deployment. The runtime stack is deliberately small: one Next.js process + one PostgreSQL database. No Redis, no message broker, no separate API server. Everything you need to understand lives in this repository.
 - See the Configuration page for full details. Flow:
 - The detection engine is split across per-category files:
-- Categories (lib/scanner/types.ts, 16 total): headers, ssl, tls, content, cookies, configuration, information-disclosure, dns, email, api, code, secrets-extended, vibe-code, client-side, supply-chain, host-validation. Severities: info, low, medium, high, critical.
-- Service probes ( lib/scanner/protocols/banner.ts) open a bounded TCP socket to the target hostname on a well-known or user-supplied port, read the greeting, and report version disclosure and reachability. The 6 supported probes are ssh, smtp, imap, pop3, ftp, and mongodb. Probes are independent of the URL scheme: opt into "probes": ["ssh:2222"] from the dashboard without constructing ssh://host.
+- Categories (lib/scanner/types.ts): the Category union has members. of them are in ALL_CATEGORIES and run by default: . The remaining one, active-probes, is deliberately left out of that list because it writes to the target, so it runs only when a request names it explicitly. Severities: info, low, medium, high, critical.
 - REST v3 is the only API this build serves. There is no /api/v1 or /api/v2 route tree. Each v3 route handler:
 - Nine roles, defined as STAFF_ROLE_HIERARCHY in lib/config/client-constants.ts. The numbers below are read from that table, not typed out here:
 - The gaps of 10 leave room to insert a role without renumbering, and every comparison goes through a named key rather than a literal. Two things the shape does not show on its own:
@@ -1855,12 +1860,12 @@ vulnradar.dev/
 │   ├── auth/                     # Sessions, 2FA, password hashing, device trust
 │   ├── billing/                  # Stripe + plan catalog
 │   ├── config/                   # Configuration system
-│   ├── database/                 # PostgreSQL pool, query helpers, cleanup
+│   ├── database/                 # Pool, query helpers, boot/ and schema/
 │   ├── discord/                  # Discord OAuth helpers
 │   ├── email/                    # Transactional email (SMTP)
 │   ├── notifications/            # In-app + email notification preferences
 │   ├── rate-limiting/            # Generic + plan-based rate limits
-│   ├── reports/                  # PDF report generation
+│   ├── reports/                  # SARIF, Markdown, compliance, PDF reports
 │   ├── scanner/                  # Detection engine
 │   ├── types/                    # Shared TypeScript types
 │   └── uploads/                  # Avatar validation
@@ -1912,9 +1917,12 @@ Route handler (app/api/v3/<resource>/route.ts)
   │
   ▼
 instrumentation.ts (server startup only)
-  - Initialize/verify DB schema on first boot
+  - Validate env, install error-log capture
   - Read vulnradar_schema_meta; refuse to start if version < required
-  - Add api_keys.key_locator column if missing (v2.3.x delta)
+  - Take a boot advisory lock, then, inside it:
+      apply lib/database/schema/ -> backfills -> cleanup + workers
+      -> safety nets. A failure in any of them exits rather than
+      serving traffic against a half-built database.
 ```
 
 ```text
@@ -1992,11 +2000,11 @@ a round trip.
 - This page covers two audiences:
 - Endpoints, request/response shapes, and rate-limit semantics live on the API Reference and Rate Limits pages. The rest of this page is the integration manual.
 - The Finding Types endpoint returns the full catalogue of detection checks. Use it to display human-readable titles, categorize findings, or build SDKs that know every check ID ahead of time.
-- Backed by lib/scanner/checks-data/*.json, one file per category, for the 652 legacy checks. Adding one of those means editing the JSON for its category and the matching detector in lib/scanner/checks/. The other 43 checks live on a newer PageCheck architecture under lib/scanner/checks/page-checks/ with metadata declared inline; see Architecture .
+- Backed by lib/scanner/checks-data/*.json, one file per category, for the legacy checks. Adding one of those means editing the JSON for its category and the matching detector in lib/scanner/checks/. The other checks live on a newer PageCheck architecture under lib/scanner/checks/page-checks/ with metadata declared inline; see Architecture .
 - When building an SDK for , follow these guidelines.
 - All authenticated requests require a Bearer token. Keys are prefixed vr_live_:
 - Full request/response shapes: see API Reference .
-- Each non-2xx response includes a JSON body with at minimum an error string. Map HTTP status to typed exceptions (400 / 401 / 403 / 404 / 422 / 429 / 500). On 429, honour the Retry-After header and the X-RateLimit-Reset header.
+- Each non-2xx response includes a JSON body with at minimum an error string. Map HTTP status to typed exceptions. The v3 API uses 400, 401, 402, 403, 404, 409, 413, 422, 429, 500, 502 and 503; the API reference says what each one means here. On 429, honour the Retry-After header and the X-RateLimit-Reset header.
 - pip install vulnradar wraps this API with typed response models and a proper exception hierarchy. Source and usage docs: github.com/VulnRadar/Python-SDK . Building one in another language? Open an issue on GitHub with a link and we will list it here. Requirements: GPL-3.0 compatible license, type-safe models, real tests against a live instance.
 - Setup for contributing to . Covers local dev, scripts, commit conventions, common pitfalls.
 
@@ -2008,7 +2016,7 @@ curl <value>/api/v3/finding-types
 ```json
 {
   "success": true,
-  "count": 695,
+  "count": <value>,
   "data": [
     {
       "id": "hsts-missing",
@@ -2185,11 +2193,11 @@ a large broadcast immediately before a deploy.
 
 ### Notes
 - The very first account created on a fresh instance becomes the super admin. That role cannot be granted through the panel afterwards, which is what stops an escalation path existing at all: there is exactly one way to become super admin, and it is being first.
-- Everyone else is invited. An admin sends a staff invite for a specific email and a specific role; the link expires in seven days, the token is stored hashed rather than in plain text, and a pending invite can be revoked by deleting it. Sending an invite requires re-entering your password, as do the other seventeen destructive admin actions.
+- Everyone else is invited. An admin sends a staff invite for a specific email and a specific role; the link expires in seven days, the token is stored hashed rather than in plain text, and a pending invite can be revoked by deleting it. Sending an invite requires re-entering your password, as do the other destructive admin actions.
 - ENFORCE_STAFF_2FA is off by default so that enabling the feature does not instantly lock out existing staff. Turn it on once your staff have set up 2FA. It gates every admin-panel route, not just the login. Someone locked out can still reach the 2FA setup endpoint to enrol and get back in, so it is a recoverable setting rather than a one-way door.
 - Roles are not a single ladder. Four of them sit at the same rank as each other and differ only in what they are for, so you can give someone billing access without giving them session and 2FA controls.
 - Every action on a user account requires the target to be strictly lower-ranked than you, with the super admin the only exception and your own account exempt for benign actions. That is what stops one admin disabling, demoting or deleting a peer. It also means two same-rank specialists cannot act on each other, which is intentional.
-- The panel has 21 destinations in seven groups, and each one is filtered by your role, so what you see depends on what you hold. The Overview tab is the one to check first: it is a worst-first health list covering the scanner queue, failed scans in the last day, when the last backup ran, errors logged in the last hour, failed emails, unresolved security alerts, tickets waiting on staff, and pending staff invites.
+- The panel has destinations in groups, and each one is filtered by your role, so what you see depends on what you hold. Groups are the question an operator is trying to answer, not the kind of row the data is, and they are ordered by how often that question gets asked. The Overview tab is the one to check first: it is a worst-first health list covering the scanner queue, failed scans in the last day, when the last backup ran, errors logged in the last hour, failed emails, unresolved security alerts, tickets waiting on staff, and pending staff invites.
 - Two are worth knowing about before you need them. Error Logs captures every console.error the application emits, with credentials, API keys, tokens and email addresses scrubbed before storage, so you can diagnose a production failure without shell access. Email Logs records every outbound send attempt with a redacted preview that never contains a working link or code; its status is the mail server&rsquo;s accept or reject, which is not the same as delivered.
 - Almost everything configurable is a typed entry in one registry rather than an environment variable you have to redeploy to change. Each entry declares its type, its bounds, the group it belongs to, and help text, and its default is the same constant the code ships with, so the form cannot drift from what the application actually does.
 - Database value, then environment variable, then the shipped default. The database wins because that is the layer the admin panel edits. Values are cached for 30 seconds, and saving invalidates the cache for the process handling the save, so you see your own change immediately while other processes converge within the window.
@@ -2359,8 +2367,8 @@ moment the real package ships.
 ### Notes
 - The vulnradar CLI wraps the scan API: it starts a scan, polls until it finishes, prints a summary, and exits non-zero when the finding counts go over the limits you set. That exit code is the whole point: drop it into a pipeline step and a regression fails the build.
 - The CLI lives in the cli/ folder of the repo and is not on npm yet. Until it is, install it straight from the source, which puts a vulnradar command on your PATH:
-- Prefer not to install globally? Run the entrypoint directly from the clone with node cli/vulnradar.mjs scan <url>. It needs Node 18 or newer and has no dependencies of its own.
-- Pass your key with --api-key or the VULNRADAR_TOKEN environment variable. Prefer the variable in CI so the key never lands in shell history or logs.
+- Prefer not to install globally? Run the entrypoint directly from the clone with node cli/vulnradar.mjs scan <url>. It needs Node 22 or newer, the same floor as the rest of the project ( cli/package.json declares engines.node >=22.0.0), and has no dependencies of its own.
+- Pass your key with --api-key or the VULNRADAR_TOKEN environment variable. Prefer the variable in CI so the key never lands in shell history or logs. --api-base has the same env form, VULNRADAR_API_BASE, so a self-hosted CI does not repeat the flag on every invocation. An explicit flag beats the variable in both cases.
 - 0 when every finding count is at or under its threshold; 1 when a threshold is exceeded or the scan errors out. That is what lets a CI job block a merge on a new critical.
 - Once the CLI is on the runner (see Install), a GitHub Actions step fails the build on any new critical or high:
 - Want a gate with nothing to install? The API docs cover a GitHub Action, a GitLab template, and a plain curl script that hit the same API.
@@ -2710,7 +2718,7 @@ vice versa.
 - The whole feature is gated behind the FEATURE_TEAMS flag. When it is off, the create endpoint returns 403 and no team routes do anything useful.
 - POST /api/v3/teams with a name (2 to MAX_TEAM_NAME_LENGTH, 255 by default). The creator is inserted as the sole owner in the same transaction, and a URL slug is generated from the name plus a short timestamp suffix.
 - Two independent caps apply, and both are read from the owner's plan, not the plan of whoever is doing the inviting: how many teams an account may own, and how many seats a team may hold. A seat is one member plus one pending, unexpired invite, so outstanding invites count against the cap until they are accepted, declined, or expire.
-- There are six team roles. They are built from four underlying capabilities: manage_team (rename the team), manage_members (invite, remove, change roles), manage_scans (create and edit team-scoped scans), and view_reports (read shared reports), plus the owner-only delete_team. Every role holds view_reports.
+- There are team roles. They are built from four underlying capabilities: manage_team (rename the team), manage_members (invite, remove, change roles), manage_scans (create and edit team-scoped scans), and view_reports (read shared reports), plus the owner-only delete_team. Every role holds view_reports.
 - Manager and operator are deliberate opposites: a manager handles people and settings but does not run scans, while an operator runs scans and adjusts settings but does not handle onboarding. That is why the roles are not a single ladder.
 - Because the roles are a partial order rather than a strict ranking, a caller may only invite, promote, demote, or remove someone at a role whose permission set is a subset of the caller's own (the canAssignTeamRole check). Without it, a manager (who has manage_members but not manage_scans) could promote someone to admin and hand out a capability the manager itself lacks, or evict a higher-privileged admin. The owner holds every permission, so the owner can act on any role; the owner's own role can never be changed or removed through the member routes.
 - POST /api/v3/teams/members with sends an invite. role defaults to viewer and may be any role except owner. The caller needs manage_members, the role ceiling applies, and the request is rate-limited per user to stop invite spam from a compromised account.
@@ -2859,7 +2867,7 @@ individual URLs instead.
 - Failure reasons are deliberately normalised before you see them: the raw error can contain internal detail, so it is classified into one of a small set of messages. Here is what each one means in practice.
 - The scanning screen&rsquo;s Try again keeps every option you chose (mode, check families, screenshot, port scan) and re-runs the same scan. Rescanning from your history is a plain rescan of the URL with default options, so if you need the same configuration, start it from the scan form instead.
 - A watchdog gives every scan a hard ceiling, so a target that stalls cannot hold a slot open indefinitely. When it fires, in-flight requests are aborted and the scan is marked failed. The ceilings below are shipped defaults; on a self-hosted instance they are admin settings.
-- Separately, each individual request has its own much shorter timeout, around 15 seconds for a page fetch and 8 seconds for a crawled page. A request hitting that limit does not fail the scan: the affected group of checks is reported as incomplete and the rest of the scan continues.
+- Separately, each individual request has its own much shorter timeout: seconds for a page fetch and seconds for a crawled page. A request hitting that limit does not fail the scan: the affected group of checks is reported as incomplete and the rest of the scan continues.
 - The checks run in parallel, so a typical scan finishes in seconds. Hitting a five-minute ceiling almost always means individual requests to the target are each taking many seconds, which is worth knowing about the site in its own right. Try a Quick scan first to confirm the host responds at all.
 - Some URLs are rejected before a scan starts. These come back immediately rather than after a wait, and they cost no daily quota.
 - will not scan anything that resolves inside a private network. That covers literal private and loopback addresses, localhost and anything under .local, .internal or .lan, cloud metadata ranges, and any public hostname whose DNS answer points at a private address. The check is re-run on every redirect hop, so a public URL cannot redirect the scanner onto an internal one.
@@ -2871,16 +2879,16 @@ individual URLs instead.
 
 | Page | Hero | Sections | Callouts | Code tabs | Code blocks | Endpoints | Features | Paragraphs | Headings |
 |---|---|---|---|---|---|---|---|---|---|
-| `/docs` | ✓ | 5 | 0 | 0 | 1 | 0 | 0 | 8 | 1 |
+| `/docs` | ✓ | 5 | 0 | 0 | 1 | 0 | 0 | 9 | 1 |
 | `/docs/setup` | - | 12 | 4 | 0 | 22 | 0 | 0 | 27 | 30 |
-| `/docs/extension` | ✓ | 10 | 2 | 0 | 0 | 0 | 0 | 13 | 2 |
+| `/docs/extension` | ✓ | 11 | 2 | 0 | 0 | 0 | 0 | 14 | 2 |
 | `/docs/self-hosting` | - | 16 | 9 | 0 | 14 | 0 | 0 | 29 | 3 |
-| `/docs/config` | - | 9 | 4 | 0 | 2 | 0 | 0 | 30 | 0 |
+| `/docs/config` | - | 9 | 4 | 0 | 2 | 0 | 0 | 31 | 0 |
 | `/docs/api` | - | 8 | 5 | 0 | 6 | 41 | 0 | 17 | 5 |
 | `/docs/api/playground` | - | 2 | 1 | 0 | 0 | 0 | 0 | 3 | 0 |
-| `/docs/webhooks` | ✓ | 6 | 0 | 0 | 3 | 0 | 0 | 6 | 5 |
+| `/docs/webhooks` | ✓ | 6 | 0 | 0 | 3 | 0 | 0 | 7 | 5 |
 | `/docs/rate-limits` | - | 6 | 6 | 0 | 4 | 0 | 0 | 11 | 3 |
-| `/docs/architecture` | - | 5 | 1 | 0 | 3 | 0 | 0 | 9 | 0 |
+| `/docs/architecture` | - | 5 | 1 | 0 | 3 | 0 | 0 | 8 | 0 |
 | `/docs/developers` | - | 16 | 3 | 0 | 9 | 0 | 0 | 20 | 9 |
 | `/docs/account-security` | - | 6 | 3 | 0 | 1 | 0 | 0 | 22 | 0 |
 | `/docs/administration` | - | 10 | 6 | 0 | 0 | 0 | 0 | 31 | 0 |
@@ -2890,7 +2898,7 @@ individual URLs instead.
 | `/docs/github` | ✓ | 8 | 4 | 0 | 1 | 0 | 0 | 25 | 0 |
 | `/docs/reports` | - | 7 | 3 | 0 | 4 | 0 | 0 | 15 | 0 |
 | `/docs/scheduled-scans` | - | 9 | 6 | 0 | 0 | 0 | 0 | 22 | 0 |
-| `/docs/sharing` | ✓ | 8 | 4 | 0 | 2 | 0 | 0 | 28 | 0 |
+| `/docs/sharing` | ✓ | 8 | 4 | 0 | 2 | 0 | 0 | 27 | 0 |
 | `/docs/teams` | - | 8 | 1 | 0 | 1 | 0 | 0 | 15 | 0 |
 | `/docs/triage` | - | 3 | 3 | 0 | 2 | 0 | 0 | 20 | 0 |
 | `/docs/troubleshooting` | ✓ | 9 | 5 | 0 | 0 | 0 | 0 | 24 | 0 |

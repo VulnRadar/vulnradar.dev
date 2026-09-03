@@ -232,6 +232,11 @@ const endpoints: Endpoint[] = [
     errors: [
       { code: 400, description: "Missing or invalid urls array" },
       { code: 401, description: "Unauthorized" },
+      {
+        code: 403,
+        description:
+          "Bulk scanning is disabled on this deployment, the API key is missing scan:write, or terms acceptance is pending",
+      },
       { code: 429, description: "Rate limit or daily quota" },
     ],
   },
@@ -651,9 +656,10 @@ const endpoints: Endpoint[] = [
     pathParams: [
       {
         name: "id",
-        type: "number",
+        type: "string",
         required: true,
-        description: "Scan (scan_history) id",
+        description:
+          "The opaque scan id from GET /history. The legacy integer id is still accepted.",
       },
     ],
     queryParams: [
@@ -677,8 +683,10 @@ format=json       -> application/json            vulnradar-example.com.json`,
       "Same auth and access model as GET /history/{id}: a Bearer key with scan:read, or a session cookie. Owner, or a team member with read access to the scan.",
       "Every response carries Content-Disposition: attachment with a filename derived from the scanned host, so a browser or curl -O writes a sensibly named file.",
       "The owner's export has cross-rescan remediation status attached to each finding. A team-read viewer gets the stored findings as-is, because remediation state is private to the owner.",
-      "compliance is the PCI DSS / SOC 2 / ISO 27001 / OWASP ASVS crosswalk, as Markdown.",
+      "compliance is the PCI DSS / SOC 2 / ISO 27001 / OWASP ASVS / HIPAA / GDPR crosswalk, as Markdown.",
       "A scan the caller cannot read returns 404, not 403, so this endpoint cannot be used to probe which scan ids exist.",
+      "Both auth paths are throttled. A Bearer call spends one of the key's daily requests; a session call spends from a separate per-user report-export bucket, because every format is generated synchronously over the whole findings array. Either can answer 429.",
+      "format=pdf is behind the FEATURE_PDF_REPORTS admin setting and returns 403 when an operator has turned it off. The check runs before the scan lookup, so a disabled format costs nothing.",
     ],
     errors: [
       {
@@ -686,8 +694,17 @@ format=json       -> application/json            vulnradar-example.com.json`,
         description: "Unsupported format (the body names the valid set)",
       },
       { code: 401, description: "Unauthorized, or invalid/revoked API key" },
-      { code: 403, description: "API key is missing the scan:read scope" },
+      {
+        code: 403,
+        description:
+          "API key is missing the scan:read scope, terms acceptance is pending, or format=pdf with PDF reports disabled on this deployment",
+      },
       { code: 404, description: "Scan not found, or no read access" },
+      {
+        code: 429,
+        description:
+          "API key daily limit reached, or too many session-authenticated exports",
+      },
     ],
   },
   {
@@ -1943,8 +1960,13 @@ export default function APIDocsPage() {
             full 40-character commit SHA, which is stronger still because a tag
             can be moved:
           </p>
+          {/* This has to be the COMMIT sha. The value that used to sit here
+              was the annotated tag object's sha, which is not a commit and is
+              not what "a full 40-character commit SHA" one line above
+              promises. `git rev-list -n 1 v3.7.2` is the command that gives
+              you the right one. */}
           <CodeBlock
-            code={`- uses: ${APP_REPO}/.github/actions/scan-gate@7bdd3394793b13262f024e20a0fc081c56743616 # v3.7.2`}
+            code={`- uses: ${APP_REPO}/.github/actions/scan-gate@3de56cd1057eb61b1bec57587f72e6b1d03439d8 # v3.7.2`}
             language="yaml"
           />
         </DocsCallout>

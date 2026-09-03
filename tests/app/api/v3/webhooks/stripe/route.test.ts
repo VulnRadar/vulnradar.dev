@@ -1295,10 +1295,15 @@ describe("POST /api/v3/webhooks/stripe: registered events and handled events agr
   // silently dropped webhooks; handling one that is never registered means it
   // never arrives. Neither shows up as a failure anywhere else, so compare the
   // two lists directly (AUDIT-013#cov-11).
-  // Both lists are read from source rather than imported: stripe-webhook-setup
-  // pulls in `server-only`, which throws under the test runner.
+  // The switch is read from source (there is no list of its case labels to
+  // import). REQUIRED_EVENTS is imported: it moved out of stripe-webhook-setup,
+  // which pulls in `server-only` and throws under the test runner, into
+  // lib/billing/stripe-webhook-events, which has no such marker precisely so
+  // that this suite and /docs/self-hosting can both read the real array.
   it("every REQUIRED_EVENTS entry has a matching case label, and vice versa", async () => {
     const { readFileSync } = await import("node:fs");
+    const { REQUIRED_EVENTS } =
+      await import("@/lib/billing/stripe-webhook-events");
 
     const routeSource = readFileSync(
       new URL(
@@ -1311,21 +1316,7 @@ describe("POST /api/v3/webhooks/stripe: registered events and handled events agr
       (m) => m[1],
     );
 
-    const setupSource = readFileSync(
-      new URL(
-        "../../../../../../lib/billing/stripe-webhook-setup.ts",
-        import.meta.url,
-      ),
-      "utf8",
-    );
-    const requiredBlock = setupSource.match(
-      /export const REQUIRED_EVENTS = \[([\s\S]*?)\] as const;/,
-    );
-    expect(requiredBlock).not.toBeNull();
-    const required = [
-      ...(requiredBlock as RegExpMatchArray)[1].matchAll(/"([^"]+)"/g),
-    ].map((m) => m[1]);
-
+    const required = [...REQUIRED_EVENTS];
     expect(required.length).toBeGreaterThan(0);
     expect([...handled].sort()).toEqual([...required].sort());
   });

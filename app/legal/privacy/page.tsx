@@ -25,8 +25,43 @@ const SECTIONS = [
 ];
 
 export default async function PrivacyPage() {
+  // Every window in section 6 is rendered from the setting the cleanup pass
+  // actually reads (lib/database/cleanup.ts), never from a literal typed into
+  // this page. These are runtime-tier settings an operator can change from
+  // Admin -> Settings, so a hardcoded "90 days" here is a promise the running
+  // deployment may already be breaking.
+  //
+  // Split into two calls, string-valued keys and number-valued keys, rather
+  // than one. getSettings returns Record<K, SettingValue<K>>, so a single call
+  // mixing the two distributes into `string | number` for every field and the
+  // date below stops typechecking. Both calls read the same cached snapshot.
   const { LEGAL_EMAIL: legalEmail, TERMS_UPDATED_AT: termsUpdatedAt } =
     await getSettings(["LEGAL_EMAIL", "TERMS_UPDATED_AT"] as const);
+  const {
+    CLEANUP_API_USAGE_RETENTION_DAYS: apiUsageDays,
+    AI_CHAT_HISTORY_DAYS: aiChatDays,
+    CLEANUP_REVOKED_API_KEYS_RETENTION_DAYS: revokedKeyDays,
+    CLEANUP_DATA_REQUESTS_RETENTION_DAYS: dataRequestDays,
+    CLEANUP_SECURITY_ALERTS_RETENTION_DAYS: securityAlertDays,
+    CLEANUP_SCAN_FINDING_FEEDBACK_RETENTION_DAYS: feedbackDays,
+    CLEANUP_USER_NOTIFICATIONS_RETENTION_DAYS: notificationDays,
+    CLEANUP_EMAIL_LOG_RETENTION_DAYS: emailLogDays,
+    CLEANUP_ADMIN_USER_NOTES_RETENTION_DAYS: adminNoteDays,
+    CLEANUP_ADMIN_AUDIT_LOG_RETENTION_DAYS: auditLogDays,
+    CLEANUP_SYSTEM_ERROR_LOGS_RETENTION_DAYS: errorLogDays,
+  } = await getSettings([
+    "CLEANUP_API_USAGE_RETENTION_DAYS",
+    "AI_CHAT_HISTORY_DAYS",
+    "CLEANUP_REVOKED_API_KEYS_RETENTION_DAYS",
+    "CLEANUP_DATA_REQUESTS_RETENTION_DAYS",
+    "CLEANUP_SECURITY_ALERTS_RETENTION_DAYS",
+    "CLEANUP_SCAN_FINDING_FEEDBACK_RETENTION_DAYS",
+    "CLEANUP_USER_NOTIFICATIONS_RETENTION_DAYS",
+    "CLEANUP_EMAIL_LOG_RETENTION_DAYS",
+    "CLEANUP_ADMIN_USER_NOTES_RETENTION_DAYS",
+    "CLEANUP_ADMIN_AUDIT_LOG_RETENTION_DAYS",
+    "CLEANUP_SYSTEM_ERROR_LOGS_RETENTION_DAYS",
+  ] as const);
   return (
     <article className="space-y-8">
       <LegalPageHeader
@@ -95,6 +130,20 @@ export default async function PrivacyPage() {
               cookies.
             </>,
             <>
+              <strong>IP address and browser user agent</strong>: recorded
+              against each sign-in session (so you can see and revoke your own
+              sessions from{" "}
+              <a
+                href="/profile?tab=security"
+                className="text-primary hover:underline"
+              >
+                Profile &gt; Security
+              </a>
+              ), against a device you mark as trusted, and against a security
+              alert or an administrative action when one is raised. They are not
+              used to profile you or build an advertising audience.
+            </>,
+            <>
               <strong>AI chat messages</strong>: if you use the AI assistant,
               your messages and its replies are stored so the conversation can
               continue across page loads.
@@ -111,10 +160,12 @@ export default async function PrivacyPage() {
             "We do not sell, rent, or share your personal information for marketing purposes.",
             <>
               We do not collect data about websites you scan beyond what is
-              necessary for the scan report, with one exception: the optional
-              live browser viewer and browser-based authenticated login (see
-              Section 4) route that one scan through a third-party
-              remote-browser provider, which may briefly record the session.
+              necessary for the scan report. Producing that report does send the
+              URL or hostname you scanned to the threat-intelligence and
+              vulnerability-database services listed in Section 4, and the
+              optional live browser viewer and browser-based authenticated login
+              route that one scan through a third-party remote-browser provider.
+              Nothing beyond the scan itself is shared.
             </>,
             <>
               Login credentials you provide for an authenticated scan are used
@@ -268,6 +319,25 @@ export default async function PrivacyPage() {
               collect limited device data to prevent abuse.
             </>,
             <>
+              <strong>Threat reputation lookups</strong>: a scan checks the
+              target against public abuse feeds, which means the URL or its
+              hostname leaves our infrastructure. Google Web Risk receives the
+              full URL and URLhaus (abuse.ch) receives the hostname, both only
+              when the operator has configured a key for them. Quad9 receives
+              the hostname on every scan: it is a public security DNS resolver
+              that needs no key, so the lookup is a plain DNS query and cannot
+              be turned off by leaving a key unset. None of these receive your
+              account, your email, or anything else about you.
+            </>,
+            <>
+              <strong>Vulnerability databases (OSV.dev and the NVD)</strong>:
+              when a scan fingerprints a server, framework, or library version,
+              that component name and version is sent to OSV.dev and the NVD
+              REST API to correlate it with known CVEs. Names and version
+              numbers only: neither receives the URL you scanned or anything
+              about your account.
+            </>,
+            <>
               <strong>Remote Browser Sessions (Browserbase, Optional)</strong>:
               Used when you open the live scan viewer or when authenticated
               scanning uses browser-based login. Browserbase runs a short-lived
@@ -341,12 +411,13 @@ export default async function PrivacyPage() {
               history immediately.
             </>,
             <>
-              <strong>API usage logs:</strong> 90 days, then automatically
-              deleted.
+              <strong>API usage logs:</strong> {apiUsageDays} days, then
+              automatically deleted.
             </>,
             <>
-              <strong>AI chat history:</strong> 90 days, then automatically
-              deleted.
+              <strong>AI chat history:</strong> {aiChatDays} days, then
+              automatically deleted. Deleting your account deletes it
+              immediately rather than waiting for that window.
             </>,
             <>
               <strong>Expired sessions:</strong> removed by an automatic cleanup
@@ -355,67 +426,68 @@ export default async function PrivacyPage() {
               the row is actually deleted.
             </>,
             <>
-              <strong>Revoked API keys:</strong> 30 days after revocation, then
-              automatically deleted.
+              <strong>Revoked API keys:</strong> {revokedKeyDays} days after
+              revocation, then automatically deleted.
             </>,
             <>
-              <strong>Data export requests:</strong> 60 days, then automatically
-              deleted.
+              <strong>Data export requests:</strong> {dataRequestDays} days,
+              then automatically deleted.
             </>,
             <>
               <strong>Billing and invoice history:</strong> kept for as long as
               your account exists and deleted when you delete your account.
             </>,
             <>
-              <strong>Security alerts:</strong> 180 days, then automatically
-              deleted.
+              <strong>Security alerts:</strong> {securityAlertDays} days, then
+              automatically deleted; deleting your account deletes them
+              immediately.
             </>,
             <>
               <strong>Finding feedback:</strong> if you mark a finding
               confirmed, false positive, or not applicable, that verdict and any
-              notes you add are kept for 90 days, then automatically deleted. If
-              you delete your account first, the entry is kept (it also
-              documents that finding&apos;s history for other users) but is
-              de-identified rather than deleted.
+              notes you add are kept for {feedbackDays} days, then automatically
+              deleted. Deleting your account deletes the entry immediately
+              rather than waiting for that window, because it carries the URL
+              you scanned and whatever you typed into the notes field.
             </>,
             <>
               <strong>In-app notifications:</strong> the notification-bell feed
-              (e.g. &quot;your scheduled scan finished&quot;) is kept for 90
-              days, then automatically deleted; deleting your account deletes
-              them immediately.
+              (e.g. &quot;your scheduled scan finished&quot;) is kept for{" "}
+              {notificationDays} days, then automatically deleted; deleting your
+              account deletes them immediately.
             </>,
             <>
               <strong>Email delivery logs:</strong> a record that an email was
               attempted (recipient address, subject line, delivery status, and a
               redacted preview of the content, with links, codes, and tokens
-              stripped out) is kept for 30 days for deliverability
-              troubleshooting, then automatically deleted. Since this table is
-              keyed by the recipient address rather than your account, deleting
-              your account does not remove these rows early; they still age out
-              on the normal 30-day schedule.
+              stripped out) is kept for {emailLogDays} days for deliverability
+              troubleshooting, then automatically deleted. This table has no
+              account column and is keyed only by the recipient address, so
+              deleting your account purges it by that address instead, and the
+              rows go at the same time as everything else.
             </>,
             <>
-              <strong>Admin notes:</strong> 365 days, then automatically
-              deleted.
+              <strong>Admin notes:</strong> {adminNoteDays} days, then
+              automatically deleted.
             </>,
             <>
               <strong>Admin audit log:</strong> entries move from the active
-              table to a permanent, indefinite compliance archive after 365
-              days, rather than being deleted, so the platform keeps a lasting
-              record of what administrative action was taken and by whom. If you
-              delete your account, any entries still in the active table that
-              reference you as the target of an admin action are de-identified
-              (the link to your account is removed, the record of what happened
-              is kept). Entries already moved to the archive before you delete
-              your account keep their original data, since the archive exists
-              specifically as an immutable historical record.
+              table to a permanent, indefinite compliance archive after{" "}
+              {auditLogDays} days, rather than being deleted, so the platform
+              keeps a lasting record of what administrative action was taken and
+              by whom. If you delete your account, any entries still in the
+              active table that reference you as the target of an admin action
+              are de-identified (the link to your account is removed, the record
+              of what happened is kept). Entries already moved to the archive
+              before you delete your account keep their original data, since the
+              archive exists specifically as an immutable historical record.
             </>,
             <>
               <strong>System error logs:</strong> when a server-side error
               occurs, the diagnostic message is captured for troubleshooting
               with secrets and email addresses automatically redacted before
               storage. These logs are visible only to administrators and are
-              kept for 30 days, then automatically deleted.
+              kept for {errorLogDays} days, then automatically deleted.
             </>,
           ]}
         />
@@ -564,7 +636,10 @@ export default async function PrivacyPage() {
             How to exercise your rights:
           </strong>{" "}
           Use your{" "}
-          <a href="/profile#privacy" className="text-primary hover:underline">
+          <a
+            href="/profile?tab=privacy"
+            className="text-primary hover:underline"
+          >
             Profile settings
           </a>{" "}
           or email us at{" "}

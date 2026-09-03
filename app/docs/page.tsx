@@ -10,6 +10,11 @@ import {
   API_CURRENT_VERSION,
   ROUTES,
 } from "@/lib/config/constants";
+import {
+  CHECK_CATEGORY_LAST_MODIFIED,
+  EXACT_CHECK_CATEGORY_COUNT,
+} from "@/lib/config/check-stats.generated";
+import { COMMON_PORT_COUNT } from "@/lib/scanner/port-scan";
 import type { TocItem } from "@/components/docs/docs-types";
 import { DocsTocSpy } from "./docs-toc-spy";
 import {
@@ -68,30 +73,12 @@ const quickStartSteps: Step[] = [
   },
 ];
 
-// From lib/scanner/types.ts. Kept in the same order as ALL_CATEGORIES so the
-// two are easy to diff by eye when a category is added.
-const CHECK_CATEGORIES = [
-  "headers",
-  "ssl",
-  "tls",
-  "content",
-  "cookies",
-  "configuration",
-  "information-disclosure",
-  "dns",
-  "email",
-  "api",
-  "code",
-  "secrets-extended",
-  "vibe-code",
-  "client-side",
-  "supply-chain",
-  "host-validation",
-  "reputation",
-  "active-probes",
-];
-
-const SERVICE_PROBES = ["ssh", "smtp", "imap", "pop3", "ftp", "mongodb"];
+// Rendered from the generated per-category map rather than hand-listed. That
+// map's keys ARE the lib/scanner/checks-data/*.json files the compiler walked,
+// so this list and EXACT_CHECK_CATEGORY_COUNT cannot disagree with each other
+// or with what the engine ships. Note it includes `active-probes`, which
+// ALL_CATEGORIES deliberately omits (see lib/scanner/types.ts).
+const CHECK_CATEGORIES = Object.keys(CHECK_CATEGORY_LAST_MODIFIED);
 
 export default function DocsPage() {
   const curlExample = `curl -X POST "${APP_URL}/api/v3/scan" \\
@@ -108,8 +95,8 @@ export default function DocsPage() {
         description={`Paste a URL, get a ranked list of what is wrong with it and how to fix each one. These pages cover the REST API, webhooks, quotas, self-hosting, and the internals if you want to add a check of your own.`}
         stats={[
           { value: TOTAL_CHECKS_LABEL, label: "checks" },
-          { value: String(CHECK_CATEGORIES.length), label: "categories" },
-          { value: String(SERVICE_PROBES.length), label: "service probes" },
+          { value: String(EXACT_CHECK_CATEGORY_COUNT), label: "categories" },
+          { value: String(COMMON_PORT_COUNT), label: "ports swept" },
           { value: API_CURRENT_VERSION, label: "API version" },
         ]}
       />
@@ -197,7 +184,7 @@ export default function DocsPage() {
             next scan and in the API response.
           </p>
           <p>
-            The {CHECK_CATEGORIES.length} categories are{" "}
+            The {EXACT_CHECK_CATEGORY_COUNT} categories are{" "}
             {CHECK_CATEGORIES.map((category, i) => (
               <span key={category}>
                 <InlineCode>{category}</InlineCode>
@@ -208,17 +195,13 @@ export default function DocsPage() {
             subset.
           </p>
           <p>
-            Service probes are separate and opt-in. They open a bounded TCP
-            socket, read the greeting, and report version disclosure and
-            reachability for{" "}
-            {SERVICE_PROBES.map((probe, i) => (
-              <span key={probe}>
-                <InlineCode>{probe}</InlineCode>
-                {i < SERVICE_PROBES.length - 1 ? ", " : ""}
-              </span>
-            ))}
-            . They do not depend on the URL scheme: you can probe SSH on an{" "}
-            <InlineCode>https://</InlineCode> target.
+            The port sweep is separate and opt-in behind the single{" "}
+            <InlineCode>portScan</InlineCode> boolean. It opens a bounded TCP
+            socket against each of {COMMON_PORT_COUNT} curated well-known ports,
+            reads whatever greeting comes back, and reports reachability and
+            version disclosure per service. It does not depend on the URL
+            scheme: SSH on port 22 is probed the same way whether you asked for
+            an <InlineCode>https://</InlineCode> target or not.
           </p>
           <p>
             Beyond the check catalogue, every scan also fingerprints the

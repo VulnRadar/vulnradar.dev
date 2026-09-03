@@ -18,32 +18,32 @@ descriptive, not aspirational: it records what the strong work actually does.
 HSL channel triplets without `hsl()`, consumed as `hsl(var(--x))` via
 `tailwind.config.mjs:23-74`. Anything not in this table is not a token.
 
-| Token | Light (`:root`) | ≈ hex | Dark (`.dark`) | ≈ hex |
-|---|---|---|---|---|
-| `--background` | `213 25% 90%` | `#DFE5EC` | `224 20% 6%` | `#0C0E12` |
-| `--foreground` | `220 20% 10%` | `#14181F` | `210 20% 95%` | `#F0F2F5` |
-| `--card` / `--popover` | `213 22% 95%` | `#EFF2F5` | `224 18% 9%` | `#13151B` |
-| `--primary` | `213 94% 68%` | **`#60A5FA`** | `213 94% 68%` | **`#60A5FA`** |
-| `--primary-foreground` | `220 20% 10%` | `#14181F` | `224 20% 6%` | `#0C0E12` |
-| `--secondary` | `213 20% 87%` | `#D6DCE5` | `220 10% 14%` | `#202227` |
-| `--muted` | `213 18% 85%` | `#D2D8E0` | `220 10% 16%` | `#25272D` |
-| `--muted-foreground` | `220 10% 42%` | `#606876` | `220 8% 55%` | `#838995` |
-| `--accent` | `213 18% 81%` | `#C7CFDB` | `220 8% 22%` | `#343740` |
-| `--destructive` | `0 84% 60%` | `#EF4444` | `0 91% 71%` | `#FA7070` |
-| `--border` / `--input` | `213 16% 78%` | `#BEC6D0` | `224 15% 16%` | `#23262F` |
-| `--ring` | `213 94% 68%` | `#60A5FA` | `213 94% 68%` | `#60A5FA` |
-| `--radius` | `0.5rem` | | inherits | |
+| Token                  | Light (`:root`) | ≈ hex         | Dark (`.dark`) | ≈ hex         |
+| ---------------------- | --------------- | ------------- | -------------- | ------------- |
+| `--background`         | `213 25% 90%`   | `#DFE5EC`     | `224 20% 6%`   | `#0C0E12`     |
+| `--foreground`         | `220 20% 10%`   | `#14181F`     | `210 20% 95%`  | `#F0F2F5`     |
+| `--card` / `--popover` | `213 22% 95%`   | `#EFF2F5`     | `224 18% 9%`   | `#13151B`     |
+| `--primary`            | `213 94% 68%`   | **`#60A5FA`** | `213 94% 68%`  | **`#60A5FA`** |
+| `--primary-foreground` | `220 20% 10%`   | `#14181F`     | `224 20% 6%`   | `#0C0E12`     |
+| `--secondary`          | `213 20% 87%`   | `#D6DCE5`     | `220 10% 14%`  | `#202227`     |
+| `--muted`              | `213 18% 85%`   | `#D2D8E0`     | `220 10% 16%`  | `#25272D`     |
+| `--muted-foreground`   | `220 10% 42%`   | `#606876`     | `220 8% 55%`   | `#838995`     |
+| `--accent`             | `213 18% 81%`   | `#C7CFDB`     | `220 8% 22%`   | `#343740`     |
+| `--destructive`        | `0 84% 60%`     | `#EF4444`     | `0 91% 71%`    | `#FA7070`     |
+| `--border` / `--input` | `213 16% 78%`   | `#BEC6D0`     | `224 15% 16%`  | `#23262F`     |
+| `--ring`               | `213 94% 68%`   | `#60A5FA`     | `213 94% 68%`  | `#60A5FA`     |
+| `--radius`             | `0.5rem`        |               | inherits       |               |
 
 **Severity scale** (`globals.css:204-208`, `249-253`), identical in both themes
 except `info`. Confirmed against `lib/config/brand.ts:61-67`:
 
-| Token | HSL | hex |
-|---|---|---|
-| `--severity-critical` | `0 84% 60%` | `#EF4444` |
-| `--severity-high` | `25 95% 53%` | `#F97316` |
-| `--severity-medium` | `45 93% 47%` | `#E7B008` |
-| `--severity-low` | `210 90% 56%` | `#2A8FF4` |
-| `--severity-info` | light `220 10% 46%` / dark `215 15% 55%` | `#6A7181` / `#7B899D` |
+| Token                 | HSL                                      | hex                   |
+| --------------------- | ---------------------------------------- | --------------------- |
+| `--severity-critical` | `0 84% 60%`                              | `#EF4444`             |
+| `--severity-high`     | `25 95% 53%`                             | `#F97316`             |
+| `--severity-medium`   | `45 93% 47%`                             | `#E7B008`             |
+| `--severity-low`      | `210 90% 56%`                            | `#2A8FF4`             |
+| `--severity-info`     | light `220 10% 46%` / dark `215 15% 55%` | `#6A7181` / `#7B899D` |
 
 **Status pair** (`globals.css:216-219`, `261-264`): `--success` light
 `142 76% 36%` / dark `142 70% 45%`; `--warning` `38 92% 50%` both themes.
@@ -78,13 +78,13 @@ Know these so they aren't cited as precedent for ad-hoc color inside the app.
    do match the token scale exactly** (`:93-101`).
 2. **`lib/config/brand.ts`** is a deliberate third palette for email
    (documented `:1-13`): `bg #0b0e14`, `surface #12151c`, `surfaceRaised
-   #1b1f28`, `border #252a34`, `text #f1f5f9`, `textMuted #9aa6b8`.
+#1b1f28`, `border #252a34`, `text #f1f5f9`, `textMuted #9aa6b8`.
 3. **Store PNGs are a fourth near-black navy**: `#0c0f18`/`#0d1019`/`#0e111a`,
    raised `#13161f`, cards `#171b26`/`#181c27`/`#1d232f`, accent `#60a5fa`.
 4. **`app/global-error.tsx:10` hardcodes `BRAND_TEAL = "#0891b2"`** plus
    `#09090b`, `#fafafa`, `#a1a1aa`, `#71717a`, `#52525b` (`:28-192`). Stale
    brand. Inline hex is unavoidable there (runs outside React/CSS) but the
-   *value* is wrong.
+   _value_ is wrong.
 5. **`components/ui/badge.tsx:16-19` bypasses tokens** for `info`/`success`/
    `warning`/`error` (`bg-blue-500/10 text-blue-600` etc). Hardcoded palette in
    a primitive, and it does not respond to dark mode.
@@ -125,23 +125,23 @@ tracking-tight text-balance`; `h1 text-4xl md:text-5xl`; `h2 text-3xl
 md:text-4xl`; `p leading-7`) — but the landing page **overrides h2 downward
 everywhere**. Actual scale:
 
-| Role | Classes | Cite |
-|---|---|---|
-| Hero H1 | `text-4xl sm:text-5xl lg:text-[3.5rem] font-semibold tracking-tight leading-[1.06] mb-6 text-balance` | `landing-hero.tsx:70` |
-| **Section H2 (canonical)** | `text-2xl sm:text-3xl font-semibold tracking-tight` | 9 landing sections |
-| Page H1 (non-hero) | `text-3xl sm:text-4xl font-semibold tracking-tight mb-5 text-balance` | `app/pricing/page.tsx:77` |
-| Card H3 | `text-base font-semibold tracking-tight text-balance` | `landing-sample-finding.tsx:63` |
-| List-item H3 | `text-sm font-semibold text-foreground` | `landing-features.tsx:43` |
-| Pull-quote | `text-lg sm:text-xl font-medium tracking-tight text-foreground text-balance` | `landing-how-it-works.tsx:31` |
-| Body | `text-muted-foreground leading-relaxed` | `landing-features.tsx:28` |
-| Body (prose) | `text-muted-foreground leading-relaxed text-[15px] sm:text-base` | `landing-how-it-works.tsx:13` |
-| Lead para | `text-base sm:text-lg text-muted-foreground leading-relaxed max-w-xl text-pretty` | `landing-hero.tsx:76` |
-| Secondary body | `text-sm text-muted-foreground leading-relaxed` | `landing-faq.tsx:24` |
-| Eyebrow (accent) | `font-mono text-xs uppercase tracking-wider text-primary` | `landing-features.tsx:22` |
-| Eyebrow (muted) | `text-xs font-medium uppercase tracking-wider text-muted-foreground` | `landing-sample-finding.tsx:90` |
-| Inline code | `font-mono text-xs px-1.5 py-0.5 rounded bg-background border border-border/60 text-foreground` | `landing-sample-finding.tsx:43` |
-| Code block | `p-4 overflow-x-auto text-xs leading-6 font-mono text-foreground/90` | `landing-api-example.tsx:74` |
-| Dense evidence | `p-3 text-[11px] font-mono leading-5` | `landing-sample-finding.tsx:93` |
+| Role                       | Classes                                                                                               | Cite                            |
+| -------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------- |
+| Hero H1                    | `text-4xl sm:text-5xl lg:text-[3.5rem] font-semibold tracking-tight leading-[1.06] mb-6 text-balance` | `landing-hero.tsx:70`           |
+| **Section H2 (canonical)** | `text-2xl sm:text-3xl font-semibold tracking-tight`                                                   | 9 landing sections              |
+| Page H1 (non-hero)         | `text-3xl sm:text-4xl font-semibold tracking-tight mb-5 text-balance`                                 | `app/pricing/page.tsx:77`       |
+| Card H3                    | `text-base font-semibold tracking-tight text-balance`                                                 | `landing-sample-finding.tsx:63` |
+| List-item H3               | `text-sm font-semibold text-foreground`                                                               | `landing-features.tsx:43`       |
+| Pull-quote                 | `text-lg sm:text-xl font-medium tracking-tight text-foreground text-balance`                          | `landing-how-it-works.tsx:31`   |
+| Body                       | `text-muted-foreground leading-relaxed`                                                               | `landing-features.tsx:28`       |
+| Body (prose)               | `text-muted-foreground leading-relaxed text-[15px] sm:text-base`                                      | `landing-how-it-works.tsx:13`   |
+| Lead para                  | `text-base sm:text-lg text-muted-foreground leading-relaxed max-w-xl text-pretty`                     | `landing-hero.tsx:76`           |
+| Secondary body             | `text-sm text-muted-foreground leading-relaxed`                                                       | `landing-faq.tsx:24`            |
+| Eyebrow (accent)           | `font-mono text-xs uppercase tracking-wider text-primary`                                             | `landing-features.tsx:22`       |
+| Eyebrow (muted)            | `text-xs font-medium uppercase tracking-wider text-muted-foreground`                                  | `landing-sample-finding.tsx:90` |
+| Inline code                | `font-mono text-xs px-1.5 py-0.5 rounded bg-background border border-border/60 text-foreground`       | `landing-sample-finding.tsx:43` |
+| Code block                 | `p-4 overflow-x-auto text-xs leading-6 font-mono text-foreground/90`                                  | `landing-api-example.tsx:74`    |
+| Dense evidence             | `p-3 text-[11px] font-mono leading-5`                                                                 | `landing-sample-finding.tsx:93` |
 
 ### B3. Weight and tracking
 
@@ -174,26 +174,26 @@ Both strong headline treatments hard-break with `<br />` rather than wrapping:
 
 ### C1. Section rhythm
 
-| Pattern | Class | Notes |
-|---|---|---|
-| Standard section | `py-16 sm:py-20` | 12 uses repo-wide |
-| Prominent section | `py-16 sm:py-24` | only 2 uses, both "hero moment" sections |
-| Hero (asymmetric) | `pt-12 pb-14 sm:pt-20 sm:pb-20` | `landing-hero.tsx:66` |
-| Section divider | `border-t border-border/50` | 7 sections |
-| Emphasis band | `border-y border-border/50 bg-muted/30` | `landing-sample-finding.tsx:29` |
+| Pattern           | Class                                   | Notes                                    |
+| ----------------- | --------------------------------------- | ---------------------------------------- |
+| Standard section  | `py-16 sm:py-20`                        | 12 uses repo-wide                        |
+| Prominent section | `py-16 sm:py-24`                        | only 2 uses, both "hero moment" sections |
+| Hero (asymmetric) | `pt-12 pb-14 sm:pt-20 sm:pb-20`         | `landing-hero.tsx:66`                    |
+| Section divider   | `border-t border-border/50`             | 7 sections                               |
+| Emphasis band     | `border-y border-border/50 bg-muted/30` | `landing-sample-finding.tsx:29`          |
 
 **`border-border/50` is the divider, not `border-border`.** Full opacity is
 reserved for the footer's outer edge and card outlines.
 
 ### C2. Container widths carry meaning
 
-| Width | Used for |
-|---|---|
-| `max-w-6xl mx-auto px-4 sm:px-6` | the default (33 uses) |
-| `max-w-5xl mx-auto px-4 sm:px-6` | the use-cases definition list |
-| **`max-w-3xl mx-auto px-4 sm:px-6`** | **prose-only sections** (how-it-works, FAQ) |
-| `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8` | footer only |
-| `max-w-2xl` / `max-w-xl` / `max-w-lg` | inner measure caps |
+| Width                                    | Used for                                    |
+| ---------------------------------------- | ------------------------------------------- |
+| `max-w-6xl mx-auto px-4 sm:px-6`         | the default (33 uses)                       |
+| `max-w-5xl mx-auto px-4 sm:px-6`         | the use-cases definition list               |
+| **`max-w-3xl mx-auto px-4 sm:px-6`**     | **prose-only sections** (how-it-works, FAQ) |
+| `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8` | footer only                                 |
+| `max-w-2xl` / `max-w-xl` / `max-w-lg`    | inner measure caps                          |
 
 **Rule: reading-heavy sections narrow to `max-w-3xl`.** Prose at `max-w-6xl`
 is a deviation.
@@ -228,9 +228,9 @@ links · `rounded-md` for buttons · `rounded-full` for pills.
 ### D1. Three card grammars — there is no single "the card"
 
 1. **Content card**: `rounded-xl border border-border bg-card overflow-hidden
-   min-w-0` with an internal `border-b border-border/60` header.
+min-w-0` with an internal `border-b border-border/60` header.
 2. **Accent block (once per page, maximum)**: `rounded-2xl border
-   border-primary/20 bg-primary/10 p-6 sm:p-8` (`landing-features.tsx:21`).
+border-primary/20 bg-primary/10 p-6 sm:p-8` (`landing-features.tsx:21`).
    Quieter sibling `border-primary/25 bg-primary/5` for one flagship table row.
 3. **Quiet surface**: `rounded-lg border border-border/60 bg-card p-4`, or
    `rounded-xl border border-border/60 bg-muted/40` for code.
@@ -248,13 +248,13 @@ card at all — they use dividers and definition lists.
 px-3`, `lg h-11 px-8`, `icon h-10 w-10`. **The landing work always overrides
 size with an explicit height + padding:**
 
-| Role | Usage |
-|---|---|
-| Hero / CTA primary | `<Button size="lg" className="h-11 px-6 gap-2">` |
-| Hero / CTA secondary | `<Button size="lg" variant="outline" className="h-11 px-6">` |
-| Nav | `<Button size="sm" className="h-8 gap-1.5">` |
-| Nav tertiary | `<Button variant="ghost" size="sm" className="h-8">` |
-| In-card utility | `<Button variant="ghost" size="sm" className="h-7 px-2 gap-1.5 text-xs text-muted-foreground hover:text-foreground">` |
+| Role                 | Usage                                                                                                                 |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Hero / CTA primary   | `<Button size="lg" className="h-11 px-6 gap-2">`                                                                      |
+| Hero / CTA secondary | `<Button size="lg" variant="outline" className="h-11 px-6">`                                                          |
+| Nav                  | `<Button size="sm" className="h-8 gap-1.5">`                                                                          |
+| Nav tertiary         | `<Button variant="ghost" size="sm" className="h-8">`                                                                  |
+| In-card utility      | `<Button variant="ghost" size="sm" className="h-7 px-2 gap-1.5 text-xs text-muted-foreground hover:text-foreground">` |
 
 Icons: `h-4 w-4` at `lg`, `h-3.5 w-3.5` at `sm`/`h-7`.
 
@@ -283,22 +283,22 @@ Global pill hover at `globals.css:136-138`.
 ### D4. Data rows — tables and definition lists over cards
 
 1. **Divided `<dl>` row**: `grid grid-cols-1
-   sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)] gap-2 sm:gap-8 py-6` in a
+sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)] gap-2 sm:gap-8 py-6` in a
    `divide-y divide-border/50 border-y border-primary/20` container.
 2. **Mono-term `<dl>` row**: `flex gap-3` with a `font-mono text-xs uppercase
-   tracking-wider text-muted-foreground w-[76px] shrink-0` `<dt>`.
+tracking-wider text-muted-foreground w-[76px] shrink-0` `<dt>`.
 3. **Real semantic table**: `w-full min-w-[560px] text-sm border-collapse`
    inside `overflow-x-auto rounded-xl border border-border/60`, with
    `<caption className="sr-only">`, `<thead>` at `border-b border-border/60
-   bg-muted/30`, `<th scope="col">`, rows at `border-b border-border/40
-   last:border-0 transition-colors hover:bg-muted/20`, `<th scope="row">` on
+bg-muted/30`, `<th scope="col">`, rows at `border-b border-border/40
+last:border-0 transition-colors hover:bg-muted/20`, `<th scope="row">` on
    the first cell.
 4. **`ResponseReadout`** (`components/shared/response-readout.tsx:161-216`) —
    the house signature component. `overflow-hidden rounded-xl border
-   border-border bg-card font-mono`, a `border-b border-border/60 bg-muted/20`
+border-border bg-card font-mono`, a `border-b border-border/60 bg-muted/20`
    request header with `text-primary` method, body rows as `flex items-center
-   justify-between gap-3`, and a `border-t border-border/60 bg-muted/20
-   text-xs` footer showing a **real** finding ID from `generateId()`.
+justify-between gap-3`, and a `border-t border-border/60 bg-muted/20
+text-xs` footer showing a **real** finding ID from `generateId()`.
    `aria-hidden="true"` on the wrapper, one-shot `motion-safe:animate-[...]`
    stagger with `motion-reduce:opacity-100` fallback.
 
@@ -325,8 +325,8 @@ weight AND color, not color alone.**
 `SeverityDistribution` (`:129-190`) is the canonical aggregate: **one
 horizontal `h-2 rounded-full bg-muted` bar with proportional segments plus an
 inline legend, explicitly not five stat cards** (docblock `:125-128`:
-*"Reads as one bar rather than five cards, and the segment widths carry the
-information."*).
+_"Reads as one bar rather than five cards, and the segment widths carry the
+information."_).
 
 ---
 
@@ -341,39 +341,40 @@ information."*).
 - Generic icon-in-rounded-square for every feature item
 - Em dashes in any user-facing text
 
-Named anti-pattern: *"uppercase label → H2 → paragraph → 3 or 6 identical icon
-cards / Rinse and repeat for every section."*
+Named anti-pattern: _"uppercase label → H2 → paragraph → 3 or 6 identical icon
+cards / Rinse and repeat for every section."_
 
 ### E2. What the landing page does instead — nine structurally different sections
 
-| # | Section | Layout |
-|---|---|---|
-| 1 | Hero | 2-col asymmetric `lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]`; copy left, live readout right; inline `<dl>` stat strip on a `border-t` rule |
-| 2 | Sample finding | 2-col **4fr/6fr** (copy is the minority column); tinted band; full realistic finding card with 3-col meta `<dl>` and two `<pre>` blocks |
-| 3 | How it works | **Single-column `max-w-3xl` prose with a `border-l-2 border-primary pl-5 sm:pl-6` pull-quote.** No cards, no numbers, no steps |
-| 4 | Features | **One prominent accent block + a divided list of three.** `lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]` |
-| 5 | Categories | **A real `<table>`** (16 rows) with an `sm:hidden` card alternate; one row gets the accent, the other fifteen deliberately do not |
-| 6 | Use cases | `max-w-5xl` **definition list**, `divide-y divide-border/50 border-y border-primary/20` |
-| 7 | API | 2-col **1.5fr/1fr with the code on the LEFT**; two copyable `CodeBlock`s; a mono-term `<dl>` and two differently-weighted links |
-| 8 | Open source | Left-aligned `max-w-2xl` prose + chip-link row + `grid-cols-2 sm:grid-cols-3` fact `<dl>` |
-| 9 | FAQ / CTA | `max-w-3xl` divided `<dl>`; CTA is `lg:grid-cols-[minmax(0,1fr)_auto]` on `bg-muted/30` |
+| #   | Section        | Layout                                                                                                                                        |
+| --- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Hero           | 2-col asymmetric `lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]`; copy left, live readout right; inline `<dl>` stat strip on a `border-t` rule |
+| 2   | Sample finding | 2-col **4fr/6fr** (copy is the minority column); tinted band; full realistic finding card with 3-col meta `<dl>` and two `<pre>` blocks       |
+| 3   | How it works   | **Single-column `max-w-3xl` prose with a `border-l-2 border-primary pl-5 sm:pl-6` pull-quote.** No cards, no numbers, no steps                |
+| 4   | Features       | **One prominent accent block + a divided list of three.** `lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]`                                     |
+| 5   | Categories     | **A real `<table>`** (16 rows) with an `sm:hidden` card alternate; one row gets the accent, the other fifteen deliberately do not             |
+| 6   | Use cases      | `max-w-5xl` **definition list**, `divide-y divide-border/50 border-y border-primary/20`                                                       |
+| 7   | API            | 2-col **1.5fr/1fr with the code on the LEFT**; two copyable `CodeBlock`s; a mono-term `<dl>` and two differently-weighted links               |
+| 8   | Open source    | Left-aligned `max-w-2xl` prose + chip-link row + `grid-cols-2 sm:grid-cols-3` fact `<dl>`                                                     |
+| 9   | FAQ / CTA      | `max-w-3xl` divided `<dl>`; CTA is `lg:grid-cols-[minmax(0,1fr)_auto]` on `bg-muted/30`                                                       |
 
 **Accent-restraint doctrine, twice documented in code comments:**
-- `landing-categories.tsx:6-11`: *"the one category this table calls out with
-  colour... earns the accent the other fifteen rows deliberately don't get."*
-- `landing-open-source.tsx:18-19`: *"The repo link is the point of this
-  section, so it carries the accent the other two deliberately don't."*
+
+- `landing-categories.tsx:6-11`: _"the one category this table calls out with
+  colour... earns the accent the other fifteen rows deliberately don't get."_
+- `landing-open-source.tsx:18-19`: _"The repo link is the point of this
+  section, so it carries the accent the other two deliberately don't."_
 
 **Zero icon-in-rounded-square instances on the landing page.** Only three
 lucide icons appear across all nine sections. No `md:grid-cols-3` icon grids.
 
-**Illustration doctrine** (`response-readout.tsx:140-146`): *"The actual
+**Illustration doctrine** (`response-readout.tsx:140-146`): _"The actual
 mechanism of the product, rendered as itself: a request line, a status line,
 and the header checks that came back. Not a metaphor for scanning, the literal
-shape of scanning."* Hero severities come from
+shape of scanning."_ Hero severities come from
 `lib/scanner/checks-data/headers.json`; the stat strip uses `checkCount` from
-the live registry, commented *"Real count from the scanner registry, not a
-marketing label."*
+the live registry, commented _"Real count from the scanner registry, not a
+marketing label."_
 
 ### E3. The store-screenshot system
 
@@ -451,22 +452,22 @@ Em dashes are banned and the codebase honors it: the only `—` in `app/` +
 
 Apply to any page. A **No** is a deviation to report, with file:line.
 
-| # | Check | Pass | Fail |
-|---|---|---|---|
-| 1 | Section rhythm | `py-16 sm:py-20` (or `py-16 sm:py-24` for ≤2 prominent sections) | `py-12`, `py-24 md:py-32`, ad-hoc `mt-20` stacking |
-| 2 | Container | `max-w-6xl mx-auto px-4 sm:px-6`; prose narrows to `max-w-3xl` | `container mx-auto`, `max-w-7xl` outside the footer, prose at `max-w-6xl` |
-| 3 | Tokens only | `bg-muted/30`, `bg-card`, `border-border/50`, `text-muted-foreground` | any `bg-gray-*`, `bg-slate-*`, `text-zinc-*`, `bg-[#hex]`, raw brand constants |
-| 4 | Primary is blue and rationed | accent on ≤2 elements per section, on the one that matters | every card has a `text-primary` icon; cyan/teal anywhere; `from-cyan-500 to-blue-500` |
-| 5 | No 3-across identical icon cards | tables, definition lists, divided lists, prose, one-big-plus-three | `grid md:grid-cols-3` of identical Cards each opening with an icon in a tinted rounded square |
-| 6 | Sections don't repeat one template | adjacent sections differ in column count, alignment, width, card use | eyebrow → H2 → paragraph → card grid, three times running |
-| 7 | Heading scale | H2 `text-2xl sm:text-3xl font-semibold tracking-tight` | `text-5xl font-bold` section headers; any `font-bold`; missing `tracking-tight` |
-| 8 | Numbers real and monospaced | from `getCategoryCounts()` / props, `font-mono tabular-nums` | hardcoded "500+", "99.9% uptime", "10,000 developers" |
-| 9 | Severity via `SEVERITY_TONE` | `SEVERITY_TONE[s].*` or `hsl(var(--severity-high))` | `text-red-500`/`bg-orange-100` for a finding; five stat cards instead of one bar |
-| 10 | Shadows near-invisible | `shadow-xs`, or none plus `border-border/60` | `shadow-lg`, `shadow-2xl`, `hover:shadow-xl hover:-translate-y-1` |
-| 11 | Copy states mechanism | "Under 3 seconds. Same URL, same finding IDs." | "Lightning fast", "Enterprise-grade", "Trusted by thousands" |
-| 12 | No em dash in user-facing text | colon, comma, rewrite | `—` inside any JSX string literal |
-| 13 | Focus + semantics | `focus-visible:ring-2 focus-visible:ring-ring` everywhere; real `<dl>`/`<table>` with `scope` and `sr-only` captions | `<div onClick>`, missing focus ring, a div-table, decorative art without `aria-hidden` |
-| 14 | Motion one-shot, reduced-motion safe | `motion-safe:animate-[...]` + `motion-reduce:opacity-100` | infinite `animate-pulse` decoration, parallax, looping scanning animations |
+| #   | Check                                | Pass                                                                                                                 | Fail                                                                                          |
+| --- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| 1   | Section rhythm                       | `py-16 sm:py-20` (or `py-16 sm:py-24` for ≤2 prominent sections)                                                     | `py-12`, `py-24 md:py-32`, ad-hoc `mt-20` stacking                                            |
+| 2   | Container                            | `max-w-6xl mx-auto px-4 sm:px-6`; prose narrows to `max-w-3xl`                                                       | `container mx-auto`, `max-w-7xl` outside the footer, prose at `max-w-6xl`                     |
+| 3   | Tokens only                          | `bg-muted/30`, `bg-card`, `border-border/50`, `text-muted-foreground`                                                | any `bg-gray-*`, `bg-slate-*`, `text-zinc-*`, `bg-[#hex]`, raw brand constants                |
+| 4   | Primary is blue and rationed         | accent on ≤2 elements per section, on the one that matters                                                           | every card has a `text-primary` icon; cyan/teal anywhere; `from-cyan-500 to-blue-500`         |
+| 5   | No 3-across identical icon cards     | tables, definition lists, divided lists, prose, one-big-plus-three                                                   | `grid md:grid-cols-3` of identical Cards each opening with an icon in a tinted rounded square |
+| 6   | Sections don't repeat one template   | adjacent sections differ in column count, alignment, width, card use                                                 | eyebrow → H2 → paragraph → card grid, three times running                                     |
+| 7   | Heading scale                        | H2 `text-2xl sm:text-3xl font-semibold tracking-tight`                                                               | `text-5xl font-bold` section headers; any `font-bold`; missing `tracking-tight`               |
+| 8   | Numbers real and monospaced          | from `getCategoryCounts()` / props, `font-mono tabular-nums`                                                         | hardcoded "500+", "99.9% uptime", "10,000 developers"                                         |
+| 9   | Severity via `SEVERITY_TONE`         | `SEVERITY_TONE[s].*` or `hsl(var(--severity-high))`                                                                  | `text-red-500`/`bg-orange-100` for a finding; five stat cards instead of one bar              |
+| 10  | Shadows near-invisible               | `shadow-xs`, or none plus `border-border/60`                                                                         | `shadow-lg`, `shadow-2xl`, `hover:shadow-xl hover:-translate-y-1`                             |
+| 11  | Copy states mechanism                | "Under 3 seconds. Same URL, same finding IDs."                                                                       | "Lightning fast", "Enterprise-grade", "Trusted by thousands"                                  |
+| 12  | No em dash in user-facing text       | colon, comma, rewrite                                                                                                | `—` inside any JSX string literal                                                             |
+| 13  | Focus + semantics                    | `focus-visible:ring-2 focus-visible:ring-ring` everywhere; real `<dl>`/`<table>` with `scope` and `sr-only` captions | `<div onClick>`, missing focus ring, a div-table, decorative art without `aria-hidden`        |
+| 14  | Motion one-shot, reduced-motion safe | `motion-safe:animate-[...]` + `motion-reduce:opacity-100`                                                            | infinite `animate-pulse` decoration, parallax, looping scanning animations                    |
 
 ### Quick triage heuristic
 

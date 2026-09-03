@@ -14,7 +14,7 @@ both walk the schema and the query layer; 10 and 11 both walk `package.json`, th
 config and `tests/`. Auditing them together costs far less than auditing any two of
 them apart.
 
-This batch is also the first to look at the project's *safety net* rather than its
+This batch is also the first to look at the project's _safety net_ rather than its
 product surface. Sections 1, 2, 9 and 17 (AUDIT-012) asked whether the code is
 correct. This one asks whether anything would catch it if it stopped being correct.
 The answer, in several places, is no, and that is the theme running through the
@@ -26,16 +26,16 @@ findings.
 
 Eight subagents in parallel, each with a disjoint file scope:
 
-| Agent | Section | Scope |
-|---|---|---|
-| `schema` | 12 | all tables in `instrumentation.ts`: FKs and `ON DELETE`, nullability, UNIQUE/CHECK, types, full index audit |
-| `migrate` | 12 | migration runner, the three schema sources, populated-DB failure, rollback, boot concurrency, repair and backup tooling |
-| `deps` | 11 | root manifest: CVE reachability, outdated, abandoned, unused, misplaced, install weight, supply-chain posture |
-| `subdeps` | 11 | `cli/`, `extension/`, `marketing/`, cross-manifest drift, tracked-artifact check |
-| `cov` | 10 | a real coverage run, untested paths ranked by failure cost, regression tests for prior audit fixes |
-| `tq` | 10 | tests that assert nothing, tests that pass with the feature removed, over-mocking, flaky patterns, CI wiring |
-| `dead` | 16 | import graph, unused exports, unreachable branches, built-but-unreachable features, TODOs |
-| `dup` | 16 | already-drifted duplicate logic, duplicate UI primitives, error and success shape inventory, config surfaces |
+| Agent     | Section | Scope                                                                                                                   |
+| --------- | ------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `schema`  | 12      | all tables in `instrumentation.ts`: FKs and `ON DELETE`, nullability, UNIQUE/CHECK, types, full index audit             |
+| `migrate` | 12      | migration runner, the three schema sources, populated-DB failure, rollback, boot concurrency, repair and backup tooling |
+| `deps`    | 11      | root manifest: CVE reachability, outdated, abandoned, unused, misplaced, install weight, supply-chain posture           |
+| `subdeps` | 11      | `cli/`, `extension/`, `marketing/`, cross-manifest drift, tracked-artifact check                                        |
+| `cov`     | 10      | a real coverage run, untested paths ranked by failure cost, regression tests for prior audit fixes                      |
+| `tq`      | 10      | tests that assert nothing, tests that pass with the feature removed, over-mocking, flaky patterns, CI wiring            |
+| `dead`    | 16      | import graph, unused exports, unreachable branches, built-but-unreachable features, TODOs                               |
+| `dup`     | 16      | already-drifted duplicate logic, duplicate UI primitives, error and success shape inventory, config surfaces            |
 
 Every agent read prior findings in its area first and was required to confirm each
 finding at a live `file:line`. Output was machine-validated: schema keys, enum values,
@@ -49,28 +49,28 @@ headline claims were then re-verified by hand at the merge step (see assumption 
 114 findings: 0 critical, 15 high, 41 medium, 47 low, 11 info. Sorted
 severity-descending. 72 distinct files cited.
 
-| # | Section | This run | Status | Findings |
-|---|---|---|---|---|
-| 1 | Correctness and security | AUDIT-012 | complete | 37 |
-| 2 | SSRF and scan abuse | AUDIT-012 | complete | 22 |
-| 3 | Client-visible breakage | AUDIT-011 | complete | 38 |
-| 4 | UI fixes, mobile and desktop | AUDIT-011 | complete | 27 |
-| 5 | Design consistency | AUDIT-011 | **PARTIAL** | 6 |
-| 6 | The scanning page | AUDIT-011 | **PARTIAL** | 8 |
-| 7 | UI quality of life | AUDIT-011 | **PARTIAL** | 4 |
-| 8 | Backend / frontend capability drift | AUDIT-011 | complete | 26 |
-| 9 | Performance | AUDIT-012 | complete | 44 |
-| 10 | Tests | yes | **COMPLETE** | 30 |
-| 11 | Dependencies | yes | **COMPLETE** | 28 |
-| 12 | Database and migrations | yes | **COMPLETE** | 30 |
-| 13 | Build and deploy | no | outstanding | 2 (incidental) |
-| 14 | Documentation | no | outstanding | 2 (incidental) |
-| 15 | Hardcoded values | no | outstanding | none |
-| 16 | Consistency and dead code | yes | **COMPLETE** | 26 |
-| 17 | Error handling and observability | AUDIT-012 | complete | 11 |
-| 18 | Accessibility and states | no | outstanding | none |
-| 19 | Discoverability and marketing surface | no | outstanding | none |
-| 20 | Competitive gaps | no | outstanding | none |
+| #   | Section                               | This run  | Status       | Findings       |
+| --- | ------------------------------------- | --------- | ------------ | -------------- |
+| 1   | Correctness and security              | AUDIT-012 | complete     | 37             |
+| 2   | SSRF and scan abuse                   | AUDIT-012 | complete     | 22             |
+| 3   | Client-visible breakage               | AUDIT-011 | complete     | 38             |
+| 4   | UI fixes, mobile and desktop          | AUDIT-011 | complete     | 27             |
+| 5   | Design consistency                    | AUDIT-011 | **PARTIAL**  | 6              |
+| 6   | The scanning page                     | AUDIT-011 | **PARTIAL**  | 8              |
+| 7   | UI quality of life                    | AUDIT-011 | **PARTIAL**  | 4              |
+| 8   | Backend / frontend capability drift   | AUDIT-011 | complete     | 26             |
+| 9   | Performance                           | AUDIT-012 | complete     | 44             |
+| 10  | Tests                                 | yes       | **COMPLETE** | 30             |
+| 11  | Dependencies                          | yes       | **COMPLETE** | 28             |
+| 12  | Database and migrations               | yes       | **COMPLETE** | 30             |
+| 13  | Build and deploy                      | no        | outstanding  | 2 (incidental) |
+| 14  | Documentation                         | no        | outstanding  | 2 (incidental) |
+| 15  | Hardcoded values                      | no        | outstanding  | none           |
+| 16  | Consistency and dead code             | yes       | **COMPLETE** | 26             |
+| 17  | Error handling and observability      | AUDIT-012 | complete     | 11             |
+| 18  | Accessibility and states              | no        | outstanding  | none           |
+| 19  | Discoverability and marketing surface | no        | outstanding  | none           |
+| 20  | Competitive gaps                      | no        | outstanding  | none           |
 
 **Sections still outstanding: 13, 14, 15, 18, 19, 20, plus the unfinished halves of
 5, 6 and 7 from AUDIT-011.** Fourteen of twenty sections are now complete.

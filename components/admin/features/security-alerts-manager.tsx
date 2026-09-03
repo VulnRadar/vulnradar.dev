@@ -23,6 +23,7 @@ import {
   StatusPill,
 } from "@/components/admin/shared";
 import { cn } from "@/lib/ui/utils";
+import { SEVERITY_PRIORITY } from "@/lib/config/client-constants";
 
 interface SecurityAlert {
   id: number;
@@ -75,13 +76,13 @@ const severityConfig = {
  * Triage order. The list used to render in raw server order, so a `critical`
  * could sit below three `low`s on the one surface whose entire job is "what do
  * I deal with first".
+ *
+ * SEVERITY_PRIORITY is the product-wide table. It carries an `info` rung this
+ * alert type does not use, which costs nothing: only the four keys below are
+ * ever looked up. ref: AUDIT-013#dup-02
  */
-const SEVERITY_RANK: Record<SecurityAlert["severity"], number> = {
-  critical: 3,
-  high: 2,
-  medium: 1,
-  low: 0,
-};
+const SEVERITY_RANK: Record<SecurityAlert["severity"], number> =
+  SEVERITY_PRIORITY;
 
 /**
  * Row weight by severity. `severityConfig` above colours the badge, the icon

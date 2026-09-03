@@ -16,36 +16,11 @@
   "createdAt": "2026-08-28T00:00:00Z",
   "closedAt": null,
   "status": "in_progress",
-  "sectionsCovered": [
-    1,
-    2,
-    9,
-    17
-  ],
-  "sectionsOutstanding": [
-    10,
-    11,
-    12,
-    13,
-    14,
-    15,
-    16,
-    18,
-    19,
-    20
-  ],
-  "sectionsPartialFromPriorRuns": [
-    5,
-    6,
-    7
-  ],
+  "sectionsCovered": [1, 2, 9, 17],
+  "sectionsOutstanding": [10, 11, 12, 13, 14, 15, 16, 18, 19, 20],
+  "sectionsPartialFromPriorRuns": [5, 6, 7],
   "summary": "Second batch of the twenty-section brief, covering the correctness/security, SSRF and scan-abuse, performance, and error-handling/observability cluster, all four of which share a reading path through lib/ and app/api/. Nine parallel read-only agents. Verified that the fixes from all ten prior security audits still hold, including no IDOR and no mass assignment across the 155 API routes, then found what those audits never reached: one critical unauthenticated ReDoS that pins the Node event loop, four unmetered scan paths that defeat plan quota, an unbounded body read caused by the abort signal being detached once headers arrive, and an alerting mechanism that reports success on total failure.",
-  "sectionsComplete": [
-    1,
-    2,
-    9,
-    17
-  ],
+  "sectionsComplete": [1, 2, 9, 17],
   "findingsCount": 114,
   "severityCounts": {
     "critical": 1,

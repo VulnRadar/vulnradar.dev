@@ -820,11 +820,35 @@ export const FEATURES = {
 
 // VULNERABILITY SEVERITY ORDER
 //
-// The sort key the results list and the report renderers share. Note that
-// this is one of several severity orderings in the tree under mutually
-// incompatible numeric conventions; do not consolidate the others onto it
-// without checking each one's direction first.
-export const SEVERITY_PRIORITY = {
+// The single ordering. Everything that sorts, compares or iterates severities
+// reads one of these two exports.
+//
+// SEVERITY_ORDER is worst-first, which is the order a results list, a report
+// section and an AI prompt all render in. SEVERITY_PRIORITY is the numeric
+// form of the same thing, higher meaning worse, so a worst-first sort is
+// always `SEVERITY_PRIORITY[b.severity] - SEVERITY_PRIORITY[a.severity]` and
+// "at least this bad" is always `>=`.
+//
+// This used to be nine private tables under three mutually incompatible
+// numeric conventions: critical counted down from 5 in two of them, up from 0
+// in four, and up from 0 with info at the bottom in three, with two of the
+// nine sharing the identifier SEVERITY_RANK. A comparator copied from one
+// file into another silently inverted, and nothing typechecked differently.
+// ref: AUDIT-013#dup-02
+export const SEVERITY_ORDER = [
+  "critical",
+  "high",
+  "medium",
+  "low",
+  "info",
+] as const;
+
+/** The severity names, in the order above. Structurally the same union as
+ *  `Severity` in lib/scanner/types.ts, declared here so this module (which
+ *  every `"use client"` file may import) stays free of scanner imports. */
+export type SeverityName = (typeof SEVERITY_ORDER)[number];
+
+export const SEVERITY_PRIORITY: Record<SeverityName, number> = {
   critical: 5,
   high: 4,
   medium: 3,

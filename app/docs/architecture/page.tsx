@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/config/constants";
 import { STAFF_ROLE_HIERARCHY } from "@/lib/config/client-constants";
+import { ALL_CATEGORIES } from "@/lib/scanner/types";
+import { WEBSOCKET_CHECK_IDS } from "@/lib/scanner/protocols/websocket";
+import { FTP_CHECK_IDS } from "@/lib/scanner/protocols/ftp";
 // EXACT_CHECK_COUNT is deliberately not imported here. Prose uses
 // TOTAL_CHECKS_LABEL; the exact figure belongs only where a number is the
 // only valid shape, which on the docs site is the API reference's JSON
@@ -102,12 +105,12 @@ export default function ArchitecturePage() {
 │   ├── auth/                     # Sessions, 2FA, password hashing, device trust
 │   ├── billing/                  # Stripe + plan catalog
 │   ├── config/                   # Configuration system
-│   ├── database/                 # PostgreSQL pool, query helpers, cleanup
+│   ├── database/                 # Pool, query helpers, boot/ and schema/
 │   ├── discord/                  # Discord OAuth helpers
 │   ├── email/                    # Transactional email (SMTP)
 │   ├── notifications/            # In-app + email notification preferences
 │   ├── rate-limiting/            # Generic + plan-based rate limits
-│   ├── reports/                  # PDF report generation
+│   ├── reports/                  # SARIF, Markdown, compliance, PDF reports
 │   ├── scanner/                  # Detection engine
 │   ├── types/                    # Shared TypeScript types
 │   └── uploads/                  # Avatar validation
@@ -209,9 +212,21 @@ export default function ArchitecturePage() {
               <InlineCode>DATABASE_SSL_CA</InlineCode> respected)
             </li>
             <li>
-              <strong className="text-foreground">Schema:</strong> 40 tables
-              created by <InlineCode>instrumentation.ts</InlineCode> at app
-              startup using <InlineCode>CREATE TABLE IF NOT EXISTS</InlineCode>
+              <strong className="text-foreground">Schema:</strong> every{" "}
+              <InlineCode>CREATE</InlineCode> / <InlineCode>ALTER</InlineCode> /{" "}
+              <InlineCode>DROP</InlineCode> lives in{" "}
+              <InlineCode>lib/database/schema/</InlineCode> as one ordered list
+              of steps (<InlineCode>01-core</InlineCode>,{" "}
+              <InlineCode>02-features</InlineCode>,{" "}
+              <InlineCode>03-integrations</InlineCode>,{" "}
+              <InlineCode>04-constraints</InlineCode>,{" "}
+              <InlineCode>seeds</InlineCode>), applied at boot by{" "}
+              <InlineCode>lib/database/boot/apply-boot-schema.ts</InlineCode>{" "}
+              and by <InlineCode>npm run db:create</InlineCode>. It used to be
+              4,000 lines of template literals inside{" "}
+              <InlineCode>instrumentation.ts</InlineCode>, which is why a
+              database built by <InlineCode>db:create</InlineCode> silently
+              missed constraints no tool could extract from that file
             </li>
             <li>
               <strong className="text-foreground">Schema version gate:</strong>{" "}
@@ -388,10 +403,11 @@ export default function ArchitecturePage() {
             <li>
               <InlineCode>lib/scanner/protocols/</InlineCode>: protocol-specific
               warnings: <InlineCode>https.ts</InlineCode>,{" "}
-              <InlineCode>websocket.ts</InlineCode> (8 check IDs),{" "}
-              <InlineCode>ftp.ts</InlineCode> (4 check IDs),{" "}
-              <InlineCode>banner.ts</InlineCode> (TCP banner-grab for service
-              probes: ssh, smtp, imap, pop3, ftp, mongodb)
+              <InlineCode>websocket.ts</InlineCode> (
+              {WEBSOCKET_CHECK_IDS.length} check IDs),{" "}
+              <InlineCode>ftp.ts</InlineCode> ({FTP_CHECK_IDS.length} check
+              IDs), <InlineCode>banner.ts</InlineCode> (TCP banner-grab used by
+              the port sweep below)
             </li>
             <li>
               <InlineCode>lib/scanner/safe-fetch.ts</InlineCode>: SSRF
@@ -410,36 +426,44 @@ export default function ArchitecturePage() {
               for badges
             </li>
           </ul>
+          {/* Rendered from ALL_CATEGORIES rather than typed out. The hand-
+              written copy said "16 total" and listed 16, having missed
+              `reputation` and `active-probes` when they were added, while
+              EXACT_CHECK_CATEGORY_COUNT two paragraphs above already said 18.
+              A page cannot contradict itself about the same list twice if
+              only one of the two is written by hand. */}
           <p className="text-sm text-muted-foreground">
-            Categories (<InlineCode>lib/scanner/types.ts</InlineCode>, 16
-            total): <InlineCode>headers</InlineCode>,{" "}
-            <InlineCode>ssl</InlineCode>, <InlineCode>tls</InlineCode>,{" "}
-            <InlineCode>content</InlineCode>, <InlineCode>cookies</InlineCode>,{" "}
-            <InlineCode>configuration</InlineCode>,{" "}
-            <InlineCode>information-disclosure</InlineCode>,{" "}
-            <InlineCode>dns</InlineCode>, <InlineCode>email</InlineCode>,{" "}
-            <InlineCode>api</InlineCode>, <InlineCode>code</InlineCode>,{" "}
-            <InlineCode>secrets-extended</InlineCode>,{" "}
-            <InlineCode>vibe-code</InlineCode>,{" "}
-            <InlineCode>client-side</InlineCode>,{" "}
-            <InlineCode>supply-chain</InlineCode>,{" "}
-            <InlineCode>host-validation</InlineCode>. Severities:{" "}
+            Categories (<InlineCode>lib/scanner/types.ts</InlineCode>): the{" "}
+            <InlineCode>Category</InlineCode> union has{" "}
+            {ALL_CATEGORIES.length + 1} members. {ALL_CATEGORIES.length} of them
+            are in <InlineCode>ALL_CATEGORIES</InlineCode> and run by default:{" "}
+            {ALL_CATEGORIES.map((category, i) => (
+              <span key={category}>
+                {i > 0 && ", "}
+                <InlineCode>{category}</InlineCode>
+              </span>
+            ))}
+            . The remaining one, <InlineCode>active-probes</InlineCode>, is
+            deliberately left out of that list because it writes to the target,
+            so it runs only when a request names it explicitly. Severities:{" "}
             <InlineCode>info</InlineCode>, <InlineCode>low</InlineCode>,{" "}
             <InlineCode>medium</InlineCode>, <InlineCode>high</InlineCode>,{" "}
             <InlineCode>critical</InlineCode>.
           </p>
           <p className="text-sm text-muted-foreground">
-            Service probes (
-            <InlineCode>lib/scanner/protocols/banner.ts</InlineCode>) open a
-            bounded TCP socket to the target hostname on a well-known or
-            user-supplied port, read the greeting, and report version disclosure
-            and reachability. The 6 supported probes are{" "}
-            <InlineCode>ssh</InlineCode>, <InlineCode>smtp</InlineCode>,{" "}
-            <InlineCode>imap</InlineCode>, <InlineCode>pop3</InlineCode>,{" "}
-            <InlineCode>ftp</InlineCode>, and <InlineCode>mongodb</InlineCode>.
-            Probes are independent of the URL scheme: opt into{" "}
-            <InlineCode>{`"probes": ["ssh:2222"]`}</InlineCode> from the
-            dashboard without constructing <InlineCode>ssh://host</InlineCode>.
+            The port and service sweep (
+            <InlineCode>lib/scanner/port-scan.ts</InlineCode>) probes a curated
+            set of well-known ports on the target host with bounded concurrency,
+            a short per-port connect timeout, and an overall deadline, never a
+            full 65535 sweep. Each open port is reported with the service
+            usually found there and whatever banner it volunteered;{" "}
+            <InlineCode>lib/scanner/protocols/banner.ts</InlineCode> holds the
+            per-protocol greetings and port allowlists used to read those
+            banners and report version disclosure. It is opt-in per scan with{" "}
+            <InlineCode>{`"portScan": true`}</InlineCode> and gated on the same
+            verified-domain check as active probing. The earlier per-service{" "}
+            <InlineCode>{`"probes": ["ssh:2222"]`}</InlineCode> array no longer
+            exists: it was collapsed into that single boolean.
           </p>
         </DocsSubSection>
 
@@ -614,9 +638,12 @@ Route handler (app/api/v3/<resource>/route.ts)
   │
   ▼
 instrumentation.ts (server startup only)
-  - Initialize/verify DB schema on first boot
+  - Validate env, install error-log capture
   - Read vulnradar_schema_meta; refuse to start if version < required
-  - Add api_keys.key_locator column if missing (v2.3.x delta)`}
+  - Take a boot advisory lock, then, inside it:
+      apply lib/database/schema/ -> backfills -> cleanup + workers
+      -> safety nets. A failure in any of them exits rather than
+      serving traffic against a half-built database.`}
         />
       </DocsSection>
 

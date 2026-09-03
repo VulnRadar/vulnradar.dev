@@ -37,15 +37,11 @@ import pool from "@/lib/database/db";
 import {
   APP_NAME,
   SEVERITY_LEVELS,
+  SEVERITY_PRIORITY,
   DEFAULT_SCAN_NOTE,
 } from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
-import type {
-  Vulnerability,
-  Severity,
-  Category,
-  ScanProgressHook,
-} from "./types";
+import type { Vulnerability, Category, ScanProgressHook } from "./types";
 import { checkAccessRules } from "./access-rules";
 import { safeFetch } from "./safe-fetch";
 import { safeReadBody } from "./read-bounded-body";
@@ -75,14 +71,6 @@ import {
 } from "./software-inventory";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { criticalFindingsEmail } from "@/lib/email/email";
-
-const SEVERITY_ORDER: Record<Severity, number> = {
-  critical: 0,
-  high: 1,
-  medium: 2,
-  low: 3,
-  info: 4,
-};
 
 /**
  * Pages in flight at once. Deliberately small: a crawl is still a stranger's
@@ -242,8 +230,11 @@ async function scanSingleUrl(
     if (asyncTimeoutHandle) clearTimeout(asyncTimeoutHandle);
   }
 
+  // Worst first. SEVERITY_PRIORITY counts UP with severity, so this comparator
+  // subtracts b from a, unlike the local table it replaced (which counted
+  // critical down from 0). ref: AUDIT-013#dup-02
   const findings = [...syncFindings, ...asyncFindings].sort(
-    (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity],
+    (a, b) => SEVERITY_PRIORITY[b.severity] - SEVERITY_PRIORITY[a.severity],
   );
 
   const summary = {
@@ -712,7 +703,7 @@ export async function executeCrawlScan(
     }
 
     allFindings.sort(
-      (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity],
+      (a, b) => SEVERITY_PRIORITY[b.severity] - SEVERITY_PRIORITY[a.severity],
     );
 
     // Post-processing enrichment: attach CISA KEV / FIRST.org EPSS

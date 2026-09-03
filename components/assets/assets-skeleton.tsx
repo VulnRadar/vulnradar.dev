@@ -23,7 +23,10 @@ export function AssetsDataSkeleton() {
     <SkeletonRegion label="Loading your hosts">
       {/* Three, not the default four: AssetsStats dropped its host-count cell
           (the h1 subtitle above already states that number), so a four-cell
-          placeholder would reflow the moment the data lands. */}
+          placeholder would reflow the moment the data lands. The column
+          override is the same one AssetsStats carries, and for the same
+          reason; without it here the placeholder is 3-up on a phone and the
+          loaded strip is 1-up, so the page jumps on load. */}
       <StatStripSkeleton cells={3} />
       <SkeletonRows rows={6} trailing={[16, 20, 14]} />
     </SkeletonRegion>

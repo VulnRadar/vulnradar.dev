@@ -490,7 +490,11 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
               >
                 {i + 1}
               </span>
-              <span className="truncate">{code}</span>
+              {/* break-all, not truncate. This is the one screen where a
+                  backup code is ever shown, and a clipped code is a code the
+                  reader cannot write down: the ellipsis hides the loss rather
+                  than reporting it. Breaking is the safe failure. */}
+              <span className="break-all">{code}</span>
             </li>
           ))}
         </ul>

@@ -203,7 +203,7 @@ export default function AiDocsPage() {
               method: "POST",
               endpoint: "/ai/chat",
               auth: "Session",
-              what: "Streams Vera's reply as plain text. Free (not metered against the token cap), 60 messages per user per hour.",
+              what: "Streams Vera's reply as plain text. Never refused for being over the token cap, and never spends purchased AI credits; capped instead at 60 messages per user per hour.",
             },
             {
               method: "GET",
@@ -340,9 +340,11 @@ export default function AiDocsPage() {
             <InlineCode>?regenerate=true</InlineCode> to force a fresh one.
           </li>
           <li>
-            <strong className="text-foreground">Free</strong>: like chat, it is
-            not gated on the token budget. Usage is still recorded for admin
-            cost visibility, but it never blocks the request.
+            <strong className="text-foreground">Never refused</strong>: like
+            chat, it is not gated on the token budget, so a spent budget does
+            not block a summary. Its tokens are still recorded into the window
+            counter, and unlike chat they can draw down a purchased AI credit
+            balance once the plan&rsquo;s window allowance is gone.
           </li>
           <li>
             <strong className="text-foreground">Ask a follow-up</strong>: the
@@ -475,10 +477,13 @@ curl -sS -X POST "${APP_URL}/api/v3/history/SCAN_PUBLIC_ID/summary?regenerate=tr
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
           When you use {APP_NAME}&rsquo;s managed AI, the metered features draw
           from a per-plan token budget that refills on a fixed window. Finding
-          verification (and GitHub repo review) are metered against it; chat,
-          scan summaries, and auto-tags are free and never counted against the
-          cap, though their usage is still recorded for cost visibility.
-          Bringing your own key removes the cap entirely.
+          verification (and GitHub repo review) are <em>gated</em> on it: over
+          the cap, the call is refused. Chat, scan summaries, and auto-tags are
+          free in the sense that matters most, which is that they are never
+          refused. They are not invisible, though: every one of them records its
+          tokens into the same per-window counter, so a long chat session does
+          reduce what is left for verification later in that window. Bringing
+          your own key removes the cap entirely.
         </p>
 
         <DocsTable
@@ -543,7 +548,9 @@ curl -sS -X POST "${APP_URL}/api/v3/history/SCAN_PUBLIC_ID/summary?regenerate=tr
           plan&rsquo;s free per-window allowance already covers never touches
           credits, and only the portion of a call that lands above the ceiling
           is charged against the balance. The balance carries over between
-          windows; it only goes up on a purchase and down on spend.
+          windows; it only goes up on a purchase and down on spend. Vera chat is
+          the one AI feature that never spends it: the balance is bought for
+          verification, so a chat turn records its window usage and stops there.
         </p>
 
         <DocsTable

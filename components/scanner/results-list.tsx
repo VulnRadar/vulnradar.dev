@@ -534,7 +534,10 @@ export function ResultsList({
               onClick={() => setSearchQuery("")}
               aria-label="Clear filter"
               className={cn(
-                "absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors",
+                // Same trick as components/scanner/inline-auth-form.tsx: the
+                // after: overlay widens the tap area to 44px without growing
+                // the 24px icon box, which has to stay inside the h-9 field.
+                "absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors after:absolute after:-inset-2.5 hover:bg-muted hover:text-foreground",
                 FOCUS_RING,
               )}
             >

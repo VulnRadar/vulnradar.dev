@@ -15,7 +15,28 @@ import {
   FIELDS_BY_GROUP,
 } from "@/components/admin/features/settings-registry-utils";
 import { AI_MODEL_CATALOG } from "@/lib/ai/model-catalog";
+import { KNOWN_PROVIDER_BASE_URLS } from "@/lib/ai/provider";
 import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/config/constants";
+import {
+  CONFIG_BILLING_FREE_RETENTION,
+  CONFIG_BILLING_CORE_SUPPORTER_RETENTION,
+  CONFIG_BILLING_PRO_SUPPORTER_RETENTION,
+  CONFIG_BILLING_ELITE_SUPPORTER_RETENTION,
+  CONFIG_CRAWL_SCAN_TIMEOUT_SECONDS,
+} from "@/lib/config/config-values";
+
+/** Build-tier keys, counted from the registry rather than restated. The three
+ *  numbers in the prose below were hand-written and had no way to notice a new
+ *  SOCIAL_* or SEO_* entry landing beside them. */
+const BUILD_TIER_KEYS = Object.entries(SETTINGS_REGISTRY)
+  .filter(([, def]) => def.tier === "build")
+  .map(([key]) => key);
+const BUILD_TIER_SOCIAL_COUNT = BUILD_TIER_KEYS.filter((k) =>
+  k.startsWith("SOCIAL_"),
+).length;
+const BUILD_TIER_SEO_COUNT = BUILD_TIER_KEYS.filter((k) =>
+  k.startsWith("SEO_"),
+).length;
 
 const tocItems: TocItem[] = [
   { id: "overview", label: "Overview" },
@@ -358,6 +379,12 @@ export default function ConfigPage() {
               (default: <InlineCode>1800</InlineCode>)
             </li>
             <li>
+              <InlineCode>CONFIG_CRAWL_SCAN_TIMEOUT_SECONDS</InlineCode>{" "}
+              (default:{" "}
+              <InlineCode>{CONFIG_CRAWL_SCAN_TIMEOUT_SECONDS}</InlineCode>
+              ): a crawl runs under its own, larger budget than a single URL.
+            </li>
+            <li>
               <InlineCode>CONFIG_DEFAULT_SEVERITY_THRESHOLD</InlineCode>{" "}
               (default: <InlineCode>low</InlineCode>)
             </li>
@@ -534,20 +561,18 @@ export default function ConfigPage() {
               (default: <InlineCode>500</InlineCode>)
             </li>
             <li>
-              <InlineCode>CONFIG_BILLING_FREE_RETENTION</InlineCode> (default:{" "}
-              <InlineCode>30</InlineCode> days)
-            </li>
-            <li>
-              <InlineCode>CONFIG_BILLING_CORE_SUPPORTER_RETENTION</InlineCode>{" "}
-              (default: <InlineCode>90</InlineCode> days)
-            </li>
-            <li>
-              <InlineCode>CONFIG_BILLING_PRO_SUPPORTER_RETENTION</InlineCode>{" "}
-              (default: <InlineCode>-1</InlineCode> = forever)
-            </li>
-            <li>
+              <InlineCode>CONFIG_BILLING_FREE_RETENTION</InlineCode> (
+              {CONFIG_BILLING_FREE_RETENTION}),{" "}
+              <InlineCode>CONFIG_BILLING_CORE_SUPPORTER_RETENTION</InlineCode> (
+              {CONFIG_BILLING_CORE_SUPPORTER_RETENTION}),{" "}
+              <InlineCode>CONFIG_BILLING_PRO_SUPPORTER_RETENTION</InlineCode> (
+              {CONFIG_BILLING_PRO_SUPPORTER_RETENTION}),{" "}
               <InlineCode>CONFIG_BILLING_ELITE_SUPPORTER_RETENTION</InlineCode>{" "}
-              (default: <InlineCode>-1</InlineCode> = forever)
+              ({CONFIG_BILLING_ELITE_SUPPORTER_RETENTION}): scan-history
+              retention in days per plan. <InlineCode>-1</InlineCode>, the
+              shipped value on every plan, means keep forever. A stored result
+              is small enough that age-based deletion is not worth the data
+              loss; set a positive number per plan if you want a window back.
             </li>
             <li>
               <InlineCode>CONFIG_BILLING_UNLIMITED_MODE_LIMIT</InlineCode>{" "}
@@ -586,13 +611,15 @@ export default function ConfigPage() {
               other running instance within the cache TTL.
             </li>
             <li>
-              <strong className="text-foreground">Build</strong>: the 38
-              General, Social, Branding, and SEO fields (app name, slug,
-              description, app URL, repo, logo, colours, footer text, the 9{" "}
-              <InlineCode>SOCIAL_*</InlineCode> account URLs, the 13{" "}
-              <InlineCode>SEO_*</InlineCode> keys, and a couple of client-side
-              limits). These are compiled into the app. Saving one writes the
-              database row and the admin panel shows it back to you, but{" "}
+              <strong className="text-foreground">Build</strong>: the{" "}
+              {BUILD_TIER_KEYS.length} fields in the General, Social, Branding
+              and SEO groups (app name, slug, description, app URL, repo, logo,
+              colours, footer text, the {BUILD_TIER_SOCIAL_COUNT}{" "}
+              <InlineCode>SOCIAL_*</InlineCode> account URLs, the{" "}
+              {BUILD_TIER_SEO_COUNT} <InlineCode>SEO_*</InlineCode> keys) plus a
+              couple of client-side limits. These are compiled into the app.
+              Saving one writes the database row and the admin panel shows it
+              back to you, but{" "}
               <strong className="text-foreground">
                 nothing reads that row
               </strong>
@@ -907,7 +934,11 @@ export default function ConfigPage() {
           </ul>
           <p className="text-sm text-muted-foreground">
             Turnstile is auto-enabled when the site key is present. It protects
-            signup, password reset, contact form, and landing-contact.
+            the four unauthenticated write endpoints that verify a token:
+            signup, the contact form, the landing-page contact form, and support
+            ticket creation. Password reset is not one of them; that flow is
+            defended by <InlineCode>RATE_LIMIT_FORGOT_PASSWORD_*</InlineCode>{" "}
+            per IP and per email address instead.
           </p>
         </DocsSubSection>
 
@@ -998,15 +1029,17 @@ export default function ConfigPage() {
             </li>
             <li>
               <InlineCode>AI_PROVIDER</InlineCode>: shorthand for a known
-              provider (<InlineCode>openai</InlineCode>,{" "}
-              <InlineCode>anthropic</InlineCode>,{" "}
-              <InlineCode>minimax</InlineCode>, <InlineCode>groq</InlineCode>,{" "}
-              <InlineCode>mistral</InlineCode>,{" "}
-              <InlineCode>openrouter</InlineCode>,{" "}
-              <InlineCode>ollama</InlineCode>, <InlineCode>lmstudio</InlineCode>
-              , <InlineCode>together</InlineCode>,{" "}
-              <InlineCode>deepseek</InlineCode>) instead of a full URL. Ignored
-              if <InlineCode>AI_BASE_URL</InlineCode> is set.
+              provider instead of a full URL. The accepted values are the keys
+              of <InlineCode>KNOWN_PROVIDER_BASE_URLS</InlineCode> in{" "}
+              <InlineCode>lib/ai/provider.ts</InlineCode>, rendered here so the
+              two cannot drift:{" "}
+              {Object.keys(KNOWN_PROVIDER_BASE_URLS).map((provider, i, all) => (
+                <span key={provider}>
+                  <InlineCode>{provider}</InlineCode>
+                  {i < all.length - 1 ? ", " : ""}
+                </span>
+              ))}
+              . Ignored if <InlineCode>AI_BASE_URL</InlineCode> is set.
             </li>
             <li>
               <InlineCode>AI_MODEL</InlineCode>: model id to call. If unset,{" "}
@@ -1118,10 +1151,25 @@ export default function ConfigPage() {
               <InlineCode>POSTGRES_DB</InlineCode>
             </li>
             <li>
-              <InlineCode>APP_PORT</InlineCode> (default 3000),{" "}
-              <InlineCode>DB_PORT</InlineCode> (default 5432)
+              <InlineCode>APP_PORT</InlineCode> (default 3000): the host port
+              the app is published on.
+            </li>
+            <li>
+              <InlineCode>HOST_BIND</InlineCode> (default{" "}
+              <InlineCode>127.0.0.1</InlineCode>): the interface that port binds
+              to. The compose file assumes a reverse proxy on the same host; set{" "}
+              <InlineCode>0.0.0.0</InlineCode> to publish on every interface and
+              firewall it yourself.
             </li>
           </ul>
+          <p className="max-w-[68ch] text-sm text-muted-foreground">
+            <InlineCode>DB_PORT</InlineCode> is still in{" "}
+            <InlineCode>.env.example</InlineCode> but is read by nothing:{" "}
+            <InlineCode>docker-compose.yml</InlineCode> publishes no host port
+            for Postgres at all, so the database is reachable only from inside
+            the compose network at <InlineCode>postgres:5432</InlineCode>.
+            Setting it changes nothing.
+          </p>
         </DocsSubSection>
       </DocsSection>
 

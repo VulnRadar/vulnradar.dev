@@ -63,7 +63,7 @@ export function TeamInviteForm({
           type="button"
           onClick={onClose}
           aria-label="Close the invite form"
-          className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md shrink-0 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring sm:h-auto sm:w-auto sm:p-1"
         >
           <X className="h-4 w-4" aria-hidden="true" />
         </button>

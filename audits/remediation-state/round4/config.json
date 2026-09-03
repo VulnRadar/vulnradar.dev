@@ -11,9 +11,7 @@
     "effort": "small",
     "category": "ci-gating",
     "file": ".github/workflows/ci.yml",
-    "files": [
-      ".github/workflows/ci.yml"
-    ],
+    "files": [".github/workflows/ci.yml"],
     "line": 43,
     "description": "I queried the public GitHub API for this repository. `GET /repos/VulnRadar/vulnradar.dev/branches/main` returns `protected: false` with `protection.required_status_checks.enforcement_level: \"off\"` and empty `contexts` and `checks` arrays; `GET /repos/VulnRadar/vulnradar.dev/rules/branches/main` returns an empty array, so no repository ruleset applies either. ci.yml runs five jobs on `pull_request: branches: [main]` (lint, typecheck, test, extension, build) and its comments assert they gate merges: line 43 \"format drift should block merges\", lines 65-66 \"removed `continue-on-error: true`. Typecheck must block merges\", line 70 \"block merges on high/critical CVEs in runtime deps\". None of these are required checks, so a red CI run is advisory only and the merge button stays green. The same absence means .github/CODEOWNERS is decorative: CODEOWNERS auto-requests reviewers but only enforces review when \"Require review from Code Owners\" is set in branch protection, and it is not. Direct pushes to main are also unrestricted.",
     "impact": "The entire CI investment (SHA-pinned actions, a Prettier gate, a hard typecheck, an `npm audit` gate on 71 runtime dependencies, an extension build, a Next.js build) enforces nothing. Broken TypeScript, a failing test suite, or a high-severity CVE in a production dependency can be merged or pushed straight to main with a single click, and the next `v*` tag turns that into a published image and a GitHub release. It also means the two-person review flow the CODEOWNERS file describes is not actually required for lib/auth, lib/billing, or .github.",
@@ -37,9 +35,7 @@
     "effort": "small",
     "category": "supply-chain",
     "file": ".github/workflows/dependabot-auto-merge.yml",
-    "files": [
-      ".github/workflows/dependabot-auto-merge.yml"
-    ],
+    "files": [".github/workflows/dependabot-auto-merge.yml"],
     "line": 32,
     "description": ".github/workflows/dependabot-auto-merge.yml:32 runs `gh pr merge --auto --squash \"$PR_URL\"` for any dependabot PR whose `update-type` is `version-update:semver-patch` (line 30) and which lacks the `dependabot-merge-ignore` label. The workflow header at line 3 states the guarantee: \"Auto-merge patch and minor dependabot updates after CI passes.\" `--auto` does not wait for CI; it waits for the PR to become mergeable under the branch's protection rules. Per ci-02, `main` has `protected: false`, `required_status_checks.enforcement_level: \"off\"`, empty `contexts`, and no ruleset, so a dependabot PR is mergeable at the moment it opens and auto-merge fires immediately, with lint, typecheck, test and build still queued or running. The workflow grants itself `contents: write` and `pull-requests: write` at lines 11-13. Separately, ci.yml's `npm ci` steps (lines 37, 62, 101, 138, 193) run with no `--ignore-scripts` and .npmrc contains only `audit-level=high`, `fund=false`, `update-notifier=false`, so package lifecycle scripts execute in CI. (If the repository's \"Allow auto-merge\" setting happens to be off, `gh pr merge --auto` errors instead and the entire workflow is dead on every dependabot PR; that is the alternative reading and is also a finding.)",
     "impact": "A compromised patch release of any of the 71 runtime dependencies is merged to main with no human review and without a single CI job having passed, and its install scripts then run in every subsequent CI job. The next `v*` tag builds that main into the published GHCR image and the signed release tarball, so the compromise propagates to every self-hosted install through the in-app updater. The `npm audit --audit-level=high` gate at ci.yml:71 only catches advisories that already exist, which by definition a fresh malicious release does not have. The stated safety property (\"after CI passes\") is not enforced anywhere in the repository.",
@@ -63,9 +59,7 @@
     "effort": "small",
     "category": "no dependency monitoring on a shipped artifact",
     "file": ".github/dependabot.yml",
-    "files": [
-      ".github/dependabot.yml"
-    ],
+    "files": [".github/dependabot.yml"],
     "line": 5,
     "description": "`.github/dependabot.yml` declares exactly two update configs, both scoped to the repo root: `package-ecosystem: \"npm\"` with `directory: \"/\"` (line 5) and `package-ecosystem: \"github-actions\"` with `directory: \"/\"` (line 84). Dependabot directories are not recursive, so `extension/package.json` and `extension/package-lock.json` (194 lockfile entries, of which 191 are dev) are never scanned and never produce a PR. The CI side has the same hole: the only audit step in the repo is `.github/workflows/ci.yml:71`, `npm audit --audit-level=high --omit=dev`, which runs in the `typecheck` job with the default working directory (repo root) and with `--omit=dev`. The separate `extension` job at `.github/workflows/ci.yml:115` runs `npm ci`, `npm run typecheck`, `npm run format:check`, and `npm run build:chrome && npm run build:firefox` (lines 136 to 150) and has no audit step. The SBOM is generated by `anchore/sbom-action` against the built Docker image (`.github/workflows/docker-publish.yml:82`), which contains the Next.js app and not the extension, so the extension zips attached to the release at `.github/workflows/release.yml:147` ship with no SBOM either. `--omit=dev` matters here specifically: the extension has only 2 runtime dependencies and 191 dev packages, and those dev packages (vite, rollup, esbuild, sharp, archiver) are the entire toolchain that produces `content.js`, the IIFE injected into every page the user visits via `content_scripts.matches: [\"<all_urls>\"]` (`extension/manifest/chrome.json:47`). A compromised build dependency writes straight into a browser-privileged artifact distributed through the Chrome Web Store and AMO. `npm audit --json` in `extension/` reports 0 vulnerabilities today, so nothing is currently exploitable; the finding is that nothing in the repo would tell anyone when that changes.",
     "impact": "A published CVE in any of the extension's 194 packages, including the build chain that emits the all-URLs content script, produces no Dependabot PR and no CI failure. The maintainer finds out only by manually running npm audit inside extension/, which nothing prompts them to do. For an extension already installed in users' browsers, the window between disclosure and a store update is unbounded.",
@@ -118,10 +112,7 @@
     "effort": null,
     "category": null,
     "file": "Dockerfile",
-    "files": [
-      "Dockerfile",
-      "docker-compose.yml"
-    ],
+    "files": ["Dockerfile", "docker-compose.yml"],
     "line": null,
     "description": "node:22-alpine and ghcr.io/vulnradar/vulnradar:latest are moving targets; a compromised registry push immediately ships to every self-hoster.",
     "impact": "",
@@ -145,9 +136,7 @@
     "effort": "small",
     "category": "workflow-correctness",
     "file": ".github/labeler.yml",
-    "files": [
-      ".github/labeler.yml"
-    ],
+    "files": [".github/labeler.yml"],
     "line": 3,
     "description": "actions/labeler takes the label name as the top-level key and accepts only `changed-files`, `base-branch`, `head-branch`, `any` and `all` as matcher keys. .github/labeler.yml gets this right for four blocks (`ci` line 24, `config` line 29, `security` line 35, `docs` line 39) and wrong for the other two. The `size` block (lines 3-16) has a top-level key `size` whose entries are `{label: \"size/xs\", files: [...]}`, and the `dependencies` block (lines 18-21) uses `{label: \"dependencies\", from-branch: [...]}`. `label`, `files` and `from-branch` are not matcher keys. I confirmed against the action's source (src/api/get-label-configs.ts): an unrecognised key is not an error, it hits `core.info(\\`An unknown config option was under ${label}: ${key}\\`)` and produces no matcher, so the labels `size`, `size/xs`, `size/s`, `size/m`, `size/l` and the branch-based `dependencies` rule are never applied. The step at .github/workflows/label.yml:16 is literally named \"Apply size label\". Separately, label.yml:7-8 declares `permissions: pull-requests: write` only; declaring any permission sets every unlisted scope to `none`, including `contents`, while the action's documented usage requires `contents: read` to read the configuration file from the repository.",
     "impact": "PR triage silently does not work. Maintainers see no size labels, and the `dependencies` label the stale.yml exemption logic and the auto-merge ignore flow both reason about is never applied from the branch name (dependabot supplies it from .github/dependabot.yml:12-14 instead, which masks the breakage). Nothing in the log makes this visible except an `info`-level line nobody reads.",
@@ -171,9 +160,7 @@
     "effort": "small",
     "category": "list (a) gap rank 2: CI interop",
     "file": ".github/actions/scan-gate/action.yml",
-    "files": [
-      ".github/actions/scan-gate/action.yml"
-    ],
+    "files": [".github/actions/scan-gate/action.yml"],
     "line": 152,
     "description": "The composite action at .github/actions/scan-gate/action.yml is complete and correct: it starts a scan, polls GET /scan/status, and at :152 to :176 reads only summary.critical/high/medium/low/total, writes a step summary table, and exits 1 on threshold breach. It never fetches SARIF. A full SARIF 2.1.0 generator already exists at lib/reports/sarif-report.ts:1 and is exposed as GET /api/v3/history/[id]/report?format=sarif (app/api/v3/history/[id]/report/route.ts:174), and app/docs/reports/page.tsx:310 to :319 already publishes the exact two-step recipe (curl the SARIF, then github/codeql-action/upload-sarif@v3) as something the user must hand-assemble. The action already emits scan-id as an output (.github/actions/scan-gate/action.yml:45), so the two halves are one curl apart. Separately, the action lives at .github/actions/scan-gate/ inside the app repo, which is not a GitHub Marketplace-publishable location: Marketplace requires action.yml at the root of its own repository plus a tagged release. ZAP ships official Marketplace actions, Nuclei ships one, and Snyk and Burp both list Actions integrations (audits/AUDIT-014/research-competitors.md, ZAP and Nuclei sections).",
     "impact": "A developer wiring VulnRadar into CI gets a red X and a markdown table, while the equivalent ZAP or Nuclei action gets them annotated Code Scanning alerts inline on the pull-request diff, with dismissal and tracking handled by GitHub. That is the difference between a gate people keep and a gate people delete after the second false alarm. And because the action is not on the Marketplace, the highest-intent discovery channel for this product (a developer searching the Actions marketplace for \"security scan\") returns nothing.",
@@ -197,9 +184,7 @@
     "effort": "medium",
     "category": "config-bypass / api paths",
     "file": "lib/config/client-constants.ts",
-    "files": [
-      "lib/config/client-constants.ts"
-    ],
+    "files": ["lib/config/client-constants.ts"],
     "line": 83,
     "description": "lib/config/client-constants.ts:80-83 declares `// API VERSION - Change this to switch all API calls between versions` followed by `export const API_VERSION = \"v3\"`, and :87 onwards builds the whole API route map from it as template literals. That map is used correctly 157 times across app/ and components/. It is also bypassed 60 times in 28 files by fetches that spell the version out: app/admin/page.tsx alone has five (:350, :447, :456, :468, :489), plus app/admin/ai-chats/[id]/page.tsx:73, app/checkout/browser-credits/page.tsx:35, app/checkout/credits/page.tsx:34, app/checkout/github-credits/page.tsx:36, app/checkout/[productId]/page.tsx:55, app/dashboard/page.tsx:273 and app/unsubscribe/page.tsx:197 among others. lib/config/config-values.ts:659-660 additionally exports CONFIG_API_CURRENT_VERSION and CONFIG_API_SUPPORTED_VERSIONS as a second, unconnected copy of the same fact.",
     "impact": "The stated purpose of the constant is not achievable: bumping API_VERSION to v4 leaves 60 client calls pointed at v3, so the app would half-migrate with no compile error and no test failure, and the breakage would surface as scattered 404s in admin, checkout, dashboard and unsubscribe. This is the reverse-check shape the section is about: the operator or maintainer believes they changed one value and changed 72 percent of the call sites. Not self-host-breaking today, since v3 is the only supported version, but it makes the one migration the constant exists for unsafe.",
@@ -223,9 +208,7 @@
     "effort": "large",
     "category": "whole layer outside the test harness",
     "file": "vitest.config.ts",
-    "files": [
-      "vitest.config.ts"
-    ],
+    "files": ["vitest.config.ts"],
     "line": 31,
     "description": "coverage.include is [\"lib/**/*.ts\", \"app/**/*.ts\"] (vitest.config.ts:31). The glob `*.ts` does not match `.tsx`. The coverage run confirms it: exactly 412 files are measured, which is 250 lib/*.ts plus 162 app/*.ts, and not one .tsx. Unmeasured: 266 components/*.tsx plus 47 components/*.ts (313 files, 65,147 lines), 152 app/*.tsx (30,147 lines), and 1 lib/*.tsx. Separately, test.environment is \"node\" (line 23) and package.json lists no jsdom, no happy-dom, and no @testing-library/* in either dependencies or devDependencies, so no test can mount a React tree at all. The eight files under tests/components/ cover 8 of 313 component files (2.6%), and six of those eight targets are plain .ts utility modules (queue-status-utils.ts, settings-registry-utils.ts, use-unsaved-changes-warning.ts, admin/utils.ts, schedule-time-utils.ts, ai-review-gate.ts); only danger-score-trend.tsx and auth-provider.tsx are .tsx, and those tests can reach only their non-rendering exports.",
     "impact": "Every form-validation rule, every conditional that hides a paid feature behind a plan check, every auth-state branch in a client component, and every result renderer is untested and unmeasured. A regression that shows a Pro-only control to a free user, or that renders a scan as clean when findings exist, reaches production with a green CI. The measurement gap makes it worse than it looks: the 81.02% headline reads as broad health while a third of the app's lines are simply not in the denominator.",
@@ -249,9 +232,7 @@
     "effort": "small",
     "category": "measured-nowhere security layer",
     "file": "vitest.config.ts",
-    "files": [
-      "vitest.config.ts"
-    ],
+    "files": ["vitest.config.ts"],
     "line": 31,
     "description": "middleware.ts is 546 lines and lives at the repo root, so it matches neither \"lib/**/*.ts\" nor \"app/**/*.ts\" in coverage.include (vitest.config.ts:31). It does not appear in the coverage-summary.json I generated: filtering the 412 measured files for 'middleware' returns nothing. tests/middleware.test.ts exists and is 365 lines, so the file is not untested, but there is no way to tell which of its branches the suite reaches. This matters because middleware is where the public-path allowlist and the auth redirect live, and AUDIT-012 filed three separate HIGH findings against that allowlist (authz-01, authz-02, authz-03: the public host report API, all three staff-oidc endpoints, and the public contact form all missing from PUBLIC_PATHS, each breaking the feature for logged-out visitors). lib/config/public-paths.ts reports 100% statements but only 1 statement, because it is a data table: line coverage says nothing about whether the table is correct. instrumentation.ts is excluded outright (vitest.config.ts:38) and is 3,639 lines holding 72 CREATE TABLE and 97 CREATE INDEX statements.",
     "impact": "The single file that decides whether a request is authenticated, redirected, or allowed through unauthenticated has an unknown tested fraction. A branch added to it, for example a new public path or a new bypass condition, is invisible to both the coverage report and to a reviewer asking 'is this covered?'. The AUDIT-012 authz findings show the concrete cost: three features silently broken for every logged-out visitor and crawler, shipped past a green suite.",
@@ -275,9 +256,7 @@
     "effort": "medium",
     "category": "duplicated constant with conflicting conventions",
     "file": "lib/config/constants.ts",
-    "files": [
-      "lib/config/constants.ts"
-    ],
+    "files": ["lib/config/constants.ts"],
     "line": 628,
     "description": "There is a canonical severity ordering: SEVERITY_PRIORITY at lib/config/constants.ts:628 (critical 5, high 4, medium 3, low 2, info 1), consumed with a `b - a` comparator by components/scanner/results-list.tsx:335, app/api/v3/demo-scan/route.ts:236, app/api/v3/scan/bulk/route.ts:252 and app/api/v3/scan/authenticated/route.ts:427. Eight further private tables encode the same idea:\n\nConvention A, critical is 5 down to info is 1 (same as canonical): lib/scanner/dedupe.ts:18 `SEVERITY_RANK`, lib/reports/compliance-report.ts:37 `SEVERITY_RANK`.\nConvention B, critical is 0 up to info is 4 (inverted): lib/ai/scan-summary.ts:47 `SEVERITY_RANK`, lib/ai/auto-tag-suggest.ts:136 `SEVERITY_RANK`, lib/scanner/execute-scan.ts:78 `SEVERITY_ORDER`, lib/scanner/execute-crawl-scan.ts:73 `SEVERITY_ORDER`.\nConvention C, info is 0 up to critical is 4 (a third numbering): lib/scanner/software-inventory.ts:715 `SEVERITY_RANK`.\n\nSo the identifier `SEVERITY_RANK` means three different things in five files, and the comparator direction flips with it: compliance-report.ts:150 sorts `severityRank(b) - severityRank(a)` while scan-summary.ts:77 and auto-tag-suggest.ts:166 sort `severityRank(a) - severityRank(b)`, and both are correct only for their own table. Lifting either constant into a shared module, or copying a comparator between these files, silently reverses the ordering with no type error, because every table is `Record<Severity, number>`.\n\nThe name `SEVERITY_ORDER` is separately overloaded: components/scanner/severity-badge.tsx:12 exports it as `readonly Severity[]` (consumed by six other components: results-list.tsx:345, dashboard.tsx:428, ai-choice-modal.tsx:154, ai-verify-result-modal.tsx:60, repos/page.tsx:49 and github-scan-result-modal.tsx:59), lib/reports/markdown-report.ts:23 declares another `Severity[]`, and execute-scan.ts:78 / execute-crawl-scan.ts:73 declare it as a numeric Record.\n\nThe label layer has already drifted user-visibly. components/scanner/severity-badge.tsx:71 (SEVERITY_TONE), lib/reports/markdown-report.ts:31 and lib/reports/compliance-report.ts:29 all label the lowest level \"Info\". lib/seo/seo-ui.tsx:25 labels it \"Informational\", and that is the SeverityPill rendered on app/checks/[id]/page.tsx and app/tools/api-scanner/page.tsx, which is the ~750-page public SEO surface. There are also two different components exported as `SeverityPill` (components/history/severity-pill.tsx:11, which delegates to severityTone(), and lib/seo/seo-ui.tsx:41, which inlines its own hsl alphas of 0.1/0.25 against SEVERITY_TONE's /15 and /40), plus four colour maps: components/scanner/severity-badge.tsx SEVERITY_TONE, components/docs/docs-types.ts:75 SEVERITY_COLORS, lib/reports/pdf-report.ts:18 SEVERITY_COLORS as RGB tuples, and lib/config/client-constants.ts:304 SEVERITY_COLORS, which has zero consumers.",
     "impact": "Today: the same info-severity finding reads \"Info\" in the product and \"Informational\" on the public check pages, and the same severity pill has two different tints depending on which surface renders it. Tomorrow: a developer who consolidates `SEVERITY_RANK` (a natural cleanup, since the name is already shared) or copies a working comparator between two of these files inverts a sort with no compile error, and findings list least-severe-first in a report, an AI summary, or the dedupe winner selection. lib/scanner/dedupe.ts:175 uses its rank to pick which duplicate finding survives, so an inversion there would keep the info-level copy and discard the critical one.",
@@ -301,9 +280,7 @@
     "effort": null,
     "category": null,
     "file": "lib/config/registry.ts,app/api/v3/auth/login/route.ts",
-    "files": [
-      "lib/config/registry.ts,app/api/v3/auth/login/route.ts"
-    ],
+    "files": ["lib/config/registry.ts,app/api/v3/auth/login/route.ts"],
     "line": null,
     "description": "2FA_PENDING_MAX_AGE_SECONDS has no getSetting consumer anywhere. app/api/v3/auth/login/route.ts still imports and uses the compiled AUTH_2FA_PENDING_MAX_AGE constant to set the pending-2FA cookie's maxAge -- an admin changing this window in the panel has no effect on actual cookie lifetime.",
     "impact": "",
@@ -327,9 +304,7 @@
     "effort": null,
     "category": null,
     "file": "docker-compose.yml",
-    "files": [
-      "docker-compose.yml"
-    ],
+    "files": ["docker-compose.yml"],
     "line": null,
     "description": "Postgres image is on a moving tag, not pinned to a specific minor or digest. A poisoned upstream push silently propagates.",
     "impact": "",
@@ -353,9 +328,7 @@
     "effort": "small",
     "category": "release-integrity",
     "file": ".github/workflows/docker-publish.yml",
-    "files": [
-      ".github/workflows/docker-publish.yml"
-    ],
+    "files": [".github/workflows/docker-publish.yml"],
     "line": 83,
     "description": "docker-publish.yml:82-91 runs `anchore/sbom-action` with `image: ghcr.io/.../vulnradar:${{ github.ref_name }}`, so the CycloneDX SBOM describes only what is inside the server image. release.yml:117-148 separately builds the browser extension (`npm ci`, `build:chrome`, `build:firefox`) and attaches `vulnradar-chrome-vX.Y.Z.zip` and `vulnradar-firefox-vX.Y.Z.zip` to the same GitHub release; I confirmed against the live releases API that v3.6.0 through v3.7.2 each carry both zips plus one `.sbom.cdx.json`. The extension is a separate package with its own lockfile (194 packages per AUDIT-013#subdeps-02) and none of it appears in the image, so none of it appears in the SBOM. SECURITY.md:82-83 describes the SBOM as a \"full software bill of materials\" for the release without qualifying that it excludes the extension.",
     "impact": "A downstream consumer running SBOM-based vulnerability scanning against the release believes they have covered everything VulnRadar ships. They have not covered the two artifacts that execute in an end user's browser with host permissions, and those are also the artifacts with no Dependabot monitoring (AUDIT-013#subdeps-02).",
@@ -379,9 +352,7 @@
     "effort": "small",
     "category": "release-integrity",
     "file": ".github/workflows/release.yml",
-    "files": [
-      ".github/workflows/release.yml"
-    ],
+    "files": [".github/workflows/release.yml"],
     "line": 168,
     "description": "release.yml:150-168 downloads the SBOM artifact and carries `continue-on-error: true` at line 168. Its `run-id` at line 164 is `${{ github.event.workflow_run.id }}`, which is empty on the `release: published` trigger declared at lines 46-48, so on the path SECURITY.md:105 documents as \"Manual: create + publish the release first, then push the tag\" the download cannot resolve a run and fails. The failure is then invisible: the next step's `shopt -s nullglob` at line 219 makes `*.cdx.json` expand to nothing, and \"Build artifact list\" at lines 253-255 only appends the SBOM `if [ -f ... ]`. So a release simply comes out one asset short with a green workflow. SECURITY.md:77-83 states that every tagged release is accompanied by a CycloneDX SBOM. I verified against the live releases API that v3.5.1 through v3.7.2 all do carry one today, because the later `workflow_run` run clobbers the assets, so this is a latent silent-degradation path rather than a current break: it materialises whenever docker-publish.yml itself fails (whereupon release.yml's `if` at lines 62-64 also skips the workflow_run path entirely).",
     "impact": "A release that lost its SBOM looks identical to one that did not. The maintainer gets no signal, and a consumer verifying against SECURITY.md's list finds an asset missing with no explanation.",
@@ -405,9 +376,7 @@
     "effort": "small",
     "category": "release-integrity",
     "file": ".github/workflows/release.yml",
-    "files": [
-      ".github/workflows/release.yml"
-    ],
+    "files": [".github/workflows/release.yml"],
     "line": 222,
     "description": "release.yml:222 writes `sha256sums.txt` and lines 230-232 sign only the source tarball (`cosign sign-blob --bundle vulnradar-${TAG}.tar.gz.cert vulnradar-${TAG}.tar.gz`). Nothing signs the sums file. lib/updater/apply.ts:87 requires `sha256sums.txt` and treats a mismatch as a hard failure, while lib/updater/cosign.ts:44-51 returns `attempted: false` and does not fail when the cosign binary is missing, with the message \"the release was still checksum-verified\" and the module header asserting \"checksum verification still runs and is a hard gate either way\". On a host without cosign (bare Node, Pterodactyl-style panels, which that same header names as the common case) both the tarball and the unsigned sums file come from the same GitHub release, so an attacker who can alter release assets alters both and the check passes.",
     "impact": "The updater's fallback integrity story is weaker than its own comments claim. Only self-hosters running the published Docker image are actually protected, because Dockerfile:59 and 84 bundle the cosign binary; everyone else gets a check that cannot detect a compromised release host or a compromised maintainer account.",
@@ -431,9 +400,7 @@
     "effort": "small",
     "category": "environment-parity",
     "file": ".github/workflows/ci.yml",
-    "files": [
-      ".github/workflows/ci.yml"
-    ],
+    "files": [".github/workflows/ci.yml"],
     "line": 33,
     "description": ".nvmrc contains `22`, package.json declares `engines.node: \">=22.0.0\"`, and ci.yml passes `node-version: \"22\"` at lines 33, 58, 89 (via 95-98), 127 and 189, all of which resolve to whatever the newest 22.x is on the runner at job time. Dockerfile:11 and 62 pin `node:22.11.0-alpine` for both the builder and the runner stage, and release.yml:115 also uses `node-version: \"22\"` for the extension build. Nothing reconciles the two. This is a different axis from AUDIT-013#deps-03 (base images being stale and not covered by a dependabot docker ecosystem) and AUDIT-013#subdeps-08 (cli/ declaring `>=18`): here the same Node major is used everywhere but the minor is pinned in one place and floating in the other.",
     "impact": "A change relying on anything added after Node 22.11.0 typechecks, tests and builds green in CI and then throws at runtime inside the published image, with no CI job able to catch it. The gap is real: CI today runs a 22.x roughly a year newer than 22.11.0.",
@@ -457,9 +424,7 @@
     "effort": "small",
     "category": "workflow-correctness",
     "file": ".github/workflows/dependabot-auto-merge.yml",
-    "files": [
-      ".github/workflows/dependabot-auto-merge.yml"
-    ],
+    "files": [".github/workflows/dependabot-auto-merge.yml"],
     "line": 30,
     "description": ".github/workflows/dependabot-auto-merge.yml:3 states \"Auto-merge patch and minor dependabot updates after CI passes\" and line 4 says \"Major updates (e.g. next major bump) are NOT auto-merged\", implying minor is in scope. The condition at line 30 is `steps.metadata.outputs.update-type == 'version-update:semver-patch'` and nothing tests for `semver-minor`, so every minor bump sits waiting for a human despite the documented behaviour. The header also names \"after CI passes\" as the gate, which per ci-03 is not enforced.",
     "impact": "Minor bumps queue up unattended because a maintainer reading the header believes they are handled automatically. Combined with .github/dependabot.yml's grouped updates (where `update-type` reports the highest change in the group), most weeks' PRs fall outside the patch-only condition and no one is watching for them.",
@@ -483,9 +448,7 @@
     "effort": "small",
     "category": "release-integrity",
     "file": ".github/workflows/docker-publish.yml",
-    "files": [
-      ".github/workflows/docker-publish.yml"
-    ],
+    "files": [".github/workflows/docker-publish.yml"],
     "line": 45,
     "description": "docker-publish.yml signs the image (lines 70-76) and release.yml signs the source tarball (lines 230-232), both keyless via Fulcio and Rekor. A cosign signature attests who signed, not what went into the artifact: there is no `actions/attest-build-provenance` step, no `--provenance` on the build (the build is a plain `docker build` at line 49, so buildx provenance is not produced either), and no SLSA attestation anywhere. Separately, nothing in either workflow checks that the pushed tag agrees with `package.json` (`3.7.2`) or `lib/config/config-values.ts:17` (`CONFIG_APP_VERSION = \"3.7.2\"`), which is the value the running container reports from app/api/version/route.ts and which the self-updater compares against the GitHub tag. A tag pushed without the matching version bump produces an image that permanently reports itself \"behind\" and re-offers the same update.",
     "impact": "A verifier can confirm a release was signed by this repository's Actions identity but cannot confirm which commit, workflow inputs, or base image produced the layers, which is the property SLSA provenance exists to give and the one a security product's consumers are most likely to ask for. The missing tag-versus-version check makes a mismatched release possible with no signal until self-hosters see a permanent update prompt.",
@@ -509,9 +472,7 @@
     "effort": "small",
     "category": "env documentation",
     "file": ".env.example",
-    "files": [
-      ".env.example"
-    ],
+    "files": [".env.example"],
     "line": 1,
     "description": "lib/database/db.ts:44-76 reads six pool tunables through its tunable() helper: DATABASE_POOL_MAX, DATABASE_POOL_MIN, DATABASE_IDLE_TIMEOUT_MS, DATABASE_CONNECTION_TIMEOUT_MS, DATABASE_STATEMENT_TIMEOUT_MS and DATABASE_QUERY_TIMEOUT_MS. app/docs/config/page.tsx:823-845 documents all six under 'Database pool tuning (optional)'. None of the six appears in .env.example, set or commented. Comparing key names only, the working tree's .env.local sets exactly two variables that .env.example does not have, and both are from this group (DATABASE_POOL_MAX and DATABASE_CONNECTION_TIMEOUT_MS), so the production deployment relies on tunables the shipped template does not mention. A bad value here is not silently ignored: lib/database/db.ts:49-54 throws on any non-finite or negative value.",
     "impact": "A self-hoster who copies .env.example gets no template or comment for the six knobs the docs tell them to reach for, so they either miss them or guess the spelling and hit the throw at lib/database/db.ts:49. The three-way disagreement (read by code, documented in the docs, absent from the example) is exactly the drift .env.example exists to prevent.",
@@ -535,9 +496,7 @@
     "effort": "small",
     "category": "documented defaults",
     "file": "lib/config/config-values.ts",
-    "files": [
-      "lib/config/config-values.ts"
-    ],
+    "files": ["lib/config/config-values.ts"],
     "line": 908,
     "description": "lib/config/config-values.ts:907-909 documents the tunable as 'CONFIG_BROWSERBASE_MAX_TTL_SECONDS = 300 (5 min hard cap, matches the product promise and prevents runaway sessions)', while :913 sets it to 360 and :911-912 and :1307 both describe it correctly as 6 minutes. The stated default is 60 seconds below the shipped one, which is the same class of error AUDIT-011#drift-31 found on the API reference page for the same subsystem. Separately, .env.example:329-330 tells the reader 'See docs/setup for the full reference' for the CONFIG_* values; the CONFIG_* reference is /docs/config (components/docs/docs-nav.ts:82-85), and /docs/setup is the install guide. CLAUDE.md:118 also gives TOTAL_CHECKS_LABEL as 'e.g., \"310+\"' where lib/config/check-stats.generated.ts:8 generates \"795+\".",
     "impact": "Small individually, but the browserbase one is a doc-comment that sits four lines above the constant it misdescribes, so anyone tuning session length believes they are lowering a cap that is already lower than reality. The .env.example pointer sends a self-hoster to a page that does not have what they were promised.",
@@ -561,9 +520,7 @@
     "effort": "small",
     "category": "dead tokens",
     "file": "tailwind.config.mjs",
-    "files": [
-      "tailwind.config.mjs"
-    ],
+    "files": ["tailwind.config.mjs"],
     "line": 64,
     "description": "Records design-language.md A3 item 8 as an actionable finding, verified against the current tree. app/globals.css:211-213 defines --surface-1, --surface-2 and --surface-3 for the light theme and :256-258 repeats them for dark. No file in app/, components/ or lib/ reads them, and tailwind.config.mjs does not map them to a utility either, so they are unreachable by any means. Separately, tailwind.config.mjs:64-73 declares a full `sidebar` colour group (DEFAULT, foreground, primary, primary-foreground, accent, accent-foreground, border, ring) resolving to hsl(var(--sidebar-background)) and seven siblings. None of those eight variables is defined anywhere in app/globals.css or any other stylesheet, and no component uses bg-sidebar, text-sidebar-foreground or any of the group. So the utilities exist, autocomplete offers them, and each resolves to hsl() with an empty argument, which is an invalid colour the browser drops.",
     "impact": "Six dead declarations in the critical CSS. More costly is the sidebar group: a developer building the next sidebar reaches for bg-sidebar because Tailwind's IntelliSense lists it, gets a transparent element with no error in the console or the build, and has to work out why. The product already has two sidebars (/profile and /admin) that both hand-rolled bg-primary/10 instead, which is what that group was presumably added for.",
@@ -587,9 +544,7 @@
     "effort": "small",
     "category": "copy consistency",
     "file": "lib/config/constants.ts",
-    "files": [
-      "lib/config/constants.ts"
-    ],
+    "files": ["lib/config/constants.ts"],
     "line": 298,
     "description": "lib/config/constants.ts:297-:298 defines ERROR_MESSAGES.TOO_MANY_ATTEMPTS(resource, minutes), which pluralizes correctly: `minute${minutes > 1 ? 's' : ''}`. Thirty-one call sites compute `Math.ceil(rl.retryAfterSeconds / 60)` themselves and build their own sentence; the distinct strings include 'Too many 2FA attempts. Try again in N minute(s).', 'Too many AI requests...', 'Too many BrowserBase sessions...', 'Too many domains added recently...', 'Too many tag changes...' (app/api/v3/scan/tags/route.ts:53), 'Too many verification attempts...' (app/api/v3/domains/[id]/verify/route.ts:47), 'Too many requests. Please try again in N minute(s).' and 'Too many contact requests. Please try again in N minute(s).'. Every inline copy uses the literal 'minute(s)' and so prints 'Try again in 1 minute(s).' on the common single-minute case, and the set is split between 'Try again in' and 'Please try again in' for the same event. ERROR_MESSAGES is imported by zero client components (a grep for it across components/ and app/ .tsx files returns nothing), so it is a server-only table.",
     "impact": "Users see the parenthetical-plural tell on the most common rate-limit response, and the same 429 is worded three different ways depending on which endpoint they hit. Changing the wording once means editing thirty-one files.",
@@ -613,9 +568,7 @@
     "effort": "small",
     "category": "copy embedding a limit",
     "file": "lib/config/constants.ts",
-    "files": [
-      "lib/config/constants.ts"
-    ],
+    "files": ["lib/config/constants.ts"],
     "line": 294,
     "description": "lib/config/constants.ts:294 declares `WEAK_PASSWORD: 'Password must be at least 8 characters long.'`. The same file exports PASSWORD_MIN_LENGTH = CONFIG_PASSWORD_MIN_LENGTH at :255, and that value is 12 (lib/config/config-values.ts:314) and admin-editable (lib/config/registry.ts:2130). A whole-repo grep for WEAK_PASSWORD returns exactly one hit, the declaration itself, so nothing renders it today. Its live counterpart does it correctly: components/auth/reset-password-form.tsx:101 interpolates `At least ${PASSWORD_MIN_LENGTH} characters` and :106 sets minLength from the same constant.",
     "impact": "No user impact today because the string is dead, but it is a loaded gun: the next route that reaches for the obvious ERROR_MESSAGES entry for a weak password ships a message that contradicts the enforced minimum, on a deployment where the operator may have raised it further.",
@@ -639,9 +592,7 @@
     "effort": "small",
     "category": "copy embedding a limit",
     "file": "lib/config/config-values.ts",
-    "files": [
-      "lib/config/config-values.ts"
-    ],
+    "files": ["lib/config/config-values.ts"],
     "line": 908,
     "description": "lib/config/config-values.ts:907-:909 reads 'Tunables: CONFIG_BROWSERBASE_MAX_TTL_SECONDS = 300 (5 min hard cap, matches the product promise and prevents runaway sessions).' Line 913 sets `export const CONFIG_BROWSERBASE_MAX_TTL_SECONDS = 360;` and the immediately preceding comment at :911-:912 explains the 360 as 'a 60-second buffer over the 5-minute user budget'. So the file states two different values for the same constant within six lines, and the stale one is in the block an operator reads first. This is the in-file twin of AUDIT-011#drift-31, which found the published API docs stating a browser-session TTL default 60 seconds below the real value; that finding covered app/docs/api/page.tsx:525, not this comment.",
     "impact": "An operator scanning the configuration file for the session cap reads 300, sizes their Browserbase minute budget on it, and is billed against 360. It also makes the AUDIT-011#drift-31 docs fix look already done when the source of the wrong number is still in the tree.",
@@ -665,9 +616,7 @@
     "effort": "small",
     "category": "social attribution",
     "file": "lib/config/config-values.ts",
-    "files": [
-      "lib/config/config-values.ts"
-    ],
+    "files": ["lib/config/config-values.ts"],
     "line": 231,
     "description": "lib/config/config-values.ts:231 sets CONFIG_SEO_TWITTER_HANDLE to the empty string, and both lib/seo/metadata.ts:120 and app/layout.tsx:88 deliberately omit the `twitter:site` tag rather than emit an empty one (which is the right handling of an unset value). Lines 236-237 set CONFIG_SEO_GOOGLE_VERIFICATION and CONFIG_SEO_BING_VERIFICATION to empty strings, so no ownership meta tag is published either; verification may well be done by DNS instead, which is why this is low and not higher. components/seo/structured-data.tsx:75 builds `sameAs` from SEO_GITHUB_URL, DISCORD_INVITE_URL, CHROME_WEB_STORE_URL and FIREFOX_ADDON_URL: four real, config-derived links and no social profile of any kind.",
     "impact": "An X card for any page on the site renders without the \"@handle\" attribution line, so a card someone reshares carries no route back to an account to follow, and X has no verified entity to associate the domain with. sameAs is what answer engines use to resolve a name to one entity, and the brief flags AI assistants not knowing this product as an existing symptom (the primary cause is the Cloudflare block, see seo-23); a sameAs with no social presence gives them less to work with.",
@@ -691,9 +640,7 @@
     "effort": "small",
     "category": "dead configuration references",
     "file": ".github/CODEOWNERS",
-    "files": [
-      ".github/CODEOWNERS"
-    ],
+    "files": [".github/CODEOWNERS"],
     "line": 17,
     "description": ".github/CODEOWNERS lists five path rules that cannot match anything in the current tree. Lines 17-19 name /app/api/v2/auth/, /app/api/v2/billing/ and /app/api/v2/webhooks/, but app/api/ contains only security-txt/, v3/ and version/: there is no v2. Lines 33-34 name /scripts/migrate.mjs and /scripts/create-fresh-db.mjs, both of which moved into subdirectories (scripts/migrate/migrate.mjs and scripts/create-fresh-db/create-fresh-db.mjs) and no longer exist at those paths. The header comment on those two calls them the 'Database migrations' owners. Separately, scripts/README.md:63 states 'The CI gate `node scripts/find-duplicate-ids.mjs` is also part of the pre-commit checklist'; no workflow under .github/workflows/ runs any script from scripts/ (the only references to scripts/ anywhere in .github/ are the two stale CODEOWNERS lines). Duplicate check ids are in fact gated, but by a vitest case at tests/lib/scanner/registry.test.ts:60 ('check IDs are unique across the registry'), not by that script.",
     "impact": "Low, because the catch-all '* @dbcaa @RejectModders' on CODEOWNERS line 10 already assigns both owners to every file, so no review is actually skipped. What is lost is intent: the five specific rules were written to mark security-critical and migration paths, and a future change to line 10 (say, adding a third owner or narrowing the catch-all) would silently leave the migration runner and the auth/billing/webhook API with no explicit owner. The README's 'CI gate' wording will make someone believe a check exists where it does not.",
@@ -717,9 +664,7 @@
     "effort": "small",
     "category": "config that does nothing",
     "file": "Dockerfile",
-    "files": [
-      "Dockerfile"
-    ],
+    "files": ["Dockerfile"],
     "line": 19,
     "description": "Dockerfile:19-24 says: '--ignore-scripts prevents transitive postinstall scripts from running during image build. Native deps (sharp, esbuild, unrs-resolver, core-js) are whitelisted in .npmrc so they DO run via npm's `allow-scripts` mechanism.' Three parts of that are wrong. (1) The whole of .npmrc is three lines, `audit-level=high`, `fund=false`, `update-notifier=false`. There is no whitelist in it. (2) npm has no `allow-scripts` mechanism; the `allowScripts` object at package.json:156-160 is not a field npm reads (it is the key `@lavamoat/allow-scripts` uses under a `lavamoat` parent, and pnpm's equivalent is `pnpm.onlyBuiltDependencies`), so npm silently ignores it. (3) Two of the four packages named do not match the tree: `esbuild` is not installed at all (`npm ls esbuild` returns empty), and `sharp` 0.35.3 has `hasInstallScript: false` in the lockfile because 0.35 ships prebuilt binaries as @img/* optional dependencies rather than building at install time. Scanning every lockfile entry for `hasInstallScript`, the tree has exactly three: core-js 3.49.0 (a donation banner, reachable only through the unused jspdf, see deps-01), fsevents 2.3.3 (macOS-only, optional) and unrs-resolver 1.12.2 (dev-only, used by eslint-import-resolver-typescript, and the Docker build never lints). So `--ignore-scripts` is currently harmless, but for the opposite reason to the one the comment gives.",
     "impact": "Nothing breaks today. The hazard is the next native dependency. A maintainer who adds one, hits a broken image, and follows the comment will add a name to the `allowScripts` block at package.json:156, get no error from npm, and still ship a broken image, with the config change looking like it should have worked. The comment also misstates the security posture in the other direction: it reads as 'we ran a curated set of install scripts on purpose' when in fact none ran.",
@@ -743,9 +688,7 @@
     "effort": "small",
     "category": "stale pinned artifact version",
     "file": "docker-compose.yml",
-    "files": [
-      "docker-compose.yml"
-    ],
+    "files": ["docker-compose.yml"],
     "line": 53,
     "description": "docker-compose.yml:53 is `image: ghcr.io/vulnradar/vulnradar:3.0.0`. package.json:3 is version 3.7.2. `git log -L 53,53:docker-compose.yml` shows the tag was last touched on 2026-06-28 by commit cbc7652e ('fix(security): close 1 critical, 8 high, 11 medium findings from audit'), so the pin has not moved across seven minor releases. The pin itself is deliberate and well commented (docker-compose.yml:46-52 explains why a fixed tag beats `:latest` and how to move to a digest), but nothing in the release pipeline updates it: .github/workflows/docker-publish.yml pushes `$IMAGE:${VERSION}` and `$IMAGE:latest` on a tag push (lines 53-54) and never writes back to the compose file, and there is no docker ecosystem in dependabot.yml to notice (see deps-03).",
     "impact": "The compose file is the documented self-hosting path. Anyone who clones the repo today and runs `docker compose up` gets release 3.0.0, which predates every security and correctness fix shipped in 3.1 through 3.7.2, including the remediations from AUDIT-010 through AUDIT-012. They will also be running a schema that instrumentation.ts in the checked-out repo no longer matches, since the app image carries its own copy.",
@@ -769,9 +712,7 @@
     "effort": "small",
     "category": "test config gap",
     "file": "vitest.config.ts",
-    "files": [
-      "vitest.config.ts"
-    ],
+    "files": ["vitest.config.ts"],
     "line": 24,
     "description": "vitest.config.ts:24 sets `include: [\"tests/**/*.test.ts\", \"tests/**/*.spec.ts\"]` and line 23 sets `environment: \"node\"`. Neither `.test.tsx` nor `.spec.tsx` is collected, and package.json declares no jsdom, happy-dom, @testing-library/react, or @testing-library/dom dependency (grep returns nothing for all four). Counted: tests/ holds 356 `.test.ts` files, 0 `.spec.ts`, and 0 `.test.tsx`. The 8 files under tests/components/ test only extracted pure helpers (queue-status-utils, settings-registry-utils, utils, danger-score-trend), not components. The mechanical failure: a contributor adds `tests/components/scanner/scan-form.test.tsx`, runs `npm test`, gets a normal green run with no warning that their file was not collected (vitest reports nothing about files outside `include`), and ships. Even a `.test.ts` file that imported a component would fail, since `environment: \"node\"` supplies no document.",
     "impact": "Two effects. First, a contributor can believe they have shipped a test that has never run once, which is worse than no test. Second, none of the 266 .tsx files under components/ has any behavioural test, so hook state, conditional rendering, and event handlers are covered only by the typechecker. Given the AUDIT-011 critical finding was a UI regression (admin row actions invisible but still hit-testable on touch), that gap is the one most likely to recur.",
@@ -795,9 +736,7 @@
     "effort": "small",
     "category": "order-dependent shared state",
     "file": "lib/config/runtime-config.ts",
-    "files": [
-      "lib/config/runtime-config.ts"
-    ],
+    "files": ["lib/config/runtime-config.ts"],
     "line": 64,
     "description": "lib/config/runtime-config.ts:64 caches the whole system_settings snapshot at module scope for TTL_MS = 30_000. Because vitest isolates per file but not per test, the first it() in a file that reaches a settings read issues a `SELECT key, value FROM system_settings` through the mocked pool and warms the snapshot; every later it() in the same file does not. Any test that then reads `mockQuery.mock.calls[0]` or `[1]` is reading a different call depending on which test ran first. Three suites document the hazard in their own comments and defend against it: tests/app/api/v3/shared/[token]/route.test.ts:30-38 (\"whichever test first reaches the Promise.all in the route would warm it and silently change how many pool.query calls, and in what order, every later test makes\"), tests/lib/rate-limiting/daily-limits.test.ts:33-36, and tests/app/api/v3/history/route.test.ts:17-28, which intercepts the settings SQL inside the mock instead. 36 files call invalidateSettingsCache(). Counted: 65 files mock @/lib/database/db, do not mock @/lib/config/runtime-config, never call invalidateSettingsCache, never intercept the system_settings query, and do index mock.calls positionally. vitest.config.ts declares no setupFiles, so every suite has to remember this by hand.",
     "impact": "Deterministic today only because vitest runs a file's tests in declaration order. The moment a developer narrows a run with `npx vitest run <file> -t \"...\"`, a different test warms the cache and the positional index points at the wrong query, producing a failure that does not reproduce in a full run. The same breaks if anyone enables sequence.shuffle or reorders tests during a refactor. The debugging cost is high because the failure looks like a real assertion failure about SQL.",
@@ -821,9 +760,7 @@
     "effort": "medium",
     "category": "server config in client bundle",
     "file": "lib/config/constants.ts",
-    "files": [
-      "lib/config/constants.ts"
-    ],
+    "files": ["lib/config/constants.ts"],
     "line": 1,
     "description": "lib/config/constants.ts (787 lines) re-exports lib/config/config-values.ts (1,367 lines) and is imported directly by client components across the app, including ones mounted in app/layout.tsx. The compiled result is visible in the committed build: static/chunks/9711-3989d97c24edd68e.js, 18 KB and part of the /layout entry (so present on all 311 routes), contains `i.env.SMTP_HOST, i.env.SMTP_PORT, i.env.SMTP_USER, i.env.SMTP_PASS, i.env.SMTP_FROM||i.env.SMTP_USER;` and `i.env.BROWSERBASE_API_KEY&&i.env.BROWSERBASE_PROJECT_ID;` as bare expression statements alongside the team-role matrix and the API route table. No secret is disclosed: `i` is Next's client process shim and only NEXT_PUBLIC_-prefixed variables are inlined, so these evaluate to undefined -- but the code and the variable names ship, and every unused constant webpack cannot prove dead ships with them.",
     "impact": "Every page in the app carries a slice of the server configuration module and dead environment reads for SMTP credentials and the Browserbase API key. It is bytes and noise today, and it is one careless `NEXT_PUBLIC_` rename away from becoming a real disclosure, since the read sites are already compiled into a client chunk.",
@@ -847,9 +784,7 @@
     "effort": "small",
     "category": "config / dead code",
     "file": "lib/config/constants.ts",
-    "files": [
-      "lib/config/constants.ts"
-    ],
+    "files": ["lib/config/constants.ts"],
     "line": 778,
     "description": "The FEATURES object at lib/config/constants.ts:778-786 has exactly one live member: a grep for FEATURES.[A-Z_]+ outside lib/config returns one hit, lib/hooks/use-client-config.ts:33 reading .PDF_REPORTS. The other seven (DEMO_MODE, TEAMS, API_KEYS, WEBHOOKS, SCHEDULED_SCANS, BULK_SCANS, EMAIL_NOTIFICATIONS) are read nowhere; the underlying CONFIG_FEATURE_* values are alive via the registry, so only this convenience object is dead. Also dead: the DATABASE object (:478-484, no matches for DATABASE.[A-Z_]), PATTERNS (:338), PAGINATION (:500), ENTERPRISE_EMAIL (:641), AUTH_SESSION_MAX_AGE (:242), API_KEY_SCOPE_DESCRIPTIONS (client-constants.ts:346), CONFIG_API_SUPPORTED_VERSIONS (config-values.ts:660), CONFIG_FOOTER_TEXT (:191), HISTORY_REPORT (client-constants.ts:151, zero web callers - the export menu regenerates all five formats client-side, and only the extension uses the route). Catalog helpers getFreePlan (catalog.ts:305), isPaidPlan (:309) and getApiLimitForPlan (:318) have tests as their only callers. Five unused skeleton exports at components/admin/shared/skeleton.tsx:18,40,62,90,114 (about 110 lines). components/auth/auth-layout.tsx:9-11 documents a width=\"wide\" prop no caller uses - see auth-11, which is the screen it was written for. lib/config/public-paths.ts:66 lists ROUTES.GDPR_REQUEST as \"/legal/privacy#gdpr\" but middleware.ts:265 matches on pathname, which never contains a fragment, so the entry can never match (harmless, line 49 covers it).",
     "impact": "Cleanup only, but the HISTORY_REPORT case has a real consequence: the server route additionally runs attachRemediation (app/api/v3/history/[id]/report/route.ts:149-155), so extension-exported reports and web-exported reports are not byte-identical.",
@@ -873,9 +808,7 @@
     "effort": "small",
     "category": "config",
     "file": "lib/config/env.ts",
-    "files": [
-      "lib/config/env.ts"
-    ],
+    "files": ["lib/config/env.ts"],
     "line": 85,
     "description": "CONTACT_EMAIL is parsed at lib/config/env.ts:85 and appears in .env.example and the docs, but the contact route sends to NOREPLY_EMAIL (app/api/v3/contact/route.ts:146). STRIPE_PUBLISHABLE_KEY is parsed at :60 while only the NEXT_PUBLIC_ variant is ever read.",
     "impact": "A self-hoster sets CONTACT_EMAIL as documented and contact mail goes elsewhere.",
@@ -899,9 +832,7 @@
     "effort": "small",
     "category": "scan path latency",
     "file": "lib/config/config-values.ts",
-    "files": [
-      "lib/config/config-values.ts"
-    ],
+    "files": ["lib/config/config-values.ts"],
     "line": 1013,
     "description": "lib/scanner/execute-scan.ts:812 awaits the screenshot with CONFIG_SCAN_SCREENSHOT_MAX_WAIT_MS = 30_000 (lib/config/config-values.ts:1013).",
     "impact": "Only affects users who tick the box, but when it bites it more than doubles the wait.",
@@ -925,10 +856,7 @@
     "effort": null,
     "category": null,
     "file": "next.config.mjs",
-    "files": [
-      "next.config.mjs",
-      "middleware.ts"
-    ],
+    "files": ["next.config.mjs", "middleware.ts"],
     "line": null,
     "description": "CSP connect-src 'self' https://challenges.cloudflare.com ... https://www.browserbase.com wss://*.browserbase.com https: wss: ends with the scheme-only wildcards https: wss:, which permits fetch/XHR/WS to any HTTPS origin.",
     "impact": "",
@@ -952,9 +880,7 @@
     "effort": "small",
     "category": "verified clean, do not re-derive",
     "file": "lib/config/registry.ts",
-    "files": [
-      "lib/config/registry.ts"
-    ],
+    "files": ["lib/config/registry.ts"],
     "line": 1,
     "description": "I checked the specific split-brain shape AUDIT-009#dup-01 found (RATE_LIMITS defined in two places so 11 routes bypassed the admin-configured values) against the current tree and it has not recurred.\n\nExtracting every `export const` and `export function` from lib/config/constants.ts (788 lines), lib/config/client-constants.ts (378), lib/config/config-values.ts (1,368), lib/config/registry.ts, lib/config/brand.ts and lib/config/env.ts gives zero names exported from more than one of them. The layering holds in the direction it is documented: config-values.ts holds the literals, constants.ts imports and re-exports them (RATE_LIMITS at constants.ts:360-470 is built entirely from CONFIG_RATE_LIMIT_* imports, with no second literal anywhere), and client-constants.ts is re-exported through constants.ts rather than redefined.\n\nlib/config/registry.ts contains 272 `default:` entries and every one of them is a CONFIG_ constant imported from config-values.ts, not a literal, so an admin-editable setting cannot fall back to a value that disagrees with the compiled one. The comment at registry.ts:1-11 describes that rule and the code follows it.\n\nSeparately, every paginated endpoint uses the same query convention: `page` and `limit` in all seven (app/api/v3/admin/route.ts, admin/content, admin/email-logs, admin/error-logs, admin/teams, ai/conversations, public-scans). Nothing uses offset or a cursor. The response-side key drift is filed as dup-08; the request side is consistent.\n\nThe brand palette is likewise consolidated: lib/config/brand.ts is the single source and lib/email/email.ts:19-47 aliases it rather than holding its own hexes, which is what the comment at brand.ts:1-13 claims.",
     "impact": "None. Recorded so the next audit does not spend time re-deriving these four surfaces or re-checking pagination conventions.",
@@ -978,9 +904,7 @@
     "effort": null,
     "category": null,
     "file": "lib/config/constants.ts",
-    "files": [
-      "lib/config/constants.ts"
-    ],
+    "files": ["lib/config/constants.ts"],
     "line": null,
     "description": "AUTH_SESSION_MAX_AGE, DEVICE_TRUST_MAX_AGE, DEFAULT_API_KEY_DAILY_LIMIT, and the PAGINATION constant object all have zero remaining importers after their call sites correctly migrated to getSetting()-based values this session. Not wrong today, but a future caller grepping for these could grab the frozen constant instead of the live setting with no compiler error to catch it.",
     "impact": "",
@@ -1004,9 +928,7 @@
     "effort": null,
     "category": null,
     "file": ".env.local",
-    "files": [
-      ".env.local"
-    ],
+    "files": [".env.local"],
     "line": null,
     "description": "AUTH_SECRET is optional. On the deployed sandbox the fallback to API_KEY_ENCRYPTION_KEY is in use. If that key is ever rotated, OAuth state tokens issued under the previous HMAC key silently fail to verify.",
     "impact": "",

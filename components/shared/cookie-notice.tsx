@@ -86,15 +86,20 @@ export function CookieNotice() {
           </a>
           .
         </p>
+        {/* Both controls at 44px on a phone, stepping back down from sm. This
+            bar sits over the bottom of every page in the product and its two
+            dismiss controls were 32px and 28px tall, which is the wrong place
+            to make someone aim. The bar republishes --vr-cookie-h on resize,
+            so the extra height is picked up by everything anchored above it. */}
         <div className="flex shrink-0 items-center gap-2">
-          <Button size="sm" onClick={dismiss} className="h-8">
+          <Button size="sm" onClick={dismiss} className="h-11 sm:h-8">
             Got it
           </Button>
           <button
             type="button"
             onClick={dismiss}
             aria-label="Dismiss cookie notice"
-            className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="flex h-11 w-11 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:h-auto sm:w-auto sm:p-1.5"
           >
             <X className="h-4 w-4" />
           </button>

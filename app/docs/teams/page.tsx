@@ -11,6 +11,23 @@ import {
   InlineCode,
 } from "@/components/docs";
 import { APP_NAME } from "@/lib/config/constants";
+import { TEAM_ROLE_PERMISSIONS } from "@/lib/config/client-constants";
+
+/**
+ * The capability matrix, rendered from TEAM_ROLE_PERMISSIONS instead of typed
+ * out. It is the same table the routes and the members UI check against, so a
+ * role or a permission added there shows up here rather than leaving this page
+ * describing an older permission model.
+ */
+const TEAM_PERMISSION_COLUMNS: { permission: string; header: string }[] = [
+  { permission: "manage_team", header: "Rename team" },
+  { permission: "manage_members", header: "Manage members" },
+  { permission: "manage_scans", header: "Run/edit team scans" },
+  { permission: "view_reports", header: "View reports" },
+  { permission: "delete_team", header: "Delete team" },
+];
+
+const TEAM_ROLE_NAMES = Object.keys(TEAM_ROLE_PERMISSIONS);
 
 const tocItems: TocItem[] = [
   { id: "overview", label: "Overview" },
@@ -35,7 +52,10 @@ export default function TeamsPage() {
         title="Teams"
         description={`A team lets several ${APP_NAME} accounts share scan reports and the resources attached to them. One account owns the team, everyone else joins by invitation, and a per-member team role decides what each person can do.`}
         stats={[
-          { value: "6", label: "Distinct team roles" },
+          {
+            value: String(TEAM_ROLE_NAMES.length),
+            label: "Distinct team roles",
+          },
           { value: "1-3", label: "Teams owned (Pro / Elite)" },
           { value: "3-10", label: "Seats per team (Pro / Elite)" },
         ]}
@@ -173,75 +193,34 @@ export default function TeamsPage() {
 
       <DocsSection id="roles" title="Roles and Permissions">
         <p className="max-w-[68ch] text-sm text-muted-foreground">
-          There are six team roles. They are built from four underlying
-          capabilities: <InlineCode>manage_team</InlineCode> (rename the team),{" "}
-          <InlineCode>manage_members</InlineCode> (invite, remove, change
-          roles), <InlineCode>manage_scans</InlineCode> (create and edit
-          team-scoped scans), and <InlineCode>view_reports</InlineCode> (read
-          shared reports), plus the owner-only{" "}
+          There are {TEAM_ROLE_NAMES.length} team roles. They are built from
+          four underlying capabilities: <InlineCode>manage_team</InlineCode>{" "}
+          (rename the team), <InlineCode>manage_members</InlineCode> (invite,
+          remove, change roles), <InlineCode>manage_scans</InlineCode> (create
+          and edit team-scoped scans), and <InlineCode>view_reports</InlineCode>{" "}
+          (read shared reports), plus the owner-only{" "}
           <InlineCode>delete_team</InlineCode>. Every role holds{" "}
           <InlineCode>view_reports</InlineCode>.
         </p>
         <DocsTable
-          caption="Team role capability matrix, from TEAM_ROLE_PERMISSIONS in lib/config/constants.ts"
+          caption="Team role capability matrix, from TEAM_ROLE_PERMISSIONS in lib/config/client-constants.ts"
           columns={[
             { key: "role", header: "Role" },
-            { key: "manageTeam", header: "Rename team" },
-            { key: "manageMembers", header: "Manage members" },
-            { key: "manageScans", header: "Run/edit team scans" },
-            { key: "viewReports", header: "View reports" },
-            { key: "deleteTeam", header: "Delete team" },
+            ...TEAM_PERMISSION_COLUMNS.map((column) => ({
+              key: column.permission,
+              header: column.header,
+            })),
           ]}
-          data={[
-            {
-              role: "owner",
-              manageTeam: "Yes",
-              manageMembers: "Yes",
-              manageScans: "Yes",
-              viewReports: "Yes",
-              deleteTeam: "Yes",
-            },
-            {
-              role: "admin",
-              manageTeam: "Yes",
-              manageMembers: "Yes",
-              manageScans: "Yes",
-              viewReports: "Yes",
-              deleteTeam: "No",
-            },
-            {
-              role: "manager",
-              manageTeam: "Yes",
-              manageMembers: "Yes",
-              manageScans: "No",
-              viewReports: "Yes",
-              deleteTeam: "No",
-            },
-            {
-              role: "operator",
-              manageTeam: "Yes",
-              manageMembers: "No",
-              manageScans: "Yes",
-              viewReports: "Yes",
-              deleteTeam: "No",
-            },
-            {
-              role: "member",
-              manageTeam: "No",
-              manageMembers: "No",
-              manageScans: "Yes",
-              viewReports: "Yes",
-              deleteTeam: "No",
-            },
-            {
-              role: "viewer",
-              manageTeam: "No",
-              manageMembers: "No",
-              manageScans: "No",
-              viewReports: "Yes",
-              deleteTeam: "No",
-            },
-          ]}
+          data={TEAM_ROLE_NAMES.map((role) => {
+            const held = TEAM_ROLE_PERMISSIONS[role] as string[];
+            const cells: Record<string, string> = { role };
+            for (const column of TEAM_PERMISSION_COLUMNS) {
+              cells[column.permission] = held.includes(column.permission)
+                ? "Yes"
+                : "No";
+            }
+            return cells;
+          })}
         />
         <p className="max-w-[68ch] text-sm text-muted-foreground">
           Manager and operator are deliberate opposites: a manager handles
@@ -360,8 +339,8 @@ export default function TeamsPage() {
         </p>
         <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
           <li>
-            Any co-member with <InlineCode>view_reports</InlineCode> (all six
-            roles) can read it.
+            Any co-member with <InlineCode>view_reports</InlineCode> (all{" "}
+            {TEAM_ROLE_NAMES.length} roles) can read it.
           </li>
           <li>
             Co-members with <InlineCode>manage_scans</InlineCode> (owner, admin,

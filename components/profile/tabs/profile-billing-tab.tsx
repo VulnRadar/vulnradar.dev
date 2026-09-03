@@ -307,7 +307,13 @@ export function ProfileBillingTab({
                       )}
                     </div>
                     <div className="min-w-0">
-                      <p className="font-semibold text-foreground truncate">
+                      {/* Same reasoning as the line under it: a plan name is
+                          one of our own words, not something the account
+                          typed, so the row is sized to print it. With the
+                          40px icon and the status badge taking their width
+                          first, a 320px phone left about 130px here and
+                          "Professional" clipped. */}
+                      <p className="font-semibold text-foreground">
                         {billingInfo.planName}
                       </p>
                       {/* A number and our own unit. "25 scans/day" should

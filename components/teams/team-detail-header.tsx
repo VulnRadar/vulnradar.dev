@@ -158,7 +158,7 @@ export function TeamDetailHeader({
                       type="button"
                       onClick={onEditName}
                       aria-label="Rename team"
-                      className="text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-md hover:bg-muted shrink-0"
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:h-auto sm:w-auto sm:p-1.5"
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>

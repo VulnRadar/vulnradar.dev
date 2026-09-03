@@ -2,6 +2,8 @@ import Link from "next/link";
 
 import { APP_NAME } from "@/lib/config/constants";
 import { STAFF_ROLES } from "@/lib/config/client-constants";
+import { ADMIN_NAV_GROUPS, ALL_ADMIN_NAV_ITEMS } from "@/components/admin/nav";
+import { PASSWORD_GATED_ACTIONS } from "@/components/admin/config";
 import type { TocItem } from "@/components/docs/docs-types";
 import { DocsTocSpy } from "../docs-toc-spy";
 import {
@@ -45,7 +47,13 @@ export default function AdministrationPage() {
             ),
             label: "Staff roles",
           },
-          { value: "21", label: "Admin destinations" },
+          {
+            // Counted from components/admin/nav.ts, the panel's own
+            // destination table, so a tab added or removed there cannot leave
+            // this number behind.
+            value: String(ALL_ADMIN_NAV_ITEMS.length),
+            label: "Admin destinations",
+          },
           { value: "Every change", label: "Written to the audit log" },
         ]}
       />
@@ -62,7 +70,8 @@ export default function AdministrationPage() {
           email and a specific role; the link expires in seven days, the token
           is stored hashed rather than in plain text, and a pending invite can
           be revoked by deleting it. Sending an invite requires re-entering your
-          password, as do the other seventeen destructive admin actions.
+          password, as do the other {PASSWORD_GATED_ACTIONS.size - 1}{" "}
+          destructive admin actions.
         </p>
         <DocsCallout variant="warning" title="Turn on 2FA enforcement">
           <p>
@@ -148,38 +157,32 @@ export default function AdministrationPage() {
 
       <DocsSection id="tabs" title="What each tab does">
         <p className="text-sm leading-relaxed text-muted-foreground">
-          The panel has 21 destinations in seven groups, and each one is
-          filtered by your role, so what you see depends on what you hold. The
+          The panel has {ALL_ADMIN_NAV_ITEMS.length} destinations in{" "}
+          {ADMIN_NAV_GROUPS.length} groups, and each one is filtered by your
+          role, so what you see depends on what you hold. Groups are the
+          question an operator is trying to answer, not the kind of row the data
+          is, and they are ordered by how often that question gets asked. The
           Overview tab is the one to check first: it is a worst-first health
           list covering the scanner queue, failed scans in the last day, when
           the last backup ran, errors logged in the last hour, failed emails,
           unresolved security alerts, tickets waiting on staff, and pending
           staff invites.
         </p>
+        {/* Rendered from components/admin/nav.ts. This table used to be a
+            hand-written copy and it documented the grouping from BEFORE that
+            file's regrouping: "User Management", "Communications", "Content"
+            and a seven-item "System" bucket are all gone, so every group name
+            an operator was told to look under was wrong. */}
         <DocsTable
           caption="The admin panel's groups and what lives in each"
           columns={[
             { key: "group", header: "Group" },
             { key: "tabs", header: "Tabs", className: "w-full" },
           ]}
-          data={[
-            { group: "Operations", tabs: "Overview" },
-            { group: "User Management", tabs: "Users, Teams, Active Staff" },
-            {
-              group: "Security",
-              tabs: "Access Rules, Blocked Data, Alerts, Audit Log",
-            },
-            {
-              group: "Communications",
-              tabs: "Broadcast, Notifications, AI Chats, Support",
-            },
-            { group: "Content", tabs: "Hosts & Shares" },
-            { group: "Billing", tabs: "Billing Overview" },
-            {
-              group: "System",
-              tabs: "Settings, Updater, Backups, Scanner Queue, Error Logs, Email Logs, Engine Feedback",
-            },
-          ]}
+          data={ADMIN_NAV_GROUPS.map((group) => ({
+            group: group.label,
+            tabs: group.items.map((item) => item.label).join(", "),
+          }))}
         />
         <p className="text-sm leading-relaxed text-muted-foreground">
           Two are worth knowing about before you need them.{" "}

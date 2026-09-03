@@ -1580,7 +1580,14 @@ export function ChatWidget() {
                             /{c.cmd}
                             {c.args ? ` ${c.args}` : ""}
                           </span>
-                          <span className="text-muted-foreground/70 truncate">
+                          {/* Wraps rather than clips. These are our own
+                              sentences and the longest ("List your recent
+                              scans, or load a specific one with an id") needs
+                              roughly 350px, so next to the shrink-0 command
+                              itself it clipped in the panel at every width,
+                              and on a phone, where the panel is inset-0, it
+                              was cut after about four words. */}
+                          <span className="min-w-0 leading-snug text-muted-foreground/70">
                             {c.description}
                           </span>
                           {needsAuth && (

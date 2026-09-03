@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { APP_NAME } from "@/lib/config/constants";
+import { PLANS } from "@/lib/billing/catalog";
 import type { TocItem } from "@/components/docs/docs-types";
 import { DocsTocSpy } from "../docs-toc-spy";
 import {
@@ -10,6 +12,19 @@ import {
   EndpointCard,
   InlineCode,
 } from "@/components/docs";
+
+/**
+ * The per-plan webhook cap, read off the catalog instead of typed out. It was
+ * written by hand in three places on this page, which is three chances for it
+ * to disagree with what the create endpoint enforces.
+ */
+function webhookCapLabel(limit: number): string {
+  return limit === -1 ? "unlimited" : String(limit);
+}
+
+const WEBHOOK_CAPS = PLANS.map(
+  (plan) => `${webhookCapLabel(plan.limits.webhooks)} on ${plan.name}`,
+).join(", ");
 
 const tocItems: TocItem[] = [
   { id: "overview", label: "Overview" },
@@ -47,12 +62,15 @@ export default function WebhooksPage() {
           non-2xx response) gets exactly one retry a few seconds later; if that
           also fails, the attempt is logged and, if you have the notification
           enabled, you get an email. The per-user cap is set by your plan, not a
-          flat number: <strong className="text-foreground">1</strong> on Free,{" "}
-          <strong className="text-foreground">1</strong> on Core Supporter,{" "}
-          <strong className="text-foreground">5</strong> on Pro Supporter, and{" "}
-          <strong className="text-foreground">unlimited</strong> on Elite
-          Supporter. Free accounts do get a webhook: the step up you pay for is
-          1 to 5 at Pro Supporter.
+          flat number:{" "}
+          <strong className="text-foreground">{WEBHOOK_CAPS}</strong>. Free
+          accounts do get a webhook: the step up you pay for is 1 to 5 at Pro
+          Supporter.
+        </p>
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          A webhook can also be assigned to a team. A team-assigned webhook is
+          visible to every co-member, editable by those with write access, and
+          fires on a teammate&apos;s scans as well as its creator&apos;s.
         </p>
       </DocsSection>
 
@@ -111,7 +129,18 @@ export default function WebhooksPage() {
         <p className="text-sm text-muted-foreground mb-6">
           Manage webhooks through these session-authenticated endpoints (the{" "}
           <InlineCode>/api/v3/webhooks</InlineCode> family requires a logged-in
-          user; API keys are not accepted).
+          user; API keys are not accepted). Two more exist and are documented in
+          full on the{" "}
+          <Link
+            href="/docs/api#post-webhooks-rotate-secret"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            API reference
+          </Link>
+          : <InlineCode>POST /webhooks/{"{id}"}/rotate-secret</InlineCode>{" "}
+          (issue a new signing secret in place, owner only) and{" "}
+          <InlineCode>GET /webhooks/{"{id}"}/deliveries</InlineCode> (the 50
+          most recent delivery attempts with their status).
         </p>
 
         <div className="space-y-6">
@@ -120,7 +149,7 @@ export default function WebhooksPage() {
             method="GET"
             path="/webhooks"
             title="List Webhooks"
-            description="Retrieve all webhooks for the authenticated user."
+            description="Your own webhooks plus any assigned to a team you belong to. All team roles can read them."
             responseExample={`{
   "webhooks": [
     {
@@ -157,10 +186,10 @@ export default function WebhooksPage() {
   "secret": "b6f2e1...9c4a"
 }`}
             notes={[
-              "Per-user limit is set by your plan: 1 on Free, 1 on Core Supporter, 5 on Pro Supporter, unlimited on Elite Supporter",
+              `Returns 201, not 200. Per-user limit is set by your plan: ${WEBHOOK_CAPS}`,
               "URL must be HTTPS (no localhost, no private IPs, no link-local)",
               "type defaults to auto-detect; allowed values are auto | discord | slack | generic. Only the detected value is stored.",
-              "secret is only ever returned on this response. Save it now: it signs every delivery and is never shown again.",
+              "secret is returned on this response and, if you ever have to replace it, on POST /webhooks/{id}/rotate-secret. Nothing else returns it, so save it now: it signs every delivery.",
             ]}
             errors={[
               {
@@ -168,6 +197,10 @@ export default function WebhooksPage() {
                 description: "Invalid URL, SSRF blocked, or plan limit reached",
               },
               { code: 401, description: "Unauthorized" },
+              {
+                code: 403,
+                description: "Webhooks are disabled on this deployment",
+              },
             ]}
           />
 
@@ -190,9 +223,16 @@ export default function WebhooksPage() {
             errors={[
               {
                 code: 400,
-                description: "Your endpoint returned a non-2xx status",
+                description:
+                  "Missing id, the target is now SSRF-blocked, or your endpoint returned a non-2xx status",
               },
-              { code: 404, description: "Webhook not found" },
+              { code: 401, description: "Unauthorized" },
+              {
+                code: 403,
+                description:
+                  "You can read this webhook but have no write access to it",
+              },
+              { code: 404, description: "Webhook not found, or no access" },
             ]}
           />
 
@@ -215,9 +255,9 @@ export default function WebhooksPage() {
 }`}
             notes={[
               "Send { active: true|false } alone to pause or resume without touching the URL",
-              "url, name, and type are all optional and independent -- send only what changed",
+              "url, name, type and teamId are all optional and independent -- send only what changed",
               "A new url goes through the same HTTPS + SSRF checks as creation",
-              "Scoped to webhooks you own; another user's webhook ID returns 404",
+              "The owner, or a team co-member with write access, may edit. A read-only co-member gets 403 because they legitimately know it exists; anyone with no access at all gets 404. Changing teamId is owner-only.",
             ]}
             errors={[
               {
@@ -225,7 +265,12 @@ export default function WebhooksPage() {
                 description: "Nothing to update, or the new URL was rejected",
               },
               { code: 401, description: "Unauthorized" },
-              { code: 404, description: "Webhook not found" },
+              {
+                code: 403,
+                description:
+                  "Read access but not write access, or not the owner when changing teamId",
+              },
+              { code: 404, description: "Webhook not found, or no access" },
             ]}
           />
 
@@ -241,9 +286,15 @@ export default function WebhooksPage() {
             responseExample={`{
   "success": true
 }`}
+            notes={[
+              "An id that does not exist returns { success: true } with a 200, not a 404: there is nothing to delete and nothing to reveal about whose id it might be.",
+            ]}
             errors={[
               { code: 401, description: "Unauthorized" },
-              { code: 404, description: "Webhook not found" },
+              {
+                code: 403,
+                description: "No write access to this webhook",
+              },
             ]}
           />
         </div>
@@ -282,10 +333,14 @@ export default function WebhooksPage() {
             language="json"
           />
           <p className="text-xs text-muted-foreground mt-3">
-            Embed color: <InlineCode>0xef4444</InlineCode> (red, any critical),{" "}
-            <InlineCode>0xf97316</InlineCode> (orange, any high),{" "}
-            <InlineCode>0xeab308</InlineCode> (yellow, any medium),{" "}
-            <InlineCode>0x22c55e</InlineCode> (green, otherwise).
+            Embed color follows the scan&rsquo;s safety verdict, the same
+            safe/caution/unsafe tier the badge and the host page use, not a raw
+            severity count: <InlineCode>0x22c55e</InlineCode> (green, safe),{" "}
+            <InlineCode>0xeab308</InlineCode> (yellow, caution),{" "}
+            <InlineCode>0xef4444</InlineCode> (red, unsafe). A count-based rule
+            cannot tell an exploitable high from a hardening one like a missing
+            HSTS header, so it used to paint scans red that the scorer calls
+            safe.
           </p>
         </Card>
 
@@ -384,8 +439,14 @@ export default function WebhooksPage() {
             the same HMAC on your end and compare to verify a payload actually
             came from {APP_NAME}. The one exception is the Test button, whose
             delivery is unsigned and carries no{" "}
-            <InlineCode>User-Agent</InlineCode>. Lost the secret? Delete the
-            webhook and create a new one.
+            <InlineCode>User-Agent</InlineCode>. Lost or leaked the secret? Call{" "}
+            <InlineCode>
+              POST /api/v3/webhooks/{"{id}"}/rotate-secret
+            </InlineCode>{" "}
+            (owner only) for a new one on the same row: the id and the URL
+            survive, so your consumer&rsquo;s configuration does not have to
+            change. Every signature it is currently verifying stops matching the
+            moment that returns, so deploy the new secret first.
           </li>
           <li>
             <strong className="text-foreground">Timeout:</strong> 10 seconds per
@@ -403,14 +464,14 @@ export default function WebhooksPage() {
           </li>
           <li>
             <strong className="text-foreground">Per-user cap, by plan:</strong>{" "}
-            1 on Free, 1 on Core Supporter, 5 on Pro Supporter, unlimited on
-            Elite Supporter. Delete or upgrade to add more.
+            {WEBHOOK_CAPS}. Delete or upgrade to add more.
           </li>
           <li>
             <strong className="text-foreground">Session-only API:</strong>{" "}
             Bearer keys cannot manage webhooks: only logged-in users can create,
-            list, edit, pause, test, and delete them, and every edit is scoped
-            to webhooks the caller owns.
+            list, edit, pause, test, and delete them. Every write is scoped to
+            webhooks the caller owns or has team write access to; rotating the
+            secret and reassigning the team are owner-only.
           </li>
         </ul>
       </DocsSection>

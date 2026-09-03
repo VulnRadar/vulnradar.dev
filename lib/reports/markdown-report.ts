@@ -1,7 +1,7 @@
 import type { ScanResult, Severity, Vulnerability } from "@/lib/scanner/types";
 import { severityCounts } from "./severity-counts";
 import { mdText, mdInlineCode, mdFenced } from "./md-escape";
-import { APP_NAME, APP_URL } from "@/lib/config/constants";
+import { APP_NAME, APP_URL, SEVERITY_ORDER } from "@/lib/config/constants";
 import {
   getSafetyRating,
   type SafetyRating,
@@ -20,14 +20,6 @@ import {
  * is no dedicated API route for any of those, so Markdown doesn't get one
  * either.
  */
-
-const SEVERITY_ORDER: Severity[] = [
-  "critical",
-  "high",
-  "medium",
-  "low",
-  "info",
-];
 
 const SEVERITY_LABEL: Record<Severity, string> = {
   critical: "Critical",

@@ -1,0 +1,8 @@
+[
+  {
+    "icon": "ListOrdered",
+    "label": "One Severity Order, Not Nine",
+    "desc": "Sorting by severity was defined nine separate times across the scanner, the report renderers, the AI prompt builders and the admin alerts list, under three numeric conventions that disagreed with each other: critical counted down from 5 in two of them and up from 0 in the rest, and two of the nine even shared the same name. A comparator copied from one file into another sorted backwards, and nothing typechecked differently either way. There is one table now, beside the severity levels, and every one of those places reads it. A test walks the source tree and fails if a tenth private table appears.",
+    "category": "changed"
+  }
+]

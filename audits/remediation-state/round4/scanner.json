@@ -11,9 +11,7 @@
     "effort": "medium",
     "category": "docs / self-hosted base URL",
     "file": "lib/api/openapi-spec.ts",
-    "files": [
-      "lib/api/openapi-spec.ts"
-    ],
+    "files": ["lib/api/openapi-spec.ts"],
     "line": 25,
     "description": "lib/config/constants.ts:191 resolves `APP_URL = process.env.NEXT_PUBLIC_APP_URL || CONFIG_APP_URL`, and lib/config/config-values.ts:141 sets CONFIG_APP_URL to \"https://vulnradar.dev\". NEXT_PUBLIC_* is inlined by Next at build time, and .github/workflows/docker-publish.yml:49-51 runs `docker build -t $IMAGE:${VERSION} -t $IMAGE:latest .` with no `--build-arg NEXT_PUBLIC_APP_URL`, even though Dockerfile:16/32 declares the ARG. So the published GHCR image bakes vulnradar.dev into APP_URL. app/api/v3/openapi.json/route.ts:11 calls `buildOpenApiSpec(APP_URL)`, which lands in lib/api/openapi-spec.ts:25 as `servers: [{ url: \"https://vulnradar.dev/api/v3\" }]` (its own docstring at :12-13 claims \"baseUrl is the deployment's origin so a self-hosted instance advertises its own server\"). app/docs/api/playground/page.tsx:62 reads `spec.servers[0].url` as its baseUrl and :298/:316 fetch that absolute URL. Every curl/JS sample on app/docs/api/page.tsx:935-984, the rate-limits backoff samples (app/docs/rate-limits/page.tsx:379/413), and the reports curl samples (app/docs/reports/page.tsx:296/449) interpolate the same APP_URL.",
     "impact": "On a self-hosted instance run from the official image, every documented curl command targets the public SaaS instead of the operator's own deployment, and the playground's \"Send request\" button issues a cross-origin request to vulnradar.dev that fails CORS with the opaque message \"Request failed (network, CORS, or an invalid URL)\". The playground's own setup text (\"the key ... is sent only to https://vulnradar.dev/api/v3\") then tells the operator their key goes to someone else's server.",
@@ -115,9 +113,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks/secrets-extended.ts",
-    "files": [
-      "lib/scanner/checks/secrets-extended.ts"
-    ],
+    "files": ["lib/scanner/checks/secrets-extended.ts"],
     "line": null,
     "description": "Unlike the main hardcoded-secrets detector (which filters matched values against example/your_/xxxx/0000/placeholder/test_/dummy/localhost), none of the per-provider secret-* detectors (secret-stripe-webhook-endpoint, secret-google-maps-api-key, secret-aws-secret-key, etc.) called stripExampleContent or filtered matched values at all. A .env.example served raw, or a README documenting a fake-but-correctly-shaped credential (STRIPE_SECRET_KEY=sk_live_YOUR_KEY_HERE, AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX), would satisfy a provider's format regex and get reported as a confirmed secret, several at critical severity.",
     "impact": "",
@@ -141,9 +137,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks-data/secrets-extended.json",
-    "files": [
-      "lib/scanner/checks-data/secrets-extended.json"
-    ],
+    "files": ["lib/scanner/checks-data/secrets-extended.json"],
     "line": null,
     "description": "All 51 entries in secrets-extended.json declared type 'header' even though every one of their detectors (confirmed by reading the full .ts file) only examines the response body, never headers. Per registry.ts's confidenceForType, 'header' maps to 93% confidence (near-certain) while the correct 'body-pattern' type maps to 70% -- the same mislabeling class already fixed once for a single content.json check (AUDIT-008 content-07) but present here across an entire file.",
     "impact": "",
@@ -167,9 +161,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks/ssl.ts",
-    "files": [
-      "lib/scanner/checks/ssl.ts"
-    ],
+    "files": ["lib/scanner/checks/ssl.ts"],
     "line": null,
     "description": "detectMixedContent() matched src/href/action=\"http://...\" anywhere in the body with no check that the scanned page itself was HTTPS. Mixed content is only a meaningful concept on an HTTPS page loading HTTP subresources -- an http:// page referencing other http:// URLs (including ordinary same-origin links) is completely normal. This fired on virtually every plain-HTTP page scanned, misreporting them as HTTPS pages with mixed content. The newer PageCheck-architecture equivalents (page-mixed-content-active/passive in page-checks/mixed-content.ts) already correctly gate on ctx.isHttps -- this older detector was the one left behind.",
     "impact": "",
@@ -193,9 +185,7 @@
     "effort": "small",
     "category": "docs / openapi coverage",
     "file": "lib/api/openapi-spec.ts",
-    "files": [
-      "lib/api/openapi-spec.ts"
-    ],
+    "files": ["lib/api/openapi-spec.ts"],
     "line": 56,
     "description": "Mechanically diffing the 20 path items in lib/api/openapi-spec.ts:56-677 against the exported handlers in the matching route.ts files: /history documents GET but the route also exports DELETE (app/api/v3/history/route.ts:153); /history/{id} documents GET but the route also exports PATCH (:194) and DELETE (:392); /scan/remediation documents POST but the route also exports GET (:147) and DELETE (:116); /schedules documents GET+POST but the route also exports PATCH (:223) and DELETE (:322); /teams documents GET+POST but the route also exports PATCH (:129) and DELETE (:176). Ten real operations, on paths the spec already lists, are missing. app/docs/triage/page.tsx:383-394 and app/docs/teams/page.tsx:447-509 document most of them in prose, so the spec is the outlier, not the routes.",
     "impact": "The playground renders only what the spec lists (app/docs/api/playground/page.tsx:61-104), so a user can create a schedule or a team from it but cannot rename, pause or delete one, and cannot clear or annotate history. Anyone generating a client SDK from the spec gets a write-only API for those resources.",
@@ -219,9 +209,7 @@
     "effort": "large",
     "category": "list (a) gap rank 5: authenticated scanning, narrowed against the code",
     "file": "lib/scanner/auth/types.ts",
-    "files": [
-      "lib/scanner/auth/types.ts"
-    ],
+    "files": ["lib/scanner/auth/types.ts"],
     "line": 13,
     "description": "The research called authenticated scanning the single biggest gap and flagged it for verification. Verified in code, the gap is much narrower than that. lib/scanner/auth/types.ts:13 declares `ScanAuthType = \"form\" | \"header\" | \"cookie\"`, all three are implemented (lib/scanner/auth/login.ts, lib/scanner/auth/browser-login.ts), and the form path is better than a naive implementation: it opens a real headless browser session to render a client-side login form before parsing it (lib/scanner/auth/browser-login.ts:1 to :27). POST /api/v3/scan/authenticated exists (app/api/v3/scan/authenticated/route.ts:56), the session is origin-bound with a logout guard (lib/scanner/auth/scan-session.ts:104 to :113), and the crawl engine reports the auth state back. What is genuinely absent: (1) multi-step or recorded login sequences, a browser-recorder capture of the click path (Detectify ships a Chrome recorder, Astra uses Chrome DevTools Recorder, Pentest-Tools and Acunetix both ship a login sequence recorder, Snyk supports recorded sequences); (2) TOTP or OTP second factor, which Astra and Snyk both handle and Acunetix explicitly claims for MFA and CAPTCHA; (3) SSO or OpenID Connect login flows, which only Snyk supports; (4) automatic re-authentication when the session dies mid-scan. On (4), lib/scanner/auth/scan-session.ts:86 `markLost()` records the loss and :116 to :154 detects all three loss signals (cleared session cookie, 401/403, redirect back to the login path), but nothing ever calls establishScanSession again: a grep for re-auth, reauth, relogin across lib/scanner/ and app/api/v3/scan/ returns zero hits. Snyk is the only one of the eight with automatic re-auth mid-scan.",
     "impact": "For this product's users (developers scanning their own staging app behind a login) the practical bite is ordered opposite to the market's marketing. Item (4) costs users today: a long crawl of a session-expiring app silently degrades to an anonymous scan partway through and reports status \"lost\", so the user pays a scan against their daily quota and gets a partial result they must re-run by hand. Items (1) to (3) cost the product a specific class of prospect (SPAs with a multi-screen login, any team with 2FA enforced on staging) but each is expensive to build and none is a same-day fix.",
@@ -245,9 +233,7 @@
     "effort": "small",
     "category": "list (b): undersold privacy posture",
     "file": "lib/scanner/auth/types.ts",
-    "files": [
-      "lib/scanner/auth/types.ts"
-    ],
+    "files": ["lib/scanner/auth/types.ts"],
     "line": 1,
     "description": "lib/scanner/auth/types.ts:1 to :10 documents a deliberate design: \"There is no stored credential anywhere in this codebase: a caller supplies login material directly in a single scan request, it lives in memory for the length of that one request, and it is never written to a table, a log line, an audit record, or the persisted scan result.\" The route enforces it (app/api/v3/scan/authenticated/route.ts:56 to :68: logAction records only the non-secret outcome), and the session object reports counts rather than contents (lib/scanner/auth/scan-session.ts:157 to :172). Every one of the eight commercial vendors stores your target credentials in their SaaS by construction, because all of them offer saved recorded login sequences. Separately, components/landing/landing-open-source.tsx:6 to :13 already lists \"Telemetry: None\" and \"Third-party trackers: None\" as bare facts in a definition list. The privacy argument is never made anywhere: neither claim appears in any /alternatives comparison row (lib/seo/alternatives.ts:44 has no privacy or data-handling row), in any landing FAQ answer (app/landing/page.tsx), or on the pricing page.",
     "impact": "\"Do I have to give a third-party SaaS a working login to my staging environment\" is the objection that kills authenticated-scanning trials, and it is the one objection this product has an unusually good answer to. Burying that answer in a TypeScript file comment means it never reaches the person deciding.",
@@ -271,9 +257,7 @@
     "effort": "large",
     "category": "list (a) gap rank 11: depth of active testing",
     "file": "lib/scanner/active-probe-catalog.ts",
-    "files": [
-      "lib/scanner/active-probe-catalog.ts"
-    ],
+    "files": ["lib/scanner/active-probe-catalog.ts"],
     "line": 46,
     "description": "The research called active injection testing the defining line and ranked it gap number one. Verified in code, VulnRadar is further along than that implies but structurally capped. lib/scanner/active-probe-catalog.ts:46 to :101 defines nine opt-in probes, gated behind verified domain ownership (:117): reflected XSS canary, error-based SQLi, SSTI, OS command injection, confirmed open redirect, GraphQL introspection, active CORS reflection, dangerous HTTP methods, and X-Forwarded-Host injection, implemented in lib/scanner/active-probes/ (five modules, roughly 700 lines). Every one of them decides from the immediate response body or status. There is no out-of-band interaction server anywhere in the repo (grep for oast, collaborator, interactsh across lib/scanner/ returns only unrelated matches in port-scan.ts and two checks-data JSON files), which means blind and time-based SQLi, blind SSRF, blind XXE, out-of-band command injection and Log4Shell-class flaws cannot be confirmed by construction. There is also no second request-cycle verification, so stored XSS is out of reach. By contrast ZAP and Wapiti send full active-scan payloads across 30+ module families including XXE, path traversal, file upload and CSRF, Nuclei adds fuzzing with -dast, Burp ships OAST via Collaborator, Pentest-Tools ships actual auto-exploiters, and Invicti claims runtime proof-based verification at 99.98%.",
     "impact": "Two-sided. Against ZAP and Wapiti, VulnRadar genuinely finds less, and a security engineer who assumes \"active probing\" means ZAP-equivalent coverage will conclude the scanner missed things it never claimed to look for. Against the free graders (Observatory, SecurityHeaders, SSL Labs), VulnRadar finds far more, which is the comparison that actually matters for its funnel. The cost today is not missed findings so much as an unstated ceiling.",
@@ -297,9 +281,7 @@
     "effort": "medium",
     "category": "scanner thresholds",
     "file": "lib/scanner/safety-rating.ts",
-    "files": [
-      "lib/scanner/safety-rating.ts"
-    ],
+    "files": ["lib/scanner/safety-rating.ts"],
     "line": 298,
     "description": "getSafetyRating decides safe/caution/unsafe from four bare comparisons: criticalExploitWeight >= 1 (:260), highExploitWeight >= 2 (:264), mediumExploitWeight >= 3 (:276), highHardeningWeight >= 5 (:282). getDangerScore adds SEVERITY_WEIGHTS critical 4 / high 2 / medium 1 / low 0.3 / info 0.05 (:298-:304), the tierBase and tierCap tables (:312-:321), a fallback weight of 0.1 (:327), and the multipliers 1.5 exploitable / 0.15 hardening / 0.05 other (:335-:337). getEngineConfidence adds a base of 97, a 94 timed-out variant (:368), a per-severity averaging table (:373-:379), a default confidence of 85 for a finding that carries none (:385), and a 0.3/0.7 blend with a floor of 50 (:392-:394). lib/scanner/ssl-grade.ts is the same story: deductions of 55, 70, 40, 20, 10 and 5, bonuses of 3, and the letter cutoffs 95/80/65/50/35 at :231-:236. A grep of lib/config/registry.ts for 'safety', 'danger' or 'confidence' returns only the three ADAPTIVE_CONFIDENCE / ENGINE_FEEDBACK entries (registry.ts:2731-2751), none of which touch any of the numbers above. The per-check static confidence values are equally scattered as literals across roughly 40 files (lib/scanner/checks/page-checks/links.ts:124 confidence 45, disclosure.ts:135 confidence 55, framework-fingerprint.ts:111 confidence 92, and so on).",
     "impact": "An operator running VulnRadar against a fleet where five missing hardening headers is normal has no way to stop every host being labelled 'caution'; the only lever the admin panel offers is turning adaptive confidence on or off. A security team that wants a stricter or looser bar has to fork lib/scanner/safety-rating.ts, which puts them off the upgrade path for a scanner whose whole value is the checks it ships.",
@@ -323,9 +305,7 @@
     "effort": "small",
     "category": "silent-wrongness in a detection path",
     "file": "lib/scanner/protocol-findings.ts",
-    "files": [
-      "lib/scanner/protocol-findings.ts"
-    ],
+    "files": ["lib/scanner/protocol-findings.ts"],
     "line": 1,
     "description": "lib/scanner/protocol-findings.ts measures 0% statements / 0% branches / 0% functions (25 statements, 265 lines) and there is no tests/lib/scanner/protocol-findings.test.ts. Its header states it holds the 'Vulnerability builders for the non-HTTP protocol scan branch in execute-scan.ts (a URL whose scheme is ssh://, smtp://, imap://, pop3://, or mongodb://)' and that 'Finding IDs are derived deterministically from a checkId prefix + URL (see generateId), so the prefixes here MUST stay stable: changing one changes the ID of an existing finding type and breaks diffing between a user's older and newer scans of the same target'. The parsing layer beneath it is covered: lib/scanner/protocols/banner.ts is at 85.52%, with dedicated suites at tests/lib/scanner/protocols/banner-analysis, banner-tls-and-capability, and mongo-probe. So the suite proves the banner is parsed correctly and proves nothing about whether a finding is produced from it. For contrast, the three other low-coverage files under lib/scanner/checks/ (email.ts 3.03%, active-probes.ts 16.66%, reputation.ts 25%) are deliberate placeholders whose detectors return null, and are correctly not a gap.",
     "impact": "Two silent failures. A regression that drops a finding builder makes a protocol scan of a genuinely vulnerable host report clean, and the user has no signal that anything is wrong because the scan completes normally. A regression that changes an idPrefix silently breaks the scan-to-scan diff the file's own comment warns about, so the history view shows a resolved finding plus a new finding instead of one persistent one, in a product whose value proposition is tracking a host over time.",
@@ -349,9 +329,7 @@
     "effort": "small",
     "category": "test would pass with the feature removed",
     "file": "tests/lib/scanner/engine.test.ts",
-    "files": [
-      "tests/lib/scanner/engine.test.ts"
-    ],
+    "files": ["tests/lib/scanner/engine.test.ts"],
     "line": 72,
     "description": "tests/lib/scanner/engine.test.ts:72 is titled \"does not let one throwing check take down the whole scan\". Its body builds a pathological body string (`\"<\".repeat(5000) + \"html\".repeat(1000)`) and asserts exactly one thing: `expect(() => runSyncChecks(...)).not.toThrow()`. No detector in the run is made to throw: a grep for `throw new Error` in that file returns nothing, and no detector is stubbed or injected. The feature it is supposed to guard is the pair of per-check try/catch blocks in lib/scanner/engine.ts at lines 169 to 172 and 186 to 198 (the file's own comment at line 131 calls them \"the per-check try/catch below\"). The exact mutation the test does not catch: delete both try/catch wrappers in lib/scanner/engine.ts, and the test still passes, because none of the 800-plus registered detectors throws on that particular input. It also does not assert that findings are still produced, so a mutation that makes runSyncChecks return `{ findings: [] }` unconditionally also passes.",
     "impact": "The per-check try/catch is what stops one bad regex or one bad detector from aborting an entire scan. If it is removed or narrowed during a refactor, the suite says nothing, and the symptom in production is a scan that returns a 500 or an empty result for every user whose page happens to trip the throwing detector. The test also carries a documented flake: its own comment at lines 65 to 70 records that the default 5s timeout \"has been observed to flake under a full parallel suite run\", which is why it now runs with a 20s override, so a very expensive test is buying an assertion that cannot fail.",
@@ -375,9 +353,7 @@
     "effort": "medium",
     "category": "repeated blocking resolution on a shared threadpool",
     "file": "lib/scanner/safe-fetch.ts",
-    "files": [
-      "lib/scanner/safe-fetch.ts"
-    ],
+    "files": ["lib/scanner/safe-fetch.ts"],
     "line": 460,
     "description": "`validateScanTarget` resolves the target with `await lookup(hostname, { all: true })` (lib/scanner/safe-fetch.ts:460) and caches nothing. `safeFetch` calls it once per request (line 584) and again on every redirect hop (line 746), and it is additionally called directly from app/api/v3/scan/route.ts:276, lib/scanner/checks/tls.ts:104/247/359, lib/scanner/async-checks.ts:2251/2732/3566/3648/3755, lib/scanner/active-probes/shared.ts:160, lib/scanner/active-probes/open-redirect.ts:155, lib/scanner/subdomain-auto.ts:99 and lib/scanner/page-screenshot.ts:199. A single scan of one host therefore resolves that host 12-20 times. Unlike `dns.resolve*`, `dns.lookup` is `getaddrinfo` and runs on the libuv threadpool, which defaults to 4 threads; nothing in the repo sets `UV_THREADPOOL_SIZE` (no occurrence anywhere outside node_modules), and that same pool serves `fs` and node:crypto's async KDFs.",
     "impact": "The scan pays 12-20 identical resolutions it could pay once. More importantly, concurrent scans queue on four OS threads: with a resolver that takes 100ms, eight simultaneous scans serialize their SSRF checks and also stall unrelated filesystem and crypto work in the same process. VulnRadar runs as one persistent Node process, so this is process-wide back-pressure, not per-request.",
@@ -401,9 +377,7 @@
     "effort": "small",
     "category": "write amplification",
     "file": "lib/scanner/scan-jobs.ts",
-    "files": [
-      "lib/scanner/scan-jobs.ts"
-    ],
+    "files": ["lib/scanner/scan-jobs.ts"],
     "line": 120,
     "description": "`createProgressTracker`'s `onProgress` hook fires an `UPDATE scan_history SET current_category = $1, categories_total = $2 WHERE id = $3` on every \"start\" event (lib/scanner/scan-jobs.ts:120-127) and an `UPDATE scan_history SET categories_completed = $1, categories_total = $2 ...` on every \"done\" event (lines 131-138). The hook is invoked twice per category by `runSyncChecks` (lib/scanner/engine.ts:166 and :203) and twice per branch by `runAsyncChecksDetailed` (lib/scanner/async-checks.ts:4642 and :4644). `categoriesTotal` is `plannedSync.length + plannedAsync.length` (app/api/v3/scan/route.ts:339), which for a default full scan is roughly 16 sync categories plus 4-5 async branches -- about 40 UPDATEs per scan. Because Postgres is MVCC, each one writes a new version of a `scan_history` row that carries the `findings`, `summary`, `response_headers` and `result_meta` JSONB columns.",
     "impact": "About 40 dead tuples per scan on the largest table in the schema, plus 40 write round trips competing for the same 10-connection pool the scan's own reads use. On a crawl this is 40 x page count. It also inflates autovacuum work on the one table every list, dashboard and public page reads from.",
@@ -427,9 +401,7 @@
     "effort": "medium",
     "category": "DNS rebinding TOCTOU",
     "file": "lib/scanner/safe-fetch.ts",
-    "files": [
-      "lib/scanner/safe-fetch.ts"
-    ],
+    "files": ["lib/scanner/safe-fetch.ts"],
     "line": 621,
     "description": "validateScanTarget (lib/scanner/safe-fetch.ts:430-494) calls `lookup(hostname, {all:true})` and rejects the target if any returned address is private, then hands back `resolvedIp = addresses[0].address`. safeFetch pins that IP into the request URL only when the scheme is NOT https/wss (lib/scanner/safe-fetch.ts:601-620). For HTTPS, the `else if (isSecureProtocol && safety.resolvedIp)` branch at lib/scanner/safe-fetch.ts:621-624 does nothing but set a Host header; the URL keeps the hostname, so undici calls `dns.lookup` again at connect time. Node has no process-level DNS cache, so an attacker serving a TTL-0 A record from their own authoritative nameserver returns a public IP to validateScanTarget's query and 127.0.0.1 / 169.254.169.254 / an RFC1918 address to undici's query. This is deterministic, not a race. The same limitation is repeated verbatim in applyPinnedTarget (lib/scanner/async-checks.ts:2747-2759, `if (parsed.protocol !== \"http:\") return {url, init}`) and in pinToResolvedIp (lib/scanner/safe-fetch.ts:285), so every HTTPS probe in the scanner shares it. Both places document it as accepted (\"for HTTPS the protection is the DNS re-resolution happening immediately before the request\"), which is not a protection at all. Note that the TLS-specific checks got this right: lib/scanner/checks/tls.ts:261-267 and lib/scanner/async-checks.ts:2268-2278 both `tls.connect({host: safeIp, servername: hostname})`, pinning the IP while keeping SNI, which is exactly the pattern the fetch layer is missing.",
     "impact": "An attacker who controls a nameserver can make every HTTPS request the scanner issues land on an internal address of their choosing. Certificate validation stops them reading a response body (the cert will not match their hostname), but the TCP connect and TLS ClientHello still happen, and the difference between an immediate RST, a TLS alert, and a full timeout is a working blind port/service scanner for the network VulnRadar runs in, driven from an unauthenticated /api/v3/demo-scan request. It also means the entire private-IP block list is advisory on the HTTPS path, so any future change that relaxes cert checking (the scanner already uses rejectUnauthorized:false elsewhere) turns this into a full read primitive.",
@@ -453,9 +425,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks/secrets-extended.ts",
-    "files": [
-      "lib/scanner/checks/secrets-extended.ts"
-    ],
+    "files": ["lib/scanner/checks/secrets-extended.ts"],
     "line": null,
     "description": "The check is a bare regex match for any `https://*.s3.amazonaws.com` URL with zero filtering — presence alone is treated as an \"exposure\". Public S3 buckets used to serve static assets (images, downloads, PDFs) are a deliberate, extremely common hosting pattern, not a misconfiguration. Verified: `<img src=\"https://mybucket.s3.amazonaws.com/logo.png\">` matches. Trigger: Any website that hosts a logo, product image, or downloadable file on a public S3 bucket (widespread practice — S3 static asset hosting is a standard, documented AWS use case), e.g. `<img src=\"https://assets-bucket.s3.amazonaws.com/logo.png\">`.",
     "impact": "",
@@ -479,9 +449,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks/headers.ts",
-    "files": [
-      "lib/scanner/checks/headers.ts"
-    ],
+    "files": ["lib/scanner/checks/headers.ts"],
     "line": null,
     "description": "Both cache-control-no-store-missing (lines 962-977) and cache-control-missing (lines 100-120) use the identical `.includes()` substring list `[/login,/signin,/signup,/register,/admin,/api/auth,/session,/account]`. Because these are plain substring checks rather than path-segment matches, `/api/auth` matches any path merely containing that substring (e.g. `/api/authors`), `/session` matches `/sessions`, and `/account` matches `/accounting` -- none of which are actually authentication/session endpoints. Trigger: A blog/CMS REST endpoint `/api/authors/42` (common on Ghost, WordPress-style, or custom Next.js content APIs) or an events site's public schedule page `/sessions/keynote-address`, or a fintech marketing page `/accounting/reports` -- all public, non-sensitive routes that get flagged as 'sensitive page path detected' for lacking Cache-Control: no-store.",
     "impact": "",
@@ -505,9 +473,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks/ssl.ts",
-    "files": [
-      "lib/scanner/checks/ssl.ts"
-    ],
+    "files": ["lib/scanner/checks/ssl.ts"],
     "line": null,
     "description": "detectMixedContent (lines 29-45) matches `(?:src|href|action)\\s*=\\s*[\"']http://` against every tag in the body, which includes ordinary <a href> navigation links and <form action> (already covered separately by form-action-http). A plain hyperlink is never fetched as a subresource by the browser and triggers no mixed-content warning or block. headers.ts's own `mixed-content` detector explicitly documents fixing this exact false positive ('A plain <a href=\"http://...\"> is regular navigation, never fetched as a subresource -- it must not count here'), but that scoping was never applied to this separate ssl.ts implementation of the same underlying concept. Trigger: Any HTTPS page containing an ordinary outbound citation/reference link to an HTTP-only external resource, e.g. a blog post or documentation page linking `<a href=\"http://example-legacy-site.org/paper.pdf\">source</a>` -- gets counted as an N-count 'mixed-content reference' even though nothing is fetched insecurely.",
     "impact": "",
@@ -531,9 +497,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks/host-validation.ts",
-    "files": [
-      "lib/scanner/checks/host-validation.ts"
-    ],
+    "files": ["lib/scanner/checks/host-validation.ts"],
     "line": null,
     "description": "The regex `/\\/(?:api\\/)?(?:v\\d+\\/)?(?:user|account|invoice|order|profile)s?\\/([1-9]\\d{0,4})(?:\\/|$|\\?)/i` matches any URL path shaped like `/user/<n>` or `/profile/<n>` with no API/version prefix required. Drupal (a major CMS, powering a large share of government, university, and enterprise sites) uses exactly this path -- `/user/{uid}` -- as its default, framework-generated user-profile route, and by Drupal convention uid 1 is the site's first/admin account, so `/user/1` is an extremely common, often intentionally reachable URL across the Drupal ecosystem (frequently linked exactly this way, e.g. the pattern seen at drupal.org/user/1-style links). Scanning any Drupal site's default user page produces a 'Sequential Numeric ID in URL (IDOR Risk)' finding for what is simply the CMS's standard content-routing path, not an owner-scoped API resource. Trigger: Scanning any stock Drupal site at its default admin/user page, e.g. `https://<any-drupal-site>/user/1` -- confirmed the check's own regex matches this exact path (verified: `/\\/(?:api\\/)?(?:v\\d+\\/)?(?:user|account|invoice|order|profile)s?\\/([1-9]\\d{0,4})(?:\\/|$|\\?)/i.exec(\"https://example.edu/user/1\")` returns a match with id=1).",
     "impact": "",
@@ -557,9 +521,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks/cookies.ts,lib/scanner/checks/headers.ts",
-    "files": [
-      "lib/scanner/checks/cookies.ts,lib/scanner/checks/headers.ts"
-    ],
+    "files": ["lib/scanner/checks/cookies.ts,lib/scanner/checks/headers.ts"],
     "line": null,
     "description": "cookies.ts has a simple substring-based version; headers.ts has a modern Headers.getSetCookie()-based version. The JSON definition's category is headers, not cookies, so headers.ts always wins -- a maintainer editing cookies.ts expecting to change live behavior would be editing dead code.",
     "impact": "",
@@ -609,9 +571,7 @@
     "effort": null,
     "category": null,
     "file": "lib/config/registry.ts,lib/scanner/execute-scan.ts",
-    "files": [
-      "lib/config/registry.ts,lib/scanner/execute-scan.ts"
-    ],
+    "files": ["lib/config/registry.ts,lib/scanner/execute-scan.ts"],
     "line": null,
     "description": "registry.ts describes it as the lowest severity reported when a scan does not specify one. No getSetting call for this key exists in production code, and no scan route applies any severity floor at all.",
     "impact": "",
@@ -635,9 +595,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks-data/content.json",
-    "files": [
-      "lib/scanner/checks-data/content.json"
-    ],
+    "files": ["lib/scanner/checks-data/content.json"],
     "line": null,
     "description": "Detector matches __schema{/IntrospectionQuery/getIntrospectionQuery anywhere in body -- text bundled by nearly every GraphQL client library (Apollo, Relay, graphql-request) for fragment matching/codegen, regardless of whether the server's introspection is actually enabled. The JSON title asserted introspection is 'Enabled in Production' (a claim about live server behavior the check never verifies), at medium severity, so any GraphQL-using site (common at Walmart scale) would false-positive on ordinary client tooling.",
     "impact": "",
@@ -687,9 +645,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks/information-disclosure.ts",
-    "files": [
-      "lib/scanner/checks/information-disclosure.ts"
-    ],
+    "files": ["lib/scanner/checks/information-disclosure.ts"],
     "line": null,
     "description": "django-csrftoken-cookie-exposed, laravel-session-cookie-exposes, and express-cookie-exposes all had a JSON title/description claiming to detect a session/CSRF cookie 'missing security attributes' (Secure/HttpOnly/SameSite), at medium severity -- but the detector bodies only matched the framework's DEFAULT cookie name (csrftoken, XSRF-TOKEN, connect.sid, etc.) and returned a finding unconditionally, never inspecting the cookie string for the attributes the title claims are missing. A site using the default cookie name with fully correct Secure+HttpOnly+SameSite flags set would still get flagged as if attributes were absent. (The sibling rails-cookie-httponly check in the same file does this correctly, which is how the gap was found.)",
     "impact": "",
@@ -713,9 +669,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks-data/headers.json",
-    "files": [
-      "lib/scanner/checks-data/headers.json"
-    ],
+    "files": ["lib/scanner/checks-data/headers.json"],
     "line": null,
     "description": "sri-missing (high) fires on any external script lacking a Subresource Integrity hash, but SRI is fundamentally impractical for continuously-updated third-party vendor scripts (analytics, ads, payment SDKs) that essentially every major site loads, including security-conscious ones -- so this fired at 'high' severity against nearly the entire web. target-blank-no-noopener (medium) flags <a target=_blank> without rel=noopener even though the check's own riskImpact text already concedes Chrome 88+/Firefox 79+ apply noopener behavior by default, making the real-world risk on modern browsers low. iframe-third-party-without-sandbox (medium) fires on any cross-origin iframe including routine, legitimate embeds (YouTube, Google Maps, payment SDKs, chat widgets) that omit sandbox because it would break required functionality, and its own riskImpact overstated the threat (claimed DOM access the Same-Origin Policy already blocks regardless of sandbox). x-backend-server-exposed (medium) fires on X-Served-By, a default Fastly/Varnish header used by many large, well-run sites, at a higher severity than the identical-risk sibling checks (server-header-disclosure, via-header-exposed, x-powered-by-exposed) which are all 'low'.",
     "impact": "",
@@ -739,9 +693,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks/api.ts,lib/scanner/checks-data/api.json",
-    "files": [
-      "lib/scanner/checks/api.ts,lib/scanner/checks-data/api.json"
-    ],
+    "files": ["lib/scanner/checks/api.ts,lib/scanner/checks-data/api.json"],
     "line": null,
     "description": "The detector only checks whether a RESPONSE body contains \"role\":\"admin\" or \"isAdmin\":true, then reports it as a mass-assignment vulnerability at high severity with evidence claiming the endpoint 'appears to accept and bind arbitrary request body fields without filtering.' Mass assignment is about what an endpoint accepts as INPUT; a normal /api/me correctly returning the current (legitimately admin) user's own role in a read response satisfies this regex with zero relation to any actual vulnerability, and would fire on any authenticated admin session.",
     "impact": "",
@@ -765,9 +717,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks/api.ts",
-    "files": [
-      "lib/scanner/checks/api.ts"
-    ],
+    "files": ["lib/scanner/checks/api.ts"],
     "line": null,
     "description": "The regex matched a literal 'did you mean' or 'didYouMean' anywhere in the body with no requirement that the response actually came from a GraphQL endpoint. 'Did you mean' is an extremely common e-commerce/docs search-UI phrase (Google, Amazon-style typo suggestions) with nothing to do with GraphQL schema enumeration, yet the evidence text confidently asserted 'GraphQL error response ... confirming field suggestions are enabled.'",
     "impact": "",
@@ -791,9 +741,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks/api.ts,lib/scanner/checks-data/api.json",
-    "files": [
-      "lib/scanner/checks/api.ts,lib/scanner/checks-data/api.json"
-    ],
+    "files": ["lib/scanner/checks/api.ts,lib/scanner/checks-data/api.json"],
     "line": null,
     "description": "A second branch matched [\"']__schema[\"']\\s*\\{ anywhere in the body with no URL/endpoint scoping at all -- __schema{ is text bundled by Apollo/Relay/graphql-request client libraries for their own fragment matching, present regardless of whether the server's introspection is enabled. This is the identical false-positive pattern already fixed for content.json's graphql-introspection check (AUDIT-008 content-03), just under a different check id in api.json, still at severity high and additionally overclaiming 'returned a full schema dump' with no verification a dump occurred.",
     "impact": "",
@@ -817,9 +765,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks/host-validation.ts",
-    "files": [
-      "lib/scanner/checks/host-validation.ts"
-    ],
+    "files": ["lib/scanner/checks/host-validation.ts"],
     "line": null,
     "description": "The path-keyword list (user|account|invoice|order|profile|record|item|document|report) treated any small numeric ID after 'item' or 'record' as an IDOR risk, but these two words just as often name a PUBLIC catalog resource with no ownership concept at all -- an e-commerce product page at /item/42 has no 'owner' to enumerate away from, so flagging it as an IDOR risk is a category error, not a security finding, on completely ordinary browsing URLs.",
     "impact": "",
@@ -843,9 +789,7 @@
     "effort": "small",
     "category": "docs / openapi",
     "file": "lib/api/openapi-spec.ts",
-    "files": [
-      "lib/api/openapi-spec.ts"
-    ],
+    "files": ["lib/api/openapi-spec.ts"],
     "line": 206,
     "description": "lib/api/openapi-spec.ts:206-215 declares the `format` query parameter on /history/{id}/report as `required: true` with `enum: [\"sarif\", \"pdf\", \"md\", \"compliance\", \"json\"]`. app/api/v3/history/[id]/report/route.ts:60-62 reads `searchParams.get(\"format\") || \"json\"` and lowercases it, so the parameter is optional and defaults to json, and FORMATS (:36-43) also accepts `markdown` as an alias for `md`. app/docs/reports/page.tsx:40 and :70 document both facts correctly, so the spec is the outlier.",
     "impact": "A generated client makes format a mandatory argument and rejects the `markdown` value the API accepts, and a spec-driven validator flags a legal request as invalid.",
@@ -869,9 +813,7 @@
     "effort": "medium",
     "category": "list (a) gap rank 12: API scanning depth",
     "file": "lib/scanner/spec-import.ts",
-    "files": [
-      "lib/scanner/spec-import.ts"
-    ],
+    "files": ["lib/scanner/spec-import.ts"],
     "line": 13,
     "description": "lib/scanner/spec-import.ts:13 declares `SpecFormat = \"openapi3\" | \"swagger2\" | \"postman\" | \"unknown\"`, and the extractor deliberately discards any path or server URL containing a `{placeholder}` (:39 to :42, :48 to :51) and caps the result at 50 targets (:21). GraphQL appears only as one of the nine active probes, \"sends an introspection query to common GraphQL endpoints and flags any that return the full schema\" (lib/scanner/active-probe-catalog.ts:78 to :82). Among peers, Burp Suite DAST supports Postman Collections, OpenAPI, SOAP and GraphQL with Basic, Bearer, API key and OAuth 2.0 client credentials; Snyk treats GraphQL as a first-class target including schema fetch from an introspection endpoint and claims 115 API-specific vulnerability types; Astra covers REST, SOAP and GraphQL and flags shadow and zombie APIs (audits/AUDIT-014/research-competitors-commercial.md).",
     "impact": "For an API-first team the practical effect is that importing a spec covers only the handful of concrete paths, since a realistic REST spec is mostly `/users/{id}`-shaped, and a GraphQL service gets one yes/no answer about introspection and nothing else. Bounded, because that team is not this product's core user today, but it is the reason an API-first prospect bounces.",
@@ -895,9 +837,7 @@
     "effort": "small",
     "category": "limits bypassing config",
     "file": "lib/scanner/port-scan.ts",
-    "files": [
-      "lib/scanner/port-scan.ts"
-    ],
+    "files": ["lib/scanner/port-scan.ts"],
     "line": 248,
     "description": "lib/scanner/port-scan.ts:248-:255 declares CONCURRENCY = 24, PER_PORT_CONNECT_TIMEOUT_MS = 1500, BANNER_READ_WINDOW_MS = 400, OVERALL_DEADLINE_MS = 12_000 and MAX_BANNER_BYTES = 256, plus PORT_SCAN_TTL_MS = 5 * 60 * 1000 at :468. A grep of lib/config/registry.ts for 'port' returns no matching key. The equivalent knob for the other fan-out scanner is configurable: CONFIG_SUBDOMAIN_DISCOVERY_HTTP_CONCURRENCY = 25 (lib/config/config-values.ts:585) has a registry entry. A seventh related literal sits in a different file: app/api/v3/history/[id]/ports/route.ts:89 passes AbortSignal.timeout(20_000) to scanPorts, a number that must stay above OVERALL_DEADLINE_MS but has no comment saying so and no shared constant tying the two together.",
     "impact": "1500 ms is aggressive for a target more than one continent away, and a filtered port on a slow path is reported as closed rather than as unknown. In the other direction, 24 simultaneous connects across the curated port list is what an IDS flags as a port sweep, and a self-hoster scanning their own estate through a firewall they do not control has no way to slow it down short of editing the file.",
@@ -921,9 +861,7 @@
     "effort": "small",
     "category": "test asserts nothing meaningful",
     "file": "tests/lib/scanner/safety-rating.test.ts",
-    "files": [
-      "tests/lib/scanner/safety-rating.test.ts"
-    ],
+    "files": ["tests/lib/scanner/safety-rating.test.ts"],
     "line": 215,
     "description": "A scripted pass over all 4,494 it/test blocks found 14 whose every expect matcher is `not.toThrow`. Most are honest (\"does not throw on truncated markup\"), but two claim a behaviour they do not verify. tests/lib/scanner/safety-rating.test.ts:215 is titled \"falls back to a default weight for an unrecognized severity string\" and its whole body is `expect(() => getDangerScore([{ severity: \"unknown\", title: \"Something Odd\" }])).not.toThrow()`. The fallback it names is lib/scanner/safety-rating.ts:327, `const baseWeight = SEVERITY_WEIGHTS[sev] ?? 0.1`. Exact mutation not caught: change `?? 0.1` to `?? 10` and the test passes, while every scan containing one finding with an unrecognised severity string jumps to the top of the danger scale and the site is reported unsafe. tests/lib/scanner/html/tokenizer.test.ts:103 is titled \"does not create an element for an end tag with no matching start\" and asserts only `expect(() => toElements(tokenize(\"</div><p>ok</p>\"))).not.toThrow()`. Exact mutation not caught: make toElements emit an element for the stray `</div>`, and the test passes while every page check that counts or walks elements sees a phantom node. The other 12 are: tests/lib/api/playground.test.ts:67, tests/lib/api/request-utils.test.ts:93, tests/lib/auth/password-hash.test.ts:45, tests/lib/backup/job-store.test.ts:53 and :57, tests/lib/database/error-log-capture.test.ts:87, tests/lib/scanner/engine.test.ts:72 (filed separately as tq-03), tests/lib/scanner/html/tokenizer.test.ts:68, tests/lib/scanner/page-context.test.ts:144, tests/lib/scanner/scan-jobs.test.ts:155, tests/lib/ui/url-state.test.ts:66, tests/lib/updater/job-store.test.ts:52.",
     "impact": "Two named contracts, the danger-score fallback weight and the tokenizer's stray-end-tag handling, have a test that reads as covering them in a coverage review but cannot fail on a wrong answer, only on a crash. The danger score is the number shown to users as the site's safety rating, so a wrong fallback weight is directly user visible.",
@@ -947,9 +885,7 @@
     "effort": "small",
     "category": "unescaped interpolation into a regex",
     "file": "lib/scanner/checks/headers.ts",
-    "files": [
-      "lib/scanner/checks/headers.ts"
-    ],
+    "files": ["lib/scanner/checks/headers.ts"],
     "line": 1426,
     "description": "The third-party-iframe filter at lib/scanner/checks/headers.ts:1422-1429 does `host = new URL(_url).host` (:1418) and then `!new RegExp(`^https?://${host}`, 'i').test(...)` on each iframe's src. `host` is interpolated with no escaping. For an IPv6 target, `new URL('http://[::1]:8080/x').host` is the literal string `[::1]:8080` (verified in Node), so the compiled regex becomes `^https?://[::1]:8080`, in which `[::1]` is a character class matching a single `:` or `1`. `new RegExp('^https?://' + new URL('http://[::1]:8080/x').host, 'i').test('http://[::1]:8080/x')` returns false (verified).",
     "impact": "On a self-hosted or internal target addressed by IPv6 literal, the site's own same-origin iframes are classified as third-party and reported as unsandboxed third-party embeds: a false positive in a security report, from a check whose whole purpose is deciding first-party vs third-party. A host containing an unbalanced bracket would instead throw, and the throw is swallowed by runSyncChecks' catch (lib/scanner/engine.ts:171), silently dropping the check.",
@@ -973,9 +909,7 @@
     "effort": "small",
     "category": "nested connection acquisition",
     "file": "lib/scanner/scan-jobs.ts",
-    "files": [
-      "lib/scanner/scan-jobs.ts"
-    ],
+    "files": ["lib/scanner/scan-jobs.ts"],
     "line": 287,
     "description": "`finalizeScanSuccess` takes a client with `pool.connect()` (lib/scanner/scan-jobs.ts:221), opens a transaction (line 237), and inside it calls `saveAutoTags(scanId, txUserId, findings, client)` at line 287. `saveAutoTags`'s first statement is `await loadPromotedRules()` (lib/tags/auto-tags.ts:794), which on a cache miss runs `pool.query(...)` against the module-level pool (lib/tags/auto-tags.ts:720) -- a second connection requested while the first is still held in an open transaction. The rules cache has a 5-minute TTL (lib/tags/auto-tags.ts:702) and is also invalidated on every admin promotion, so misses are real, not theoretical.",
     "impact": "With `CONFIG_DB_POOL_MAX = 10`, if ten scans finalize within the same cache-miss window every one of them holds a transaction client and waits for an eleventh connection that cannot exist. All ten stall until `connectionTimeoutMillis` fires and the scans are marked failed after their work was already done.",
@@ -999,9 +933,7 @@
     "effort": "small",
     "category": "unbatched inserts",
     "file": "lib/scanner/execute-crawl-scan.ts",
-    "files": [
-      "lib/scanner/execute-crawl-scan.ts"
-    ],
+    "files": ["lib/scanner/execute-crawl-scan.ts"],
     "line": 632,
     "description": "(a) At the end of a crawl, `for (const pr of pageResults)` runs one `INSERT INTO scan_history (...) VALUES ($1...$12) RETURNING id` per page (lib/scanner/execute-crawl-scan.ts:630-650) -- up to 250 sequential round trips on the Elite plan (lib/billing/crawl-page-limits.ts:23). (b) `lib/ai/verify-findings.ts:583-593` loops the verdict map and runs one `INSERT INTO scan_finding_feedback ... ON CONFLICT DO NOTHING` per finding, routinely 50-300 sequential inserts. (c) Boot-time passes do the same: lib/billing/staff-plan.ts:265-268 (one query per staff row, driving SELECT at :254 unbounded), lib/auth/security-migration.ts:89-98 and :123-139 (one UPDATE per row), lib/uploads/avatar-migration.ts:120-151 and :194-214 (three queries per avatar). Note the correct pattern already exists in this codebase: `saveAutoTags` builds a single multi-row INSERT (lib/tags/auto-tags.ts:802-816).",
     "impact": "(a) adds 250 serialized round trips to the tail of a crawl the user is already waiting on. (b) adds one round trip per finding to the AI verify flow. (c) lengthens every process start, which matters because instrumentation.ts also runs the full schema DDL at boot.",
@@ -1025,9 +957,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks/vibe-code.ts",
-    "files": [
-      "lib/scanner/checks/vibe-code.ts"
-    ],
+    "files": ["lib/scanner/checks/vibe-code.ts"],
     "line": null,
     "description": "The check requires hasScript(body) (true on virtually every modern page, since it only checks for the presence of any `<script>` tag anywhere) and then does an unscoped body-wide match for quoted common error phrases. It doesn't scope the phrase search to actual script content, so a quoted JSON string value anywhere on the page (e.g. an SSR framework's embedded i18n/state blob) satisfies it just as well as an actual catch-block string literal. Verified: `<script>window.__i18n = {\"errors\":{\"generic\":\"Something went wrong\"}};</script>` matches. Trigger: Any Next.js/Nuxt/similar SSR page that embeds a translation dictionary or initial-state JSON blob containing a friendly error string like `{\"generic\":\"Something went wrong\"}` — a completely standard i18n pattern, not evidence of swallowed exceptions.",
     "impact": "",
@@ -1051,9 +981,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks/secrets-extended.ts",
-    "files": [
-      "lib/scanner/checks/secrets-extended.ts"
-    ],
+    "files": ["lib/scanner/checks/secrets-extended.ts"],
     "line": null,
     "description": "One of the three patterns is a bare `/firebase\\.initializeApp\\s*\\(/` match. Per Firebase's own documentation, the client-side Firebase config object (including its apiKey) is explicitly NOT a secret — it is a public identifier, and access is controlled via Firebase Security Rules, not by hiding this call. Calling firebase.initializeApp() is mandatory for every single Firebase web app (Auth, Firestore, Realtime DB, etc.), so this pattern matches on essentially 100% of legitimate Firebase usage. Trigger: Any site using Firebase Authentication, Firestore, or Realtime Database — an extremely common choice for hobbyist projects, startups, and production SaaS alike — will contain `firebase.initializeApp({...})` in its bundled JS as required, standard SDK setup.",
     "impact": "",
@@ -1077,9 +1005,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks/headers.ts",
-    "files": [
-      "lib/scanner/checks/headers.ts"
-    ],
+    "files": ["lib/scanner/checks/headers.ts"],
     "line": null,
     "description": "sri-missing flags every external <script src> lacking an integrity attribute with no allowlist. Several extremely common third-party scripts are served without stable, versioned URLs and are documented by their vendors as incompatible with SRI (the vendor updates the file's contents in place; an integrity hash would break the site the next time the vendor deploys a fix). This includes Google Tag Manager (googletagmanager.com/gtm.js, gtag/js), Google Analytics (google-analytics.com/analytics.js), Stripe.js (js.stripe.com/v3/), and the PayPal SDK (paypal.com/sdk/js). Trigger: Any site embedding `<script src=\"https://www.googletagmanager.com/gtm.js?id=GTM-XXXXXXX\"></script>` (one of the most widely deployed script tags on the web) with no integrity attribute -- required to be absent by GTM's own design.",
     "impact": "",
@@ -1103,9 +1029,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks/headers.ts",
-    "files": [
-      "lib/scanner/checks/headers.ts"
-    ],
+    "files": ["lib/scanner/checks/headers.ts"],
     "line": null,
     "description": "sri-stylesheet-missing flags every external <link rel=stylesheet> without an integrity attribute. Google Fonts' CSS endpoint (fonts.googleapis.com/css or /css2) deliberately serves different CSS content per requesting User-Agent (different @font-face src URLs/formats for different browsers), so no single, stable content hash exists for it -- SRI is fundamentally incompatible with this and similar UA-negotiated stylesheet services, not merely omitted by site owners. Trigger: Any of the enormous number of sites using `<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Roboto\">` for web fonts.",
     "impact": "",
@@ -1129,9 +1053,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks/headers.ts",
-    "files": [
-      "lib/scanner/checks/headers.ts"
-    ],
+    "files": ["lib/scanner/checks/headers.ts"],
     "line": null,
     "description": "The check (lines 1272-1278) only regex-matches `<meta[^>]+charset=` in the HTML body and never inspects the response's Content-Type header for a charset parameter, even though declaring charset via the HTTP header is equally valid and defeats the same UTF-7/encoding-inheritance attack this check targets. HTTP-header charset declaration is the default behavior of many production stacks. Trigger: Any server responding `Content-Type: text/html; charset=utf-8` (the default for Express's res.send/res.type, and common on many Nginx/production configs) without an inline `<meta charset>` tag -- genuinely safe from the attack this check targets, but flagged anyway.",
     "impact": "",
@@ -1155,9 +1077,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks/ssl.ts",
-    "files": [
-      "lib/scanner/checks/ssl.ts"
-    ],
+    "files": ["lib/scanner/checks/ssl.ts"],
     "line": null,
     "description": "Chrome removed support for Expect-CT in 2022 and MDN documents it as deprecated/on track for removal; Certificate Transparency is now enforced independently by browsers and CAs. Virtually every modern site -- including ones with excellent security postures -- correctly lacks this header today, for the same reason this codebase already disabled nel-header-missing and age-header-reveals-cdn in headers.ts ('optional... its absence is not a vulnerability'). Trigger: Any HTTPS site scanned in 2024+ (i.e. effectively every site, since no current browser honors this header) gets an info-level finding for not sending a header no browser checks anymore.",
     "impact": "",
@@ -1181,9 +1101,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks/headers.ts",
-    "files": [
-      "lib/scanner/checks/headers.ts"
-    ],
+    "files": ["lib/scanner/checks/headers.ts"],
     "line": null,
     "description": "Explicitly setting `X-XSS-Protection: 0` is the value recommended by the OWASP Secure Headers Project and by Mozilla's own HTTP Observatory scoring (which treats '0' as a pass), because the legacy XSS Auditor/filter this header controls was found to itself introduce exploitable XSS and information-disclosure bugs in old IE/Chrome, and has since been removed entirely from all modern browsers. The detector's own message concedes the header is deprecated yet still returns a finding. Trigger: Any security-conscious site following current OWASP/Mozilla guidance that explicitly sends `X-XSS-Protection: 0` (the recommended configuration, especially alongside a strong CSP) is penalized for doing the currently-correct thing.",
     "impact": "",
@@ -1207,9 +1125,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks/cookies.ts",
-    "files": [
-      "lib/scanner/checks/cookies.ts"
-    ],
+    "files": ["lib/scanner/checks/cookies.ts"],
     "line": null,
     "description": "Every other per-attribute check in cookies.ts that cares about risk (cookie-httponly-missing, cookie-secure-missing, cookie-samesite-missing, cookie-no-secure-prefix, session-cookie-flags) first filters to cookies whose name suggests session/token/auth/jwt. cookie-expires-too-far (lines 203-226) has no such filter -- it fires on ANY cookie, sensitive or not, with Max-Age/Expires over 1 year. Long-lived, non-sensitive analytics/marketing cookies with multi-year lifetimes are standard on the web. Trigger: Google Analytics' `_ga` cookie (2-year default expiry) or LinkedIn's `bcookie` (2 years) or HubSpot's `hubspotutk` (13 months) -- present on a huge fraction of real-world sites and entirely non-sensitive, yet flagged 'Cookie Expires/Max-Age Exceeds 1 Year' on every scan.",
     "impact": "",
@@ -1233,9 +1149,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks/headers.ts",
-    "files": [
-      "lib/scanner/checks/headers.ts"
-    ],
+    "files": ["lib/scanner/checks/headers.ts"],
     "line": null,
     "description": "The check (lines 1366-1387) flags any third-party <iframe> without a sandbox attribute, with no allowlist. Widely embedded, functionally-required third-party iframes -- YouTube/Vimeo video embeds, Google Maps embeds, Stripe/PayPal payment element iframes, reCAPTCHA/hCaptcha/Cloudflare Turnstile challenge iframes -- routinely omit sandbox because it is well known to break their required functionality (postMessage, same-origin storage, popups, presentation API), and developers deliberately don't add it. Trigger: Any page with `<iframe src=\"https://www.youtube.com/embed/VIDEO_ID\">` or `<iframe src=\"https://www.google.com/maps/embed?...\">` -- extremely common, legitimate embeds with no sandbox attribute.",
     "impact": "",
@@ -1259,9 +1173,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks/content.ts",
-    "files": [
-      "lib/scanner/checks/content.ts"
-    ],
+    "files": ["lib/scanner/checks/content.ts"],
     "line": null,
     "description": "The pattern only requires a `copy` event listener followed within 200 characters by `clipboardData.setData`/`setData('text`. This exact shape is also the well-known, widely-published technique many blogs and documentation/news sites use to append a 'Read more at <url>' or attribution line whenever a visitor copies page text -- a benign SEO/anti-scraping courtesy, not a hijack. The evidence text ('matches a pattern used for clipboard-hijacking attacks (e.g. swapping copied crypto addresses)') is reported regardless of whether anything crypto/address-related is actually happening. Trigger: The standard copy-attribution snippet: `document.addEventListener('copy', function(e){ e.clipboardData.setData('text/plain', document.getSelection() + '\\n\\nRead more at ' + location.href); e.preventDefault(); });` -- present on many blogs/news sites -- fires the 'clipboard-hijacking' finding.",
     "impact": "",
@@ -1285,9 +1197,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks/api.ts",
-    "files": [
-      "lib/scanner/checks/api.ts"
-    ],
+    "files": ["lib/scanner/checks/api.ts"],
     "line": null,
     "description": "Lines 122-149: `isApiPath` is satisfied by any URL containing `/api/` anywhere in the path, with no check that the response is actually an API response rather than an HTML documentation page. Any API-reference/docs page hosted under a path like `/api/authentication` or `/docs/api/...` -- a very common URL shape for developer documentation -- qualifies, and since a plain HTML docs page naturally carries no X-RateLimit-* headers, the check fires 'No rate-limiting headers detected. API endpoints may be vulnerable to abuse.' on a static prose page that isn't an API endpoint at all. Confirmed real-world instance: Stripe's own authentication documentation page is served at the URL path `/api/authentication` (docs.stripe.com/api/authentication) and returns `text/html`, not JSON. Trigger: GET https://docs.stripe.com/api/authentication (a static HTML documentation page, not an API endpoint)",
     "impact": "",
@@ -1311,9 +1221,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks/supply-chain.ts",
-    "files": [
-      "lib/scanner/checks/supply-chain.ts"
-    ],
+    "files": ["lib/scanner/checks/supply-chain.ts"],
     "line": null,
     "description": "Line 118: `/^version:\\s*[\"']\\d+[\"']$/m` requires the quoted version to be `\\d+` with nothing else, so it matches `version: '3'` but NOT `version: '3.8'`, `version: '3.9'`, `version: '2.4'`, etc. In practice the overwhelming majority of real-world docker-compose.yml files pin a dotted Compose spec version (`'3.8'`, `'3.9'`, `'2.1'`...) rather than a bare digit, so this branch of the check almost never actually fires on real exposed compose files even though the sibling `image:` condition is satisfied, making this a 'check that can basically never fire' bug on the format it was written to detect. Trigger: A leaked docker-compose.yml containing `version: '3.8'\\nservices:\\n  web:\\n    image: myapp:latest` -- the extremely common modern Compose file shape.",
     "impact": "",
@@ -1337,9 +1245,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/active-probe-check.ts",
-    "files": [
-      "lib/scanner/active-probe-check.ts"
-    ],
+    "files": ["lib/scanner/active-probe-check.ts"],
     "line": null,
     "description": "buildFinding(\"reflected-input-xss\", url, form.action) passes form.action as the id distinguisher, and generateId() in lib/scanner/_helpers.ts hashes checkId+url+distinguisher into the finding id. When two distinct `<form>` elements on the same page submit to the same action (a common pattern: a header 'quick search' box and a body 'advanced search' form both posting to `/search`, or a main contact form and a newsletter-signup mini-form both posting to `/submit`), and both independently reflect their own per-form canary unescaped, both findings get the exact same `id` (same checkId, same url, same distinguisher). _helpers.ts's own doc comment for generateId explicitly warns this is the failure mode the distinguisher parameter exists to prevent: 'without a per-hit distinguisher every hit... would collapse onto the exact same id... a false_positive mark on one hit... silently suppressing the other, unrelated hit too' -- but the distinguisher chosen here (bare form.action) doesn't actually guarantee uniqueness across forms. Trigger: A page with a header search widget and a separate body search form, both `<form method=\"GET\" action=\"/search\">` but with different field names (e.g. `q` vs `query`), where both reflect their submitted canary unescaped. Both vulnerable forms produce identical finding ids; a user who reviews the surfaced finding and marks it a false positive (scan_finding_feedback is keyed on this id) silently suppresses the report for the other, genuinely-vulnerable form on future scans too.",
     "impact": "",
@@ -1363,9 +1269,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks-data/content.json",
-    "files": [
-      "lib/scanner/checks-data/content.json"
-    ],
+    "files": ["lib/scanner/checks-data/content.json"],
     "line": null,
     "description": "Both checks fire on the same evidence class -- an unverified path-fragment string (e.g. '/debug/', '/trace/') appearing anywhere in the page body, with no confirmation the endpoint is reachable or that the string isn't from an observability/tracing vendor's own URLs (Datadog, OpenTelemetry, etc. commonly reference '/trace/' paths in their own tags). debug-endpoint was rated high, four tiers above the equivalent-strength sensitive-endpoints check (low), for the same 'found a suspicious substring in a huge page/JS bundle' evidence pattern the audit is specifically targeting.",
     "impact": "",
@@ -1389,9 +1293,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks-data/content.json",
-    "files": [
-      "lib/scanner/checks-data/content.json"
-    ],
+    "files": ["lib/scanner/checks-data/content.json"],
     "line": null,
     "description": "The JSON 'type' field controls the engine-confidence score assigned to a finding (header=93%, body-pattern=70% per registry.ts); this check's detector is a pure body regex on iframe srcdoc attributes but was typed 'header', overstating confidence for one of the more FP-prone categories. Its description also talked about 'third-party widgets (Stripe, YouTube)' loaded without sandbox, which describes src= iframes, not the srcdoc= iframes this specific check actually inspects -- confusing overlap with the separate iframe-sandbox-missing check.",
     "impact": "",
@@ -1415,9 +1317,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks/content.ts",
-    "files": [
-      "lib/scanner/checks/content.ts"
-    ],
+    "files": ["lib/scanner/checks/content.ts"],
     "line": null,
     "description": "The check flags any POST form whose action points to an external domain not in {stripe.com, paypal.com, google.com}, at medium severity. Large real-world sites commonly embed newsletter/contact forms hosted by Mailchimp (*.list-manage.com), HubSpot (hsforms.com), Typeform, Formspree, SurveyMonkey, etc., none of which are allowlisted -- plausible to false-positive on an ordinary marketing site. Left unfixed because deciding which third parties are 'legitimate enough' to allowlist is a product/policy call, not a pure bug fix, and an incomplete allowlist just moves the false-positive boundary rather than eliminating it.",
     "impact": "",
@@ -1467,9 +1367,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks-data/cookies.json",
-    "files": [
-      "lib/scanner/checks-data/cookies.json"
-    ],
+    "files": ["lib/scanner/checks-data/cookies.json"],
     "line": null,
     "description": "cookie-domain-broad (medium) fires on Domain=.example.com (leading dot) while cookie-domain-no-leading-dot (low) fires on Domain=example.com (no leading dot). cookie-domain-no-leading-dot's own description already states 'RFC 6265bis deprecates the leading dot, and modern browsers treat both forms identically' -- per RFC 6265 Sec 5.2.3 the leading dot is stripped on receipt and has zero effect, so both forms are equally subdomain-wide with identical real-world risk, yet one was scored 2 tiers higher than the other for the same effective exposure. A broad cookie domain is also completely standard, intentional practice at any company with subdomain-wide SSO.",
     "impact": "",
@@ -1493,9 +1391,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks/api.ts",
-    "files": [
-      "lib/scanner/checks/api.ts"
-    ],
+    "files": ["lib/scanner/checks/api.ts"],
     "line": null,
     "description": "One branch fired on any \"stacktrace\":\" appearing anywhere in a response body with no requirement the response came from a GraphQL endpoint or carried a GraphQL error envelope, yet the evidence unconditionally states 'GraphQL error.extensions.stacktrace leaked' -- a stack trace leaking from a non-GraphQL API (a real bug, but a different check's concern) would be mislabeled.",
     "impact": "",
@@ -1519,9 +1415,7 @@
     "effort": null,
     "category": null,
     "file": "lib/scanner/checks-data/vibe-code.json",
-    "files": [
-      "lib/scanner/checks-data/vibe-code.json"
-    ],
+    "files": ["lib/scanner/checks-data/vibe-code.json"],
     "line": null,
     "description": "This check is a body-pattern scan of the page's own delivered scripts, not server source. 'role == \"admin\"' or similar in a browser bundle is overwhelmingly ordinary client-side conditional rendering (show/hide an admin link) driven by a value the server already decided was safe to send -- not the actual authorization boundary, which lives server-side and is never visible in the response body being scanned. Rating this high implies a near-certain auth bypass; in practice it is nearly always benign UI code.",
     "impact": "",

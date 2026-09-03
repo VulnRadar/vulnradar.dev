@@ -40,17 +40,9 @@ import { isAnthropicProvider } from "@/lib/ai/provider";
 import { callAnthropicMessages } from "@/lib/ai/anthropic";
 import { resolveAnthropicThinkingBudget } from "@/lib/ai/reasoning";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
-import { APP_NAME, APP_URL } from "@/lib/config/constants";
+import { APP_NAME, APP_URL, SEVERITY_PRIORITY } from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
 import { recordAiTokens } from "@/lib/billing/ai-usage";
-
-const SEVERITY_RANK: Record<Severity, number> = {
-  critical: 0,
-  high: 1,
-  medium: 2,
-  low: 3,
-  info: 4,
-};
 
 const SUMMARY_SYSTEM_PROMPT = `You are ${APP_NAME}'s scan summarizer. You are given the results of one completed vulnerability scan: a safety rating, a 1-10 danger score, an SSL/TLS letter grade (A+ to F, or n/a for HTTP-only targets), severity counts, and the titles of its highest-severity findings (not the full finding list).
 
@@ -65,8 +57,12 @@ Do not list every finding individually. Do not invent findings, counts, or detai
 
 Return only the summary text itself, nothing else -- no preamble like "Here is the summary:".`;
 
+/** Worst first, so the prompt spends its finding budget on what matters. An
+ *  unrecognised severity ranks below info rather than above critical, which is
+ *  what the local table this replaced achieved with its own inverted
+ *  convention and a `?? 5` fallback. ref: AUDIT-013#dup-02 */
 function severityRank(s: Severity): number {
-  return SEVERITY_RANK[s] ?? 5;
+  return SEVERITY_PRIORITY[s] ?? 0;
 }
 
 function buildPrompt(result: ScanResult, topFindingsLimit: number): string {
@@ -74,7 +70,7 @@ function buildPrompt(result: ScanResult, topFindingsLimit: number): string {
   const rating = getSafetyRating(findings);
 
   const topFindings = [...findings]
-    .sort((a, b) => severityRank(a.severity) - severityRank(b.severity))
+    .sort((a, b) => severityRank(b.severity) - severityRank(a.severity))
     .slice(0, topFindingsLimit)
     .map((f) => `- [${f.severity}] ${f.title} (${f.category})`)
     .join("\n");

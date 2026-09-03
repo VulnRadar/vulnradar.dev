@@ -27,8 +27,23 @@ const SECTIONS = [
 ];
 
 export default async function TermsPage() {
+  // Section 7 quotes two retention windows that the Privacy Policy also
+  // quotes. Both read the same runtime settings the cleanup pass reads
+  // (lib/database/cleanup.ts) so the two pages cannot drift apart, and so
+  // neither can drift away from an operator's own configured value.
+  //
+  // Two calls, not one: getSettings returns Record<K, SettingValue<K>>, so
+  // mixing string-valued and number-valued keys in a single call widens every
+  // field to `string | number`. Both read the same cached snapshot.
   const { LEGAL_EMAIL: legalEmail, TERMS_UPDATED_AT: termsUpdatedAt } =
     await getSettings(["LEGAL_EMAIL", "TERMS_UPDATED_AT"] as const);
+  const {
+    CLEANUP_API_USAGE_RETENTION_DAYS: apiUsageDays,
+    CLEANUP_DATA_REQUESTS_RETENTION_DAYS: dataRequestDays,
+  } = await getSettings([
+    "CLEANUP_API_USAGE_RETENTION_DAYS",
+    "CLEANUP_DATA_REQUESTS_RETENTION_DAYS",
+  ] as const);
   return (
     <article className="space-y-8">
       <LegalPageHeader
@@ -166,9 +181,9 @@ export default async function TermsPage() {
       >
         <p>
           Scan history is kept for as long as your account is active. API usage
-          logs are retained for 90 days. Data export requests are retained for
-          60 days. You may delete your account and all associated data at any
-          time from your profile page; see the{" "}
+          logs are retained for {apiUsageDays} days. Data export requests are
+          retained for {dataRequestDays} days. You may delete your account and
+          all associated data at any time from your profile page; see the{" "}
           <Link
             href="/legal/privacy#data-retention"
             className="text-primary hover:underline"

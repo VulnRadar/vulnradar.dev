@@ -9,6 +9,14 @@ import {
   InlineCode,
 } from "@/components/docs";
 import { APP_NAME, APP_REPO } from "@/lib/config/constants";
+import {
+  CONFIG_BILLING_FREE_CRAWL_PAGES,
+  CONFIG_BILLING_CORE_SUPPORTER_CRAWL_PAGES,
+  CONFIG_BILLING_PRO_SUPPORTER_CRAWL_PAGES,
+  CONFIG_BILLING_ELITE_SUPPORTER_CRAWL_PAGES,
+  CONFIG_SCAN_TIMEOUT_SECONDS,
+  CONFIG_CRAWL_SCAN_TIMEOUT_SECONDS,
+} from "@/lib/config/config-values";
 
 const tocItems: TocItem[] = [
   { id: "overview", label: "Overview" },
@@ -69,7 +77,10 @@ npm install -g .`}
           Prefer not to install globally? Run the entrypoint directly from the
           clone with{" "}
           <InlineCode>node cli/vulnradar.mjs scan &lt;url&gt;</InlineCode>. It
-          needs Node 18 or newer and has no dependencies of its own.
+          needs Node 22 or newer, the same floor as the rest of the project (
+          <InlineCode>cli/package.json</InlineCode> declares{" "}
+          <InlineCode>engines.node &gt;=22.0.0</InlineCode>), and has no
+          dependencies of its own.
         </p>
         <DocsCallout variant="info" title="Coming to npm">
           The <InlineCode>vulnradar</InlineCode> name on npm is registered to
@@ -86,7 +97,11 @@ npm install -g .`}
         <p className="text-sm text-muted-foreground">
           Pass your key with <InlineCode>--api-key</InlineCode> or the{" "}
           <InlineCode>VULNRADAR_TOKEN</InlineCode> environment variable. Prefer
-          the variable in CI so the key never lands in shell history or logs.
+          the variable in CI so the key never lands in shell history or logs.{" "}
+          <InlineCode>--api-base</InlineCode> has the same env form,{" "}
+          <InlineCode>VULNRADAR_API_BASE</InlineCode>, so a self-hosted CI does
+          not repeat the flag on every invocation. An explicit flag beats the
+          variable in both cases.
         </p>
       </DocsSection>
 
@@ -105,12 +120,12 @@ npm install -g .`}
             },
             {
               flag: "--api-base <url>",
-              desc: "API base URL, for a self-hosted instance.",
+              desc: "API base URL, for a self-hosted instance. Falls back to VULNRADAR_API_BASE.",
               def: "https://vulnradar.dev/api/v3",
             },
             {
               flag: "--crawl",
-              desc: "Crawl and scan multiple pages instead of a single URL. The cap depends on your plan (Free 25, Core 50, Pro 100, Elite 250).",
+              desc: `Crawl and scan multiple pages instead of a single URL. The cap depends on your plan (Free ${CONFIG_BILLING_FREE_CRAWL_PAGES}, Core ${CONFIG_BILLING_CORE_SUPPORTER_CRAWL_PAGES}, Pro ${CONFIG_BILLING_PRO_SUPPORTER_CRAWL_PAGES}, Elite ${CONFIG_BILLING_ELITE_SUPPORTER_CRAWL_PAGES}).`,
               def: "off",
             },
             {
@@ -130,8 +145,8 @@ npm install -g .`}
             },
             {
               flag: "--timeout <seconds>",
-              desc: "Give up waiting for the scan to finish.",
-              def: "300",
+              desc: `Give up waiting for the scan to finish. With --crawl and no explicit --timeout it becomes ${CONFIG_CRAWL_SCAN_TIMEOUT_SECONDS}, matching the server's crawl budget.`,
+              def: `${CONFIG_SCAN_TIMEOUT_SECONDS}`,
             },
             {
               flag: "--poll-interval <s>",

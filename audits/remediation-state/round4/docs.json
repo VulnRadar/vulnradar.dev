@@ -11,9 +11,7 @@
     "effort": "small",
     "category": "agent instructions",
     "file": "AGENTS.md",
-    "files": [
-      "AGENTS.md"
-    ],
+    "files": ["AGENTS.md"],
     "line": 140,
     "description": "AGENTS.md:140-153 gives the authoritative category list an agent must consult 'Before adding a scanner' and names 12: headers, ssl, tls, content, cookies, configuration, information-disclosure, dns, email, api, code, secrets-extended. The Category union at lib/scanner/types.ts:22-39 has 18, adding vibe-code, client-side, supply-chain, host-validation, reputation and active-probes. lib/config/check-stats.generated.ts:7 records EXACT_CHECK_CATEGORY_COUNT = 18, README.md:12 and :30 say 18, and the browser extension's own list at extension/src/lib/categories.ts has all 18. AGENTS.md is the only surface that disagrees, and it has a matching lib/scanner/checks-data/<category>.json for each of the six it omits.",
     "impact": "An automated contributor following AGENTS.md sees no vibe-code, client-side, supply-chain, host-validation, reputation or active-probes category and will either refuse to place a check there or invent a new category rather than using the existing one. active-probes matters most: it is the only opt-in, writes-to-the-target category (lib/scanner/types.ts:41-50 explains why it is excluded from ALL_CATEGORIES) and an agent that does not know it exists cannot honour that contract.",
@@ -37,9 +35,7 @@
     "effort": "small",
     "category": "backlinks / badge",
     "file": "app/docs/sharing/page.tsx",
-    "files": [
-      "app/docs/sharing/page.tsx"
-    ],
+    "files": ["app/docs/sharing/page.tsx"],
     "line": 386,
     "description": "app/docs/sharing/page.tsx:386 publishes the embed snippet users paste onto their own sites: `<a href=\"${APP_URL}/shared/YOUR_TOKEN\"><img src=\"${APP_URL}/api/v3/badge/YOUR_TOKEN\" alt=\"Secured by VulnRadar\"></a>`. Both halves of that snippet point at paths that robots.txt forbids: `/shared/` via lib/seo/routes.ts:121 and `/api/` via line 108, both spread into the wildcard Disallow at app/robots.ts:60. On top of that the link target itself serves `noindex, nofollow` (app/shared/[token]/layout.tsx:7 via privatePageMetadata, lib/seo/metadata.ts:85). So the destination cannot be crawled, cannot be indexed, and carries nofollow. The image is an SVG served from /api/v3/badge/[token] (app/api/v3/badge/[token]/route.ts:122, Content-Type image/svg+xml), which is also Disallowed and which social and image crawlers do not render.",
     "impact": "A security badge on a customer's site is the standard organic-growth loop for this product category: it is how Security Headers, SSL Labs and Mozilla Observatory accumulate their link graph. Here the feature is built, documented, and produces a link that search engines are explicitly told to ignore. Every customer who installs a badge gives the product a link worth nothing.",
@@ -63,9 +59,7 @@
     "effort": "medium",
     "category": "unnecessary client component",
     "file": "app/docs/setup/page.tsx",
-    "files": [
-      "app/docs/setup/page.tsx"
-    ],
+    "files": ["app/docs/setup/page.tsx"],
     "line": 1,
     "description": "Every page under app/docs/ carries \"use client\" (20 files, 12,492 lines, 517,607 bytes of source measured directly). The only client-side behaviour in almost all of them is two effects: one registering a static tocItems array with the docs context (app/docs/setup/page.tsx:44-47) and one wiring an IntersectionObserver scroll-spy (app/docs/setup/page.tsx:49-67). Everything else in the file is static JSX prose. app/docs/architecture/page.tsx:41, app/docs/triage/page.tsx:156, app/docs/api/page.tsx:1026 and the rest are byte-identical copies of the same two effects. The context that consumes them, components/docs/docs-shell.tsx, is already a client component, so the sidebar and TOC would keep working if the page bodies were server components. app/docs/config/page.tsx compounds it: at line 14 it imports SETTINGS_REGISTRY from lib/config/registry.ts (3,199 lines) into a client component just to render a static settings table, which is why static/chunks/6027-6257bc191d11b0fb.js (72 KB raw / 18 KB gzipped, containing setting keys, defaults and descriptions) ships to the browser on /docs/config. Measured route totals from the committed build, layout chunks included: /docs/config/page 931 KB raw JS, /docs/api/page 862 KB, /docs/setup/page 858 KB (258 KB gzipped).",
     "impact": "Pages that are pure documentation, and are the pages most worth ranking (docs-shell.tsx's own comment says so), pay full client-component cost: every paragraph is serialized twice, once as HTML and again as React element JS. React hydrates thousands of static nodes on pages where nothing is interactive, and /docs/config additionally ships the whole admin settings registry to anonymous readers.",
@@ -89,9 +83,7 @@
     "effort": "small",
     "category": "docs / endpoint path",
     "file": "app/docs/api/page.tsx",
-    "files": [
-      "app/docs/api/page.tsx"
-    ],
+    "files": ["app/docs/api/page.tsx"],
     "line": 620,
     "description": "app/docs/api/page.tsx:1168-1174 sets the Endpoints section's stated Base URL to `{APP_URL}/api/v3`, and every other card's `path` is relative to it. The version card at :618-637 sets `path: \"/api/version\"`, which components/docs/docs-endpoint-card.tsx:36-38 renders verbatim, and EndpointTable (:1201-1208) lists it the same way. Composed against the stated base that reads `{APP_URL}/api/v3/api/version`; the real route is app/api/version/route.ts, i.e. `{APP_URL}/api/version`, and there is no /api/v3/version route in the tree.",
     "impact": "A reader following the base-URL convention gets a 404 on the one endpoint on the page that needs no authentication, which is exactly the one people try first to check connectivity.",
@@ -115,9 +107,7 @@
     "effort": "small",
     "category": "docs / response example",
     "file": "app/docs/api/page.tsx",
-    "files": [
-      "app/docs/api/page.tsx"
-    ],
+    "files": ["app/docs/api/page.tsx"],
     "line": 647,
     "description": "app/docs/api/page.tsx:645-686 shows `\"count\": 754` with a `categories` map matching the legacy JSON files exactly (content 144, headers 138, cookies 29, information-disclosure 47, secrets-extended 58, supply-chain 14). app/api/v3/finding-types/route.ts:6-19 serves `allCheckDefs` and `getCategoryCounts()`, and lib/scanner/registry.ts:242 defines `allCheckDefs = [...legacyCheckDefs, ...pageCheckDefs]` with getCategoryCounts (:375-382) counting the same combined list. The generated constants at lib/config/check-stats.generated.ts give 754 legacy + 43 page = 797 across 18 categories, and the page checks land in six existing categories (content +11, cookies +8, headers +7, information-disclosure +6, secrets-extended +4, supply-chain +7), so the real response is count 797 with six of the eighteen category numbers higher than shown. The note at :689 in the same card already states 797/18 from the generated constants, so the card contradicts itself.",
     "impact": "Minor and self-mitigating (the note at :689 tells readers to read the count from the response), but the example is the part people copy into fixtures and tests.",
@@ -141,9 +131,7 @@
     "effort": "medium",
     "category": "docs / coverage",
     "file": "app/docs/api/page.tsx",
-    "files": [
-      "app/docs/api/page.tsx"
-    ],
+    "files": ["app/docs/api/page.tsx"],
     "line": 250,
     "description": "app/docs/api/page.tsx:250 tells the reader the AI-verify endpoint \"Shares its per-account rate limit with POST /scan/verify-batch below\", but no card for /scan/verify-batch exists anywhere on the page or in lib/api/openapi-spec.ts (grep for verify-batch across app/docs finds only this line and a passing mention at app/docs/ai/page.tsx:336). Grepping app/api for BEARER_PREFIX/validateApiKey returns 16 API-key-capable routes; the reference's 28 cards cover 11 of them, leaving /scan/verify-batch, /history/[id]/report (documented only in lib/api/openapi-spec.ts:198 and app/docs/reports), /scan/reputation (app/api/v3/scan/reputation/route.ts:82, the endpoint the browser extension uses) and /scan/discover/progress/[requestId] (a documented-nowhere progress poll that app/api/v3/scan/discover/route.ts:97 accepts a `requestId` body field to enable) undocumented on the API reference page.",
     "impact": "The one dangling \"see below\" reference sends a reader hunting for a section that does not exist. More materially, an integrator reading the reference has no way to discover batch AI verification, report export, or the discovery progress stream, all of which work with the key they already hold.",
@@ -167,9 +155,7 @@
     "effort": "small",
     "category": "docs / limits vs code",
     "file": "app/docs/api/page.tsx",
-    "files": [
-      "app/docs/api/page.tsx"
-    ],
+    "files": ["app/docs/api/page.tsx"],
     "line": 364,
     "description": "app/docs/api/page.tsx:364 states \"Returns up to 20 URLs (MAX_PAGES in app/api/v3/scan/crawl/discover/route.ts)\". That file contains no MAX_PAGES identifier; it resolves `CRAWL_DISCOVER_MAX_PAGES` through getSettings (app/api/v3/scan/crawl/discover/route.ts:74-79), whose shipped default is 500 (lib/config/config-values.ts:594, registry entry at lib/config/registry.ts:1859-1862). The same card's :366 claim of \"the standard per-IP scan rate limit (100/hour)\" is per-user, not per-IP (the key is `scan:${userId}`, see apidoc-05).",
     "impact": "A caller sizing a crawl preview budgets for 20 URLs and gets up to 500, and the cited constant name gives a maintainer nothing to grep for.",
@@ -193,9 +179,7 @@
     "effort": "small",
     "category": "docs / plan limits",
     "file": "app/docs/rate-limits/page.tsx",
-    "files": [
-      "app/docs/rate-limits/page.tsx"
-    ],
+    "files": ["app/docs/rate-limits/page.tsx"],
     "line": 452,
     "description": "app/docs/rate-limits/page.tsx:450-453 recommends \"Use multiple keys. You can have up to 3 active API keys per user. Split workload by key to get separate quotas.\" lib/billing/catalog.ts sets apiKeys to 1 (free, :117), 3 (core, :149), 10 (pro, :181) and -1 (elite, :212), enforced in app/api/v3/keys/route.ts:78-86 via withinPlanLimit. app/docs/api/page.tsx:1142-1145 states this correctly (\"one on the free tier, more on paid plans\"), so the two pages disagree.",
     "impact": "A free user follows the advice, hits the 1-key ceiling with a 400, and has no way to tell from this page whether that is a bug or their plan. A Pro user misses seven of the ten keys they are entitled to.",
@@ -219,9 +203,7 @@
     "effort": "small",
     "category": "docs / limits vs code",
     "file": "app/docs/rate-limits/page.tsx",
-    "files": [
-      "app/docs/rate-limits/page.tsx"
-    ],
+    "files": ["app/docs/rate-limits/page.tsx"],
     "line": 226,
     "description": "app/docs/rate-limits/page.tsx:225-229 lists \"POST /api/v3/auth/2fa/email-send: 1 attempt / 1 minute\" in a table introduced at :190-196 as \"IP-based rate limits ... configured in lib/config/config-values.ts as CONFIG_RATE_LIMIT_*_ATTEMPTS + _WINDOW_MINUTES pairs\". No CONFIG_RATE_LIMIT_2FA_EMAIL_SEND_* pair exists (grep of lib/config/config-values.ts:457-538 lists all 16 pairs and there is none). app/api/v3/auth/2fa/email-send/route.ts:45-58 implements a per-user resend cooldown instead, reading EMAIL_2FA_RESEND_COOLDOWN_SECONDS and querying email_2fa_codes for a recent row, keyed on the pending-2FA cookie's userId, not on the IP. The same table omits nine limits that do have registry pairs and are enforced: browserSession 20/60, aiChat 60/60, aiVerify 20/60, aiSummary 20/60, adminReauth 10/15, billingVerify 5/5, teamInvite 20/60, scanTags 60/60 and publicScans 60/1.",
     "impact": "An operator tuning the limits looks for a setting that does not exist, and the real knob (EMAIL_2FA_RESEND_COOLDOWN_SECONDS) is not mentioned. The nine omitted limits mean the table reads as complete when it covers half the enforced set.",
@@ -245,9 +227,7 @@
     "effort": "small",
     "category": "docs / request validation",
     "file": "app/docs/api/page.tsx",
-    "files": [
-      "app/docs/api/page.tsx"
-    ],
+    "files": ["app/docs/api/page.tsx"],
     "line": 50,
     "description": "app/docs/api/page.tsx:50 lists the accepted schemes as \"http/https/ws/wss/ftp/ftps/ssh/smtp/imap/imaps/pop3/pop3s/mongodb\". lib/scanner/execute-scan.ts:86-101's SUPPORTED_PROTOCOLS also accepts `sftp:` and `smtps:`, which isValidUrl (:117-124) checks against directly. Separately, the 400 body app/api/v3/scan/route.ts:265-273 returns on a rejected scheme reads \"Invalid URL. Supported protocols: http://, https://, ws://, wss://, ftp://, ftps://\", naming 6 of the 15 accepted schemes, so a caller who mistypes an ssh:// URL is told ssh is unsupported.",
     "impact": "Two working schemes are undiscoverable, and the runtime error message actively contradicts the docs for the nine protocol schemes it omits.",
@@ -271,9 +251,7 @@
     "effort": "small",
     "category": "docs / status codes",
     "file": "app/docs/api/page.tsx",
-    "files": [
-      "app/docs/api/page.tsx"
-    ],
+    "files": ["app/docs/api/page.tsx"],
     "line": 547,
     "description": "AUDIT-011#drift-31 covered the wrong TTL default (300 vs the real 360 at lib/config/config-values.ts:913-914) and the two undocumented body fields (`ttl`, `viewport`). New here is the error inventory. app/docs/api/page.tsx:547-553 lists only 401 and 503 for POST /browser/sessions; the route also returns 429 (per-user session rate limit, app/api/v3/browser/sessions/route.ts:76-81), 402 (\"Browserbase minute quota exceeded\", :88-94, the only 402 in the entire API), 400 (non-http/non-IPv4 url, and a failed validateScanTarget, :103-114), 503 with a different meaning (\"Live-browser capacity is full right now\", :131-136, distinct from the documented \"not configured\"), 502 (\"BrowserBase returned a session with no id\", :152-158) and 500 (ownership-row insert failure, :194-205). GET (:578-588) and DELETE (:609-615) omit 400 (\"Missing session id.\", :245 and :306) and 403 (another user's session, :262 and :322). The docs also never mention the 30-second floor applied by `Math.max(30, Math.min(requested, MAX))` at :52.",
     "impact": "The two 503s mean opposite things: one is permanent for the deployment (BrowserBase not configured, retry never helps) and one is transient (capacity full, retry in a moment). A client cannot tell them apart from the docs, and has no branch at all for the 402 that fires when the plan's monthly minutes run out.",
@@ -297,9 +275,7 @@
     "effort": "small",
     "category": "docs / response shape",
     "file": "app/docs/api/page.tsx",
-    "files": [
-      "app/docs/api/page.tsx"
-    ],
+    "files": ["app/docs/api/page.tsx"],
     "line": 634,
     "description": "app/docs/api/page.tsx:632-635 notes for GET /api/version: \"status: up-to-date | behind | ahead | unknown\" and \"When status is unknown, current/latest may still be populated from cache.\" app/api/version/route.ts has exactly two unknown paths, the non-ok GitHub response (:19-27) and the catch (:44-52), and both hardcode `latest: null`. `current` is always the compiled APP_VERSION and is never cache-derived. The `next: { revalidate: 3600 }` cache at :15 is on the upstream fetch, and a cache hit produces a normal status, never `unknown`.",
     "impact": "A self-hosted updater that trusts `latest` when status is unknown dereferences null.",
@@ -323,9 +299,7 @@
     "effort": "small",
     "category": "docs / request parameters",
     "file": "app/docs/api/page.tsx",
-    "files": [
-      "app/docs/api/page.tsx"
-    ],
+    "files": ["app/docs/api/page.tsx"],
     "line": 41,
     "description": "Diffing the documented request bodies against what each route parses: POST /scan (app/docs/api/page.tsx:41-44) omits `isPublic` (app/api/v3/scan/route.ts:232, resolved through resolveScanIsPublic at :348-351), `captureScreenshot` (:236) and `portScan` (:241). POST /scan/crawl (:323-326) omits `scanners`, `captureScreenshot`, `portScan`, `auth` and `isPublic` (app/api/v3/scan/crawl/route.ts:200-222, :419-422). POST /scan/authenticated (:139-147) omits `scanners` and `isPublic` (app/api/v3/scan/authenticated/route.ts:116/129), and its documented response omits the `dangerScore` and `engineConfidence` fields the route returns (:538-548). POST /scan/discover (:381-384) omits `requestId` (app/api/v3/scan/discover/route.ts:96-97), the field that enables the progress endpoint. lib/api/openapi-spec.ts documents `isPublic` on BulkScanRequest (:781-786) but on none of the others.",
     "impact": "`isPublic` decides whether a scan is world-readable and whether it feeds host reputation (app/api/v3/scan/route.ts:344-351); an API caller has no documented way to set it and gets the account default silently. `portScan` and `captureScreenshot` are billable capabilities reachable only from the web UI as far as the docs are concerned.",
@@ -349,9 +323,7 @@
     "effort": "small",
     "category": "release-integrity",
     "file": "SECURITY.md",
-    "files": [
-      "SECURITY.md"
-    ],
+    "files": ["SECURITY.md"],
     "line": 81,
     "description": "SECURITY.md:81 lists the asset as \"**SHA256SUMS.txt**\", but release.yml:222 writes `sha256sums.txt` (lowercase), lib/updater/apply.ts:87 looks it up as `sha256sums.txt`, and lib/updater/github-release.ts's `findAsset` is documented as a \"Case-sensitive lookup by exact asset filename\". The live release assets confirm the lowercase name. Separately, the verification command at SECURITY.md:110-111 is `curl -sL .../sha256sums.txt | sha256sum -c -`, but release.yml:220 builds that file from `(*.tar.gz *.zip *.cdx.json)`, so it lists five artifacts. A reader who downloaded only the tarball, which is what the surrounding text describes, gets \"No such file or directory\" for the two extension zips and the SBOM, a \"WARNING: 4 listed files could not be read\" line, and a non-zero exit, so the documented verification appears to fail on a perfectly good release. Merged from doc-18, which found the same SECURITY.md:81 case mismatch from the documentation side and adds one further defect: the artifact list at :77-88 omits the two extension zips that release.yml attaches, and those carry the extension's own version rather than the app version.",
     "impact": "A security-conscious self-hoster following the project's own SECURITY.md either 404s on the filename or sees the integrity check report failures on a valid release, and has no way to tell that from a real tamper signal. For a security product this is the one document that has to be exactly right.",
@@ -375,9 +347,7 @@
     "effort": "small",
     "category": "env documentation",
     "file": "app/docs/config/page.tsx",
-    "files": [
-      "app/docs/config/page.tsx"
-    ],
+    "files": ["app/docs/config/page.tsx"],
     "line": 990,
     "description": "AUDIT-011#drift-28 established that CONTACT_EMAIL is parsed at lib/config/env.ts:85 but never consulted, because app/api/v3/contact/route.ts:146 sends to NOREPLY_EMAIL. What is new is how far the dead variable is plumbed: app/docs/config/page.tsx:987-995 still tells self-hosters that CONTACT_EMAIL and SUPPORT_EMAIL 'override the addresses used by contact/support emails' (SUPPORT_EMAIL is genuinely read at lib/config/constants.ts, CONTACT_EMAIL is not), .env.example:84 sets it, docker-compose.yml:69 and docker-compose.dev.yml:57 both forward it, and .github/workflows/ci.yml:179 sets it. Five surfaces carry a variable with zero readers, one of which promises behaviour.",
     "impact": "A self-hoster sets CONTACT_EMAIL as documented, forwards it through compose as the shipped compose file already does, and contact mail still goes somewhere else with no error. The doc sentence pairs it with SUPPORT_EMAIL, which does work, so the failure looks like a bug rather than a documentation error.",
@@ -401,9 +371,7 @@
     "effort": "small",
     "category": "tell-tale patterns",
     "file": "app/docs/webhooks/page.tsx",
-    "files": [
-      "app/docs/webhooks/page.tsx"
-    ],
+    "files": ["app/docs/webhooks/page.tsx"],
     "line": 89,
     "description": "Tell-tale 5 (no three-across identical cards) has exactly two live instances in app/, both in the docs. app/docs/webhooks/page.tsx:89-125 renders `grid grid-cols-1 md:grid-cols-3 gap-4` of three <Card> elements, one per webhook platform, each holding a Badge, a one-line description and an InlineCode URL pattern: three items with three parallel attributes, which is a table. app/docs/extension/page.tsx:227-252 renders `grid grid-cols-1 sm:grid-cols-3 gap-4` of three <Card> elements for the three auto-scan modes, each a name plus a sentence, which is a definition list. Neither opens with an icon in a rounded square, so they are the mild form of the pattern rather than the full giveaway, and the rest of the docs (60-odd DocsCallouts, DocsTable, DocsSteps, DocsEndpointCard) is a coherent system. The webhooks grid also colours the Discord badge with `bg-[hsl(var(--chart-4))]/10 text-[hsl(var(--chart-4))]` at :96-97, using the chart ramp as a brand colour. app/docs/setup/page.tsx:78 is a third `grid grid-cols-3` but it is three big numerals in a step counter, not cards, and it is fine except for the `font-bold` at :83,94,105.",
     "impact": "Two pages out of twenty read as generic where the other eighteen do not, and the webhooks one is the page a developer lands on to answer \"does it support Slack\", so it is a comparison question answered in a layout that makes comparison hard: the reader has to scan across three cards to line up the three URL patterns.",
@@ -427,9 +395,7 @@
     "effort": "small",
     "category": "design language",
     "file": "CLAUDE.md",
-    "files": [
-      "CLAUDE.md"
-    ],
+    "files": ["CLAUDE.md"],
     "line": 1,
     "description": "app/globals.css:178, lib/config/config-values.ts:188 (CONFIG_PRIMARY_COLOR = \"#60a5fa\"), lib/config/brand.ts:16-21, public/og-image.svg:36,58 and the five store PNGs all agree on blue #60a5fa (213 94% 68%). The only 190 degree hue left in the system is --chart-1 (app/globals.css:197), which is unused. app/global-error.tsx:10 still hardcodes BRAND_TEAL = \"#0891b2\", a stale cyan matching nothing.",
     "impact": "Every future contributor and every AI agent reading CLAUDE.md is told the wrong brand colour on line 1, which is how stale cyan keeps reappearing.",
@@ -453,9 +419,7 @@
     "effort": "small",
     "category": "docs",
     "file": "app/docs/setup/page.tsx",
-    "files": [
-      "app/docs/setup/page.tsx"
-    ],
+    "files": ["app/docs/setup/page.tsx"],
     "line": 78,
     "description": "app/docs/setup/page.tsx:78 is `grid grid-cols-3 gap-2 sm:gap-4` with no responsive prefix. At 375px each tile gets about 109px with about 89px of content, so 'systemd / PM2' and '5 min deploy' wrap to two lines and the tiles end up uneven. It does not overflow, and the sm: override shows it was hand-tuned.",
     "impact": "Minor visual inconsistency on the setup page, which is a high-intent page for self-hosters.",
@@ -479,9 +443,7 @@
     "effort": "small",
     "category": "docs / API",
     "file": "app/docs/api/page.tsx",
-    "files": [
-      "app/docs/api/page.tsx"
-    ],
+    "files": ["app/docs/api/page.tsx"],
     "line": 525,
     "description": "app/docs/api/page.tsx:525 and :539 advertise ttlSeconds and expiresInSeconds of 300, and :541 states ttlSeconds is hard-clamped to BROWSERBASE_MAX_TTL_SECONDS 'default 300 = 5 minutes'. The real value is 360 (lib/config/config-values.ts:913-914) and the route's floor is 30s (app/api/v3/browser/sessions/route.ts:52). The docs never mention the viewport body field (:34) nor the legacy ttl alias (:49).",
     "impact": "viewport is unreachable from both surfaces: no UI control (see drift-21) and undocumented for API callers, who are currently its only possible consumers.",
@@ -505,9 +467,7 @@
     "effort": "small",
     "category": "measured baseline for the quality review",
     "file": "tests/README.md",
-    "files": [
-      "tests/README.md"
-    ],
+    "files": ["tests/README.md"],
     "line": 45,
     "description": "Measured by script over all 356 collected test files so a later audit does not have to redo it. 4,494 it/test blocks. Zero `it.only`, `describe.only`, `it.skip`, `describe.skip`, `it.todo`, `xit`, or `fdescribe` anywhere, so no part of the suite is silently disabled. Zero toMatchSnapshot / toMatchInlineSnapshot and no __snapshots__ directory, so there are no unreviewed snapshots. Zero real third-party hostnames in any test: every URL is example.com, .test, localhost, or a spec domain, and every fetch is stubbed, so the suite runs offline and never touches someone else's service. Zero tests with an assertion inside a catch block and zero bare `catch {}` inside a test body, so no failure is swallowed. Exactly one block has no assertion of any kind, tests/lib/scanner/registry.test.ts:293, and its own comment says it is \"intentionally a weak smoke test\"; the other apparent cases all assert by throwing an explicit Error with a useful message, which is fine. No suite mocks the module it is testing. On layering: 142 of the 157 route.ts files have a route suite, but 92 of those 142 replace both @/lib/database/db and the whole @/lib/auth module with fakes, while 28 use the stronger pattern of a fake next/headers cookie jar plus a behavioural pg fake so the real getSession runs (tests/app/api/v3/auth/trusted-devices/[id]/route.test.ts and tests/app/api/v3/auth/impersonation-stop/route.test.ts are the best examples of it).",
     "impact": "No action needed. Recording it so the next audit spends its effort on tq-01 through tq-09 rather than re-measuring, and so the 28 route suites that use the behavioural-fake pattern are recognised as the house standard worth converging on.",

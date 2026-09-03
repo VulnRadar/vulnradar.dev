@@ -1,18 +1,8 @@
 {
   "auditId": "AUDIT-012",
   "schemaNote": "Uses the finding schema specified in the audit brief (id, title, section, type, severity, effort, category, file, line, description, impact, recommendation), matching AUDIT-011. AUDIT-001..010 use an older repo-local shape (scope/summary/files/fix); whoever builds the merged report.html must normalize those ten. NOTE: audits/AUDIT-002/findings.json does not currently parse (bad control character at line 161, col 124) and must be repaired before any merge.",
-  "sectionsCovered": [
-    1,
-    2,
-    9,
-    17
-  ],
-  "sectionsComplete": [
-    1,
-    2,
-    9,
-    17
-  ],
+  "sectionsCovered": [1, 2, 9, 17],
+  "sectionsComplete": [1, 2, 9, 17],
   "sectionsPartial": [],
   "dedupeNote": "Two defects were each found independently by two agents working different angles. logic-01 was merged into abuse-04 (unmetered scheduled scans) and logic-02 into abuse-02 (unmetered API-key crawls); the section-2 id was kept because the brief files quota enforcement under scan abuse. Those two ids are intentionally absent.",
   "findings": [

@@ -17,7 +17,7 @@ them together costs far less than auditing any two of them separately.
 
 AUDIT-011 deliberately skipped 1 and 2 on the grounds that ten prior audits had
 already worked that ground. That reasoning was sound, and it is why this run was
-scoped to *verify the prior fixes still hold* before looking for anything new. They
+scoped to _verify the prior fixes still hold_ before looking for anything new. They
 do: see "Prior fixes verified" below. What this run found is mostly ground the
 earlier audits never reached, because they were looking for classic web
 vulnerabilities and the remaining defects are resource-exhaustion, metering, and
@@ -27,16 +27,16 @@ observability problems.
 
 ## Repo shape (measured, not assumed)
 
-| Area | Size |
-|---|---|
-| `app/` | 314 files, 60,517 lines |
-| `lib/` | 252 files, 80,242 lines (29 subdirs) |
-| `components/` | 313 files, 65,147 lines |
-| `tests/` | 362 files, 89,192 lines |
-| `extension/src/` | 25 files, 7,048 lines |
-| `scripts/` | 58 files, 13,161 lines |
-| API routes | 155 `route.ts` under `app/api/` |
-| Pages | 71 `page.tsx` |
+| Area             | Size                                 |
+| ---------------- | ------------------------------------ |
+| `app/`           | 314 files, 60,517 lines              |
+| `lib/`           | 252 files, 80,242 lines (29 subdirs) |
+| `components/`    | 313 files, 65,147 lines              |
+| `tests/`         | 362 files, 89,192 lines              |
+| `extension/src/` | 25 files, 7,048 lines                |
+| `scripts/`       | 58 files, 13,161 lines               |
+| API routes       | 155 `route.ts` under `app/api/`      |
+| Pages            | 71 `page.tsx`                        |
 
 191 commits have landed since AUDIT-010 shipped (`c58d0481`).
 
@@ -47,17 +47,17 @@ observability problems.
 Nine subagents in parallel, each given a disjoint file scope so no two agents read
 the same code for the same purpose:
 
-| Agent | Section | Scope |
-|---|---|---|
-| `authz` | 1 | authn/authz across all 155 routes, IDOR, tenant isolation, mass assignment, staff-2FA gates |
-| `inj` | 1 | SQLi, XSS through attacker-controlled scan output, path traversal, command injection, ReDoS, secrets placement |
-| `logic` | 1 | credit/quota atomicity, Stripe webhook idempotency, share links, teams, schedules, account lifecycle, TOCTOU |
-| `auth` | 1 | session lifecycle, password and reset, 2FA, OAuth state and account linking, CSRF, API keys, crypto primitives |
-| `ssrf` | 2 | the guard layer, encodings, redirect re-validation, DNS rebinding, caps, and every other outbound fetch |
-| `abuse` | 2 | rate-limit store and IP derivation, server-side quota per scan entry point, worker exhaustion, amplification, cost paths |
-| `perf` | 9 | scan-path budget, N+1s, missing indexes, unbounded queries, per-request work that should be cached |
-| `fe` | 9 | `"use client"` audit, bundle imports, waterfalls, images and CLS, polling, route caching |
-| `obs` | 17 | swallowed catches, fire-and-forget promises, internals leaking to users, error-shape consistency, logging and monitoring |
+| Agent   | Section | Scope                                                                                                                    |
+| ------- | ------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `authz` | 1       | authn/authz across all 155 routes, IDOR, tenant isolation, mass assignment, staff-2FA gates                              |
+| `inj`   | 1       | SQLi, XSS through attacker-controlled scan output, path traversal, command injection, ReDoS, secrets placement           |
+| `logic` | 1       | credit/quota atomicity, Stripe webhook idempotency, share links, teams, schedules, account lifecycle, TOCTOU             |
+| `auth`  | 1       | session lifecycle, password and reset, 2FA, OAuth state and account linking, CSRF, API keys, crypto primitives           |
+| `ssrf`  | 2       | the guard layer, encodings, redirect re-validation, DNS rebinding, caps, and every other outbound fetch                  |
+| `abuse` | 2       | rate-limit store and IP derivation, server-side quota per scan entry point, worker exhaustion, amplification, cost paths |
+| `perf`  | 9       | scan-path budget, N+1s, missing indexes, unbounded queries, per-request work that should be cached                       |
+| `fe`    | 9       | `"use client"` audit, bundle imports, waterfalls, images and CLS, polling, route caching                                 |
+| `obs`   | 17      | swallowed catches, fire-and-forget promises, internals leaking to users, error-shape consistency, logging and monitoring |
 
 Every agent was required to read prior findings in its area before filing, and to
 confirm each finding at a live `file:line` in the current tree. All output was then
@@ -72,28 +72,28 @@ the existence of every cited file and line.
 severity-descending as the brief requires. 80 distinct files cited.
 Effort split: 81 small, 29 medium, 4 large.
 
-| # | Section | This run | Status | Findings |
-|---|---|---|---|---|
-| 1 | Correctness and security | yes | **COMPLETE** | 37 |
-| 2 | SSRF and scan abuse | yes | **COMPLETE** | 22 |
-| 3 | Client-visible breakage | AUDIT-011 | complete | 38 |
-| 4 | UI fixes, mobile and desktop | AUDIT-011 | complete | 27 |
-| 5 | Design consistency | AUDIT-011 | **PARTIAL** | 6 |
-| 6 | The scanning page | AUDIT-011 | **PARTIAL** | 8 |
-| 7 | UI quality of life | AUDIT-011 | **PARTIAL** | 4 |
-| 8 | Backend / frontend capability drift | AUDIT-011 | complete | 26 |
-| 9 | Performance | yes | **COMPLETE** | 44 |
-| 10 | Tests | no | outstanding | 1 (incidental) |
-| 11 | Dependencies | no | outstanding | 1 (incidental) |
-| 12 | Database and migrations | no | outstanding | 3 (incidental) |
-| 13 | Build and deploy | no | outstanding | none |
-| 14 | Documentation | no | outstanding | none |
-| 15 | Hardcoded values | no | outstanding | none |
-| 16 | Consistency and dead code | no | outstanding | none |
-| 17 | Error handling and observability | yes | **COMPLETE** | 11 |
-| 18 | Accessibility and states | no | outstanding | none |
-| 19 | Discoverability and marketing surface | no | outstanding | none |
-| 20 | Competitive gaps | no | outstanding | none |
+| #   | Section                               | This run  | Status       | Findings       |
+| --- | ------------------------------------- | --------- | ------------ | -------------- |
+| 1   | Correctness and security              | yes       | **COMPLETE** | 37             |
+| 2   | SSRF and scan abuse                   | yes       | **COMPLETE** | 22             |
+| 3   | Client-visible breakage               | AUDIT-011 | complete     | 38             |
+| 4   | UI fixes, mobile and desktop          | AUDIT-011 | complete     | 27             |
+| 5   | Design consistency                    | AUDIT-011 | **PARTIAL**  | 6              |
+| 6   | The scanning page                     | AUDIT-011 | **PARTIAL**  | 8              |
+| 7   | UI quality of life                    | AUDIT-011 | **PARTIAL**  | 4              |
+| 8   | Backend / frontend capability drift   | AUDIT-011 | complete     | 26             |
+| 9   | Performance                           | yes       | **COMPLETE** | 44             |
+| 10  | Tests                                 | no        | outstanding  | 1 (incidental) |
+| 11  | Dependencies                          | no        | outstanding  | 1 (incidental) |
+| 12  | Database and migrations               | no        | outstanding  | 3 (incidental) |
+| 13  | Build and deploy                      | no        | outstanding  | none           |
+| 14  | Documentation                         | no        | outstanding  | none           |
+| 15  | Hardcoded values                      | no        | outstanding  | none           |
+| 16  | Consistency and dead code             | no        | outstanding  | none           |
+| 17  | Error handling and observability      | yes       | **COMPLETE** | 11             |
+| 18  | Accessibility and states              | no        | outstanding  | none           |
+| 19  | Discoverability and marketing surface | no        | outstanding  | none           |
+| 20  | Competitive gaps                      | no        | outstanding  | none           |
 
 "Incidental" means the finding surfaced while auditing a section in this batch and is
 typed to its true subject. Those sections remain fully outstanding.
@@ -224,7 +224,7 @@ Decisions made without asking, per instruction:
 **`audits/AUDIT-002/findings.json` does not parse.** Bad control character in a string
 literal at line 161, column 124. Every other audit file parses cleanly
 (001:20, 003:12, 004:14, 005:4, 006:6, 007:9, 008:38, 009:27, 010:41, 011:117,
-012:114). The brief requires `report.html` to merge *every*
+012:114). The brief requires `report.html` to merge _every_
 `audits/AUDIT-*/findings.json`, so AUDIT-002 must be repaired first or its 19
 findings will be silently missing. It was left untouched here rather than edited,
 because repairing another audit's record is the owner's call.

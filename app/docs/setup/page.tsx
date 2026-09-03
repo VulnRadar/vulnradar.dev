@@ -95,7 +95,7 @@ export default function SetupPage() {
           {[
             {
               title: "Node.js 22 LTS",
-              desc: "JavaScript runtime. package.json pins engines.node to >=22.0.0, the Dockerfile builds on node:22.11.0-alpine, and CI runs on Node 22 only. See the Node Version Policy on the Developers page.",
+              desc: "JavaScript runtime. package.json pins engines.node to >=22.0.0 <23.0.0 and .npmrc makes that range a hard install failure, the Dockerfile builds on node:22.11.0-alpine, and CI runs on Node 22 only. See the Node Version Policy on the Developers page.",
               link: "https://nodejs.org",
               cmd: "node --version",
             },
@@ -166,9 +166,15 @@ export default function SetupPage() {
           </h3>
           <CodeBlock code="npm ci" language="bash" />
           <p className="text-xs text-muted-foreground mt-2">
-            Allow-scripts for native packages (bcrypt, esbuild, sharp,
-            unrs-resolver, core-js) are whitelisted in{" "}
-            <InlineCode>.npmrc</InlineCode>.
+            <InlineCode>.npmrc</InlineCode> sets{" "}
+            <InlineCode>engine-strict=true</InlineCode>, so an install under a
+            Node outside <InlineCode>engines</InlineCode> (
+            <InlineCode>&gt;=22.0.0 &lt;23.0.0</InlineCode>) fails instead of
+            warning. It holds no install-script allow-list: npm has no such
+            mechanism, and the Docker build installs with{" "}
+            <InlineCode>--ignore-scripts</InlineCode> because nothing in the
+            production tree needs one (sharp and the Next SWC binaries ship
+            prebuilt as optional dependencies).
           </p>
         </Card>
       </DocsSection>
@@ -199,8 +205,13 @@ GRANT ALL PRIVILEGES ON DATABASE vulnradar TO vulnradar_user;
           </h3>
           <p className="text-sm text-muted-foreground mb-3">
             The included <InlineCode>docker-compose.yml</InlineCode> provisions
-            Postgres with credentials{" "}
-            <InlineCode>vulnradar:vulnradar</InlineCode> on port 5432. See the{" "}
+            Postgres as user <InlineCode>vulnradar</InlineCode> and database{" "}
+            <InlineCode>vulnradar</InlineCode> by default.{" "}
+            <InlineCode>POSTGRES_PASSWORD</InlineCode> has no default: compose
+            refuses to start until you set it in <InlineCode>.env</InlineCode>.
+            The database port is not published to the host at all, so it is
+            reachable only from inside the compose network, at{" "}
+            <InlineCode>postgres:5432</InlineCode>. See the{" "}
             <a
               href="#docker"
               className="text-primary underline-offset-2 hover:underline"
@@ -470,7 +481,7 @@ npm ci`,
             },
             {
               title: "Schema version mismatch at startup",
-              error: `Schema version mismatch: expected v${MIN_SCHEMA_VERSION}, found v2.0.0`,
+              error: `SCHEMA VERSION MISMATCH ... Database schema: v2.0.0 / App requires: v${MIN_SCHEMA_VERSION}`,
               solution: `# Run the migration tool (interactive)
 npm run db:migrate
 
@@ -479,7 +490,8 @@ npm run db:migrate:dry-run`,
             },
             {
               title: "Validation: API_KEY_ENCRYPTION_KEY invalid",
-              error: "Invalid API_KEY_ENCRYPTION_KEY (must be 64 hex chars)",
+              error:
+                "API_KEY_ENCRYPTION_KEY must be a 64-character hex string (32 bytes).",
               solution: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 # Paste the output into .env, restart.`,
             },
@@ -547,8 +559,9 @@ npm run db:migrate:dry-run`,
       <DocsSection id="docker" title="Docker Deployment">
         <p className="text-sm text-muted-foreground">
           Deploy {APP_NAME} with the included{" "}
-          <InlineCode>docker-compose.yml</InlineCode> (Postgres + app +
-          healthcheck + smoke test).
+          <InlineCode>docker-compose.yml</InlineCode>. Two services, Postgres
+          and the app, each with its own healthcheck; the app waits for Postgres
+          to report healthy before it starts.
         </p>
 
         <DocsCallout variant="success" title="Prerequisites">
@@ -608,9 +621,12 @@ POSTGRES_DB=vulnradar
 POSTGRES_USER=vulnradar
 POSTGRES_PASSWORD=your-strong-password
 
-# Ports
+# Host port the app is published on, and the interface it binds to.
+# HOST_BIND defaults to 127.0.0.1 because the compose file assumes a
+# reverse proxy on the same host; set 0.0.0.0 to publish on every
+# interface. Postgres is not published to the host at all.
 APP_PORT=3000
-DB_PORT=5432`}
+# HOST_BIND=0.0.0.0`}
               language="bash"
             />
           </Card>
@@ -702,9 +718,15 @@ npm run db:migrate`}
           />
           <p className="text-xs text-muted-foreground mt-2">
             Flags accepted by the CLI: <InlineCode>--dry-run</InlineCode>,{" "}
-            <InlineCode>--help</InlineCode>. The target version is selected
-            interactively; downgrades require typing{" "}
-            <InlineCode>yes-delete-data</InlineCode>.
+            <InlineCode>--yes</InlineCode> (non-interactive, accept every
+            default) and <InlineCode>--help</InlineCode>. It also goes
+            non-interactive on its own whenever stdin is not a terminal, which
+            is what makes{" "}
+            <InlineCode>
+              docker compose run --rm app npm run db:migrate
+            </InlineCode>{" "}
+            work in a pipeline. The target version is selected interactively;
+            downgrades require typing <InlineCode>yes-delete-data</InlineCode>.
           </p>
         </Card>
 

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { APP_NAME, APP_REPO } from "@/lib/config/constants";
+import { REQUIRED_EVENTS } from "@/lib/billing/stripe-webhook-events";
 import type { TocItem } from "@/components/docs/docs-types";
 import { DocsTocSpy } from "../docs-toc-spy";
 import {
@@ -346,12 +347,16 @@ WHERE email = 'a-colleague@yourdomain.com';`}
                 </InlineCode>
               </li>
               <li>
-                Events: <InlineCode>checkout.session.completed</InlineCode>,{" "}
-                <InlineCode>customer.subscription.created</InlineCode>,{" "}
-                <InlineCode>customer.subscription.updated</InlineCode>,{" "}
-                <InlineCode>customer.subscription.deleted</InlineCode>,{" "}
-                <InlineCode>invoice.payment_succeeded</InlineCode>,{" "}
-                <InlineCode>invoice.payment_failed</InlineCode>
+                Events, rendered from <InlineCode>REQUIRED_EVENTS</InlineCode>{" "}
+                in <InlineCode>lib/billing/stripe-webhook-events.ts</InlineCode>{" "}
+                rather than restated, because an event the handler acts on but
+                that you did not subscribe to simply never arrives:{" "}
+                {REQUIRED_EVENTS.map((event, i) => (
+                  <span key={event}>
+                    <InlineCode>{event}</InlineCode>
+                    {i < REQUIRED_EVENTS.length - 1 ? ", " : ""}
+                  </span>
+                ))}
               </li>
             </ul>
           </li>
@@ -582,8 +587,11 @@ docker compose build app && docker compose up -d
 
 # Schema changed: put the database back first, then the code.
 # Stop only the app so Postgres stays up for the restore.
+# db:restore does nothing without --file and --yes, and refuses a
+# database that still has tables unless you add --force.
 docker compose stop app
-docker compose run --rm app npm run db:restore   # the dump from step 1
+docker compose run --rm app npm run db:restore -- \\
+  --file=./backups/<the dump from step 1> --yes --force
 git checkout <previous-tag>
 docker compose build app && docker compose up -d`}
           />
@@ -718,7 +726,7 @@ docker compose build app && docker compose up -d`}
           <CodeBlock
             language="bash"
             code={`# Clear the second factor for one account. Run against your database,
-# e.g. docker compose exec db psql -U vulnradar -d vulnradar
+# e.g. docker compose exec postgres psql -U vulnradar -d vulnradar
 UPDATE users
    SET totp_enabled = false,
        two_factor_method = NULL,

@@ -45,7 +45,7 @@
  */
 
 import { isIP } from "net";
-import { APP_NAME } from "@/lib/config/constants";
+import { APP_NAME, SEVERITY_PRIORITY } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import { generateId, getHeader } from "./_helpers";
 import { isPrivateHostname } from "./safe-fetch";
@@ -712,16 +712,10 @@ function severityFromScore(score: number): Severity {
   return "info";
 }
 
-const SEVERITY_RANK: Record<Severity, number> = {
-  info: 0,
-  low: 1,
-  medium: 2,
-  high: 3,
-  critical: 4,
-};
-
+// SEVERITY_PRIORITY also counts up with severity, so the comparison is
+// unchanged by dropping the local copy. ref: AUDIT-013#dup-02
 function maxSeverity(a: Severity, b: Severity): Severity {
-  return SEVERITY_RANK[a] >= SEVERITY_RANK[b] ? a : b;
+  return SEVERITY_PRIORITY[a] >= SEVERITY_PRIORITY[b] ? a : b;
 }
 
 interface CveMatch {

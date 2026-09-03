@@ -1,0 +1,8 @@
+[
+  {
+    "icon": "ShieldAlert",
+    "label": "A Live Browser Session Is No Longer Reachable Without Its Owner Record",
+    "desc": "Reading or ending a live browser session checked ownership by denying only when the ownership row existed and named somebody else. A row that was missing, or a database error while looking it up, skipped the check entirely and the request went through. That mattered because the read returns the session's CDP addresses, which are interactive control of the remote browser, not just its status. Two things genuinely leave a session without its row: the retention sweep deletes on expiry without ending the remote session, and any transient database failure is caught and treated as no row. Both handlers now deny a session whose ownership cannot be positively confirmed, which is the rule the network-log endpoint beside them already followed for a strictly smaller payload.",
+    "category": "fixed"
+  }
+]

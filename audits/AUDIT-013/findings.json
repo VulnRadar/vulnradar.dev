@@ -1,18 +1,8 @@
 {
   "auditId": "AUDIT-013",
   "schemaNote": "Uses the finding schema specified in the audit brief (id, title, section, type, severity, effort, category, file, line, description, impact, recommendation), matching AUDIT-011 and AUDIT-012. AUDIT-001..010 use an older repo-local shape (scope/summary/files/fix); whoever builds the merged report.html must normalize those ten. NOTE: audits/AUDIT-002/findings.json still does not parse (bad control character at line 161, col 124) and must be repaired before any merge.",
-  "sectionsCovered": [
-    10,
-    11,
-    12,
-    16
-  ],
-  "sectionsComplete": [
-    10,
-    11,
-    12,
-    16
-  ],
+  "sectionsCovered": [10, 11, 12, 16],
+  "sectionsComplete": [10, 11, 12, 16],
   "sectionsPartial": [],
   "dedupeNote": "Two defects were each found independently by two agents working different angles. migrate-16 was merged into dead-04 (the unreachable 871-line legacy migrator) and tq-02 into cov-08 (the unenforced coverage gate), keeping the id whose evidence was stronger. Those two ids are intentionally absent. The merged dead-04 also corrects a line count: the file is 871 lines, not 872, verified during the merge.",
   "findings": [

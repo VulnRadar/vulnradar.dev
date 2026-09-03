@@ -8,17 +8,17 @@
 
 ## Repo shape (measured, not assumed)
 
-| Area | Size |
-|---|---|
-| `app/` | 314 files, 60,517 lines |
-| `lib/` | 252 files, 80,070 lines (29 subdirs) |
-| `components/` | 313 files, 65,147 lines (28 groups) |
-| `tests/` | 362 files, 89,192 lines |
-| `extension/src/` | 25 files, 7,048 lines |
-| `cli/` | 4 files |
-| Pages | 71 `page.tsx` |
-| API routes | 155 `route.ts` under `app/api/` |
-| Scanner | 101 files under `lib/scanner/` |
+| Area             | Size                                 |
+| ---------------- | ------------------------------------ |
+| `app/`           | 314 files, 60,517 lines              |
+| `lib/`           | 252 files, 80,070 lines (29 subdirs) |
+| `components/`    | 313 files, 65,147 lines (28 groups)  |
+| `tests/`         | 362 files, 89,192 lines              |
+| `extension/src/` | 25 files, 7,048 lines                |
+| `cli/`           | 4 files                              |
+| Pages            | 71 `page.tsx`                        |
+| API routes       | 155 `route.ts` under `app/api/`      |
+| Scanner          | 101 files under `lib/scanner/`       |
 
 191 commits have landed since AUDIT-010 shipped (`c58d0481`).
 
@@ -74,28 +74,28 @@ Ordered by damage-to-the-business, not by the order listed in the brief:
 117 findings written to `findings.json`: 7 critical, 37 high, 53 medium,
 20 low. Sorted severity-descending as the brief requires.
 
-| # | Section | This run | Status | Findings |
-|---|---|---|---|---|
-| 1 | Correctness and security | no | outstanding | — |
-| 2 | SSRF and scan abuse | no | outstanding | — |
-| 3 | Client-visible breakage | yes | **COMPLETE** | 38 |
-| 4 | UI fixes — mobile and desktop | yes | **COMPLETE** | 27 |
-| 5 | Design consistency — whole product | yes | **PARTIAL** | 6 |
-| 6 | The scanning page | yes | **PARTIAL** | 8 |
-| 7 | UI quality of life (incl. bulk actions) | yes | **PARTIAL** | 4 |
-| 8 | Backend / frontend capability drift | yes | **COMPLETE** | 26 |
-| 9 | Performance | no | outstanding | 1 (incidental) |
-| 10 | Tests | no | outstanding | — |
-| 11 | Dependencies | no | outstanding | — |
-| 12 | Database and migrations | no | outstanding | — |
-| 13 | Build and deploy | no | outstanding | — |
-| 14 | Documentation | no | outstanding | 1 (incidental) |
-| 15 | Hardcoded values | no | outstanding | 1 (incidental) |
-| 16 | Consistency and dead code | no | outstanding | 3 (incidental) |
-| 17 | Error handling and observability | no | outstanding | — |
-| 18 | Accessibility and states | no | outstanding | 2 (incidental) |
-| 19 | Discoverability and marketing surface | no | outstanding | — |
-| 20 | Competitive gaps | no | outstanding | — |
+| #   | Section                                 | This run | Status       | Findings       |
+| --- | --------------------------------------- | -------- | ------------ | -------------- |
+| 1   | Correctness and security                | no       | outstanding  | —              |
+| 2   | SSRF and scan abuse                     | no       | outstanding  | —              |
+| 3   | Client-visible breakage                 | yes      | **COMPLETE** | 38             |
+| 4   | UI fixes — mobile and desktop           | yes      | **COMPLETE** | 27             |
+| 5   | Design consistency — whole product      | yes      | **PARTIAL**  | 6              |
+| 6   | The scanning page                       | yes      | **PARTIAL**  | 8              |
+| 7   | UI quality of life (incl. bulk actions) | yes      | **PARTIAL**  | 4              |
+| 8   | Backend / frontend capability drift     | yes      | **COMPLETE** | 26             |
+| 9   | Performance                             | no       | outstanding  | 1 (incidental) |
+| 10  | Tests                                   | no       | outstanding  | —              |
+| 11  | Dependencies                            | no       | outstanding  | —              |
+| 12  | Database and migrations                 | no       | outstanding  | —              |
+| 13  | Build and deploy                        | no       | outstanding  | —              |
+| 14  | Documentation                           | no       | outstanding  | 1 (incidental) |
+| 15  | Hardcoded values                        | no       | outstanding  | 1 (incidental) |
+| 16  | Consistency and dead code               | no       | outstanding  | 3 (incidental) |
+| 17  | Error handling and observability        | no       | outstanding  | —              |
+| 18  | Accessibility and states                | no       | outstanding  | 2 (incidental) |
+| 19  | Discoverability and marketing surface   | no       | outstanding  | —              |
+| 20  | Competitive gaps                        | no       | outstanding  | —              |
 
 "Incidental" means the finding surfaced while auditing a section in this
 batch and is tagged to its true home section. It does **not** mean that
@@ -188,7 +188,7 @@ Decisions made without asking, per instruction:
 10. **`bulk-01` is recorded as a decision, not a verdict.** The brief's
     default was REMOVE. Five of the six bulk features had a defensible
     keep case, so I recorded those with reasons. For the sixth — the one
-    the brief named — I costed *both* paths (≈565 lines out, or ≈2 days to
+    the brief named — I costed _both_ paths (≈565 lines out, or ≈2 days to
     redesign) rather than picking, because it turns on whether triaging
     100+ findings is a workflow the product wants to own. That is a product
     call, not an audit call.
