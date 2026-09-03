@@ -29,7 +29,7 @@
   },
   "devDependencies": {
     "@types/chrome": "^0.2.7",
-    "@types/firefox-webext-browser": "^120.0.4",
+    "@types/firefox-webext-browser": "^143.0.0",
     "@types/node": "^22.10.5",
     "@types/webextension-polyfill": "^0.12.5",
     "archiver": "^8.0.0",
