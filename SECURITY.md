@@ -87,7 +87,7 @@ Every tagged release on GitHub is accompanied by:
   `vulnradar-firefox-vE.E.E.zip`): built from the same tag. These carry the
   extension's own version, which is not the app version, so do not assume
   `vX.Y.Z` here
-- **CLI package** (`vulnradar-C.C.C.tgz`): the npm tarball for the
+- **CLI package** (`vulnradar-cli-vC.C.C.tgz`): the npm tarball for the
   `vulnradar` CLI, packed from the same tag. Like the extension zips it
   carries its own version, not the app version. npm is the primary install
   path (`npx vulnradar`); this is here so a registry-pinned or airgapped

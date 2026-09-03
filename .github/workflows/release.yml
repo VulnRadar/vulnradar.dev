@@ -184,10 +184,15 @@ jobs:
           CLI_VERSION=$(node -p "require('./package.json').version")
           echo "CLI_VERSION=${CLI_VERSION}" >> "$GITHUB_ENV"
 
-          # --pack-destination writes straight into ARTIFACT_DIR, so nothing
-          # has to be moved afterwards.
+          # --pack-destination writes straight into ARTIFACT_DIR. npm names
+          # the file after the package, which would put vulnradar-0.1.1.tgz
+          # next to vulnradar-v3.8.0.tar.gz: near-identical names carrying
+          # unrelated versions. Renamed to match the extension's convention so
+          # it is obvious which artifact is which.
           npm pack --pack-destination "${ARTIFACT_DIR}"
-          ls -l "${ARTIFACT_DIR}"/vulnradar-*.tgz
+          mv "${ARTIFACT_DIR}/vulnradar-${CLI_VERSION}.tgz" \
+             "${ARTIFACT_DIR}/vulnradar-cli-v${CLI_VERSION}.tgz"
+          ls -l "${ARTIFACT_DIR}"/vulnradar-cli-*.tgz
 
       - name: Generate extension SBOM (CycloneDX, JSON)
         # release: docker-publish.yml's SBOM is generated against the server
@@ -339,7 +344,7 @@ jobs:
             "vulnradar-chrome-v${EXT_VERSION}.zip" \
             "vulnradar-firefox-v${EXT_VERSION}.zip" \
             "vulnradar-extension-v${EXT_VERSION}.sbom.cdx.json" \
-            "vulnradar-${CLI_VERSION}.tgz" \
+            "vulnradar-cli-v${CLI_VERSION}.tgz" \
             "sha256sums.txt" \
             "sha256sums.txt.cert"; do
             if [ -f "$f" ]; then
