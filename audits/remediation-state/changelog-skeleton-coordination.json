@@ -1,0 +1,32 @@
+[
+  {
+    "icon": "Layers",
+    "label": "A Loading Page No Longer Reappears On Top Of Your Finished Scan",
+    "desc": "Opening a saved scan went through three states: the history list's grey placeholder, then the report's own placeholder, then, about a second in, the history list placeholder came back and covered a report that had already arrived. Two panels on every scan report (threat intelligence and the software inventory) were code-split without their own loading boundary, so the moment they mounted they suspended the whole route and replayed its placeholder over the page. They no longer can, and the same fix applies to opening a finding from a scan you just ran.",
+    "category": "fixed"
+  },
+  {
+    "icon": "PanelsTopLeft",
+    "label": "The Placeholder You See Is The Page You Are Going To",
+    "desc": "A route's loading state covers every page beneath it, so following a team invite link drew the teams list, coming back from Stripe drew the payment form again, opening a scan by link drew the scan list, and an admin opening a chat transcript drew the admin console. Each of those then threw away everything it had drawn. Every one of them now has its own placeholder, shaped like the page it is standing in for, and there is a test that fails if a new page inherits one written for a different layout.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Rows3",
+    "label": "Pages Arrive In One Piece Instead Of Assembling Themselves",
+    "desc": "History, Teams and Compare each load several things at once and each used to reveal whichever landed first. History drew its filter row with three controls and grew a fourth a moment later; Teams settled its list and then pushed it down with an invitations panel; a shared comparison link went through the host picker, then that host's scan picker, then the diff, moving what was under your cursor twice on the way. The requests still all go out together, but the content now appears once, complete. A dead endpoint releases the page rather than leaving it waiting.",
+    "category": "changed"
+  },
+  {
+    "icon": "UserCheck",
+    "label": "Owner Controls On A Scan Are There When The Scan Is",
+    "desc": "Opening one of your own scans by link rendered the report first and the controls that only you get (rename, delete, re-scan, the remediation buttons) a moment afterwards, because the page asked who you were in a second request of its own alongside the one the rest of the app already makes. It reads the answer the app already has now, which is one request fewer and one fewer thing appearing late.",
+    "category": "fixed"
+  },
+  {
+    "icon": "Bug",
+    "label": "Filters In A Shared Link No Longer Break The Page Loading Underneath Them",
+    "desc": "Opening any link that carried a setting in its address (a profile tab, a team, a scan report filtered to one severity) made the page disagree with itself on the first frame, which React treats as broken markup and repairs by rebuilding the page, replaying its loading placeholder on the way. The shared helper behind every one of those links now settles the value before anything is drawn.",
+    "category": "fixed"
+  }
+]

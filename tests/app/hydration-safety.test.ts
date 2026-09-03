@@ -28,6 +28,20 @@ function walk(dir: string, exts: RegExp): string[] {
 
 const SOURCES = [...walk("app", /\.tsx$/), ...walk("components", /\.tsx$/)];
 
+/**
+ * The offending shape: a useState initializer that reaches for a query param.
+ * `[^;]` keeps it inside one statement, so it cannot join two unrelated lines.
+ */
+const SEEDS_FROM_URL_IN_RENDER =
+  /useState[^;]{0,200}?getQueryParam(Int)?\s*\(/s;
+
+/** Comments describe the bug in prose; only code can commit it. */
+function stripComments(src: string): string {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+}
+
 describe("hydration safety", () => {
   it("finds the sources", () => {
     expect(SOURCES.length).toBeGreaterThan(50);
@@ -86,7 +100,7 @@ describe("hydration safety", () => {
     // or wrapped across a few. Deliberately narrow: it only fires on the
     // query-param helpers, which are the ones that silently differ by
     // environment.
-    const offending = /useState[^;]{0,200}?getQueryParam(Int)?\s*\(/s.test(src);
+    const offending = SEEDS_FROM_URL_IN_RENDER.test(src);
     expect(
       offending,
       `${file} initializes state from a query param during render. The ` +
@@ -95,5 +109,34 @@ describe("hydration safety", () => {
         `regenerate the tree (replaying loading.tsx over the page). Use ` +
         `useQuerySeededState from @/lib/ui/url-state instead.`,
     ).toBe(false);
+  });
+
+  /**
+   * Cause 2, one level down.
+   *
+   * The rule above only ever looked at app/ and components/, and the last copy
+   * of the bug was not in either: useQueryParam (lib/ui/url-state.ts) seeded
+   * itself from the URL in a useState initializer, so every one of its callers
+   * inherited the mismatch, /profile?tab=, /teams?team=, /repos?repo= and any
+   * scan report opened with a ?sev=, ?cat= or ?q= filter already applied. A
+   * shared hook is the worst place for this, because nothing in the page that
+   * breaks names the cause.
+   *
+   * One assertion over the whole tree rather than one test per file: lib/ is
+   * hundreds of modules and almost none of them touch a query string.
+   */
+  it("no shared module seeds state from the URL in render", () => {
+    const offenders = walk("lib", /\.tsx?$/).filter((file) =>
+      SEEDS_FROM_URL_IN_RENDER.test(stripComments(readFileSync(file, "utf8"))),
+    );
+
+    expect(
+      offenders,
+      `These shared modules initialize state from a query param during ` +
+        `render, which fails hydration for every page that calls them and ` +
+        `replays the route's loading.tsx over the page. Seed through ` +
+        `useQuerySeededState (lib/ui/url-state.ts) instead:\n` +
+        offenders.map((f) => `  - ${f}`).join("\n"),
+    ).toEqual([]);
   });
 });

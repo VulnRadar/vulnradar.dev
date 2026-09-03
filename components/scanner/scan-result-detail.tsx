@@ -74,20 +74,19 @@ const PortScanPanel = dynamic(
  * A fallback of null keeps the deliberate "draw nothing" and confines the
  * suspension to this row.
  */
-const drawNothingWhileLoading = { loading: () => null };
 const ThreatIntelPanel = dynamic(
   () =>
     import("./threat-intel-panel").then((m) => ({
       default: m.ThreatIntelPanel,
     })),
-  drawNothingWhileLoading,
+  { loading: () => null },
 );
 const SoftwareInventoryPanel = dynamic(
   () =>
     import("./software-inventory-panel").then((m) => ({
       default: m.SoftwareInventoryPanel,
     })),
-  drawNothingWhileLoading,
+  { loading: () => null },
 );
 
 // Re-exported so existing importers keep resolving these from here; the

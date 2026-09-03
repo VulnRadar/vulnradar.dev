@@ -176,14 +176,29 @@ export function clearQueryParams(opts: WriteOpts = {}): void {
   }
 }
 
+/**
+ * A query param as state, kept in sync with the URL in both directions.
+ *
+ * The seed goes through useQuerySeededState below rather than a useState
+ * initializer, and that is not a style choice. `useState(() =>
+ * getQueryParam(name) ?? fallback)` returns the fallback on the server, which
+ * has no window, and the real value on the client's first render. React reads
+ * that as mismatched markup and regenerates the tree, which re-enters the
+ * route's Suspense boundary and replays loading.tsx over the page: the
+ * double-skeleton bug, reached through this hook rather than through a page.
+ * app/**  and components/** are guarded against writing that initializer by
+ * hand (tests/app/hydration-safety.test.ts); this file is where the last copy
+ * of it lived, on /profile?tab=, /teams?team=, /repos?repo= and every scan
+ * report opened with a ?sev=, ?cat= or ?q= filter already applied.
+ */
 export function useQueryParam<T extends string = string>(
   name: string,
   fallback: T,
 ): [T, (next: T | null) => void] {
-  const [value, setValue] = useState<T>(() => {
-    const raw = getQueryParam(name);
-    return (raw ?? fallback) as T;
-  });
+  const [value, setValue] = useQuerySeededState<T>(
+    () => (getQueryParam(name) ?? fallback) as T,
+    fallback,
+  );
 
   const valueRef = useRef(value);
   useEffect(() => {
@@ -213,14 +228,17 @@ export function useQueryParam<T extends string = string>(
       window.removeEventListener(LOCATION_CHANGE_EVENT, onPopState);
       window.removeEventListener("popstate", onPopState);
     };
-  }, [name, fallback]);
+    // setValue is useState's own dispatch, forwarded by useQuerySeededState,
+    // so it never changes identity. It is listed because the linter can only
+    // see that it came out of a custom hook, not that it is stable.
+  }, [name, fallback, setValue]);
 
   const update = useCallback(
     (next: T | null) => {
       setQueryParam(name, next);
       setValue((next ?? fallback) as T);
     },
-    [name, fallback],
+    [name, fallback, setValue],
   );
 
   return [value, update];

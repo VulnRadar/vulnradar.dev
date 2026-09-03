@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useIsomorphicLayoutEffect } from "@/lib/ui/use-isomorphic-layout-effect";
 // AppPageShell, not PublicPageShell. /compare diffs two scans out of the
 // caller's own history, so it has no meaning signed out and is not in
 // PUBLIC_PATHS: the middleware sends an anonymous visitor to
@@ -19,8 +20,10 @@ import {
   getQueryParam,
   removeQueryParam,
   setQueryParams,
+  useQuerySeededState,
   LOCATION_CHANGE_EVENT,
 } from "@/lib/ui/url-state";
+import { CompareDataSkeleton } from "@/components/compare/compare-skeleton";
 import {
   CompareHostPicker,
   CompareHostScanPicker,
@@ -48,6 +51,27 @@ export default function ComparePage() {
   const [scansFailed, setScansFailed] = useState(false);
   const [compareError, setCompareError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  /**
+   * True only for a page ENTERED on a ?a=&b= link, and only until that first
+   * comparison has settled.
+   *
+   * Two independent requests feed the one region here: the scan list (which
+   * every picker below is drawn from) and the diff itself. They resolved into
+   * the page one at a time, so opening a shared comparison ran through three
+   * layouts: the host picker's placeholder, then the host's own scan picker
+   * once the list landed, then the diff. The middle one is a screen the reader
+   * never asked for and cannot use, assembled and thrown away.
+   *
+   * Seeded before paint rather than in a useState initializer: the server has
+   * no window to read the URL from, and disagreeing with it on the first
+   * render fails hydration and replays the route's loading.tsx. Once it is
+   * cleared, a comparison the reader runs by hand from the picker is unaffected
+   * and still shows its own inline pending state.
+   */
+  const [deepLinkPending, setDeepLinkPending] = useQuerySeededState(
+    () => getQueryParam("a") !== null && getQueryParam("b") !== null,
+    false,
+  );
 
   useEffect(() => {
     // A failed history load used to fall through to an empty list, which the
@@ -136,6 +160,22 @@ export default function ComparePage() {
       window.removeEventListener("popstate", syncFromUrl);
     };
   }, [runCompare]);
+
+  // Releases the gate above once BOTH feeders have settled, in either order.
+  // Settled, not succeeded: a refused comparison clears `loading` too, and a
+  // failed history load clears `loadingScans`, so a dead endpoint drops the
+  // reader on the picker with the error alert rather than on a skeleton that
+  // never resolves.
+  //
+  // A layout effect, so the release lands in the same frame as the data that
+  // caused it. As a passive effect it is one scheduler tick behind the render
+  // that set `loading` false, which is a frame of placeholder over a diff that
+  // had already arrived.
+  useIsomorphicLayoutEffect(() => {
+    if (!deepLinkPending) return;
+    if (loadingScans || loading) return;
+    setDeepLinkPending(false);
+  }, [deepLinkPending, loadingScans, loading, setDeepLinkPending]);
 
   // A deep link (?a=&b=) resolves selectedA/selectedB before the scan list
   // has loaded, so there is nothing yet to derive a host from. Once `scans`
@@ -315,7 +355,9 @@ export default function ComparePage() {
 
       {compareError && <InlineAlert tone="error">{compareError}</InlineAlert>}
 
-      {!diffResult && !selectedHost && (
+      {deepLinkPending && <CompareDataSkeleton />}
+
+      {!deepLinkPending && !diffResult && !selectedHost && (
         <div {...tourAnchor("compareHosts")} className="flex flex-col gap-6">
           <div className="relative max-w-sm">
             <Search
@@ -341,7 +383,7 @@ export default function ComparePage() {
         </div>
       )}
 
-      {!diffResult && selectedHost && selectedGroup && (
+      {!deepLinkPending && !diffResult && selectedHost && selectedGroup && (
         <div {...tourAnchor("comparePicker")} className="flex flex-col gap-6">
           <Button
             variant="outline"
@@ -392,7 +434,7 @@ export default function ComparePage() {
         </div>
       )}
 
-      {diffResult && (
+      {!deepLinkPending && diffResult && (
         <div {...tourAnchor("compareDiff")} className="flex flex-col gap-6">
           <div className="flex items-center justify-between gap-2">
             <Button
