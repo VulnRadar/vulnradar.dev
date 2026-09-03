@@ -8,7 +8,7 @@
  * Stripe billing history, API keys, and scan history lived in one Postgres
  * instance with no scheduled dump, no offsite copy, and no restore path.
  *
- * What this does: `pg_dump` -> gzip -> AES-256-GCM encryption (on by default,
+ * What this does: SQL dump -> gzip -> AES-256-GCM encryption (on by default,
  * see BACKUP_ENCRYPTION_KEY below) -> local file under BACKUP_DIR, prunes
  * local backups past BACKUP_RETENTION_DAYS,
  * and (optional) uploads the result to BACKUP_OFFSITE_UPLOAD_URL via a plain
@@ -16,11 +16,34 @@
  * PUT URL, or any receiver that accepts one, works identically -- this app
  * never needs to hold long-lived cloud credentials to get an offsite copy.
  *
+ * Two ways to produce that SQL dump
+ * ---------------------------------
+ * `pg_dump` whenever it is installed: it is the more complete tool and stays
+ * the default. When it is NOT installed the built-in JavaScript dumper
+ * (scripts/_lib/_lib.sql-backup.mjs) runs instead, automatically, and says so.
+ * That is not a nicety: Pterodactyl and Pelican panel installs run from source
+ * on a Node egg whose image the operator cannot change and has no root in, so
+ * postgresql-client can never be added there and this script used to fail
+ * outright, leaving those installs with no backup at all. The JavaScript path
+ * emits plain SQL in pg_dump's own shape (a SET preamble, DDL, COPY blocks,
+ * setval calls), so the file it writes restores with psql, pgAdmin, DBeaver or
+ * a managed provider's importer just like a pg_dump one -- and with
+ * `npm run db:restore`, which needs no psql either. It covers the public
+ * schema only; see DUMP_LIMITS_NOTICE for exactly what it leaves out.
+ *
+ * Encryption, gzip, retention and offsite upload are identical on both paths.
+ *
  * Restore with: npm run db:restore -- --file=<path>
  *
  * Usage:
  *   npm run db:backup
  *   npm run db:backup -- --dir=/custom/backups
+ *   npm run db:backup -- --js       force the built-in dumper even if pg_dump
+ *                                   is installed (same as BACKUP_FORCE_JS=1)
+ *   npm run db:backup -- --allow-incomplete
+ *                                   let the built-in dumper write a file even
+ *                                   though the database holds objects it
+ *                                   cannot represent (it refuses by default)
  *
  * Env vars (all optional except DATABASE_URL):
  *   BACKUP_DIR                 Local directory for backups. Default: ./backups
@@ -48,6 +71,15 @@
  *   BACKUP_OFFSITE_UPLOAD_URL  A presigned PUT URL (or any HTTP receiver).
  *                               When set, the finished backup file is PUT
  *                               there after the local write succeeds.
+ *   BACKUP_FORCE_JS            "1" forces the built-in JavaScript dumper even
+ *                               where pg_dump exists. The env var exists as
+ *                               well as --js because the admin panel spawns
+ *                               this script with no arguments (see
+ *                               lib/backup/run-backup.ts), so a flag alone
+ *                               would be unreachable from there. Deliberately
+ *                               a script-level env var and not a
+ *                               SETTINGS_REGISTRY entry, exactly like the
+ *                               other BACKUP_* values above.
  */
 import { spawn } from "node:child_process";
 import { createGzip } from "node:zlib";
@@ -56,8 +88,15 @@ import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { loadEnv, requireDatabaseUrl, ROOT } from "./_lib/_lib.env.mjs";
+import { createPool } from "./_lib/_lib.db.mjs";
+import { getProjectMeta } from "./_lib/_lib.meta.mjs";
+import {
+  generateSqlDump,
+  DUMP_LIMITS_NOTICE,
+} from "./_lib/_lib.sql-backup.mjs";
 
 /**
  * Smallest file that could plausibly hold a dump. A gzip stream carrying no
@@ -135,13 +174,43 @@ export function createBackupCipher(hexKey) {
 export function describePgDumpError(err) {
   if (err && err.code === "ENOENT") {
     return new Error(
-      "pg_dump not found. Database backups require the postgresql-client " +
+      "pg_dump not found. Database backups prefer the postgresql-client " +
         "package (which provides pg_dump) to be installed and on PATH in the " +
         "container/image. Minimal Node images (e.g. the Pterodactyl Node egg) " +
-        "do not include it by default. See the self-hosting docs.",
+        "do not include it by default. Re-run with --js (or BACKUP_FORCE_JS=1) " +
+        "to use the built-in JavaScript dumper instead. See the self-hosting " +
+        "docs.",
     );
   }
   return err;
+}
+
+/**
+ * Is `pg_dump` on PATH?
+ *
+ * Probed up front rather than discovered by letting the real dump fail,
+ * because the destination file is created before pg_dump writes a byte: a
+ * post-hoc discovery would mean creating a file, failing, deleting it and
+ * starting again, with a confusing error in the log in between.
+ *
+ * Only a missing binary steers the run to the JavaScript dumper. A pg_dump
+ * that exists but then fails (a version mismatch, no permission, a broken
+ * connection) is reported as the failure it is; silently downgrading the
+ * format because a real error happened would hide a problem the operator
+ * needs to see. Its message names the flag that forces the other path.
+ */
+export function pgDumpAvailable() {
+  return new Promise((resolvePromise) => {
+    let probe;
+    try {
+      probe = spawn("pg_dump", ["--version"], { stdio: "ignore" });
+    } catch {
+      resolvePromise(false);
+      return;
+    }
+    probe.on("error", () => resolvePromise(false));
+    probe.on("close", (code) => resolvePromise(code === 0));
+  });
 }
 
 /** Inverse of createBackupCipher, for restore. Exported for tests. */
@@ -222,43 +291,37 @@ async function runBackup() {
   // reach the client -- see the same rule for BACKUP_DIR in that route.
   info(`Target: ${finalName}`);
 
-  // Keep the DB password out of pg_dump's argv (visible via `ps` on a shared
-  // host); libpq reads it from PGPASSWORD in the child env instead.
-  const { connArg, env } = splitDbUrlForEnv(process.env.DATABASE_URL);
-  const pgDump = spawn(
-    "pg_dump",
-    ["--no-owner", "--no-privileges", "--format=plain", connArg],
-    { stdio: ["ignore", "pipe", "pipe"], env },
-  );
-  let stderrOutput = "";
-  pgDump.stderr.on("data", (chunk) => {
-    stderrOutput += chunk.toString();
-  });
+  const forceJs = args.includes("--js") || process.env.BACKUP_FORCE_JS === "1";
+  const allowIncomplete = args.includes("--allow-incomplete");
+  // The probe runs before anything is created, so the choice of path is made
+  // once and logged once rather than discovered by a failure.
+  const usePgDump = forceJs ? false : await pgDumpAvailable();
+  if (forceJs) {
+    info("Using the built-in JavaScript dumper (--js / BACKUP_FORCE_JS=1).");
+  } else if (usePgDump) {
+    info("Using pg_dump.");
+  } else {
+    warn(
+      "pg_dump is not installed here, so the built-in JavaScript dumper is " +
+        "being used instead. It writes plain SQL that psql, pgAdmin, DBeaver " +
+        "and npm run db:restore can all import.",
+    );
+  }
+  if (!usePgDump) for (const line of DUMP_LIMITS_NOTICE) info(line);
 
   const gzip = createGzip();
   const dest = createWriteStream(finalPath);
 
   let cipherInfo = null;
-  const stages = [pgDump.stdout, gzip];
+  // Everything downstream of the dump source, shared by both paths verbatim:
+  // gzip, optional AES-256-GCM, the file. That is what keeps encryption,
+  // retention and offsite upload from quietly becoming pg_dump-only features.
+  const tail = [gzip];
   if (encryptionKey) {
     cipherInfo = createBackupCipher(encryptionKey);
-    stages.push(cipherInfo.cipher);
+    tail.push(cipherInfo.cipher);
   }
-  stages.push(dest);
-
-  // spawn() reports a missing binary asynchronously via an 'error' event, not
-  // a throw. Capture it (mapped to a clear message) rather than rejecting, so
-  // whichever unwinds first -- this event or the pipeline teardown it triggers
-  // -- the actionable message still wins. This stdout/stderr also streams
-  // verbatim into the admin-panel job log via lib/backup/run-backup.ts.
-  let spawnError = null;
-  const exitCodePromise = new Promise((resolvePromise) => {
-    pgDump.on("error", (err) => {
-      spawnError = describePgDumpError(err);
-      resolvePromise(-1);
-    });
-    pgDump.on("close", (code) => resolvePromise(code));
-  });
+  tail.push(dest);
 
   // Removes the half-written artefact and its sidecar. Every throw below has
   // to go through this: the file already exists by the time any of them can
@@ -268,26 +331,85 @@ async function runBackup() {
     await unlink(`${finalPath}.json`).catch(() => {});
   };
 
-  try {
-    await pipeline(stages);
-  } catch (err) {
-    // A failed spawn (e.g. pg_dump missing) also tears the pipeline down; wait
-    // for the child's own 'error' event so its clearer message wins over the
-    // generic stream-teardown error.
-    await exitCodePromise;
-    await discardPartial();
-    throw spawnError || describePgDumpError(err);
-  }
-  const exitCode = await exitCodePromise;
-  if (spawnError) {
-    await discardPartial();
-    throw spawnError;
-  }
-  if (exitCode !== 0) {
-    await discardPartial();
-    throw new Error(
-      `pg_dump exited with code ${exitCode}: ${stderrOutput.trim()}`,
+  if (usePgDump) {
+    // Keep the DB password out of pg_dump's argv (visible via `ps` on a shared
+    // host); libpq reads it from PGPASSWORD in the child env instead.
+    const { connArg, env } = splitDbUrlForEnv(process.env.DATABASE_URL);
+    const pgDump = spawn(
+      "pg_dump",
+      ["--no-owner", "--no-privileges", "--format=plain", connArg],
+      { stdio: ["ignore", "pipe", "pipe"], env },
     );
+    let stderrOutput = "";
+    pgDump.stderr.on("data", (chunk) => {
+      stderrOutput += chunk.toString();
+    });
+
+    // spawn() reports a missing binary asynchronously via an 'error' event,
+    // not a throw. Capture it (mapped to a clear message) rather than
+    // rejecting, so whichever unwinds first -- this event or the pipeline
+    // teardown it triggers -- the actionable message still wins. This
+    // stdout/stderr also streams verbatim into the admin-panel job log via
+    // lib/backup/run-backup.ts.
+    let spawnError = null;
+    const exitCodePromise = new Promise((resolvePromise) => {
+      pgDump.on("error", (err) => {
+        spawnError = describePgDumpError(err);
+        resolvePromise(-1);
+      });
+      pgDump.on("close", (code) => resolvePromise(code));
+    });
+
+    try {
+      await pipeline([pgDump.stdout, ...tail]);
+    } catch (err) {
+      // A failed spawn also tears the pipeline down; wait for the child's own
+      // 'error' event so its clearer message wins over the generic
+      // stream-teardown error.
+      await exitCodePromise;
+      await discardPartial();
+      throw spawnError || describePgDumpError(err);
+    }
+    const exitCode = await exitCodePromise;
+    if (spawnError) {
+      await discardPartial();
+      throw spawnError;
+    }
+    if (exitCode !== 0) {
+      await discardPartial();
+      throw new Error(
+        `pg_dump exited with code ${exitCode}: ${stderrOutput.trim()}`,
+      );
+    }
+  } else {
+    // No child process at all: the dump is produced over the same `pg`
+    // connection the app already uses, which is the whole point on a host
+    // where no postgresql-client binary exists or can be installed.
+    const pool = createPool();
+    let client = null;
+    try {
+      client = await pool.connect();
+      const source = Readable.from(
+        generateSqlDump({
+          client,
+          meta: { appVersion: getProjectMeta().version },
+          allowIncomplete,
+          onLog: info,
+          onWarn: warn,
+        }),
+        // Byte mode, not object mode: it is what gives the pipeline real
+        // backpressure, so a slow disk throttles the reader instead of
+        // letting pages queue up in memory.
+        { objectMode: false },
+      );
+      await pipeline([source, ...tail]);
+    } catch (err) {
+      await discardPartial();
+      throw err;
+    } finally {
+      client?.release();
+      await pool.end().catch(() => {});
+    }
   }
 
   if (cipherInfo) {
@@ -308,26 +430,27 @@ async function runBackup() {
 
   const written = await stat(finalPath);
 
-  // pg_dump can exit 0 and still leave nothing worth keeping (an empty
+  // A dump can succeed and still leave nothing worth keeping (an empty
   // database, a dump that produced only a gzip header, a truncated stream that
   // closed cleanly). A file that small cannot contain a schema, so treating it
   // as a backup is the same lie as keeping the failed ones: it is counted in
   // the admin list and it would restore nothing. MIN_USABLE_BACKUP_BYTES is
   // deliberately low, since it only has to catch "there is no dump in here",
-  // not judge whether a real dump is complete.
+  // not judge whether a real dump is complete. Applies to both paths: the
+  // built-in dumper can be pointed at an empty database just as easily.
   if (written.size < MIN_USABLE_BACKUP_BYTES) {
     await discardPartial();
     throw new Error(
-      `pg_dump exited 0 but wrote only ${written.size} bytes, which cannot ` +
+      `The dump finished but wrote only ${written.size} bytes, which cannot ` +
         `contain a usable dump. Nothing was kept. Check that DATABASE_URL ` +
-        `points at a database with tables and that pg_dump can read it.`,
+        `points at a database with tables and that it can be read.`,
     );
   }
 
   success(
     `Wrote ${finalName} (${(written.size / 1024 / 1024).toFixed(2)} MB)${
       cipherInfo ? ", encrypted" : ""
-    }`,
+    }${usePgDump ? "" : ", built-in SQL dumper"}`,
   );
 
   if (offsiteUrl) {

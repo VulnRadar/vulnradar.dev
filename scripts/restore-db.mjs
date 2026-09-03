@@ -7,14 +7,26 @@
  * this against a throwaway/staging database at least once after setting up
  * backups, before trusting it in a real incident.
  *
+ * Two dump formats, detected from the file's CONTENT rather than its name
+ * -----------------------------------------------------------------------
+ * A `pg_dump --format=plain` dump is streamed into `psql`, as it always was.
+ * A dump written by VulnRadar's own built-in dumper (see
+ * scripts/_lib/_lib.sql-backup.mjs, used automatically when pg_dump is not
+ * installed) is applied over the `pg` connection instead, with no child
+ * process at all. That is not a stylistic choice: the hosts the built-in
+ * dumper exists for (Pterodactyl / Pelican panel installs on a bare Node egg)
+ * have no `psql` either, so a restore that shelled out would break for exactly
+ * the operators whose only backup this is. The same file still restores with
+ * `psql -v ON_ERROR_STOP=1 --single-transaction -f ...` anywhere psql exists.
+ *
  * Usage:
  *   npm run db:restore -- --file=./backups/vulnradar-backup-2026-08-14T00-00-00-000Z.sql.gz --yes
  *   npm run db:restore -- --file=./backups/vulnradar-backup-...sql.gz.enc --yes   (needs BACKUP_ENCRYPTION_KEY, or API_KEY_ENCRYPTION_KEY, the fallback)
  *   npm run db:restore -- --file=... --yes --force   (allow restoring into a database that already has tables)
  *
- * Destructive: this runs `psql` against DATABASE_URL and will apply
- * whatever the dump contains on top of it. Requires --yes -- without it,
- * this only prints what it would do and exits.
+ * Destructive: this applies whatever the dump contains on top of the database
+ * DATABASE_URL points at. Requires --yes -- without it, this only prints what
+ * it would do and exits.
  */
 import { spawn } from "node:child_process";
 import { createGunzip } from "node:zlib";
@@ -26,6 +38,7 @@ import { pathToFileURL } from "node:url";
 import { pipeline } from "node:stream/promises";
 import { loadEnv, requireDatabaseUrl } from "./_lib/_lib.env.mjs";
 import { splitDbUrlForEnv } from "./_lib/_lib.db-url.mjs";
+import { createPool } from "./_lib/_lib.db.mjs";
 import {
   banner,
   info,
@@ -36,6 +49,13 @@ import {
   warningBox,
 } from "./_lib/_lib.output.mjs";
 import { createBackupDecipher } from "./backup-db.mjs";
+import {
+  detectBackupFormat,
+  readDumpLines,
+  restoreSqlDump,
+  DUMP_LIMITS_NOTICE,
+} from "./_lib/_lib.sql-backup.mjs";
+import { repairAllSequences } from "./migrate/_runner.mjs";
 
 // Tables printed back to the operator after a successful restore. A restore
 // that reports success but left the database empty is the failure this whole
@@ -118,6 +138,94 @@ export function psqlQuery(connArg, env, sql) {
   });
 }
 
+/**
+ * Refuse to restore onto a database that already has tables, without shelling
+ * out to psql.
+ *
+ * Same rule the psql path applies for the same reason: neither dump format
+ * contains DROP statements, so restoring on top of an existing schema fails on
+ * every CREATE. This one uses the `pg` connection because the hosts the
+ * built-in dumper exists for have no psql to ask.
+ *
+ * Returns the table count. Throws rather than exiting, so the caller's temp
+ * directory cleanup still runs.
+ */
+export async function countPublicTables(pool) {
+  const res = await pool.query(
+    `SELECT count(*)::int AS n FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`,
+  );
+  return res.rows[0].n;
+}
+
+/**
+ * Apply one of our own SQL dumps through `pg`.
+ *
+ * Sequences are set twice on purpose. The dump carries a `setval` for every
+ * sequence, which is the authoritative position; repairAllSequences then runs
+ * as a backstop for anything the file could not name (a sequence added by an
+ * extension, an identity column whose sequence was created by its own
+ * GENERATED clause on a server that renders it differently). It is forward
+ * only, so it can never move a sequence backwards over the file's value.
+ */
+async function restoreWithBuiltInReader(plaintextPath, force) {
+  const pool = createPool();
+  let client = null;
+  try {
+    client = await pool.connect();
+
+    section("Preflight");
+    const existingTables = await countPublicTables(pool);
+    if (existingTables > 0 && !force) {
+      warningBox("The target database is not empty.", [
+        `It already has ${existingTables} table(s) in the public schema.`,
+        "This dump contains no DROP statements, so restoring on top of an",
+        "existing schema fails on every CREATE.",
+        "Restore into a fresh database, or pass --force if you know the dump",
+        "and the target are compatible.",
+      ]);
+      throw new Error("Refusing to restore into a database that has tables.");
+    }
+    info(
+      existingTables === 0
+        ? "Target database is empty."
+        : `Target has ${existingTables} existing table(s), continuing because --force was passed.`,
+    );
+    for (const line of DUMP_LIMITS_NOTICE) info(line);
+
+    section("Restoring");
+    info("Applying with the built-in reader (no psql needed).");
+    const result = await restoreSqlDump({
+      client,
+      lines: readDumpLines(plaintextPath),
+      onLog: info,
+    });
+    success(
+      `Applied ${result.statements} statement(s) and ${result.rows} row(s) ` +
+        `across ${result.tables} table(s).`,
+    );
+
+    section("Sequences");
+    await repairAllSequences(client);
+    success("Sequences checked.");
+
+    section("Verifying");
+    for (const table of EVIDENCE_TABLES) {
+      try {
+        const count = await pool.query(
+          `SELECT count(*)::int AS n FROM public."${table.replace(/"/g, '""')}"`,
+        );
+        info(`${table}: ${count.rows[0].n} row(s)`);
+      } catch {
+        warn(`${table}: not present in this dump`);
+      }
+    }
+  } finally {
+    client?.release();
+    await pool.end().catch(() => {});
+  }
+}
+
 async function runRestore() {
   banner("VulnRadar Database Restore");
 
@@ -146,57 +254,11 @@ async function runRestore() {
     process.exit(0);
   }
 
-  // Keep the DB password out of psql's argv (visible via `ps` on a shared
-  // host); libpq reads it from PGPASSWORD in the child env instead.
-  const { connArg, env } = splitDbUrlForEnv(process.env.DATABASE_URL);
-
-  section("Preflight");
-  // backup-db.mjs dumps with --format=plain and no --clean/--create, so the
-  // dump has no DROP statements. Restoring it into a database that already has
-  // the schema means every CREATE TABLE fails with "relation already exists"
-  // and every COPY collides on the primary key. That used to be invisible
-  // (see below); refusing outright is better than reporting it well.
-  const tableCount = await psqlQuery(
-    connArg,
-    env,
-    "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'",
-  );
-  if (!tableCount.ok) {
-    error(
-      `Could not query the target database: ${tableCount.error || "psql failed"}`,
-    );
-    process.exit(1);
-  }
-  const existingTables = Number(tableCount.value);
-  if (!Number.isFinite(existingTables)) {
-    // An unparseable count means the preflight did not actually run. Treating
-    // that as "0 tables, go ahead" is exactly the kind of silent assumption
-    // this whole preflight exists to remove.
-    error(
-      `Could not read the target's table count (psql returned "${tableCount.value}").`,
-    );
-    process.exit(1);
-  }
-  if (existingTables > 0 && !force) {
-    warningBox("The target database is not empty.", [
-      `It already has ${existingTables} table(s) in the public schema.`,
-      "This dump contains no DROP statements, so restoring on top of an",
-      "existing schema fails on every CREATE and every COPY.",
-      "Restore into a fresh database, or pass --force if you know the dump",
-      "and the target are compatible.",
-    ]);
-    process.exit(1);
-  }
-  info(
-    existingTables === 0
-      ? "Target database is empty."
-      : `Target has ${existingTables} existing table(s), continuing because --force was passed.`,
-  );
-
   section("Preparing");
-  // Opened lazily: the encrypted path below reads a decrypted temp file
-  // instead, and eagerly opening the .enc file here just leaked a descriptor.
-  let source = null;
+  // Resolved to a plain .gz path first, because the format can only be read
+  // out of the decrypted bytes and the format decides which restore path (and
+  // therefore which preflight) runs.
+  let plaintextPath = filePath;
   let tempDir = null;
 
   try {
@@ -219,11 +281,11 @@ async function runRestore() {
       }
       const meta = JSON.parse(await readFile(`${filePath}.json`, "utf8"));
 
-      // Decrypt and authenticate in full before a single byte reaches psql.
-      // See decryptBackupToFile above for why streaming straight into psql was
-      // wrong.
+      // Decrypt and authenticate in full before a single byte reaches the
+      // database. See decryptBackupToFile above for why streaming a decipher
+      // straight into psql was wrong.
       tempDir = await mkdtemp(join(tmpdir(), "vulnradar-restore-"));
-      const plaintextPath = join(tempDir, "backup.sql.gz");
+      plaintextPath = join(tempDir, "backup.sql.gz");
       info("Decrypting and verifying...");
       try {
         await decryptBackupToFile({
@@ -238,10 +300,71 @@ async function runRestore() {
         );
       }
       success("Backup integrity verified.");
-      source = createReadStream(plaintextPath);
-    } else {
-      source = createReadStream(filePath);
     }
+
+    // Content, not filename: a renamed or hand-copied backup is still routed
+    // to the reader that understands it.
+    const format = await detectBackupFormat(plaintextPath);
+    if (format === "vulnradar-sql") {
+      info("Format: VulnRadar built-in SQL dump.");
+      await restoreWithBuiltInReader(plaintextPath, force);
+      success("Restore complete.");
+      return;
+    }
+    info("Format: pg_dump plain SQL.");
+
+    // Keep the DB password out of psql's argv (visible via `ps` on a shared
+    // host); libpq reads it from PGPASSWORD in the child env instead.
+    const { connArg, env } = splitDbUrlForEnv(process.env.DATABASE_URL);
+
+    section("Preflight");
+    // backup-db.mjs dumps with --format=plain and no --clean/--create, so the
+    // dump has no DROP statements. Restoring it into a database that already
+    // has the schema means every CREATE TABLE fails with "relation already
+    // exists" and every COPY collides on the primary key. That used to be
+    // invisible; refusing outright is better than reporting it well.
+    const tableCount = await psqlQuery(
+      connArg,
+      env,
+      "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'",
+    );
+    if (!tableCount.ok) {
+      const missingPsql = /ENOENT/.test(tableCount.error || "");
+      throw new Error(
+        `Could not query the target database: ${tableCount.error || "psql failed"}` +
+          (missingPsql
+            ? ". This is a pg_dump-format dump, which needs psql (the " +
+              "postgresql-client package) to restore. VulnRadar's own dumps " +
+              "restore without it; take one with `npm run db:backup -- --js`."
+            : ""),
+      );
+    }
+    const existingTables = Number(tableCount.value);
+    if (!Number.isFinite(existingTables)) {
+      // An unparseable count means the preflight did not actually run.
+      // Treating that as "0 tables, go ahead" is exactly the kind of silent
+      // assumption this whole preflight exists to remove.
+      throw new Error(
+        `Could not read the target's table count (psql returned "${tableCount.value}").`,
+      );
+    }
+    if (existingTables > 0 && !force) {
+      warningBox("The target database is not empty.", [
+        `It already has ${existingTables} table(s) in the public schema.`,
+        "This dump contains no DROP statements, so restoring on top of an",
+        "existing schema fails on every CREATE and every COPY.",
+        "Restore into a fresh database, or pass --force if you know the dump",
+        "and the target are compatible.",
+      ]);
+      throw new Error("Refusing to restore into a database that has tables.");
+    }
+    info(
+      existingTables === 0
+        ? "Target database is empty."
+        : `Target has ${existingTables} existing table(s), continuing because --force was passed.`,
+    );
+
+    const source = createReadStream(plaintextPath);
 
     section("Restoring");
     const psql = spawn("psql", restorePsqlArgs(connArg), {
