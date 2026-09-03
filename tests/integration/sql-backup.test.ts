@@ -325,7 +325,20 @@ describeIntegration("pure-JavaScript SQL dump and restore", () => {
     // find in the file rather than in a stack trace.
     expect(dumpText).toContain("The target must be an EMPTY database");
     expect(dumpText).toContain("contains no DROP statements");
-    expect(dumpText).not.toContain("DROP TABLE");
+
+    // Asserted against STATEMENTS, not against the substring anywhere in the
+    // file. A plain `not.toContain("DROP TABLE")` fails on this suite's own
+    // adversarial row, `sql-ish: '); DROP TABLE users; --`, which is seeded
+    // precisely so the dump has to carry it safely as data. Matching it there
+    // would mean the test fails hardest exactly when the escaping works.
+    const statements = dumpText
+      .split("\n")
+      .filter((line) => /^\s*DROP\s/i.test(line));
+    expect(
+      statements,
+      "the dump must contain no DROP statements: restoring over an existing " +
+        "schema has to stop on the first collision rather than clear it away",
+    ).toEqual([]);
   });
 
   it("is recognised by content, not by filename", async () => {
