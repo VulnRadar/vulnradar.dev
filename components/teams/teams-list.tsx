@@ -82,15 +82,17 @@ export function TeamsList({
           already a labelled column two lines below. flex-none because this
           sits in a COLUMN, where the search field's default flex-1 would
           stretch it to fill the page. */}
-      {worthFiltering(teams.length) && (
-        <ListSearchInput
-          value={searchQuery}
-          onChange={onSearchChange}
-          placeholder="Search teams..."
-          label="Search teams by name"
-          className="flex-none"
-        />
-      )}
+      {/* Unconditional, like every other list page. It used to appear only
+          above a length threshold, so the control materialised as an account
+          grew and was simply missing before that, with nothing to explain the
+          absence. It costs one row. */}
+      <ListSearchInput
+        value={searchQuery}
+        onChange={onSearchChange}
+        placeholder="Search teams..."
+        label="Search teams by name"
+        className="flex-none"
+      />
 
       {filtered.length === 0 && !searchQuery ? (
         <EmptyState

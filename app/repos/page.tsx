@@ -300,7 +300,12 @@ export default function ReposPage() {
   // selection edited down to two repos can never land on a filtered-out list
   // with no visible control to undo it.
   const showFilters = worthFiltering(repos?.length ?? 0);
-  const effectiveQuery = showFilters ? repoQuery : REPO_QUERY_DEFAULTS;
+  // Only the dropdown values are reset while their controls are hidden. The
+  // search field is always rendered, so its term survives: resetting it too
+  // would leave a visible box that does nothing.
+  const effectiveQuery = showFilters
+    ? repoQuery
+    : { ...REPO_QUERY_DEFAULTS, search: repoQuery.search };
   const filteredRepos = applyRepoQuery(repos ?? [], summaries, effectiveQuery);
 
   return (
@@ -572,14 +577,18 @@ export default function ReposPage() {
                 <ReposStats repos={repos} summaries={summaries} />
               )}
 
-              {showFilters && (
-                <ReposFilters
-                  query={repoQuery}
-                  onChange={(patch) =>
-                    setRepoQuery((prev) => ({ ...prev, ...patch }))
-                  }
-                />
-              )}
+              {/* Always rendered, because the search box is. Gating the whole
+                  bar on worthFiltering() removed search from an account with
+                  exactly three repositories, and /repos had a search field
+                  before any of this. Only the narrowing dropdowns are
+                  conditional now. */}
+              <ReposFilters
+                query={repoQuery}
+                onChange={(patch) =>
+                  setRepoQuery((prev) => ({ ...prev, ...patch }))
+                }
+                showDropdowns={showFilters}
+              />
 
               {filteredRepos.length === 0 ? (
                 <EmptyState

@@ -320,6 +320,14 @@ describeIntegration("pure-JavaScript SQL dump and restore", () => {
     expect(dumpText).toContain("does NOT contain roles");
   });
 
+  it("says the target must be empty, and why there are no DROPs", () => {
+    // The decision an operator restoring into a non-empty database needs to
+    // find in the file rather than in a stack trace.
+    expect(dumpText).toContain("The target must be an EMPTY database");
+    expect(dumpText).toContain("contains no DROP statements");
+    expect(dumpText).not.toContain("DROP TABLE");
+  });
+
   it("is recognised by content, not by filename", async () => {
     await expect(detectBackupFormat(dumpPath)).resolves.toBe("vulnradar-sql");
   });
@@ -408,15 +416,25 @@ describeIntegration("pure-JavaScript SQL dump and restore", () => {
   });
 
   it("preserves the instant of a timestamptz written at a non-UTC offset", async () => {
-    const { rows } = await pool.query<{ epoch: string }>(
-      `SELECT extract(epoch from t_timestamptz)::text AS epoch
+    // Asserted as exact text rather than as an epoch float, and that is not a
+    // stylistic preference. The first version of this compared
+    // extract(epoch) against a JS Date, and it failed: the round trip had
+    // returned 1788298445.678901 where the expectation could only express
+    // 1788298445.678, because a JS Date has millisecond resolution and
+    // PostgreSQL stores microseconds. The dump was right and the assertion
+    // was lossy, which is the same class of mistake as passing a value
+    // through a float on the way into a backup. to_char reads the value out
+    // at full precision with no arithmetic in JavaScript at all.
+    const { rows } = await pool.query<{ utc: string }>(
+      `SELECT to_char(t_timestamptz AT TIME ZONE 'UTC',
+                      'YYYY-MM-DD HH24:MI:SS.US') AS utc
          FROM ${FIXTURE_TABLE} ORDER BY id LIMIT 1`,
     );
-    // 2026-09-02 03:04:05.678901+05:30 as a Unix instant.
-    expect(Number(rows[0].epoch)).toBeCloseTo(
-      new Date("2026-09-02T03:04:05.678Z").getTime() / 1000 - 5.5 * 3600,
-      3,
-    );
+    // Inserted as 2026-09-02 03:04:05.678901+05:30, which is this instant.
+    // The dump pins TimeZone = UTC (DUMP_SESSION_GUCS) so the file carries an
+    // explicit +00 offset; the restoring server's own timezone cannot shift
+    // it, and the microseconds are not rounded away on the way through.
+    expect(rows[0].utc).toBe("2026-09-01 21:34:05.678901");
   });
 
   it("keeps jsonb, json and arrays intact, including NULL and empty ones", async () => {
@@ -517,8 +535,22 @@ describeIntegration("pure-JavaScript SQL dump and restore", () => {
     // One transaction, all or nothing: the same guarantee psql
     // --single-transaction gives, which is what stops a half-loaded database
     // from being reported as a successful restore.
+    //
+    // The head is cut before the FIRST section, so it carries the dump marker
+    // and the SET preamble and no DDL at all. That matters: an earlier cut
+    // (before the data section) dragged the whole schema along, which the
+    // restore above had already created, and the run then failed on
+    // `relation "access_rules_id_seq" already exists` instead of on the
+    // truncation. It still threw, so the assertion still passed, but for the
+    // wrong reason -- which is worse than failing. The one statement appended
+    // here creates an object that does not exist anywhere, so the only thing
+    // this test can fail on now is the missing end marker, and the only thing
+    // the rollback has to undo is that statement.
     const truncated = join(tempDir, "truncated.sql.gz");
-    const head = dumpText.slice(0, dumpText.indexOf('--#VR:SECTION "data"'));
+    const head = dumpText.slice(0, dumpText.indexOf("--#VR:SECTION"));
+    expect(head, "the cut must land before any DDL").not.toContain(
+      "CREATE SEQUENCE",
+    );
     await pipeline(
       Readable.from([
         head + '--#VR:STMT\nCREATE TABLE public."half_applied" (a int);\n',

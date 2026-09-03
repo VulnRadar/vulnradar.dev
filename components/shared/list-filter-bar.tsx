@@ -36,6 +36,9 @@ export const LIST_FILTER_MIN_ITEMS = 3;
 
 /** Whether a list of `count` rows is long enough to be worth filtering. */
 export function worthFiltering(count: number): boolean {
+  // Governs the DROPDOWNS only. Search is unconditional: it costs one row,
+  // stays useful on a short list, and gating it here is what removed the
+  // search box from /repos for an account with exactly three repositories.
   return count > LIST_FILTER_MIN_ITEMS;
 }
 

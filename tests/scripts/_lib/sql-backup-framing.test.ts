@@ -125,6 +125,7 @@ function fakeDumpClient() {
         return rows([]);
       if (text.includes("server_version_num")) return rows([{ num: 160004 }]);
       if (text.includes("'materialized view: '")) return rows([]);
+      if (text.includes("nspname NOT IN ('public'")) return rows([]);
       if (text.includes("version() AS v"))
         return rows([{ v: "PostgreSQL 16" }]);
       if (text.includes("to_regclass")) return rows([{ oid: null }]);
@@ -285,6 +286,20 @@ describe("the emitted file", () => {
     expect(sql).toContain("psql -v ON_ERROR_STOP=1 --single-transaction -f");
     expect(sql).toContain("not by pg_dump");
     expect(sql).toContain("does NOT contain roles");
+  });
+
+  it("declares that the target must be empty, and emits no DROP", () => {
+    // The deliberate choice over `CREATE ... IF NOT EXISTS`: that would merge
+    // the backup's rows into whatever is already in the target and call it a
+    // restore. Failing on the first existing object, inside one transaction,
+    // leaves the target untouched instead. scripts/restore-db.mjs's
+    // non-empty-target preflight is the same policy, said earlier.
+    return renderDump().then((sql) => {
+      expect(sql).toContain("The target must be an EMPTY database");
+      expect(sql).toContain("contains no DROP statements");
+      expect(sql).not.toMatch(/^DROP /m);
+      expect(sql).not.toContain("IF NOT EXISTS (");
+    });
   });
 
   it("carries pg_dump's own SET preamble", async () => {

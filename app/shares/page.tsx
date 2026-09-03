@@ -54,13 +54,18 @@ export default function SharesPage() {
   const [confirmRevoke, setConfirmRevoke] = useState<Share | null>(null);
   const [query, setQuery] = useState<ShareQuery>(SHARE_QUERY_DEFAULTS);
 
-  // A list short enough to read at a glance gets no filter row, the call
-  // components/teams/teams-list.tsx already made for its own list. The query
-  // is forced back to its defaults when the row is not on screen, so revoking
-  // a link down to two can never leave a filter running with no visible
-  // control to undo it.
+  // A list short enough to read at a glance gets no narrowing DROPDOWNS, so
+  // their values are forced back to defaults while they are off screen:
+  // revoking a link down to two can never leave a verdict filter running with
+  // no visible control to undo it.
+  //
+  // The search term is deliberately carried through that reset. The search
+  // field is always rendered now, so folding it in would give the reader a box
+  // that ignores everything typed into it.
   const showFilters = worthFiltering(shares.length);
-  const effectiveQuery = showFilters ? query : SHARE_QUERY_DEFAULTS;
+  const effectiveQuery = showFilters
+    ? query
+    : { ...SHARE_QUERY_DEFAULTS, search: query.search };
   const filteredShares = applyShareQuery(shares, effectiveQuery);
 
   const { totalPages, getPage } = usePagination(filteredShares, pageSize);
@@ -318,8 +323,17 @@ export default function SharesPage() {
           {/* Between the strip and the table, the slot /history and /repos
               put it in. Not rendered while the list failed to load: there is
               nothing behind it to narrow. */}
-          {!listError && showFilters && (
-            <SharesFilters query={query} onChange={updateQuery} />
+          {/* Rendered whenever there is a list behind it. The search field
+              is unconditional and only the dropdowns are gated on length:
+              tying both to the same threshold is what removed the search box
+              from /repos for an account with exactly three items. Still hidden
+              on a load failure, since there is nothing to narrow. */}
+          {!listError && (
+            <SharesFilters
+              query={query}
+              onChange={updateQuery}
+              showDropdowns={showFilters}
+            />
           )}
 
           {listError ? (

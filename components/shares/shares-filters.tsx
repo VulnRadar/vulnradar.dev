@@ -69,9 +69,12 @@ export function applyShareQuery(shares: Share[], query: ShareQuery): Share[] {
 export function SharesFilters({
   query,
   onChange,
+  showDropdowns = true,
 }: {
   query: ShareQuery;
   onChange: (patch: Partial<ShareQuery>) => void;
+  /** Narrowing controls only. The search field is always rendered. */
+  showDropdowns?: boolean;
 }) {
   return (
     <ListFilterBar>
@@ -81,24 +84,26 @@ export function SharesFilters({
         placeholder="Search by URL..."
         label="Filter shared reports by URL"
       />
-      <div className="flex flex-wrap items-center gap-2">
-        <FilterDropdown
-          icon={ShieldAlert}
-          label="Filter shared reports by verdict"
-          value={query.status}
-          labels={STATUS_LABELS}
-          active={query.status !== SHARE_QUERY_DEFAULTS.status}
-          onChange={(status) => onChange({ status })}
-        />
-        <FilterDropdown
-          icon={ArrowUpDown}
-          label="Sort shared reports"
-          value={query.sort}
-          labels={SORT_LABELS}
-          active={query.sort !== SHARE_QUERY_DEFAULTS.sort}
-          onChange={(sort) => onChange({ sort })}
-        />
-      </div>
+      {showDropdowns && (
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterDropdown
+            icon={ShieldAlert}
+            label="Filter shared reports by verdict"
+            value={query.status}
+            labels={STATUS_LABELS}
+            active={query.status !== SHARE_QUERY_DEFAULTS.status}
+            onChange={(status) => onChange({ status })}
+          />
+          <FilterDropdown
+            icon={ArrowUpDown}
+            label="Sort shared reports"
+            value={query.sort}
+            labels={SORT_LABELS}
+            active={query.sort !== SHARE_QUERY_DEFAULTS.sort}
+            onChange={(sort) => onChange({ sort })}
+          />
+        </div>
+      )}
     </ListFilterBar>
   );
 }

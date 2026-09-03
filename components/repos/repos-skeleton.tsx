@@ -24,14 +24,18 @@ export function ReposDataSkeleton() {
           here, the whole list jumped down ~74px the moment the repos landed. */}
       <StatStripSkeleton cells={4} />
 
-      {/* Search plus the status and sort triggers. Below sm they are on two
-          lines, exactly as the real row wraps. */}
+      {/* The search field only. It is unconditional on the loaded page, so it
+          is the one control here that is always right.
+
+          The status and sort triggers used to be drawn beside it, and they are
+          conditional: they appear only once the account has more than
+          LIST_FILTER_MIN_ITEMS repositories. Drawing them meant an account
+          with three repos watched two controls fade in and then never arrive,
+          which is the drift this skeleton exists to avoid. A row that is
+          slightly narrower than the loaded one is a smaller lie than a row
+          containing things that do not exist. */}
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <Skeleton className="h-10 min-w-[12rem] flex-1 rounded-md" />
-        <div className="flex flex-wrap items-center gap-2">
-          <Skeleton className="h-11 w-32 rounded-md sm:h-10" />
-          <Skeleton className="h-11 w-40 rounded-md sm:h-10" />
-        </div>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border bg-card">

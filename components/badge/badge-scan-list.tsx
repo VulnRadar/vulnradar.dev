@@ -62,15 +62,16 @@ export function BadgeScanList({
           shared one too: it used to wait for six scans where /teams waited for
           four. flex-none because this sits in a COLUMN, where the field's
           default flex-1 would stretch it to fill the panel below it. */}
-      {worthFiltering(scans.length) && (
-        <ListSearchInput
-          value={searchQuery}
-          onChange={onSearchChange}
-          placeholder="Search by domain"
-          label="Search recent scans by domain"
-          className="flex-none"
-        />
-      )}
+      {/* Unconditional, like every other list page. Gating it on the
+          scan count meant the control appeared and vanished as the list
+          grew, with nothing to explain the absence. */}
+      <ListSearchInput
+        value={searchQuery}
+        onChange={onSearchChange}
+        placeholder="Search by domain"
+        label="Search recent scans by domain"
+        className="flex-none"
+      />
 
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         {/* The column header band, above the scroller so it stays put while

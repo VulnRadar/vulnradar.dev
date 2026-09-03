@@ -158,6 +158,9 @@ export async function countPublicTables(pool) {
 /**
  * Apply one of our own SQL dumps through `pg`.
  *
+ * Throws rather than process.exit()ing on a refusal, because the caller has a
+ * decrypted temp file to clean up in its finally.
+ *
  * Sequences are set twice on purpose. The dump carries a `setval` for every
  * sequence, which is the authoritative position; repairAllSequences then runs
  * as a backstop for anything the file could not name (a sequence added by an
@@ -183,11 +186,24 @@ async function restoreWithBuiltInReader(plaintextPath, force) {
       ]);
       throw new Error("Refusing to restore into a database that has tables.");
     }
-    info(
-      existingTables === 0
-        ? "Target database is empty."
-        : `Target has ${existingTables} existing table(s), continuing because --force was passed.`,
-    );
+    if (existingTables === 0) {
+      info("Target database is empty.");
+    } else {
+      info(
+        `Target has ${existingTables} existing table(s), continuing because --force was passed.`,
+      );
+      // Said out loud rather than left to be discovered: --force does not turn
+      // this into a merge or an overwrite. The dump has no DROP statements
+      // (pg_dump without --clean is the same), so the first object that
+      // already exists aborts the run, and the whole thing rolls back.
+      warn(
+        "--force only lets the attempt start. This dump creates objects and " +
+          "never drops them, so it will stop at the first one that already " +
+          "exists and roll the whole restore back, leaving this database " +
+          "unchanged. Restore into an empty database to get the backup's " +
+          "contents.",
+      );
+    }
     for (const line of DUMP_LIMITS_NOTICE) info(line);
 
     section("Restoring");

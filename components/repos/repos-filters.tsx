@@ -95,9 +95,12 @@ export function applyRepoQuery(
 export function ReposFilters({
   query,
   onChange,
+  showDropdowns = true,
 }: {
   query: RepoQuery;
   onChange: (patch: Partial<RepoQuery>) => void;
+  /** Narrowing controls only. The search field is always rendered. */
+  showDropdowns?: boolean;
 }) {
   return (
     <ListFilterBar>
@@ -107,24 +110,26 @@ export function ReposFilters({
         placeholder="Search your repos..."
         label="Search your GitHub repositories"
       />
-      <div className="flex flex-wrap items-center gap-2">
-        <FilterDropdown
-          icon={ShieldAlert}
-          label="Filter repositories by scan status"
-          value={query.status}
-          labels={STATUS_LABELS}
-          active={query.status !== REPO_QUERY_DEFAULTS.status}
-          onChange={(status) => onChange({ status })}
-        />
-        <FilterDropdown
-          icon={ArrowUpDown}
-          label="Sort repositories"
-          value={query.sort}
-          labels={SORT_LABELS}
-          active={query.sort !== REPO_QUERY_DEFAULTS.sort}
-          onChange={(sort) => onChange({ sort })}
-        />
-      </div>
+      {showDropdowns && (
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterDropdown
+            icon={ShieldAlert}
+            label="Filter repositories by scan status"
+            value={query.status}
+            labels={STATUS_LABELS}
+            active={query.status !== REPO_QUERY_DEFAULTS.status}
+            onChange={(status) => onChange({ status })}
+          />
+          <FilterDropdown
+            icon={ArrowUpDown}
+            label="Sort repositories"
+            value={query.sort}
+            labels={SORT_LABELS}
+            active={query.sort !== REPO_QUERY_DEFAULTS.sort}
+            onChange={(sort) => onChange({ sort })}
+          />
+        </div>
+      )}
     </ListFilterBar>
   );
 }

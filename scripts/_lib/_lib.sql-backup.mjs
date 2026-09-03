@@ -496,15 +496,34 @@ export async function findUnsupportedObjects(client) {
     SELECT 'row-level security enabled: ' || c.relname
       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
      WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relrowsecurity
-    UNION ALL
-    SELECT 'non-public schema: ' || n.nspname
-      FROM pg_namespace n
-     WHERE n.nspname NOT IN ('public', 'information_schema', 'pg_catalog', 'pg_toast')
-       AND n.nspname NOT LIKE 'pg\\_temp%'
-       AND n.nspname NOT LIKE 'pg\\_toast_temp%'
     ORDER BY 1
   `);
   return res.rows.map((r) => r.item);
+}
+
+/**
+ * Schemas other than `public` that this dumper walks past.
+ *
+ * Deliberately a WARNING and not a refusal, unlike findUnsupportedObjects.
+ * Everything above is inside `public`, which is where VulnRadar's own data
+ * lives, so failing to represent one of those means losing part of the thing
+ * being backed up. A separate schema is somebody else's: a managed provider's
+ * bookkeeping schema, a PostGIS `topology`, an extension's own. Refusing over
+ * one would leave an operator with no backup at all in order to protect data
+ * that was never ours, and "no backup" is the outcome this whole feature
+ * exists to prevent. It is named in the CLI output and in the file's header
+ * so nobody discovers it during a restore.
+ */
+export async function findUncoveredSchemas(client) {
+  const res = await client.query(`
+    SELECT n.nspname AS name
+      FROM pg_namespace n
+     WHERE n.nspname NOT IN ('public', 'information_schema', 'pg_catalog', 'pg_toast')
+       AND n.nspname NOT LIKE 'pg\\_temp%'
+       AND n.nspname NOT LIKE 'pg\\_toast\\_temp%'
+     ORDER BY n.nspname
+  `);
+  return res.rows.map((r) => r.name);
 }
 
 /** Extensions to recreate, excluding plpgsql (present in every database). */
@@ -841,6 +860,14 @@ export async function* generateSqlDump({
       );
     }
 
+    const uncoveredSchemas = await findUncoveredSchemas(client);
+    if (uncoveredSchemas.length > 0) {
+      warn(
+        `Only the public schema is dumped. These are NOT in the backup: ` +
+          `${uncoveredSchemas.join(", ")}.`,
+      );
+    }
+
     const [
       tables,
       columnsByTable,
@@ -898,6 +925,14 @@ export async function* generateSqlDump({
       "--   psql -v ON_ERROR_STOP=1 --single-transaction -f <this file> <database>",
       "--   npm run db:restore -- --file=<this file> --yes",
       "--",
+      "-- The target must be an EMPTY database. Like pg_dump without --clean,",
+      "-- this file contains no DROP statements, so restoring it over an",
+      "-- existing schema stops on the first object that already exists. That",
+      "-- is deliberate: the alternative (CREATE ... IF NOT EXISTS) would merge",
+      "-- this backup's rows into whatever is already there and call it a",
+      "-- restore. Applied in one transaction, a collision therefore leaves the",
+      "-- target exactly as it was.",
+      "--",
       ...DUMP_LIMITS_NOTICE.map((l) => `-- ${l}`),
       "--",
     ];
@@ -906,6 +941,14 @@ export async function* generateSqlDump({
         "-- Table data deliberately NOT included (transient state, meaningless",
         "-- minutes later; the tables themselves ARE created empty):",
         ...plan.skipped.map((s) => `--   ${s.table}: ${s.reason}`),
+        "--",
+      );
+    }
+    if (uncoveredSchemas.length > 0) {
+      headerLines.push(
+        "-- Schemas present in the source database and NOT in this file (only",
+        "-- the public schema is dumped):",
+        ...uncoveredSchemas.map((s) => `--   ${s}`),
         "--",
       );
     }
@@ -938,6 +981,13 @@ export async function* generateSqlDump({
     yield `\n${marker("SECTION", "pre-data")}\n`;
 
     for (const ext of extensions) {
+      // An extension installed outside public needs its schema to exist, and
+      // this dump does not carry other schemas. Creating an empty one is the
+      // difference between a restore that works and one that stops on the
+      // first CREATE EXTENSION; pg_dump emits the same CREATE SCHEMA.
+      if (ext.schema !== "public") {
+        yield `${marker("STMT")}\nCREATE SCHEMA IF NOT EXISTS ${quoteIdent(ext.schema)};\n`;
+      }
       yield `${marker("STMT")}\nCREATE EXTENSION IF NOT EXISTS ` +
         `${quoteIdent(ext.name)} WITH SCHEMA ${quoteIdent(ext.schema)};\n`;
     }
@@ -1178,7 +1228,11 @@ export function detectBackupFormat(gzPath) {
     gunzip.on("data", (chunk) => {
       chunks.push(chunk);
       total += chunk.length;
-      if (total >= 8192) finish(classify());
+      // Generous: the DUMP marker sits after a comment header whose length
+      // grows with the number of skipped tables and warnings, and misreading
+      // one of ours as a pg_dump file would send it to a psql that may not
+      // exist.
+      if (total >= 65536) finish(classify());
     });
     gunzip.on("end", () => finish(classify()));
     gunzip.on("error", (err) => finish(null, err));

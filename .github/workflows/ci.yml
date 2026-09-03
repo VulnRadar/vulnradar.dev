@@ -281,6 +281,54 @@ jobs:
             }
           "
 
+      # The integration suite proves OUR reader can apply the dump we write.
+      # It cannot prove the claim that actually matters to an operator, which
+      # is that any PostgreSQL can import it: a Pterodactyl or Pelican install
+      # runs from source with no pg_dump, so this file is their only backup,
+      # and the moment they need it they may well be reaching for psql or a
+      # managed provider's import rather than for our restore command.
+      #
+      # So: generate a dump with the pure-JavaScript writer, hand it to psql
+      # with nothing of ours involved, and require the schema and the rows to
+      # come back. ON_ERROR_STOP turns any single bad statement into a failure
+      # instead of a partially applied database that exits 0.
+      - name: A real psql must be able to import the JavaScript dump
+        env:
+          INTEGRATION_DATABASE_URL: postgresql://vulnradar:ci_integration_password@127.0.0.1:5432/vulnradar_integration
+          PGPASSWORD: ci_integration_password
+        run: |
+          set -euo pipefail
+
+          # A separate database, so importing cannot touch the one the suite
+          # just used and a failure here is unambiguous.
+          psql -h 127.0.0.1 -U vulnradar -d postgres \
+            -v ON_ERROR_STOP=1 -c 'DROP DATABASE IF EXISTS vr_psql_import;'
+          psql -h 127.0.0.1 -U vulnradar -d postgres \
+            -v ON_ERROR_STOP=1 -c 'CREATE DATABASE vr_psql_import;'
+
+          BACKUP_FORCE_JS=1 DATABASE_URL="$INTEGRATION_DATABASE_URL" \
+            BACKUP_DIR=ci-psql-check BACKUP_RETENTION_DAYS=0 \
+            npm run db:backup
+
+          DUMP=$(ls -t ci-psql-check/*.sql.gz | head -1)
+          echo "importing $DUMP"
+          gunzip -c "$DUMP" > ci-psql-check/dump.sql
+
+          # No VulnRadar code in this line. If it fails, the file is not
+          # importable by a stock PostgreSQL client and the feature's central
+          # promise is false.
+          psql -h 127.0.0.1 -U vulnradar -d vr_psql_import \
+            -v ON_ERROR_STOP=1 --single-transaction -f ci-psql-check/dump.sql
+
+          # An import that applied zero tables would still exit 0 above.
+          TABLES=$(psql -h 127.0.0.1 -U vulnradar -d vr_psql_import -tAc \
+            "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")
+          echo "imported tables: $TABLES"
+          if [ "$TABLES" -lt 40 ]; then
+            echo "::error::psql imported only $TABLES tables; the dump is not a usable backup."
+            exit 1
+          fi
+
   extension:
     name: Extension
     runs-on: ubuntu-latest
