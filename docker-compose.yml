@@ -65,6 +65,11 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
+        # Build-time, not runtime: Next.js inlines NEXT_PUBLIC_* into the client
+        # bundle when the image is built, so these have no effect if passed
+        # only under environment:.
+        NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}
+        NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:-}
         # Client components can only read NEXT_PUBLIC_* values, and Next.js
         # inlines them at build time, so these have to be passed here rather
         # than as runtime environment.

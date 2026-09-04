@@ -138,7 +138,7 @@ export const CONFIG_MIN_SCHEMA_VERSION = "3.0.0";
 // script-src-elem substring collisions fixed, TLS incomplete-chain now
 // detected, MTA-STS mode read from the policy file. Scan results change, so a
 // patch bump.
-export const CONFIG_ENGINE_VERSION = "3.3.1";
+export const CONFIG_ENGINE_VERSION = "3.3.2";
 // The most syndicated sentence in the product: it is the root meta
 // description, the OpenGraph and Twitter description, the PWA manifest
 // description, all three JSON-LD description fields, and the opening line of

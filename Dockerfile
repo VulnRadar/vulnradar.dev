@@ -28,6 +28,15 @@ ARG NEXT_PUBLIC_SUPPORT_EMAIL
 ARG NEXT_PUBLIC_DISCORD_INVITE_URL
 ARG NEXT_PUBLIC_CHROME_WEB_STORE_URL
 ARG NEXT_PUBLIC_FIREFOX_ADDON_URL
+# Turnstile and Stripe, both of which were documented as configurable and
+# could not work on this image. Next.js inlines NEXT_PUBLIC_* at build time, so
+# passing them only as runtime env (which is what docker-compose.yml did) gets
+# them into the container and never into the browser bundle. The effect was
+# that Turnstile could not be enabled at all through the supported compose
+# path, and a self-hoster who configured Stripe correctly still got
+# loadStripe(undefined) and a checkout that could not initialise.
+ARG NEXT_PUBLIC_TURNSTILE_SITE_KEY
+ARG NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 
 # Install dependencies first (better layer caching).
 #
@@ -63,6 +72,12 @@ ENV NEXT_PUBLIC_SUPPORT_EMAIL=${NEXT_PUBLIC_SUPPORT_EMAIL}
 ENV NEXT_PUBLIC_DISCORD_INVITE_URL=${NEXT_PUBLIC_DISCORD_INVITE_URL}
 ENV NEXT_PUBLIC_CHROME_WEB_STORE_URL=${NEXT_PUBLIC_CHROME_WEB_STORE_URL}
 ENV NEXT_PUBLIC_FIREFOX_ADDON_URL=${NEXT_PUBLIC_FIREFOX_ADDON_URL}
+# An ARG is only visible to RUN steps that reference it; Next.js reads these
+# from the process environment during `npm run build`, so they have to be
+# promoted here or the build inlines an empty string and the ARG achieves
+# nothing.
+ENV NEXT_PUBLIC_TURNSTILE_SITE_KEY=${NEXT_PUBLIC_TURNSTILE_SITE_KEY}
+ENV NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY}
 
 # Provide dummy environment variables for build-time compatibility
 # These are only used during the build phase and don't affect runtime behavior
