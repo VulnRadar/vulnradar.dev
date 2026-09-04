@@ -1,10 +1,12 @@
 /**
  * Per-detector tests for the SSL/TLS-at-the-edge category.
  *
- * Covers 7 detectors in lib/scanner/checks/ssl.ts. Every detector
- * is exercised by the smoke harness; the positive/negative fixtures
- * below cover the high-signal checks: HSTS, mixed content, deprecated
- * HTTP, ssl-strip, expect-ct, ocsp-stapling, etc.
+ * Covers every detector in lib/scanner/checks/ssl.ts. Each is exercised by
+ * the smoke harness, and the fixtures below pair a case that fires with a
+ * realistic case that must not: HSTS delivery, mixed content (including the
+ * srcset / poster / object-data attributes the src-only detectors miss),
+ * cleartext resource hints, ssl-strip, and cleartext endpoints called from
+ * inline script.
  */
 
 import { detectors } from "@/lib/scanner/checks/ssl";

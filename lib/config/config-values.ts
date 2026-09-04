@@ -26,7 +26,7 @@ export const CONFIG_APP_SLUG = "vulnradar";
  * the two above it, so it belongs here rather than in a component.
  */
 export const CONFIG_AI_BOT_NAME = "Vera";
-export const CONFIG_APP_VERSION = "3.8.0";
+export const CONFIG_APP_VERSION = "3.8.1";
 // The minimum database schema version this app requires.
 // App 3.0.0 requires schema v3.0.0 (ai_conversations + email unsubscribe).
 // 3.0.1 made no schema changes. 3.0.2 and 3.1.0 both added tables/columns
@@ -38,6 +38,17 @@ export const CONFIG_APP_VERSION = "3.8.0";
 // scripts/migrate/versions/2.0.0-to-3.0.0.mjs. Run `npm run db:migrate`
 // to upgrade a v2 database before starting.
 export const CONFIG_MIN_SCHEMA_VERSION = "3.0.0";
+
+/**
+ * Every schema version that has ever existed, oldest first.
+ *
+ * There are three, and the 3.x line has exactly one: the schema has not
+ * changed since 3.0.0. This is the same list scripts/create-fresh-db keys its
+ * SCHEMA_SOURCES on, and it is what makes a stored value like "3.5.0"
+ * recognisable as wrong: 3.5.0 was an APP version that reached the
+ * schema_version column, not a schema that was ever designed.
+ */
+export const CONFIG_KNOWN_SCHEMA_VERSIONS = ["1.0.0", "2.0.0", "3.0.0"];
 // Tracks the scanner's detection logic specifically, independent of the app
 // version above -- bumped only when a check's actual behavior changes.
 // 3.0.2: fixed 3 false-positive bugs (dangerous-inline-js's overly broad

@@ -3361,6 +3361,8 @@ export const NEVER_CONFIGURABLE = {
     "Describes the running detection engine and is stamped onto every stored scan result.",
   MIN_SCHEMA_VERSION:
     "The schema this build requires. Lowering it lets the app start against a database it cannot use.",
+  KNOWN_SCHEMA_VERSIONS:
+    "The schema versions that have ever existed. Editing it changes which stored versions are treated as real, and a wrong entry would let the boot check accept a database state that was never designed.",
   SESSION_COOKIE_NAME:
     "Renaming the cookie signs out every user instantly and orphans their session rows.",
   DEVICE_TRUST_COOKIE_NAME:

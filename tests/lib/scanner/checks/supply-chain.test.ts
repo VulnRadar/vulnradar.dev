@@ -2,10 +2,16 @@
  * Per-detector tests for the supply-chain category.
  *
  * Covers lib/scanner/checks/supply-chain.ts. Every detector is exercised
- * by the smoke harness (callable, no-throw, deterministic); fixtures
- * below cover the checks added on top of the original file-exposure
- * set (package-lock.json, requirements.txt, Gemfile, SRI, mixed content,
- * composer, .env), which are smoke-only.
+ * by the smoke harness (callable, no-throw, deterministic); the fixtures
+ * below add a fires/does-not-fire pair on top of that.
+ *
+ * For the per-ecosystem manifest detectors, the negative case is
+ * deliberately the file each one is most likely to be confused with rather
+ * than an unrelated page: poetry.lock against Cargo.lock (both are
+ * [[package]] tables), Cargo.toml against pyproject.toml (both TOML
+ * manifests with a dependency table). That pairing is what proves the
+ * fingerprints actually discriminate instead of matching a shape several
+ * ecosystems share.
  */
 
 import { detectors } from "@/lib/scanner/checks/supply-chain";

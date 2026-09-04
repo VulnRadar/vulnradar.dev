@@ -14,6 +14,7 @@
  * harmless (the INSERT is ON CONFLICT DO NOTHING).
  */
 
+import { KNOWN_SCHEMA_VERSIONS } from "@/lib/config/constants";
 import type { Pool } from "pg";
 import { META_TABLE_SQL } from "@/lib/database/schema/index.mjs";
 
@@ -22,6 +23,39 @@ import { META_TABLE_SQL } from "@/lib/database/schema/index.mjs";
  * 1 if a > b. Missing segments default to 0. Used to compare schema versions
  * stored in vulnradar_schema_meta.
  */
+/**
+ * Map a stored schema version onto a version that actually exists.
+ *
+ * The schema_version column has, over time, been written with APP versions,
+ * so a database can claim to be at v3.5.0 when no such schema was ever
+ * designed: the 3.x line has exactly one schema, 3.0.0. The boot banner then
+ * reports a state that is not real, and an operator comparing two instances
+ * sees a difference that does not exist.
+ *
+ * Resolution is always to the newest KNOWN version at or below the stored one.
+ * Rounding down is safe: it cannot turn a passing check into a failing one,
+ * because the stored value was already at least this high. Rounding UP would
+ * assert that migrations ran when they did not, which is how a database gets
+ * used with columns the app expects and the tables lack.
+ *
+ * Returned unchanged when the value is already real, when it is older than
+ * every known version (that is a genuine downgrade and the caller must report
+ * it), or when it cannot be parsed at all.
+ */
+export function normalizeSchemaVersion(
+  stored: string,
+  known: readonly string[] = KNOWN_SCHEMA_VERSIONS,
+): string {
+  if (!stored || known.includes(stored)) return stored;
+  if (!/^\d+\.\d+\.\d+$/.test(stored)) return stored;
+  let best: string | null = null;
+  for (const candidate of known) {
+    if (compareVersions(stored, candidate) < 0) continue;
+    if (best === null || compareVersions(candidate, best) > 0) best = candidate;
+  }
+  return best ?? stored;
+}
+
 export function compareVersions(a: string, b: string): number {
   const av = a.split(".").map((s) => Number.parseInt(s, 10) || 0);
   const bv = b.split(".").map((s) => Number.parseInt(s, 10) || 0);
@@ -145,10 +179,38 @@ export async function ensureSchemaVersion(
     // Only meaningful when the row already existed. A database we just stamped
     // above is by definition at MIN_SCHEMA_VERSION, and the schema is built
     // right after this, so skip the downgrade check.
-    const dbSchema =
+    const storedSchema =
       metaRes.rows.length > 0
         ? (metaRes.rows[0].schema_version as string)
         : minSchemaVersion;
+
+    // Only three schema versions have ever existed, and the 3.x line has one:
+    // the schema has not changed since 3.0.0. A stored value like "3.5.0" is
+    // therefore an APP version that reached this column, not a schema that was
+    // ever designed, and it makes the boot banner claim a database state that
+    // does not exist.
+    //
+    // Normalising is only ever DOWNWARD, to the newest real version at or
+    // below what is stored. That cannot weaken the check below (3.5.0 and
+    // 3.0.0 both satisfy a 3.0.0 minimum) and cannot invent migrations that
+    // never ran, which is what rounding UP would do. A value already on the
+    // list, or one older than every entry, is left exactly as it is.
+    const dbSchema = normalizeSchemaVersion(storedSchema);
+    if (dbSchema !== storedSchema) {
+      console.log(
+        `[${appName}] Schema version v${storedSchema} is not a real schema version; reading it as v${dbSchema}.`,
+      );
+      await pool
+        .query(
+          `UPDATE vulnradar_schema_meta SET schema_version = $1 WHERE id = 1`,
+          [dbSchema],
+        )
+        .catch(() => {
+          // Best effort. The in-memory value above is what this boot uses, so
+          // a read-only role or a locked row costs a repeated log line and
+          // nothing else.
+        });
+    }
     if (compareVersions(dbSchema, minSchemaVersion) < 0) {
       printBox("SCHEMA VERSION MISMATCH", [
         "Database schema:    v" + dbSchema,
