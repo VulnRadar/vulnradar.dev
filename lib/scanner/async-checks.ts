@@ -17,6 +17,11 @@ import * as crypto from "crypto";
 import { isIP, createConnection } from "net";
 import type { Vulnerability, Category, ScanProgressHook } from "./types";
 import {
+  ASYNC_CHECKS as A,
+  asyncCheckVariant,
+  type AsyncCheckDef,
+} from "@/lib/scanner/async-check-catalog";
+import {
   isPrivateHostname,
   isPrivateIP,
   validateScanTarget,
@@ -90,11 +95,10 @@ function fnvHash(s: string): string {
   return h.toString(36);
 }
 
-// Deterministic ID: same title + same URL → same ID across scans.
-// Title is a constant string per check, so this is stable.
-function generateId(title: string, url: string): string {
-  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-  return `async-${slug}--${fnvHash(url)}`;
+// Deterministic ID: same check + same URL → same ID across scans.
+// def.checkId is the slugified title, fixed per check, so this is stable.
+function generateId(def: AsyncCheckDef, url: string): string {
+  return `${def.checkId}--${fnvHash(url)}`;
 }
 
 /** True for the rejection a probe's own deadline race produces. */
@@ -119,15 +123,13 @@ function isProbeTimeout(codeOrMessage: string): boolean {
  */
 function makeProbeIncompleteVuln(
   url: string,
+  def: AsyncCheckDef,
   probeName: string,
   target: string,
-  category: Category,
 ): Vulnerability {
   return makeVuln(
     url,
-    `${probeName} Check Did Not Complete`,
-    "info",
-    category,
+    def,
     `The ${probeName} lookup for ${target} did not return an answer, so this scan cannot say whether the record is present or correct.`,
     `DNS lookup of ${target} timed out or failed with an error that is not a "no such record" answer.`,
     "An unanswered check is not a passed check. Treat this area as unverified rather than clean, and re-run the scan.",
@@ -142,11 +144,15 @@ function makeProbeIncompleteVuln(
   );
 }
 
+/**
+ * `def` is deliberately the only way to give a finding its title, severity
+ * and category: they come from lib/scanner/async-check-catalog.ts, which
+ * is what lets the admin Engine Feedback panel resolve an `async-*` id
+ * back to a real category and severity instead of showing "Unknown".
+ */
 function makeVuln(
   url: string,
-  title: string,
-  severity: "critical" | "high" | "medium" | "low" | "info",
-  category: Category,
+  def: AsyncCheckDef,
   description: string,
   evidence: string,
   riskImpact: string,
@@ -156,10 +162,10 @@ function makeVuln(
   confidence = 90,
 ): Vulnerability {
   return {
-    id: generateId(title, url),
-    title,
-    severity,
-    category,
+    id: generateId(def, url),
+    title: def.title,
+    severity: def.severity,
+    category: def.category,
     description,
     evidence,
     riskImpact,
@@ -187,9 +193,7 @@ export async function checkSPF(
       findings.push(
         makeVuln(
           url,
-          "Missing SPF Record",
-          "medium",
-          "configuration",
+          A.missingSpfRecord,
           "No SPF (Sender Policy Framework) DNS record was found for this domain.",
           `No TXT record starting with 'v=spf1' found for ${domain}.`,
           "Without SPF, attackers can send emails that appear to come from your domain (email spoofing/phishing).",
@@ -212,9 +216,7 @@ export async function checkSPF(
       findings.push(
         makeVuln(
           url,
-          "Weak SPF Record (+all)",
-          "high",
-          "configuration",
+          A.weakSpfRecordAll,
           "SPF record uses +all which allows any server to send email as your domain.",
           `SPF record: ${spf}`,
           "The +all mechanism effectively disables SPF protection, allowing anyone to spoof emails from your domain.",
@@ -229,9 +231,7 @@ export async function checkSPF(
       findings.push(
         makeVuln(
           url,
-          "SPF Record Uses Soft Fail (~all)",
-          "low",
-          "configuration",
+          A.spfRecordUsesSoftFailAll,
           "SPF record uses ~all (soft fail). Unauthorized senders are flagged but mail is still delivered.",
           `SPF record: ${spf}`,
           "Soft fail allows unauthorized email to reach recipients — receivers may still deliver spoofed messages.",
@@ -255,9 +255,7 @@ export async function checkSPF(
       findings.push(
         makeVuln(
           url,
-          "SPF Uses Deprecated ptr: Mechanism",
-          "low",
-          "configuration",
+          A.spfUsesDeprecatedPtrMechanism,
           "The SPF record uses the deprecated ptr: mechanism. RFC 7208 §5.5 says this SHOULD NOT be published.",
           `SPF record: ${spf}`,
           "ptr: triggers expensive reverse DNS lookups that can timeout or fail, causing SPF temperror and mail delivery issues.",
@@ -277,7 +275,14 @@ export async function checkSPF(
 
 // RFC 7208 §4.6.4: these mechanisms each cost one DNS lookup against the
 // 10-lookup limit. ip4:/ip6:/all do not.
-const SPF_LOOKUP_MECHANISM_RE = /[+\-~?]?(include|a|mx|ptr|exists):(\S+)/gi;
+// Anchored to a term boundary (start of record or whitespace). Without the
+// anchor the `a:` alternative matched anywhere, including inside an IPv6
+// literal: `ip6:2a00:1450:4000::a:0/112` contains the substring `a:0/112`,
+// which counted as an `a:` mechanism and inflated the lookup total on a
+// record that is nowhere near the RFC 7208 limit. SPF terms are always
+// whitespace separated, so nothing legitimate is lost.
+const SPF_LOOKUP_MECHANISM_RE =
+  /(?:^|\s)[+\-~?]?(include|a|mx|ptr|exists):(\S+)/gi;
 const SPF_MAX_WALK_STEPS = 12; // RFC limit is 10; a little headroom so an
 // over-limit domain still reports how far over it is instead of stopping
 // right at the threshold.
@@ -347,7 +352,16 @@ async function walkSpfChain(
       }
     }
 
-    const redirectMatch = spf.match(/\bredirect=([a-z0-9.-]+)/i);
+    // RFC 7208 §6.1: "the redirect modifier is ignored if there is an 'all'
+    // mechanism anywhere in the record". Most records end in -all or ~all,
+    // so a record carrying both never evaluates its redirect= at all --
+    // counting the modifier plus its entire sub-chain attributed lookups to
+    // the domain that no receiver will ever perform, which is exactly how a
+    // healthy chain gets pushed over ten.
+    const hasAll = /(?:^|\s)[+\-~?]?all(?:\s|$)/i.test(spf);
+    const redirectMatch = hasAll
+      ? null
+      : spf.match(/\bredirect=([a-z0-9.-]+)/i);
     if (redirectMatch) {
       count++; // the redirect= fetch itself is a lookup
       const sub = await walkSpfChain(redirectMatch[1], ancestors, budget);
@@ -384,9 +398,7 @@ export async function checkSPFChain(
     return [
       makeVuln(
         url,
-        "SPF Redirect Loop",
-        "high",
-        "email",
+        A.spfRedirectLoop,
         `The SPF chain for ${domain} revisits ${result.loopAt} while following include:/redirect= references, forming a cycle.`,
         `Recursively resolving ${domain}'s SPF record reached ${result.loopAt} again while it was still an active ancestor in the same include:/redirect= chain.`,
         "A cyclical SPF chain returns a permanent error (permerror) on every real-world SPF evaluation. Receivers typically treat this the same as a failed check, so all outbound mail from this domain can be rejected or spam-filtered.",
@@ -405,9 +417,7 @@ export async function checkSPFChain(
     return [
       makeVuln(
         url,
-        "SPF Exceeds 10 DNS Lookup Limit",
-        "high",
-        "email",
+        A.spfExceeds10DnsLookupLimit,
         `Evaluating ${domain}'s SPF record requires approximately ${result.lookupCount} DNS lookups across its include:/redirect=/a:/mx:/ptr:/exists: chain, above the RFC 7208 limit of 10.`,
         `Recursively counted ~${result.lookupCount} lookup-triggering mechanisms while resolving ${domain}'s SPF chain.`,
         "Once the 10-lookup limit is exceeded, SPF evaluation returns permerror. Most receivers treat a permerror the same as a hard fail, so legitimate mail from this domain can be rejected regardless of whether the actual sender was authorized.",
@@ -478,9 +488,7 @@ export async function checkDMARC(
     findings.push(
       makeVuln(
         url,
-        "Missing DMARC Record",
-        "medium",
-        "configuration",
+        A.missingDmarcRecord,
         "No DMARC (Domain-based Message Authentication) record was found.",
         `No TXT record at _dmarc.${domain} starting with 'v=DMARC1', and no organizational-domain policy to inherit from either.`,
         "Without DMARC, there is no policy telling email receivers how to handle messages that fail SPF/DKIM checks.",
@@ -510,9 +518,7 @@ export async function checkDMARC(
     findings.push(
       makeVuln(
         url,
-        "DMARC Policy Set to None",
-        "low",
-        "configuration",
+        A.dmarcPolicySetToNone,
         "DMARC record exists but policy is set to 'none', meaning failed emails are still delivered.",
         `DMARC record: ${dmarc}`,
         "With p=none, DMARC only monitors but does not prevent spoofed emails from being delivered.",
@@ -527,9 +533,7 @@ export async function checkDMARC(
     findings.push(
       makeVuln(
         url,
-        "DMARC Policy Set to Quarantine",
-        "info",
-        "configuration",
+        A.dmarcPolicySetToQuarantine,
         "DMARC is set to quarantine: spoofed emails go to spam but are not fully blocked.",
         `DMARC record: ${dmarc}`,
         "Quarantined emails still reach recipients in their spam folder. p=reject fully blocks spoofed mail.",
@@ -547,9 +551,7 @@ export async function checkDMARC(
     findings.push(
       makeVuln(
         url,
-        "DMARC Missing Aggregate Report Address (rua)",
-        "info",
-        "configuration",
+        A.dmarcMissingAggregateReportAddressRua,
         "DMARC record has no rua= tag. You will not receive aggregate reports about email authentication failures.",
         `DMARC record: ${dmarc}`,
         "Without rua=, you cannot detect SPF/DKIM failures or unauthorized senders using your domain.",
@@ -577,9 +579,7 @@ export async function checkDMARC(
         findings.push(
           makeVuln(
             url,
-            "DMARC pct= Below 100",
-            "low",
-            "configuration",
+            A.dmarcPctBelow100,
             `DMARC pct=${pctValue} — only ${pctValue}% of non-compliant mail is subject to the DMARC policy.`,
             `pct=${pctValue} — only ${pctValue}% of non-compliant mail is subject to DMARC policy`,
             "Spoofed messages that fail DMARC have a chance of being delivered, bypassing DMARC protection.",
@@ -632,9 +632,7 @@ export async function checkDMARCSubdomainPolicy(
   return [
     makeVuln(
       url,
-      "DMARC Subdomain Policy Weaker Than Domain Policy",
-      "medium",
-      "email",
+      A.dmarcSubdomainPolicyWeakerThanDomainPolicy,
       `DMARC sp=${spMatch[1]} is weaker than p=${pMatch[1]}. Mail claiming to be from any subdomain of ${domain} (including subdomains that don't exist) is evaluated against the weaker sp= policy.`,
       `DMARC record for ${domain}: ${dmarc}`,
       "An attacker can spoof mail from an arbitrary subdomain and have it evaluated under the weaker sp= policy, bypassing the stronger protection p= otherwise provides for the domain itself.",
@@ -759,9 +757,7 @@ export async function checkDKIM(
     return [
       makeVuln(
         url,
-        "No DKIM Records Found",
-        "low",
-        "configuration",
+        A.noDkimRecordsFound,
         "No DKIM (DomainKeys Identified Mail) records were found for common selectors.",
         `Checked selectors: ${selectors.join(", ")} at _domainkey.${domain}. None returned a v=DKIM1 TXT record or CNAME delegation.`,
         "Without DKIM, email receivers cannot verify that messages were actually sent by your mail servers.",
@@ -859,9 +855,9 @@ export async function checkDKIMWeakKey(
     return [
       makeVuln(
         url,
-        "DKIM Public Key Uses a Weak RSA Key Size",
-        critical ? "high" : "medium",
-        "email",
+        asyncCheckVariant(A.dkimPublicKeyUsesAWeakRsaKeySize, {
+          severity: critical ? "high" : "medium",
+        }),
         `The DKIM selector "${sel}" on ${domain} publishes a ${modulusLength}-bit RSA key, below the 2048-bit minimum.`,
         `${sel}._domainkey.${domain} TXT record has a ${modulusLength}-bit RSA public key (k=rsa).`,
         critical
@@ -925,9 +921,7 @@ export async function checkDNSSEC(
     return [
       makeVuln(
         url,
-        "DNSSEC Not Enabled",
-        "info",
-        "configuration",
+        A.dnssecNotEnabled,
         "DNSSEC does not appear to be enabled for this domain.",
         `DNSSEC validation (AD flag) not set for ${domain} via Google and Cloudflare DNS resolvers.`,
         "Without DNSSEC, DNS responses can be spoofed (DNS cache poisoning), redirecting users to malicious servers.",
@@ -991,9 +985,7 @@ export async function checkCAA(
   return [
     makeVuln(
       url,
-      "CAA Record Missing",
-      "medium",
-      "configuration",
+      A.caaRecordMissing,
       "No CAA (Certification Authority Authorization) DNS record exists. Any CA can issue a certificate for this domain.",
       `No CAA record found for ${domain}${orgDomain !== domain ? ` or its organizational domain ${orgDomain}` : ""}. Without CAA, rogue or compromised CAs can issue certificates for your domain.`,
       "Without a CAA record, any publicly trusted CA can issue a certificate for your domain, enabling MITM attacks via certificate misissuance.",
@@ -1091,9 +1083,7 @@ export async function checkCAAPermissive(
     return [
       makeVuln(
         url,
-        "CAA Record Restricts Wildcard Certificates Only",
-        "low",
-        "dns",
+        A.caaRecordRestrictsWildcardCertificatesOnly,
         `The CAA record for ${evaluatedDomain} has an issuewild tag but no issue tag, so wildcard certificates are restricted but ordinary (non-wildcard) certificates are not.`,
         `CAA records for ${evaluatedDomain}: ${summary}`,
         "Any publicly trusted CA can still issue a standard (non-wildcard) certificate for this domain. A single misissued non-wildcard certificate is enough for a MITM against a specific hostname.",
@@ -1111,9 +1101,7 @@ export async function checkCAAPermissive(
   return [
     makeVuln(
       url,
-      "CAA Record Present But Restricts No Certificate Authority",
-      "medium",
-      "dns",
+      A.caaRecordPresentButRestrictsNoCertificateAuthority,
       `${evaluatedDomain} has a CAA record set, but none of its records use the issue tag, so certificate issuance is effectively unrestricted despite CAA being configured.`,
       `CAA records for ${evaluatedDomain}: ${summary}`,
       "Despite a CAA record existing, any publicly trusted CA can still issue a certificate for this domain, the same exposure as having no CAA record at all.",
@@ -1144,9 +1132,7 @@ export async function checkNSCount(
     return [
       makeVuln(
         url,
-        "Single Authoritative Nameserver",
-        "high",
-        "configuration",
+        A.singleAuthoritativeNameserver,
         "Only one authoritative nameserver was found. RFC 1035 requires at least two for redundancy.",
         `Only 1 NS record found for ${domain}: ${records[0]}. A single NS is a single point of failure.`,
         "If the single nameserver goes offline, the entire domain becomes unreachable. A DDoS on one server takes your domain down.",
@@ -1171,9 +1157,7 @@ async function checkMTASTS(
   const missingVuln = () =>
     makeVuln(
       url,
-      "MTA-STS Record Missing",
-      "info",
-      "email",
+      A.mtaStsRecordMissing,
       `No MTA-STS record found at _mta-sts.${domain}. Without MTA-STS, SMTP connections to this domain may be downgraded.`,
       `No TXT record with v=STSv1 found at _mta-sts.${domain}.`,
       "Without MTA-STS, inbound SMTP sessions can be downgraded from STARTTLS to plaintext by a network attacker.",
@@ -1211,7 +1195,12 @@ async function checkMTASTS(
     // from a domain whose record was checked and found fine.
     if (isProbeTimeout(code)) {
       return [
-        makeProbeIncompleteVuln(url, "MTA-STS", `_mta-sts.${domain}`, "email"),
+        makeProbeIncompleteVuln(
+          url,
+          A.mtaStsCheckDidNotComplete,
+          "MTA-STS",
+          `_mta-sts.${domain}`,
+        ),
       ];
     }
     return [];
@@ -1256,9 +1245,7 @@ async function checkMTASTSPolicyFile(
       return [
         makeVuln(
           url,
-          "MTA-STS Policy File Missing",
-          "medium",
-          "email",
+          A.mtaStsPolicyFileMissing,
           `The MTA-STS DNS record for ${domain} exists, but ${policyUrl} returned HTTP ${res.status}.`,
           `GET ${policyUrl} -> HTTP ${res.status}`,
           "Sending servers that support MTA-STS cannot fetch the policy, so they fall back to opportunistic STARTTLS with no downgrade protection, even though the DNS record advertises MTA-STS support.",
@@ -1277,9 +1264,7 @@ async function checkMTASTSPolicyFile(
       return [
         makeVuln(
           url,
-          "MTA-STS Policy File Malformed",
-          "medium",
-          "email",
+          A.mtaStsPolicyFileMalformed,
           `${policyUrl} responded but its content does not look like a valid MTA-STS policy file.`,
           `GET ${policyUrl} returned content without a recognizable version/mode line.`,
           "Sending servers that can't parse the policy file treat MTA-STS as unavailable, providing no downgrade protection.",
@@ -1300,9 +1285,7 @@ async function checkMTASTSPolicyFile(
       return [
         makeVuln(
           url,
-          "MTA-STS Mode Not Enforcing",
-          "medium",
-          "email",
+          A.mtaStsModeNotEnforcing,
           `The MTA-STS policy for ${domain} is published with mode: ${mode}, which does not enforce TLS. Set mode: enforce to prevent SMTP downgrade attacks.`,
           `GET ${policyUrl} -> mode: ${mode}`,
           "In testing or none mode, sending servers report or ignore TLS failures but still deliver over plaintext, so inbound SMTP sessions can be downgraded from STARTTLS to cleartext by a network attacker.",
@@ -1321,9 +1304,7 @@ async function checkMTASTSPolicyFile(
     return [
       makeVuln(
         url,
-        "MTA-STS Policy File Unreachable",
-        "medium",
-        "email",
+        A.mtaStsPolicyFileUnreachable,
         `The MTA-STS DNS record for ${domain} exists, but ${policyUrl} could not be fetched.`,
         `GET ${policyUrl} failed (connection error, TLS error, or timeout).`,
         "Sending servers that support MTA-STS cannot fetch the policy, so they fall back to opportunistic STARTTLS with no downgrade protection, even though the DNS record advertises MTA-STS support.",
@@ -1343,9 +1324,7 @@ async function checkTLSRPT(
   const missingVuln = () =>
     makeVuln(
       url,
-      "TLS-RPT Record Missing",
-      "info",
-      "email",
+      A.tlsRptRecordMissing,
       `No TLS-RPT record at _smtp._tls.${domain}. TLS-RPT (RFC 8460) enables SMTP TLS failure reporting.`,
       `No TXT record with v=TLSRPTv1 found at _smtp._tls.${domain}.`,
       "Without TLS-RPT, STARTTLS downgrade attacks and certificate validation errors go undetected.",
@@ -1368,9 +1347,7 @@ async function checkTLSRPT(
       return [
         makeVuln(
           url,
-          "TLS-RPT Record Missing rua= Reporting URI",
-          "low",
-          "email",
+          A.tlsRptRecordMissingRuaReportingUri,
           `TLS-RPT record exists at _smtp._tls.${domain} but has no rua= reporting URI.`,
           `_smtp._tls.${domain} record: ${tlsRptRecord}`,
           "Without rua=, TLS-RPT reports cannot be delivered. You have no visibility into SMTP TLS failures.",
@@ -1395,9 +1372,9 @@ async function checkTLSRPT(
       return [
         makeProbeIncompleteVuln(
           url,
+          A.tlsRptCheckDidNotComplete,
           "TLS-RPT",
           `_smtp._tls.${domain}`,
-          "email",
         ),
       ];
     }
@@ -1438,8 +1415,8 @@ export async function checkBIMI(
   const logoUrl = lMatch[1].trim();
   if (!logoUrl) return []; // explicitly empty l= is valid BIMI (opts out of a logo)
 
-  const title = "BIMI Logo URL Does Not Meet BIMI Requirements";
-
+  // All three failure modes below share one check id on purpose: they are
+  // the same "the l= logo will not validate" finding, told three ways.
   let parsed: URL;
   try {
     parsed = new URL(logoUrl);
@@ -1447,9 +1424,7 @@ export async function checkBIMI(
     return [
       makeVuln(
         url,
-        title,
-        "low",
-        "email",
+        A.bimiLogoUrlDoesNotMeetBimiRequirements,
         `The BIMI record at ${bimiHost} has an l= value that is not a valid absolute URL: "${logoUrl}".`,
         `${bimiHost} record: ${record}`,
         "Mail providers that validate BIMI can't fetch an unparsable logo URL, so the brand indicator never displays even though a BIMI record exists.",
@@ -1467,9 +1442,7 @@ export async function checkBIMI(
     return [
       makeVuln(
         url,
-        title,
-        "low",
-        "email",
+        A.bimiLogoUrlDoesNotMeetBimiRequirements,
         `The BIMI record at ${bimiHost} points its logo (l=) at ${parsed.protocol.replace(":", "")} instead of HTTPS.`,
         `${bimiHost} record: ${record}`,
         "Mail providers that validate BIMI require the logo to be served over HTTPS. A non-HTTPS URL fails validation, so the logo never displays.",
@@ -1485,9 +1458,7 @@ export async function checkBIMI(
     return [
       makeVuln(
         url,
-        title,
-        "low",
-        "email",
+        A.bimiLogoUrlDoesNotMeetBimiRequirements,
         `The BIMI record at ${bimiHost} points its logo (l=) at ${parsed.pathname}, a raster image format. BIMI requires an SVG Tiny P/S profile image.`,
         `${bimiHost} record: ${record}`,
         "Mail providers that validate BIMI require the logo to be an SVG in the Tiny Portable/Secure profile. A PNG/JPEG/GIF/WEBP logo fails validation, so it never displays even though the DNS record resolves.",
@@ -1553,9 +1524,7 @@ export async function checkMX(
   return [
     makeVuln(
       url,
-      "MX Record Missing",
-      "medium",
-      "configuration",
+      A.mxRecordMissing,
       "No MX record exists for this domain, but SPF is configured — suggesting email sending without mail reception.",
       `No MX record found for ${domain}. Domain has SPF configured but cannot receive email.`,
       "Without MX records, inbound mail bounces. Receiving servers may also treat outbound mail with higher spam scores.",
@@ -1593,9 +1562,7 @@ export async function checkBackupMX(
     return [
       makeVuln(
         url,
-        "No Backup MX Server",
-        "low",
-        "dns",
+        A.noBackupMxServer,
         `Only a single MX server exists for ${domain} (${records[0].exchange}), with no higher-priority fallback.`,
         `Single MX record found: priority ${records[0].priority} ${records[0].exchange}.`,
         "During a primary MX outage, inbound mail queues at the sending server and can be permanently lost if the outage outlasts the sender's retry window.",
@@ -1642,9 +1609,7 @@ export async function checkMXHostnameCname(
           return [
             makeVuln(
               url,
-              "MX Hostname Is a CNAME (RFC Violation)",
-              "medium",
-              "email",
+              A.mxHostnameIsACnameRfcViolation,
               `${domain}'s MX record points to ${record.exchange}, which is itself a CNAME to ${cnames[0]}. RFC 5321 §5 requires MX targets to be a hostname with an A/AAAA record, not a CNAME.`,
               `MX ${record.exchange} -> CNAME ${cnames[0]}.`,
               "Some resolvers and mail servers refuse to follow a CNAME for an MX target, which can cause intermittent mail delivery failures.",
@@ -1682,9 +1647,7 @@ export async function checkSOARefresh(
     return [
       makeVuln(
         url,
-        "SOA Refresh Interval Too High",
-        "low",
-        "dns",
+        A.soaRefreshIntervalTooHigh,
         `The SOA refresh interval for ${domain} is ${soa.refresh} seconds (~${Math.round(soa.refresh / 3600)}h), above the recommended 24h ceiling.`,
         `SOA record for ${domain}: refresh=${soa.refresh}.`,
         "During incident response or a planned nameserver rollover, stale secondary nameservers keep serving old zone data for up to the refresh interval, delaying the change and potentially causing resolution failures.",
@@ -1753,9 +1716,7 @@ export async function checkSOASerialStale(
     return [
       makeVuln(
         url,
-        "SOA Serial Looks Stale (Date-Based Convention)",
-        "info",
-        "dns",
+        A.soaSerialLooksStaleDateBasedConvention,
         `The SOA serial for ${domain} (${serial}) decodes to ${yStr}-${moStr}-${dStr} under the common YYYYMMDDnn convention, roughly ${ageYears} year(s) ago.`,
         `SOA serial: ${serial} (decodes to ${yStr}-${moStr}-${dStr} as YYYYMMDDnn).`,
         "This is a soft, informational signal, not a vulnerability by itself. Not every DNS provider uses a date-based serial, and a stable serial doesn't necessarily mean the zone is unmaintained.",
@@ -1799,9 +1760,7 @@ export async function checkDNSResolution(
   return [
     makeVuln(
       url,
-      "DNS Resolves to Private/Internal Address",
-      "info",
-      "dns",
+      A.dnsResolvesToPrivateInternalAddress,
       `${domain} resolves to a private, loopback, or link-local IP address (${privateAddrs.join(", ")}), which should not appear in public DNS.`,
       `A/AAAA records for ${domain} include: ${privateAddrs.join(", ")}.`,
       "Private IPs published in public DNS reveal internal network topology, and can be a leftover dangling record from a decommissioned internal host.",
@@ -1857,9 +1816,7 @@ export async function checkDSRecord(
   return [
     makeVuln(
       url,
-      "DNSSEC DS Record Missing",
-      "medium",
-      "dns",
+      A.dnssecDsRecordMissing,
       `No DS (Delegation Signer) record was found in the parent zone for ${domain}. DS records are required to establish the DNSSEC chain of trust.`,
       `Google and Cloudflare DoH both returned an empty Answer section for a DS query against ${domain}.`,
       "Without a DS record in the parent zone, DNSSEC validation cannot succeed for this zone even if the zone itself is signed, leaving it exposed to DNS cache poisoning.",
@@ -1884,9 +1841,7 @@ export async function checkDNSKEYRecord(
   return [
     makeVuln(
       url,
-      "DNSKEY Record Missing",
-      "medium",
-      "dns",
+      A.dnskeyRecordMissing,
       `No DNSKEY records were found for ${domain}. DNSKEY records publish the public keys used to sign the zone and are required for DNSSEC validation.`,
       `Google and Cloudflare DoH both returned an empty Answer section for a DNSKEY query against ${domain}.`,
       "Without DNSKEY records, no DNSSEC validation is possible for this zone, leaving it exposed to DNS cache poisoning (Kaminsky-style) attacks.",
@@ -1912,9 +1867,7 @@ export async function checkTLSARecord(
   return [
     makeVuln(
       url,
-      "TLSA (DANE) Record Missing",
-      "info",
-      "dns",
+      A.tlsaDaneRecordMissing,
       `No TLSA record exists at ${name}. TLSA records (DANE) pin the expected TLS certificate or public key in DNS, adding a layer of verification beyond CA trust.`,
       `Google and Cloudflare DoH both returned an empty Answer section for a TLSA query against ${name}.`,
       "Without TLSA, certificate validation relies entirely on the CA ecosystem; a compromised or rogue CA can issue a fraudulent certificate that passes standard TLS validation.",
@@ -1990,9 +1943,7 @@ async function checkDanglingCNAME(
         return [
           makeVuln(
             url,
-            "Potential Subdomain Takeover via Dangling CNAME",
-            "high",
-            "dns",
+            A.potentialSubdomainTakeoverViaDanglingCname,
             `${domain} has a CNAME record pointing to ${cnameTarget} (${platform[1]}), which does not resolve. An attacker may be able to claim this target and serve content on your subdomain.`,
             `${domain} CNAME → ${cnameTarget} (NXDOMAIN). Platform: ${platform[1]}. This subdomain may be claimable.`,
             "An attacker who claims the dangling target can serve arbitrary content under your domain, enabling phishing, session cookie theft, and CSP bypass.",
@@ -2010,9 +1961,7 @@ async function checkDanglingCNAME(
       return [
         makeVuln(
           url,
-          "Dangling CNAME Record",
-          "medium",
-          "dns",
+          A.danglingCnameRecord,
           `${domain} has a CNAME record pointing to ${cnameTarget}, which does not resolve to any IP address.`,
           `${domain} CNAME → ${cnameTarget} (NXDOMAIN). Target does not resolve.`,
           "A dangling CNAME may allow subdomain takeover if the target can be registered by a third party.",
@@ -2127,9 +2076,7 @@ async function checkZoneTransfer(
       return [
         makeVuln(
           url,
-          "DNS Zone Transfer (AXFR) Allowed from Public IPs",
-          "high",
-          "dns",
+          A.dnsZoneTransferAxfrAllowedFromPublicIps,
           `The authoritative nameserver ${ns} (${ip}) completed a full AXFR zone transfer for ${domain} to an unauthenticated client, returning ${result.recordCount} records.`,
           `AXFR query to ${ns} (${ip}) for ${domain} returned ${result.recordCount} resource records instead of being refused.`,
           "Anyone who can reach this nameserver can download the entire DNS zone, exposing every hostname, IP address, and subdomain in the zone, including internal services or staging environments not meant to be public.",
@@ -2395,9 +2342,9 @@ export async function checkTLSCert(
                 findings.push(
                   makeVuln(
                     url,
-                    "Expired TLS Certificate",
-                    "critical",
-                    emitCategory,
+                    asyncCheckVariant(A.expiredTlsCertificate, {
+                      category: emitCategory,
+                    }),
                     "The TLS certificate has expired.",
                     `Certificate expired on ${expiredOn}${daysAgo !== null ? ` (${daysAgo} days ago)` : ""}.${cert?.subject?.CN ? ` Subject: ${cert.subject.CN}.` : ""}`,
                     "Browsers will block access with a full-page security warning.",
@@ -2419,9 +2366,9 @@ export async function checkTLSCert(
                 findings.push(
                   makeVuln(
                     url,
-                    "Self-Signed TLS Certificate",
-                    "high",
-                    emitCategory,
+                    asyncCheckVariant(A.selfSignedTlsCertificate, {
+                      category: emitCategory,
+                    }),
                     "The server uses a self-signed TLS certificate that is not trusted by browsers.",
                     `Certificate not issued by a trusted CA. Subject: ${subjectCN || "(unknown)"}. Issuer: ${issuerCN || "(self)"}.`,
                     "Browsers will show security warnings, making users vulnerable to real MITM attacks.",
@@ -2438,9 +2385,9 @@ export async function checkTLSCert(
                 findings.push(
                   makeVuln(
                     url,
-                    "Incomplete TLS Certificate Chain",
-                    "medium",
-                    emitCategory,
+                    asyncCheckVariant(A.incompleteTlsCertificateChain, {
+                      category: emitCategory,
+                    }),
                     "The TLS certificate chain is incomplete. Intermediate certificates may be missing.",
                     `Certificate authorization error: ${authCode}. The leaf certificate could not be chained to a trusted root.`,
                     "Some clients may not trust this certificate because the full chain to a root CA cannot be verified.",
@@ -2469,9 +2416,9 @@ export async function checkTLSCert(
                 findings.push(
                   makeVuln(
                     url,
-                    "TLS Certificate Expiring Soon",
-                    "high",
-                    emitCategory,
+                    asyncCheckVariant(A.tlsCertificateExpiringSoon, {
+                      category: emitCategory,
+                    }),
                     "The TLS certificate will expire within 14 days.",
                     `Certificate expires on ${cert.valid_to} (${daysUntilExpiry} days remaining).${cert.subject?.CN ? ` Subject: ${cert.subject.CN}.` : ""}`,
                     "If the certificate expires, browsers will show security warnings and block access.",
@@ -2488,9 +2435,9 @@ export async function checkTLSCert(
                 findings.push(
                   makeVuln(
                     url,
-                    "TLS Certificate Expiring Within 30 Days",
-                    "medium",
-                    emitCategory,
+                    asyncCheckVariant(A.tlsCertificateExpiringWithin30Days, {
+                      category: emitCategory,
+                    }),
                     "The TLS certificate will expire within 30 days.",
                     `Certificate expires on ${cert.valid_to} (${daysUntilExpiry} days remaining).`,
                     "Plan to renew soon to avoid any disruption.",
@@ -2513,9 +2460,9 @@ export async function checkTLSCert(
               findings.push(
                 makeVuln(
                   url,
-                  "Subject Alternative Name (SAN) Missing",
-                  "high",
-                  emitCategory,
+                  asyncCheckVariant(A.subjectAlternativeNameSanMissing, {
+                    category: emitCategory,
+                  }),
                   "The TLS certificate does not include a Subject Alternative Name (SAN) extension.",
                   `Certificate for ${cert.subject?.CN ?? "(unknown)"} has no subjectAltName extension. Modern clients ignore the legacy CN field for hostname verification.`,
                   "Certificates without SAN are treated as untrusted by current browsers and TLS libraries, breaking HTTPS for end users.",
@@ -2544,9 +2491,9 @@ export async function checkTLSCert(
                   findings.push(
                     makeVuln(
                       url,
-                      "Expired Certificate in CA Chain",
-                      "high",
-                      emitCategory,
+                      asyncCheckVariant(A.expiredCertificateInCaChain, {
+                        category: emitCategory,
+                      }),
                       "An intermediate or root certificate in the TLS chain has expired.",
                       `Chain certificate "${current.subject?.CN ?? "(unknown)"}" expired on ${current.valid_to}.`,
                       "Strict TLS clients reject the entire chain when any certificate in it, leaf, intermediate, or root, is expired, even if the leaf itself is still valid.",
@@ -2589,9 +2536,9 @@ export async function checkTLSCert(
                 findings.push(
                   makeVuln(
                     url,
-                    "Weak TLS Certificate Key Size",
-                    "high",
-                    emitCategory,
+                    asyncCheckVariant(A.weakTlsCertificateKeySize, {
+                      category: emitCategory,
+                    }),
                     `TLS certificate uses a ${bits}-bit RSA key, below the 2048-bit minimum recommended by NIST.`,
                     `Certificate public key size: ${bits} bits. Keys below 2048 bits are practically factorable with modern compute.`,
                     "RSA keys smaller than 2048 bits can be factored offline, allowing session decryption and impersonation.",
@@ -2618,9 +2565,9 @@ export async function checkTLSCert(
                 findings.push(
                   makeVuln(
                     url,
-                    "ECDSA Key Size Below P-256",
-                    "info",
-                    emitCategory,
+                    asyncCheckVariant(A.ecdsaKeySizeBelowP256, {
+                      category: emitCategory,
+                    }),
                     `TLS certificate uses ECDSA curve ${certWithCurve.nistCurve}, below the P-256 minimum recommended by NIST.`,
                     `Certificate curve: ${certWithCurve.nistCurve}.`,
                     "Smaller ECDSA curves provide weaker cryptographic guarantees than modern recommendations require.",
@@ -2639,9 +2586,9 @@ export async function checkTLSCert(
                 findings.push(
                   makeVuln(
                     url,
-                    "Weak TLS Protocol Version",
-                    "high",
-                    emitCategory,
+                    asyncCheckVariant(A.weakTlsProtocolVersion, {
+                      category: emitCategory,
+                    }),
                     `The server negotiated ${protocol}, which is considered insecure.`,
                     `Negotiated protocol: ${protocol}. TLS 1.0 and 1.1 are deprecated by RFC 8996.`,
                     "Older TLS versions have known vulnerabilities (POODLE, BEAST, etc.).",
@@ -2666,9 +2613,9 @@ export async function checkTLSCert(
                 findings.push(
                   makeVuln(
                     url,
-                    "TLS 1.3 Not Supported",
-                    "info",
-                    emitCategory,
+                    asyncCheckVariant(A.tls13NotSupported, {
+                      category: emitCategory,
+                    }),
                     "The server negotiated TLS 1.2 instead of TLS 1.3, suggesting TLS 1.3 is not enabled.",
                     `Negotiated protocol: ${protocol}. TLS 1.3 offers improved performance (0-RTT) and stronger security guarantees.`,
                     "TLS 1.2 is secure but lacks TLS 1.3 features: stronger key exchange, fewer round trips, and removal of legacy cipher suites.",
@@ -2968,8 +2915,7 @@ async function checkExposedFiles(
   interface FileProbe {
     path: string;
     verify: (status: number, body: string, ct: string) => string | null;
-    title: string;
-    severity: "critical" | "high" | "medium" | "low";
+    def: AsyncCheckDef;
     description: string;
     riskImpact: string;
     fixSteps: string[];
@@ -2982,8 +2928,7 @@ async function checkExposedFiles(
         if (status !== 200 || !/\[core\]/i.test(body)) return null;
         return body.slice(0, 400);
       },
-      title: "Git Repository Config Exposed",
-      severity: "critical",
+      def: A.gitRepositoryConfigExposed,
       description:
         "The .git/config file is publicly accessible, exposing Git repository metadata, remote URLs (which may contain credentials), and branch names.",
       riskImpact:
@@ -3001,8 +2946,7 @@ async function checkExposedFiles(
         if (status !== 200 || !/^ref:\s*refs\/heads\//m.test(body)) return null;
         return body.slice(0, 100).trim();
       },
-      title: "Git HEAD File Exposed",
-      severity: "high",
+      def: A.gitHeadFileExposed,
       description:
         "The .git/HEAD file is publicly accessible, confirming a Git repository is exposed in the web root.",
       riskImpact:
@@ -3022,8 +2966,7 @@ async function checkExposedFiles(
           .replace(/=([^\n]+)/g, "=[MASKED]")
           .slice(0, 300);
       },
-      title: "Environment File Exposed",
-      severity: "critical",
+      def: A.environmentFileExposed,
       description:
         "The .env file is publicly accessible. This file typically contains database credentials, API keys, and other application secrets.",
       riskImpact:
@@ -3044,8 +2987,7 @@ async function checkExposedFiles(
           .replace(/=([^\n]+)/g, "=[MASKED]")
           .slice(0, 300);
       },
-      title: "Environment File Exposed (.env.local)",
-      severity: "critical",
+      def: A.environmentFileExposedEnvLocal,
       description:
         "The .env.local file is publicly accessible and contains application secrets.",
       riskImpact:
@@ -3063,8 +3005,7 @@ async function checkExposedFiles(
         if (!/\$apr1\$|\{SHA\}|\$2y\$/.test(body)) return null;
         return "htpasswd entry detected. File contains password hashes. Values: [MASKED]";
       },
-      title: "htpasswd File Exposed",
-      severity: "critical",
+      def: A.htpasswdFileExposed,
       description:
         "The .htpasswd file is publicly accessible. This file contains hashed credentials used for HTTP Basic Authentication.",
       riskImpact:
@@ -3086,8 +3027,7 @@ async function checkExposedFiles(
           ? `PHP Version ${m[1]} disclosed via phpinfo()`
           : "phpinfo() output exposed";
       },
-      title: "phpinfo() Page Exposed",
-      severity: "high",
+      def: A.phpinfoPageExposed,
       description:
         "A phpinfo() page is publicly accessible, revealing PHP configuration, enabled extensions, environment variables, and server paths.",
       riskImpact:
@@ -3109,8 +3049,7 @@ async function checkExposedFiles(
           ? `PHP Version ${m[1]} disclosed via info.php`
           : "phpinfo() output exposed";
       },
-      title: "phpinfo() Page Exposed (info.php)",
-      severity: "high",
+      def: A.phpinfoPageExposedInfoPhp,
       description:
         "A phpinfo() page (info.php) is publicly accessible, revealing PHP and server configuration details.",
       riskImpact:
@@ -3133,8 +3072,7 @@ async function checkExposedFiles(
         const hasEnv = /environment:|env_file:|\.env/i.test(body);
         return `docker-compose.yml confirmed. Services: ${services.join(", ") || "(none detected)"}${hasEnv ? ". Contains environment/secrets references (values masked)." : "."}`;
       },
-      title: "Docker Compose File Exposed",
-      severity: "medium",
+      def: A.dockerComposeFileExposed,
       description:
         "The docker-compose.yml file is publicly accessible, revealing infrastructure topology, service names, port mappings, and environment variable names.",
       riskImpact:
@@ -3158,8 +3096,7 @@ async function checkExposedFiles(
         if (!m || !/phpMyAdmin/i.test(m[1])) return null;
         return `phpMyAdmin interface accessible. Page title: "${m[1]}"`;
       },
-      title: "phpMyAdmin Admin Panel Exposed",
-      severity: "high",
+      def: A.phpmyadminAdminPanelExposed,
       description:
         "phpMyAdmin is accessible without authentication or with default credentials. This grants direct database administration access.",
       riskImpact:
@@ -3182,8 +3119,7 @@ async function checkExposedFiles(
         if (!m || !/Adminer/i.test(m[1])) return null;
         return "Adminer database management interface is accessible.";
       },
-      title: "Adminer Database Admin Panel Exposed",
-      severity: "high",
+      def: A.adminerDatabaseAdminPanelExposed,
       description:
         "Adminer (formerly phpMinAdmin) database management tool is publicly accessible.",
       riskImpact:
@@ -3212,8 +3148,7 @@ async function checkExposedFiles(
         ].filter((k) => body.includes(k));
         return `SQL database dump confirmed at /backup.sql. Detected SQL keywords: ${keywords.join(", ")}. Raw content omitted to prevent credential exposure in scan results.`;
       },
-      title: "Database Dump File Exposed",
-      severity: "critical",
+      def: A.databaseDumpFileExposed,
       description:
         "A SQL database dump file is publicly accessible at /backup.sql. This exposes the full database schema and data.",
       riskImpact:
@@ -3241,8 +3176,7 @@ async function checkExposedFiles(
           return "Terraform state file exposed at /terraform.tfstate.";
         }
       },
-      title: "Terraform State File Exposed",
-      severity: "critical",
+      def: A.terraformStateFileExposed,
       description:
         "A Terraform state file is publicly accessible. Terraform state files contain the full infrastructure topology and often include plaintext secrets such as database passwords, API keys, and access credentials.",
       riskImpact:
@@ -3279,8 +3213,7 @@ async function checkExposedFiles(
           return "WordPress REST API users endpoint is accessible, exposing user account information.";
         }
       },
-      title: "WordPress User Enumeration via REST API",
-      severity: "medium",
+      def: A.wordpressUserEnumerationViaRestApi,
       description:
         "The WordPress REST API exposes a list of user accounts including usernames and display names. This information can be used for credential stuffing and targeted phishing attacks.",
       riskImpact:
@@ -3306,8 +3239,7 @@ async function checkExposedFiles(
         }
         return `Prometheus metrics endpoint exposed. Sample metrics: ${metricNames.join(", ")}. ${body.split("\n").length} lines of telemetry data accessible.`;
       },
-      title: "Prometheus Metrics Endpoint Exposed",
-      severity: "medium",
+      def: A.prometheusMetricsEndpointExposed,
       description:
         "A Prometheus metrics endpoint (/metrics) is publicly accessible. This endpoint exposes internal application metrics, resource usage, error rates, and may reveal internal service names and infrastructure details.",
       riskImpact:
@@ -3340,8 +3272,7 @@ async function checkExposedFiles(
         const registry = isGitHub ? "GitHub Packages" : "npmjs.org";
         return `npm configuration file exposed with ${registry} registry auth token. Token value omitted from evidence.`;
       },
-      title: "npm Configuration File Exposed (.npmrc)",
-      severity: "critical",
+      def: A.npmConfigurationFileExposedNpmrc,
       description:
         "The .npmrc file is publicly accessible and contains npm registry authentication tokens. These tokens can be used to publish malicious packages under the organization's npm account.",
       riskImpact:
@@ -3367,8 +3298,7 @@ async function checkExposedFiles(
           .slice(0, 5);
         return `Production environment file exposed. Sensitive variables: ${sensitiveFound.map((k) => k.split("=")[0]).join(", ")}`;
       },
-      title: "Production Environment File Exposed (.env.production)",
-      severity: "critical",
+      def: A.productionEnvironmentFileExposedEnvProduction,
       description:
         "The .env.production file containing production credentials, API keys, and secrets is publicly accessible. This is among the most severe exposures possible in a web application.",
       riskImpact:
@@ -3396,8 +3326,7 @@ async function checkExposedFiles(
           body.includes("appSettings");
         return `IIS web.config exposed${hasSecrets ? " containing connection strings or application settings" : ""}. Server configuration and potentially credentials are readable.`;
       },
-      title: "IIS web.config File Exposed",
-      severity: "high",
+      def: A.iisWebConfigFileExposed,
       description:
         "The IIS web.config file is publicly accessible. This file may contain database connection strings, application settings, authentication configuration, and other sensitive server directives.",
       riskImpact:
@@ -3423,8 +3352,7 @@ async function checkExposedFiles(
         const lines = body.split("\n").length;
         return `Debug log file exposed with ${lines} lines of application log data. May contain internal paths, stack traces, or sensitive request data.`;
       },
-      title: "Debug Log File Publicly Accessible",
-      severity: "medium",
+      def: A.debugLogFilePubliclyAccessible,
       description:
         "A debug.log file is publicly accessible. Debug logs frequently contain internal file paths, stack traces, database query details, user data from requests, and application secrets logged during errors.",
       riskImpact:
@@ -3451,8 +3379,7 @@ async function checkExposedFiles(
         const versionMatch = body.match(/"lockfileVersion"\s*:\s*(\d+)/);
         return `npm lockfile exposed. Package name: ${pkgMatch?.[1] ?? "unknown"}, lockfile version: ${versionMatch?.[1] ?? "unknown"}. Full dependency tree with versions is readable.`;
       },
-      title: "npm Lockfile Exposed (package-lock.json)",
-      severity: "low",
+      def: A.npmLockfileExposedPackageLockJson,
       description:
         "The package-lock.json file is publicly accessible. This file reveals the complete dependency tree with exact version numbers, enabling attackers to identify vulnerable package versions in use.",
       riskImpact:
@@ -3488,8 +3415,7 @@ async function checkExposedFiles(
           ? "Jenkins CI panel is accessible without authentication. Full CI/CD pipeline access including job history, build logs, and environment variable injection."
           : "Jenkins login panel detected at /jenkins/. Exposed CI/CD panel is a high-value target.";
       },
-      title: "Jenkins CI Panel Exposed",
-      severity: "high",
+      def: A.jenkinsCiPanelExposed,
       description:
         "A Jenkins continuous integration server panel is publicly accessible. Unauthenticated access allows attackers to enumerate jobs, read build logs (which may contain secrets), trigger builds, and execute arbitrary commands through the Groovy script console.",
       riskImpact:
@@ -3514,8 +3440,7 @@ async function checkExposedFiles(
         if (!m || !/Consul/i.test(m[1])) return null;
         return "HashiCorp Consul UI is publicly accessible. Service registry, health checks, and potentially KV store data are readable without authentication.";
       },
-      title: "HashiCorp Consul UI Exposed",
-      severity: "high",
+      def: A.hashicorpConsulUiExposed,
       description:
         "The HashiCorp Consul service mesh UI is publicly accessible. Consul stores service discovery data, health check results, and key-value configuration that may include secrets.",
       riskImpact:
@@ -3541,8 +3466,7 @@ async function checkExposedFiles(
         if (!m || !/MinIO/i.test(m[1])) return null;
         return `MinIO object storage console detected at /minio/. ${status === 200 ? "Console is accessible" : "Login panel exposed"}. S3-compatible storage system is reachable from the internet.`;
       },
-      title: "MinIO Object Storage Console Exposed",
-      severity: "high",
+      def: A.minioObjectStorageConsoleExposed,
       description:
         "A MinIO object storage console is publicly accessible. MinIO is an S3-compatible storage system that may contain application data, backups, user uploads, and internal files.",
       riskImpact:
@@ -3569,8 +3493,7 @@ async function checkExposedFiles(
           ? "RabbitMQ management UI is accessible without authentication. Message queue contents, vhosts, and credentials may be exposed."
           : "RabbitMQ management interface login panel is publicly accessible. Default credentials (guest/guest) may grant full access.";
       },
-      title: "RabbitMQ Management Interface Exposed",
-      severity: "medium",
+      def: A.rabbitmqManagementInterfaceExposed,
       description:
         "A RabbitMQ message broker management interface is publicly accessible. This interface can expose message queue contents, connection details, vhosts, and user credentials.",
       riskImpact:
@@ -3603,9 +3526,7 @@ async function checkExposedFiles(
     if (!evidence) return null;
     return makeVuln(
       origin,
-      probe.title,
-      probe.severity,
-      "information-disclosure",
+      probe.def,
       probe.description,
       `Fetched ${probeUrl}: HTTP ${res.status}\n${evidence}`,
       probe.riskImpact,
@@ -3716,10 +3637,8 @@ export async function checkActiveCORS(
       makeVuln(
         url,
         withCredentials
-          ? "Arbitrary CORS Origin Reflection with Credentials"
-          : "Arbitrary CORS Origin Reflection",
-        withCredentials ? "critical" : "high",
-        "headers",
+          ? A.arbitraryCorsOriginReflectionWithCredentials
+          : A.arbitraryCorsOriginReflection,
         withCredentials
           ? "The server reflects any Origin header back in Access-Control-Allow-Origin and also sets Access-Control-Allow-Credentials: true. Any website can make authenticated cross-origin requests to this server."
           : "The server reflects any Origin header back in Access-Control-Allow-Origin, allowing any website to make cross-origin requests and read responses.",
@@ -3807,10 +3726,8 @@ export async function checkActiveHttpMethods(
         makeVuln(
           origin,
           confirmed
-            ? "HTTP TRACE Method Enabled"
-            : "HTTP TRACE Advertised in Allow Header",
-          confirmed ? "medium" : "low",
-          "configuration",
+            ? A.httpTraceMethodEnabled
+            : A.httpTraceAdvertisedInAllowHeader,
           confirmed
             ? "The HTTP TRACE method is enabled. TRACE echoes the request back, enabling Cross-Site Tracing (XST) attacks that can bypass HttpOnly cookie restrictions in combination with XSS."
             : "The server's OPTIONS response includes TRACE in the Allow header, indicating TRACE may be enabled.",
@@ -3833,9 +3750,7 @@ export async function checkActiveHttpMethods(
       findings.push(
         makeVuln(
           origin,
-          "HTTP CONNECT Method Exposed",
-          "medium",
-          "configuration",
+          A.httpConnectMethodExposed,
           "The HTTP CONNECT method is advertised in the Allow header. CONNECT is used for proxy tunneling and should not be exposed on application servers.",
           `OPTIONS ${origin} → Allow: ${allow}`,
           "An exposed CONNECT method may allow attackers to use the server as a proxy to reach internal services or bypass network controls.",
@@ -3905,9 +3820,7 @@ export async function checkXForwardedHostInjection(
     return [
       makeVuln(
         url,
-        "Host Header Injection Risk",
-        "high",
-        "host-validation",
+        A.hostHeaderInjectionRisk,
         "The server reflects an attacker-controlled X-Forwarded-Host header value in its response. This enables password reset link poisoning and web cache poisoning attacks.",
         `Sent X-Forwarded-Host: ${testHost} → Found in: ${foundIn.join(", ")}`,
         "An attacker can send a request with X-Forwarded-Host pointing to their domain. If the application uses this header to construct password reset URLs, victims receive reset links pointing to the attacker's domain.",
@@ -4003,9 +3916,7 @@ async function checkGraphQLIntrospection(
         return [
           makeVuln(
             url,
-            "GraphQL Introspection Enabled",
-            "medium",
-            "information-disclosure",
+            A.graphqlIntrospectionEnabled,
             "The GraphQL API has introspection enabled in production. Introspection allows any client to query the full schema, including all types, fields, mutations, and relationships, providing a complete map of the API surface.",
             `POST ${endpointUrl} with introspection query returned schema data. ${typeInfo}`,
             "Attackers can enumerate the entire API schema to discover undocumented mutations, sensitive fields (user data, admin operations), and design targeted injection or business logic attacks.",
@@ -4054,6 +3965,15 @@ const BUCKET_PROVIDER_LABEL: Record<BucketProvider, string> = {
   s3: "AWS S3",
   gcs: "Google Cloud Storage",
   azure: "Azure Blob Storage",
+};
+
+// One check per provider rather than one interpolated title: the provider
+// is part of the finding's identity, so it belongs in the catalog (and in
+// the id) rather than being spliced into the title at emit time.
+const BUCKET_PROVIDER_CHECK: Record<BucketProvider, AsyncCheckDef> = {
+  s3: A.publiclyListableAwsS3Bucket,
+  gcs: A.publiclyListableGoogleCloudStorageBucket,
+  azure: A.publiclyListableAzureBlobStorageBucket,
 };
 
 const BUCKET_PROVIDER_EXPLANATION: Record<BucketProvider, string> = {
@@ -4293,9 +4213,7 @@ export async function checkBucketListing(
     findings.push(
       makeVuln(
         url,
-        `Publicly Listable ${providerLabel} Bucket`,
-        "high",
-        "information-disclosure",
+        BUCKET_PROVIDER_CHECK[candidate.provider],
         `A ${providerLabel} bucket referenced on this page (${candidate.probeHost}) allows anyone to list its full contents with no authentication. This is a misconfiguration of the bucket itself, which may belong to a third party (a CDN, analytics vendor, or embedded widget) rather than this site's own infrastructure.`,
         `GET ${candidate.probeUrl} -> HTTP ${status} with a public listing response.\n${snippet.slice(0, 300)}`,
         "Anyone can enumerate every object in the bucket, potentially exposing backups, internal documents, PII, or configuration files stored there. Because the bucket's owner may differ from the scanned site, identifying and notifying the actual owner may require separate research.",
@@ -4371,9 +4289,7 @@ export async function checkRobotsTxt(origin: string): Promise<Vulnerability[]> {
       findings.push(
         makeVuln(
           origin,
-          "Sensitive Paths Exposed in robots.txt",
-          "medium",
-          "information-disclosure",
+          A.sensitivePathsExposedInRobotsTxt,
           "The robots.txt file reveals sensitive directory paths that attackers can use for reconnaissance.",
           `Fetched ${origin}/robots.txt, found ${found.length} sensitive path(s):\n${found.slice(0, 8).join("\n")}${found.length > 8 ? `\n...and ${found.length - 8} more` : ""}`,
           "Attackers use robots.txt as a roadmap to find admin panels, configuration files, and other sensitive resources.",
@@ -4453,9 +4369,7 @@ export async function checkSecurityTxt(
     return [
       makeVuln(
         origin,
-        "Missing security.txt",
-        "info",
-        "configuration",
+        A.missingSecurityTxt,
         "No security.txt file was found at /.well-known/security.txt or /security.txt.",
         `Both ${wellKnownUrl} and ${rootUrl} returned non-200 status.`,
         "Security researchers who find vulnerabilities may not know how to responsibly report them.",

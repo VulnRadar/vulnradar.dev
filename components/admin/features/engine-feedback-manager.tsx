@@ -1,6 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useId } from "react";
+import {
+  Fragment,
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useId,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +27,10 @@ import {
   AlertTriangle,
   ArrowUpCircle,
   ExternalLink,
+  ChevronRight,
+  EyeOff,
+  FileJson,
+  FileSpreadsheet,
 } from "lucide-react";
 import {
   AdminPanelHeader,
@@ -33,8 +44,11 @@ import {
   type SortDirection,
 } from "@/components/admin/shared";
 import type { ToastState } from "@/components/admin/types";
+import { PageActionsMenu, type PageActionEntry } from "@/components/shared";
 import { SeverityBadge, toSeverity } from "@/components/scanner/severity-badge";
 import { ModalShell } from "@/components/ui/modal-shell";
+import { APP_SLUG } from "@/lib/config/client-constants";
+import { downloadBlob, escapeCsv } from "@/lib/ui/download";
 import { cn } from "@/lib/ui/utils";
 
 interface AiTagCandidateExample {
@@ -68,6 +82,17 @@ interface CheckAccuracyEntry {
   total: number;
   falsePositiveRate: number;
   flagged: boolean;
+  neverConfirmed: boolean;
+  priority: number;
+}
+
+interface CheckVerdictEntry {
+  id: number;
+  checkId: string;
+  findingUrl: string;
+  verdict: "confirmed" | "false_positive" | "not_applicable";
+  notes: string;
+  createdAt: string;
 }
 
 interface TagDismissalEntry {
@@ -92,6 +117,43 @@ function FlaggedBadge({ flagged }: { flagged: boolean }) {
 }
 
 /**
+ * The failure the percentage rule structurally cannot see. A check that
+ * has been reported false and never once confirmed is a different problem
+ * from a check people sometimes disagree with, and at n=1 it sits below
+ * the sample floor entirely, so it needs its own mark rather than sharing
+ * "Flagged".
+ */
+function NeverConfirmedBadge({ neverConfirmed }: { neverConfirmed: boolean }) {
+  if (!neverConfirmed) return null;
+  return (
+    <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5 py-0.5 font-medium gap-1">
+      <EyeOff className="h-2.5 w-2.5" aria-hidden="true" />
+      Never confirmed
+    </Badge>
+  );
+}
+
+/** Flagged by either rule: what the filter pill and the counts mean. */
+function needsAttention(c: CheckAccuracyEntry): boolean {
+  return c.flagged || c.neverConfirmed;
+}
+
+const VERDICT_LABEL: Record<CheckVerdictEntry["verdict"], string> = {
+  confirmed: "Confirmed",
+  false_positive: "False positive",
+  not_applicable: "Not applicable",
+};
+
+const VERDICT_TONE: Record<
+  CheckVerdictEntry["verdict"],
+  "ok" | "crit" | "neutral"
+> = {
+  confirmed: "ok",
+  false_positive: "crit",
+  not_applicable: "neutral",
+};
+
+/**
  * "Narrow this list" in the shape the rest of the panel already uses. Both
  * tables carried a raw `<input type="checkbox">` for this, which was a third
  * control grammar for the same job on a page that also has a search field and
@@ -104,11 +166,13 @@ function FlaggedOnlyPill({
   count,
   onToggle,
   label,
+  text = "Flagged only",
 }: {
   pressed: boolean;
   count: number;
   onToggle: () => void;
   label: string;
+  text?: string;
 }) {
   return (
     <button
@@ -126,7 +190,7 @@ function FlaggedOnlyPill({
             : "border-border text-muted-foreground hover:bg-muted/40 hover:text-foreground",
       )}
     >
-      Flagged only
+      {text}
       <span className="font-mono text-[11px] tabular-nums opacity-70">
         {count}
       </span>
@@ -161,10 +225,19 @@ export function EngineFeedbackManager() {
 
   const [checkSearch, setCheckSearch] = useState("");
   const [checkFlaggedOnly, setCheckFlaggedOnly] = useState(false);
+  // No default sort column, so rows arrive in the server's priority order
+  // (severity-weighted Wilson lower bound). Sorting by a column is opt-in,
+  // and cycling that column back off returns to priority order.
   const [checkSortColumn, setCheckSortColumn] =
-    useState<CheckSortColumn | null>("falsePositiveRate");
+    useState<CheckSortColumn | null>(null);
   const [checkSortDirection, setCheckSortDirection] =
-    useState<SortDirection>("desc");
+    useState<SortDirection>(null);
+  const [expandedCheck, setExpandedCheck] = useState<string | null>(null);
+  const [verdicts, setVerdicts] = useState<Record<string, CheckVerdictEntry[]>>(
+    {},
+  );
+  const [verdictsLoading, setVerdictsLoading] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const [tagFlaggedOnly, setTagFlaggedOnly] = useState(false);
   const [tagSortColumn, setTagSortColumn] = useState<TagSortColumn | null>(
@@ -187,6 +260,8 @@ export function EngineFeedbackManager() {
         setChecks(data.checks || []);
         setThresholdPercent(data.thresholdPercent ?? null);
         setMinSampleSize(data.minSampleSize ?? null);
+        // Counts moved, so any expanded detail is now stale.
+        setVerdicts({});
       }
       if (tagsRes.ok) {
         const data = await tagsRes.json();
@@ -206,6 +281,64 @@ export function EngineFeedbackManager() {
     setLoading(false);
     setRefreshing(false);
   }, []);
+
+  /**
+   * The verdicts behind one or more check rows. On demand, never with the
+   * table: a check with hundreds of verdicts would otherwise be loaded in
+   * full just to render a count nobody expanded.
+   */
+  const loadVerdicts = useCallback(
+    async (
+      checkIds: string[],
+      perCheck: number,
+    ): Promise<Record<string, CheckVerdictEntry[]> | null> => {
+      if (checkIds.length === 0) return {};
+      // The route accepts 100 ids per call, so an export of a wider table
+      // is chunked rather than silently losing the tail.
+      const out: Record<string, CheckVerdictEntry[]> = {};
+      for (let i = 0; i < checkIds.length; i += 100) {
+        const params = new URLSearchParams();
+        for (const id of checkIds.slice(i, i + 100))
+          params.append("checkId", id);
+        params.set("perCheck", String(perCheck));
+        const res = await fetch(
+          `/api/v3/admin/engine-feedback/checks/verdicts?${params}`,
+        );
+        if (!res.ok) return null;
+        const data = await res.json();
+        Object.assign(out, data.verdicts || {});
+      }
+      return out;
+    },
+    [],
+  );
+
+  const toggleCheckExpanded = useCallback(
+    async (checkId: string) => {
+      if (expandedCheck === checkId) {
+        setExpandedCheck(null);
+        return;
+      }
+      setExpandedCheck(checkId);
+      if (verdicts[checkId]) return;
+      setVerdictsLoading(checkId);
+      try {
+        const loaded = await loadVerdicts([checkId], 25);
+        if (loaded) {
+          setVerdicts((prev) => ({ ...prev, ...loaded }));
+          return;
+        }
+        throw new Error("verdict request failed");
+      } catch {
+        // Collapse again rather than leaving the row stuck on "Loading".
+        setExpandedCheck(null);
+        setToast({ message: "Failed to load verdicts.", type: "error" });
+      } finally {
+        setVerdictsLoading(null);
+      }
+    },
+    [expandedCheck, verdicts, loadVerdicts],
+  );
 
   const promoteCandidate = useCallback(
     async (fields: {
@@ -258,7 +391,7 @@ export function EngineFeedbackManager() {
           (c.category || "").toLowerCase().includes(q),
       );
     }
-    if (checkFlaggedOnly) rows = rows.filter((c) => c.flagged);
+    if (checkFlaggedOnly) rows = rows.filter(needsAttention);
     if (!checkSortColumn || !checkSortDirection) return rows;
     const dir = checkSortDirection === "asc" ? 1 : -1;
     const col = checkSortColumn;
@@ -291,7 +424,202 @@ export function EngineFeedbackManager() {
   }, [tags, tagFlaggedOnly, tagSortColumn, tagSortDirection]);
 
   const flaggedCheckCount = checks.filter((c) => c.flagged).length;
+  const neverConfirmedCount = checks.filter((c) => c.neverConfirmed).length;
+  const attentionCheckCount = checks.filter(needsAttention).length;
   const flaggedTagCount = tags.filter((t) => t.flagged).length;
+
+  const exportStamp = new Date().toISOString().split("T")[0];
+
+  const exportChecksCsv = () => {
+    const headers = [
+      "Check ID",
+      "Title",
+      "Category",
+      "Severity",
+      "Confirmed",
+      "False positives",
+      "Not applicable",
+      "Total",
+      "FP rate %",
+      "Flagged",
+      "Never confirmed",
+      "Priority",
+    ];
+    const rows = filteredChecks.map((c) =>
+      [
+        c.checkId,
+        c.title,
+        c.category ?? "",
+        c.severity ?? "",
+        c.confirmed,
+        c.falsePositive,
+        c.notApplicable,
+        c.total,
+        c.falsePositiveRate,
+        c.flagged ? "yes" : "no",
+        c.neverConfirmed ? "yes" : "no",
+        c.priority,
+      ].map((v) => escapeCsv(String(v))),
+    );
+    const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    downloadBlob(
+      new Blob([csv], { type: "text/csv;charset=utf-8;" }),
+      `${APP_SLUG}-check-accuracy-${exportStamp}.csv`,
+    );
+  };
+
+  const exportTagsCsv = () => {
+    const headers = [
+      "Tag",
+      "Total fired",
+      "Dismissed",
+      "Dismissal rate %",
+      "Flagged",
+    ];
+    const rows = filteredTags.map((t) =>
+      [
+        t.tag,
+        t.totalFired,
+        t.dismissedCount,
+        t.dismissalRate,
+        t.flagged ? "yes" : "no",
+      ].map((v) => escapeCsv(String(v))),
+    );
+    const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    downloadBlob(
+      new Blob([csv], { type: "text/csv;charset=utf-8;" }),
+      `${APP_SLUG}-auto-tag-dismissals-${exportStamp}.csv`,
+    );
+  };
+
+  /**
+   * The individual verdicts behind the rows currently on screen: the URL
+   * the finding was on and whatever the submitter typed. That is the part
+   * that says how to fix a detector rather than just that it is wrong, so
+   * the export exists mainly to get it off this page and into whatever
+   * someone actually works in.
+   */
+  const exportVerdictsCsv = async () => {
+    setExporting(true);
+    try {
+      const ids = filteredChecks.map((c) => c.checkId);
+      const loaded = await loadVerdicts(ids, 100);
+      if (!loaded) {
+        setToast({ message: "Failed to export verdicts.", type: "error" });
+        return;
+      }
+      const byId = new Map(filteredChecks.map((c) => [c.checkId, c]));
+      const headers = [
+        "Check ID",
+        "Title",
+        "Severity",
+        "Verdict",
+        "Finding URL",
+        "Notes",
+        "Submitted at",
+      ];
+      const rows: string[][] = [];
+      for (const id of ids) {
+        for (const v of loaded[id] ?? []) {
+          rows.push(
+            [
+              id,
+              byId.get(id)?.title ?? id,
+              byId.get(id)?.severity ?? "",
+              VERDICT_LABEL[v.verdict] ?? v.verdict,
+              v.findingUrl,
+              v.notes,
+              v.createdAt,
+            ].map((value) => escapeCsv(String(value))),
+          );
+        }
+      }
+      const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join(
+        "\n",
+      );
+      downloadBlob(
+        new Blob([csv], { type: "text/csv;charset=utf-8;" }),
+        `${APP_SLUG}-check-verdicts-${exportStamp}.csv`,
+      );
+      setToast({
+        message: `Exported ${rows.length} verdict${rows.length === 1 ? "" : "s"}.`,
+        type: "success",
+      });
+    } catch {
+      setToast({ message: "Failed to export verdicts.", type: "error" });
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const exportAllJson = async () => {
+    setExporting(true);
+    try {
+      const ids = filteredChecks.map((c) => c.checkId);
+      const loaded = (await loadVerdicts(ids, 100)) ?? {};
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        rules: {
+          thresholdPercent,
+          minSampleSize,
+          neverConfirmed:
+            "0 confirmed, and at least 1 false positive for critical/high or 2 otherwise",
+        },
+        filters: {
+          checkSearch: checkSearch.trim(),
+          checksNeedingAttentionOnly: checkFlaggedOnly,
+          flaggedTagsOnly: tagFlaggedOnly,
+        },
+        checks: filteredChecks.map((c) => ({
+          ...c,
+          verdicts: loaded[c.checkId] ?? [],
+        })),
+        autoTags: filteredTags,
+      };
+      downloadBlob(
+        new Blob([JSON.stringify(payload, null, 2)], {
+          type: "application/json",
+        }),
+        `${APP_SLUG}-engine-feedback-${exportStamp}.json`,
+      );
+    } catch {
+      setToast({ message: "Failed to export engine feedback.", type: "error" });
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const exportActions: PageActionEntry[] = [
+    {
+      key: "checks-csv",
+      label: "Check accuracy (CSV)",
+      icon: FileSpreadsheet,
+      onSelect: exportChecksCsv,
+      disabled: filteredChecks.length === 0,
+    },
+    {
+      key: "verdicts-csv",
+      label: exporting ? "Exporting..." : "Verdict detail (CSV)",
+      icon: FileSpreadsheet,
+      onSelect: () => void exportVerdictsCsv(),
+      disabled: exporting || filteredChecks.length === 0,
+    },
+    {
+      key: "tags-csv",
+      label: "Auto-tag dismissals (CSV)",
+      icon: FileSpreadsheet,
+      onSelect: exportTagsCsv,
+      disabled: filteredTags.length === 0,
+    },
+    { separator: true },
+    {
+      key: "all-json",
+      label: exporting ? "Exporting..." : "Everything on screen (JSON)",
+      icon: FileJson,
+      onSelect: () => void exportAllJson(),
+      disabled: exporting,
+    },
+  ];
 
   const toggleCheckSort = (column: CheckSortColumn) => {
     const next = nextSortDirection(column, checkSortColumn, checkSortDirection);
@@ -304,7 +632,7 @@ export function EngineFeedbackManager() {
     setTagSortDirection(next.direction);
   };
 
-  const totalFlagged = flaggedCheckCount + flaggedTagCount;
+  const totalFlagged = attentionCheckCount + flaggedTagCount;
 
   return (
     <div className="space-y-4">
@@ -321,55 +649,80 @@ export function EngineFeedbackManager() {
             {loading
               ? "Reading submitted finding verdicts and auto-tag dismissals."
               : totalFlagged === 0
-                ? "Nothing is flagged for retuning right now."
-                : `${flaggedCheckCount} ${flaggedCheckCount === 1 ? "check" : "checks"} and ${flaggedTagCount} auto-tag ${flaggedTagCount === 1 ? "rule" : "rules"} are flagged for retuning.`}{" "}
+                ? "Nothing needs retuning right now."
+                : `${attentionCheckCount} ${attentionCheckCount === 1 ? "check" : "checks"} and ${flaggedTagCount} auto-tag ${flaggedTagCount === 1 ? "rule" : "rules"} need retuning.`}{" "}
             These are verdicts humans already submitted, rolled up. Nothing here
             is machine learning and nothing here edits a detection rule by
             itself: a person reads the numbers and edits{" "}
             <code className="text-xs">lib/scanner/checks-data/*.json</code> or{" "}
             <code className="text-xs">lib/tags/auto-tags.ts</code> by hand.
+            Expand any check to read the individual verdicts behind it.
             {thresholdPercent !== null && minSampleSize !== null && (
               <>
                 {" "}
                 A row is flagged at {thresholdPercent}%+ with at least{" "}
                 {minSampleSize} sample{minSampleSize === 1 ? "" : "s"}, both
-                configurable in Settings &gt; Advanced.
+                configurable in Settings &gt; Advanced. A check that has never
+                been confirmed is called out separately, at one false positive
+                when it is critical or high and two otherwise, because the
+                percentage rule cannot see it at that sample size. Rows are
+                ordered by how much evidence actually backs the complaint, so
+                one report at 100% ranks below ten at 60%.
               </>
             )}
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-9 shrink-0 gap-2 px-3 border-border/40"
-          onClick={() => fetchData()}
-          disabled={refreshing}
-          aria-label="Refresh engine feedback"
-        >
-          <RefreshCw
-            className={cn("h-4 w-4", refreshing && "animate-spin")}
-            aria-hidden="true"
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 shrink-0 gap-2 px-3 border-border/40"
+            onClick={() => fetchData()}
+            disabled={refreshing}
+            aria-label="Refresh engine feedback"
+          >
+            <RefreshCw
+              className={cn("h-4 w-4", refreshing && "animate-spin")}
+              aria-hidden="true"
+            />
+            <span className="hidden sm:inline">Refresh</span>
+          </Button>
+          {/* Everything on this page used to be copy-and-paste-only. The
+              exports write exactly what the filters currently show. */}
+          <PageActionsMenu
+            items={exportActions}
+            label="Export engine feedback"
+            triggerClassName="h-9 w-9 sm:h-9 sm:w-9"
           />
-          <span className="hidden sm:inline">Refresh</span>
-        </Button>
+        </div>
       </div>
 
       {/* Check accuracy */}
       <div className="overflow-hidden rounded-xl border border-border/50 bg-card/50">
         <AdminPanelHeader
           icon={Gauge}
-          tone={flaggedCheckCount > 0 ? "crit" : "info"}
+          tone={attentionCheckCount > 0 ? "crit" : "info"}
           title="Check Accuracy"
           subtitle="False-positive rate per check, from submitted finding feedback."
           status={
-            flaggedCheckCount > 0 ? (
-              // The most important number on the page. It was a grey
-              // variant="secondary" Badge, the same grey as everything around
-              // it, while FlaggedBadge two lines below already had the right
-              // treatment for exactly this fact.
-              <StatusPill tone="crit" icon={AlertTriangle}>
-                {flaggedCheckCount} flagged
-              </StatusPill>
+            // The most important numbers on the page. "Flagged" was a grey
+            // variant="secondary" Badge, the same grey as everything around
+            // it, while FlaggedBadge already had the right treatment for
+            // exactly this fact. "Never confirmed" is separate because it is
+            // the failure the percentage rule cannot express.
+            attentionCheckCount > 0 ? (
+              <span className="flex flex-wrap items-center gap-1.5">
+                {flaggedCheckCount > 0 && (
+                  <StatusPill tone="crit" icon={AlertTriangle}>
+                    {flaggedCheckCount} flagged
+                  </StatusPill>
+                )}
+                {neverConfirmedCount > 0 && (
+                  <StatusPill tone="crit" icon={EyeOff}>
+                    {neverConfirmedCount} never confirmed
+                  </StatusPill>
+                )}
+              </span>
             ) : null
           }
         >
@@ -389,9 +742,10 @@ export function EngineFeedbackManager() {
             </div>
             <FlaggedOnlyPill
               pressed={checkFlaggedOnly}
-              count={flaggedCheckCount}
+              count={attentionCheckCount}
               onToggle={() => setCheckFlaggedOnly((v) => !v)}
-              label="Show flagged checks only"
+              label="Show only checks that need attention"
+              text="Needs attention"
             />
           </div>
         </AdminPanelHeader>
@@ -485,80 +839,113 @@ export function EngineFeedbackManager() {
                     </TableHeader>
                     <TableBody>
                       {filteredChecks.map((c) => (
-                        <TableRow key={c.checkId} className="border-border/40">
-                          <TableCell className="px-5 py-3">
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium truncate">
-                                {c.title}
-                              </p>
-                              <p className="text-xs text-muted-foreground truncate font-mono">
-                                {c.checkId}
-                              </p>
-                            </div>
-                          </TableCell>
-                          <TableCell className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">
-                            {c.category ?? "Unknown"}
-                          </TableCell>
-                          <TableCell className="px-4 py-3">
-                            {c.severity ? (
-                              <SeverityBadge
-                                severity={toSeverity(c.severity)}
-                              />
-                            ) : (
-                              <span className="text-sm text-muted-foreground">
-                                Unknown
-                              </span>
-                            )}
-                          </TableCell>
-                          {/* Confirmed is the good number and False Pos. is
+                        <Fragment key={c.checkId}>
+                          <TableRow className="border-border/40">
+                            <TableCell className="px-5 py-3">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void toggleCheckExpanded(c.checkId)
+                                }
+                                aria-expanded={expandedCheck === c.checkId}
+                                aria-label={`${expandedCheck === c.checkId ? "Hide" : "Show"} the submitted verdicts for ${c.title}`}
+                                className="flex w-full min-w-0 items-start gap-2 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                              >
+                                <ChevronRight
+                                  className={cn(
+                                    "mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200 ease-out",
+                                    expandedCheck === c.checkId && "rotate-90",
+                                  )}
+                                  aria-hidden="true"
+                                />
+                                <span className="min-w-0">
+                                  <span className="block truncate text-sm font-medium">
+                                    {c.title}
+                                  </span>
+                                  <span className="block truncate font-mono text-xs text-muted-foreground">
+                                    {c.checkId}
+                                  </span>
+                                </span>
+                              </button>
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">
+                              {c.category ?? "Unknown"}
+                            </TableCell>
+                            <TableCell className="px-4 py-3">
+                              {c.severity ? (
+                                <SeverityBadge
+                                  severity={toSeverity(c.severity)}
+                                />
+                              ) : (
+                                <span className="text-sm text-muted-foreground">
+                                  Unknown
+                                </span>
+                              )}
+                            </TableCell>
+                            {/* Confirmed is the good number and False Pos. is
                               the bad one, and the four counts used to render
                               identically, so the only column carrying any
                               meaning was N/A and it was differentiated
                               downward. Each verdict now takes its own tone
                               once it is non-zero; a zero stays quiet so the
                               colour marks a real count, not an empty cell. */}
-                          <TableCell
-                            className={cn(
-                              "px-4 py-3 text-right text-sm tabular-nums",
-                              c.confirmed > 0
-                                ? "text-[hsl(var(--success))]"
-                                : "text-muted-foreground",
-                            )}
-                          >
-                            {c.confirmed}
-                          </TableCell>
-                          <TableCell
-                            className={cn(
-                              "px-4 py-3 text-right text-sm tabular-nums",
-                              c.falsePositive > 0
-                                ? "text-destructive"
-                                : "text-muted-foreground",
-                            )}
-                          >
-                            {c.falsePositive}
-                          </TableCell>
-                          <TableCell className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
-                            {c.notApplicable}
-                          </TableCell>
-                          <TableCell className="px-4 py-3 text-right text-sm font-medium tabular-nums text-foreground">
-                            {c.total}
-                          </TableCell>
-                          <TableCell className="px-5 py-3">
-                            <div className="flex items-center justify-end gap-2">
-                              <span
-                                className={cn(
-                                  "text-sm font-semibold tabular-nums",
-                                  c.flagged
-                                    ? "text-destructive"
-                                    : "text-foreground",
-                                )}
-                              >
-                                {c.falsePositiveRate}%
-                              </span>
-                              <FlaggedBadge flagged={c.flagged} />
-                            </div>
-                          </TableCell>
-                        </TableRow>
+                            <TableCell
+                              className={cn(
+                                "px-4 py-3 text-right text-sm tabular-nums",
+                                c.confirmed > 0
+                                  ? "text-[hsl(var(--success))]"
+                                  : "text-muted-foreground",
+                              )}
+                            >
+                              {c.confirmed}
+                            </TableCell>
+                            <TableCell
+                              className={cn(
+                                "px-4 py-3 text-right text-sm tabular-nums",
+                                c.falsePositive > 0
+                                  ? "text-destructive"
+                                  : "text-muted-foreground",
+                              )}
+                            >
+                              {c.falsePositive}
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                              {c.notApplicable}
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-right text-sm font-medium tabular-nums text-foreground">
+                              {c.total}
+                            </TableCell>
+                            <TableCell className="px-5 py-3">
+                              <div className="flex flex-wrap items-center justify-end gap-2">
+                                <span
+                                  className={cn(
+                                    "text-sm font-semibold tabular-nums",
+                                    needsAttention(c)
+                                      ? "text-destructive"
+                                      : "text-foreground",
+                                  )}
+                                >
+                                  {c.falsePositiveRate}%
+                                </span>
+                                <FlaggedBadge flagged={c.flagged} />
+                                <NeverConfirmedBadge
+                                  neverConfirmed={c.neverConfirmed}
+                                />
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                          {expandedCheck === c.checkId && (
+                            <TableRow className="border-border/40 hover:bg-transparent">
+                              <TableCell colSpan={8} className="px-5 pb-4 pt-0">
+                                <VerdictDetail
+                                  rows={verdicts[c.checkId]}
+                                  loading={verdictsLoading === c.checkId}
+                                  total={c.total}
+                                />
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </Fragment>
                       ))}
                     </TableBody>
                   </Table>
@@ -578,11 +965,14 @@ export function EngineFeedbackManager() {
                           {c.checkId}
                         </p>
                       </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0">
                         {c.severity && (
                           <SeverityBadge severity={toSeverity(c.severity)} />
                         )}
                         <FlaggedBadge flagged={c.flagged} />
+                        <NeverConfirmedBadge
+                          neverConfirmed={c.neverConfirmed}
+                        />
                       </div>
                     </div>
                     <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -612,12 +1002,40 @@ export function EngineFeedbackManager() {
                       <span
                         className={cn(
                           "font-semibold tabular-nums",
-                          c.flagged ? "text-destructive" : "text-foreground",
+                          needsAttention(c)
+                            ? "text-destructive"
+                            : "text-foreground",
                         )}
                       >
                         FP rate {c.falsePositiveRate}%
                       </span>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => void toggleCheckExpanded(c.checkId)}
+                      aria-expanded={expandedCheck === c.checkId}
+                      className="mt-2 inline-flex items-center gap-1 rounded-sm text-xs font-medium text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <ChevronRight
+                        className={cn(
+                          "h-3.5 w-3.5 transition-transform duration-200 ease-out",
+                          expandedCheck === c.checkId && "rotate-90",
+                        )}
+                        aria-hidden="true"
+                      />
+                      {expandedCheck === c.checkId
+                        ? "Hide verdicts"
+                        : "Show verdicts"}
+                    </button>
+                    {expandedCheck === c.checkId && (
+                      <div className="mt-2">
+                        <VerdictDetail
+                          rows={verdicts[c.checkId]}
+                          loading={verdictsLoading === c.checkId}
+                          total={c.total}
+                        />
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -954,6 +1372,77 @@ export function EngineFeedbackManager() {
       )}
 
       {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
+    </div>
+  );
+}
+
+/**
+ * The verdicts behind one check row: what the finding was on, what the
+ * submitter called it, and whatever they typed. The counts alone say a
+ * check is wrong; only this says what it is wrong ABOUT, which is the part
+ * someone can act on.
+ *
+ * Both `findingUrl` and `notes` were written by whoever submitted the
+ * feedback, so they render as text and nothing else. The URL is
+ * deliberately NOT a link: this page is staff-only, and a clickable
+ * attacker-chosen URL sitting in an admin table is a way to walk a staff
+ * member somewhere they did not choose to go. Values arrive already
+ * truncated from the route.
+ */
+function VerdictDetail({
+  rows,
+  loading,
+  total,
+}: {
+  rows: CheckVerdictEntry[] | undefined;
+  loading: boolean;
+  total: number;
+}) {
+  if (loading || !rows) {
+    return (
+      <div className="rounded-lg border border-border/50 bg-muted/30 p-3 text-xs text-muted-foreground">
+        Loading submitted verdicts...
+      </div>
+    );
+  }
+  if (rows.length === 0) {
+    return (
+      <div className="rounded-lg border border-border/50 bg-muted/30 p-3 text-xs text-muted-foreground">
+        No individual verdicts are stored for this check. The scan they came
+        from may have been deleted since.
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-lg border border-border/50 bg-muted/30 p-3">
+      <ul className="divide-y divide-border/40">
+        {rows.map((v) => (
+          <li key={v.id} className="py-2 first:pt-0 last:pb-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusPill tone={VERDICT_TONE[v.verdict]}>
+                {VERDICT_LABEL[v.verdict] ?? v.verdict}
+              </StatusPill>
+              <span className="min-w-0 flex-1 font-mono text-xs text-muted-foreground wrap-break-word">
+                {v.findingUrl || "(no URL recorded)"}
+              </span>
+              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                {new Date(v.createdAt).toLocaleDateString()}
+              </span>
+            </div>
+            {v.notes && (
+              <p className="mt-1 whitespace-pre-wrap wrap-break-word text-xs text-foreground/90">
+                {v.notes}
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
+      {total > rows.length && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Showing the {rows.length} most recent of {total}. Export the verdict
+          detail for the rest.
+        </p>
+      )}
     </div>
   );
 }

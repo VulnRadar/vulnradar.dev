@@ -151,6 +151,39 @@ describe("GET /api/v3/admin/engine-feedback/checks", () => {
     expect(json.minSampleSize).toBe(5);
   });
 
+  it("resolves an async-* check id through the async catalog, not the JSON registry", async () => {
+    // The regression: async findings get ids derived from their title
+    // (`async-<slug>`), which are in no checks-data JSON, so getCheckDef
+    // returned undefined and ~25 rows rendered "Category: Unknown,
+    // Severity: Unknown". getAsyncCheckDef is deliberately NOT mocked in
+    // this file, so this asserts against the real catalog.
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          finding_id: "async-missing-spf-record--1a2b",
+          verdict: "false_positive",
+          count: 1,
+        },
+        {
+          finding_id: "async-missing-spf-record--3c4d",
+          verdict: "confirmed",
+          count: 2,
+        },
+      ],
+    });
+    mockGetCheckDef.mockReturnValue(undefined);
+
+    const res = await GET();
+    const json = await res.json();
+    expect(json.checks[0]).toMatchObject({
+      checkId: "async-missing-spf-record",
+      title: "Missing SPF Record",
+      category: "configuration",
+      severity: "medium",
+    });
+  });
+
   it("falls back to the raw checkId as the title when the registry has no matching check", async () => {
     withAdmin();
     mockQuery.mockResolvedValueOnce({
@@ -170,7 +203,7 @@ describe("GET /api/v3/admin/engine-feedback/checks", () => {
     });
   });
 
-  it("sorts checks by false-positive rate descending", async () => {
+  it("sorts checks by how much evidence backs the complaint, not by raw rate", async () => {
     withAdmin();
     mockQuery.mockResolvedValueOnce({
       rows: [
@@ -187,6 +220,68 @@ describe("GET /api/v3/admin/engine-feedback/checks", () => {
       "b",
       "a",
     ]);
+  });
+
+  it("puts a never-confirmed critical above a low check sitting at the old threshold", async () => {
+    // The inversion the owner hit: vary-header-missing (low, 3 confirmed
+    // / 1 false / 5 total) was the flagged row, while credit-card-pattern
+    // (critical, 0 confirmed / 1 false) was not shown at all because n=1
+    // is under the sample floor.
+    withAdmin();
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          finding_id: "vary-header-missing--a",
+          verdict: "confirmed",
+          count: 3,
+        },
+        {
+          finding_id: "vary-header-missing--b",
+          verdict: "false_positive",
+          count: 1,
+        },
+        {
+          finding_id: "vary-header-missing--c",
+          verdict: "not_applicable",
+          count: 1,
+        },
+        {
+          finding_id: "credit-card-pattern--d",
+          verdict: "false_positive",
+          count: 1,
+        },
+      ],
+    });
+    mockGetCheckDef.mockImplementation((id: string) =>
+      id === "credit-card-pattern"
+        ? {
+            title: "Credit card pattern",
+            category: "secrets-extended",
+            severity: "critical",
+          }
+        : {
+            title: "Vary header missing",
+            category: "headers",
+            severity: "low",
+          },
+    );
+
+    const res = await GET();
+    const json = await res.json();
+    expect(json.checks.map((c: { checkId: string }) => c.checkId)).toEqual([
+      "credit-card-pattern",
+      "vary-header-missing",
+    ]);
+
+    const card = json.checks[0];
+    const vary = json.checks[1];
+    // The configured threshold rule is untouched: it still flags the low
+    // check and still cannot see the critical one.
+    expect(vary.flagged).toBe(true);
+    expect(card.flagged).toBe(false);
+    // The new rule is what makes the critical visible.
+    expect(card.neverConfirmed).toBe(true);
+    expect(vary.neverConfirmed).toBe(false);
   });
 
   it("returns a graceful 500 when the query fails", async () => {

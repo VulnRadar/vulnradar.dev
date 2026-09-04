@@ -19,10 +19,30 @@ export function downloadBlob(blob: Blob, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
-/** CSV-quote a value when it contains a comma, quote, or newline. */
+/**
+ * True for a cell Excel, LibreOffice or Sheets would hand to its formula
+ * parser instead of showing as text. Quoting per RFC 4180 does NOT stop
+ * this: the spreadsheet strips the quotes and evaluates what is inside, so
+ * `=HYPERLINK(...)` or `+cmd|'/c calc'!A0` typed into a scan note, a page
+ * title or a URL runs on the machine of whoever opens the export.
+ *
+ * A leading minus is only dangerous when it is not simply a negative
+ * number, so `-3` and `-0.5` still export as numbers rather than text.
+ */
+function isFormulaCell(value: string): boolean {
+  if (!/^[=+\-@\t\r]/.test(value)) return false;
+  return !/^-?\d+(\.\d+)?$/.test(value);
+}
+
+/**
+ * CSV-quote a value when it contains a comma, quote, or newline, and
+ * neutralise spreadsheet formula injection by prefixing a single quote,
+ * which every major spreadsheet reads as "the rest of this cell is text".
+ */
 export function escapeCsv(value: string): string {
-  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
-    return `"${value.replace(/"/g, '""')}"`;
+  const cell = isFormulaCell(value) ? `'${value}` : value;
+  if (cell.includes(",") || cell.includes('"') || cell.includes("\n")) {
+    return `"${cell.replace(/"/g, '""')}"`;
   }
-  return value;
+  return cell;
 }
