@@ -469,6 +469,58 @@ const fixtures: DetectorFixtures = {
       body: "<!-- -->temporarily add <code>console.log</code> in your handler<!-- -->",
       expect: "skip",
     },
+    {
+      description:
+        "a comment naming Hacker News does not fire -- HACK had no word boundary, so it matched inside hacker/hackathon/life-hack",
+      body: "<!-- Hacker News share button -->",
+      expect: "skip",
+    },
+    {
+      description:
+        "a comment labelling a to-do list does not fire -- TODO had no word boundary, so it matched inside 'todos'",
+      body: "<!-- todos are rendered below -->",
+      expect: "skip",
+    },
+    {
+      description:
+        "a rule of x characters does not fire -- XXX had no word boundary",
+      body: "<!-- xxxxxxxxxxxxxxxx section break xxxxxxxxxxxxxxxx -->",
+      expect: "skip",
+    },
+    {
+      description: "a FIXME annotation still fires",
+      body: "<!-- FIXME: the retry loop here is wrong -->",
+      expect: "fire",
+      evidenceIncludes: "developer notes",
+    },
+  ],
+
+  "exposed-session-id": [
+    {
+      description:
+        "an opaque 32-character PHPSESSID in a link's query string fires",
+      body: '<a href="/dashboard?PHPSESSID=a3f9c2e18b7d40f6a5c1e9b2d7f04c83">Dashboard</a>',
+      expect: "fire",
+      evidenceIncludes: "session fixation",
+    },
+    {
+      description:
+        "an API docs snippet with a named placeholder does not fire -- the literal text '?session_id=' on a page is far more often documentation than a leak",
+      body: "<pre><code>GET /v1/sessions?session_id=YOUR_SESSION_ID</code></pre>",
+      expect: "skip",
+    },
+    {
+      description:
+        "?sid= carrying a small integer does not fire -- sid is used for store/section/slide ids all over the web and a real session token is never 2 digits",
+      body: '<a href="/catalog?sid=42">Store 42</a>',
+      expect: "skip",
+    },
+    {
+      description:
+        "a templated href with the id not yet substituted does not fire",
+      body: '<a href="/view?session_id={{currentUserSessionIdentifier}}">View</a>',
+      expect: "skip",
+    },
   ],
   "sensitive-endpoints": [
     {

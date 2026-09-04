@@ -972,7 +972,6 @@ export const detectors: Record<string, DetectFn> = {
       if (name) directives.set(name, trimmed);
     }
     const scriptSrc = directives.get("script-src") || "";
-    const defaultSrc = directives.get("default-src") || "";
     const issues: string[] = [];
     if (scriptSrc.includes("'none'") && scriptSrc.includes("'unsafe-inline'")) {
       issues.push(
@@ -982,13 +981,25 @@ export const detectors: Record<string, DetectFn> = {
     if (scriptSrc.includes("'none'") && scriptSrc.includes("'unsafe-eval'")) {
       issues.push("script-src 'none' combined with 'unsafe-eval'");
     }
-    if (defaultSrc.includes("'none'") && /\*\s*$/.test(scriptSrc)) {
-      issues.push("default-src 'none' but script-src allows wildcard");
-    }
-    if (/\ballow-http\b/i.test(csp)) {
+    // Removed: `default-src 'none'` + a script-src ending in `*`.
+    //
+    // Two things were wrong with it. default-src is a fallback, not a
+    // ceiling: CSP is specified so that a more permissive script-src
+    // legitimately overrides it, so the pair is not a contradiction and
+    // certainly not an "unsupported directive". And `/\*\s*$/` tests the
+    // end of the directive string, so it also matched a tightly scoped
+    // path wildcard (`script-src 'self' https://cdn.example.com/js/*`),
+    // which is the opposite of a wildcard host. A genuinely wildcard
+    // script-src is already reported by `csp-wildcard-source` and
+    // `page-csp-wildcard-host-source`.
+    //
+    // allow-http / reflected-xss are matched as directive NAMES, not as
+    // substrings of the whole header: a host, a report endpoint path or a
+    // nonce that happens to contain either word is not a directive.
+    if (directives.has("allow-http")) {
       issues.push("deprecated 'allow-http' directive is ignored");
     }
-    if (/\breflected-xss\b/i.test(csp)) {
+    if (directives.has("reflected-xss")) {
       issues.push("removed 'reflected-xss' directive is ignored");
     }
     return issues.length > 0
@@ -1255,8 +1266,23 @@ export const detectors: Record<string, DetectFn> = {
     const tags =
       body.match(/<meta\s+http-equiv=["\']?refresh[^>]{0,2000}>/gi) || [];
     for (const tag of tags) {
-      const content = tag.match(/content=["\']?([^"'>]*)["\']?/i)?.[1]?.trim();
-      if (content === undefined) continue;
+      // The attribute value is read with the quote character it opened
+      // with. The old pattern was `content=["']?([^"'>]*)`, which had two
+      // defects, and both produced findings on working redirects:
+      //
+      //   content="0;url='https://example.com'"  ->  captured `0;url=`
+      //     because the class stops at the inner single quote, so the
+      //     "empty URL target" branch matched a redirect that has a target.
+      //     Quoting the URL inside meta refresh is a long-standing idiom.
+      //
+      //   <meta http-equiv=refresh data-content="" content="5">  ->  the
+      //     unanchored `content=` matched inside `data-content=` first and
+      //     read the empty value of the wrong attribute.
+      const attr = tag.match(
+        /(?:^|[\s"'])content\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]*))/i,
+      );
+      if (!attr) continue;
+      const content = (attr[1] ?? attr[2] ?? attr[3] ?? "").trim();
       // A plain interval-only content (e.g. content="30") with no url=
       // segment at all is the standard self-refresh idiom (auto-reloading
       // dashboards, queue/status pages) -- not a broken redirect. Only flag
@@ -1616,38 +1642,59 @@ function isSandboxExemptEmbed(src: string): boolean {
 
 /**
  * Helper for the `permissions-policy-*-blocked` detectors.
- * Returns an evidence string when the Permissions-Policy header allows
- * the named feature (either explicitly via `*` or by not restricting it
- * with a `feature=()` token). Returns null when the policy is absent or
- * the feature is properly restricted.
+ *
+ * Returns an evidence string only when the policy hands the named feature to
+ * *every* origin, which is the case where an embedded third party inherits
+ * it. A site granting a feature to itself is not a finding, and a site that
+ * did not mention the feature at all is judged by `excessive-permissions`,
+ * not here.
+ *
+ * The two header syntaxes are not interchangeable and used to be conflated:
+ *
+ *   Permissions-Policy: camera=(), fullscreen=(self)     // `name=value`
+ *   Feature-Policy:     camera 'none'; fullscreen 'self' // `name allowlist`
+ *
+ * The old single regex looked for `feature` followed by an OPTIONAL `=value`,
+ * and treated a missing value as `*`. Under Feature-Policy there is never an
+ * `=`, so every feature a legacy Feature-Policy header restricted was read as
+ * `feature=*` and reported as allowed. `Feature-Policy: fullscreen 'self'`,
+ * about as locked down as that header gets, produced a finding claiming it
+ * allowed `fullscreen=*`.
  */
 function ppAllowsFeature(headers: Headers, feature: string): string | null {
-  const pp = h(headers, "permissions-policy") || h(headers, "feature-policy");
-  if (!pp) return null;
-  // Look for `feature=` token and check its value. Without a value the
-  // feature is unrestricted in the policy's syntax.
-  const tokenRe = new RegExp(
-    `(?:^|[,\\s])${feature}\\s*(=\\s*([^,\\s]+))?`,
-    "i",
-  );
-  const match = pp.match(tokenRe);
-  if (!match) {
-    // Feature not mentioned at all — in modern Permissions-Policy that
-    // means "allow" (consistent with the existing `excessive-permissions`
-    // semantics and the JSON descriptions that say the feature "should
-    // default to 'self'"). Don't fire on this in isolation to avoid noise
-    // when the policy is otherwise tight.
+  const permissionsPolicy = h(headers, "permissions-policy");
+  const featurePolicy = h(headers, "feature-policy");
+  const header = permissionsPolicy || featurePolicy;
+  if (!header) return null;
+
+  // Entries are separated by ',' (Permissions-Policy) or ';' (Feature-Policy);
+  // servers mix them. Neither separator is legal inside an allowlist, so
+  // splitting on both is safe.
+  const lowerFeature = feature.toLowerCase();
+  for (const rawEntry of header.split(/[,;]/)) {
+    const entry = rawEntry.trim();
+    if (!entry.toLowerCase().startsWith(lowerFeature)) continue;
+    const rest = entry.slice(feature.length);
+    // Guard against a longer feature name that merely starts with this one.
+    if (rest && !/^[\s=]/.test(rest)) continue;
+
+    const allowlist = rest.replace(/^\s*=?\s*/, "").trim();
+    // `feature=*` (Permissions-Policy) or `feature *` (Feature-Policy). A
+    // parenthesised list is scanned for a bare `*` member; `(self)`,
+    // `("https://x.example")`, `()` and `'none'` are all restrictive.
+    const members = allowlist
+      .replace(/^\(|\)$/g, "")
+      .trim()
+      .split(/\s+/);
+    if (members.includes("*")) {
+      return `Permissions-Policy allows '${feature}=*' (every origin, including any embedded third party).`;
+    }
     return null;
   }
-  const value = (match[2] || "*").toLowerCase().trim();
-  if (value === "*" || value === "src") {
-    return `Permissions-Policy allows '${feature}=${value}'.`;
-  }
-  if (value === "self" || value === '("self")') return null;
-  // feature=() or other restrictive token — fire only if it looks like
-  // an explicit allow-list value.
-  if (/^\(.*\)$/.test(value) && value !== "()" && !value.includes("'none'")) {
-    return null;
-  }
+  // Feature not mentioned at all — in modern Permissions-Policy that
+  // means "allow" (consistent with the existing `excessive-permissions`
+  // semantics and the JSON descriptions that say the feature "should
+  // default to 'self'"). Don't fire on this in isolation to avoid noise
+  // when the policy is otherwise tight.
   return null;
 }

@@ -32,9 +32,21 @@ const fixtures: DetectorFixtures = {
     },
     {
       description:
-        "a Luhn-valid card-shaped number that is NOT in the known-test-card list fires",
-      body: "leaked: 4532015112830366",
+        "a Luhn-valid card-shaped number next to payment vocabulary fires",
+      body: '<label>Card number</label><input value="4532015112830366">',
       expect: "fire",
+    },
+    {
+      description:
+        "a Luhn-valid card-shaped order reference with no payment vocabulary anywhere near it does not fire -- Luhn is one check digit, so roughly one in ten card-prefixed 16-digit ids passes it by chance, and this check was firing critical on those",
+      body: "<p>Your order reference is 4532015112830366. Keep it for your records.</p>",
+      expect: "skip",
+    },
+    {
+      description:
+        "a card-shaped window carved out of a longer run of space-separated digit groups (an SVG path's coordinates, a numeric table) does not fire",
+      body: '<p class="checkout">7781 4532 0151 1283 0366 9214</p>',
+      expect: "skip",
     },
   ],
 
@@ -141,6 +153,24 @@ const fixtures: DetectorFixtures = {
       description:
         "S3 URL whose object path suggests a backup/credentials dump fires",
       body: '<a href="https://mybucket.s3.amazonaws.com/backups/db-dump.sql">backup</a>',
+      expect: "fire",
+      evidenceIncludes: "sensitive path",
+    },
+    {
+      description:
+        "a public front-end config file served from S3 does not fire -- 'config' was matched as a bare substring and every SPA ships one of these",
+      body: '<script src="https://mybucket.s3.amazonaws.com/assets/config.json"></script>',
+      expect: "skip",
+    },
+    {
+      description:
+        "a private-beta marketing asset does not fire -- 'private' used to match as a bare substring anywhere in the path",
+      body: '<img src="https://mybucket.s3.eu-west-1.amazonaws.com/media/private-beta-invite.png">',
+      expect: "skip",
+    },
+    {
+      description: "an exposed .env object still fires",
+      body: '<a href="https://mybucket.s3.amazonaws.com/deploy/.env">env</a>',
       expect: "fire",
       evidenceIncludes: "sensitive path",
     },

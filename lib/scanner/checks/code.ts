@@ -360,6 +360,19 @@ const CREDENTIAL_VALUE_PLACEHOLDERS = new Set([
   "new password",
   "old password",
   "current password",
+  // Form/DOM vocabulary that lands on the value side of `password: "..."`
+  // in field descriptors and validation schemas.
+  "input",
+  "hidden",
+  "field",
+  "label",
+  "value",
+  "required",
+  "optional",
+  "number",
+  "boolean",
+  "object",
+  "array",
 ]);
 
 /**
@@ -371,6 +384,18 @@ const CREDENTIAL_VALUE_PLACEHOLDERS = new Set([
  * indistinguishable from copy here, so excluding it trades a rare miss for
  * a common false positive), and not a template-interpolation placeholder
  * (`{{password}}`, `${password}`) left in a framework template.
+ *
+ * Two further shapes were added after this check reached a 0-confirmed /
+ * all-false-positive record at "critical" severity:
+ *
+ *  - A route, URL, selector or data URI (`/account/password`, `#password`,
+ *    `https://…/reset`). These have no spaces and pass every other rule, but
+ *    a link target is not a credential.
+ *  - A capitalised, purely alphabetic word. That is the shape of UI copy and
+ *    of an i18n bundle's translated label ("Password", "Passwort",
+ *    "Contraseña", "Senha"), never of a secret anyone typed into source.
+ *    Lower-case dictionary words are deliberately still allowed through:
+ *    "changeme", "hunter", "secret" are real hard-coded passwords.
  */
 function isPlausibleCredentialValue(value: string): boolean {
   const v = value.trim();
@@ -378,6 +403,8 @@ function isPlausibleCredentialValue(value: string): boolean {
   if (/\s/.test(v)) return false;
   if (/^[*•.]+$/.test(v)) return false; // masked-input placeholder dots
   if (/^\{\{.*\}\}$|^\$\{.*\}$|^%[sd]$/.test(v)) return false;
+  if (/^(?:[a-z][a-z0-9+.-]*:|[./#]|\.\.?\/)/i.test(v)) return false; // URL / path / selector
+  if (/^\p{Lu}\p{L}*$/u.test(v)) return false; // "Password", "Contraseña"
   return !CREDENTIAL_VALUE_PLACEHOLDERS.has(v.toLowerCase());
 }
 
@@ -925,8 +952,16 @@ export const detectors: Record<string, DetectFn> = {
   // ── Auth enumeration / hardcoded credentials ────────────────────────────
 
   "hardcoded-credentials": (_url, _headers, body) => {
+    // The `\b(admin|root)\b\s*[:=]\s*"..."` pattern that used to sit
+    // alongside this one is gone. The value bound to a key named `admin` or
+    // `root` is not a credential -- it is a route (`admin: "/admin"`), a
+    // class name (`root: "MuiButton-root"`), a role label, or a container
+    // selector (`root: "#app"`), and none of those are secrets. It fired at
+    // "critical" on all of them. The case it was reaching for, a default
+    // administrator login, is covered by `default-credentials` (admin/admin
+    // style pairs) and by `insecure-auth`'s username+password pair pattern,
+    // both of which require the password half to be present.
     const patterns = [
-      /\b(?:admin|root)\b\s*[:=]\s*["']([^"']+)["']/gi,
       /\b(?:password|passwd|pwd)\b\s*[:=]\s*["']([^"']+)["']/gi,
     ];
     const siblingPairPattern = /\w+\s*[:=]\s*["'][^"']+["']/g;
@@ -1400,11 +1435,29 @@ export const detectors: Record<string, DetectFn> = {
     // un-terminated template literal (no backtick in between, so still the
     // same string) and bounds the distance to a realistic single
     // expression's length.
-    if (
+    const interpolatedTag =
       /\bhtml\s*`[^`]{0,500}\$\{/i.test(body) ||
-      /\bsvg\s*`[^`]{0,500}\$\{/i.test(body)
+      /\bsvg\s*`[^`]{0,500}\$\{/i.test(body);
+    if (!interpolatedTag) return null;
+    // An interpolated html`...` on its own is not a vulnerability, and
+    // firing "high" on it meant firing on every page that ships lit-html,
+    // lit-element, uhtml or htm -- all of which bind interpolated values as
+    // text/attribute nodes and escape them by construction. That is what
+    // this check's own description already conceded ("if the tag function
+    // does not HTML-escape the interpolated values"), so the condition now
+    // requires evidence that it does not.
+    if (/\bunsafe(?:HTML|SVG|Static)\s*\(/.test(body)) {
+      return "Tagged template literal (html`...`) used together with unsafeHTML()/unsafeSVG() - that directive inserts the interpolated value as raw markup, so an attacker-controlled value becomes script.";
+    }
+    // A tag function the page defines itself. The `(strings, ...values)`
+    // signature concatenating its arguments is the hand-rolled, non-escaping
+    // shape; a library import would not appear inline like this.
+    if (
+      /(?:function\s+(?:html|svg)\s*\(\s*strings\b|(?:const|let|var)\s+(?:html|svg)\s*=\s*(?:function\s*)?\(\s*strings\b)/i.test(
+        body,
+      )
     ) {
-      return "Tagged template literal (html`...`) - XSS if interpolations are unescaped.";
+      return "Page defines its own html`...` tag function over (strings, ...values) and interpolates into it - the values are concatenated into markup without escaping.";
     }
     // Removed: the <script>...`...${ fallback matched "a <script> tag
     // exists, and a backtick exists somewhere after it, and ${ exists

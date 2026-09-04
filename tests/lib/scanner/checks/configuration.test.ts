@@ -311,6 +311,29 @@ const fixtures: DetectorFixtures = {
       headers: { "content-type": "text/html; charset=utf-8" },
       expect: "skip",
     },
+    {
+      // The failure mode is a SHARED cache handing a stored compressed body
+      // to a client that never asked for compression. A response no shared
+      // cache may store cannot do that, which is the same exemption
+      // vary-header-cookie already applies.
+      description:
+        "gzip response marked Cache-Control: no-store does not fire -- nothing can store it, so there is nothing to mis-serve",
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "content-encoding": "gzip",
+        "cache-control": "no-store",
+      },
+      expect: "skip",
+    },
+    {
+      description:
+        "Content-Encoding: identity is not compression and does not fire",
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "content-encoding": "identity",
+      },
+      expect: "skip",
+    },
   ],
 
   "vary-header-missing-user-agent": [
@@ -363,6 +386,22 @@ const fixtures: DetectorFixtures = {
         "cache-control": "public, max-age=3600",
       },
       expect: "fire",
+    },
+    {
+      // vary-cookie-on-static-resource reports Vary: Cookie on a static
+      // asset as a defect, so demanding it here on the same URL made the
+      // two checks contradict each other. A CDN attaching a bot-management
+      // or analytics cookie to a .js response is common and the body is
+      // identical for every visitor.
+      description:
+        "a bundled .js asset that happens to carry a Set-Cookie does not fire -- the body is the same bytes for every user",
+      url: "https://example.com/_next/static/chunks/main.js",
+      cookies: ["__cf_bm=abc; Path=/"],
+      headers: {
+        "content-type": "application/javascript",
+        "cache-control": "public, max-age=31536000",
+      },
+      expect: "skip",
     },
   ],
 

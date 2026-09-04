@@ -287,13 +287,21 @@ export const detectors: Record<string, DetectFn> = {
   // aws-metadata-reference, s3-bucket-exposed, firebase-config-exposed, jwt-in-html,
   // jwt-in-url, token-exposure: secrets-extended (bundle 8) wins; removed dead duplicates here.
 
+  // Kept byte-for-byte in step with the copy in checks/content.ts, which is
+  // the one the registry actually resolves (the definition lives in
+  // content.json). See that copy for why the value is validated.
   "exposed-session-id": (_url, _headers, body) => {
-    if (
-      /[?&](?:session_id|sid|PHPSESSID|JSESSIONID|ASP\.NET_SessionId)=/gi.test(
-        body,
-      )
-    ) {
-      return "Session ID exposed in URL - session fixation risk.";
+    const re =
+      /[?&](?:amp;)?(session_id|sid|PHPSESSID|JSESSIONID|ASP\.NET_SessionId)=([^&"'\s<>#]*)/gi;
+    for (const m of body.matchAll(re)) {
+      const value = m[2];
+      if (value.length < 16) continue;
+      if (!/^[A-Za-z0-9._~+-]+$/.test(value)) continue;
+      if (/^\d+$/.test(value)) continue;
+      if (/^[A-Z0-9_]+$/.test(value)) continue;
+      if (/^(?:x{4,}|0{4,}|placeholder|example|your|abc123|test)/i.test(value))
+        continue;
+      return `Session ID exposed in URL (${m[1]}=) - session fixation risk.`;
     }
     return null;
   },

@@ -51,6 +51,30 @@ const fixtures: DetectorFixtures = {
       body: '<script>const ROLE_LABELS = { admin: "Administrator", root: "FullAccess", editor: "Editor" };</script>',
       expect: "skip",
     },
+    {
+      description:
+        'a two-entry route table ({ admin: "/admin/dashboard" }) does not fire -- the value of an `admin` key is a route, not a credential, and there are too few sibling pairs for the label-map guard to catch it',
+      body: '<script>const ROUTES = { admin: "/admin/dashboard" };</script>',
+      expect: "skip",
+    },
+    {
+      description:
+        'a CSS-in-JS class map ({ root: "MuiButton-root" }) does not fire',
+      body: '<script>const classes = { root: "MuiButton-root" };</script>',
+      expect: "skip",
+    },
+    {
+      description:
+        'a translated field label ({ password: "Contraseña" }) does not fire -- a capitalised alphabetic word is UI copy, not a secret',
+      body: '<script>const es = { password: "Contraseña" };</script>',
+      expect: "skip",
+    },
+    {
+      description:
+        'a link to the password-reset route ({ password: "/account/password" }) does not fire',
+      body: '<script>const links = { password: "/account/password" };</script>',
+      expect: "skip",
+    },
   ],
 
   "insecure-auth": [
@@ -139,9 +163,23 @@ const fixtures: DetectorFixtures = {
   "code-xss-template-tag": [
     {
       description:
-        "interpolation inside the same html`...` tagged template fires -- genuine risk if unescaped",
-      body: "<script>function render(x){ return html`<div>${x}</div>`; }</script>",
+        "an interpolation handed to lit's unsafeHTML() directive fires -- that directive is the documented escape hatch out of the tag function's escaping",
+      body: "<script>import {unsafeHTML} from 'lit/directives/unsafe-html.js'; const t = html`<div>${unsafeHTML(userBio)}</div>`;</script>",
       expect: "fire",
+      evidenceIncludes: "unsafeHTML",
+    },
+    {
+      description:
+        "a hand-rolled (strings, ...values) tag function that concatenates its interpolations fires",
+      body: "<script>const html = (strings, ...values) => strings.reduce((a, s, i) => a + s + (values[i] ?? ''), ''); document.body.append(html`<p>${userName}</p>`);</script>",
+      expect: "fire",
+      evidenceIncludes: "own html",
+    },
+    {
+      description:
+        "plain lit-html usage does not fire -- lit binds interpolated values as text/attribute nodes and escapes them, so `you use a tagged template` is not by itself a vulnerability (this check fired high severity on every page shipping lit, uhtml or htm)",
+      body: "<script>import {html, render} from 'lit'; render(html`<div>${name}</div>`, el);</script>",
+      expect: "skip",
     },
     {
       description:

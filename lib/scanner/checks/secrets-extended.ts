@@ -185,6 +185,27 @@ const KNOWN_TEST_CARD_NUMBERS = new Set([
 ]);
 
 /**
+ * Payment vocabulary that has to appear next to a card-shaped number before
+ * it counts as a leak.
+ *
+ * Luhn is a single check digit: roughly one in ten 16-digit strings with a
+ * card-network prefix passes it by chance, and card prefixes ("4", "51"-"55",
+ * "34"/"37", "6011", "65") cover a large slice of the digit space. Order
+ * references, tracking numbers, analytics identifiers, ISBN/EAN-shaped codes
+ * and space-separated numeric tables therefore clear both the format regex
+ * and Luhn regularly, and this check has never once been confirmed by a user
+ * as a real finding while firing at "critical". A genuine card number in a
+ * response is essentially always adjacent to payment vocabulary (a form
+ * label, a field name, a receipt line), so requiring that context removes
+ * the noise class without touching the leak it exists to catch.
+ *
+ * Deliberately excludes the weak signals "card" on its own (UI "cards" are
+ * everywhere), "visa" (travel copy) and "discover" (marketing copy).
+ */
+const CARD_CONTEXT_RE =
+  /credit[\s_-]*card|debit[\s_-]*card|card[\s_-]*(?:number|holder|no\b|num\b|nr\b)|cardnumber|\bccnum|\bcc[\s_-]*(?:number|num\b|no\b)|\bpayment|\bbilling|\bcheckout|\bcvv\b|\bcvc\b|\bexp(?:iry|iration)|\bexp[\s_-]*(?:month|year|date)|\bmastercard\b|\bamex\b|american express|\bpan\b/i;
+
+/**
  * Shannon entropy in bits/character. Higher means the character sequence
  * is closer to uniformly random (no repeated substructure), which is the
  * shape of generated credential material as opposed to prose, identifiers,
@@ -297,11 +318,25 @@ const rawDetectors: Record<string, DetectFn> = {
     const stripped = stripExampleContent(body);
     const re =
       /\b(?:4\d{3}|5[1-5]\d{2}|3[47]\d{2}|6(?:011|5\d{2}))[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g;
-    const matches = (stripped.match(re) || []).filter((m) => {
-      const digitsOnly = m.replace(/[\s-]/g, "");
-      if (KNOWN_TEST_CARD_NUMBERS.has(digitsOnly)) return false;
-      return passesLuhnCheck(digitsOnly);
-    });
+    const matches: string[] = [];
+    for (const m of stripped.matchAll(re)) {
+      const digitsOnly = m[0].replace(/[\s-]/g, "");
+      if (KNOWN_TEST_CARD_NUMBERS.has(digitsOnly)) continue;
+      if (!passesLuhnCheck(digitsOnly)) continue;
+      const idx = m.index ?? 0;
+      const end = idx + m[0].length;
+      // Part of a longer run of separated digit groups (a numeric table, an
+      // SVG path's coordinate list, a serialized binary blob): the \b anchors
+      // are satisfied by the separator, so the format regex happily carves a
+      // card-shaped window out of the middle of one.
+      if (/\d[\s-]$/.test(stripped.slice(Math.max(0, idx - 8), idx))) continue;
+      if (/^[\s-]\d/.test(stripped.slice(end, end + 2))) continue;
+      if (
+        !CARD_CONTEXT_RE.test(stripped.slice(Math.max(0, idx - 120), end + 60))
+      )
+        continue;
+      matches.push(m[0]);
+    }
     if (matches.length > 0)
       return `Found ${matches.length} credit-card-number-pattern match(es) in source.`;
     return null;
@@ -403,10 +438,18 @@ const rawDetectors: Record<string, DetectFn> = {
     // asset hosting (logos, downloads, images), not a misconfiguration --
     // only flag it when the object path itself suggests sensitive content,
     // mirroring aws-metadata-reference's context check below.
+    // "config" and "private" used to be in this list as bare substrings and
+    // were the noise: /assets/config.json is an ordinary public front-end
+    // config, and "private" matches inside privacy-policy.pdf, private-beta,
+    // reconfigure, configurator. The tokens below are ones that only appear
+    // on an object nobody meant to publish, and each has to be a whole path
+    // segment or a real file extension rather than a substring.
+    const sensitivePath =
+      /(?:^|[/_.-])(?:backups?|dumps?|db[_-]?dumps?|credentials?|secrets?|id_rsa|private[_-]?keys?)(?:$|[/_.-])|\.(?:env|sql|bak|dump|pem|key|p12|pfx|kdbx)(?:$|[?#.])/i;
     const re =
       /https?:\/\/[\w.-]+\.s3(?:\.[\w-]+)?\.amazonaws\.com(\/[^\s"'<>]*)?/gi;
     const matches = [...body.matchAll(re)].filter((m) =>
-      /backup|\.env|config|private|dump|\.sql|credentials/i.test(m[1] || ""),
+      sensitivePath.test(m[1] || ""),
     );
     if (matches.length > 0)
       return `Found ${matches.length} AWS S3 bucket URL reference(s) with a sensitive path segment in source.`;

@@ -21,6 +21,25 @@ function hasScript(body: string): boolean {
   return /<script[\s\S]*?>/i.test(body);
 }
 
+/**
+ * Decodes `value` only if it is genuinely canonical base64, returning the
+ * bytes as latin1 so every byte survives for the printability test.
+ *
+ * `Buffer.from(x, "base64")` silently skips characters it does not
+ * recognise and tolerates a wrong length, so it "succeeds" on any string.
+ * The round-trip comparison is what makes this a validation rather than a
+ * decode: a hex digest or a random token re-encodes to something other than
+ * the input, so it is rejected before it can be inspected.
+ */
+function decodeStrictBase64(value: string): string | null {
+  if (value.length % 4 !== 0) return null;
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value)) return null;
+  const buf = Buffer.from(value, "base64");
+  if (buf.length === 0) return null;
+  if (buf.toString("base64") !== value) return null;
+  return buf.toString("latin1");
+}
+
 // Matches actual exception-handling code (a catch block, a window.onerror
 // handler, an "error" event listener) so the generic-error-message check
 // below only fires when a quoted phrase sits near real error handling, not
@@ -327,11 +346,27 @@ const rawDetectors: Record<string, DetectFn> = {
 
   "vibe-base64-sensitive": (_url, _headers, body) => {
     if (!hasScript(body)) return null;
-    // Base64-encoded strings that look like credentials when decoded
+    // The value used to be accepted on its character class alone
+    // (`[A-Za-z0-9+/]{20,}`), which is satisfied by every hex digest,
+    // random session/CSRF token, build id and opaque public key on the
+    // page. None of those are "base64-encoded credentials", and the check
+    // fired "high" on them.
+    //
+    // This check's own description is what to implement: a value that
+    // *decodes* to a secret. So decode it. Random bytes and hex digests
+    // decode to unprintable garbage; an actually base64-wrapped credential
+    // decodes to readable text (`dXNlcjpwYXNzd29yZA==` -> `user:password`).
     const pattern =
-      /(?:password|secret|token|credential|api.?key)\s*[=:]\s*["'][A-Za-z0-9+/]{20,}={0,2}["']/i;
-    if (pattern.test(body)) {
-      return "Base64-encoded value assigned to credential variable — Base64 is encoding, not encryption.";
+      /(?:password|secret|token|credential|api.?key)\s*[=:]\s*["']([A-Za-z0-9+/]{20,}={0,2})["']/gi;
+    for (const m of body.matchAll(pattern)) {
+      const decoded = decodeStrictBase64(m[1]);
+      if (!decoded) continue;
+      if (decoded.length < 6) continue;
+      // Printable ASCII only. One unprintable byte means the input was a
+      // digest or a random token that merely happened to use the base64
+      // alphabet, not text somebody encoded.
+      if (/[^\x20-\x7e]/.test(decoded)) continue;
+      return "Credential variable holds a Base64 value that decodes to readable text: Base64 is encoding, not encryption.";
     }
     return null;
   },

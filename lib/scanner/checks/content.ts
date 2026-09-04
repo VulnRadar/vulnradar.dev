@@ -1329,12 +1329,29 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "exposed-session-id": (_url, _headers, body) => {
-    if (
-      /[?&](?:session_id|sid|PHPSESSID|JSESSIONID|ASP\.NET_SessionId)=/gi.test(
-        body,
-      )
-    ) {
-      return "Session ID exposed in URL - session fixation risk.";
+    // The parameter name alone is not enough. `sid` in particular is used
+    // for store/section/slide/school ids all over the web, and the single
+    // most common way a real page contains the literal text
+    // "?session_id=" is an API docs snippet
+    // (`GET /v1/sessions?session_id=YOUR_SESSION_ID`) or a templated href
+    // (`?sid={{id}}`) -- neither of which leaks anything.
+    //
+    // A genuinely leaked session identifier is an opaque token: PHPSESSID
+    // defaults to 26 characters, JSESSIONID and ASP.NET_SessionId to 32,
+    // and every framework's `session_id` is comparable. Requiring that
+    // shape keeps the session-fixation finding and drops the row ids and
+    // the placeholders.
+    const re =
+      /[?&](?:amp;)?(session_id|sid|PHPSESSID|JSESSIONID|ASP\.NET_SessionId)=([^&"'\s<>#]*)/gi;
+    for (const m of body.matchAll(re)) {
+      const value = m[2];
+      if (value.length < 16) continue;
+      if (!/^[A-Za-z0-9._~+-]+$/.test(value)) continue; // {{id}}, ${sid}, %7B..%7D
+      if (/^\d+$/.test(value)) continue; // numeric row id, not a token
+      if (/^[A-Z0-9_]+$/.test(value)) continue; // YOUR_SESSION_ID
+      if (/^(?:x{4,}|0{4,}|placeholder|example|your|abc123|test)/i.test(value))
+        continue;
+      return `Session ID exposed in URL (${m[1]}=) - session fixation risk.`;
     }
     return null;
   },
@@ -2025,10 +2042,16 @@ export const detectors: Record<string, DetectFn> = {
     // example, a "debuggerUrl" API field name) -- close enough to still
     // false-positive under a 300-char bound. Matching comment-by-comment
     // has no such distance assumption to get wrong.
+    //
+    // The keywords are word-bounded. Without \b, "HACK" matched inside
+    // "Hacker News" and "life-hack", "TODO" inside "todos" (every to-do
+    // sample app), and "XXX" inside any run of x's used as a rule or a
+    // redaction. Those were the noise, not the annotations themselves.
+    // console.log has to be an actual call, not the phrase "console log".
     const comments = body.match(/<!--(?:[^-]|-(?!->))*-->/gi) || [];
     if (
       comments.some((c) =>
-        /(?:TODO|FIXME|XXX|HACK|console\.log|debugger)/i.test(c),
+        /\b(?:TODO|FIXME|XXX|HACK)\b|\bconsole\.log\s*\(|\bdebugger\b/i.test(c),
       )
     ) {
       return "HTML comment contains developer notes (TODO/FIXME/debugger).";

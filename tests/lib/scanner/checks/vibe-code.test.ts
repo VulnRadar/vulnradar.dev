@@ -17,6 +17,22 @@ import { detectors } from "@/lib/scanner/checks/vibe-code";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {
+  "vibe-base64-sensitive": [
+    {
+      description:
+        "a Base64 blob that decodes to user:password assigned to a credential variable fires -- this is the pattern the check is named for",
+      body: '<script>const secret = "dXNlcjpwYXNzd29yZDEyMw==";</script>',
+      expect: "fire",
+      evidenceIncludes: "Base64",
+    },
+    {
+      description:
+        "a 32-character hex CSRF token does not fire -- hex satisfies the Base64 character class but decodes to unprintable bytes, so it was never an encoded credential",
+      body: '<script>const csrfToken = "9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c";</script>',
+      expect: "skip",
+    },
+  ],
+
   "vibe-eval-usage": [
     {
       description:

@@ -152,6 +152,34 @@ const fixtures: DetectorFixtures = {
       cookies: ["session=abc"],
       expect: "skip",
     },
+    {
+      description:
+        "Google Analytics' _ga with a site-wide Domain does not fire -- cross-subdomain is the entire point of that cookie and it authenticates nobody",
+      cookies: ["_ga=GA1.1.1234567890.1700000000; Domain=.example.com; Path=/"],
+      expect: "skip",
+    },
+    {
+      description:
+        "a consent-banner cookie with a site-wide Domain does not fire",
+      cookies: ["OptanonConsent=groups=C0001%3A1; Domain=.example.com"],
+      expect: "skip",
+    },
+    {
+      description:
+        "a locale preference cookie with a site-wide Domain does not fire",
+      cookies: ["NEXT_LOCALE=en-GB; Domain=.example.com"],
+      expect: "skip",
+    },
+    {
+      description:
+        "an analytics cookie alongside a session cookie still fires for the session cookie",
+      cookies: [
+        "_ga=GA1.1.1234567890.1700000000; Domain=.example.com",
+        "session=abc; Domain=.example.com",
+      ],
+      expect: "fire",
+      evidenceIncludes: "session",
+    },
   ],
 
   "cookie-domain-no-leading-dot": [

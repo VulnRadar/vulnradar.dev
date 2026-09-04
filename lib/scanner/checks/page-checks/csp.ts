@@ -243,7 +243,7 @@ export const cspChecks: PageCheck[] = [
     riskImpact:
       "Every browser that supports CSP frame-ancestors (all current major browsers) ignores X-Frame-Options entirely once frame-ancestors is present, per the Content Security Policy specification. A restrictive X-Frame-Options paired with a permissive frame-ancestors looks protected to a header-only scanner but is actually framable in every modern browser.",
     explanation:
-      "Detected by comparing the two values directly: X-Frame-Options is read as restrictive when it is DENY or SAMEORIGIN, and frame-ancestors is read as permissive when its source list is neither 'none' nor 'self' alone (a wildcard host, or a specific third-party origin either one contradicts a DENY/SAMEORIGIN promise).",
+      "Detected by comparing the two values directly: X-Frame-Options is read as restrictive when it is DENY or SAMEORIGIN, and frame-ancestors is read as permissive when it names an origin other than the page's own (a wildcard, or a specific third-party origin either one contradicts a DENY/SAMEORIGIN promise). 'self' and the page's own origin written out in full are the same policy, so neither counts as a contradiction.",
     fixSteps: [
       "Make frame-ancestors the source of truth and set it to the intended policy ('none' or 'self').",
       "Keep X-Frame-Options as a fallback for the small number of legacy browsers without frame-ancestors support, but state the same policy there, not a stricter one that CSP silently overrides.",
@@ -274,9 +274,24 @@ export const cspChecks: PageCheck[] = [
       const xfoRestrictive = /^\s*(deny|sameorigin)\s*$/i.test(xfo);
       if (!xfoRestrictive) return null;
       const faValues = frameAncestors.map((s) => s.toLowerCase());
-      const faIsNone = faValues.length === 1 && faValues[0] === "'none'";
-      const faIsSelfOnly = faValues.length === 1 && faValues[0] === "'self'";
-      if (faIsNone || faIsSelfOnly) return null;
+      if (faValues.length === 1 && faValues[0] === "'none'") return null;
+      // Writing the page's own origin out in full is the same policy as
+      // 'self', not a contradiction of SAMEORIGIN. Plenty of policies say
+      // `frame-ancestors 'self' https://www.example.com` (or name the
+      // origin instead of using 'self' at all) on https://www.example.com,
+      // and this check used to call every one of them a high-severity
+      // contradiction because it only recognised the literal token 'self'.
+      const ownHost = ctx.hostname.toLowerCase();
+      const foreign = faValues.filter((s) => {
+        if (s === "'self'") return false;
+        const host = s
+          .replace(/^'|'$/g, "")
+          .replace(/^[a-z][a-z0-9+.-]*:\/\//, "")
+          .replace(/:\d+$/, "")
+          .replace(/\/.*$/, "");
+        return host !== ownHost;
+      });
+      if (foreign.length === 0) return null;
       return {
         evidence: `X-Frame-Options: ${xfo} looks restrictive, but CSP frame-ancestors permits ${frameAncestors.join(" ")}, and frame-ancestors is what browsers actually enforce.`,
         excerpts: [

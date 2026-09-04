@@ -17,6 +17,16 @@ import { hasTagWith, openingTagOf, tagElements } from "./_tag-scan";
 
 const h = getHeader;
 
+/**
+ * A URL whose response body is the same bytes for every visitor. Shared by
+ * the two Vary/Cookie checks so they cannot disagree about what a static
+ * asset is: one of them demands Vary: Cookie and the other reports it as a
+ * defect, and both were reading the same URL through separate copies of
+ * this pattern.
+ */
+const STATIC_ASSET_URL_RE =
+  /\.(?:js|mjs|cjs|css|map|png|jpe?g|gif|svg|ico|webp|avif|woff2?|ttf|otf|eot|mp4|webm|mp3|wav|ogg|pdf|zip|txt)(?:\?|#|$)/i;
+
 export const detectors: Record<string, DetectFn> = {
   "server-header-disclosure": (_url, headers) => {
     const server = h(headers, "server");
@@ -217,7 +227,24 @@ export const detectors: Record<string, DetectFn> = {
     // uncompressed responses that never claimed to vary by encoding.
     const enc = h(headers, "content-encoding") || "";
     const vary = h(headers, "vary") || "";
-    if (/gzip|br|deflate/i.test(enc) && !/accept-encoding/i.test(vary)) {
+    // Same reasoning already applied to vary-header-cookie below: the harm
+    // is a SHARED cache handing a stored compressed body to a client that
+    // did not ask for compression. A response no shared cache may store has
+    // no such failure mode, so Vary: Accept-Encoding is genuinely not
+    // needed on it. A private (browser) cache belongs to one client whose
+    // Accept-Encoding does not change between requests.
+    const cacheControl = (h(headers, "cache-control") || "").toLowerCase();
+    if (/\b(?:no-store|no-cache|private)\b/.test(cacheControl)) return null;
+    // Token match: `identity` is not compression, and a bare substring test
+    // for "br" hits inside other tokens.
+    const encodings = enc
+      .toLowerCase()
+      .split(",")
+      .map((t) => t.trim());
+    const compressed = encodings.some((t) =>
+      ["gzip", "br", "deflate", "zstd", "compress", "x-gzip"].includes(t),
+    );
+    if (compressed && !/accept-encoding/i.test(vary)) {
       return `Compressed response (Content-Encoding: ${enc}) is missing Vary: Accept-Encoding — a shared cache may serve compressed content to a client that can't decompress it.`;
     }
     return null;
@@ -231,10 +258,19 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "vary-header-cookie": (_url, headers) => {
+  "vary-header-cookie": (url, headers) => {
     const cookies = getSetCookies(headers);
     const vary = h(headers, "vary");
     if (cookies.length === 0 || (vary && /cookie/i.test(vary))) return null;
+    // Never ask a static asset for Vary: Cookie. The sibling check
+    // vary-cookie-on-static-resource reports exactly that as a defect, so on
+    // a .js/.css/font/image URL that happens to carry a Set-Cookie (an
+    // analytics or bot-management cookie attached by a CDN, most often) the
+    // two checks contradicted each other and one of them had to be wrong.
+    // This is the one that is: the response body is the same bytes for
+    // every user, so there is no per-user content for a shared cache to
+    // mis-serve.
+    if (STATIC_ASSET_URL_RE.test(url)) return null;
     // The risk this check describes (a shared cache storing one user's
     // auth-gated response and serving it to another) only exists if the
     // response can be cached by a shared cache at all. Cache-Control:
@@ -248,10 +284,7 @@ export const detectors: Record<string, DetectFn> = {
 
   "vary-cookie-on-static-resource": (url, headers) => {
     const vary = h(headers, "vary");
-    const isStatic =
-      /\.(?:js|mjs|css|png|jpe?g|gif|svg|ico|webp|avif|woff2?|ttf|otf|mp4|webm|mp3|pdf)(?:\?|$)/i.test(
-        url,
-      );
+    const isStatic = STATIC_ASSET_URL_RE.test(url);
     if (vary && /cookie/i.test(vary) && isStatic) {
       return "Vary: Cookie is set on a static asset — every cache stores one copy per Cookie value, defeating caching.";
     }

@@ -234,6 +234,94 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
+  // The legacy Feature-Policy header uses `feature allowlist`, with no "=".
+  // ppAllowsFeature read the missing "=" as "no value given, so unrestricted"
+  // and reported `feature=*` for every feature a Feature-Policy header
+  // restricted -- including 'self' and 'none', the two most locked-down
+  // values it can carry.
+  "permissions-policy-camera-blocked": [
+    {
+      description:
+        "legacy Feature-Policy restricting camera to 'self' does not fire",
+      url: "https://example.com/",
+      headers: { "feature-policy": "camera 'self'; microphone 'none'" },
+      expect: "skip",
+    },
+    {
+      description: "Permissions-Policy camera=(self) does not fire",
+      url: "https://example.com/",
+      headers: { "permissions-policy": "camera=(self), geolocation=()" },
+      expect: "skip",
+    },
+    {
+      description:
+        "camera granted to every origin (so to any embedded third party) still fires",
+      url: "https://example.com/",
+      headers: { "permissions-policy": "camera=*" },
+      expect: "fire",
+      evidenceIncludes: "camera",
+    },
+  ],
+
+  "permissions-policy-fullscreen-blocked": [
+    {
+      description:
+        "legacy Feature-Policy restricting fullscreen to 'self' does not fire",
+      url: "https://example.com/",
+      headers: { "feature-policy": "fullscreen 'self'" },
+      expect: "skip",
+    },
+    {
+      description: "fullscreen granted to every origin still fires",
+      url: "https://example.com/",
+      headers: { "permissions-policy": "fullscreen=*" },
+      expect: "fire",
+      evidenceIncludes: "fullscreen",
+    },
+  ],
+
+  "csp-incompatible-directives": [
+    {
+      description:
+        "default-src 'none' with a path-scoped wildcard in script-src does not fire -- the old test was `does the directive end in *`, which a tightly scoped path wildcard satisfies, and default-src is a fallback that script-src is specified to override anyway",
+      url: "https://example.com/",
+      headers: {
+        "content-security-policy":
+          "default-src 'none'; script-src 'self' https://cdn.example.com/js/*",
+      },
+      expect: "skip",
+    },
+    {
+      description:
+        "a report endpoint whose path contains 'reflected-xss' does not fire -- the directive names are matched as names now, not as substrings of the whole header",
+      url: "https://example.com/",
+      headers: {
+        "content-security-policy":
+          "default-src 'self'; report-uri https://example.com/csp/reflected-xss",
+      },
+      expect: "skip",
+    },
+    {
+      description: "an actual removed reflected-xss directive still fires",
+      url: "https://example.com/",
+      headers: {
+        "content-security-policy": "default-src 'self'; reflected-xss block",
+      },
+      expect: "fire",
+      evidenceIncludes: "reflected-xss",
+    },
+    {
+      description:
+        "script-src combining 'none' with 'unsafe-inline' still fires",
+      url: "https://example.com/",
+      headers: {
+        "content-security-policy": "script-src 'none' 'unsafe-inline'",
+      },
+      expect: "fire",
+      evidenceIncludes: "'none'",
+    },
+  ],
+
   "referrer-policy-missing": [
     {
       description: "no Referrer-Policy",
@@ -1388,6 +1476,25 @@ const fixtures: DetectorFixtures = {
       body: '<html><head><meta http-equiv="refresh" content="30"><meta http-equiv="refresh" content="0;url="></head></html>',
       expect: "fire",
       evidenceIncludes: "empty URL target",
+    },
+    {
+      // The old capture class was [^"'>]*, so it stopped at the inner
+      // single quote and handed the "empty url target" branch a value of
+      // "0;url=" -- a working redirect reported as broken.
+      description:
+        "a redirect whose URL is quoted inside the content attribute does not fire",
+      url: "https://example.com/",
+      body: `<html><head><meta http-equiv="refresh" content="0;url='https://example.com/new'"></head></html>`,
+      expect: "skip",
+    },
+    {
+      // `content=` was matched unanchored, so it hit inside data-content=
+      // first and read the wrong attribute's (empty) value.
+      description:
+        "an unrelated data-content attribute before the real content attribute does not fire",
+      url: "https://example.com/",
+      body: '<html><head><meta http-equiv="refresh" data-content="" content="5"></head></html>',
+      expect: "skip",
     },
   ],
 

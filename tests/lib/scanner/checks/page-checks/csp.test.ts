@@ -135,6 +135,20 @@ const fixtures: PageCheckFixtures = {
       expect: "skip",
     },
     {
+      // Only the literal token 'self' used to count as same-origin, so
+      // writing the page's own origin out in full -- which plenty of
+      // policies do, alongside 'self' or instead of it -- was reported as a
+      // high-severity contradiction of SAMEORIGIN. It is the same policy.
+      description:
+        "frame-ancestors naming the page's own origin explicitly is the same policy as SAMEORIGIN, not a contradiction",
+      url: "https://example.com/",
+      headers: {
+        "x-frame-options": "SAMEORIGIN",
+        "content-security-policy": "frame-ancestors 'self' https://example.com",
+      },
+      expect: "skip",
+    },
+    {
       description:
         "X-Frame-Options: SAMEORIGIN and frame-ancestors 'self' agree",
       headers: {

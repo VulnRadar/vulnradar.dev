@@ -20,6 +20,24 @@ import {
 // it flagged every cookie rather than only session/auth-shaped ones, which
 // meant a maintainer "fixing" a `_ga` false positive here would have changed
 // nothing at all. ref: AUDIT-009#dup-09
+
+/**
+ * Cookies whose whole purpose is to be shared across every subdomain, so a
+ * site-wide `Domain=` on them is the correct configuration rather than a
+ * finding: web analytics, consent/CMP state, and display preferences
+ * (locale, theme, currency, timezone). None of them authenticates anyone,
+ * which is the risk `cookie-domain-broad` describes.
+ *
+ * Matched against the cookie name only, so a session cookie is never
+ * excluded by it.
+ */
+const SUBDOMAIN_WIDE_BY_DESIGN =
+  /^(?:_ga(?:_[\w-]+)?|_gid|_gat(?:_[\w-]+)?|_gcl_[\w-]+|_dc_gtm_[\w-]+|__utm[a-z]|_fbp|_fbc|_hj[\w-]*|_clck|_clsk|_pk_(?:id|ses|ref)[\w.-]*|ajs_[\w-]+|amplitude_[\w-]*|mp_[\w-]+|__hstc|__hssrc|__hssc|hubspotutk|intercom-[\w-]+|_uetsid|_uetvid|optanonconsent|optanonalertboxclosed|euconsent-v2|cookieconsent[\w_-]*|cookie[_-]?consent|consent[_-]?mode|gdpr[\w_-]*|locale|lang|language|next_locale|i18n[\w_-]*|theme|colou?r[_-]?(?:scheme|mode)|currency|country|region|timezone|tz)$/i;
+
+function isSubdomainWideByDesign(name: string): boolean {
+  return SUBDOMAIN_WIDE_BY_DESIGN.test(name.trim());
+}
+
 export const detectors: Record<string, DetectFn> = {
   "cookie-httponly-missing": (_url, headers) => {
     const cookies = getSetCookies(headers);
@@ -160,6 +178,13 @@ export const detectors: Record<string, DetectFn> = {
   "cookie-domain-broad": (_url, headers) => {
     const cookies = getSetCookies(headers);
     for (const c of cookies) {
+      // Analytics, consent and display-preference cookies are shared across
+      // subdomains on purpose -- that is the entire reason Google Analytics
+      // writes `_ga` with Domain=.example.com, and a cookie banner that did
+      // not apply site-wide would be broken. They also carry nothing worth
+      // stealing from a subdomain, which is the risk this check describes.
+      // Skipping them leaves the session/auth cookies that the check is for.
+      if (isSubdomainWideByDesign(parseCookieName(c))) continue;
       // Only the attribute segments (after name=value): a "domain=" inside the
       // cookie VALUE (e.g. a stored return-URL like `last=/x?domain=acme.com`)
       // is not the Domain attribute and must not trip this.
