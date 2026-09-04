@@ -18,6 +18,23 @@ and full description.
 
 ---
 
+## v3.8.1 - September 3, 2026
+**A Scanned Page Can No Longer Stall the Server**
+
+Three ways a page being scanned could take the whole service down with it, found by auditing the scan engine against deliberately hostile input rather than real pages. All three ran on every scan, all three were reachable without an account, and all three blocked the event loop inside a single synchronous call, which meant the scan watchdog could not fire and every other scan and request stalled with them. Plus the admin backup list was counting one backup as two.
+
+### Changes
+- [Gauge] **[SECURITY]** **Nested HTML Could Exhaust Memory and Kill the Process**
+  Building the element index copied every piece of text into every enclosing element, and rebuilt the list of enclosing tags for each element in turn. That is quadratic in both time and memory, so cost grew with the square of the page size rather than in step with it: 6 KB of nested divs took 57 ms and 33 MB, 12 KB took 148 ms and 109 MB, and 24 KB took 924 ms and 391 MB. Around 96 KB it exhausted the heap and killed the process outright, taking every scan running at that moment and every unrelated request with it. No crafted payload was needed, just deeply nested tags, which any site can serve. Nesting and per-element text are both bounded now, and 96 KB that previously killed the process parses in 765 ms.
+- [Timer] **[SECURITY]** **Two Detection Patterns Could Be Made to Run for Minutes**
+  The check for outdated JavaScript libraries looked for the library name, then allowed any amount of text before the version number. On a page repeating that name in front of a long run of digits, every occurrence became a fresh starting point and the version match failed at each one, so the work grew cubically: 2 KB of that shape took 188 ms and 4 KB took 1511 ms, meaning 16 KB pinned a processor core for over a minute and a full-size page never finished. The GraphQL batch-query check had the same shape and reached 31 seconds at 16 KB, and its own precondition could be satisfied by page content alone, so a URL that had nothing to do with GraphQL still ran it. Both are rewritten to search for the anchor text first and match structure only in a bounded window around it. The same 16 KB now takes a fifth of a millisecond, and both still detect what they are meant to.
+- [Activity] **[FIXED]** **The Performance Test Suite Now Includes the Shapes It Missed**
+  There was already a test suite whose entire job was to stop a check becoming catastrophically slow on hostile input, and it passed while all three of these were live. Its sample pages covered unbroken character runs, near-miss secrets and unclosed tags, but nothing that put many starting points in front of a pattern that could almost, but never quite, match. Those shapes are part of the suite now, along with deeply nested markup, so this class of bug fails the build rather than reaching a scan.
+- [Database] **[FIXED]** **The Backup List Counted One Backup as Two**
+  An encrypted backup is written as two files: the dump, and a small key file holding what is needed to decrypt it. The admin panel listed both, so each backup appeared twice and the count read double. Two backups showed as four files, which looks exactly like the job having run twice. Backups are counted once now, with the key file shown as an Encrypted marker on the row rather than as a separate entry, because anyone copying backups off the server needs to know the large file alone will not restore. The panel also still described itself as running pg_dump, which stopped being the whole story in 3.8.0 when a built-in dumper was added for installs that cannot provide one.
+
+---
+
 ## v3.8.0 - September 3, 2026 **(highlights)**
 **Self-Hosting Works, Scans Tell the Truth, and Nothing Runs Free**
 
@@ -1941,7 +1958,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ## Quick reference
 
-- **Total releases:** 65
-- **Total changes documented:** 700
-- **Latest:** v3.8.0 (September 3, 2026) - Self-Hosting Works, Scans Tell the Truth, and Nothing Runs Free
+- **Total releases:** 66
+- **Total changes documented:** 704
+- **Latest:** v3.8.1 (September 3, 2026) - A Scanned Page Can No Longer Stall the Server
 - **Earliest in file:** v1.0.0 (February 9, 2026) - First Release

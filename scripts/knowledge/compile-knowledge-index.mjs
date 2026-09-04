@@ -83,6 +83,14 @@ const MAX_TERMS_PER_SECTION = 64;
  * carries the full heading path above it ("Product features > Repos"), because
  * a chunk read in isolation has to say what it is about: "Repos" alone tells a
  * reader nothing about which product it belongs to.
+ *
+ * Fenced code blocks are skipped, and that is not a nicety. The docs and
+ * changelog files are full of shell snippets, and a bash comment
+ * ("# Generate a 32-byte API encryption key") is a level-1 markdown heading as
+ * far as a regex is concerned. Reading those as headings cut sections in the
+ * middle of a code block AND reset the heading stack, so the Self-Hosting
+ * section's chunks came out labelled "Force a regenerate instead of the cached
+ * summary > cli". Every path downstream of a snippet was wrong.
  */
 function splitSections(content) {
   const lines = content.split("\n");
@@ -90,6 +98,7 @@ function splitSections(content) {
   const stack = [];
   let current = null;
   let offset = 0;
+  let fence = null;
 
   const close = (end) => {
     if (current && end > current.start) {
@@ -101,7 +110,16 @@ function splitSections(content) {
 
   for (const line of lines) {
     const lineBytes = Buffer.byteLength(line, "utf8") + 1; // + "\n"
-    const heading = /^(#{1,6})\s+(.+?)\s*$/.exec(line);
+    const fenceMark = /^\s{0,3}(`{3,}|~{3,})/.exec(line);
+    if (fenceMark) {
+      // Only a fence of the same character closes one, so a ``` inside a ~~~
+      // block stays content.
+      if (fence === null) fence = fenceMark[1][0];
+      else if (fenceMark[1][0] === fence) fence = null;
+      offset += lineBytes;
+      continue;
+    }
+    const heading = fence === null ? /^(#{1,6})\s+(.+?)\s*$/.exec(line) : null;
     if (heading) {
       close(offset);
       const level = heading[1].length;
