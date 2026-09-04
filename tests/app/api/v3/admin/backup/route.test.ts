@@ -180,6 +180,83 @@ describe("GET /api/v3/admin/backup", () => {
     expect(json.lastBackupAt).toBe(json.backups[0].modifiedAt);
   });
 
+  /**
+   * An encrypted backup is written as TWO files: the dump, and a ~160 byte
+   * `.json` sidecar holding the AES-256-GCM iv and authTag it cannot be
+   * decrypted without. Both start with "vulnradar-backup-", so listing them
+   * both made one backup render as two rows and the panel's count read
+   * double. The owner saw "4 files" for two backups and reasonably read it as
+   * the job having run twice.
+   */
+  it("counts an encrypted backup once, not once per file", async () => {
+    withAdmin();
+    mockReaddir.mockResolvedValueOnce([
+      "vulnradar-backup-2026-09-02T04-44-24-897Z.sql.gz.enc",
+      "vulnradar-backup-2026-09-02T04-44-24-897Z.sql.gz.enc.json",
+      "vulnradar-backup-2026-09-03T23-58-34-163Z.sql.gz.enc",
+      "vulnradar-backup-2026-09-03T23-58-34-163Z.sql.gz.enc.json",
+    ]);
+    mockStat.mockImplementation(async (path: string) => {
+      const size = path.endsWith(".json") ? 161 : 3_100_000;
+      const mtime = path.includes("2026-09-02")
+        ? new Date("2026-09-02T04:44:25Z")
+        : new Date("2026-09-03T23:58:35Z");
+      return { size, mtime };
+    });
+
+    const res = await GET();
+    const json = await res.json();
+
+    expect(json.backups).toHaveLength(2);
+    // Every row is a real dump, never a sidecar.
+    for (const b of json.backups) {
+      expect(b.name.endsWith(".json")).toBe(false);
+      expect(b.sizeBytes).toBe(3_100_000);
+      // The sidecar's existence is reported, since a copy of the dump alone
+      // cannot be restored.
+      expect(b.encrypted).toBe(true);
+    }
+    expect(json.backups[0].name).toContain("2026-09-03");
+  });
+
+  it("does not mark a backup encrypted when it has no key sidecar", async () => {
+    withAdmin();
+    mockReaddir.mockResolvedValueOnce([
+      "vulnradar-backup-2026-08-10T00-00-00-000Z.sql.gz",
+    ]);
+    mockStat.mockResolvedValue({
+      size: 1000,
+      mtime: new Date("2026-08-10T00:00:05Z"),
+    });
+
+    const res = await GET();
+    const json = await res.json();
+
+    expect(json.backups).toHaveLength(1);
+    expect(json.backups[0].encrypted).toBe(false);
+  });
+
+  it("ignores a stray .json that is not any backup's sidecar", async () => {
+    withAdmin();
+    mockReaddir.mockResolvedValueOnce([
+      "vulnradar-backup-2026-08-10T00-00-00-000Z.sql.gz",
+      // Matches the prefix and ends in .json, but is nobody's sidecar. It
+      // must not be listed, and must not mark the unrelated dump encrypted.
+      "vulnradar-backup-notes.json",
+    ]);
+    mockStat.mockResolvedValue({
+      size: 1000,
+      mtime: new Date("2026-08-10T00:00:05Z"),
+    });
+
+    const res = await GET();
+    const json = await res.json();
+
+    expect(json.backups).toHaveLength(1);
+    expect(json.backups[0].name).toContain("2026-08-10");
+    expect(json.backups[0].encrypted).toBe(false);
+  });
+
   it("returns an empty backup list gracefully when BACKUP_DIR doesn't exist yet", async () => {
     withAdmin();
     mockReaddir.mockRejectedValueOnce(new Error("ENOENT"));

@@ -19,6 +19,9 @@ interface BackupFileInfo {
   name: string;
   sizeBytes: number;
   modifiedAt: string;
+  /** True when a `.json` key sidecar sits beside this dump: it is encrypted
+   *  and cannot be restored without that file. */
+  encrypted?: boolean;
 }
 
 /** Same default scripts/backup-db.mjs itself resolves: BACKUP_DIR, or
@@ -29,11 +32,18 @@ function resolveBackupDir(): string {
   return resolve(process.env.BACKUP_DIR || join(process.cwd(), "backups"));
 }
 
-/** Lists files scripts/backup-db.mjs has written into `dir`, newest
+/** Lists the BACKUPS scripts/backup-db.mjs has written into `dir`, newest
  *  first. Missing directory (no backup has ever run) is not an error --
  *  it just means an empty list. Filtered to the "vulnradar-backup-"
- *  prefix so unrelated files (or a stray .gitkeep) don't show up as
- *  backups. */
+ *  prefix so unrelated files (or a stray .gitkeep) don't show up.
+ *
+ *  One backup is TWO files when encryption is on: the dump itself, and a
+ *  ~160 byte `.json` sidecar carrying the AES-256-GCM iv and authTag that
+ *  the dump cannot be decrypted without. This listing used to return both,
+ *  so one backup rendered as two rows and the panel's count read double:
+ *  two backups showed as "4 files", which looks exactly like the job having
+ *  run twice. The sidecar is folded into its own backup as the `encrypted`
+ *  flag instead, since it is part of that backup rather than a backup. */
 async function listBackupFiles(dir: string): Promise<BackupFileInfo[]> {
   let names: string[];
   try {
@@ -41,9 +51,17 @@ async function listBackupFiles(dir: string): Promise<BackupFileInfo[]> {
   } catch {
     return [];
   }
+  const ours = names.filter((name) => name.startsWith("vulnradar-backup-"));
+
+  // Sidecars are matched by exact name rather than by stripping a suffix: a
+  // dump is "<name>" and its sidecar is exactly "<name>.json", so any other
+  // .json here belongs to something else and is left out of the listing
+  // instead of being silently attached to an unrelated backup.
+  const sidecars = new Set(ours.filter((name) => name.endsWith(".json")));
+
   const entries = await Promise.all(
-    names
-      .filter((name) => name.startsWith("vulnradar-backup-"))
+    ours
+      .filter((name) => !sidecars.has(name))
       .map(async (name): Promise<BackupFileInfo | null> => {
         const s = await stat(join(dir, name)).catch(() => null);
         if (!s) return null;
@@ -51,6 +69,7 @@ async function listBackupFiles(dir: string): Promise<BackupFileInfo[]> {
           name,
           sizeBytes: s.size,
           modifiedAt: s.mtime.toISOString(),
+          encrypted: sidecars.has(`${name}.json`),
         };
       }),
   );

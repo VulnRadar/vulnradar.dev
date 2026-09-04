@@ -44,6 +44,9 @@ interface BackupJob {
 interface BackupFileInfo {
   name: string;
   sizeBytes: number;
+  /** Set when a key sidecar sits beside this dump: it is encrypted, and
+   *  restoring it needs that file as well. */
+  encrypted?: boolean;
   modifiedAt: string;
 }
 
@@ -247,7 +250,7 @@ export function BackupManager() {
           icon={DatabaseBackup}
           tone={panelTone}
           title="Database Backups"
-          subtitle="Runs pg_dump, gzips it, and writes it to the configured backup directory on the server."
+          subtitle="Dumps the database, gzips it, and writes it to the backup directory on the server. Uses pg_dump when it is installed, and a built-in dumper when it is not."
           status={
             jobRunning ? <StatusPill tone="info">Running</StatusPill> : null
           }
@@ -406,12 +409,12 @@ export function BackupManager() {
           icon={HardDrive}
           tone="neutral"
           title="Recent local backups"
-          subtitle="Files sitting in the backup directory right now, newest first."
+          subtitle="Backups sitting in the backup directory right now, newest first. An encrypted backup is stored as the dump plus a small key file, and is counted here once."
           status={
             backupCount > 0 ? (
               <StatusPill tone="neutral">
                 <span className="tabular-nums">{backupCount}</span>
-                {backupCount === 1 ? "file" : "files"}
+                {backupCount === 1 ? "backup" : "backups"}
               </StatusPill>
             ) : null
           }
@@ -452,6 +455,16 @@ export function BackupManager() {
                       {i === 0 && (
                         <StatusPill tone="ok" className="shrink-0">
                           Newest
+                        </StatusPill>
+                      )}
+                      {/* The key sidecar is no longer listed as its own row,
+                          so say here that it exists. Without it this dump
+                          cannot be decrypted, which an operator copying
+                          backups off the box needs to know before copying
+                          only the big file. */}
+                      {file.encrypted && (
+                        <StatusPill tone="neutral" className="shrink-0">
+                          Encrypted
                         </StatusPill>
                       )}
                     </div>
