@@ -99,7 +99,7 @@ function MatchingScansList({ scans }: { scans: MatchingScan[] }) {
       <div className="hidden md:block">
         <TableScrollArea maxHeight="16rem">
           <Table>
-            <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur-sm supports-backdrop-filter:bg-muted/90">
+            <TableHeader className="sticky top-0 z-20 bg-muted">
               <TableRow className="border-y border-border/50 hover:bg-transparent">
                 <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   URL

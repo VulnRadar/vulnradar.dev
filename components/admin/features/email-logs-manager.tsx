@@ -377,6 +377,12 @@ export function EmailLogsManager() {
             <div
               className={cn(
                 "divide-y divide-border/40 border-t border-border/50 transition-opacity duration-200",
+                // Caps and scrolls like every other admin list. This one grew
+                // the page instead, so the panel below it was pushed off
+                // screen and the whole tab scrolled as one long column while
+                // Users, Audit, Staff and Teams all scrolled inside their own
+                // box. 70vh is the same cap TableScrollArea applies.
+                "max-h-[70vh] overflow-auto",
                 refreshing && "opacity-40 pointer-events-none",
               )}
             >
@@ -608,7 +614,7 @@ export function EmailLogsManager() {
                         srcDoc={frameHtml}
                         sandbox=""
                         referrerPolicy="no-referrer"
-                        className="w-full h-[600px] rounded-lg border border-border/50"
+                        className="w-full h-[min(600px,55vh)] rounded-lg border border-border/50 bg-white"
                         title={`Rendered copy of "${viewLog.subject}"`}
                       />
                       <p className="text-[11px] text-muted-foreground/80">
