@@ -22,7 +22,7 @@ remediation documentation in the docs.
 - [critical] `os-command-injection` [url-check] - OS Command Injection
 - [medium  ] `confirmed-open-redirect` [url-check] - Confirmed Open Redirect
 
-### api (36)
+### api (64)
 - [low     ] `api-rest-allow-methods-trace` [body-pattern] - TRACE method referenced in API response body
 - [info    ] `api-rest-allow-methods-delete` [header] - REST endpoint allows DELETE
 - [low     ] `api-graphql-suggestions-enabled` [combined] - GraphQL introspection field suggestions
@@ -59,6 +59,34 @@ remediation documentation in the docs.
 - [medium  ] `api-verbose-error-internal-path` [combined] - API error response leaks a stack trace or internal file path
 - [low     ] `api-deprecation-header-missing` [combined] - API reports itself deprecated without a Deprecation/Sunset header
 - [high    ] `api-graphql-introspection-mutation-heavy` [body-pattern] - GraphQL introspection exposes a mutation-heavy schema
+- [medium  ] `api-graphql-ide-exposed` [body-pattern] - GraphQL IDE served in production
+- [low     ] `api-graphql-schema-sdl-exposed` [body-pattern] - GraphQL schema served as raw SDL
+- [low     ] `api-openapi-no-security-declared` [body-pattern] - OpenAPI document declares no security for write operations
+- [medium  ] `api-openapi-server-url-plain-http` [body-pattern] - OpenAPI document publishes a cleartext base URL
+- [info    ] `api-openapi-swagger-2-document` [body-pattern] - API described with Swagger 2.0
+- [info    ] `api-openapi-deprecated-operations-exposed` [body-pattern] - OpenAPI document advertises deprecated operations
+- [medium  ] `api-openapi-oauth2-implicit-flow-declared` [body-pattern] - OpenAPI document declares the OAuth2 implicit flow
+- [low     ] `api-asyncapi-document-exposed` [body-pattern] - AsyncAPI document publicly served
+- [medium  ] `api-postman-collection-exposed` [body-pattern] - Postman collection export publicly served
+- [medium  ] `api-insomnia-export-exposed` [body-pattern] - Insomnia workspace export publicly served
+- [low     ] `api-wadl-document-exposed` [body-pattern] - WADL document publicly served
+- [low     ] `api-raml-document-exposed` [body-pattern] - RAML API definition publicly served
+- [low     ] `api-odata-metadata-document-exposed` [body-pattern] - OData $metadata document publicly served
+- [high    ] `api-oidc-discovery-alg-none-supported` [body-pattern] - OIDC discovery advertises the "none" signing algorithm
+- [low     ] `api-oidc-discovery-implicit-flow-supported` [body-pattern] - OIDC discovery advertises implicit-grant response types
+- [low     ] `api-oidc-discovery-pkce-not-advertised` [body-pattern] - OIDC discovery omits code_challenge_methods_supported
+- [medium  ] `api-oauth-authorize-redirect-uri-insecure` [url-check] - OAuth authorization request uses a cleartext redirect_uri
+- [medium  ] `api-oauth-authorize-oidc-nonce-missing` [url-check] - OIDC authorization request returns an ID token with no nonce
+- [low     ] `api-jwt-long-lived-token` [body-pattern] - JWT with a lifetime measured in months
+- [low     ] `api-retry-after-invalid-value` [header-value] - Retry-After header is not a valid delay or date
+- [low     ] `api-sunset-header-in-past` [header-value] - Sunset date has passed but the endpoint still answers
+- [low     ] `api-json-response-content-type-mismatch` [combined] - JSON body served as HTML or with no Content-Type
+- [low     ] `api-response-header-internal-host` [header-value] - Response header points at an internal host
+- [low     ] `api-www-authenticate-realm-internal-detail` [header-value] - WWW-Authenticate realm leaks internal detail
+- [medium  ] `api-problem-json-trace-exposed` [body-pattern] - Problem document exposes a stack trace or exception class
+- [medium  ] `api-swagger-ui-outdated-version` [body-pattern] - Outdated Swagger UI bundle loaded
+- [low     ] `api-cors-allow-origin-multiple-values` [header-value] - Access-Control-Allow-Origin carries more than one origin
+- [info    ] `api-cors-credentials-without-allow-origin` [header-value] - Access-Control-Allow-Credentials sent with no allowed origin
 
 ### client-side (26)
 - [high    ] `cs-csp-unsafe-inline-script` [header-value] - CSP Allows 'unsafe-inline' Scripts
@@ -88,7 +116,7 @@ remediation documentation in the docs.
 - [medium  ] `cs-document-domain-relaxation` [body-pattern] - document.domain Reassigned to Relax the Same-Origin Policy
 - [high    ] `cs-websocket-eval-message-data` [body-pattern] - WebSocket Message Data Passed Directly to eval()
 
-### code (121)
+### code (120)
 - [critical] `insecure-form-submission` [combined] - Form Submits Data Over Insecure HTTP
 - [medium  ] `prototype-pollution` [body-pattern] - Potential Prototype Pollution Sinks Detected
 - [high    ] `command-injection` [body-pattern] - Potential Command Injection Vectors
@@ -104,7 +132,6 @@ remediation documentation in the docs.
 - [medium  ] `unsafe-setattribute` [body-pattern] - Unsafe setAttribute Usage
 - [high    ] `path-traversal-indicators` [body-pattern] - Path Traversal Indicators
 - [high    ] `ssti-indicators` [body-pattern] - Template Injection Indicators
-- [high    ] `code-xss-template-tag` [body-pattern] - Tagged Template Literal With Interpolation (html/svg)
 - [medium  ] `command-injection-indicators` [body-pattern] - Command Injection Parameter Names
 - [high    ] `eval-usage` [body-pattern] - eval() Code Injection Risk
 - [high    ] `function-constructor` [body-pattern] - Function Constructor Usage
@@ -197,7 +224,7 @@ remediation documentation in the docs.
 - [high    ] `ssrf-vulnerability` [body-pattern] - Server-Side Request Forgery (SSRF) indicators
 - [high    ] `xml-external-entity` [body-pattern] - XML external entity (XXE) risk
 - [high    ] `ldap-injection-indicators` [body-pattern] - LDAP injection indicators
-- [critical] `hardcoded-credentials` [body-pattern] - Hard-coded credentials in source
+- [critical] `hardcoded-credentials` [body-pattern] - Hard-coded password in source
 - [high    ] `default-credentials` [body-pattern] - Default credentials may be in use
 - [critical] `hardcoded-secrets` [body-pattern] - Hard-coded secret values in source
 - [high    ] `hardcoded-secrets-high-risk` [body-pattern] - Hard-coded secret in source (elevated-risk key)
@@ -507,7 +534,7 @@ remediation documentation in the docs.
 - [low     ] `csp-incompatible-directives` [header] - CSP contains unsupported / legacy directives
 - [low     ] `csp-too-long` [header] - CSP Header > 4KB
 - [info    ] `permissions-policy-geolocation-blocked` [header] - Permissions-Policy geolocation allowed
-- [info    ] `permissions-policy-camera-blocked` [header] - Permissions-Policy camera allowed
+- [info    ] `permissions-policy-camera-blocked` [header] - Permissions-Policy grants camera to every origin
 - [info    ] `permissions-policy-microphone-blocked` [header] - Permissions-Policy microphone allowed
 - [info    ] `permissions-policy-payment-blocked` [header] - Permissions-Policy payment allowed
 - [info    ] `permissions-policy-usb-blocked` [header] - Permissions-Policy USB allowed
@@ -523,7 +550,7 @@ remediation documentation in the docs.
 - [info    ] `permissions-policy-magnetometer-blocked` [header] - Permissions-Policy magnetometer allowed
 - [info    ] `permissions-policy-ambient-light-sensor-blocked` [header] - Permissions-Policy ambient-light-sensor allowed
 - [info    ] `permissions-policy-display-capture-blocked` [header] - Permissions-Policy display-capture allowed
-- [info    ] `permissions-policy-fullscreen-blocked` [header] - Permissions-Policy fullscreen allowed
+- [info    ] `permissions-policy-fullscreen-blocked` [header] - Permissions-Policy grants fullscreen to every origin
 - [info    ] `permissions-policy-midi-blocked` [header] - Permissions-Policy midi allowed
 - [info    ] `permissions-policy-picture-in-picture-blocked` [header] - Permissions-Policy picture-in-picture allowed
 - [info    ] `permissions-policy-storage-access-blocked` [header] - Permissions-Policy storage-access allowed
@@ -728,7 +755,7 @@ remediation documentation in the docs.
 - [high    ] `secret-linear-api-key` [body-pattern] - Linear API key in source
 - [medium  ] `secret-generic-high-entropy-value` [body-pattern] - High-entropy value assigned to a secret-shaped variable in source
 
-### ssl (7)
+### ssl (15)
 - [high    ] `ssl-https-only-cookie-on-http` [url-check] - Secure Cookie Set on HTTP Endpoint
 - [critical] `unencrypted-connection` [url-check] - Site Served Over Unencrypted HTTP
 - [info    ] `expect-ct-missing` [header] - Expect-CT Header Not Present
@@ -736,8 +763,16 @@ remediation documentation in the docs.
 - [info    ] `x-forwarded-method-override` [header] - X-HTTP-Method-Override / X-Forwarded-Method Header in Response
 - [info    ] `ssl-strip-detected` [header] - HSTS Present on HTTP Response (SSL-Strip Indicator)
 - [medium  ] `mixed-protocol-content` [body-pattern] - Mixed-Protocol Content (HTTPS Page Loading HTTP Resources)
+- [low     ] `ssl-hsts-meta-tag-ineffective` [body-pattern] - HSTS declared in a meta tag, where browsers ignore it
+- [medium  ] `ssl-alt-svc-cleartext-h2c` [header-value] - Alt-Svc advertises cleartext HTTP/2 (h2c)
+- [medium  ] `ssl-link-header-http-subresource` [header-value] - Link header preloads a cleartext subresource
+- [low     ] `ssl-http-resource-hint-tag` [body-pattern] - Resource hint on an HTTPS page targets a cleartext URL
+- [medium  ] `ssl-mixed-content-non-src-attribute` [body-pattern] - Cleartext subresource loaded through srcset, poster or data
+- [low     ] `ssl-canonical-link-http` [body-pattern] - Canonical URL declared as cleartext HTTP
+- [medium  ] `ssl-meta-refresh-http-target` [body-pattern] - Meta refresh sends visitors to a cleartext URL
+- [medium  ] `ssl-http-fetch-endpoint-in-script` [body-pattern] - Inline script calls a cleartext HTTP endpoint
 
-### supply-chain (14)
+### supply-chain (42)
 - [medium  ] `supply-chain-lockfile-exposed` [body-pattern] - npm/yarn Lock File Exposed
 - [medium  ] `supply-chain-requirements-exposed` [body-pattern] - Python Requirements File Exposed
 - [medium  ] `supply-chain-gemfile-exposed` [body-pattern] - Ruby Gemfile or Gemfile.lock Exposed
@@ -752,8 +787,36 @@ remediation documentation in the docs.
 - [medium  ] `supply-chain-go-sum-exposed` [body-pattern] - Go go.sum Checksum File Exposed
 - [critical] `supply-chain-malicious-install-script` [body-pattern] - npm Install Hook Pipes a Remote Download Into a Shell
 - [high    ] `osv-vulnerable-library` [url-check] - Vulnerable Dependency (OSV-Confirmed)
+- [low     ] `supply-chain-poetry-lock-exposed` [body-pattern] - Python poetry.lock exposed
+- [low     ] `supply-chain-pipfile-lock-exposed` [body-pattern] - Python Pipfile.lock exposed
+- [low     ] `supply-chain-gradle-lockfile-exposed` [body-pattern] - Gradle dependency lockfile exposed
+- [low     ] `supply-chain-maven-pom-exposed` [body-pattern] - Maven pom.xml exposed
+- [low     ] `supply-chain-nuget-manifest-exposed` [body-pattern] - NuGet package manifest exposed
+- [low     ] `supply-chain-mix-lock-exposed` [body-pattern] - Elixir mix.lock exposed
+- [low     ] `supply-chain-pubspec-lock-exposed` [body-pattern] - Dart pubspec.lock exposed
+- [low     ] `supply-chain-swift-package-resolved-exposed` [body-pattern] - Swift Package.resolved exposed
+- [low     ] `supply-chain-podfile-lock-exposed` [body-pattern] - CocoaPods Podfile.lock exposed
+- [medium  ] `supply-chain-terraform-lock-exposed` [body-pattern] - Terraform provider lockfile exposed
+- [low     ] `supply-chain-cargo-toml-exposed` [body-pattern] - Rust Cargo.toml exposed
+- [low     ] `supply-chain-go-mod-exposed` [body-pattern] - Go go.mod exposed
+- [low     ] `supply-chain-setup-py-exposed` [body-pattern] - Python setup.py source exposed
+- [low     ] `supply-chain-pyproject-toml-exposed` [body-pattern] - Python pyproject.toml exposed
+- [medium  ] `supply-chain-git-dependency-unpinned` [body-pattern] - Git dependency with no commit pin
+- [medium  ] `supply-chain-importmap-unpinned-cdn` [body-pattern] - Import map resolves to an unversioned CDN URL
+- [high    ] `supply-chain-importmap-insecure-source` [body-pattern] - Import map resolves a module over plain HTTP
+- [medium  ] `supply-chain-esm-cdn-unpinned-import` [body-pattern] - ES module imported from an unversioned CDN specifier
+- [medium  ] `supply-chain-jsdelivr-gh-branch-reference` [body-pattern] - Script loaded from a jsDelivr GitHub branch reference
+- [medium  ] `supply-chain-rawgit-cdn-reference` [body-pattern] - Page references RawGit, a shut-down CDN
+- [medium  ] `supply-chain-github-raw-script-source` [body-pattern] - Script loaded from GitHub raw content
+- [low     ] `supply-chain-node-modules-path-served` [body-pattern] - Asset served directly out of node_modules
+- [low     ] `supply-chain-bower-components-reference` [body-pattern] - Asset loaded from a Bower install directory
+- [medium  ] `supply-chain-sri-weak-hash-algorithm` [body-pattern] - Subresource Integrity hash uses an unsupported algorithm
+- [medium  ] `supply-chain-sri-missing-crossorigin` [body-pattern] - Cross-origin subresource has integrity but no crossorigin
+- [medium  ] `supply-chain-ci-workflow-exposed` [body-pattern] - CI workflow definition publicly served
+- [medium  ] `supply-chain-github-action-unpinned-tag` [body-pattern] - CI workflow uses a third-party action by mutable tag
+- [low     ] `supply-chain-sbom-document-exposed` [body-pattern] - Software bill of materials publicly served
 
-### tls (11)
+### tls (22)
 - [high    ] `tls-certificate-expiry` [header] - TLS Certificate Expiry
 - [high    ] `tls-protocol-version` [header] - Weak TLS Protocol Version
 - [high    ] `tls-cert-key-size-rsa` [header] - RSA Key Size Below 2048 Bits
@@ -765,6 +828,17 @@ remediation documentation in the docs.
 - [medium  ] `tls-http-no-https-upgrade` [header] - Plain HTTP Does Not Redirect to HTTPS
 - [medium  ] `tls-cert-chain-incomplete` [header] - TLS Certificate Chain Missing Intermediate Certificate
 - [info    ] `tls-ocsp-stapling-disabled` [header] - OCSP Stapling Not Enabled
+- [high    ] `tls-cert-signature-algorithm-weak` [network-probe] - Certificate signed with a broken hash algorithm
+- [low     ] `tls-cert-validity-period-excessive` [network-probe] - Certificate validity period exceeds 398 days
+- [high    ] `tls-cert-not-yet-valid` [network-probe] - Certificate is not yet valid
+- [info    ] `tls-cert-san-count-excessive` [network-probe] - Certificate covers an unusually large number of names
+- [low     ] `tls-cert-serial-low-entropy` [network-probe] - Certificate serial number has too little entropy
+- [info    ] `tls-cert-no-embedded-sct` [network-probe] - Certificate carries no embedded Certificate Transparency SCTs
+- [high    ] `tls-must-staple-not-stapled` [network-probe] - Certificate requires OCSP stapling but none was stapled
+- [medium  ] `tls-cipher-no-forward-secrecy` [network-probe] - Negotiated cipher suite has no forward secrecy
+- [low     ] `tls-cipher-cbc-mode` [network-probe] - Negotiated cipher suite uses CBC mode
+- [medium  ] `tls-ephemeral-key-weak` [network-probe] - Weak ephemeral key exchange parameters
+- [medium  ] `tls-legacy-protocol-accepted` [network-probe] - Server still accepts TLS 1.0 or TLS 1.1
 
 ### vibe-code (37)
 - [low     ] `vibe-generic-error-message` [body-pattern] - Generic Error Messages Leak No Context
@@ -809,20 +883,20 @@ remediation documentation in the docs.
 
 ## Totals
 
-- Total checks: **754**
+- Total checks: **828**
 - Categories: **18** (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
-  - medium: 200
-  - high: 200
-  - low: 145
-  - info: 111
+  - medium: 228
+  - high: 204
+  - low: 182
+  - info: 116
   - critical: 98
 - By type:
-  - body-pattern: 423
+  - body-pattern: 475
   - header: 175
-  - combined: 63
+  - combined: 64
   - header-missing: 55
-  - url-check: 17
-  - header-value: 10
+  - url-check: 19
+  - header-value: 18
+  - network-probe: 12
   - header-present: 10
-  - network-probe: 1

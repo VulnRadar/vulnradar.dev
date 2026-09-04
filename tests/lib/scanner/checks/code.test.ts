@@ -160,35 +160,6 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
-  "code-xss-template-tag": [
-    {
-      description:
-        "an interpolation handed to lit's unsafeHTML() directive fires -- that directive is the documented escape hatch out of the tag function's escaping",
-      body: "<script>import {unsafeHTML} from 'lit/directives/unsafe-html.js'; const t = html`<div>${unsafeHTML(userBio)}</div>`;</script>",
-      expect: "fire",
-      evidenceIncludes: "unsafeHTML",
-    },
-    {
-      description:
-        "a hand-rolled (strings, ...values) tag function that concatenates its interpolations fires",
-      body: "<script>const html = (strings, ...values) => strings.reduce((a, s, i) => a + s + (values[i] ?? ''), ''); document.body.append(html`<p>${userName}</p>`);</script>",
-      expect: "fire",
-      evidenceIncludes: "own html",
-    },
-    {
-      description:
-        "plain lit-html usage does not fire -- lit binds interpolated values as text/attribute nodes and escapes them, so `you use a tagged template` is not by itself a vulnerability (this check fired high severity on every page shipping lit, uhtml or htm)",
-      body: "<script>import {html, render} from 'lit'; render(html`<div>${name}</div>`, el);</script>",
-      expect: "skip",
-    },
-    {
-      description:
-        "regression: a static html`...` template with no interpolation of its own must NOT fire just because an unrelated ${...} interpolation exists later in the same script -- the middle wildcard used to be unbounded and matched across the closing backtick into unrelated code, misfiring on lit-html usage across dozens of real-world bulk-scan sites",
-      body: "<script>function render(){ return html`<div>static content only</div>`; } function unrelated(){ const msg = `Hello ${name}`; return msg; }</script>",
-      expect: "skip",
-    },
-  ],
-
   "eval-usage": [
     {
       description:

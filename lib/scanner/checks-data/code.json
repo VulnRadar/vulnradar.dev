@@ -429,33 +429,6 @@
     "owasp": "A03:2021"
   },
   {
-    "id": "code-xss-template-tag",
-    "type": "body-pattern",
-    "title": "Tagged Template Literal With Interpolation (html/svg)",
-    "category": "code",
-    "severity": "high",
-    "description": "An html`...` or svg`...` tagged template literal contains ${...} interpolation. If the tag function does not HTML-escape the interpolated values (a plain, un-tagged template literal used to build markup, or a custom tag that skips escaping), attacker-controlled values inserted this way execute as script.",
-    "evidence": "Tagged template literal with interpolation found in response.",
-    "riskImpact": "Unescaped interpolated values in HTML-producing template literals execute as script in the victim's browser, the same impact as classic innerHTML-based XSS.",
-    "explanation": "Libraries like lit-html and htm provide an html`` tag that escapes interpolations by design and are safe. A plain template literal or a custom tag function without escaping logic is not: any ${...} value flows into markup verbatim.",
-    "fixSteps": [
-      "Confirm the html/svg tag function actually escapes interpolated values (lit-html and htm do this by default).",
-      "If using a custom or no tag function, escape every interpolated value before inserting it into markup.",
-      "Never build HTML strings with plain (untagged) template literals from user input."
-    ],
-    "codeExamples": [
-      {
-        "label": "Escape user content in template literals",
-        "language": "typescript",
-        "code": "function escapeHtml(str: string): string {\n  return str\n    .replace(/&/g, \"&amp;\")\n    .replace(/</g, \"&lt;\")\n    .replace(/>/g, \"&gt;\")\n    .replace(/\"/g, \"&quot;\")\n    .replace(/'/g, \"&#039;\");\n}\n// Use escapeHtml(userInput) in template literals that go into innerHTML"
-      }
-    ],
-    "_idx": 20,
-    "references": ["https://owasp.org/www-community/attacks/xss/"],
-    "cwe": "CWE-79",
-    "owasp": "A03:2021"
-  },
-  {
     "id": "command-injection-indicators",
     "type": "body-pattern",
     "title": "Command Injection Parameter Names",
@@ -2969,10 +2942,10 @@
   {
     "id": "hardcoded-credentials",
     "type": "body-pattern",
-    "title": "Hard-coded credentials in source",
+    "title": "Hard-coded password in source",
     "category": "code",
     "severity": "critical",
-    "description": "Username/password or key/secret pairs are hard-coded directly in the source code.",
+    "description": "A password, passwd or pwd assignment in the source holds a literal value that looks like a real secret rather than UI copy, a placeholder, a route or a translated label. Keys named admin or root are not treated as credentials: their values are routes, class names and role labels, and default administrator logins are covered by the default-credentials and insecure-auth checks instead.",
     "evidence": "Hard-coded credentials detected in JavaScript at {{url}}.",
     "riskImpact": "Hard-coded credentials are trivially extracted from the source file by anyone with read access, including other developers, CI systems, and anyone who decompiles the bundle. They also cannot be rotated without a code change and redeployment.",
     "explanation": "Credentials in source code become part of version history and distribution artifacts.",

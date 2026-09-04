@@ -1425,49 +1425,6 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "code-xss-template-tag": (_url, _headers, body) => {
-    // The middle `[\s\S]*` used to be unbounded, so it matched across the
-    // closing backtick of one tagged template into a completely unrelated
-    // later template literal's `${...}` -- e.g. a static, safe
-    // html`<div>static content</div>` got flagged solely because some
-    // other, unrelated `${name}` interpolation existed anywhere later in
-    // the same script. `[^`]{0,500}` keeps the match inside one
-    // un-terminated template literal (no backtick in between, so still the
-    // same string) and bounds the distance to a realistic single
-    // expression's length.
-    const interpolatedTag =
-      /\bhtml\s*`[^`]{0,500}\$\{/i.test(body) ||
-      /\bsvg\s*`[^`]{0,500}\$\{/i.test(body);
-    if (!interpolatedTag) return null;
-    // An interpolated html`...` on its own is not a vulnerability, and
-    // firing "high" on it meant firing on every page that ships lit-html,
-    // lit-element, uhtml or htm -- all of which bind interpolated values as
-    // text/attribute nodes and escape them by construction. That is what
-    // this check's own description already conceded ("if the tag function
-    // does not HTML-escape the interpolated values"), so the condition now
-    // requires evidence that it does not.
-    if (/\bunsafe(?:HTML|SVG|Static)\s*\(/.test(body)) {
-      return "Tagged template literal (html`...`) used together with unsafeHTML()/unsafeSVG() - that directive inserts the interpolated value as raw markup, so an attacker-controlled value becomes script.";
-    }
-    // A tag function the page defines itself. The `(strings, ...values)`
-    // signature concatenating its arguments is the hand-rolled, non-escaping
-    // shape; a library import would not appear inline like this.
-    if (
-      /(?:function\s+(?:html|svg)\s*\(\s*strings\b|(?:const|let|var)\s+(?:html|svg)\s*=\s*(?:function\s*)?\(\s*strings\b)/i.test(
-        body,
-      )
-    ) {
-      return "Page defines its own html`...` tag function over (strings, ...values) and interpolates into it - the values are concatenated into markup without escaping.";
-    }
-    // Removed: the <script>...`...${ fallback matched "a <script> tag
-    // exists, and a backtick exists somewhere after it, and ${ exists
-    // somewhere after that" -- true on nearly every JS-heavy page, since
-    // template literals are ubiquitous and unrelated to each other.
-    return null;
-  },
-
-  // ── Command injection (code-cmdi-*) ──────────────────────────────────────
-
   "code-cmdi-spawn-shell-true": (_url, _headers, body) => {
     if (
       /spawn\s*\([^)]*\+[^)]*\{\s*shell\s*:\s*true\s*\}/i.test(body) ||

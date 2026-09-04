@@ -18,23 +18,23 @@ in this file and quote the title, description, and fix steps.
 
 ## Summary
 
-- **Total checks:** 754
+- **Total checks:** 828
 - **Categories:** 18 (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
-  - medium: 200
-  - high: 200
-  - low: 145
-  - info: 111
+  - medium: 228
+  - high: 204
+  - low: 182
+  - info: 116
   - critical: 98
 - **By type:**
-  - body-pattern: 423
+  - body-pattern: 475
   - header: 175
-  - combined: 63
+  - combined: 64
   - header-missing: 55
-  - url-check: 17
-  - header-value: 10
+  - url-check: 19
+  - header-value: 18
+  - network-probe: 12
   - header-present: 10
-  - network-probe: 1
 
 ---
 
@@ -183,7 +183,7 @@ res.redirect(ALLOWED.has(req.query.next) ? req.query.next : '/');
 
 ---
 
-## Category: api (36 checks)
+## Category: api (64 checks)
 
 ### `api-rest-allow-methods-trace` [api / low / body-pattern]
 **TRACE method referenced in API response body**
@@ -1521,6 +1521,963 @@ const server = new ApolloServer({
 });
 ```
 
+### `api-graphql-ide-exposed` [api / medium / body-pattern]
+**GraphQL IDE served in production**
+
+An interactive GraphQL IDE (GraphiQL, GraphQL Playground, Apollo Sandbox, Voyager, or the Hasura console) is served from this endpoint. These are development tools that bundle a schema browser and a query editor, and they are meant to be turned off outside development.
+
+**Risk:** The IDE gives anyone who finds the endpoint a full schema browser plus a request builder pointed at your production API, with your visitor's own cookies attached. Enumerating the write surface, discovering fields the frontend never calls, and iterating on an authorization bypass all stop needing any tooling of the attacker's own.
+
+**Why it matters:** The detector matches structural markers only: the IDE's own bundle filename, its document title, or the function that renders it (GraphiQL.createFetcher, renderGraphiQL, ApolloServerPluginLandingPage). A page that mentions these products in prose does not match, so documentation and marketing pages do not fire it. Note that serving the IDE and enabling introspection are separate switches: turning off one does not turn off the other.
+
+**References:**
+- https://www.apollographql.com/docs/apollo-server/api/plugin/landing-pages/
+- https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
+
+**Fix:**
+- Disable the IDE plugin in production. In Apollo Server, pass ApolloServerPluginLandingPageDisabled() rather than relying on NODE_ENV alone.
+- In express-graphql / graphql-http, set graphiql to false when the environment is not development.
+- For Hasura, do not deploy with HASURA_GRAPHQL_ENABLE_CONSOLE=true; run the console locally against the remote endpoint instead.
+- Disable schema introspection at the same time, since the IDE and introspection are controlled independently.
+- **Apollo Server: disable the landing page in production** (typescript):
+```typescript
+import {
+  ApolloServerPluginLandingPageDisabled,
+  ApolloServerPluginLandingPageLocalDefault,
+} from '@apollo/server/plugin/landingPage/default';
+
+const isProd = process.env.NODE_ENV === 'production';
+
+new ApolloServer({
+  schema,
+  introspection: !isProd,
+  plugins: [
+    isProd
+      ? ApolloServerPluginLandingPageDisabled()
+      : ApolloServerPluginLandingPageLocalDefault(),
+  ],
+});
+```
+- **graphql-http: gate GraphiQL on the environment** (javascript):
+```javascript
+app.all(
+  '/graphql',
+  createHandler({
+    schema,
+    graphiql: process.env.NODE_ENV !== 'production',
+  }),
+);
+```
+
+### `api-graphql-schema-sdl-exposed` [api / low / body-pattern]
+**GraphQL schema served as raw SDL**
+
+The response is a GraphQL schema in Schema Definition Language form, served as a plain-text document rather than as an HTML page that talks about one.
+
+**Risk:** An SDL dump hands over the same map that introspection would, without needing introspection to be enabled. Every type, field, argument, enum value and input object is readable, including internal fields the public client never queries, which is the starting point for finding an operation whose authorization was never written.
+
+**Why it matters:** Disabling introspection is a common hardening step, and it is quietly undone when the build also publishes schema.graphql next to the bundle. The detector requires the response not to be HTML and to contain a real type Query { ... } block plus a second SDL construct (a Mutation type, a schema block, an input, or an enum), so a tutorial page showing a schema in a code block does not match.
+
+**References:**
+- https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html
+- https://spec.graphql.org/October2021/#sec-Type-System
+
+**Fix:**
+- Remove the .graphql / .gql schema file from anything the web server can serve, and from the published build output.
+- If a schema artifact is needed by CI or by a client codegen step, publish it to a private registry or an authenticated endpoint instead of the public origin.
+- Confirm introspection is disabled too: an attacker only needs one of the two paths.
+- **Next.js: keep schema files out of the public directory** (bash):
+```bash
+# Schema files belong beside the server code, not under public/
+mv public/schema.graphql server/schema.graphql
+
+# Verify nothing else ships one
+grep -rl 'type Query' .next/static public 2>/dev/null
+```
+- **Nginx: refuse to serve schema artifacts** (nginx):
+```nginx
+location ~* \.(graphql|gql)$ {
+    return 404;
+}
+```
+
+### `api-openapi-no-security-declared` [api / low / body-pattern]
+**OpenAPI document declares no security for write operations**
+
+The served OpenAPI document describes POST, PUT, PATCH or DELETE operations but contains no securitySchemes, no securityDefinitions, and no security requirement anywhere in the document.
+
+**Risk:** The contract clients and gateways generate from this document says every write is anonymous. Tooling that enforces the spec (an API gateway, a mock server, a generated SDK) will not attach credentials, and a reviewer reading the document has no way to tell an intentional public API from an endpoint whose auth was never declared.
+
+**Why it matters:** This reads the published document, not the running server: an operation can still be protected by middleware that the spec never mentions. That gap is the finding. A spec that omits security is either describing a genuinely public API, in which case an explicit empty security requirement says so, or it has drifted from the implementation. Read-only documents are not flagged, only ones that describe writes.
+
+**References:**
+- https://spec.openapis.org/oas/v3.1.0#security-requirement-object
+- https://owasp.org/API-Security/editions/2023/en/0xa5-broken-function-level-authorization/
+
+**Fix:**
+- Declare the scheme once under components.securitySchemes, then apply it with a top-level security requirement so every operation inherits it.
+- Override the inherited requirement per operation with security: [] on the endpoints that really are public, so the exception is explicit.
+- Add a spec lint step to CI (Spectral's owasp ruleset covers this) so a new operation cannot merge without a declared requirement.
+- **OpenAPI 3: declare and apply a bearer scheme** (yaml):
+```yaml
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      security: []   # deliberately public
+      responses:
+        '200': { description: OK }
+```
+- **CI: fail the build on an undeclared requirement** (bash):
+```bash
+npx @stoplight/spectral-cli lint openapi.yaml \
+  --ruleset https://unpkg.com/@stoplight/spectral-owasp-ruleset/dist/ruleset.js \
+  --fail-severity=error
+```
+
+### `api-openapi-server-url-plain-http` [api / medium / body-pattern]
+**OpenAPI document publishes a cleartext base URL**
+
+The served API description gives a public base URL over plain http://, either in the OpenAPI 3 servers array or as a Swagger 2.0 schemes list containing http and not https.
+
+**Risk:** Every SDK, mock server, and gateway generated from this document targets the cleartext URL by default. Requests built that way carry the API key or bearer token in plaintext over the network, and an on-path attacker can read the credential and rewrite the response before the client sees it.
+
+**Why it matters:** This is specifically about a publicly routable http:// base URL. Localhost, RFC1918 and staging or internal hostnames are excluded here because those are reported separately as an internal-server-URL leak. A redirect from :80 to :443 does not make this safe: the first request, with its Authorization header, has already been sent in the clear.
+
+**References:**
+- https://spec.openapis.org/oas/v3.1.0#server-object
+- https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/
+
+**Fix:**
+- Change every servers[].url in the document to https://.
+- For Swagger 2.0, set schemes: [https] and remove http.
+- Regenerate and republish any SDKs built from the old document, since the base URL is usually baked into the generated client.
+- **OpenAPI 3: https base URLs only** (yaml):
+```yaml
+servers:
+  - url: https://api.example.com/v1
+    description: Production
+  - url: https://sandbox.example.com/v1
+    description: Sandbox
+```
+- **Swagger 2.0: drop the http scheme** (yaml):
+```yaml
+swagger: '2.0'
+host: api.example.com
+basePath: /v1
+schemes:
+  - https
+```
+
+### `api-openapi-swagger-2-document` [api / info / body-pattern]
+**API described with Swagger 2.0**
+
+The API description served here declares swagger: 2.0. That format was superseded by OpenAPI 3.0 in 2017 and by 3.1 in 2021.
+
+**Risk:** Swagger 2.0 cannot express several things a security reviewer needs. It has no cookie parameter location, no way to describe more than one server, no oneOf/anyOf in schemas, and its OAuth2 model predates PKCE. Constraints that are not expressible are constraints that generated clients and gateways will not enforce.
+
+**Why it matters:** This is informational, not a vulnerability. It is worth knowing because the surrounding tooling tends to be the same age as the document: a Swagger 2.0 spec is usually served by a Swagger UI 2.x or 3.x bundle, and validated by a generator that has not shipped a security fix in years. Converting is largely mechanical.
+
+**References:**
+- https://spec.openapis.org/oas/v3.1.0
+- https://swagger.io/docs/specification/about/
+
+**Fix:**
+- Convert the document with swagger2openapi, then review the securitySchemes section by hand.
+- Move the host / basePath / schemes triple into a servers array.
+- Upgrade the Swagger UI or Redoc bundle serving it at the same time.
+- **Convert to OpenAPI 3** (bash):
+```bash
+npx swagger2openapi swagger.json -o openapi.json --resolve
+
+# Then validate the result
+npx @redocly/cli lint openapi.json
+```
+
+### `api-openapi-deprecated-operations-exposed` [api / info / body-pattern]
+**OpenAPI document advertises deprecated operations**
+
+The served API description marks one or more operations or parameters "deprecated": true while still publishing them as callable.
+
+**Risk:** A deprecated route is usually the one that stopped getting attention: it keeps the old parameter handling, the old validation, and often the old authorization code, while review and test effort moves to its replacement. Publishing it in the contract tells an attacker exactly which path that is.
+
+**Why it matters:** Marking an operation deprecated is good practice and is not itself a problem. The finding is the pairing: the document says do not use this, and the server still serves it. Treat the deprecated list as a work queue with a removal date, and pair it with a Deprecation and Sunset header on the live responses so clients find out at runtime rather than by reading the spec.
+
+**References:**
+- https://spec.openapis.org/oas/v3.1.0#operation-object
+- https://datatracker.ietf.org/doc/html/rfc9745
+
+**Fix:**
+- Give every deprecated operation a removal date and track it.
+- Emit Deprecation and Sunset headers on those routes so callers see the notice without reading the spec.
+- Log calls to deprecated routes with the caller identity, so you know who still depends on them before removal.
+- Delete the route and its spec entry once the sunset date passes.
+- **OpenAPI 3: deprecate with a stated replacement** (yaml):
+```yaml
+paths:
+  /v1/users/search:
+    get:
+      deprecated: true
+      summary: 'Deprecated: use POST /v2/users/query. Removal 2027-01-01.'
+      responses:
+        '200': { description: OK }
+```
+- **Express: announce the sunset at runtime** (javascript):
+```javascript
+router.get('/v1/users/search', (req, res, next) => {
+  res.set('Deprecation', 'true');
+  res.set('Sunset', 'Fri, 01 Jan 2027 00:00:00 GMT');
+  res.set('Link', '</v2/users/query>; rel="successor-version"');
+  next();
+});
+```
+
+### `api-openapi-oauth2-implicit-flow-declared` [api / medium / body-pattern]
+**OpenAPI document declares the OAuth2 implicit flow**
+
+The served API description declares an OAuth2 security scheme using the implicit grant, which returns the access token directly in the redirect URL fragment.
+
+**Risk:** An implicit-grant token arrives in the URL fragment, so it lands in browser history, in any Referer sent by a script the page loads, and in the logs of anything that records full URLs. There is no client authentication and no PKCE, so a token intercepted at the redirect is immediately usable, and there is no refresh token, which pushes implementations toward long token lifetimes to compensate.
+
+**Why it matters:** OAuth 2.0 Security Best Current Practice (RFC 9700) says the implicit grant must not be used, and OAuth 2.1 removes it. The replacement for browser and mobile clients is the authorization code grant with PKCE, which keeps the token out of the URL and binds the code to the client that requested it. A spec that still declares implicit usually means the authorization server still accepts it.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc9700
+- https://oauth.net/2/grant-types/implicit/
+
+**Fix:**
+- Replace the implicit flow declaration with authorizationCode and require PKCE on the authorization server.
+- Stop accepting response_type=token at the authorization endpoint once clients have migrated.
+- Shorten the lifetime of any token that was issued through the implicit flow and rotate refresh credentials.
+- **OpenAPI 3: authorization code instead of implicit** (yaml):
+```yaml
+components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.example.com/authorize
+          tokenUrl: https://auth.example.com/token
+          scopes:
+            read: Read access
+            write: Write access
+```
+- **Authorization request with PKCE** (text):
+```text
+GET /authorize
+  ?response_type=code
+  &client_id=spa-client
+  &redirect_uri=https%3A%2F%2Fapp.example.com%2Fcallback
+  &code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM
+  &code_challenge_method=S256
+  &state=<random>
+```
+
+### `api-asyncapi-document-exposed` [api / low / body-pattern]
+**AsyncAPI document publicly served**
+
+An AsyncAPI document is served from this URL. AsyncAPI describes the event-driven half of a system: brokers, channels and topics, and the shape of the messages that flow through them.
+
+**Risk:** The document names the broker hostnames and ports, the exact channel and topic strings, the protocol and security scheme each server expects, and the payload schema of every message. That is the whole internal messaging topology, including queues that no public API ever touches, handed over in one file.
+
+**Why it matters:** Unlike an OpenAPI document, which usually describes an interface that is meant to be public, an AsyncAPI document normally describes internal plumbing between services. Publishing it on the web origin is almost always accidental, typically a docs build that copied the whole spec directory into the output. Serving it is not itself a break-in, but it removes the reconnaissance step for anyone who reaches the broker another way.
+
+**References:**
+- https://www.asyncapi.com/docs/reference/specification/latest
+- https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/
+
+**Fix:**
+- Remove the AsyncAPI document from the public build output and from anything the web server maps.
+- Publish it to an internal developer portal or a private schema registry instead.
+- Treat the broker addresses it exposed as known, and confirm those brokers require authentication and are not reachable from the internet.
+- **Check what the build is publishing** (bash):
+```bash
+grep -rl 'asyncapi' dist public build 2>/dev/null
+
+# Exclude spec sources from the published output
+echo 'asyncapi.yaml' >> .vercelignore
+```
+
+### `api-postman-collection-exposed` [api / medium / body-pattern]
+**Postman collection export publicly served**
+
+A Postman collection export is served from this URL, identified by its _postman_id or its schema.getpostman.com schema reference.
+
+**Risk:** A collection is a saved copy of how someone actually called the API: every path, every request body, every header. Collections routinely carry the values used while testing, so the file frequently contains a live bearer token, an API key, or a basic-auth credential in the auth block or in a saved variable, and it always contains internal routes that were never linked publicly.
+
+**Why it matters:** These usually reach the web root by accident: a developer exports a collection into the repository to share it, and the whole repository ends up in the build output. The immediate question is not whether the file should be there, it is whether anything in it is still valid. Treat every credential and every internal hostname it contains as disclosed.
+
+**References:**
+- https://learning.postman.com/docs/collections/using-collections/
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+
+**Fix:**
+- Remove the file from the served origin and from the repository history if it carried credentials.
+- Rotate every token, key, and password that appears anywhere in the collection or its environment file.
+- Share collections through a Postman workspace or a private link rather than a checked-in export.
+- Add *.postman_collection.json and *.postman_environment.json to .gitignore.
+- **Find and exclude collection exports** (bash):
+```bash
+find . -name '*postman_collection.json' -o -name '*postman_environment.json'
+
+cat >> .gitignore <<'EOF'
+*.postman_collection.json
+*.postman_environment.json
+EOF
+```
+
+### `api-insomnia-export-exposed` [api / medium / body-pattern]
+**Insomnia workspace export publicly served**
+
+An Insomnia workspace export is served from this URL, identified by its __export_source or the __export_format plus _type fields Insomnia writes.
+
+**Risk:** The export contains every saved request in the workspace: URLs, bodies, and headers, plus the environment objects those requests interpolate. Environments are where API keys and tokens are stored, so an exported workspace frequently ships working credentials alongside the exact requests they authorize.
+
+**Why it matters:** Same root cause as a published Postman collection, different tool. Insomnia's export format nests requests and environments in one JSON document, so a single file can disclose both the internal API surface and the secrets used to call it. Assume anything in the environment section is compromised rather than trying to judge whether a particular value looks live.
+
+**References:**
+- https://docs.insomnia.rest/insomnia/import-export-data
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+
+**Fix:**
+- Remove the export from the served origin, and purge it from git history if it contained secrets.
+- Rotate every credential stored in the workspace's environments.
+- Use Insomnia's private environments (which are excluded from exports) for secrets, and share workspaces through Insomnia Sync rather than a file.
+- **Find Insomnia exports in the tree** (bash):
+```bash
+grep -rl '"__export_source"' . --include='*.json' 2>/dev/null
+
+echo 'Insomnia_*.json' >> .gitignore
+```
+
+### `api-wadl-document-exposed` [api / low / body-pattern]
+**WADL document publicly served**
+
+A WADL (Web Application Description Language) document is served from this URL. Jersey, Apache CXF and other JAX-RS stacks generate one automatically and expose it unless it is explicitly disabled.
+
+**Risk:** The document enumerates every resource path the JAX-RS application registers, the HTTP methods each accepts, and every query, path, header and form parameter with its type. That includes internal management resources that are not linked from anywhere and were never meant to be discovered.
+
+**Why it matters:** This is almost always unintentional rather than a decision: Jersey serves /application.wadl by default, so the surface appears without anyone adding it. Because the WADL is generated from the live resource classes, it is always accurate and always current, which makes it a better map of the application than any documentation the team wrote by hand.
+
+**References:**
+- https://eclipse-ee4j.github.io/jersey.github.io/documentation/latest/wadl.html
+- https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/
+
+**Fix:**
+- In Jersey, set jersey.config.server.wadl.disableWadl to true.
+- In Apache CXF, remove the WADLGenerator provider from the JAX-RS server configuration.
+- Block /application.wadl and any ?_wadl query at the reverse proxy as a second layer.
+- **Jersey: disable WADL generation** (java):
+```java
+public class AppConfig extends ResourceConfig {
+  public AppConfig() {
+    packages("com.example.api");
+    property(ServerProperties.WADL_FEATURE_DISABLE, true);
+  }
+}
+```
+- **Nginx: block the WADL endpoints** (nginx):
+```nginx
+location ~* (application\.wadl|\?_wadl) {
+    return 404;
+}
+```
+
+### `api-raml-document-exposed` [api / low / body-pattern]
+**RAML API definition publicly served**
+
+A RAML (RESTful API Modeling Language) definition is served from this URL, identified by the #%RAML version marker RAML files must start with.
+
+**Risk:** A RAML file lists every resource and method the API defines, the parameters each takes, and the securedBy scheme applied to each one, including operations that are not referenced by any public client.
+
+**Why it matters:** RAML documents normally live in a design repository or an API portal, not on the runtime origin. Finding one served from the application host usually means the whole design directory was copied into the deployment. The security value to an attacker is the same as any complete interface description: it removes the guessing from finding an endpoint whose authorization was never implemented.
+
+**References:**
+- https://github.com/raml-org/raml-spec/blob/master/versions/raml-10/raml-10.md
+- https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/
+
+**Fix:**
+- Remove the RAML file and its includes from the served origin.
+- Publish the definition to an internal API portal or a design workspace instead.
+- Review any resource the file exposed that you did not expect to be public, and confirm it enforces authorization.
+- **Find RAML files in the deployed output** (bash):
+```bash
+grep -rl '^#%RAML' dist public build 2>/dev/null
+```
+
+### `api-odata-metadata-document-exposed` [api / low / body-pattern]
+**OData $metadata document publicly served**
+
+An OData $metadata document is served from this URL. OData services (SAP Gateway, Microsoft Dynamics, ASP.NET Core OData) publish one automatically to describe their entity model.
+
+**Risk:** The metadata document is a complete schema dump: every entity set, every property with its exact name and type, every navigation property linking one entity to another, and every callable function and action. Combined with OData's query syntax, which lets a caller select, filter and expand across those navigation properties, it is enough to reach data the intended UI never displays.
+
+**Why it matters:** Publishing $metadata is part of how OData works, so this is informational rather than a defect on its own. It matters because it turns any authorization gap into an immediately exploitable one: the caller does not have to guess a property name or an entity relationship, they can read it. The real control is server-side, restricting which entity sets are exposed and which query options are permitted.
+
+**References:**
+- https://docs.oasis-open.org/odata/odata/v4.01/odata-v4.01-part1-protocol.html
+- https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/
+
+**Fix:**
+- Expose only the entity sets the API actually needs, rather than registering the whole EDM model.
+- Restrict $expand, $select and $filter with query-option limits so navigation properties cannot be used to reach unrelated entities.
+- Require authentication on the metadata endpoint itself if the model is not meant to be public.
+- **ASP.NET Core OData: bound query options** (csharp):
+```csharp
+services.AddControllers().AddOData(opt => opt
+    .AddRouteComponents("odata", GetEdmModel())
+    .Select()
+    .Filter()
+    .OrderBy()
+    .SetMaxTop(100));   // no unbounded $expand, capped page size
+```
+- **Require auth on the metadata route** (csharp):
+```csharp
+app.MapWhen(
+    ctx => ctx.Request.Path.StartsWithSegments("/odata/$metadata"),
+    branch => branch.UseAuthentication().UseAuthorization());
+```
+
+### `api-oidc-discovery-alg-none-supported` [api / high / body-pattern]
+**OIDC discovery advertises the "none" signing algorithm**
+
+The authorization-server metadata document lists "none" in id_token_signing_alg_values_supported, meaning the server will issue, and by implication accept, unsigned ID tokens.
+
+**Risk:** An unsigned ID token is a token anyone can write. A client that follows the discovery document and honours alg "none" will accept a token whose sub, email and groups claims the attacker chose, which is authentication bypass with no credential involved.
+
+**Why it matters:** OpenID Connect Core permits alg "none" only for the response of a token-endpoint exchange where the token never leaves the back channel, and OIDC-conformant clients are expected to reject it everywhere else. Advertising it in discovery metadata means clients that select an algorithm from that list can pick "none", and it strongly suggests the server accepts unsigned tokens on the paths where it verifies them. Providers that support it usually do so through a configuration flag left over from a development setup.
+
+**References:**
+- https://openid.net/specs/openid-connect-discovery-1_0.html
+- https://datatracker.ietf.org/doc/html/rfc8725
+
+**Fix:**
+- Remove "none" from id_token_signing_alg_values_supported.
+- Configure the issuer to sign with RS256, PS256, or ES256 only, and to reject any token whose alg header is not on that list.
+- On the client side, pin the accepted algorithm explicitly rather than trusting the token's own alg header.
+- Review the issuer's logs for tokens presented with alg none.
+- **Client: pin the algorithm during verification** (javascript):
+```javascript
+const { payload } = await jose.jwtVerify(idToken, JWKS, {
+  issuer: 'https://auth.example.com',
+  audience: 'my-client-id',
+  algorithms: ['RS256'],   // never read alg from the token itself
+});
+```
+- **Inspect what the issuer advertises** (bash):
+```bash
+curl -s https://auth.example.com/.well-known/openid-configuration \
+  | jq '.id_token_signing_alg_values_supported'
+```
+
+### `api-oidc-discovery-implicit-flow-supported` [api / low / body-pattern]
+**OIDC discovery advertises implicit-grant response types**
+
+The authorization-server metadata lists a response type that returns a token straight from the authorization endpoint ("token" or "id_token token") without an accompanying code.
+
+**Risk:** Any client that reads this document is told the implicit grant is available. A token returned that way lands in the URL fragment, so it reaches browser history, third-party scripts on the callback page, and anything that logs full URLs, and it is issued without client authentication or PKCE.
+
+**Why it matters:** This describes what the server advertises, not what any particular client uses, so it is a Low finding rather than a confirmed weakness. It still matters: OAuth 2.0 Security Best Current Practice (RFC 9700) says the implicit grant must not be used and OAuth 2.1 removes it, so an advertised implicit response type is a migration that has not finished. Turning it off in the metadata is only cosmetic unless the authorization endpoint stops honouring it too.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc9700
+- https://openid.net/specs/openid-connect-discovery-1_0.html
+
+**Fix:**
+- Migrate remaining clients to authorization code with PKCE.
+- Remove implicit entries from response_types_supported once no client depends on them.
+- Reject response_type=token and response_type=id_token token at the authorization endpoint, not only in the metadata.
+- **Metadata after migration** (json):
+```json
+{
+  "response_types_supported": ["code"],
+  "grant_types_supported": ["authorization_code", "refresh_token"],
+  "code_challenge_methods_supported": ["S256"]
+}
+```
+
+### `api-oidc-discovery-pkce-not-advertised` [api / low / body-pattern]
+**OIDC discovery omits code_challenge_methods_supported**
+
+The authorization-server metadata advertises the authorization-code response type but does not include code_challenge_methods_supported, the field a client reads to discover that PKCE is available.
+
+**Risk:** A conforming client decides whether to send a code_challenge based on this field. When it is absent, well-behaved client libraries skip PKCE, which leaves the authorization code unbound to the requesting client: an attacker who intercepts the code at the redirect (a custom URI scheme another app registered, a leaked Referer, a compromised proxy) can exchange it themselves.
+
+**Why it matters:** The metadata may be understating the server, since many implementations accept a code_challenge without advertising it. That is exactly the problem: correctness now depends on every client hardcoding PKCE rather than on discovery. RFC 8414 defines the field and RFC 9700 requires PKCE for all authorization-code clients, public and confidential alike, so publishing it is the cheap half of the fix.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc8414
+- https://datatracker.ietf.org/doc/html/rfc7636
+
+**Fix:**
+- Add "code_challenge_methods_supported": ["S256"] to the metadata document.
+- Require a code_challenge on every authorization-code request at the server, and reject the plain method.
+- In clients, enable PKCE explicitly rather than relying on discovery to turn it on.
+- **Metadata: advertise S256** (json):
+```json
+{
+  "issuer": "https://auth.example.com",
+  "authorization_endpoint": "https://auth.example.com/authorize",
+  "token_endpoint": "https://auth.example.com/token",
+  "response_types_supported": ["code"],
+  "code_challenge_methods_supported": ["S256"]
+}
+```
+- **Check an issuer** (bash):
+```bash
+curl -s https://auth.example.com/.well-known/openid-configuration \
+  | jq '{response_types_supported, code_challenge_methods_supported}'
+```
+
+### `api-oauth-authorize-redirect-uri-insecure` [api / medium / url-check]
+**OAuth authorization request uses a cleartext redirect_uri**
+
+The scanned URL is an OAuth or OpenID Connect authorization request whose redirect_uri points at a plain http:// callback on a host that is not loopback.
+
+**Risk:** The authorization response, carrying either the authorization code or, in an implicit flow, the token itself, is delivered to that cleartext URL. Anyone on the network path reads it, and with the code in hand can complete the exchange before the real client does unless PKCE is enforced.
+
+**Why it matters:** RFC 9700 requires redirect URIs to use https, with one exception: loopback addresses for native applications, which RFC 8252 section 7.3 explicitly permits over http. This check honours that exception and does not fire on localhost, 127.0.0.1 or ::1. Everything else is a real downgrade, whether the redirect target is first-party or not.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc9700
+- https://datatracker.ietf.org/doc/html/rfc8252#section-7.3
+
+**Fix:**
+- Change the client's registered redirect URI to https.
+- Configure the authorization server to reject any non-loopback http redirect_uri at registration time, not only at request time.
+- Treat any code or token already delivered over http as disclosed and revoke the associated grants.
+- **Correct authorization request** (text):
+```text
+GET /authorize
+  ?response_type=code
+  &client_id=web-app
+  &redirect_uri=https%3A%2F%2Fapp.example.com%2Fcallback
+  &code_challenge_method=S256
+  &code_challenge=<challenge>
+  &state=<random>
+```
+- **Server: reject cleartext redirect URIs** (javascript):
+```javascript
+function isAllowedRedirect(uri) {
+  const u = new URL(uri);
+  if (u.protocol === 'https:') return true;
+  // RFC 8252 7.3: loopback over http is permitted for native apps
+  return u.protocol === 'http:' &&
+    ['localhost', '127.0.0.1', '::1'].includes(u.hostname);
+}
+```
+
+### `api-oauth-authorize-oidc-nonce-missing` [api / medium / url-check]
+**OIDC authorization request returns an ID token with no nonce**
+
+The scanned URL is an authorization request whose response_type includes id_token, but it carries no nonce parameter. OpenID Connect Core section 3.2.2.1 requires a nonce for every flow that returns an ID token from the authorization endpoint.
+
+**Risk:** The nonce is what binds an ID token to the specific authentication request that asked for it. Without it, an ID token captured from one session can be replayed into another: an attacker who obtains a valid token for a victim, from browser history, a logged URL, or a different relying party, can present it at the callback and be logged in as that user.
+
+**Why it matters:** state and nonce solve different problems and neither substitutes for the other. state protects the redirect against CSRF; nonce protects the token against replay, and it is the only one carried inside the token itself so the client can check it after the fact. The value must be unguessable, stored with the session that started the flow, and compared against the token's nonce claim on return.
+
+**References:**
+- https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest
+- https://datatracker.ietf.org/doc/html/rfc9700
+
+**Fix:**
+- Generate a cryptographically random nonce per authorization request and include it in the request.
+- Persist it against the user's session, not in a cookie the callback page can read from JavaScript.
+- On callback, reject the ID token unless its nonce claim equals the stored value, then discard the stored value so it cannot be reused.
+- Prefer the authorization code flow with PKCE, where the token is never exposed in the front channel at all.
+- **Generate and store the nonce** (javascript):
+```javascript
+const nonce = crypto.randomUUID();
+req.session.oidcNonce = nonce;
+
+const authUrl = new URL('https://auth.example.com/authorize');
+authUrl.searchParams.set('response_type', 'code id_token');
+authUrl.searchParams.set('client_id', CLIENT_ID);
+authUrl.searchParams.set('redirect_uri', CALLBACK);
+authUrl.searchParams.set('scope', 'openid profile');
+authUrl.searchParams.set('nonce', nonce);
+authUrl.searchParams.set('state', crypto.randomUUID());
+```
+- **Verify it on callback** (javascript):
+```javascript
+const { payload } = await jose.jwtVerify(idToken, JWKS, {
+  issuer: ISSUER,
+  audience: CLIENT_ID,
+  algorithms: ['RS256'],
+});
+if (payload.nonce !== req.session.oidcNonce) {
+  throw new Error('nonce mismatch');
+}
+delete req.session.oidcNonce;   // single use
+```
+
+### `api-jwt-long-lived-token` [api / low / body-pattern]
+**JWT with a lifetime measured in months**
+
+A JWT reachable from this response decodes to a payload whose exp claim is more than 90 days after its iat or nbf, so the token stays valid for months after it was issued.
+
+**Risk:** Expiry is the only revocation a stateless JWT has. A token that lives for months means a copy taken from a log, a browser profile, a crash report, or an old backup keeps working long after the account it belongs to has changed password, lost a role, or been deleted, unless a separate denylist is consulted on every request.
+
+**Why it matters:** The claims are read by base64url-decoding the payload; no signature verification and no network request is involved, so this says nothing about whether the token is currently valid. Long-lived JWTs are sometimes deliberate, refresh tokens and machine-to-machine credentials are the usual cases, which is why this is Low rather than higher. What it is worth checking is that the long-lived token is a refresh credential held server-side, not an access token being sent to a browser.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc8725#section-3.10
+- https://cheatsheetseries.owasp.org/cheatsheets/JSON_Web_Token_for_Java_Cheat_Sheet.html
+
+**Fix:**
+- Keep access-token lifetimes in the minutes-to-an-hour range and use a refresh token for continuity.
+- Give refresh tokens a jti and check it against a server-side store on use, so revocation is possible.
+- Rotate refresh tokens on each use and invalidate the previous one, so a stolen copy stops working after the legitimate client next refreshes.
+- **Short access token, revocable refresh token** (javascript):
+```javascript
+const accessToken = await new jose.SignJWT({ sub: user.id, scope })
+  .setProtectedHeader({ alg: 'RS256' })
+  .setIssuedAt()
+  .setExpirationTime('15m')
+  .sign(privateKey);
+
+const refreshToken = await new jose.SignJWT({ sub: user.id, jti })
+  .setProtectedHeader({ alg: 'RS256' })
+  .setIssuedAt()
+  .setExpirationTime('30d')
+  .sign(privateKey);
+
+await db.storeRefreshJti(jti, user.id);   // makes revocation possible
+```
+- **Inspect a token's lifetime** (bash):
+```bash
+echo "$JWT" | cut -d. -f2 | base64 -d 2>/dev/null | jq '{iat, exp, days: ((.exp - .iat) / 86400)}'
+```
+
+### `api-retry-after-invalid-value` [api / low / header-value]
+**Retry-After header is not a valid delay or date**
+
+The response carries a Retry-After header whose value is neither a non-negative integer number of seconds nor an HTTP-date, the only two forms RFC 9110 defines.
+
+**Risk:** Clients that cannot parse the header fall back to their own retry policy, which is usually an immediate retry or a fixed short interval. Under the load that produced the 429 or 503 in the first place, that turns a throttled client into a retry storm, and it defeats the backoff the header exists to coordinate.
+
+**Why it matters:** Common wrong values are "60s", an ISO-8601 timestamp, a float, or a bare word. The two legal forms are a decimal count of seconds ("120") and an IMF-fixdate ("Wed, 21 Oct 2026 07:28:00 GMT"). This check reads the header only; it does not judge whether the delay itself is reasonable.
+
+**References:**
+- https://httpwg.org/specs/rfc9110.html#field.retry-after
+- https://datatracker.ietf.org/doc/html/rfc6585
+
+**Fix:**
+- Emit either an integer number of seconds or an IMF-fixdate, with no unit suffix.
+- Set it on every 429 and on 503 responses that come from a maintenance or overload path.
+- Test the value with a client library rather than by eye: most will silently ignore what they cannot parse.
+- **Express: valid Retry-After forms** (javascript):
+```javascript
+// Seconds
+res.set('Retry-After', '120');
+
+// Or an absolute time
+res.set('Retry-After', new Date(Date.now() + 120_000).toUTCString());
+
+res.status(429).json({ error: 'rate_limited' });
+```
+- **Nginx: fixed backoff on throttle** (nginx):
+```nginx
+limit_req_status 429;
+
+error_page 429 = @throttled;
+location @throttled {
+    add_header Retry-After 60 always;
+    return 429;
+}
+```
+
+### `api-sunset-header-in-past` [api / low / header-value]
+**Sunset date has passed but the endpoint still answers**
+
+The response carries an RFC 8594 Sunset header whose date is in the past, meaning the resource is still being served after the retirement date it announced.
+
+**Risk:** A route that outlives its own sunset date is a route nobody owns. It keeps running the code path that was frozen at deprecation, including its authentication and input validation, while review, testing and dependency updates have moved to the replacement. It is also the version an attacker will pick, precisely because it is the one that stopped changing.
+
+**Why it matters:** Sunset is a promise about a date, and the header still being served past that date means either the removal slipped or the header was never revisited. Both are worth knowing. The check only reads the header; it does not judge whether keeping the endpoint alive was the right call, and a deliberate extension should be reflected by updating the date rather than by leaving a stale one in place.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc8594
+- https://datatracker.ietf.org/doc/html/rfc9745
+
+**Fix:**
+- Decide whether to remove the endpoint or extend it, then make the header say so.
+- If extending, publish a new Sunset date and tell the callers that are still using it.
+- If removing, return 410 Gone with a Link rel=successor-version pointing at the replacement, rather than deleting the route silently.
+- Add a check to CI or to a monitor that alerts when a Sunset date passes while the route is still live.
+- **Retire the route properly** (javascript):
+```javascript
+router.all('/v1/reports', (req, res) => {
+  res.set('Link', '</v2/reports>; rel="successor-version"');
+  res.status(410).json({
+    error: 'gone',
+    message: 'v1/reports was retired on 2026-01-01. Use /v2/reports.',
+  });
+});
+```
+- **Check a live endpoint** (bash):
+```bash
+curl -sI https://api.example.com/v1/reports | grep -i -E 'sunset|deprecation|link'
+```
+
+### `api-json-response-content-type-mismatch` [api / low / combined]
+**JSON body served as HTML or with no Content-Type**
+
+The response body is JSON-shaped but the response either declares Content-Type: text/html or carries no Content-Type header at all.
+
+**Risk:** A JSON document labelled text/html is parsed as markup. Any string value in it that an attacker controls, a username, a search term, an error message echoing input, becomes live HTML in the browser, which is stored or reflected XSS on your own origin. With no Content-Type at all the browser sniffs, and a body whose first bytes look like markup is treated as a document.
+
+**Why it matters:** The detector checks structure rather than parsing the whole body: it requires the response to open with a JSON object or array and to have no HTML document markers near the start, so an HTML page that happens to embed JSON does not match. X-Content-Type-Options: nosniff blocks the sniffing half of this but does not help when the server explicitly says text/html, so the Content-Type itself has to be correct.
+
+**References:**
+- https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options
+
+**Fix:**
+- Return Content-Type: application/json (or application/problem+json for errors) on every JSON response, including error paths.
+- Check the framework's error handler specifically: it is the usual place a JSON API falls back to the default HTML content type.
+- Send X-Content-Type-Options: nosniff as a second layer so a missing type never gets sniffed into a document.
+- **Express: JSON content type on errors too** (javascript):
+```javascript
+app.use((err, req, res, _next) => {
+  res.status(err.status || 500)
+     .type('application/problem+json')
+     .json({ title: 'Request failed', status: err.status || 500 });
+});
+```
+- **Next.js Route Handler** (typescript):
+```typescript
+return new Response(JSON.stringify(payload), {
+  status: 200,
+  headers: {
+    'Content-Type': 'application/json; charset=utf-8',
+    'X-Content-Type-Options': 'nosniff',
+  },
+});
+```
+
+### `api-response-header-internal-host` [api / low / header-value]
+**Response header points at an internal host**
+
+A Location, Content-Location or Link response header contains a URL whose hostname is a loopback or RFC1918 address, or a private-use suffix such as .internal, .local or .corp.
+
+**Risk:** The header names a host that exists behind the proxy: an internal service name, a pod address, an admin origin. That is free reconnaissance for anyone who later reaches the network another way, and where the URL is a pagination Link, it also tells a client to fetch an address it cannot resolve, which turns into a hard failure rather than a graceful one.
+
+**Why it matters:** This is nearly always a backend building absolute URLs from its own request context rather than from the public origin, so the internal hostname survives the trip through the proxy. The fix is to construct outward-facing URLs from a configured public base, not from the incoming Host header or the container's own name. Relative URLs sidestep the problem entirely where the header allows them.
+
+**References:**
+- https://cwe.mitre.org/data/definitions/200.html
+- https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/
+
+**Fix:**
+- Build absolute URLs in responses from an explicit PUBLIC_BASE_URL setting, not from req.headers.host or the local hostname.
+- Prefer relative references in Location and Link where the specification allows them.
+- Add a response filter at the edge that rejects or rewrites headers containing private hostnames, as a backstop.
+- **Build links from a configured public origin** (javascript):
+```javascript
+const PUBLIC_BASE = new URL(process.env.PUBLIC_BASE_URL);
+
+function pageLink(page) {
+  const u = new URL('/v1/items', PUBLIC_BASE);
+  u.searchParams.set('page', String(page));
+  return u.toString();
+}
+
+res.set('Link', `<<value>>; rel="next"`);
+```
+- **Nginx: keep redirects on the public origin** (nginx):
+```nginx
+proxy_redirect http://app-internal:3000/ https://api.example.com/;
+absolute_redirect off;
+```
+
+### `api-www-authenticate-realm-internal-detail` [api / low / header-value]
+**WWW-Authenticate realm leaks internal detail**
+
+The WWW-Authenticate challenge carries a realm string containing a filesystem path, an IP address, or an internal hostname suffix.
+
+**Risk:** The realm is shown to anyone who requests the resource, including in the browser's own credential prompt. A realm like "/var/www/internal-admin" or "backup-01.corp" hands over the server's directory layout or an internal hostname before any credential is supplied, and it tells an attacker which part of the estate they have reached.
+
+**Why it matters:** Realms usually pick up these values because the web server defaults to the protected directory path, or because someone used the machine name as a label. The realm has exactly one functional job: it lets a client group credentials that work in the same protection space. A short, opaque, stable label does that job without describing the infrastructure.
+
+**References:**
+- https://httpwg.org/specs/rfc9110.html#field.www-authenticate
+- https://cwe.mitre.org/data/definitions/200.html
+
+**Fix:**
+- Replace the realm with a short opaque label that names the service, not the path or the host.
+- Keep the value stable, since clients cache credentials against it.
+- Check the web server's default: Apache and Nginx templates often interpolate the directory being protected.
+- **Nginx: opaque realm** (nginx):
+```nginx
+location /admin/ {
+    auth_basic "restricted";
+    auth_basic_user_file /etc/nginx/.htpasswd;
+}
+```
+- **Express: opaque realm on the challenge** (javascript):
+```javascript
+res.set('WWW-Authenticate', 'Bearer realm="api", error="invalid_token"');
+res.status(401).end();
+```
+
+### `api-problem-json-trace-exposed` [api / medium / body-pattern]
+**Problem document exposes a stack trace or exception class**
+
+An RFC 9457 problem document (application/problem+json, or a body carrying title, status and type or detail) includes a "trace" member with real stack frames, or an "exception" member naming the internal exception class.
+
+**Risk:** A stack trace gives away the framework and its version, the absolute paths of deployed files, the internal package and class layout, and often the exact line where input handling failed. That is the map an attacker uses to pick which known vulnerability applies and where to aim the next request.
+
+**Why it matters:** Spring Boot produces this shape when server.error.include-stacktrace is set to always, which is the default in some starter templates and is frequently left on after debugging. The problem-document format itself is fine and worth using; what must not travel with it are the trace and exception members. A stable error code plus a correlation id gives support everything it needs while keeping the internals server-side.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc9457
+- https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html
+
+**Fix:**
+- Set server.error.include-stacktrace=never and server.error.include-exception=false in production (or the equivalent in your framework).
+- Return a stable machine-readable error code and a correlation id in the problem document instead of the trace.
+- Log the full exception server-side against that same correlation id.
+- Test the error path in the production profile, not only in development, since the two usually differ.
+- **Spring Boot: keep traces server-side** (properties):
+```properties
+server.error.include-stacktrace=never
+server.error.include-exception=false
+server.error.include-message=never
+server.error.include-binding-errors=never
+```
+- **A safe problem document** (json):
+```json
+{
+  "type": "https://api.example.com/errors/invalid-parameter",
+  "title": "Invalid parameter",
+  "status": 400,
+  "detail": "startDate must be before endDate",
+  "instance": "/v1/reports",
+  "correlationId": "0f2c1b7e-9a1d-4a44-8f2e-6b6d0f9a1c33"
+}
+```
+
+### `api-swagger-ui-outdated-version` [api / medium / body-pattern]
+**Outdated Swagger UI bundle loaded**
+
+The page loads a Swagger UI bundle older than 4.1.3, read from the version embedded in the asset path or package specifier.
+
+**Risk:** Swagger UI before 4.1.3 is affected by a DOM XSS in its own rendering of a specification (CVE-2021-46708). Because Swagger UI is commonly configured to load a spec from a URL supplied in the query string, an attacker can serve a crafted specification and get script execution on the origin hosting the documentation, which is often the same origin as the API session cookie.
+
+**Why it matters:** The version is read from the asset path or the package specifier, so it reports what the page references rather than what a CDN might silently substitute. Documentation pages are easy to forget in dependency upgrades because they are usually a static bundle pinned once and never touched again. If the page also accepts a ?url= or ?configUrl= parameter, the exposure is direct rather than theoretical.
+
+**References:**
+- https://github.com/swagger-api/swagger-ui/releases
+- https://nvd.nist.gov/vuln/detail/CVE-2021-46708
+
+**Fix:**
+- Upgrade swagger-ui-dist to a current release and redeploy the documentation page.
+- Do not let the spec URL come from the query string; hardcode it, or validate it against an allowlist.
+- Serve the documentation from a separate origin from the authenticated application so an XSS there cannot reach session cookies.
+- Pin the bundle with a Subresource Integrity hash if it is loaded from a CDN.
+- **Hardcode the spec URL** (javascript):
+```javascript
+SwaggerUIBundle({
+  url: '/openapi.json',          // never new URLSearchParams(...).get('url')
+  dom_id: '#swagger-ui',
+  deepLinking: false,
+});
+```
+- **Pin the bundle with SRI** (html):
+```html
+<script
+  src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"
+  integrity="sha384-REPLACE_WITH_REAL_HASH"
+  crossorigin="anonymous"></script>
+```
+
+### `api-cors-allow-origin-multiple-values` [api / low / header-value]
+**Access-Control-Allow-Origin carries more than one origin**
+
+The Access-Control-Allow-Origin header holds two or more origins. The header is defined to carry exactly one origin, or the single token *.
+
+**Risk:** No browser accepts a multi-valued Access-Control-Allow-Origin, so every cross-origin call to this endpoint fails the CORS check regardless of which origin made it. The usual repair, once someone notices the breakage, is to replace the list with a wildcard or with unconditional reflection of the request's Origin, and both of those are materially worse than the list that was there.
+
+**Why it matters:** The header is written this way when a server joins its allowlist into one string instead of matching the incoming Origin against the list and echoing only the match. Serving the whole list also discloses which partner origins are trusted. The correct shape is one origin per response, chosen by comparing the request's Origin against the allowlist, with Vary: Origin so caches keep the answers apart.
+
+**References:**
+- https://fetch.spec.whatwg.org/#http-access-control-allow-origin
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin
+
+**Fix:**
+- Match the request's Origin against the allowlist and echo only that single value.
+- Send no Access-Control-Allow-Origin at all when the Origin is not on the list, rather than sending the list.
+- Add Vary: Origin so a shared cache cannot serve one origin's response to another.
+- **Echo one matched origin** (javascript):
+```javascript
+const ALLOWED = new Set([
+  'https://app.example.com',
+  'https://admin.example.com',
+]);
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && ALLOWED.has(origin)) {
+    res.set('Access-Control-Allow-Origin', origin);
+    res.set('Access-Control-Allow-Credentials', 'true');
+  }
+  res.append('Vary', 'Origin');
+  next();
+});
+```
+- **Verify per origin** (bash):
+```bash
+for o in https://app.example.com https://evil.example; do
+  echo "$o"
+  curl -sI -H "Origin: $o" https://api.example.com/v1/items \
+    | grep -i access-control-allow-origin
+done
+```
+
+### `api-cors-credentials-without-allow-origin` [api / info / header-value]
+**Access-Control-Allow-Credentials sent with no allowed origin**
+
+The response sets Access-Control-Allow-Credentials: true but sends no Access-Control-Allow-Origin header, so there is no origin the credentialed request could be allowed for.
+
+**Risk:** No browser will honour the credentialed cross-origin request, so this configuration cannot work as intended. That matters less for what it permits than for what it signals: a CORS policy that is half-applied, typically because the Allow-Origin half is set conditionally on a code path that did not run, while the credentials flag is set unconditionally.
+
+**Why it matters:** Reported as informational because in this state the header grants nothing. It is worth fixing because the two halves are meant to be decided together: whoever adds the missing Allow-Origin is one step from reflecting the request's Origin unconditionally, which combined with the credentials flag already present here is the arbitrary-origin-with-credentials case that is genuinely critical. Set both from the same allowlist check, or neither.
+
+**References:**
+- https://fetch.spec.whatwg.org/#http-access-control-allow-credentials
+- https://portswigger.net/web-security/cors
+
+**Fix:**
+- Set Access-Control-Allow-Origin and Access-Control-Allow-Credentials in the same branch, after the origin has been matched against an allowlist.
+- Never pair the credentials flag with a reflected or wildcard origin.
+- Send Vary: Origin whenever the response depends on the request's Origin.
+- Drop the credentials flag entirely if the endpoint does not need cookies or HTTP authentication.
+- **Set both together or neither** (javascript):
+```javascript
+const ALLOWED = new Set(['https://app.example.com']);
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && ALLOWED.has(origin)) {
+    res.set('Access-Control-Allow-Origin', origin);
+    res.set('Access-Control-Allow-Credentials', 'true');
+  }
+  res.append('Vary', 'Origin');
+  next();
+});
+```
+
 ---
 
 ## Category: client-side (26 checks)
@@ -2286,7 +3243,7 @@ ws.onmessage = (event) => {
 
 ---
 
-## Category: code (121 checks)
+## Category: code (120 checks)
 
 ### `insecure-form-submission` [code / critical / combined]
 **Form Submits Data Over Insecure HTTP**
@@ -2691,35 +3648,6 @@ const tmpl = "Hello {{ name }}!";
 const result = template.render(tmpl, { name: userInput }); // name is escaped
 
 // For Nunjucks, Handlebars, etc.: always escape output by default
-```
-
-### `code-xss-template-tag` [code / high / body-pattern]
-**Tagged Template Literal With Interpolation (html/svg)**
-
-An html`...` or svg`...` tagged template literal contains ${...} interpolation. If the tag function does not HTML-escape the interpolated values (a plain, un-tagged template literal used to build markup, or a custom tag that skips escaping), attacker-controlled values inserted this way execute as script.
-
-**Risk:** Unescaped interpolated values in HTML-producing template literals execute as script in the victim's browser, the same impact as classic innerHTML-based XSS.
-
-**Why it matters:** Libraries like lit-html and htm provide an html tag that escapes interpolations by design and are safe. A plain template literal or a custom tag function without escaping logic is not: any ${...} value flows into markup verbatim.
-
-**References:**
-- https://owasp.org/www-community/attacks/xss/
-
-**Fix:**
-- Confirm the html/svg tag function actually escapes interpolated values (lit-html and htm do this by default).
-- If using a custom or no tag function, escape every interpolated value before inserting it into markup.
-- Never build HTML strings with plain (untagged) template literals from user input.
-- **Escape user content in template literals** (typescript):
-```typescript
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-// Use escapeHtml(userInput) in template literals that go into innerHTML
 ```
 
 ### `command-injection-indicators` [code / medium / body-pattern]
@@ -5305,9 +6233,9 @@ const filter = `(uid=<value>)`;
 ```
 
 ### `hardcoded-credentials` [code / critical / body-pattern]
-**Hard-coded credentials in source**
+**Hard-coded password in source**
 
-Username/password or key/secret pairs are hard-coded directly in the source code.
+A password, passwd or pwd assignment in the source holds a literal value that looks like a real secret rather than UI copy, a placeholder, a route or a translated label. Keys named admin or root are not treated as credentials: their values are routes, class names and role labels, and default administrator logins are covered by the default-credentials and insecure-auth checks instead.
 
 **Risk:** Hard-coded credentials are trivially extracted from the source file by anyone with read access, including other developers, CI systems, and anyone who decompiles the bundle. They also cannot be rotated without a code change and redeployment.
 
@@ -5747,7 +6675,7 @@ http {
 ### `vary-header-cookie` [configuration / medium / header]
 **Vary: Cookie Missing on Cookie-Bearing Response**
 
-The response sets cookies but does not include a Vary: Cookie header, and the response is not marked Cache-Control: no-store/no-cache/private. A shared cache (CDN, reverse proxy) that stores this response may serve one user's cookie-gated content to a different user requesting the same URL.
+The response sets cookies but does not include a Vary: Cookie header, and the response is not marked Cache-Control: no-store/no-cache/private. A shared cache (CDN, reverse proxy) that stores this response may serve one user's cookie-gated content to a different user requesting the same URL. Static assets are not reported: their bytes are identical for every visitor, and Vary: Cookie on one is itself a defect (see vary-cookie-on-static-resource).
 
 **Risk:** If a shared cache stores this response without varying by Cookie, a different user requesting the same URL can receive another user's session-specific or personalized content, including authentication state or PII.
 
@@ -5822,7 +6750,7 @@ app.use(session({
 ### `vary-header-missing` [configuration / low / header]
 **Vary Header Missing on Compressed Responses**
 
-A compressed response (Content-Encoding: gzip/br) is missing the Vary: Accept-Encoding header. Without it, a shared cache can serve a compressed response to a client that does not support compression.
+A compressed response (Content-Encoding: gzip/br) is missing the Vary: Accept-Encoding header. Without it, a shared cache can serve a compressed response to a client that does not support compression. A response marked Cache-Control: no-store, no-cache or private is not reported, since no shared cache may store it in the first place.
 
 **Risk:** A caching intermediary that stores the compressed response without Vary: Accept-Encoding may serve garbled content to clients that do not support gzip/brotli, causing pages to display as binary garbage or fail to render entirely.
 
@@ -7612,11 +8540,11 @@ fetch(url, { headers: { Authorization: `Basic <value>` } });
 ### `s3-bucket-exposed` [content / medium / body-pattern]
 **AWS S3 Bucket Reference Exposed**
 
-AWS S3 bucket reference found in page source.
+An S3 object URL in the page source points at something that looks like it was never meant to be published: a backup, a database dump, a .env or .sql file, a credentials or private-key path. Ordinary asset hosting from S3 (images, downloads, a public config file) is not reported.
 
 **Risk:** S3 buckets may be publicly accessible or misconfigured.
 
-**Why it matters:** Exposed bucket names can be tested for misconfigured permissions.
+**Why it matters:** Exposed bucket names can be tested for misconfigured permissions. Only the sensitive-looking object paths are reported, and each keyword has to be a whole path segment or a real file extension rather than a substring, so /assets/config.json and private-beta-invite.png do not count.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
@@ -7726,7 +8654,7 @@ Meta referrer tag set to an unsafe value.
 ### `exposed-session-id` [content / high / body-pattern]
 **Session ID Exposed in URL**
 
-A session identifier (session_id, sid, PHPSESSID, JSESSIONID, or ASP.NET_SessionId) was found as a URL query parameter in the page.
+A session identifier (session_id, sid, PHPSESSID, JSESSIONID, or ASP.NET_SessionId) appears as a URL query parameter in the page, carrying a value with the shape of a real session token. A short numeric id, a templated placeholder, or a documentation example such as ?session_id=YOUR_SESSION_ID is not reported.
 
 **Risk:** Session IDs in URLs are logged by servers, proxies, and browser history, and leak via the Referer header to any linked third party -- letting anyone who obtains the URL hijack the session.
 
@@ -8145,11 +9073,11 @@ res.setHeader("Set-Cookie",
 ### `credit-card-pattern` [content / critical / body-pattern]
 **Credit Card Number Pattern**
 
-Potential credit card number in page source.
+A Luhn-valid number carrying a card-network prefix appears in the page source next to payment vocabulary: a card-number label, a billing or checkout field, CVV, or an expiry date. Luhn is a single check digit, so a card-shaped number with no payment context (an order reference, a tracking number, a row of figures in a table) is not reported.
 
 **Risk:** PCI DSS violation, data breach.
 
-**Why it matters:** Card numbers should never appear in HTML.
+**Why it matters:** Card numbers should never appear in HTML. The detection requires three things together: a card-network prefix and length, a passing Luhn checksum, and payment vocabulary within about 120 characters. Published processor test cards are excluded, and so is a card-shaped window carved out of a longer run of separated digit groups.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
@@ -10328,7 +11256,7 @@ export default {
 ### `cookie-domain-broad` [cookies / low / combined]
 **Cookie Domain Attribute Is Too Broad**
 
-A cookie is set with an explicit Domain= attribute that covers all subdomains (e.g., Domain=example.com or Domain=.example.com). This makes the cookie accessible from every subdomain, including potentially untrusted or third-party-hosted ones. Per RFC 6265bis, a leading dot is stripped and has no effect on browser behavior: both forms are equally subdomain-wide.
+A cookie is set with an explicit Domain= attribute that covers all subdomains (e.g., Domain=example.com or Domain=.example.com). This makes the cookie accessible from every subdomain, including potentially untrusted or third-party-hosted ones. Per RFC 6265bis, a leading dot is stripped and has no effect on browser behavior: both forms are equally subdomain-wide. Cookies that exist to be shared site-wide and authenticate nobody (analytics, consent state, locale and theme preferences) are not reported.
 
 **Risk:** A subdomain that is vulnerable to XSS, or that is under attacker control via subdomain takeover, can read or overwrite cookies scoped to the parent domain. Session cookies shared across all subdomains are particularly high-risk.
 
@@ -13460,9 +14388,11 @@ export default {
 ### `csp-incompatible-directives` [headers / low / header]
 **CSP contains unsupported / legacy directives**
 
-CSP allow-http (Chrome 41-65), reflected-xss (removed), and others are ignored.
+The CSP names a directive browsers no longer implement (allow-http, reflected-xss), or its script-src combines 'none' with 'unsafe-inline' or 'unsafe-eval'. Directive names are matched as names, so a host or report endpoint whose path happens to contain one of those words is not reported.
 
 **Risk:** Remove legacy directives like allow-http and reflected-xss
+
+**Why it matters:** allow-http (Chrome 41-65) and reflected-xss were both removed and are silently ignored, so a policy relying on either has a gap it does not know about. A permissive script-src alongside a restrictive default-src is not reported here: default-src is a fallback that script-src is specified to override, and a genuinely wildcard script-src is covered by csp-wildcard-source.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
@@ -13538,11 +14468,13 @@ export default {
 ```
 
 ### `permissions-policy-camera-blocked` [headers / info / header]
-**Permissions-Policy camera allowed**
+**Permissions-Policy grants camera to every origin**
 
-Camera should default to 'self' or be blocked.
+The policy grants camera to every origin (camera=*), which includes any third party the page embeds in an iframe. Granting it to the page's own origin, restricting it to an allowlist, or blocking it outright is not reported.
 
 **Risk:** Set Permissions-Policy: camera=() to block entirely
+
+**Why it matters:** camera=* hands the camera permission prompt to any embedded third-party frame, not just to this site. camera=(self) or camera=() keeps it with the page itself. A legacy Feature-Policy header is read with its own syntax (camera 'self'), which is restrictive and is not reported.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
@@ -13917,11 +14849,13 @@ export default {
 ```
 
 ### `permissions-policy-fullscreen-blocked` [headers / info / header]
-**Permissions-Policy fullscreen allowed**
+**Permissions-Policy grants fullscreen to every origin**
 
-Permissions-Policy does not restrict the fullscreen feature.
+The policy grants fullscreen to every origin (fullscreen=*), which includes any third party the page embeds in an iframe. A site using fullscreen itself is not reported.
 
 **Risk:** Set Permissions-Policy: fullscreen=(self) to scope fullscreen requests to your origin
+
+**Why it matters:** fullscreen=* lets any embedded third-party frame take over the screen, which is the ingredient a clickjacking or spoofed-UI overlay needs. fullscreen=(self) keeps the capability with the page itself. A legacy Feature-Policy header is read with its own syntax (fullscreen 'self'), which is restrictive and is not reported.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/fullscreen
@@ -19850,7 +20784,7 @@ const apiKey = process.env.THIRD_PARTY_API_KEY!;
 
 ---
 
-## Category: ssl (7 checks)
+## Category: ssl (15 checks)
 
 ### `ssl-https-only-cookie-on-http` [ssl / high / url-check]
 **Secure Cookie Set on HTTP Endpoint**
@@ -20053,9 +20987,253 @@ const nextConfig = {
 export default nextConfig;
 ```
 
+### `ssl-hsts-meta-tag-ineffective` [ssl / low / body-pattern]
+**HSTS declared in a meta tag, where browsers ignore it**
+
+The page carries a <meta http-equiv="Strict-Transport-Security"> tag. HSTS is only honoured when it arrives as a real HTTP response header; the meta form has never been implemented by any browser.
+
+**Risk:** The site has no HSTS policy at all, while appearing in a code review to have one. Visitors who type the bare hostname, follow an http:// link, or use an old bookmark still make a cleartext request that an on-path attacker can intercept and strip, which is exactly the first-request window HSTS exists to close.
+
+**Why it matters:** RFC 6797 section 8.5 is explicit: a UA must ignore an HSTS policy delivered anywhere other than the response header field, precisely because a policy that arrives inside the document body could be injected by the same attacker HSTS is defending against. The meta form appears because http-equiv works for a few other headers (Content-Type, Content-Security-Policy, refresh) and it is reasonable to assume it generalises. It does not.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc6797#section-8.5
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+
+**Fix:**
+- Send Strict-Transport-Security as a real response header from the web server, CDN, or application.
+- Start with a short max-age, confirm nothing on any subdomain still needs plain HTTP, then raise it to 31536000 with includeSubDomains.
+- Remove the meta tag once the header is in place, so nobody later assumes it was doing something.
+- Consider the preload list only after the header has been serving includeSubDomains with a long max-age for a while, since preloading is difficult to reverse.
+- **Nginx: HSTS as a header** (nginx):
+```nginx
+server {
+    listen 443 ssl;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+}
+```
+- **Next.js: HSTS from next.config** (javascript):
+```javascript
+module.exports = {
+  async headers() {
+    return [{
+      source: '/:path*',
+      headers: [{
+        key: 'Strict-Transport-Security',
+        value: 'max-age=31536000; includeSubDomains',
+      }],
+    }];
+  },
+};
+```
+
+### `ssl-alt-svc-cleartext-h2c` [ssl / medium / header-value]
+**Alt-Svc advertises cleartext HTTP/2 (h2c)**
+
+An HTTPS response advertises an alternative service using the h2c protocol identifier, which is HTTP/2 over plain TCP with no TLS.
+
+**Risk:** A client that follows the advertisement moves the connection off TLS, so subsequent requests, cookies included, travel in cleartext while the address bar still shows the original https:// origin. It is a downgrade the server itself is asking for, and because Alt-Svc entries are cached for the header's ma= duration, one response can redirect a client's traffic for hours.
+
+**Why it matters:** Alt-Svc is meant to point clients at a better transport for the same origin, normally h2 or h3, both of which run over TLS. h2c has no TLS at all and is only defined for prior-knowledge or Upgrade-based connections. Browsers do not act on an h2c advertisement, which limits real-world exposure, but non-browser HTTP clients and proxies do, and the header is usually there because a reverse proxy was configured to advertise its own backend protocol to the world.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc7838
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Alt-Svc
+
+**Fix:**
+- Remove h2c from the Alt-Svc header on any TLS-terminated listener.
+- Advertise only h2 and h3 alternatives, both of which imply TLS.
+- Check the reverse proxy configuration: h2c in Alt-Svc usually means the backend protocol setting is being echoed outward rather than kept internal.
+- **Advertise HTTP/3 only** (nginx):
+```nginx
+add_header Alt-Svc 'h3=":443"; ma=86400' always;
+```
+- **Check what a host advertises** (bash):
+```bash
+curl -sI https://example.com/ | grep -i alt-svc
+```
+
+### `ssl-link-header-http-subresource` [ssl / medium / header-value]
+**Link header preloads a cleartext subresource**
+
+An HTTPS response carries a Link header whose rel is a subresource relation (preload, modulepreload, preconnect, prefetch, dns-prefetch, prerender or stylesheet) pointing at an http:// URL.
+
+**Risk:** The browser is told to fetch a resource over plain HTTP before the document has even been parsed. For a preloaded script or stylesheet that is active mixed content, so an on-path attacker who substitutes the response gets code execution on the origin. Browsers block active mixed content, which turns this into a hard load failure instead, so the page also breaks.
+
+**Why it matters:** Header-delivered resource hints are easy to miss in a mixed-content review because nothing in the HTML shows them: they are usually added by a CDN, an edge worker, or a framework's early-hints support. That is also why they tend to hold stale absolute URLs from before the site moved to HTTPS. A protocol-relative or root-relative URL avoids the problem entirely.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Link
+- https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content
+
+**Fix:**
+- Change the Link header URLs to https, or to root-relative paths where the resource is same-origin.
+- Check the CDN or edge configuration and any 103 Early Hints response, since those are the usual sources of a header-set hint.
+- Add upgrade-insecure-requests to the CSP so a remaining cleartext hint is upgraded rather than blocked.
+- **Same-origin relative preload** (text):
+```text
+Link: </assets/app.a91f2c.js>; rel=preload; as=script, </assets/app.a91f2c.css>; rel=preload; as=style
+```
+- **Inspect the header** (bash):
+```bash
+curl -sI https://example.com/ | grep -i '^link:'
+```
+
+### `ssl-http-resource-hint-tag` [ssl / low / body-pattern]
+**Resource hint on an HTTPS page targets a cleartext URL**
+
+An HTTPS page contains a <link> element with a hint relation (preload, modulepreload, preconnect, prefetch, dns-prefetch, prerender or manifest) whose href is an http:// URL.
+
+**Risk:** preconnect and dns-prefetch to an http:// origin leak the destination hostname to the network before any content is requested, and warm a connection the browser then cannot use. preload and modulepreload of an http:// script or style are active mixed content, so the fetch is blocked and whatever depended on it fails. A cleartext manifest link means the installed web app's own metadata can be rewritten in transit.
+
+**Why it matters:** Separate from the classic mixed-content checks, which read src on media and script elements and href on stylesheet links: hint relations are a different set of rel values and are usually added by a performance pass rather than by the code that renders the resource. That is why they lag behind an HTTPS migration. The risk varies by relation, hence the Low rating, but every case is either a leak or a broken fetch.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/rel
+- https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content
+
+**Fix:**
+- Rewrite the href values to https, or to root-relative paths for same-origin resources.
+- Delete hints that point at hosts the page no longer uses, which is common after a CDN change.
+- Add upgrade-insecure-requests to the CSP as a safety net.
+- **Hints over HTTPS** (html):
+```html
+<link rel="preconnect" href="https://cdn.example.com" crossorigin>
+<link rel="preload" href="/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="manifest" href="/site.webmanifest">
+```
+- **Find cleartext hints in a template tree** (bash):
+```bash
+grep -rn 'rel="\(preload\|preconnect\|prefetch\|dns-prefetch\|manifest\)"' \
+  --include='*.html' . | grep 'http://'
+```
+
+### `ssl-mixed-content-non-src-attribute` [ssl / medium / body-pattern]
+**Cleartext subresource loaded through srcset, poster or data**
+
+An HTTPS page loads a subresource over http:// through an attribute other than src or a stylesheet href: an img or source srcset candidate, a video poster, or an object data URL.
+
+**Risk:** srcset and poster are passive mixed content: the request still goes out in cleartext on browsers that allow it, revealing what the visitor is viewing and letting an on-path attacker swap the image. object data is active mixed content, because the embedded resource can execute in the page's context, so a substituted response is script execution on your origin.
+
+**Why it matters:** These attributes are consistently missed by mixed-content reviews and by tooling that only looks for src= and href=. srcset in particular holds several URLs in one attribute, so a single cleartext candidate hides among correct ones. Modern browsers auto-upgrade passive mixed content and block the active kind, but neither behaviour is guaranteed on older or embedded clients, and the request that gets upgraded still discloses nothing only because the upgrade succeeded.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content
+- https://www.w3.org/TR/upgrade-insecure-requests/
+
+**Fix:**
+- Rewrite every candidate URL in srcset, and the poster and data attributes, to https or to a relative path.
+- Add upgrade-insecure-requests to the CSP so anything missed is upgraded rather than sent in the clear.
+- Use block-all-mixed-content or a CSP report-only policy to find the remaining cases in real traffic.
+- **Every srcset candidate over HTTPS** (html):
+```html
+<img
+  src="https://cdn.example.com/hero-800.jpg"
+  srcset="https://cdn.example.com/hero-400.jpg 400w,
+          https://cdn.example.com/hero-800.jpg 800w,
+          https://cdn.example.com/hero-1600.jpg 1600w"
+  sizes="(max-width: 600px) 400px, 800px"
+  alt="">
+
+<video poster="https://cdn.example.com/poster.jpg" controls></video>
+```
+- **CSP: upgrade anything left behind** (text):
+```text
+Content-Security-Policy: upgrade-insecure-requests
+```
+
+### `ssl-canonical-link-http` [ssl / low / body-pattern]
+**Canonical URL declared as cleartext HTTP**
+
+An HTTPS page declares <link rel="canonical"> pointing at the http:// version of a URL.
+
+**Risk:** Search engines index and link the canonical URL, so results, and every site that copies the canonical from your page, send visitors to the cleartext version. Each of those arrivals is a plaintext first request before any redirect or HSTS policy can act, which is the window an on-path attacker uses to strip TLS.
+
+**Why it matters:** This survives HTTPS migrations because the canonical URL is usually built from a configured site URL rather than from the current request, so the redirect gets fixed and the configuration does not. The redirect to https does not make it harmless: it fixes the browser's next request, not the link that search results and other sites are handing out.
+
+**References:**
+- https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls
+- https://datatracker.ietf.org/doc/html/rfc6797
+
+**Fix:**
+- Change the canonical URL to https, in the site configuration rather than per template.
+- Check sitemap.xml, og:url, and any RSS or JSON feed for the same stale scheme.
+- Keep the http to https redirect in place and enable HSTS so an already-published cleartext link costs one plaintext request at most.
+- **Canonical over HTTPS** (html):
+```html
+<link rel="canonical" href="https://example.com/articles/tls-migration">
+<meta property="og:url" content="https://example.com/articles/tls-migration">
+```
+- **Find the remaining cleartext URLs** (bash):
+```bash
+curl -s https://example.com/sitemap.xml | grep -c 'http://'
+curl -s https://example.com/ | grep -i 'rel="canonical"'
+```
+
+### `ssl-meta-refresh-http-target` [ssl / medium / body-pattern]
+**Meta refresh sends visitors to a cleartext URL**
+
+An HTTPS page uses <meta http-equiv="refresh"> whose target URL is http://.
+
+**Risk:** The browser leaves a TLS-protected page and lands on a plaintext one, carrying whatever the destination expects with it. Anything in the query string of that target, a session identifier, a one-time token, a return URL, is transmitted in the clear, and the destination page itself can be rewritten by anyone on the network path.
+
+**Why it matters:** Meta refresh is often used as a fallback redirect on interstitial and logout pages, exactly the places that carry tokens, and the URL is usually hardcoded once and never revisited. A server-side 301 or 302 is better in every respect here: it happens before the document is parsed, it is honoured by clients that ignore meta refresh, and it is configured in one place where the scheme can be enforced.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meta
+- https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content
+
+**Fix:**
+- Change the target to https, or replace the meta refresh with a server-side 301/302.
+- Check whether the redirect target is still correct at all; a hardcoded cleartext URL is usually a stale one.
+- Add upgrade-insecure-requests to the CSP so a missed case is upgraded rather than sent in the clear.
+- **Server-side redirect instead** (javascript):
+```javascript
+// Express
+res.redirect(301, 'https://example.com/dashboard');
+
+// Next.js Route Handler
+return Response.redirect('https://example.com/dashboard', 301);
+```
+- **If meta refresh has to stay** (html):
+```html
+<meta http-equiv="refresh" content="0; url=https://example.com/dashboard">
+```
+
+### `ssl-http-fetch-endpoint-in-script` [ssl / medium / body-pattern]
+**Inline script calls a cleartext HTTP endpoint**
+
+An inline script on an HTTPS page issues a request to an http:// URL through fetch, XMLHttpRequest.open, or a library helper such as axios.get or $.ajax.
+
+**Risk:** Requests made this way are active mixed content. Where a browser allows the request, the payload and any credentials it carries travel in cleartext and the response, which is usually parsed as JSON and rendered into the page, can be replaced wholesale by an on-path attacker. Where the browser blocks it, the feature simply stops working, often silently in a catch block.
+
+**Why it matters:** Markup-oriented mixed-content checks do not see this: the URL is in JavaScript, not in an attribute. It typically survives an HTTPS migration inside a hardcoded API base URL or a configuration object emitted into the page. Loopback URLs are excluded here, since a development script pointing at localhost is normal.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content
+- https://www.w3.org/TR/mixed-content/
+
+**Fix:**
+- Change the endpoint to https, and confirm the API actually serves TLS before switching.
+- Move the base URL into one configuration value rather than repeating it across scripts.
+- Add upgrade-insecure-requests to the CSP so any remaining cleartext request is upgraded.
+- Use a CSP report-only policy to find the rest in real traffic rather than by grepping.
+- **One configured base URL** (javascript):
+```javascript
+const API_BASE = 'https://api.example.com';
+
+const res = await fetch(`<value>/v1/items`, {
+  credentials: 'include',
+});
+```
+- **CSP: catch what is left** (text):
+```text
+Content-Security-Policy-Report-Only: default-src https:; connect-src https:; report-uri /csp-report
+```
+
 ---
 
-## Category: supply-chain (14 checks)
+## Category: supply-chain (42 checks)
 
 ### `supply-chain-lockfile-exposed` [supply-chain / medium / body-pattern]
 **npm/yarn Lock File Exposed**
@@ -20446,9 +21624,874 @@ A client-side library loaded by this page, at the exact version detected from it
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 ```
 
+### `supply-chain-poetry-lock-exposed` [supply-chain / low / body-pattern]
+**Python poetry.lock exposed**
+
+The response is a Poetry lockfile: a [[package]] table set carrying Poetry's own generation banner or its [metadata] lock-version key.
+
+**Risk:** The lockfile pins every transitive package to an exact version, so an attacker gets a precise inventory to cross-reference against advisory databases without probing anything. Poetry also records dev-group packages, which name the test and tooling stack, and any private source it resolves against, which names an internal package index.
+
+**Why it matters:** Distinguished from Cargo.lock, which uses the same [[package]] table format, by requiring a marker only Poetry writes. Publishing this is not itself an exploit; it removes the reconnaissance step from one. The practical question after finding it is whether any pinned version is currently vulnerable and whether the file names a private index URL.
+
+**References:**
+- https://python-poetry.org/docs/basic-usage/#installing-dependencies
+- https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/
+
+**Fix:**
+- Stop serving poetry.lock from the web root: it belongs in the repository and the build image, not the deployed static output.
+- Add a deny rule at the web server or CDN for lock and manifest filenames so a future copy does not become reachable.
+- Run a vulnerability scan against the pinned versions, since the exact set is now public.
+- **Nginx: refuse dependency manifests** (nginx):
+```nginx
+location ~* /(poetry\.lock|pyproject\.toml|Pipfile(\.lock)?|requirements[\w.-]*\.txt)$ {
+    return 404;
+}
+```
+- **Audit the pinned set** (bash):
+```bash
+poetry export -f requirements.txt --without-hashes | pip-audit -r /dev/stdin
+```
+
+### `supply-chain-pipfile-lock-exposed` [supply-chain / low / body-pattern]
+**Python Pipfile.lock exposed**
+
+The response is a Pipenv lockfile, identified by its _meta block and pipfile-spec version.
+
+**Risk:** Pipfile.lock resolves both the default and develop sections, so it discloses the production dependency set and the test, lint and debugging tooling in one document. Its _meta.sources block names every package index the build pulls from, which reveals a private index URL when one is configured.
+
+**Why it matters:** Pipenv writes a hash for each artifact, which is a real integrity control and is the reason the file exists. That value is entirely on the install side; there is no reason for the file to be reachable over HTTP. It usually appears because a deployment copies the whole project directory into the served root rather than only the built application.
+
+**References:**
+- https://pipenv.pypa.io/en/latest/pipfile.html
+- https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/
+
+**Fix:**
+- Exclude Pipfile and Pipfile.lock from whatever is copied into the served directory.
+- Add a web-server deny rule for dependency manifests as a backstop.
+- Check the pinned versions against an advisory database now that the exact set is public.
+- **Keep manifests out of the image's served path** (dockerfile):
+```dockerfile
+FROM python:3.12-slim
+WORKDIR /app
+COPY Pipfile Pipfile.lock /tmp/
+RUN cd /tmp && pipenv install --deploy --system && rm -f /tmp/Pipfile*
+COPY ./app /app
+```
+- **Audit the locked set** (bash):
+```bash
+pipenv requirements | pip-audit -r /dev/stdin
+```
+
+### `supply-chain-gradle-lockfile-exposed` [supply-chain / low / body-pattern]
+**Gradle dependency lockfile exposed**
+
+The response is a Gradle dependency lockfile: its generated banner, or three or more lines in Gradle's group:artifact:version=configurations form.
+
+**Risk:** Each line names a resolved JVM coordinate and the configurations it belongs to, so the file separates runtime dependencies from compile-only and test ones. That tells an attacker exactly which libraries are loaded in the running process, which is the set worth checking for a deserialization or expression-language vulnerability.
+
+**Why it matters:** Dependency locking is a Gradle feature you have to opt into, so a project that has one is usually one that cares about reproducible builds. The lockfile still has no business being served: it is a build input, and the only thing publishing it changes is how quickly someone else can enumerate your JVM stack.
+
+**References:**
+- https://docs.gradle.org/current/userguide/dependency_locking.html
+- https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/
+
+**Fix:**
+- Exclude gradle.lockfile, gradle/ and build files from the deployed artifact; ship the built JAR or WAR, not the project directory.
+- Block lockfile paths at the reverse proxy.
+- Run a dependency check against the locked coordinates, since the list is now known.
+- **Check the coordinates for known issues** (bash):
+```bash
+./gradlew dependencyCheckAnalyze
+
+# or, with OSV
+osv-scanner --lockfile gradle.lockfile
+```
+- **Apache: deny build files** (apache):
+```apache
+<FilesMatch "^(gradle\.lockfile|build\.gradle(\.kts)?|settings\.gradle(\.kts)?)$">
+    Require all denied
+</FilesMatch>
+```
+
+### `supply-chain-maven-pom-exposed` [supply-chain / low / body-pattern]
+**Maven pom.xml exposed**
+
+The response is a Maven project object model: a modelVersion of 4.0.0 together with artifact coordinates.
+
+**Risk:** A pom names every direct dependency with its version, the build plugins and their configuration, and the repositories the build resolves against. Internal Nexus or Artifactory URLs appear in the repositories section, and profile blocks routinely carry environment-specific server names. It also states the application's own groupId and version, which pins down exactly which release is deployed.
+
+**Why it matters:** A served pom is nearly always a Java web application deployed as an exploded directory with the project sources still present, which usually means other build files are reachable too. Worth checking the same paths for settings.xml, which can contain repository credentials.
+
+**References:**
+- https://maven.apache.org/pom.html
+- https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/
+
+**Fix:**
+- Deploy the packaged artifact rather than the project directory, so build files are not present under the document root.
+- Deny pom.xml, settings.xml and any *.gradle path at the web server.
+- Verify settings.xml is not also reachable, since it may hold repository credentials.
+- Audit the declared dependency versions now that they are public.
+- **Tomcat: refuse to serve build files** (xml):
+```xml
+<security-constraint>
+  <web-resource-collection>
+    <web-resource-name>Build files</web-resource-name>
+    <url-pattern>/pom.xml</url-pattern>
+    <url-pattern>/settings.xml</url-pattern>
+  </web-resource-collection>
+  <auth-constraint/>
+</security-constraint>
+```
+- **Audit the declared tree** (bash):
+```bash
+mvn org.owasp:dependency-check-maven:check
+```
+
+### `supply-chain-nuget-manifest-exposed` [supply-chain / low / body-pattern]
+**NuGet package manifest exposed**
+
+The response is a NuGet dependency manifest: a packages.config with id and version attributes, or a packages.lock.json with resolved versions and content hashes.
+
+**Risk:** The manifest lists every .NET package the application loads with its exact version, which is enough to look up known vulnerabilities without sending a single probe. packages.lock.json goes further and includes the full transitive graph plus the target framework moniker, which also reveals the .NET runtime version in use.
+
+**Why it matters:** A reachable packages.config generally means the whole project directory is under the document root, so web.config, .csproj files and sometimes the App_Data directory are worth checking at the same paths. IIS blocks some of these by default through request filtering, but that protection is easy to lose when the site is served through a reverse proxy or a container image built by hand.
+
+**References:**
+- https://learn.microsoft.com/en-us/nuget/consume-packages/package-references-in-project-files
+- https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/
+
+**Fix:**
+- Publish the built output (dotnet publish) rather than the project directory.
+- Confirm IIS request filtering still denies .config and .csproj under the deployed path, especially behind a reverse proxy.
+- Check the listed package versions against the GitHub Advisory Database.
+- **IIS: deny manifest files** (xml):
+```xml
+<configuration>
+  <system.webServer>
+    <security>
+      <requestFiltering>
+        <fileExtensions>
+          <add fileExtension=".config" allowed="false" />
+          <add fileExtension=".csproj" allowed="false" />
+        </fileExtensions>
+      </requestFiltering>
+    </security>
+  </system.webServer>
+</configuration>
+```
+- **Audit the resolved graph** (bash):
+```bash
+dotnet list package --vulnerable --include-transitive
+```
+
+### `supply-chain-mix-lock-exposed` [supply-chain / low / body-pattern]
+**Elixir mix.lock exposed**
+
+The response is an Elixir mix.lock file, identified by two or more Hex package tuples in its {:hex, :name, ...} form.
+
+**Risk:** The lockfile enumerates every Hex package and its exact version, including the ones that define the web stack (Phoenix, Plug, Cowboy) and any dependency that ships native code. That is enough to identify a vulnerable Phoenix or Plug release without touching the application.
+
+**Why it matters:** Elixir releases built with mix release do not include mix.lock, so a served copy almost always means the application is running from a source checkout under the document root. That is worth investigating on its own: the same directory usually contains config files, and Phoenix's config/runtime.exs is where secrets are read.
+
+**References:**
+- https://hexdocs.pm/mix/Mix.Tasks.Deps.html
+- https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/
+
+**Fix:**
+- Deploy a mix release rather than serving from a source checkout.
+- Confirm Plug.Static is scoped with :only to the specific asset directories, not pointed at the project root.
+- Check the config directory is not also reachable.
+- **Phoenix: scope static serving explicitly** (elixir):
+```elixir
+plug Plug.Static,
+  at: "/",
+  from: :my_app,
+  gzip: true,
+  only: MyAppWeb.static_paths()   # never `from: "."`
+```
+- **Audit the locked Hex packages** (bash):
+```bash
+mix deps.audit
+# or
+mix hex.audit
+```
+
+### `supply-chain-pubspec-lock-exposed` [supply-chain / low / body-pattern]
+**Dart pubspec.lock exposed**
+
+The response is a Dart or Flutter pubspec.lock file, identified by its packages block and the direct main / direct dev dependency markers pub writes.
+
+**Risk:** The lockfile names every pub package and its resolved version, and separates direct dependencies from transitive ones. For a Flutter web build it also pins the SDK constraint, which identifies the exact Dart and Flutter versions the bundle was compiled with.
+
+**Why it matters:** Flutter's web build output is meant to contain only build/web; a reachable pubspec.lock means the whole project directory was deployed. That matters beyond the dependency list, because Flutter projects commonly keep API base URLs and non-secret configuration in files that ship alongside it, and sometimes keys that were meant to stay in the native build.
+
+**References:**
+- https://dart.dev/tools/pub/glossary#lockfile
+- https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/
+
+**Fix:**
+- Deploy only build/web, not the project root.
+- Deny pubspec.yaml, pubspec.lock and the .dart_tool directory at the web server.
+- Check the resolved package versions for known advisories.
+- **Deploy only the built output** (bash):
+```bash
+flutter build web --release
+rsync -a --delete build/web/ deploy@host:/var/www/app/
+```
+- **Nginx: deny project files** (nginx):
+```nginx
+location ~* /(pubspec\.(yaml|lock)|\.dart_tool)/? {
+    return 404;
+}
+```
+
+### `supply-chain-swift-package-resolved-exposed` [supply-chain / low / body-pattern]
+**Swift Package.resolved exposed**
+
+The response is a Swift Package Manager resolution file: a pins array carrying repository locations and pinned commit revisions.
+
+**Risk:** Every dependency is listed with its source repository URL and the exact commit it is pinned to. Private repository URLs appear verbatim, which discloses internal GitHub Enterprise or self-hosted git hostnames and the names of internal packages, and internal package names are the raw material for a dependency-confusion attempt.
+
+**Why it matters:** Package.resolved belongs to an Xcode project, so finding one served over HTTP usually means an entire app repository was deployed to a web host, often as part of a documentation or download page. The commit pins themselves are a good practice; the exposure is the private repository URLs beside them.
+
+**References:**
+- https://www.swift.org/documentation/package-manager/
+- https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/
+
+**Fix:**
+- Remove the Xcode project directory from anything the web server maps.
+- Treat any private repository hostname the file disclosed as known, and confirm those hosts require authentication.
+- Check whether any internal package name it lists could be claimed on a public registry.
+- **Find project files under the served root** (bash):
+```bash
+find /var/www -name 'Package.resolved' -o -name '*.xcodeproj' -o -name 'Package.swift'
+```
+
+### `supply-chain-podfile-lock-exposed` [supply-chain / low / body-pattern]
+**CocoaPods Podfile.lock exposed**
+
+The response is a CocoaPods lockfile, identified by its PODS and SPEC CHECKSUMS sections.
+
+**Risk:** The lockfile lists every pod and its resolved version, including analytics, crash-reporting and payment SDKs, and the checksum of each spec. That is a full inventory of the third-party code inside the mobile app, which is what an attacker needs to find a known issue in a bundled SDK.
+
+**Why it matters:** Like Package.resolved, this reaching a web server means an app repository was published rather than a build artifact. The EXTERNAL SOURCES section, when present, names private podspec repositories, which discloses internal hostnames along with the dependency list.
+
+**References:**
+- https://guides.cocoapods.org/using/the-podfile.html
+- https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/
+
+**Fix:**
+- Remove the iOS project directory from the web-served path.
+- Confirm any private podspec repository the file named is not reachable without authentication.
+- Review the listed pod versions against known advisories for those SDKs.
+- **Find app project files under the document root** (bash):
+```bash
+find /var/www -name 'Podfile*' -o -name '*.xcworkspace'
+```
+
+### `supply-chain-terraform-lock-exposed` [supply-chain / medium / body-pattern]
+**Terraform provider lockfile exposed**
+
+The response is a .terraform.lock.hcl file: registry.terraform.io provider blocks with their recorded hashes.
+
+**Risk:** The provider list is an inventory of the infrastructure itself. Seeing aws, cloudflare, vault, datadog and a database provider together tells an attacker which cloud the estate runs on, which secret store it uses, and which SaaS platforms hold an API token for this organisation, before any other reconnaissance. The pinned provider versions also indicate how recently the infrastructure code was touched.
+
+**Why it matters:** Rated above the language lockfiles because of what it implies rather than what it contains: this file only exists inside a Terraform working directory, so its presence under a web root means infrastructure code was deployed alongside the application. The files beside it are the real exposure. terraform.tfvars and any .tfstate in the same directory routinely contain credentials and full resource inventories.
+
+**References:**
+- https://developer.hashicorp.com/terraform/language/files/dependency-lock
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
+
+**Fix:**
+- Remove the Terraform working directory from the web-served path immediately.
+- Check the same directory for terraform.tfvars, *.auto.tfvars and *.tfstate, and treat every value in them as compromised.
+- Rotate any credential that could have been in those files.
+- Move state to a remote backend with access control so it is never a file on an application host.
+- **Check what else is reachable in that directory** (bash):
+```bash
+for f in terraform.tfstate terraform.tfvars terraform.tfstate.backup .terraform.lock.hcl; do
+  printf '%s ' "$f"
+  curl -s -o /dev/null -w '%{http_code}\n' "https://example.com/$f"
+done
+```
+- **Use a remote backend instead of local state** (hcl):
+```hcl
+terraform {
+  backend "s3" {
+    bucket         = "example-tf-state"
+    key            = "prod/terraform.tfstate"
+    region         = "us-east-1"
+    encrypt        = true
+    dynamodb_table = "tf-state-lock"
+  }
+}
+```
+
+### `supply-chain-cargo-toml-exposed` [supply-chain / low / body-pattern]
+**Rust Cargo.toml exposed**
+
+The response is a Rust crate manifest: a [package] table with an edition key and a [dependencies] table.
+
+**Risk:** The manifest names every direct dependency and the feature flags each is built with, which matters in Rust because features change what code is compiled in. It also exposes any git or path dependency, and a git dependency pointing at a private repository discloses an internal host and the fact that unpublished crates are in the build.
+
+**Why it matters:** Distinct from a served Cargo.lock, which gives the full resolved transitive tree: the manifest gives the author's intent, including version ranges that will resolve differently on the next build and the feature set that decides which code paths exist. Both are build inputs and neither should be reachable from a compiled binary's deployment.
+
+**References:**
+- https://doc.rust-lang.org/cargo/reference/manifest.html
+- https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/
+
+**Fix:**
+- Deploy the compiled binary and its runtime assets only, not the crate source directory.
+- If the manifest named a private git dependency, confirm that repository is not publicly readable.
+- Audit the dependency set with cargo audit now that the list is public.
+- **Multi-stage build that ships only the binary** (dockerfile):
+```dockerfile
+FROM rust:1-slim AS build
+WORKDIR /src
+COPY . .
+RUN cargo build --release
+
+FROM debian:stable-slim
+COPY --from=build /src/target/release/app /usr/local/bin/app
+CMD ["app"]
+```
+- **Audit the dependency set** (bash):
+```bash
+cargo audit
+```
+
+### `supply-chain-go-mod-exposed` [supply-chain / low / body-pattern]
+**Go go.mod exposed**
+
+The response is a Go module file: a module directive followed by a go language-version directive.
+
+**Risk:** The module path is frequently a private repository URL, which discloses an internal git host and the organisation's internal module naming. The require block gives every direct dependency and version, and the go directive pins the toolchain version, which reveals whether the build predates a known Go runtime fix.
+
+**Why it matters:** Go binaries are statically linked and ship without go.mod, so a served copy means the source tree is under the document root rather than just the built binary. Where the module path names a private host, the more useful follow-up is dependency confusion: an internal module path that is not reserved on the public proxy can be claimed by someone else.
+
+**References:**
+- https://go.dev/ref/mod
+- https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/
+
+**Fix:**
+- Deploy the compiled binary, not the source tree.
+- Check whether the internal module path disclosed here is claimable on proxy.golang.org, and reserve it if so.
+- Set GOPRIVATE / GONOSUMDB for internal module prefixes so the toolchain never resolves them through the public proxy.
+- Run govulncheck against the module now that its dependency set is public.
+- **Keep internal modules off the public proxy** (bash):
+```bash
+go env -w GOPRIVATE=git.internal.example.com/*
+go env -w GONOSUMCHECK=1
+```
+- **Audit the module** (bash):
+```bash
+go install golang.org/x/vuln/cmd/govulncheck@latest
+govulncheck ./...
+```
+
+### `supply-chain-setup-py-exposed` [supply-chain / low / body-pattern]
+**Python setup.py source exposed**
+
+The response is a Python setup.py: a setup() call with an install_requires list.
+
+**Risk:** Beyond the declared dependency list, setup.py is executable Python that runs at install time. A served copy shows any custom cmdclass, build step or post-install hook the package runs, and those are exactly the places where a package fetches something at install time or writes outside its own tree.
+
+**Why it matters:** Unlike a lockfile, this one is code, so it is worth reading rather than just inventorying. The dependency_links and extras_require entries are also informative: dependency_links can point at a private index or a direct URL, and extras name optional integrations the application supports even when they are not installed here.
+
+**References:**
+- https://packaging.python.org/en/latest/guides/distributing-packages-using-setuptools/
+- https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/
+
+**Fix:**
+- Remove packaging files from the served directory; deploy the installed package, not the source distribution.
+- Review the file's own install-time hooks: a setup.py that downloads or executes anything at install time is a supply-chain risk in its own right.
+- Audit the versions in install_requires.
+- **Nginx: deny Python packaging files** (nginx):
+```nginx
+location ~* /(setup\.py|setup\.cfg|pyproject\.toml|MANIFEST\.in)$ {
+    return 404;
+}
+```
+
+### `supply-chain-pyproject-toml-exposed` [supply-chain / low / body-pattern]
+**Python pyproject.toml exposed**
+
+The response is a pyproject.toml: a [tool.poetry] or [build-system] table, or a [project] table with a requires-python key.
+
+**Risk:** The file declares the dependency set with its version constraints, the optional dependency groups, and the requires-python range, which brackets the Python version in use. Tool sections beneath it commonly configure ruff, mypy and pytest, and those sections sometimes carry paths that reveal the source layout on the build machine.
+
+**Why it matters:** Where a lockfile gives the resolved set, pyproject gives the constraints, so it shows what a rebuild would pull in rather than what is installed now. A caret or wildcard constraint on a package with a recent advisory tells an attacker that the next deployment may reintroduce it. It also names any private index configured under tool.poetry.source.
+
+**References:**
+- https://packaging.python.org/en/latest/specifications/pyproject-toml/
+- https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/
+
+**Fix:**
+- Exclude packaging files from the served directory.
+- Replace open-ended version constraints on security-sensitive packages with bounded ones, backed by a lockfile.
+- Confirm any private index URL the file disclosed still requires authentication.
+- **Copy only the application into the runtime image** (dockerfile):
+```dockerfile
+FROM python:3.12-slim AS build
+WORKDIR /src
+COPY pyproject.toml poetry.lock ./
+RUN pip install poetry && poetry export -f requirements.txt -o /tmp/req.txt
+
+FROM python:3.12-slim
+COPY --from=build /tmp/req.txt /tmp/req.txt
+RUN pip install --no-cache-dir -r /tmp/req.txt
+COPY ./src /app
+```
+
+### `supply-chain-git-dependency-unpinned` [supply-chain / medium / body-pattern]
+**Git dependency with no commit pin**
+
+A dependency in the exposed manifest resolves from a git source (git+https, git+ssh, git:// or the github: shorthand) with no 40-character commit hash pinning it.
+
+**Risk:** Without a commit pin the install resolves whatever the branch points at when the build runs. Anyone who can push to that branch, a maintainer, a compromised account, or whoever ends up owning the repository if it changes hands, decides what code your next build executes. There is no registry review, no immutable version, and no signature in the path.
+
+**Why it matters:** Registry packages are immutable once published, which is what makes a version number meaningful. A git reference has no such guarantee: a branch or tag can be force-updated in place, and a deleted repository name can be re-registered by someone else. A commit SHA is the only reference in git that cannot be changed under you, and the resolution has to record it.
+
+**References:**
+- https://docs.npmjs.com/cli/v10/configuring-npm/package-json#git-urls-as-dependencies
+- https://slsa.dev/spec/v1.0/threats
+
+**Fix:**
+- Replace each git reference with a #<40-hex-commit> pin, or publish the package to a registry and depend on a version.
+- Commit the lockfile so the resolved commit is recorded even when the manifest names a branch.
+- Confirm the repository is one you control or trust, and that it still exists under the account you expect.
+- Run installs with a frozen lockfile in CI (npm ci, not npm install) so an unpinned reference cannot re-resolve silently.
+- **Pin the commit** (json):
+```json
+{
+  "dependencies": {
+    "internal-utils": "git+https://github.com/example/internal-utils.git#3f2b9c1d5a4e8f70b1c2d3e4f5a6b7c8d9e0f1a2"
+  }
+}
+```
+- **CI: never re-resolve** (bash):
+```bash
+npm ci            # installs exactly what package-lock.json records
+# not: npm install, which may re-resolve a moving git ref
+```
+
+### `supply-chain-importmap-unpinned-cdn` [supply-chain / medium / body-pattern]
+**Import map resolves to an unversioned CDN URL**
+
+A <script type="importmap"> on this page maps a bare module specifier to a CDN URL with no version in the path, or with @latest.
+
+**Risk:** Every module the page imports through that specifier is fetched fresh from whatever the CDN currently serves, so the code running in your users' browsers changes when the package publishes, without any deploy on your side. A malicious or compromised release reaches every visitor immediately, and import maps cannot carry an integrity attribute, so there is no hash to catch it.
+
+**Why it matters:** This is the module-graph version of an unpinned script tag, and it is worse in one specific way: a script tag can carry integrity, an import map entry cannot. That makes the version pin the only control available. Pinning is also what makes the page reproducible, since an unversioned specifier means two users loading the page a week apart can run different code.
+
+**References:**
+- https://html.spec.whatwg.org/multipage/webappapis.html#import-maps
+- https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/
+
+**Fix:**
+- Put an exact version in every import map URL. Prefer a specific patch version over a range.
+- Better still, bundle these modules and serve them from your own origin, where SRI and your own CSP apply.
+- Restrict script-src in CSP to the specific CDN origin so an unexpected host cannot be introduced.
+- Automate version bumps through your dependency updater rather than relying on the CDN to hand you the newest build.
+- **Pin every entry** (html):
+```html
+<script type="importmap">
+{
+  "imports": {
+    "lit": "https://cdn.jsdelivr.net/npm/lit@3.1.4/index.js",
+    "preact": "https://cdn.jsdelivr.net/npm/preact@10.22.1/dist/preact.module.js"
+  }
+}
+</script>
+```
+- **Constrain where modules may come from** (text):
+```text
+Content-Security-Policy: script-src 'self' https://cdn.jsdelivr.net; object-src 'none'; base-uri 'none'
+```
+
+### `supply-chain-importmap-insecure-source` [supply-chain / high / body-pattern]
+**Import map resolves a module over plain HTTP**
+
+An import map on an HTTPS page maps a module specifier to a cleartext http:// URL on a host other than localhost.
+
+**Risk:** A module fetched over plain HTTP can be replaced in transit by anyone on the network path, and the replacement runs as first-party script on your origin: full access to the DOM, to same-origin storage, and to any session the user has. Browsers block this as active mixed content, so in practice the import fails and the feature breaks, but the map is a standing instruction to load executable code insecurely.
+
+**Why it matters:** Distinct from an http:// script tag in that the URL is in a JSON policy rather than in markup, so it survives reviews that only look at tags and does not appear in most mixed-content audits. Localhost is excluded here because a development import map pointing at a local dev server is normal and harmless.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content
+- https://html.spec.whatwg.org/multipage/webappapis.html#import-maps
+
+**Fix:**
+- Change every import map URL to https, or to a same-origin path.
+- Add upgrade-insecure-requests to the CSP so any remaining cleartext subresource is upgraded rather than silently failing.
+- Confirm the target actually serves HTTPS before switching, so the module does not simply stop loading.
+- **HTTPS in every entry** (html):
+```html
+<script type="importmap">
+{
+  "imports": {
+    "app/": "/modules/",
+    "lit": "https://cdn.jsdelivr.net/npm/lit@3.1.4/index.js"
+  }
+}
+</script>
+```
+
+### `supply-chain-esm-cdn-unpinned-import` [supply-chain / medium / body-pattern]
+**ES module imported from an unversioned CDN specifier**
+
+An import statement on this page pulls a module from esm.sh, Skypack or esm.run with no version in the specifier, so the CDN resolves it to the newest published release at request time.
+
+**Risk:** The browser executes whatever that package published most recently. A compromised maintainer account, or a package that changes hands, reaches every visitor on the next page load with no deploy and no review. These CDNs also transitively rewrite the package's own dependencies to the same unversioned form, so a single bare import can pull in a whole tree of code chosen at request time.
+
+**Why it matters:** Distinct from a script tag without SRI: this is inside module code, so it is not visible in the markup a reviewer scans, and ES module imports cannot carry an integrity attribute at all. The version in the specifier is the only pin available, and esm.sh and Skypack both accept an exact one.
+
+**References:**
+- https://esm.sh/#docs
+- https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/
+
+**Fix:**
+- Pin an exact version in every CDN import specifier.
+- Prefer bundling these modules into your own build, where the lockfile and SRI both apply.
+- Restrict script-src in CSP to the specific CDN host so an unexpected origin cannot be introduced later.
+- **Pin the specifier** (javascript):
+```javascript
+// Resolves to whatever is newest right now
+import confetti from 'https://esm.sh/canvas-confetti';
+
+// Pinned
+import confetti from 'https://esm.sh/canvas-confetti@1.9.3';
+```
+- **Or bundle it and serve it yourself** (bash):
+```bash
+npm install canvas-confetti@1.9.3
+npx esbuild src/main.js --bundle --format=esm --outfile=public/main.js
+```
+
+### `supply-chain-jsdelivr-gh-branch-reference` [supply-chain / medium / body-pattern]
+**Script loaded from a jsDelivr GitHub branch reference**
+
+The page loads an asset through jsDelivr's GitHub passthrough (cdn.jsdelivr.net/gh/...) at a moving reference: no @tag at all, or @master, @main, @latest or @HEAD.
+
+**Risk:** The file that executes is whatever that branch points at when the browser fetches it. A push to the repository, by any collaborator or by anyone who compromises the account, changes what runs on your page without touching your deployment. Unlike jsDelivr's npm path, there is no registry publish step and no immutable version, so nothing is reviewed between a commit and your users.
+
+**Why it matters:** jsDelivr supports pinning /gh/ URLs to a tag or a full commit SHA, and a pinned URL is served immutably and cached indefinitely. A branch reference deliberately opts out of that. This is a distinct problem from a missing SRI hash: an integrity attribute would break on every legitimate push, so the fix is to pin the reference rather than to add a hash to a moving target.
+
+**References:**
+- https://www.jsdelivr.com/documentation#id-github
+- https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/
+
+**Fix:**
+- Pin the URL to a release tag or, better, a full commit SHA: cdn.jsdelivr.net/gh/owner/repo@<sha>/file.js.
+- Add an integrity attribute once the URL is immutable.
+- For anything you depend on seriously, vendor the file into your own build instead of loading it from a third-party repository.
+- **Pin to a commit and add SRI** (html):
+```html
+<script
+  src="https://cdn.jsdelivr.net/gh/owner/repo@3f2b9c1d5a4e8f70b1c2d3e4f5a6b7c8d9e0f1a2/dist/widget.min.js"
+  integrity="sha384-REPLACE_WITH_REAL_HASH"
+  crossorigin="anonymous"></script>
+```
+- **Compute the hash** (bash):
+```bash
+curl -s https://cdn.jsdelivr.net/gh/owner/repo@<sha>/dist/widget.min.js \
+  | openssl dgst -sha384 -binary | openssl base64 -A
+```
+
+### `supply-chain-rawgit-cdn-reference` [supply-chain / medium / body-pattern]
+**Page references RawGit, a shut-down CDN**
+
+The page references rawgit.com or cdn.rawgit.com. RawGit stopped serving new files in 2018 and shut down completely in October 2019.
+
+**Risk:** Anything loaded from this host is dead, so a script tag pointing at it silently does not execute and a stylesheet silently does not apply. That is a functional break that no error page reveals. The more serious concern is the domain itself: a retired CDN domain that later changes hands turns every page still pointing at it into a delivery channel for whoever owns it next.
+
+**Why it matters:** This is a maintenance signal as much as a security one. A page still referencing RawGit has not had its third-party assets reviewed since at least 2019, which usually means the rest of the front-end dependency set is the same age. Check what the reference was meant to load and whether the page has been quietly running without it.
+
+**References:**
+- https://rawgit.com/
+- https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/
+
+**Fix:**
+- Find what the RawGit URL was supposed to load and confirm whether the page still needs it.
+- Replace it with the file served from your own origin, or with a pinned jsDelivr URL plus an integrity hash.
+- Audit the rest of the page's third-party references at the same time; they are likely the same vintage.
+- **Find every reference** (bash):
+```bash
+grep -rn 'rawgit\.com' --include='*.html' --include='*.js' --include='*.css' .
+```
+- **Replace with a pinned, hashed source** (html):
+```html
+<script
+  src="https://cdn.jsdelivr.net/gh/owner/repo@v1.4.2/dist/widget.min.js"
+  integrity="sha384-REPLACE_WITH_REAL_HASH"
+  crossorigin="anonymous"></script>
+```
+
+### `supply-chain-github-raw-script-source` [supply-chain / medium / body-pattern]
+**Script loaded from GitHub raw content**
+
+A script element on this page loads its source from raw.githubusercontent.com or gist.githubusercontent.com.
+
+**Risk:** GitHub's raw endpoints are not a CDN and make no immutability promise for a branch path: the content changes the moment someone pushes. Anyone with write access to that repository, or to that gist, controls executable code on your origin. For a gist the blast radius is smaller only in that fewer people have access, which also means less oversight of who does.
+
+**Why it matters:** The raw hosts serve with a short cache lifetime and rate limit aggressively, so this also fails intermittently under load. If the reference has to stay, a permalink to a full commit SHA is immutable and can be paired with an integrity hash. The better answer is to vendor the file into your own build, where it goes through the same review as everything else you ship.
+
+**References:**
+- https://docs.github.com/en/repositories/working-with-files/using-files/viewing-and-understanding-files
+- https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/
+
+**Fix:**
+- Vendor the file into your own repository and serve it from your origin.
+- If it must be remote, use a full commit-SHA permalink and add an integrity attribute.
+- Restrict script-src in CSP so githubusercontent hosts are not an allowed script source.
+- Check who has write access to the source repository, since they currently have script execution on your site.
+- **Vendor it instead** (bash):
+```bash
+curl -sL https://raw.githubusercontent.com/owner/repo/<sha>/dist/widget.js \
+  -o public/vendor/widget.js
+# then reference /vendor/widget.js and commit it
+```
+- **CSP that excludes raw hosts** (text):
+```text
+Content-Security-Policy: script-src 'self' https://cdn.jsdelivr.net; object-src 'none'
+```
+
+### `supply-chain-node-modules-path-served` [supply-chain / low / body-pattern]
+**Asset served directly out of node_modules**
+
+A script or stylesheet on this page has a URL containing /node_modules/, so the dependency directory itself is mapped into the web root.
+
+**Risk:** The whole dependency directory is reachable, not just the file the page asks for. That means every package's package.json, its README, its source maps, its test fixtures and any .env or config file a package happens to ship are all fetchable by path. It also gives an attacker an exact version oracle: requesting node_modules/<pkg>/package.json returns the installed version of anything they care to name.
+
+**Why it matters:** This is a build-pipeline shortcut rather than a deliberate choice: it happens when a static server is pointed at the project root so a library can be referenced without a bundler step. The dependency inventory it leaks is the mild half. The real risk is the files inside packages that were never meant to be served, and the exact-version oracle, which turns any published advisory into a confirmed hit.
+
+**References:**
+- https://expressjs.com/en/starter/static-files.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
+
+**Fix:**
+- Bundle or copy the specific files you need into a build output directory, and serve only that directory.
+- Never point a static-file middleware at the project root or at node_modules.
+- If a directory mapping is unavoidable, deny access to package.json, source maps and dotfiles beneath it.
+- **Copy the file into the build output instead** (json):
+```json
+{
+  "scripts": {
+    "prebuild": "cp node_modules/chart.js/dist/chart.umd.js public/vendor/chart.js"
+  }
+}
+```
+- **Express: serve the build output only** (javascript):
+```javascript
+app.use(express.static(path.join(__dirname, 'public'), { dotfiles: 'deny' }));
+// never: app.use('/node_modules', express.static('node_modules'))
+```
+
+### `supply-chain-bower-components-reference` [supply-chain / low / body-pattern]
+**Asset loaded from a Bower install directory**
+
+A script or stylesheet on this page loads from a bower_components path. Bower was deprecated in 2017 and its registry stopped accepting new packages.
+
+**Risk:** Bower resolved packages straight from git tags with no integrity checking and no lockfile by default, so what is installed here was never verified and cannot be reproduced. Packages installed this way have not received updates since the registry froze, which means any front-end library in that directory is at least several years behind on security fixes.
+
+**Why it matters:** The immediate issue is age, not a specific vulnerability: jQuery, Bootstrap, Angular 1.x and Handlebars are the usual residents of a bower_components directory, and each has had XSS or prototype-pollution fixes since. Serving the directory also exposes each package's bower.json and often its full source tree, which gives an exact version for every library present.
+
+**References:**
+- https://bower.io/blog/2017/how-to-migrate-away-from-bower/
+- https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/
+
+**Fix:**
+- Migrate the front-end dependencies to npm and a bundler, and delete bower_components.
+- Until then, identify the versions actually loaded and check each against an advisory database.
+- Stop serving the directory itself; reference specific built files from your own output path.
+- **See what versions are actually installed** (bash):
+```bash
+for f in bower_components/*/bower.json; do
+  echo "$f: $(node -e "console.log(require('./$f').version)")"
+done
+```
+- **Deny the directory while migrating** (nginx):
+```nginx
+location /bower_components/ {
+    return 404;
+}
+```
+
+### `supply-chain-sri-weak-hash-algorithm` [supply-chain / medium / body-pattern]
+**Subresource Integrity hash uses an unsupported algorithm**
+
+A script or link element carries an integrity attribute whose hash prefixes are none of sha256, sha384 or sha512, the only algorithms the Subresource Integrity specification defines.
+
+**Risk:** A browser that recognises no algorithm in the integrity attribute treats the metadata as unusable and loads the resource with no verification at all. The element looks protected in the markup and is not, so a CDN compromise or an on-path substitution goes through exactly as if the attribute had never been written.
+
+**Why it matters:** The usual causes are an sha1- or md5- prefix copied from an older integrity scheme, or a bare base64 digest with no prefix. This is the quietest kind of SRI failure: there is no console error in most browsers, the resource loads normally, and a reviewer reading the HTML sees an integrity attribute and moves on. Regenerating the hash with sha384 is the whole fix.
+
+**References:**
+- https://www.w3.org/TR/SRI/
+- https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity
+
+**Fix:**
+- Regenerate the digest with sha384 (or sha512) and replace the attribute value, prefix included.
+- Keep the crossorigin attribute alongside it, since SRI on a cross-origin resource needs a CORS-enabled fetch.
+- Add a build step that generates integrity attributes rather than writing them by hand.
+- **Generate a correct hash** (bash):
+```bash
+curl -s https://cdn.example.com/lib.js \
+  | openssl dgst -sha384 -binary \
+  | openssl base64 -A
+```
+- **The attribute it produces** (html):
+```html
+<script
+  src="https://cdn.example.com/lib.js"
+  integrity="sha384-oqVuAfXRKap7fdgcCY5uykM6+R9GqQ8K/uxy9rx7HNQlGYl1kPzQho1wx4JwY8wC"
+  crossorigin="anonymous"></script>
+```
+
+### `supply-chain-sri-missing-crossorigin` [supply-chain / medium / body-pattern]
+**Cross-origin subresource has integrity but no crossorigin**
+
+A cross-origin script or stylesheet carries an integrity attribute without a crossorigin attribute. Subresource Integrity requires a CORS-enabled fetch, so the browser cannot check the hash.
+
+**Risk:** Without crossorigin the response is opaque to the page, and the specification says a request with integrity metadata whose response is not CORS-enabled fails. In practice the resource either does not load, breaking the page, or in older engines loads unverified. Either way the integrity attribute is providing none of the protection it appears to provide.
+
+**Why it matters:** This is a two-attribute feature that is very commonly written with one. It is easy to miss because the failure is either a broken page (obvious, but usually blamed on the CDN) or a silently unverified load (invisible). The value crossorigin="anonymous" is right for public CDN assets: it sends no credentials and asks for the CORS headers SRI needs.
+
+**References:**
+- https://www.w3.org/TR/SRI/#cross-origin-data-leakage
+- https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/crossorigin
+
+**Fix:**
+- Add crossorigin="anonymous" to every cross-origin element that carries an integrity attribute.
+- Confirm the CDN actually returns Access-Control-Allow-Origin; without it the fetch fails whatever the markup says.
+- Use crossorigin="use-credentials" only when the resource genuinely requires cookies, which a public CDN asset does not.
+- **Both attributes together** (html):
+```html
+<script
+  src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.3/dist/htmx.min.js"
+  integrity="sha384-REPLACE_WITH_REAL_HASH"
+  crossorigin="anonymous"></script>
+
+<link
+  rel="stylesheet"
+  href="https://cdn.jsdelivr.net/npm/normalize.css@8.0.1/normalize.css"
+  integrity="sha384-REPLACE_WITH_REAL_HASH"
+  crossorigin="anonymous">
+```
+- **Confirm the CDN sends CORS headers** (bash):
+```bash
+curl -sI -H 'Origin: https://example.com' \
+  https://cdn.jsdelivr.net/npm/htmx.org@2.0.3/dist/htmx.min.js \
+  | grep -i access-control-allow-origin
+```
+
+### `supply-chain-ci-workflow-exposed` [supply-chain / medium / body-pattern]
+**CI workflow definition publicly served**
+
+The response is a CI workflow definition: a jobs block with runner labels and action steps, in the shape GitHub Actions and compatible runners use.
+
+**Risk:** The workflow names every secret the pipeline reads, and while the values are not present the names tell an attacker exactly which credentials exist and what they are for. It also discloses the deployment target, the registry the build pushes to, whether self-hosted runners are used and with what labels, and which branches and events trigger a deploy. Self-hosted runner labels are the most immediately useful of those: they identify machines inside your network that execute code on a push.
+
+**Why it matters:** Workflow files are public for any public repository, so this is only a disclosure where the repository is private. Either way, a workflow served from the application origin means the repository was deployed rather than the build output, so the same document root likely holds other repository files. The pipeline detail is also worth reviewing on its own merits: pull_request_target triggers and unpinned third-party actions are the two things attackers look for here.
+
+**References:**
+- https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
+
+**Fix:**
+- Stop deploying the repository; publish only the build output.
+- Review the workflow for pull_request_target triggers combined with checkout of untrusted code, which is a well-known privilege-escalation shape.
+- Confirm no self-hosted runner it names is reachable from outside your network.
+- Rotate any secret whose purpose the file reveals if you cannot rule out that the values were also exposed.
+- **Find repository files under the served root** (bash):
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' https://example.com/.github/workflows/deploy.yml
+curl -s -o /dev/null -w '%{http_code}\n' https://example.com/.git/config
+```
+- **Nginx: deny dot-directories** (nginx):
+```nginx
+location ~ /\. {
+    deny all;
+    return 404;
+}
+```
+
+### `supply-chain-github-action-unpinned-tag` [supply-chain / medium / body-pattern]
+**CI workflow uses a third-party action by mutable tag**
+
+The exposed workflow references a third-party action with a tag or branch reference rather than a full commit SHA.
+
+**Risk:** A git tag can be moved. Whoever controls that repository, or anyone who compromises the maintainer's account, can repoint the tag at different code, and the next pipeline run executes it with the workflow's full permissions: the repository token, every secret the job can read, and on a self-hosted runner, the runner machine itself. This is the exact mechanism behind several real supply-chain incidents in CI.
+
+**Why it matters:** Actions published by GitHub itself are excluded here, since pinning those to a major-version tag is the documented convention and GitHub controls the tag. For everything else GitHub's own hardening guide says to pin to a full-length commit SHA. The SHA is not readable, which is the usual objection, so keep the version in a trailing comment and let Dependabot update both together.
+
+**References:**
+- https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions#using-third-party-actions
+- https://slsa.dev/spec/v1.0/threats
+
+**Fix:**
+- Replace each third-party action reference with owner/repo@<full 40-character SHA>, keeping the version in a comment.
+- Enable Dependabot for github-actions so pinned SHAs are updated with a reviewable pull request.
+- Set permissions on each job to the minimum the job needs, so a compromised action cannot use a broad default token.
+- Restrict which actions may run at all through the repository or organisation actions policy.
+- **Pin to a commit SHA** (yaml):
+```yaml
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75  # v6.9.0
+```
+- **Keep pins updated automatically** (yaml):
+```yaml
+# .github/dependabot.yml
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+```
+
+### `supply-chain-sbom-document-exposed` [supply-chain / low / body-pattern]
+**Software bill of materials publicly served**
+
+The response is a software bill of materials in CycloneDX or SPDX format, listing the components the build shipped.
+
+**Risk:** An SBOM is the most complete dependency inventory that exists for a build: every component, its exact version, and often its package URL and licence. Feeding it to an advisory-matching tool takes seconds and returns a precise list of known vulnerabilities present in what is currently deployed, with no probing of the application at all.
+
+**Why it matters:** Publishing an SBOM is deliberate in some contexts and is increasingly expected in others, so this is informational rather than a defect. The point is to make the decision consciously: if it is intentional, the component list is public and the patching cadence has to assume an attacker reads it the day an advisory lands. If it reached the web root because the build copied its artifacts into the output, it is an accident worth undoing.
+
+**References:**
+- https://cyclonedx.org/specification/overview/
+- https://spdx.dev/use/specifications/
+
+**Fix:**
+- Decide whether publishing this SBOM is intentional. If not, exclude build artifacts from the deployed output.
+- If it is intentional, treat the component list as public and prioritise patching accordingly.
+- Run the SBOM through a vulnerability matcher yourself, on a schedule, so you see what an attacker sees.
+- **Match the SBOM against advisories** (bash):
+```bash
+grype sbom:./sbom.cdx.json
+# or
+osv-scanner --sbom=./sbom.spdx.json
+```
+- **Keep build artifacts out of the deploy** (bash):
+```bash
+cat >> .vercelignore <<'EOF'
+sbom.*.json
+*.spdx.json
+*.cdx.json
+EOF
+```
+
 ---
 
-## Category: tls (11 checks)
+## Category: tls (22 checks)
 
 ### `tls-certificate-expiry` [tls / high / header]
 **TLS Certificate Expiry**
@@ -20716,6 +22759,329 @@ ssl_stapling on;
 ssl_stapling_verify on;
 ssl_trusted_certificate /etc/ssl/certs/chain.pem;
 resolver 1.1.1.1 8.8.8.8 valid=300s;
+```
+
+### `tls-cert-signature-algorithm-weak` [tls / high / network-probe]
+**Certificate signed with a broken hash algorithm**
+
+A certificate in the chain the server presents is signed with SHA-1, MD5, MD2, or an ECDSA/DSA variant of SHA-1. The scan reads the signature algorithm OID out of the DER of each certificate the server sent, skipping the self-signed root.
+
+**Risk:** A signature over a broken hash can be moved onto a different certificate, because an attacker can construct a second input with the same digest. A forged certificate carrying a genuine CA signature defeats the entire chain of trust, and any client that still accepts the algorithm accepts the forgery without a warning.
+
+**Why it matters:** Public CAs stopped issuing SHA-1 TLS certificates in 2016 and browsers stopped trusting them in 2017, so a chain still carrying one is a private CA, a very old certificate, or an intermediate that was never rotated. The root's own self-signature is deliberately excluded: a root is trusted by identity rather than by its signature, so SHA-1 there is not a finding.
+
+**References:**
+- https://cabforum.org/working-groups/server/baseline-requirements/
+- https://shattered.io/
+
+**Fix:**
+- Reissue the leaf from a CA that signs with SHA-256 or better, and install the full modern chain.
+- For a private CA, re-sign the intermediate and leaf with SHA-256 and redistribute the root to clients.
+- Check every intermediate the server sends, not only the leaf: a modern leaf under a SHA-1 intermediate is still a broken chain.
+- **Read the algorithm of every certificate served** (bash):
+```bash
+openssl s_client -connect example.com:443 -showcerts </dev/null 2>/dev/null \
+  | awk '/BEGIN CERT/,/END CERT/' \
+  | openssl x509 -noout -subject -issuer -text 2>/dev/null \
+  | grep -i "signature algorithm"
+```
+- **Private CA: sign with SHA-256** (bash):
+```bash
+openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \
+  -CAcreateserial -out server.crt -days 397 -sha256
+```
+
+### `tls-cert-validity-period-excessive` [tls / low / network-probe]
+**Certificate validity period exceeds 398 days**
+
+The leaf certificate's notBefore to notAfter window is longer than 398 days, the maximum the CA/Browser Forum Baseline Requirements have imposed on publicly trusted certificates since September 2020.
+
+**Risk:** The validity window is the exposure window. If the private key is compromised, the certificate keeps working until it expires unless revocation actually reaches clients, and browsers soft-fail revocation checks, so in practice it does not. A long-lived certificate also outlives the key-size, algorithm and CA-policy changes that renewal would otherwise pick up.
+
+**Why it matters:** Public CAs cannot issue beyond 398 days, so a longer certificate is normally a private CA, an appliance that installed its own, or one issued before the limit took effect. Short lifetimes are valuable mainly because they force renewal to be automated, and automated renewal is what makes an emergency rotation a routine operation rather than an outage.
+
+**References:**
+- https://cabforum.org/2020/07/16/ballot-sc31-browser-alignment/
+- https://letsencrypt.org/docs/faq/
+
+**Fix:**
+- Reissue with a validity period of 398 days or less; 90 days is now the common default.
+- Automate renewal with ACME or the hosting platform's managed certificates so short lifetimes cost nothing operationally.
+- Alert on approaching expiry rather than relying on a calendar reminder.
+- **Check the window** (bash):
+```bash
+openssl s_client -connect example.com:443 </dev/null 2>/dev/null \
+  | openssl x509 -noout -dates
+```
+- **Automated renewal with certbot** (bash):
+```bash
+certbot certonly --nginx -d example.com -d www.example.com
+systemctl enable --now certbot.timer
+```
+
+### `tls-cert-not-yet-valid` [tls / high / network-probe]
+**Certificate is not yet valid**
+
+The certificate the server presents has a notBefore date later than the time of the scan, so it has not started being valid.
+
+**Risk:** Every client with a correct clock rejects the connection with a certificate validity error, so HTTPS is effectively down for them. Worse than the outage is the habit it builds: users who are told to click through the interstitial learn to ignore exactly the warning that would otherwise stop a real interception.
+
+**Why it matters:** This is usually a clock problem rather than a certificate problem. Either the issuing system's clock ran ahead when the certificate was signed, or the server's own clock is behind and a perfectly valid certificate looks premature. Comparing the server's time against NTP is the first thing to check, because reissuing will not help if the clock is the cause.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc5280#section-4.1.2.5
+- https://developer.mozilla.org/en-US/docs/Web/Security/Transport_Layer_Security
+
+**Fix:**
+- Check the server's system clock and confirm NTP is running and synchronised.
+- If the clock is correct, reissue: the certificate's notBefore really was set in the future.
+- Where a certificate is deliberately pre-issued for a future cutover, do not deploy it until its notBefore has passed.
+- **Compare certificate dates against the clock** (bash):
+```bash
+date -u
+openssl s_client -connect example.com:443 </dev/null 2>/dev/null \
+  | openssl x509 -noout -dates
+```
+- **Confirm time sync** (bash):
+```bash
+timedatectl status
+chronyc tracking 2>/dev/null || ntpq -p
+```
+
+### `tls-cert-san-count-excessive` [tls / info / network-probe]
+**Certificate covers an unusually large number of names**
+
+The leaf certificate lists more than fifty Subject Alternative Names, so one certificate and one private key cover a large set of hostnames.
+
+**Risk:** Every name on the certificate shares one private key, so a key compromise affects all of them simultaneously and a revocation forced by any one of them takes all of them offline together. Where the names belong to different customers or business units, the SAN list also discloses who else is hosted behind the same endpoint.
+
+**Why it matters:** Large SAN lists are normal on shared hosting and on some CDN configurations, where a single certificate fronts many tenants, which is why this is informational rather than a defect. It is worth surfacing because it describes shared fate: the blast radius of a rotation or an emergency revocation is every name in the list, not just yours.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.6
+- https://cabforum.org/working-groups/server/baseline-requirements/
+
+**Fix:**
+- Confirm the shared certificate is a deliberate choice rather than an artifact of how provisioning works.
+- Where names span separate trust domains or customers, issue per-domain certificates so a compromise stays contained.
+- If the certificate is provided by a hosting platform, check what its revocation and rotation process would mean for your own availability.
+- **List the names on the certificate** (bash):
+```bash
+openssl s_client -connect example.com:443 </dev/null 2>/dev/null \
+  | openssl x509 -noout -ext subjectAltName \
+  | tr "," "\n" | wc -l
+```
+
+### `tls-cert-serial-low-entropy` [tls / low / network-probe]
+**Certificate serial number has too little entropy**
+
+The leaf certificate's serial number is shorter than sixteen hexadecimal digits, which is below the 64 bits of CSPRNG output the CA/Browser Forum Baseline Requirements have required since ballot 164 in 2016.
+
+**Risk:** Serial-number entropy is the defence against a chosen-prefix collision attack on the certificate signature: an attacker who can predict the serial can prepare a colliding certificate before it is issued. It is the property that kept SHA-1 issuance survivable while it was being phased out, and it protects any hash whose margin narrows later in the same way.
+
+**Why it matters:** A short serial almost always means a private CA or an appliance generating certificates from a counter rather than a random source. A well-known 2019 incident forced the mass revocation of millions of publicly trusted certificates issued with 63 bits instead of 64, which is how narrowly this requirement is read.
+
+**References:**
+- https://cabforum.org/2016/07/08/ballot-164/
+- https://datatracker.ietf.org/doc/html/rfc5280#section-4.1.2.2
+
+**Fix:**
+- Configure the issuing CA to draw serial numbers from at least 64 bits of CSPRNG output.
+- Reissue certificates that were generated with counter-based or short serials.
+- For a private CA built on OpenSSL, stop using a plain incrementing serial file and generate random serials instead.
+- **Read the serial** (bash):
+```bash
+openssl s_client -connect example.com:443 </dev/null 2>/dev/null \
+  | openssl x509 -noout -serial
+```
+- **Private CA: random serial instead of a counter** (bash):
+```bash
+openssl rand -hex 16 > ca.srl
+openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \
+  -CAserial ca.srl -sha256 -days 397 -out server.crt
+```
+
+### `tls-cert-no-embedded-sct` [tls / info / network-probe]
+**Certificate carries no embedded Certificate Transparency SCTs**
+
+The leaf certificate contains no embedded Signed Certificate Timestamp list extension (OID 1.3.6.1.4.1.11129.2.4.2), the most common way a certificate proves it was submitted to public Certificate Transparency logs.
+
+**Risk:** Certificate Transparency is what makes a misissued certificate for your domain visible. A certificate that is never logged does not appear to any CT monitor, so a certificate issued for your name by a compromised or tricked CA can exist without anyone being able to notice it from the outside.
+
+**Why it matters:** SCTs can also be delivered in the TLS handshake extension or inside a stapled OCSP response, so the absence of the embedded extension does not prove the certificate is unlogged. It does mean the most common and most portable delivery method is not in use, which in practice points to a private or internal CA that does not log at all. Either way, CT monitoring for your domains is worth having, because it catches misissuance by any public CA regardless of what your own certificate does.
+
+**References:**
+- https://certificate.transparency.dev/
+- https://datatracker.ietf.org/doc/html/rfc6962
+
+**Fix:**
+- For a publicly trusted certificate, ask the CA to embed SCTs; every major public CA does so by default.
+- Subscribe to a Certificate Transparency monitor for your domains so any newly logged certificate raises an alert.
+- Publish a CAA record so only the CAs you intend can issue for the domain at all.
+- **Look for embedded SCTs** (bash):
+```bash
+openssl s_client -connect example.com:443 </dev/null 2>/dev/null \
+  | openssl x509 -noout -text \
+  | grep -A3 -i "CT Precertificate SCTs"
+```
+- **Restrict issuance with CAA** (dns):
+```dns
+example.com. IN CAA 0 issue "letsencrypt.org"
+example.com. IN CAA 0 issuewild ";"
+example.com. IN CAA 0 iodef "mailto:security@example.com"
+```
+
+### `tls-must-staple-not-stapled` [tls / high / network-probe]
+**Certificate requires OCSP stapling but none was stapled**
+
+The certificate carries the RFC 7633 TLS Feature extension requesting status_request, known as OCSP Must-Staple, but the handshake returned no stapled OCSP response.
+
+**Risk:** A client that enforces must-staple treats a handshake with no stapled response as a hard failure and refuses to connect. That is a self-inflicted outage, and it appears intermittently rather than at deploy time, because a server normally stops stapling when its own OCSP fetch starts failing.
+
+**Why it matters:** Must-staple is a promise the certificate makes on the server's behalf: every handshake will carry a fresh, CA-signed revocation status. It is a strong control, since it closes the soft-fail gap that makes revocation largely ineffective, but it only works if stapling is configured, working, and monitored. A certificate that declares it against a server that does not staple is the worst combination of the two.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc7633
+- https://datatracker.ietf.org/doc/html/rfc6066#section-8
+
+**Fix:**
+- Enable OCSP stapling on the TLS terminator: ssl_stapling on plus ssl_stapling_verify on in Nginx, SSLUseStapling On in Apache.
+- Make sure the server can reach the CA's OCSP responder outbound and has a working resolver configured; a blocked responder is the usual cause of stapling stopping silently.
+- Monitor for a stapled response continuously in production, not only at deploy time.
+- If stapling cannot be made reliable, reissue without the must-staple extension rather than leaving the promise unmet.
+- **Nginx: enable and verify stapling** (nginx):
+```nginx
+ssl_stapling on;
+ssl_stapling_verify on;
+ssl_trusted_certificate /etc/ssl/certs/chain.pem;
+resolver 1.1.1.1 8.8.8.8 valid=300s;
+resolver_timeout 5s;
+```
+- **Confirm a response is actually stapled** (bash):
+```bash
+openssl s_client -connect example.com:443 -status </dev/null 2>&1 \
+  | grep -A2 "OCSP Response Status"
+```
+
+### `tls-cipher-no-forward-secrecy` [tls / medium / network-probe]
+**Negotiated cipher suite has no forward secrecy**
+
+The handshake settled on a static-RSA key-exchange suite below TLS 1.3, so the session key is encrypted directly to the certificate's public key rather than derived from an ephemeral exchange.
+
+**Risk:** Traffic recorded today can be decrypted later by anyone who obtains the private key, through a compromise, a legal demand, or a memory-disclosure bug in the server. Forward secrecy removes that possibility entirely by making each session's key ephemeral and unrecoverable from the certificate.
+
+**Why it matters:** This reports the suite the server actually chose when offered a normal modern cipher list, not merely one it supports, so it means either the server offered no ephemeral suites or it preferred the static one. TLS 1.3 removes static RSA key exchange from the protocol, which is why this only applies to 1.2 and below.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc8446
+- https://wiki.mozilla.org/Security/Server_Side_TLS
+
+**Fix:**
+- Restrict the server's cipher list to ECDHE and DHE suites so no static-RSA suite can be selected.
+- Enable TLS 1.3, where every defined suite provides forward secrecy.
+- Set server cipher preference on, so the server's ordering decides rather than the client's.
+- **Nginx: forward-secret suites only** (nginx):
+```nginx
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_prefer_server_ciphers on;
+ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+```
+- **See what gets negotiated** (bash):
+```bash
+openssl s_client -connect example.com:443 </dev/null 2>&1 \
+  | grep -E "^(New|Protocol|Cipher)"
+```
+
+### `tls-cipher-cbc-mode` [tls / low / network-probe]
+**Negotiated cipher suite uses CBC mode**
+
+The handshake settled on a CBC-mode cipher suite below TLS 1.3, rather than an AEAD suite such as AES-GCM or ChaCha20-Poly1305.
+
+**Risk:** CBC suites in TLS use MAC-then-encrypt, the construction behind a long run of padding-oracle attacks: BEAST, Lucky 13, and the POODLE and Zombie POODLE families. Each has a mitigation, but the mitigations live in the TLS library and are easy to lose across an upgrade or in an unusual stack, whereas AEAD removes the whole class.
+
+**Why it matters:** Rated Low because a current TLS library with the standard countermeasures is not practically exploitable here. It is a signal about the configuration rather than a live break: a server that still prefers CBC over AES-GCM is running a cipher ordering from several years ago, and the rest of that TLS configuration is usually the same vintage.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc7457
+- https://wiki.mozilla.org/Security/Server_Side_TLS
+
+**Fix:**
+- Prefer AEAD suites and remove CBC suites from the cipher list.
+- Enable TLS 1.3, which defines only AEAD suites.
+- Turn on server cipher preference so the ordering you set is the one that applies.
+- **Apache: AEAD suites only** (apache):
+```apache
+SSLProtocol -all +TLSv1.2 +TLSv1.3
+SSLHonorCipherOrder on
+SSLCipherSuite ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305
+```
+- **Check the negotiated suite** (bash):
+```bash
+openssl s_client -connect example.com:443 </dev/null 2>&1 | grep -i "cipher"
+```
+
+### `tls-ephemeral-key-weak` [tls / medium / network-probe]
+**Weak ephemeral key exchange parameters**
+
+The handshake completed with an ephemeral key below a safe size: a finite-field Diffie-Hellman group smaller than 2048 bits, or an elliptic curve below 224 bits.
+
+**Risk:** The ephemeral key is what forward secrecy actually rests on: it is the value an attacker must break to recover a recorded session. A finite-field group below 2048 bits is within reach of the precomputation attack demonstrated by Logjam, and because servers overwhelmingly reuse a handful of standard groups, one precomputation breaks every session that used the same group.
+
+**Why it matters:** Servers reach this state by keeping a dhparam file generated years ago, or by leaving a library default in place. The durable fix is to prefer elliptic-curve key exchange, where a 256-bit curve provides far more security than a 2048-bit finite field at a fraction of the cost, and to remove finite-field DHE suites unless a specific client needs them.
+
+**References:**
+- https://weakdh.org/
+- https://wiki.mozilla.org/Security/Server_Side_TLS
+
+**Fix:**
+- Prefer ECDHE with X25519 or P-256, and remove finite-field DHE suites where no client requires them.
+- If DHE must remain, generate a fresh group of at least 2048 bits and point the server at it.
+- Do not reuse a well-known published group: a unique group defeats the precomputation the attack depends on.
+- **Generate a strong group and use it** (bash):
+```bash
+openssl dhparam -out /etc/nginx/dhparam.pem 3072
+
+# nginx.conf
+# ssl_dhparam /etc/nginx/dhparam.pem;
+# ssl_ecdh_curve X25519:prime256v1;
+```
+- **Check what the server used** (bash):
+```bash
+openssl s_client -connect example.com:443 </dev/null 2>&1 \
+  | grep -i "server temp key"
+```
+
+### `tls-legacy-protocol-accepted` [tls / medium / network-probe]
+**Server still accepts TLS 1.0 or TLS 1.1**
+
+A second handshake offering only TLS 1.0 and TLS 1.1 completed successfully, which proves the server still accepts a deprecated protocol version even if it prefers a modern one with a modern client.
+
+**Risk:** TLS 1.0 and 1.1 depend on constructions no longer considered sound: MAC-then-encrypt CBC modes, MD5 and SHA-1 inside the PRF and in signatures, and no AEAD suites. An old client, or one an attacker can influence into downgrading, ends up on a protocol with published attacks against it. PCI DSS has disallowed TLS 1.0 since June 2018.
+
+**Why it matters:** The evidence here is deliberately one-directional. A successful legacy handshake proves the server accepts the version. A failed one proves nothing, because the scanning client's own TLS library may refuse those suites regardless of what the server would have done, so this check never reports that legacy protocols are disabled, only that they are enabled. It is also distinct from reporting the negotiated version: a server can prefer TLS 1.3 and still answer a 1.0 client.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc8996
+- https://blog.mozilla.org/security/2018/10/15/removing-old-versions-of-tls/
+
+**Fix:**
+- Set the minimum protocol version to TLS 1.2 on every listener, load balancer and CDN in front of the site.
+- Check the edge and the origin separately: their protocol settings are usually configured independently.
+- Review client analytics before disabling, since a small number of very old clients will lose access.
+- Re-test afterwards with an explicit legacy handshake rather than trusting the configuration file.
+- **Nginx and Apache: TLS 1.2 minimum** (nginx):
+```nginx
+# nginx
+ssl_protocols TLSv1.2 TLSv1.3;
+
+# apache
+# SSLProtocol -all +TLSv1.2 +TLSv1.3
+```
+- **Confirm the legacy versions are refused** (bash):
+```bash
+openssl s_client -connect example.com:443 -tls1 </dev/null
+openssl s_client -connect example.com:443 -tls1_1 </dev/null
+# both should fail to complete a handshake
 ```
 
 ---

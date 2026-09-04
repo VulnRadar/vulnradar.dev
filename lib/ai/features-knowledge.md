@@ -81,7 +81,7 @@ Access: public, no account needed
 Page title: Every Web Vulnerability Check, With Fixes
 Heading on the page: Every check VulnRadar runs
 
-The 795+ checks a scan runs, grouped into 18 categories. Not a marketing number: most have a real page here that tells you what the check catches, why it matters, and how to fix it with code you can paste. The rest only fire across several pages at once, so there is no single check to link to.
+The 870+ checks a scan runs, grouped into 18 categories. Not a marketing number: most have a real page here that tells you what the check catches, why it matters, and how to fix it with code you can paste. The rest only fire across several pages at once, so there is no single check to link to.
 
 ### Compare scans
 Route: /compare
@@ -111,7 +111,7 @@ Heading on the page: Scan a host
 In-app navigation label: Scanner
 Also known as: scan new dashboard
 
-795+ checks across 18 categories. Paste a domain or an IPv4 address, choose what runs, and read the findings. Nothing to install.
+870+ checks across 18 categories. Paste a domain or an IPv4 address, choose what runs, and read the findings. Nothing to install.
 
 ### Live Demo: Scan Any URL in 3 Seconds
 Route: /demo
@@ -152,7 +152,7 @@ Route: /landing
 Access: public, no account needed
 Page title: Scan Any Website for Security Issues
 
-Paste a URL, get a security report in under 3 seconds: 795+ deterministic checks across headers, TLS, cookies, DNS, and secrets. No agent to install.
+Paste a URL, get a security report in under 3 seconds: 870+ deterministic checks across headers, TLS, cookies, DNS, and secrets. No agent to install.
 
 ### Pricing
 Route: /pricing
@@ -399,7 +399,7 @@ Route: /signup
 Access: public, no account needed
 Page title: Create a Free Scanner Account, No Card
 
-Create a free VulnRadar account. 25 scans a day, full API access, and scan history retained for 30 days. No card required.
+Create a free VulnRadar account. 25 scans a day, full API access, and scan history kept for as long as your account is open. No card required.
 
 ### Accept a Staff Invite
 Route: /staff-invite/[token]

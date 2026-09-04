@@ -947,6 +947,7 @@ format=sarif      -> application/sarif+json      vulnradar-example.com.sarif
 format=md         -> text/markdown; charset=utf-8 vulnradar-example.com.md
 format=compliance -> text/markdown; charset=utf-8 vulnradar-example.com-compliance.md
 format=pdf        -> application/pdf             vulnradar-example.com.pdf
+format=csv        -> text/csv; charset=utf-8     vulnradar-example.com.csv
 format=json       -> application/json            vulnradar-example.com.json
 ```
 
@@ -2513,7 +2514,7 @@ report says exactly this in a disclaimer at the top of its output.
 - stores each scan once and renders reports from it on demand. The in-app export menu on a scan runs the report generators client-side; the same generators are exposed over one HTTP endpoint so a pipeline or a script can fetch the exact same output with a Bearer key. There is no separate "report" object to create or poll: you already have a scan id, so you already have every report.
 - The endpoint lives under /api/v3/ like the rest of the v3 API . Pick a format with the format query parameter; the response is a file download, not a JSON envelope, so pipe it to a file or hand it straight to whatever consumes it.
 - One GET, authenticated exactly like GET /history/"}. The format parameter selects the generator; the response headers tell you what came back.
-- Five outputs off the one endpoint. md and markdown are the same generator under two names; everything else is distinct.
+- Six outputs off the one endpoint. md and markdown are the same generator under two names; everything else is distinct.
 - The report inherits the scan's access model, so there is nothing new to authorise. A caller who can read the scan can pull any format of its report; a caller who cannot gets the same 404 the scan itself returns.
 - SARIF is the format worth wiring up first. The export is SARIF 2.1.0, the JSON schema GitHub Code Scanning consumes natively. Critical and high map to level: error, medium to warning, low and info to note. Each result carries a partialFingerprints.vulnradarFindingId equal to the stable check id, so re-running the scan updates the same alert instead of opening a duplicate. When a finding has a real computed CVSS score it is exported as security-severity; otherwise a per-band default is used.
 - Store the key as a repo secret, fetch the SARIF for a completed scan, then hand it to the official upload action. The findings appear on the Security tab, annotated against the target.
