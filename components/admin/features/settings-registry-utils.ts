@@ -75,10 +75,23 @@ export function formatFieldValue(value: FieldValue): string {
  * registry (SCAN_AUTH_ENABLED and the IP-binding toggles are
  * real settings but do not gate access for existing users the same way).
  */
+const OPERATIONAL_SWITCHES: ReadonlySet<string> = new Set([
+  "MAINTENANCE_MODE",
+  "PAUSE_SIGNUPS",
+  "PAUSE_LOGINS",
+  "PAUSE_SCANNING",
+]);
+
 export function isDestructiveToggle(
   key: string,
   newValue: FieldValue,
 ): boolean {
+  // The operational switches are the mirror image of the flags below: the
+  // consequential direction is turning one ON, not off. Ticking
+  // MAINTENANCE_MODE takes the product away from every non-staff user in
+  // under 30 seconds, so it gets the same "name the consequence"
+  // confirmation rather than the generic save summary.
+  if (newValue === true && OPERATIONAL_SWITCHES.has(key)) return true;
   return (
     newValue === false &&
     (key === "BILLING_ENABLED" || key.startsWith("FEATURE_"))

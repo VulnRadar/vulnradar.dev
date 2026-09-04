@@ -246,9 +246,15 @@ describe("checks-data total counts", () => {
     for (const category of ALL_CATEGORIES) {
       total += loadFile(category).length;
     }
-    // Bump this number when checks are added/removed intentionally.
-    expect(total).toBeGreaterThan(580);
-    expect(total).toBeLessThan(800);
+    // Bump these when checks are added or removed intentionally. They are a
+    // tripwire for a bulk accident (a JSON file emptied by a bad script, a
+    // category duplicated), not a target: the band is kept wide enough that
+    // ordinary additions do not touch it and narrow enough that losing or
+    // doubling a category does. The lower bound was 580 when the catalogue
+    // held ~750; it is raised here alongside the upper one so it keeps the
+    // same margin below the real count.
+    expect(total).toBeGreaterThan(780);
+    expect(total).toBeLessThan(1100);
   });
 
   it("ids are unique across all categories", () => {

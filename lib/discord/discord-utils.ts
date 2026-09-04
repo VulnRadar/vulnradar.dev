@@ -117,15 +117,22 @@ export async function getDiscordUserConnection(
 }
 
 /**
- * Get user's 2FA configuration
+ * Get user's 2FA configuration.
+ *
+ * `role` is not 2FA configuration, and it is here anyway: the Discord
+ * callback is a sign-in path, so it has to run the PAUSE_LOGINS check
+ * (lib/admin/service-state.ts), and that check needs the role. Selecting it
+ * in the one query this path already makes beats a second round trip on
+ * every Discord login.
  */
 export async function getUserTwoFAConfig(userId: number): Promise<{
   totp_enabled: boolean;
   two_factor_method: string;
   email: string;
+  role: string | null;
 } | null> {
   const result = await pool.query(
-    "SELECT totp_enabled, two_factor_method, email FROM users WHERE id = $1",
+    "SELECT totp_enabled, two_factor_method, email, role FROM users WHERE id = $1",
     [userId],
   );
   return result.rows[0] || null;

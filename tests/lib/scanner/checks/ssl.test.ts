@@ -210,6 +210,182 @@ const fixtures: DetectorFixtures = {
       expect: "skip",
     },
   ],
+
+  // ── HSTS delivered where browsers ignore it ───────────────────────
+  "ssl-hsts-meta-tag-ineffective": [
+    {
+      description: "HSTS declared in a meta http-equiv tag",
+      url: "https://example.com/",
+      body: '<html><head><meta http-equiv="Strict-Transport-Security" content="max-age=31536000; includeSubDomains"></head><body></body></html>',
+      expect: "fire",
+      evidenceIncludes: "meta",
+    },
+    {
+      description: "HSTS delivered correctly as a response header",
+      url: "https://example.com/",
+      headers: {
+        "strict-transport-security": "max-age=31536000; includeSubDomains",
+      },
+      body: "<html><head><title>Home</title></head><body></body></html>",
+      expect: "skip",
+    },
+  ],
+
+  // ── Cleartext protocol advertised alongside the TLS one ───────────
+  "ssl-alt-svc-cleartext-h2c": [
+    {
+      description: "Alt-Svc advertising h2c on an HTTPS response",
+      url: "https://example.com/",
+      headers: { "alt-svc": 'h2c=":8080"; ma=86400' },
+      expect: "fire",
+      evidenceIncludes: "h2c",
+    },
+    {
+      description: "Alt-Svc advertising HTTP/3 only",
+      url: "https://example.com/",
+      headers: { "alt-svc": 'h3=":443"; ma=86400' },
+      expect: "skip",
+    },
+  ],
+
+  // ── Cleartext subresources the tag-based checks miss ──────────────
+  "ssl-link-header-http-subresource": [
+    {
+      description: "Link header preloading a script over http",
+      url: "https://example.com/",
+      headers: {
+        link: "<http://cdn.example.net/app.js>; rel=preload; as=script",
+      },
+      expect: "fire",
+      evidenceIncludes: "cleartext",
+    },
+    {
+      description: "Link header preloading over https",
+      url: "https://example.com/",
+      headers: {
+        link: "<https://cdn.example.net/app.js>; rel=preload; as=script",
+      },
+      expect: "skip",
+    },
+    {
+      description: "Link header with a non-subresource relation (canonical)",
+      url: "https://example.com/",
+      headers: { link: '<http://example.com/page>; rel="canonical"' },
+      expect: "skip",
+    },
+  ],
+
+  "ssl-http-resource-hint-tag": [
+    {
+      description: "preconnect to a cleartext origin on an HTTPS page",
+      url: "https://example.com/",
+      body: '<html><head><link rel="preconnect" href="http://cdn.example.net"></head><body></body></html>',
+      expect: "fire",
+      evidenceIncludes: "cleartext",
+    },
+    {
+      description: "all hints over https",
+      url: "https://example.com/",
+      body: '<html><head><link rel="preconnect" href="https://cdn.example.net"><link rel="manifest" href="/site.webmanifest"></head><body></body></html>',
+      expect: "skip",
+    },
+    {
+      description: "the same cleartext hint on a plain HTTP page",
+      url: "http://example.com/",
+      body: '<html><head><link rel="preconnect" href="http://cdn.example.net"></head><body></body></html>',
+      expect: "skip",
+    },
+  ],
+
+  "ssl-mixed-content-non-src-attribute": [
+    {
+      description: "one cleartext candidate hidden in an https srcset",
+      url: "https://example.com/",
+      body: '<html><body><img src="https://cdn.example.net/h-800.jpg" srcset="https://cdn.example.net/h-400.jpg 400w, http://cdn.example.net/h-800.jpg 800w" alt=""></body></html>',
+      expect: "fire",
+      evidenceIncludes: "srcset",
+    },
+    {
+      description: "video poster over http",
+      url: "https://example.com/",
+      body: '<html><body><video poster="http://cdn.example.net/poster.jpg" controls></video></body></html>',
+      expect: "fire",
+      evidenceIncludes: "poster",
+    },
+    {
+      description: "every srcset candidate and the poster over https",
+      url: "https://example.com/",
+      body: '<html><body><img srcset="https://cdn.example.net/h-400.jpg 400w, https://cdn.example.net/h-800.jpg 800w" alt=""><video poster="https://cdn.example.net/poster.jpg"></video></body></html>',
+      expect: "skip",
+    },
+  ],
+
+  "ssl-canonical-link-http": [
+    {
+      description: "canonical URL left on http after an HTTPS migration",
+      url: "https://example.com/articles/tls",
+      body: '<html><head><link rel="canonical" href="http://example.com/articles/tls"></head><body></body></html>',
+      expect: "fire",
+      evidenceIncludes: "canonical",
+    },
+    {
+      description: "canonical URL over https",
+      url: "https://example.com/articles/tls",
+      body: '<html><head><link rel="canonical" href="https://example.com/articles/tls"></head><body></body></html>',
+      expect: "skip",
+    },
+  ],
+
+  "ssl-meta-refresh-http-target": [
+    {
+      description: "meta refresh from an HTTPS page to a cleartext URL",
+      url: "https://example.com/logout",
+      body: '<html><head><meta http-equiv="refresh" content="0; url=http://example.com/goodbye"></head><body></body></html>',
+      expect: "fire",
+      evidenceIncludes: "cleartext",
+    },
+    {
+      description: "meta refresh to an https URL",
+      url: "https://example.com/logout",
+      body: '<html><head><meta http-equiv="refresh" content="0; url=https://example.com/goodbye"></head><body></body></html>',
+      expect: "skip",
+    },
+    {
+      description: "meta refresh to a relative path",
+      url: "https://example.com/logout",
+      body: '<html><head><meta http-equiv="refresh" content="3; url=/goodbye"></head><body></body></html>',
+      expect: "skip",
+    },
+  ],
+
+  "ssl-http-fetch-endpoint-in-script": [
+    {
+      description: "inline fetch() to a cleartext API on an HTTPS page",
+      url: "https://example.com/app",
+      body: '<html><body><script>fetch("http://api.example.net/v1/items").then(r => r.json());</script></body></html>',
+      expect: "fire",
+      evidenceIncludes: "cleartext",
+    },
+    {
+      description: "inline fetch() to an https API",
+      url: "https://example.com/app",
+      body: '<html><body><script>fetch("https://api.example.net/v1/items").then(r => r.json());</script></body></html>',
+      expect: "skip",
+    },
+    {
+      description:
+        "inline SVG namespace URLs, which are http:// but are never fetched",
+      url: "https://example.com/app",
+      body: '<html><body><svg xmlns="http://www.w3.org/2000/svg"></svg><script>const NS = "http://www.w3.org/2000/svg";</script></body></html>',
+      expect: "skip",
+    },
+    {
+      description: "loopback endpoint in a development build",
+      url: "https://example.com/app",
+      body: '<html><body><script>fetch("http://localhost:3000/api/dev");</script></body></html>',
+      expect: "skip",
+    },
+  ],
 };
 
 runDetectorTests(detectors, fixtures);

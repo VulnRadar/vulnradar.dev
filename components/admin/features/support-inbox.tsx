@@ -290,7 +290,7 @@ export function SupportInbox() {
       {/* Filters carry their own counts, so the size of each queue is readable
           without selecting it. The two unanswered queues stay amber while they
           are non-empty, even when another filter is selected. */}
-      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+      <div className="-mx-1 flex gap-1.5 scroll-x-only px-1 pb-1">
         {FILTERS.map((f) => {
           const selected = filter === f.key;
           const count = filterCount(f.key);

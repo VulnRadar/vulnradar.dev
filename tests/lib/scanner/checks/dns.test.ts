@@ -23,6 +23,8 @@ vi.mock("dns/promises", () => ({
   resolve6: vi.fn(),
   resolveMx: vi.fn(),
   resolveTxt: vi.fn(),
+  resolveCname: vi.fn(),
+  resolveCaa: vi.fn(),
 }));
 
 import * as dns from "dns/promises";
@@ -31,6 +33,12 @@ import {
   checkNsProviderConcentration,
   checkWildcardDns,
   checkNullMxRecommended,
+  checkDnssecAlgorithmStrength,
+  checkDsDigestAlgorithm,
+  checkNsecParameters,
+  checkCnameChain,
+  checkCaaIodef,
+  checkVerificationTokenSprawl,
 } from "@/lib/scanner/checks/dns";
 
 const dnsMock = vi.mocked(dns);
@@ -45,6 +53,8 @@ beforeEach(() => {
   dnsMock.resolve6.mockReset();
   dnsMock.resolveMx.mockReset();
   dnsMock.resolveTxt.mockReset();
+  dnsMock.resolveCname.mockReset();
+  dnsMock.resolveCaa.mockReset();
 });
 
 describe("detectors placeholder map", () => {
@@ -279,5 +289,391 @@ describe("checkNullMxRecommended", () => {
     );
     expect(findings).toHaveLength(1);
     expect(findings[0].title).toMatch(/Null MX/i);
+  });
+});
+
+// ── DNS-over-HTTPS probes (DNSSEC parameters, NSEC/NSEC3) ───────────────
+//
+// dohAnswers queries dns.google and cloudflare-dns.com in parallel and takes
+// whichever answers first with a usable body. These tests stub global fetch
+// per query TYPE so one helper can drive every case, and the "both resolvers
+// failed" case is asserted explicitly: a network failure must never be read
+// as "the record is absent".
+
+type DohFixture = Record<string, { Answer?: { data: string }[] } | "fail">;
+
+function stubDoh(fixture: DohFixture) {
+  const originalFetch = globalThis.fetch;
+  const spy = vi.fn(async (input: unknown) => {
+    const href = String(input);
+    const type = /[?&]type=([A-Z0-9]+)/i.exec(href)?.[1] ?? "";
+    const entry = fixture[type];
+    if (entry === undefined || entry === "fail") {
+      throw new Error("network");
+    }
+    return { json: async () => entry } as unknown as Response;
+  });
+  globalThis.fetch = spy as unknown as typeof fetch;
+  return () => {
+    globalThis.fetch = originalFetch;
+  };
+}
+
+/**
+ * RFC 3110 DNSKEY public key: a one-byte exponent length, the exponent, then
+ * a modulus of `bits` bits. Only the byte lengths matter to rsaModulusBits.
+ */
+function rsaDnskey(bits: number): string {
+  const exponent = Buffer.from([0x01, 0x00, 0x01]);
+  const modulus = Buffer.alloc(bits / 8, 0xab);
+  return Buffer.concat([
+    Buffer.from([exponent.length]),
+    exponent,
+    modulus,
+  ]).toString("base64");
+}
+
+describe("checkDnssecAlgorithmStrength", () => {
+  it("flags a zone signed with RSA/SHA-1 (algorithm 5)", async () => {
+    const restore = stubDoh({
+      DNSKEY: { Answer: [{ data: `257 3 5 ${rsaDnskey(2048)}` }] },
+    });
+    try {
+      const findings = await checkDnssecAlgorithmStrength(
+        "example.com",
+        "https://example.com",
+      );
+      const ids = findings.map((f) => f.id.split("--")[0]);
+      expect(ids).toContain("dns-dnssec-algorithm-weak");
+      expect(findings[0].evidence).toContain("RSA/SHA-1");
+    } finally {
+      restore();
+    }
+  });
+
+  it("flags a 1024-bit RSA key-signing key", async () => {
+    const restore = stubDoh({
+      DNSKEY: { Answer: [{ data: `257 3 8 ${rsaDnskey(1024)}` }] },
+    });
+    try {
+      const findings = await checkDnssecAlgorithmStrength(
+        "example.com",
+        "https://example.com",
+      );
+      const ids = findings.map((f) => f.id.split("--")[0]);
+      expect(ids).toEqual(["dns-dnssec-key-size-weak"]);
+      expect(findings[0].evidence).toContain("1024-bit");
+    } finally {
+      restore();
+    }
+  });
+
+  it("reports nothing for a zone signed with ECDSAP256SHA256", async () => {
+    const restore = stubDoh({
+      DNSKEY: {
+        Answer: [
+          {
+            data: "257 3 13 mdsswUyr3DPW132mOi8V9xESWE8jTo0dxCjjnopKl+GqJxpVXckHAeF+KkxLbxILfDLUT0rAK9iUzy1L53eKGQ==",
+          },
+        ],
+      },
+    });
+    try {
+      const findings = await checkDnssecAlgorithmStrength(
+        "example.com",
+        "https://example.com",
+      );
+      expect(findings).toEqual([]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("reports nothing when the zone is not signed at all", async () => {
+    const restore = stubDoh({ DNSKEY: { Answer: [] } });
+    try {
+      expect(
+        await checkDnssecAlgorithmStrength(
+          "example.com",
+          "https://example.com",
+        ),
+      ).toEqual([]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("reports nothing when both resolvers fail", async () => {
+    const restore = stubDoh({ DNSKEY: "fail" });
+    try {
+      expect(
+        await checkDnssecAlgorithmStrength(
+          "example.com",
+          "https://example.com",
+        ),
+      ).toEqual([]);
+    } finally {
+      restore();
+    }
+  });
+});
+
+describe("checkDsDigestAlgorithm", () => {
+  it("flags a DS set that carries only a SHA-1 digest", async () => {
+    const restore = stubDoh({ DS: { Answer: [{ data: "12345 8 1 abcdef" }] } });
+    try {
+      const findings = await checkDsDigestAlgorithm(
+        "example.com",
+        "https://example.com",
+      );
+      expect(findings.map((f) => f.id.split("--")[0])).toEqual([
+        "dns-ds-digest-algorithm-weak",
+      ]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("reports nothing when SHA-256 is published alongside SHA-1 (mid-rollover)", async () => {
+    const restore = stubDoh({
+      DS: {
+        Answer: [
+          { data: "12345 8 1 abcdef" },
+          { data: "12345 8 2 0123456789" },
+        ],
+      },
+    });
+    try {
+      expect(
+        await checkDsDigestAlgorithm("example.com", "https://example.com"),
+      ).toEqual([]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("reports nothing when only SHA-256 is published", async () => {
+    const restore = stubDoh({ DS: { Answer: [{ data: "12345 13 2 abc" }] } });
+    try {
+      expect(
+        await checkDsDigestAlgorithm("example.com", "https://example.com"),
+      ).toEqual([]);
+    } finally {
+      restore();
+    }
+  });
+});
+
+describe("checkNsecParameters", () => {
+  it("flags a signed zone with no NSEC3PARAM record", async () => {
+    const restore = stubDoh({
+      DNSKEY: { Answer: [{ data: "257 3 13 abc" }] },
+      NSEC3PARAM: { Answer: [] },
+    });
+    try {
+      const findings = await checkNsecParameters(
+        "example.com",
+        "https://example.com",
+      );
+      expect(findings.map((f) => f.id.split("--")[0])).toEqual([
+        "dns-nsec-zone-walking",
+      ]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("flags NSEC3 with a non-zero iteration count", async () => {
+    const restore = stubDoh({
+      DNSKEY: { Answer: [{ data: "257 3 13 abc" }] },
+      NSEC3PARAM: { Answer: [{ data: "1 0 10 AB12CD34" }] },
+    });
+    try {
+      const findings = await checkNsecParameters(
+        "example.com",
+        "https://example.com",
+      );
+      expect(findings.map((f) => f.id.split("--")[0])).toEqual([
+        "dns-nsec3-iterations-nonzero",
+      ]);
+      expect(findings[0].severity).toBe("info");
+    } finally {
+      restore();
+    }
+  });
+
+  it("reports nothing for RFC 9276 parameters (zero iterations)", async () => {
+    const restore = stubDoh({
+      DNSKEY: { Answer: [{ data: "257 3 13 abc" }] },
+      NSEC3PARAM: { Answer: [{ data: "1 0 0 -" }] },
+    });
+    try {
+      expect(
+        await checkNsecParameters("example.com", "https://example.com"),
+      ).toEqual([]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("reports nothing for an unsigned zone", async () => {
+    const restore = stubDoh({
+      DNSKEY: { Answer: [] },
+      NSEC3PARAM: { Answer: [] },
+    });
+    try {
+      expect(
+        await checkNsecParameters("example.com", "https://example.com"),
+      ).toEqual([]);
+    } finally {
+      restore();
+    }
+  });
+});
+
+// ── CNAME chain / apex ──────────────────────────────────────────────────
+
+describe("checkCnameChain", () => {
+  it("flags a CNAME published at the zone apex", async () => {
+    dnsMock.resolveCname.mockImplementation(async (name: string) => {
+      if (name === "example.com") return ["target.provider.net"];
+      throw dnsError("ENODATA");
+    });
+    const findings = await checkCnameChain(
+      "example.com",
+      "https://example.com",
+    );
+    expect(findings.map((f) => f.id.split("--")[0])).toContain(
+      "dns-cname-at-apex",
+    );
+  });
+
+  it("does not fire on a CNAME under www, only at the apex", async () => {
+    dnsMock.resolveCname.mockImplementation(async (name: string) => {
+      if (name === "www.example.com") return ["target.provider.net"];
+      throw dnsError("ENODATA");
+    });
+    const findings = await checkCnameChain(
+      "www.example.com",
+      "https://www.example.com",
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it("flags a chain deeper than three hops", async () => {
+    const chain: Record<string, string> = {
+      "www.example.com": "a.example.net",
+      "a.example.net": "b.vendor.io",
+      "b.vendor.io": "c.cdn.example",
+      "c.cdn.example": "d.edge.example",
+    };
+    dnsMock.resolveCname.mockImplementation(async (name: string) => {
+      const next = chain[name];
+      if (!next) throw dnsError("ENODATA");
+      return [next];
+    });
+    const findings = await checkCnameChain(
+      "www.example.com",
+      "https://www.example.com",
+    );
+    expect(findings.map((f) => f.id.split("--")[0])).toEqual([
+      "dns-cname-chain-too-long",
+    ]);
+    expect(findings[0].evidence).toContain("d.edge.example");
+  });
+
+  it("does not fire on the ordinary one-hop CNAME to a CDN", async () => {
+    dnsMock.resolveCname.mockImplementation(async (name: string) => {
+      if (name === "www.example.com") return ["example.cdn.net"];
+      throw dnsError("ENODATA");
+    });
+    expect(
+      await checkCnameChain("www.example.com", "https://www.example.com"),
+    ).toEqual([]);
+  });
+
+  it("stops on a CNAME loop rather than spinning", async () => {
+    dnsMock.resolveCname.mockImplementation(async (name: string) =>
+      name === "a.example.com" ? ["b.example.com"] : ["a.example.com"],
+    );
+    const findings = await checkCnameChain(
+      "a.example.com",
+      "https://a.example.com",
+    );
+    expect(findings).toEqual([]);
+  });
+});
+
+// ── CAA iodef ───────────────────────────────────────────────────────────
+
+describe("checkCaaIodef", () => {
+  it("flags a CAA set with an issue restriction and no iodef", async () => {
+    dnsMock.resolveCaa.mockResolvedValue([
+      { critical: 0, issue: "letsencrypt.org" },
+    ]);
+    const findings = await checkCaaIodef("example.com", "https://example.com");
+    expect(findings.map((f) => f.id.split("--")[0])).toEqual([
+      "dns-caa-iodef-missing",
+    ]);
+    expect(findings[0].severity).toBe("info");
+  });
+
+  it("does not fire when an iodef property is present", async () => {
+    dnsMock.resolveCaa.mockResolvedValue([
+      { critical: 0, issue: "letsencrypt.org" },
+      { critical: 0, iodef: "mailto:security@example.com" },
+    ]);
+    expect(await checkCaaIodef("example.com", "https://example.com")).toEqual(
+      [],
+    );
+  });
+
+  it("does not fire when there is no CAA record at all (a different check's job)", async () => {
+    dnsMock.resolveCaa.mockRejectedValue(dnsError("ENODATA"));
+    expect(await checkCaaIodef("example.com", "https://example.com")).toEqual(
+      [],
+    );
+  });
+});
+
+// ── Verification-token sprawl ───────────────────────────────────────────
+
+describe("checkVerificationTokenSprawl", () => {
+  it("flags five or more distinct vendor verification records", async () => {
+    dnsMock.resolveTxt.mockResolvedValue([
+      ["v=spf1 include:_spf.google.com ~all"],
+      ["google-site-verification=abc123"],
+      ["MS=ms12345678"],
+      ["atlassian-domain-verification=xyz"],
+      ["facebook-domain-verification=fb0001"],
+      ["stripe-verification=st0001"],
+      ["docusign-domain-verification=ds0001"],
+    ]);
+    const findings = await checkVerificationTokenSprawl(
+      "example.com",
+      "https://example.com",
+    );
+    expect(findings.map((f) => f.id.split("--")[0])).toEqual([
+      "dns-txt-verification-tokens-stale",
+    ]);
+    expect(findings[0].evidence).toContain("5");
+  });
+
+  it("does not fire on a domain with a couple of verification records", async () => {
+    dnsMock.resolveTxt.mockResolvedValue([
+      ["v=spf1 include:_spf.google.com ~all"],
+      ["google-site-verification=abc123"],
+      ["atlassian-domain-verification=xyz"],
+    ]);
+    expect(
+      await checkVerificationTokenSprawl("example.com", "https://example.com"),
+    ).toEqual([]);
+  });
+
+  it("does not fire when the TXT lookup fails", async () => {
+    dnsMock.resolveTxt.mockRejectedValue(new Error("timeout"));
+    expect(
+      await checkVerificationTokenSprawl("example.com", "https://example.com"),
+    ).toEqual([]);
   });
 });

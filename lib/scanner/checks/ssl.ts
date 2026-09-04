@@ -11,7 +11,23 @@
  * never produces a finding.
  */
 
-import { hasHeader, getHeader, type EvidenceFn as DetectFn } from "../_helpers";
+import {
+  hasHeader,
+  getHeader,
+  extractScriptContents,
+  type EvidenceFn as DetectFn,
+} from "../_helpers";
+import { tagsWith } from "./_tag-scan";
+
+/** A cleartext http:// URL that is not a loopback address. */
+const HTTP_NON_LOCAL =
+  /^http:\/\/(?!localhost[:/]?|127\.0\.0\.1[:/]?|\[::1\])/i;
+
+/** The value of one attribute on an already-matched opening tag. */
+function attrValue(tag: string, name: string): string | null {
+  const re = new RegExp(`\\b${name}\\s*=\\s*["']([^"']{1,600})["']`, "i");
+  return re.exec(tag)?.[1] ?? null;
+}
 
 /**
  * Mixed content: a page served over HTTPS that loads http:// subresources.
@@ -121,6 +137,135 @@ export const detectors: Record<string, DetectFn> = {
     } catch {
       return null;
     }
+  },
+
+  // ── HSTS delivered in a place browsers ignore ───────────────────────
+
+  "ssl-hsts-meta-tag-ineffective": (_url, _headers, body) => {
+    const tag = tagsWith(
+      body,
+      "meta",
+      /http-equiv\s*=\s*["']?strict-transport-security["']?/i,
+    )[0];
+    if (!tag) return null;
+    const content = attrValue(tag, "content");
+    return `HSTS is declared in a <meta http-equiv> tag${content ? ` (content="${content.slice(0, 120)}")` : ""}, which no browser honours.`;
+  },
+
+  // ── Cleartext protocol advertised alongside the TLS one ─────────────
+
+  "ssl-alt-svc-cleartext-h2c": (url, headers) => {
+    if (!url.startsWith("https://")) return null;
+    const altSvc = getHeader(headers, "alt-svc");
+    if (!altSvc) return null;
+    // Protocol ids are the token before '='. h2c is HTTP/2 over cleartext TCP.
+    const m = /(?:^|[\s,])(h2c)\s*=\s*"([^"]{0,120})"/i.exec(altSvc);
+    if (!m) return null;
+    return `Alt-Svc on an HTTPS response advertises the cleartext protocol h2c at ${m[2] || "an unspecified authority"}.`;
+  },
+
+  // ── Cleartext subresources the tag-based mixed-content checks miss ──
+
+  "ssl-link-header-http-subresource": (url, headers) => {
+    if (!url.startsWith("https://")) return null;
+    const link = getHeader(headers, "link");
+    if (!link) return null;
+    // One entry is `<uri>; rel=...`; entries are comma separated.
+    for (const entry of link.split(/,(?=\s*<)/)) {
+      const target = /<([^>]{1,600})>/.exec(entry)?.[1];
+      if (!target || !HTTP_NON_LOCAL.test(target)) continue;
+      const rel = /rel\s*=\s*"?([\w -]{1,60})"?/i.exec(entry)?.[1] ?? "";
+      if (
+        !/\b(?:preload|modulepreload|preconnect|prefetch|dns-prefetch|stylesheet|prerender)\b/i.test(
+          rel,
+        )
+      ) {
+        continue;
+      }
+      return `Link header on an HTTPS response points a rel="${rel.trim()}" subresource at a cleartext URL: ${target.slice(0, 200)}`;
+    }
+    return null;
+  },
+
+  "ssl-http-resource-hint-tag": (url, _headers, body) => {
+    if (!url.startsWith("https://")) return null;
+    const hintRel =
+      /rel\s*=\s*["']?(?:preload|modulepreload|preconnect|prefetch|dns-prefetch|prerender|manifest)["']?/i;
+    for (const tag of tagsWith(body, "link", hintRel)) {
+      const href = attrValue(tag, "href");
+      if (!href || !HTTP_NON_LOCAL.test(href)) continue;
+      const rel = attrValue(tag, "rel") ?? "resource hint";
+      return `<link rel="${rel}"> on an HTTPS page points at a cleartext URL: ${href.slice(0, 200)}`;
+    }
+    return null;
+  },
+
+  "ssl-mixed-content-non-src-attribute": (url, _headers, body) => {
+    if (!url.startsWith("https://")) return null;
+    // The existing mixed-content detectors only read `src` on media/script
+    // tags and `href` on stylesheet links. These four attributes load a
+    // subresource just as much and are not covered by either.
+    const candidates: [string, string, RegExp][] = [
+      ["img", "srcset", /srcset\s*=/i],
+      ["source", "srcset", /srcset\s*=/i],
+      ["video", "poster", /poster\s*=/i],
+      ["object", "data", /\bdata\s*=/i],
+    ];
+    for (const [tagName, attribute, gate] of candidates) {
+      for (const tag of tagsWith(body, tagName, gate)) {
+        const value = attrValue(tag, attribute);
+        if (!value) continue;
+        // srcset is a comma-separated candidate list; test each URL.
+        const urls =
+          attribute === "srcset"
+            ? value.split(",").map((c) => c.trim().split(/\s+/)[0])
+            : [value];
+        for (const candidate of urls) {
+          if (!HTTP_NON_LOCAL.test(candidate)) continue;
+          return `<${tagName} ${attribute}> on an HTTPS page loads a cleartext subresource: ${candidate.slice(0, 200)}`;
+        }
+      }
+    }
+    return null;
+  },
+
+  "ssl-canonical-link-http": (url, _headers, body) => {
+    if (!url.startsWith("https://")) return null;
+    const tag = tagsWith(body, "link", /rel\s*=\s*["']?canonical["']?/i)[0];
+    if (!tag) return null;
+    const href = attrValue(tag, "href");
+    if (!href || !HTTP_NON_LOCAL.test(href)) return null;
+    return `An HTTPS page declares its canonical URL as cleartext: ${href.slice(0, 200)}`;
+  },
+
+  "ssl-meta-refresh-http-target": (url, _headers, body) => {
+    if (!url.startsWith("https://")) return null;
+    const tag = tagsWith(
+      body,
+      "meta",
+      /http-equiv\s*=\s*["']?refresh["']?/i,
+    )[0];
+    if (!tag) return null;
+    const content = attrValue(tag, "content");
+    if (!content) return null;
+    const target = /url\s*=\s*['"]?(\S{1,600}?)['"]?\s*$/i.exec(content)?.[1];
+    if (!target || !HTTP_NON_LOCAL.test(target)) return null;
+    return `An HTTPS page uses <meta http-equiv="refresh"> to send visitors to a cleartext URL: ${target.slice(0, 200)}`;
+  },
+
+  "ssl-http-fetch-endpoint-in-script": (url, _headers, body) => {
+    if (!url.startsWith("https://")) return null;
+    for (const script of extractScriptContents(body)) {
+      if (script.indexOf("http://") === -1) continue;
+      const call =
+        /\b(?:fetch|open|get|post|put|patch|delete|ajax|connect)\s*\(\s*(?:["'](?:GET|POST|PUT|PATCH|DELETE|HEAD)["']\s*,\s*)?["'](http:\/\/[^"']{1,400})["']/i.exec(
+          script,
+        );
+      if (!call) continue;
+      if (!HTTP_NON_LOCAL.test(call[1])) continue;
+      return `Inline script on an HTTPS page issues a request to a cleartext endpoint: ${call[1].slice(0, 200)}`;
+    }
+    return null;
   },
 
   // ── Secure cookie on HTTP endpoint (cookie data leaks) ─────────────

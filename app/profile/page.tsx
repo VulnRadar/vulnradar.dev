@@ -883,7 +883,7 @@ function ProfileContent() {
                 stay at every width now. type="button" keeps these out of any
                 enclosing form's submit path and aria-current names the one
                 that is showing. */}
-          <div className="lg:hidden overflow-x-auto scrollbar-hide -mx-4 px-4 border-b border-border/80">
+          <div className="lg:hidden scroll-x-only scrollbar-hide -mx-4 px-4 border-b border-border/80">
             <div className="flex gap-0.5 min-w-max">
               {TABS.map((tab) => (
                 <button

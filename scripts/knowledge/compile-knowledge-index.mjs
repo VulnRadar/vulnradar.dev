@@ -91,6 +91,15 @@ const MAX_TERMS_PER_SECTION = 64;
  * middle of a code block AND reset the heading stack, so the Self-Hosting
  * section's chunks came out labelled "Force a regenerate instead of the cached
  * summary > cli". Every path downstream of a snippet was wrong.
+ *
+ * The other correction is for a heading that outranks the file's own title.
+ * compile-docs-knowledge.mjs emits "## Setup" for the page and then the page's
+ * own hero "# VulnRadar documentation" underneath it, so a naive stack lets
+ * the hero evict the page it belongs to and every following page inherits the
+ * wrong ancestor ("Webhooks > cli > Sections" for a section under Setup).
+ * Any heading at or above the first heading's level is treated as sitting one
+ * level below it instead: these files have exactly one document title, and
+ * anything later that claims the same rank is body content.
  */
 function splitSections(content) {
   const lines = content.split("\n");
@@ -99,6 +108,7 @@ function splitSections(content) {
   let current = null;
   let offset = 0;
   let fence = null;
+  let rootLevel = null;
 
   const close = (end) => {
     if (current && end > current.start) {
@@ -122,11 +132,18 @@ function splitSections(content) {
     const heading = fence === null ? /^(#{1,6})\s+(.+?)\s*$/.exec(line) : null;
     if (heading) {
       close(offset);
-      const level = heading[1].length;
+      const declared = heading[1].length;
+      if (rootLevel === null) rootLevel = declared;
+      const level = declared <= rootLevel ? rootLevel + 1 : declared;
       stack.length = Math.min(stack.length, level - 1);
       stack[level - 1] = heading[2].replace(/[`_*]/g, "").trim();
+      // The document title is dropped from the path: every section of a file
+      // shares it, so it is pure noise in the path AND in the heading terms
+      // that get a scoring boost. The file's own label already says which
+      // corpus a section came from.
+      const path = stack.slice(rootLevel).filter(Boolean).join(" > ");
       current = {
-        path: stack.filter(Boolean).join(" > "),
+        path: path || stack.filter(Boolean).join(" > "),
         start: offset,
       };
     }
@@ -137,45 +154,60 @@ function splitSections(content) {
 }
 
 /**
- * Break a section that exceeds MAX_SECTION_BYTES into parts at blank lines.
+ * Break a section that exceeds MAX_SECTION_BYTES into parts.
+ *
+ * Blank lines first, then single lines. The second pass is not theoretical:
+ * checks-index.md lists ~750 checks as one unbroken run of "- [severity] `id`
+ * - title" lines, so the whole `headers` category is a single 13 KB
+ * "paragraph". Left whole it is nearly three times the ceiling, which breaks
+ * the promise the retriever's budget relies on (no section is larger than the
+ * budget), and it spends a quarter of a message's context on 138 checks to
+ * answer a question about one.
+ *
  * Every part keeps the heading path, with a part number appended so a reader
  * (and a test) can tell it is one piece of a larger section.
  */
 function enforceSizeLimit(section, buffer) {
-  const length = section.end - section.start;
-  if (length <= MAX_SECTION_BYTES) return [section];
+  if (section.end - section.start <= MAX_SECTION_BYTES) return [section];
 
   const text = buffer.toString("utf8", section.start, section.end);
-  const parts = [];
-  let partStart = section.start;
-  let cursor = section.start;
-  // Paragraph boundaries in byte terms: walk the text, tracking how many
-  // bytes each paragraph occupies, and cut once adding the next one would
-  // cross the ceiling.
-  for (const para of text.split(/\n{2,}/)) {
-    const paraBytes = Buffer.byteLength(para, "utf8") + 2;
-    if (
-      cursor > partStart &&
-      cursor + paraBytes - partStart > MAX_SECTION_BYTES
-    ) {
-      parts.push({ path: section.path, start: partStart, end: cursor });
-      partStart = cursor;
+  const cut = (separatorRe, joinBytes) => {
+    const bounds = [];
+    let partStart = section.start;
+    let cursor = section.start;
+    for (const piece of text.split(separatorRe)) {
+      const pieceBytes = Buffer.byteLength(piece, "utf8") + joinBytes;
+      if (
+        cursor > partStart &&
+        cursor + pieceBytes - partStart > MAX_SECTION_BYTES
+      ) {
+        bounds.push({ path: section.path, start: partStart, end: cursor });
+        partStart = cursor;
+      }
+      cursor += pieceBytes;
     }
-    cursor += paraBytes;
-  }
-  parts.push({ path: section.path, start: partStart, end: section.end });
+    bounds.push({ path: section.path, start: partStart, end: section.end });
+    // The running byte total can drift past the real end when a separator run
+    // was longer than the bytes assumed for it (three newlines counted as
+    // two). Clamping keeps every part inside the section it came from.
+    bounds[bounds.length - 1].end = section.end;
+    return bounds;
+  };
 
-  // A single paragraph longer than the ceiling cannot be split at a boundary
-  // that does not exist. Keeping it whole is the lesser evil: it stays
-  // readable, and the retriever's budget check simply never selects it when
-  // there is not room. Clamp the last part's end so no byte is lost either
-  // way.
-  parts[parts.length - 1].end = section.end;
-  return parts.map((p, i) =>
-    parts.length > 1
-      ? { ...p, path: `${p.path} (part ${i + 1} of ${parts.length})` }
-      : p,
-  );
+  let parts = cut(/\n{2,}/, 2);
+  if (parts.some((p) => p.end - p.start > MAX_SECTION_BYTES)) {
+    parts = cut(/\n/, 1);
+  }
+  // If even a single line is over the ceiling there is no boundary left to cut
+  // on, and splitting mid-sentence would produce exactly the truncated chunk
+  // this whole design refuses to emit. Such a part stays whole and is simply
+  // never selected when there is not room for it.
+  return parts.length > 1
+    ? parts.map((p, i) => ({
+        ...p,
+        path: `${p.path} (part ${i + 1} of ${parts.length})`,
+      }))
+    : parts;
 }
 
 function build() {

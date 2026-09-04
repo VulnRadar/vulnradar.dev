@@ -143,6 +143,19 @@
 }
 
 @layer utilities {
+  /* A strip that scrolls sideways and must not move vertically.
+   *
+   * overflow-x-auto on its own is not enough: the overflow spec says that when
+   * one axis is not `visible`, the other computes to `auto`, so the element
+   * becomes scrollable both ways. Desktop hides this because there is nothing
+   * to scroll to, but iOS momentum scrolling lets the strip drift under the
+   * finger. touch-action pins the gesture to the one axis that scrolls. */
+  .scroll-x-only {
+    overflow-x: auto;
+    overflow-y: hidden;
+    touch-action: pan-x;
+    overscroll-behavior-x: contain;
+  }
   /* Smooth scroll behavior for anchor links */
   html {
     scroll-behavior: smooth;

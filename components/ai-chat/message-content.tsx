@@ -75,7 +75,7 @@ export const messageMarkdownComponents: Components = {
     // wider than the bubble is ever cut.
     return (
       <code
-        className="bg-background text-foreground px-1 py-0.5 rounded text-[0.82em] font-mono border border-border/60 wrap-break-word"
+        className="bg-background text-foreground px-1 py-0.5 rounded-md text-[0.82em] font-mono border border-border/60 wrap-break-word"
         {...props}
       >
         {children}

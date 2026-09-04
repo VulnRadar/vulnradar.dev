@@ -1,9 +1,8 @@
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
-import { Button } from "@/components/ui/button";
 import { LandingNav } from "@/components/landing/landing-nav";
 import { Footer } from "@/components/scanner/footer";
+import { ScanCtaForm } from "@/components/seo/scan-cta-form";
 import { APP_REPO, ROUTES } from "@/lib/config/client-constants";
 import type { Severity } from "@/lib/scanner/types";
 
@@ -151,6 +150,17 @@ export function ContributeCheckCta({ className }: { className?: string }) {
   );
 }
 
+/**
+ * The closing call to action on every SEO page (754 check pages, the 18
+ * category pages, /alternatives, /tools, and the three indexes).
+ *
+ * It used to be a heading, a paragraph and two links. The paragraph on those
+ * pages asks the reader to scan their own site, so the one thing it needed
+ * was somewhere to type the site: the input is a client island (ScanCtaForm)
+ * so this stays a server component and every page stays statically
+ * renderable. The demo and docs links stay as text beneath it, because with a
+ * real primary action present a second button competing with it is noise.
+ */
 export function ScanCta({ heading, body }: { heading: string; body: string }) {
   return (
     <section className="border-t border-border/50">
@@ -168,22 +178,15 @@ export function ScanCta({ heading, body }: { heading: string; body: string }) {
           <p className="text-muted-foreground leading-relaxed mb-6 max-w-2xl">
             {body}
           </p>
-          <div className="flex flex-wrap gap-3">
-            <Button asChild size="lg" className="h-11 px-6 gap-2">
-              <Link href={ROUTES.DEMO}>
-                Run a free scan
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-            <Button
-              asChild
-              size="lg"
-              variant="outline"
-              className="h-11 px-6 gap-2"
-            >
-              <Link href={ROUTES.DOCS}>Read the docs</Link>
-            </Button>
-          </div>
+          <ScanCtaForm />
+          <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            <Link href={ROUTES.DEMO} className="text-primary hover:underline">
+              Or scan this site as a demo
+            </Link>
+            <Link href={ROUTES.DOCS} className="text-primary hover:underline">
+              Read the docs
+            </Link>
+          </p>
         </div>
       </div>
     </section>

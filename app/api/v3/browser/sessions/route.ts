@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { BROWSERBASE_ENABLED } from "@/lib/config/server-constants";
+import { BROWSERBASE_VIEWPORT } from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
 import {
   BrowserBaseError,
@@ -114,10 +115,15 @@ export const POST = withErrorHandling(async (request: Request) => {
     }
   }
   const timeout = await pickTimeout(parsed.data);
-  // Default to 1920×1080 so the remote browser renders at a standard resolution.
-  // BrowserBase's own default is much larger, which makes everything appear
-  // tiny when the DevTools viewer is embedded in a 1920×1080 popup.
-  const viewport = parsed.data.viewport ?? { width: 1920, height: 1080 };
+  // BrowserBase's own default viewport is much larger, which makes everything
+  // appear tiny once the live viewer is embedded. BROWSERBASE_VIEWPORT is the
+  // shared number: app/browser/[id]/page.tsx builds its embed frame from the
+  // same ratio, so the live view fills the frame instead of being letterboxed
+  // inside it. Changing one without the other brings the black bands back.
+  const viewport = parsed.data.viewport ?? {
+    width: BROWSERBASE_VIEWPORT.WIDTH,
+    height: BROWSERBASE_VIEWPORT.HEIGHT,
+  };
 
   // Global concurrency cap + queue: this account's own Browserbase plan has
   // a real ceiling on how many sessions can run at once across every user

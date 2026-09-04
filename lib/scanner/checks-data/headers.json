@@ -1456,10 +1456,10 @@
     "title": "CSP contains unsupported / legacy directives",
     "category": "headers",
     "severity": "low",
-    "description": "CSP allow-http (Chrome 41-65), reflected-xss (removed), and others are ignored.",
+    "description": "The CSP names a directive browsers no longer implement (allow-http, reflected-xss), or its script-src combines 'none' with 'unsafe-inline' or 'unsafe-eval'. Directive names are matched as names, so a host or report endpoint whose path happens to contain one of those words is not reported.",
     "evidence": "Header absent or misconfigured for `headers-csp-incompatible-directives`. Response observed headers: {{observed_headers}}.",
     "riskImpact": "Remove legacy directives like allow-http and reflected-xss",
-    "explanation": "CSP allow-http (Chrome 41-65), reflected-xss (removed), and others are ignored.",
+    "explanation": "allow-http (Chrome 41-65) and reflected-xss were both removed and are silently ignored, so a policy relying on either has a gap it does not know about. A permissive script-src alongside a restrictive default-src is not reported here: default-src is a fallback that script-src is specified to override, and a genuinely wildcard script-src is covered by csp-wildcard-source.",
     "fixSteps": ["Remove legacy directives like allow-http and reflected-xss"],
     "codeExamples": [
       {
@@ -1531,13 +1531,13 @@
   {
     "id": "permissions-policy-camera-blocked",
     "type": "header",
-    "title": "Permissions-Policy camera allowed",
+    "title": "Permissions-Policy grants camera to every origin",
     "category": "headers",
     "severity": "info",
-    "description": "Camera should default to 'self' or be blocked.",
+    "description": "The policy grants camera to every origin (camera=*), which includes any third party the page embeds in an iframe. Granting it to the page's own origin, restricting it to an allowlist, or blocking it outright is not reported.",
     "evidence": "Header absent or misconfigured for `headers-permissions-policy-camera-blocked`. Response observed headers: {{observed_headers}}.",
     "riskImpact": "Set Permissions-Policy: camera=() to block entirely",
-    "explanation": "Camera should default to 'self' or be blocked.",
+    "explanation": "camera=* hands the camera permission prompt to any embedded third-party frame, not just to this site. camera=(self) or camera=() keeps it with the page itself. A legacy Feature-Policy header is read with its own syntax (camera 'self'), which is restrictive and is not reported.",
     "fixSteps": ["Set Permissions-Policy: camera=() to block entirely"],
     "codeExamples": [
       {
@@ -1956,13 +1956,13 @@
   {
     "id": "permissions-policy-fullscreen-blocked",
     "type": "header",
-    "title": "Permissions-Policy fullscreen allowed",
+    "title": "Permissions-Policy grants fullscreen to every origin",
     "category": "headers",
     "severity": "info",
-    "description": "Permissions-Policy does not restrict the fullscreen feature.",
+    "description": "The policy grants fullscreen to every origin (fullscreen=*), which includes any third party the page embeds in an iframe. A site using fullscreen itself is not reported.",
     "evidence": "Header absent or misconfigured for `headers-permissions-policy-fullscreen-blocked`. Response observed headers: {{observed_headers}}.",
     "riskImpact": "Set Permissions-Policy: fullscreen=(self) to scope fullscreen requests to your origin",
-    "explanation": "Permissions-Policy does not restrict the fullscreen feature.",
+    "explanation": "fullscreen=* lets any embedded third-party frame take over the screen, which is the ingredient a clickjacking or spoofed-UI overlay needs. fullscreen=(self) keeps the capability with the page itself. A legacy Feature-Policy header is read with its own syntax (fullscreen 'self'), which is restrictive and is not reported.",
     "fixSteps": [
       "Set Permissions-Policy: fullscreen=(self) to scope fullscreen requests to your origin"
     ],

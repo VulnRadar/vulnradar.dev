@@ -5,7 +5,7 @@
     "title": "Cookie Domain Attribute Is Too Broad",
     "category": "cookies",
     "severity": "low",
-    "description": "A cookie is set with an explicit Domain= attribute that covers all subdomains (e.g., Domain=example.com or Domain=.example.com). This makes the cookie accessible from every subdomain, including potentially untrusted or third-party-hosted ones. Per RFC 6265bis, a leading dot is stripped and has no effect on browser behavior: both forms are equally subdomain-wide.",
+    "description": "A cookie is set with an explicit Domain= attribute that covers all subdomains (e.g., Domain=example.com or Domain=.example.com). This makes the cookie accessible from every subdomain, including potentially untrusted or third-party-hosted ones. Per RFC 6265bis, a leading dot is stripped and has no effect on browser behavior: both forms are equally subdomain-wide. Cookies that exist to be shared site-wide and authenticate nobody (analytics, consent state, locale and theme preferences) are not reported.",
     "evidence": "Broad cookie domain.",
     "riskImpact": "A subdomain that is vulnerable to XSS, or that is under attacker control via subdomain takeover, can read or overwrite cookies scoped to the parent domain. Session cookies shared across all subdomains are particularly high-risk.",
     "explanation": "An explicit Domain= attribute (with or without leading dot) causes the browser to send the cookie to all subdomains of the specified domain. Omitting Domain entirely makes the cookie host-only, which is the safer default per RFC 6265bis.",

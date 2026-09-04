@@ -1404,10 +1404,10 @@
     "title": "AWS S3 Bucket Reference Exposed",
     "category": "content",
     "severity": "medium",
-    "description": "AWS S3 bucket reference found in page source.",
+    "description": "An S3 object URL in the page source points at something that looks like it was never meant to be published: a backup, a database dump, a .env or .sql file, a credentials or private-key path. Ordinary asset hosting from S3 (images, downloads, a public config file) is not reported.",
     "evidence": "S3 bucket URL detected.",
     "riskImpact": "S3 buckets may be publicly accessible or misconfigured.",
-    "explanation": "Exposed bucket names can be tested for misconfigured permissions.",
+    "explanation": "Exposed bucket names can be tested for misconfigured permissions. Only the sensitive-looking object paths are reported, and each keyword has to be a whole path segment or a real file extension rather than a substring, so /assets/config.json and private-beta-invite.png do not count.",
     "fixSteps": [
       "Use CloudFront or a CDN in front of S3 buckets.",
       "Ensure proper bucket policies."
@@ -1515,7 +1515,7 @@
     "title": "Session ID Exposed in URL",
     "category": "content",
     "severity": "high",
-    "description": "A session identifier (session_id, sid, PHPSESSID, JSESSIONID, or ASP.NET_SessionId) was found as a URL query parameter in the page.",
+    "description": "A session identifier (session_id, sid, PHPSESSID, JSESSIONID, or ASP.NET_SessionId) appears as a URL query parameter in the page, carrying a value with the shape of a real session token. A short numeric id, a templated placeholder, or a documentation example such as ?session_id=YOUR_SESSION_ID is not reported.",
     "evidence": "Session ID exposed in URL - session fixation risk.",
     "riskImpact": "Session IDs in URLs are logged by servers, proxies, and browser history, and leak via the Referer header to any linked third party -- letting anyone who obtains the URL hijack the session.",
     "explanation": "Session identifiers belong exclusively in HttpOnly cookies. A session ID that also appears as a URL parameter is exposed everywhere URLs are recorded, and enables session fixation if the server accepts an attacker-supplied ID.",
@@ -1881,10 +1881,10 @@
     "title": "Credit Card Number Pattern",
     "category": "content",
     "severity": "critical",
-    "description": "Potential credit card number in page source.",
+    "description": "A Luhn-valid number carrying a card-network prefix appears in the page source next to payment vocabulary: a card-number label, a billing or checkout field, CVV, or an expiry date. Luhn is a single check digit, so a card-shaped number with no payment context (an order reference, a tracking number, a row of figures in a table) is not reported.",
     "evidence": "Credit card pattern found.",
     "riskImpact": "PCI DSS violation, data breach.",
-    "explanation": "Card numbers should never appear in HTML.",
+    "explanation": "Card numbers should never appear in HTML. The detection requires three things together: a card-network prefix and length, a passing Luhn checksum, and payment vocabulary within about 120 characters. Published processor test cards are excluded, and so is a card-shaped window carved out of a longer run of separated digit groups.",
     "fixSteps": ["Never display full card numbers, mask or tokenize."],
     "codeExamples": [
       {

@@ -86,7 +86,7 @@
         "code": "_mta-sts.example.com. IN TXT \"v=STSv1; id=20240101000000\""
       }
     ],
-    "_idx": 4,
+    "_idx": 2,
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc8461",
       "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html"
@@ -114,7 +114,7 @@
         "code": "_smtp._tls.example.com. IN TXT \"v=TLSRPTv1; rua=mailto:tls-reports@example.com\""
       }
     ],
-    "_idx": 5,
+    "_idx": 3,
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc8460",
       "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html"
@@ -147,7 +147,7 @@
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc7208#section-4.6.4"
     ],
-    "_idx": 6
+    "_idx": 4
   },
   {
     "id": "email-spf-redirect-loop",
@@ -171,7 +171,7 @@
       }
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc7208#section-6.1"],
-    "_idx": 7
+    "_idx": 5
   },
   {
     "id": "email-dmarc-pct-not-100",
@@ -196,7 +196,7 @@
       }
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc7489#section-6.3"],
-    "_idx": 11,
+    "_idx": 6,
     "cwe": "CWE-290",
     "owasp": "A07:2021"
   },
@@ -227,7 +227,7 @@
         "code": "_dmarc.example.com. IN TXT \"v=DMARC1; p=quarantine; pct=100; rua=mailto:dmarc@example.com\"\n# Failing mail is now sent to spam instead of the inbox"
       }
     ],
-    "_idx": 27,
+    "_idx": 7,
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc7489#section-6.3",
       "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html"
@@ -258,7 +258,7 @@
       }
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc8461"],
-    "_idx": 14,
+    "_idx": 8,
     "cwe": "CWE-319",
     "owasp": "A02:2021"
   },
@@ -285,7 +285,7 @@
       }
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc8461#section-5"],
-    "_idx": 19,
+    "_idx": 9,
     "cwe": "CWE-319",
     "owasp": "A02:2021"
   },
@@ -311,7 +311,7 @@
       }
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc8461#section-3.2"],
-    "_idx": 20
+    "_idx": 10
   },
   {
     "id": "email-mx-hostname-cname",
@@ -335,7 +335,7 @@
       }
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc5321#section-5.1"],
-    "_idx": 23
+    "_idx": 11
   },
   {
     "id": "spf-record",
@@ -365,7 +365,8 @@
       "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html"
     ],
     "cwe": "CWE-290",
-    "owasp": "A07:2021"
+    "owasp": "A07:2021",
+    "_idx": 12
   },
   {
     "id": "dmarc-record",
@@ -399,7 +400,8 @@
       "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html"
     ],
     "cwe": "CWE-290",
-    "owasp": "A07:2021"
+    "owasp": "A07:2021",
+    "_idx": 13
   },
   {
     "id": "dkim-record",
@@ -433,7 +435,8 @@
       "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html"
     ],
     "cwe": "CWE-290",
-    "owasp": "A07:2021"
+    "owasp": "A07:2021",
+    "_idx": 14
   },
   {
     "id": "dnssec-enabled",
@@ -462,7 +465,8 @@
       "https://datatracker.ietf.org/doc/html/rfc4035"
     ],
     "cwe": "CWE-345",
-    "owasp": "A08:2021"
+    "owasp": "A08:2021",
+    "_idx": 15
   },
   {
     "id": "tls-rpt",
@@ -487,7 +491,8 @@
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc8460"],
     "cwe": "CWE-319",
-    "owasp": "A02:2021"
+    "owasp": "A02:2021",
+    "_idx": 16
   },
   {
     "id": "email-spf-ptr-mechanism",
@@ -510,7 +515,8 @@
         "code": "# Avoid:\n# v=spf1 ptr:example.com -all\n\n# Use instead:\nexample.com. IN TXT \"v=spf1 ip4:203.0.113.0/24 include:_spf.google.com -all\""
       }
     ],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc7208#section-5.5"]
+    "references": ["https://datatracker.ietf.org/doc/html/rfc7208#section-5.5"],
+    "_idx": 17
   },
   {
     "id": "email-spf-plus-all",
@@ -539,7 +545,7 @@
         "code": "example.com. IN TXT \"v=spf1 include:_spf.google.com -all\""
       }
     ],
-    "_idx": 28,
+    "_idx": 18,
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc7208#section-4.6.4",
       "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html"
@@ -569,7 +575,7 @@
         "code": "default._bimi.example.com. IN TXT \"v=BIMI1; l=https://example.com/brand/logo.svg; a=https://example.com/brand/vmc.pem\""
       }
     ],
-    "_idx": 24,
+    "_idx": 19,
     "references": [
       "https://datatracker.ietf.org/doc/draft-brand-indicators-for-message-identification/",
       "https://bimigroup.org/"
@@ -597,7 +603,7 @@
         "code": "_dmarc.example.com. IN TXT \"v=DMARC1; p=reject; sp=reject; rua=mailto:dmarc@example.com; adkim=s; aspf=s\""
       }
     ],
-    "_idx": 25,
+    "_idx": 20,
     "references": ["https://datatracker.ietf.org/doc/html/rfc7489#section-6.3"],
     "cwe": "CWE-290",
     "owasp": "A07:2021"
@@ -624,12 +630,502 @@
         "code": "opendkim-genkey -b 2048 -d example.com -s mail -t\n# Publishes the new public key at mail._domainkey.example.com"
       }
     ],
-    "_idx": 26,
+    "_idx": 21,
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc6376",
       "https://csrc.nist.gov/pubs/sp/800/131/a/r2/final"
     ],
     "cwe": "CWE-326",
     "owasp": "A02:2021"
+  },
+  {
+    "id": "email-spf-multiple-records",
+    "type": "network-probe",
+    "title": "Multiple SPF records published",
+    "category": "email",
+    "severity": "medium",
+    "description": "The domain publishes more than one TXT record beginning with v=spf1, which RFC 7208 forbids. Exactly one is allowed, and a domain with two or more is a permanent error.",
+    "evidence": "More than one v=spf1 TXT record was found for {{url}}'s domain.",
+    "riskImpact": "A receiver that finds two SPF records does not merge them or pick one: it returns permerror and abandons SPF evaluation entirely. The domain is left with no working sender policy, so mail from any source clears the SPF stage, and DMARC alignment has only DKIM left to fall back on. A second SPF record is worse than having none, because it looks configured.",
+    "explanation": "This almost always happens when a second service is onboarded and its setup guide says to add a TXT record: the record is added alongside the existing one rather than merged into it. The fix is a single record containing every include, which is also the point at which the ten-lookup limit starts to matter, so merging is a good moment to count the DNS-querying mechanisms.",
+    "fixSteps": [
+      "Merge every mechanism into one v=spf1 TXT record at the apex and delete the others.",
+      "Count DNS-querying mechanisms while merging: include, a, mx, ptr, exists and redirect each cost one against a limit of ten.",
+      "Re-check with a validator after merging, since exceeding the lookup limit produces the same permerror you were fixing."
+    ],
+    "codeExamples": [
+      {
+        "label": "One merged record",
+        "language": "dns",
+        "code": "example.com. IN TXT \"v=spf1 include:_spf.google.com include:sendgrid.net ~all\""
+      },
+      {
+        "label": "Find the duplicates",
+        "language": "bash",
+        "code": "dig +short TXT example.com | grep -c 'v=spf1'"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc7208#section-4.5",
+      "https://datatracker.ietf.org/doc/html/rfc7208#section-4.6.4"
+    ],
+    "cwe": "CWE-16",
+    "owasp": "A05:2021",
+    "_idx": 22
+  },
+  {
+    "id": "email-spf-all-mechanism-missing",
+    "type": "network-probe",
+    "title": "SPF record has no all mechanism",
+    "category": "email",
+    "severity": "low",
+    "description": "The SPF record ends without an all mechanism and without a redirect modifier. Any sender not matched by an earlier mechanism therefore gets the default result, neutral.",
+    "evidence": "The SPF record for {{url}}'s domain contains no all mechanism and no redirect modifier.",
+    "riskImpact": "Neutral is defined to be treated exactly like no policy at all, so every sender the record does not list is neither permitted nor denied. Listed senders still pass, which makes the record look like it is working, while the thing SPF exists to say, that everyone else is not authorised, is simply absent.",
+    "explanation": "The all mechanism is what turns an SPF record from an open list into a closed one. Use -all once you are confident every legitimate sender is covered, or ~all while you are still finding them, and let DMARC aggregate reports show you what is missing before tightening. A record with neither is the only variant that says nothing whatsoever about unlisted senders.",
+    "fixSteps": [
+      "Add ~all to the end of the record while you confirm every legitimate sender is listed.",
+      "Use DMARC aggregate reports to find senders the record does not yet cover.",
+      "Tighten to -all once the reports come back clean."
+    ],
+    "codeExamples": [
+      {
+        "label": "Closed policy",
+        "language": "dns",
+        "code": "example.com. IN TXT \"v=spf1 include:_spf.google.com include:sendgrid.net -all\""
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc7208#section-5.1",
+      "https://datatracker.ietf.org/doc/html/rfc7208#section-2.6"
+    ],
+    "cwe": "CWE-16",
+    "owasp": "A05:2021",
+    "_idx": 23
+  },
+  {
+    "id": "email-spf-redirect-ignored-with-all",
+    "type": "network-probe",
+    "title": "SPF redirect modifier ignored because all is present",
+    "category": "email",
+    "severity": "low",
+    "description": "The SPF record contains both an all mechanism and a redirect= modifier, so the redirect is dead. RFC 7208 section 6.1 says redirect is ignored whenever an all mechanism is present.",
+    "evidence": "The SPF record for {{url}}'s domain contains both an all mechanism and a redirect modifier.",
+    "riskImpact": "The policy that actually applies is the one before the all mechanism, not the redirected one. Whoever added the redirect believes the shared policy at the target domain is in force, so a sender added there, or removed from there, has no effect here. The gap between the intended policy and the evaluated one stays invisible until legitimate mail starts failing.",
+    "explanation": "redirect= exists for the case where one domain defers entirely to another domain's policy, which is why it is only consulted when no mechanism matched and there is no all to produce a result first. To reuse another domain's senders while keeping your own default, use include: rather than redirect=: include pulls the other policy in as a mechanism and leaves your own all in charge of everything it does not match.",
+    "fixSteps": [
+      "Decide which behaviour you want: keep redirect= and remove the all mechanism, or keep all and change redirect= to include:.",
+      "include: plus your own all is usually what was intended.",
+      "Re-count the lookup budget after the change, since include and redirect both cost one."
+    ],
+    "codeExamples": [
+      {
+        "label": "include instead of redirect",
+        "language": "dns",
+        "code": "; the redirect here is dead code\n; \"v=spf1 include:_spf.google.com -all redirect=_spf.example.net\"\n\nexample.com. IN TXT \"v=spf1 include:_spf.google.com include:_spf.example.net -all\""
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc7208#section-6.1",
+      "https://datatracker.ietf.org/doc/html/rfc7208#section-5.2"
+    ],
+    "cwe": "CWE-16",
+    "owasp": "A05:2021",
+    "_idx": 24
+  },
+  {
+    "id": "email-spf-macro-mechanism",
+    "type": "network-probe",
+    "title": "SPF record uses macro expansion",
+    "category": "email",
+    "severity": "info",
+    "description": "The SPF record contains a macro expansion, which builds a DNS name out of the incoming message. Parts such as the sender's local part or the client IP are substituted into a name that is then queried.",
+    "evidence": "The SPF record for {{url}}'s domain contains a macro expansion.",
+    "riskImpact": "Every macro-expanded lookup sends attacker-influenced data into a DNS query aimed at whichever nameserver the macro's domain points to. A sender who controls the local part of the envelope address can make your receivers emit a DNS query encoding data of their choosing, and where the macro domain is third-party, its operator sees every one of those queries. Macros used with exists: also multiply the query count against the ten-lookup budget.",
+    "explanation": "Macros are a legitimate RFC 7208 feature and some large senders use them for per-user authorisation, so this is informational rather than a defect. It is surfaced because macros are rare, hard to review, and easy to inherit from a vendor setup guide without understanding what gets queried or by whom. If you did not add it deliberately, trace which include brought it in.",
+    "fixSteps": [
+      "Confirm the macro is deliberate and that you know which nameserver receives the expanded queries.",
+      "Prefer plain ip4, ip6 and include mechanisms where per-sender granularity is not actually needed.",
+      "If the macro came from a third-party include, ask the vendor what the expanded queries are used for."
+    ],
+    "codeExamples": [
+      {
+        "label": "What a macro expands to",
+        "language": "text",
+        "code": "v=spf1 exists:%{l}._spf.%{d} -all\n\n; for MAIL FROM alice@example.com the receiver queries\n; alice._spf.example.com"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc7208#section-7",
+      "https://datatracker.ietf.org/doc/html/rfc7208#section-11.4"
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021",
+    "_idx": 25
+  },
+  {
+    "id": "email-spf-include-unresolvable",
+    "type": "network-probe",
+    "title": "SPF include target publishes no SPF record",
+    "category": "email",
+    "severity": "medium",
+    "description": "An include: mechanism names a domain that resolves but publishes no v=spf1 TXT record. That makes the whole SPF evaluation a permanent error, not just the one mechanism.",
+    "evidence": "An include target in {{url}}'s SPF record has no v=spf1 TXT record of its own.",
+    "riskImpact": "An include whose target has no SPF record produces permerror, and permerror is not a partial failure: the receiver abandons SPF evaluation for the entire message. Every other mechanism in your record, including the -all at the end, stops being applied, so the policy you published is not the policy being enforced.",
+    "explanation": "This normally happens when a vendor is decommissioned and their SPF include domain is retired, or when an include hostname is mistyped and happens to resolve to a real domain with no SPF record. Because the failure is silent, the record can be broken for a long time before anyone notices, and DMARC aggregate reports are usually where it first shows up. A lookup that simply did not answer is treated as unknown here and does not produce this finding.",
+    "fixSteps": [
+      "Remove the include if the service is no longer used.",
+      "If it is still in use, check the exact include hostname against the vendor's current documentation; these change more often than people expect.",
+      "Audit the rest of the record at the same time, since a stale include usually has stale company."
+    ],
+    "codeExamples": [
+      {
+        "label": "Check every include target",
+        "language": "bash",
+        "code": "for d in $(dig +short TXT example.com | tr ' ' '\\n' | grep -o 'include:[^ \"]*' | cut -d: -f2); do\n  printf '%s: ' \"$d\"; dig +short TXT \"$d\" | grep -c 'v=spf1'\ndone"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc7208#section-5.2",
+      "https://datatracker.ietf.org/doc/html/rfc7208#section-4.6.4"
+    ],
+    "cwe": "CWE-16",
+    "owasp": "A05:2021",
+    "_idx": 26
+  },
+  {
+    "id": "email-dmarc-multiple-records",
+    "type": "network-probe",
+    "title": "Multiple DMARC records published",
+    "category": "email",
+    "severity": "medium",
+    "description": "The _dmarc subdomain returns more than one TXT record beginning with v=DMARC1. RFC 7489 section 6.6.3 says a receiver that finds more than one must apply no DMARC policy at all.",
+    "evidence": "More than one v=DMARC1 TXT record was found at _dmarc for {{url}}'s domain.",
+    "riskImpact": "The domain has no enforced DMARC policy, while any dashboard that only checks for the presence of a record reports it as configured. Spoofed mail failing SPF and DKIM alignment is delivered rather than quarantined or rejected, and no aggregate reports are generated, so the gap is invisible from your side too.",
+    "explanation": "Same root cause as duplicate SPF records: a second tool or vendor was onboarded, its setup guide said to add a TXT record at _dmarc, and one was added beside the existing one. Only one record may exist, and it has to carry every tag, including all reporting addresses, which belong in a single comma-separated rua value rather than in separate records.",
+    "fixSteps": [
+      "Delete all but one record at _dmarc and merge the tags into the survivor.",
+      "Put multiple report destinations in one rua= value as a comma-separated list.",
+      "Confirm reports start arriving again after the merge, since none were being generated while the duplicate existed."
+    ],
+    "codeExamples": [
+      {
+        "label": "One merged record with two report destinations",
+        "language": "dns",
+        "code": "_dmarc.example.com. IN TXT \"v=DMARC1; p=reject; rua=mailto:dmarc@example.com,mailto:reports@vendor.example; adkim=s; aspf=s\""
+      },
+      {
+        "label": "Count what is published",
+        "language": "bash",
+        "code": "dig +short TXT _dmarc.example.com | grep -c 'v=DMARC1'"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc7489#section-6.6.3",
+      "https://datatracker.ietf.org/doc/html/rfc7489#section-6.3"
+    ],
+    "cwe": "CWE-16",
+    "owasp": "A05:2021",
+    "_idx": 27
+  },
+  {
+    "id": "email-dmarc-rua-invalid-uri",
+    "type": "network-probe",
+    "title": "DMARC aggregate report address is not a valid URI",
+    "category": "email",
+    "severity": "low",
+    "description": "The rua tag on the DMARC record contains an entry that is not a usable reporting URI. RFC 7489 requires each entry to be a URI, in practice mailto: or https:.",
+    "evidence": "The rua tag on {{url}}'s DMARC record contains an entry that is not a valid URI.",
+    "riskImpact": "A reporting address a receiver cannot parse is one that receives nothing. Aggregate reports are the only feedback channel showing which senders fail authentication, so without them there is no way to distinguish a spoofing campaign from a misconfigured legitimate sender, and no safe basis for moving the policy from none to quarantine or reject.",
+    "explanation": "The most common mistake is a bare email address with no mailto: scheme, which looks right at a glance and is silently ignored by every receiver. Reports go only to the addresses that parse, and some receivers drop the whole tag if any entry fails, so one malformed entry can cost you the working ones beside it.",
+    "fixSteps": [
+      "Prefix every mail address with mailto: and separate multiple destinations with commas and no spaces.",
+      "Confirm reports are actually arriving, either through a DMARC report processor or by watching the destination mailbox.",
+      "Keep at least one destination on a domain you control, so reporting does not depend entirely on a third party."
+    ],
+    "codeExamples": [
+      {
+        "label": "Correct rua syntax",
+        "language": "dns",
+        "code": "_dmarc.example.com. IN TXT \"v=DMARC1; p=none; rua=mailto:dmarc@example.com,mailto:agg@analyzer.example\""
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc7489#section-6.3",
+      "https://datatracker.ietf.org/doc/html/rfc7489#section-7.1"
+    ],
+    "cwe": "CWE-16",
+    "owasp": "A09:2021",
+    "_idx": 28
+  },
+  {
+    "id": "email-dmarc-rua-external-unauthorized",
+    "type": "network-probe",
+    "title": "DMARC reports sent to an external domain that has not authorized them",
+    "category": "email",
+    "severity": "medium",
+    "description": "DMARC reports are addressed to a different domain that has not authorized receiving them. RFC 7489 section 7.1 requires the destination to publish an authorization record before a receiver will send cross-domain reports.",
+    "evidence": "An external rua destination for {{url}}'s domain has published no DMARC report authorization record.",
+    "riskImpact": "Conforming receivers, which includes the large mailbox providers, will not send reports to a third-party domain that has not opted in. The reports are silently not sent, so the visibility DMARC was deployed for does not exist, and any decision to tighten the policy from none to quarantine or reject is being made without data on who it would affect.",
+    "explanation": "The authorization record lives in the destination's zone rather than yours: the report processor has to publish <your-domain>._report._dmarc.<their-domain> with a v=DMARC1 value. Managed DMARC platforms create it automatically once the domain is added in their console, so the usual cause of this finding is a domain that was put in the DMARC record before it was added to the platform, or one that was later removed from the platform without the DNS record being updated.",
+    "fixSteps": [
+      "Add the domain in your report processor's console so it publishes the authorization record.",
+      "If you run the destination yourself, publish the authorization record there.",
+      "Keep a mailbox on your own domain in the rua list as well, so reports do not depend entirely on a third party."
+    ],
+    "codeExamples": [
+      {
+        "label": "The record the destination must publish",
+        "language": "dns",
+        "code": "example.com._report._dmarc.analyzer.example. IN TXT \"v=DMARC1\""
+      },
+      {
+        "label": "Check it",
+        "language": "bash",
+        "code": "dig +short TXT example.com._report._dmarc.analyzer.example"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc7489#section-7.1",
+      "https://datatracker.ietf.org/doc/html/rfc7489#section-6.3"
+    ],
+    "cwe": "CWE-16",
+    "owasp": "A09:2021",
+    "_idx": 29
+  },
+  {
+    "id": "email-dkim-testing-mode",
+    "type": "network-probe",
+    "title": "DKIM selector published in testing mode",
+    "category": "email",
+    "severity": "low",
+    "description": "A DKIM selector record carries the t=y flag, which marks the domain as still testing DKIM. It tells receivers not to treat a verification failure any differently from unsigned mail.",
+    "evidence": "A DKIM selector for {{url}}'s domain carries the t=y testing flag.",
+    "riskImpact": "t=y asks receivers to disregard DKIM failures for this selector, so a forged message that fails signature verification is handled exactly like one that was never signed. Where DMARC alignment depends on DKIM, that removes the DKIM half of the policy for every message signed with this selector, and it does so silently, because the record otherwise looks fully configured.",
+    "explanation": "The flag exists for the deployment window, while you confirm signing works end to end without risking legitimate mail. It is meant to be removed once that is confirmed, and very often is not, because nothing breaks when it stays. RFC 6376 defines t=y for exactly this purpose and expects it to be temporary.",
+    "fixSteps": [
+      "Confirm signatures are verifying, using DMARC aggregate reports or a test send to a verifying receiver.",
+      "Remove the t=y flag from the selector record once that is confirmed.",
+      "Check every selector, not just the one reported: providers commonly publish two for rotation."
+    ],
+    "codeExamples": [
+      {
+        "label": "Record with the testing flag removed",
+        "language": "dns",
+        "code": "default._domainkey.example.com. IN TXT \"v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...\""
+      },
+      {
+        "label": "Check a selector",
+        "language": "bash",
+        "code": "dig +short TXT default._domainkey.example.com"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc6376#section-3.6.1",
+      "https://datatracker.ietf.org/doc/html/rfc6376#section-3.6"
+    ],
+    "cwe": "CWE-16",
+    "owasp": "A05:2021",
+    "_idx": 30
+  },
+  {
+    "id": "email-dkim-revoked-key",
+    "type": "network-probe",
+    "title": "DKIM selector published with an empty (revoked) key",
+    "category": "email",
+    "severity": "low",
+    "description": "A DKIM selector record has an empty p= tag, which RFC 6376 defines as a revoked key. Every signature made with that selector therefore fails verification.",
+    "evidence": "A DKIM selector for {{url}}'s domain publishes an empty p= tag.",
+    "riskImpact": "Any mail still signed with this selector fails DKIM verification at every receiver. Under a DMARC policy of quarantine or reject, with SPF not aligned, that mail is discarded rather than delivered. Because the selector is chosen by the signing system rather than by DNS, the symptom is unexplained delivery failure from one particular sending path.",
+    "explanation": "Revoking a selector by emptying p= is the correct way to retire a key, and a revoked selector left in place is normally harmless. It is worth checking because both routes to this state look identical in DNS: a deliberate retirement, and a signing service still using a selector it was supposed to stop using. The DKIM-Signature header's s= tag on a received message tells you which selector is actually in use.",
+    "fixSteps": [
+      "Confirm nothing still signs with this selector, then delete the record rather than leaving an empty key published.",
+      "If mail is still being signed with it, publish the current public key or repoint the signer at an active selector.",
+      "Check the s= tag in a recent message's DKIM-Signature header to see which selector the signer is really using."
+    ],
+    "codeExamples": [
+      {
+        "label": "Find the selector in use",
+        "language": "bash",
+        "code": "# In a received message's headers:\n#   DKIM-Signature: v=1; a=rsa-sha256; d=example.com; s=selector1; ...\ndig +short TXT selector1._domainkey.example.com"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc6376#section-3.6.1",
+      "https://datatracker.ietf.org/doc/html/rfc6376#section-7.4"
+    ],
+    "cwe": "CWE-16",
+    "owasp": "A05:2021",
+    "_idx": 31
+  },
+  {
+    "id": "email-dkim-sha1-hash",
+    "type": "network-probe",
+    "title": "DKIM selector restricted to the SHA-1 hash algorithm",
+    "category": "email",
+    "severity": "medium",
+    "description": "A DKIM selector record declares h=sha1 and offers no sha256 alternative alongside it. Signatures under that key are restricted to the rsa-sha1 algorithm.",
+    "evidence": "A DKIM selector for {{url}}'s domain declares h=sha1 with no sha256 alternative.",
+    "riskImpact": "SHA-1 is collision-vulnerable and a DKIM signature covers a hash of the message. RFC 8301 formally deprecated rsa-sha1 for DKIM and tells verifiers to treat such signatures as failing, so conforming receivers discard the signature entirely. That is both a weakness and a deliverability problem: mail signed only with SHA-1 loses DKIM alignment under DMARC.",
+    "explanation": "The h= tag is a restriction rather than a description: it tells verifiers which hash algorithms are acceptable for this key. A selector limited to sha1 usually predates RFC 8301 and has never been rotated. Removing the tag entirely is the normal fix, since the default already permits sha256.",
+    "fixSteps": [
+      "Configure the signing service to use rsa-sha256, or ed25519-sha256 where it is supported.",
+      "Publish a replacement key without the h=sha1 restriction.",
+      "Rotate to a new selector rather than editing the existing record in place, so mail already in flight still verifies."
+    ],
+    "codeExamples": [
+      {
+        "label": "Generate a replacement key under a new selector",
+        "language": "bash",
+        "code": "opendkim-genkey -b 2048 -d example.com -s s2026a\n# publish s2026a._domainkey.example.com with no h= restriction, then switch the signer"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc8301",
+      "https://datatracker.ietf.org/doc/html/rfc6376#section-3.6.1"
+    ],
+    "cwe": "CWE-327",
+    "owasp": "A02:2021",
+    "_idx": 32
+  },
+  {
+    "id": "email-mx-ip-literal",
+    "type": "network-probe",
+    "title": "MX record points at an IP address instead of a hostname",
+    "category": "email",
+    "severity": "medium",
+    "description": "An MX record names an IP address literal as its exchange, which the standards forbid. RFC 1035 and RFC 2181 require the exchange to be a domain name that has an address record.",
+    "evidence": "An MX record for {{url}}'s domain names an IP address literal.",
+    "riskImpact": "Standards-conforming senders resolve the exchange as a hostname, get NXDOMAIN, and defer or bounce the message, so inbound mail fails from some senders and works from others depending on how tolerant their MTA is. Because the failure is partial, it usually gets attributed to the sender rather than to the record.",
+    "explanation": "Beyond the delivery failures, an address literal makes it impossible to present a certificate name matching the exchange, which breaks everything layered on top of the MX name: MTA-STS policies list permitted MX hostnames, SMTP certificate validation matches the exchange name, and DANE TLSA records are published under it.",
+    "fixSteps": [
+      "Create an A and AAAA record for a mail hostname and point the MX at that name.",
+      "Make sure the mail server presents a certificate valid for that hostname.",
+      "Re-check MTA-STS or DANE afterwards if either is in use, since both key on the exchange name."
+    ],
+    "codeExamples": [
+      {
+        "label": "Correct MX configuration",
+        "language": "dns",
+        "code": "mail.example.com. IN A     203.0.113.25\nmail.example.com. IN AAAA  2001:db8::25\nexample.com.      IN MX 10  mail.example.com."
+      },
+      {
+        "label": "Check what is published",
+        "language": "bash",
+        "code": "dig +short MX example.com"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc2181#section-10.3",
+      "https://datatracker.ietf.org/doc/html/rfc5321#section-5.1"
+    ],
+    "cwe": "CWE-1188",
+    "owasp": "A05:2021",
+    "_idx": 33
+  },
+  {
+    "id": "email-mta-sts-max-age-short",
+    "type": "network-probe",
+    "title": "MTA-STS policy max_age shorter than one week",
+    "category": "email",
+    "severity": "low",
+    "description": "The fetched MTA-STS policy file sets max_age below 604800 seconds, one week. RFC 8461 recommends at least that long for a policy in enforce mode.",
+    "evidence": "The MTA-STS policy for {{url}}'s domain declares a max_age below one week.",
+    "riskImpact": "max_age is how long a sending server caches the policy, and that cache is the entire protection. Once it expires the sender must fetch the policy over the network again, which is exactly the moment an attacker able to interfere with DNS or HTTPS can prevent retrieval and downgrade the connection to opportunistic TLS. A short max_age multiplies the number of those windows.",
+    "explanation": "Short values are usually left over from the rollout, when a low max_age is deliberately used so a mistake can be corrected quickly. That is the right approach while testing and the wrong one afterwards. Raise it once the policy has been stable and every MX host it lists is serving a valid certificate, because a mistake will then be cached for the full duration.",
+    "fixSteps": [
+      "Raise max_age to at least 604800; 1209600 is common for a settled policy.",
+      "Before raising it, confirm every MX host listed in the policy presents a valid certificate.",
+      "Change the policy id in the _mta-sts TXT record whenever the file changes, so senders refetch rather than waiting out the cache."
+    ],
+    "codeExamples": [
+      {
+        "label": "Settled policy file",
+        "language": "text",
+        "code": "version: STSv1\nmode: enforce\nmx: mail.example.com\nmax_age: 1209600"
+      },
+      {
+        "label": "Fetch the policy",
+        "language": "bash",
+        "code": "curl -s https://mta-sts.example.com/.well-known/mta-sts.txt"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc8461#section-3.2",
+      "https://datatracker.ietf.org/doc/html/rfc8461#section-5"
+    ],
+    "cwe": "CWE-16",
+    "owasp": "A02:2021",
+    "_idx": 34
+  },
+  {
+    "id": "email-mta-sts-mx-mismatch",
+    "type": "network-probe",
+    "title": "MTA-STS policy does not cover every published MX host",
+    "category": "email",
+    "severity": "medium",
+    "description": "The fetched MTA-STS policy file lists mx patterns that do not match one or more of the domain's published MX hostnames.",
+    "evidence": "An MX host for {{url}}'s domain is not matched by any mx entry in the MTA-STS policy.",
+    "riskImpact": "A sending server honouring an enforce-mode policy refuses to deliver to any MX host the policy does not list. Where the uncovered host is a backup MX, mail stops flowing to it during exactly the failover the backup exists for. Where it is a primary, inbound mail from MTA-STS-aware senders, which includes Gmail and Outlook, fails outright.",
+    "explanation": "The mismatch normally appears after an MX change: a new provider is added or a backup MX is introduced, and the policy file is not updated alongside it, because the policy lives on a web server rather than in DNS and is maintained by a different process. Wildcards are permitted in the mx list and match exactly one label, so mx: *.mail.example.com covers a.mail.example.com but not mail.example.com itself.",
+    "fixSteps": [
+      "Add an mx: line for every published MX host, or a wildcard that covers them.",
+      "Change the policy id in the _mta-sts TXT record whenever the file changes, so senders refetch instead of using the cached copy.",
+      "Make updating the policy file part of whatever process changes MX records, so the two cannot drift again."
+    ],
+    "codeExamples": [
+      {
+        "label": "Policy covering primary and backup",
+        "language": "text",
+        "code": "version: STSv1\nmode: enforce\nmx: mail.example.com\nmx: mail2.example.com\nmax_age: 1209600"
+      },
+      {
+        "label": "Compare policy against DNS",
+        "language": "bash",
+        "code": "diff <(curl -s https://mta-sts.example.com/.well-known/mta-sts.txt | grep -i '^mx:' | awk '{print tolower($2)}' | sort) \\\n     <(dig +short MX example.com | awk '{print tolower($2)}' | sed 's/\\.$//' | sort)"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc8461#section-3.2",
+      "https://datatracker.ietf.org/doc/html/rfc8461#section-4.1"
+    ],
+    "cwe": "CWE-16",
+    "owasp": "A02:2021",
+    "_idx": 35
+  },
+  {
+    "id": "email-bimi-without-vmc",
+    "type": "network-probe",
+    "title": "BIMI record publishes a logo with no verified mark certificate",
+    "category": "email",
+    "severity": "info",
+    "description": "The BIMI record at default._bimi publishes a logo URL but carries no a= tag. Without an a= tag there is no Verified Mark Certificate backing the logo.",
+    "evidence": "The BIMI record for {{url}}'s domain has an l= tag and no a= tag.",
+    "riskImpact": "Without a VMC the major mailbox providers that display BIMI, Gmail and Apple Mail among them, will not show the logo, so the record produces no benefit at all. A logo that rendered on the strength of DNS alone would also be the wrong outcome: the certificate is what ties the mark to a trademark holder, and without it a lookalike domain could publish the same image.",
+    "explanation": "Informational because BIMI is a branding feature rather than a security control, and the record does no harm. The point is that the setup is half-finished: the DNS half is done and the expensive half, obtaining a VMC from an approved authority, is not, so nothing is gained. BIMI also requires DMARC at quarantine or reject before any provider will consider it, which is the more valuable prerequisite to get right first.",
+    "fixSteps": [
+      "Confirm the domain is at DMARC p=quarantine or p=reject first, since no provider displays BIMI below that.",
+      "Obtain a Verified Mark Certificate from an approved authority and publish it, adding the a= tag pointing at the .pem.",
+      "If a VMC is not planned, consider removing the BIMI record rather than leaving an unused one published."
+    ],
+    "codeExamples": [
+      {
+        "label": "Complete BIMI record",
+        "language": "dns",
+        "code": "default._bimi.example.com. IN TXT \"v=BIMI1; l=https://example.com/bimi/logo.svg; a=https://example.com/bimi/vmc.pem\""
+      },
+      {
+        "label": "Check what is published",
+        "language": "bash",
+        "code": "dig +short TXT default._bimi.example.com\ndig +short TXT _dmarc.example.com"
+      }
+    ],
+    "references": [
+      "https://bimigroup.org/implementation-guide/",
+      "https://datatracker.ietf.org/doc/draft-brand-indicators-for-message-identification/"
+    ],
+    "cwe": "CWE-1188",
+    "owasp": "A05:2021",
+    "_idx": 36
   }
 ]

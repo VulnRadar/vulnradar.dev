@@ -64,7 +64,7 @@
       "https://datatracker.ietf.org/doc/html/rfc1034",
       "https://datatracker.ietf.org/doc/html/rfc1035"
     ],
-    "_idx": 2
+    "_idx": 1
   },
   {
     "id": "dns-mx-record-missing",
@@ -96,7 +96,7 @@
       "https://datatracker.ietf.org/doc/html/rfc1034",
       "https://datatracker.ietf.org/doc/html/rfc5321"
     ],
-    "_idx": 3
+    "_idx": 2
   },
   {
     "id": "dns-mx-backup-record",
@@ -123,7 +123,7 @@
       "https://datatracker.ietf.org/doc/html/rfc1034",
       "https://datatracker.ietf.org/doc/html/rfc5321"
     ],
-    "_idx": 4
+    "_idx": 3
   },
   {
     "id": "dns-ds-record-missing",
@@ -156,7 +156,7 @@
       "https://datatracker.ietf.org/doc/html/rfc4034",
       "https://datatracker.ietf.org/doc/html/rfc4035"
     ],
-    "_idx": 5
+    "_idx": 4
   },
   {
     "id": "dns-soa-refresh-high",
@@ -188,7 +188,7 @@
       "https://datatracker.ietf.org/doc/html/rfc1035",
       "https://datatracker.ietf.org/doc/html/rfc2182"
     ],
-    "_idx": 6
+    "_idx": 5
   },
   {
     "id": "dns-tlsa-record-missing",
@@ -221,7 +221,7 @@
       "https://datatracker.ietf.org/doc/html/rfc6698",
       "https://datatracker.ietf.org/doc/html/rfc7671"
     ],
-    "_idx": 7,
+    "_idx": 6,
     "cwe": "CWE-295",
     "owasp": "A02:2021"
   },
@@ -251,7 +251,7 @@
       "https://github.com/EdOverflow/can-i-take-over-xyz",
       "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/10-Test_for_Subdomain_Takeover"
     ],
-    "_idx": 9,
+    "_idx": 7,
     "cwe": "CWE-350",
     "owasp": "A05:2021"
   },
@@ -281,7 +281,7 @@
       "https://datatracker.ietf.org/doc/html/rfc1034",
       "https://datatracker.ietf.org/doc/html/rfc1918"
     ],
-    "_idx": 10
+    "_idx": 8
   },
   {
     "id": "dns-dangling-cname-cdn-paas",
@@ -309,7 +309,7 @@
       "https://github.com/EdOverflow/can-i-take-over-xyz",
       "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/10-Test_for_Subdomain_Takeover"
     ],
-    "_idx": 20,
+    "_idx": 9,
     "cwe": "CWE-350",
     "owasp": "A05:2021"
   },
@@ -339,7 +339,7 @@
       "https://github.com/EdOverflow/can-i-take-over-xyz",
       "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/10-Test_for_Subdomain_Takeover"
     ],
-    "_idx": 21,
+    "_idx": 10,
     "cwe": "CWE-350",
     "owasp": "A05:2021"
   },
@@ -374,7 +374,8 @@
       "https://datatracker.ietf.org/doc/html/rfc1034"
     ],
     "cwe": "CWE-200",
-    "owasp": "A05:2021"
+    "owasp": "A05:2021",
+    "_idx": 11
   },
   {
     "id": "dns-dnskey-record-missing",
@@ -409,7 +410,8 @@
       "https://datatracker.ietf.org/doc/html/rfc4035"
     ],
     "cwe": "CWE-345",
-    "owasp": "A08:2021"
+    "owasp": "A08:2021",
+    "_idx": 12
   },
   {
     "id": "dns-caa-no-issue-restriction",
@@ -434,7 +436,7 @@
         "code": "example.com. IN CAA 0 iodef \"mailto:security@example.com\"  ; reporting only, no restriction\nexample.com. IN CAA 0 issue \"letsencrypt.org\"              ; add this to actually restrict issuance"
       }
     ],
-    "_idx": 22,
+    "_idx": 13,
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc8659#section-4.2",
       "https://letsencrypt.org/docs/caa/"
@@ -464,7 +466,7 @@
         "code": "example.com. IN CAA 0 issuewild \"letsencrypt.org\"  ; wildcard only\nexample.com. IN CAA 0 issue \"letsencrypt.org\"      ; add this for non-wildcard certs too"
       }
     ],
-    "_idx": 23,
+    "_idx": 14,
     "references": ["https://datatracker.ietf.org/doc/html/rfc8659#section-4.2"],
     "cwe": "CWE-295",
     "owasp": "A02:2021"
@@ -490,7 +492,7 @@
         "code": "example.com. IN SOA ns1.example.com. hostmaster.example.com. (\n  2026081001 ; serial: YYYYMMDDnn, bump on every edit\n  3600       ; refresh\n  900        ; retry\n  604800     ; expire\n  300        ; negative TTL\n)"
       }
     ],
-    "_idx": 24,
+    "_idx": 15,
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc1035#section-3.3.13",
       "https://datatracker.ietf.org/doc/html/rfc1912#section-2.2"
@@ -518,7 +520,7 @@
         "code": "dig +short NS example.com"
       }
     ],
-    "_idx": 25,
+    "_idx": 16,
     "references": ["https://datatracker.ietf.org/doc/html/rfc1035"]
   },
   {
@@ -543,7 +545,7 @@
         "code": "dig +short A $(openssl rand -hex 8).example.com\n# A non-empty answer for a name you never created confirms a wildcard record"
       }
     ],
-    "_idx": 26,
+    "_idx": 17,
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc1034#section-4.3.3"
     ]
@@ -570,7 +572,312 @@
         "code": "example.com. IN MX 0 .\nexample.com. IN TXT \"v=spf1 -all\""
       }
     ],
-    "_idx": 27,
+    "_idx": 18,
     "references": ["https://datatracker.ietf.org/doc/html/rfc7505"]
+  },
+  {
+    "id": "dns-dnssec-algorithm-weak",
+    "type": "network-probe",
+    "title": "DNSSEC signed with a deprecated algorithm",
+    "category": "dns",
+    "severity": "medium",
+    "description": "The zone is DNSSEC-signed with an algorithm RFC 8624 marks as deprecated for signing. A published DNSKEY uses RSAMD5, DSA, RSA/SHA-1, one of the NSEC3 SHA-1 variants, or ECC-GOST.",
+    "evidence": "A DNSKEY record for {{url}}'s domain uses a deprecated signing algorithm.",
+    "riskImpact": "DNSSEC is only as strong as the algorithm behind the signature, and SHA-1 and MD5 have practical collision attacks. Validating resolvers are also progressively dropping support for these algorithms entirely, and a zone signed only with a removed algorithm is treated as unsigned, which silently discards the protection the zone was configured to have.",
+    "explanation": "The check reads the DNSKEY set over DNS-over-HTTPS and looks at the algorithm field of each key, so it only fires on a zone that is actually signed. RFC 8624 marks RSAMD5 as must-not-implement and the SHA-1 based algorithms as not-recommended for signing. The current recommendation is ECDSAP256SHA256 (algorithm 13), which is also far smaller on the wire than RSA, or RSASHA256 (algorithm 8) where the resolver population still needs it.",
+    "fixSteps": [
+      "Roll the zone to algorithm 13 (ECDSAP256SHA256), or 8 (RSASHA256) if ECDSA support is a concern for your resolver population.",
+      "Follow the order: publish the new DNSKEY, re-sign the zone, wait for propagation, then update the DS record at the registrar, and only then withdraw the old key.",
+      "Confirm the new chain validates end to end before removing anything."
+    ],
+    "codeExamples": [
+      {
+        "label": "Inspect the zone's keys",
+        "language": "bash",
+        "code": "dig +dnssec +multi DNSKEY example.com @1.1.1.1\n# the third field of each DNSKEY is the algorithm number"
+      },
+      {
+        "label": "Validate the chain after a rollover",
+        "language": "bash",
+        "code": "delv @1.1.1.1 example.com A +rtrace\n# or\ndig +sigchase +trusted-key=./root.key example.com A"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc8624",
+      "https://www.iana.org/assignments/dns-sec-alg-numbers/dns-sec-alg-numbers.xhtml"
+    ],
+    "cwe": "CWE-327",
+    "owasp": "A02:2021",
+    "_idx": 19
+  },
+  {
+    "id": "dns-dnssec-key-size-weak",
+    "type": "network-probe",
+    "title": "DNSSEC RSA key below 2048 bits",
+    "category": "dns",
+    "severity": "medium",
+    "description": "A published DNSKEY uses an RSA algorithm with a modulus smaller than 2048 bits. That is below the floor RFC 8624 sets for DNSSEC signing keys; the size is read from the RFC 3110 public-key blob in the record.",
+    "evidence": "A DNSKEY record for {{url}}'s domain carries an RSA modulus below 2048 bits.",
+    "riskImpact": "An undersized signing key is the weakest link in the chain of trust regardless of how strong the hash is. Forging a signature over any record in the zone lets an attacker who can reach a validating resolver answer with data of their own choosing, which is exactly the substitution DNSSEC exists to prevent.",
+    "explanation": "A 1024-bit key-signing key is the more serious of the two cases, because it is the key the DS record at the registrar commits to and it typically has a much longer lifetime than a zone-signing key. Moving to ECDSAP256SHA256 solves the size problem and shrinks responses at the same time, which matters for a protocol that still has to fit into UDP wherever it can.",
+    "fixSteps": [
+      "Roll the affected key to at least 2048-bit RSA, or move the zone to ECDSAP256SHA256.",
+      "If the key-signing key is the one affected, coordinate the rollover with the registrar so the DS record is updated in step.",
+      "Set a key-rollover schedule rather than treating this as a one-time fix."
+    ],
+    "codeExamples": [
+      {
+        "label": "Read the key sizes",
+        "language": "bash",
+        "code": "dig +multi DNSKEY example.com @1.1.1.1\n# dnssec-keygen -a ECDSAP256SHA256 -f KSK example.com  # replacement KSK"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc8624",
+      "https://datatracker.ietf.org/doc/html/rfc3110"
+    ],
+    "cwe": "CWE-326",
+    "owasp": "A02:2021",
+    "_idx": 20
+  },
+  {
+    "id": "dns-ds-digest-algorithm-weak",
+    "type": "network-probe",
+    "title": "DNSSEC DS record uses only the SHA-1 digest",
+    "category": "dns",
+    "severity": "low",
+    "description": "The DS record set in the parent zone contains a SHA-1 digest (type 1) and no SHA-256 or SHA-384 alternative alongside it.",
+    "evidence": "The DS record set for {{url}}'s domain publishes only a SHA-1 digest.",
+    "riskImpact": "The DS digest is the single link between the parent zone and this zone's key. Validators that stop accepting SHA-1 digests, which is the direction every implementation is heading, will treat the delegation as unsigned and silently drop DNSSEC protection for the entire zone.",
+    "explanation": "RFC 8624 marks SHA-1 as not-recommended for DS records and SHA-256 (digest type 2) as mandatory to implement. A zone publishing both digests is mid-rollover and validators use the stronger one, so that case is deliberately not reported here. Note that the DS record lives in the parent zone, so this is changed at the registrar rather than in your own DNS.",
+    "fixSteps": [
+      "Generate a SHA-256 DS record from the current key-signing key and submit it to the registrar.",
+      "Publish both digests during the transition, then remove the SHA-1 one once the new record has propagated.",
+      "Re-check the delegation validates before removing the old digest."
+    ],
+    "codeExamples": [
+      {
+        "label": "Generate a SHA-256 DS record",
+        "language": "bash",
+        "code": "dig DNSKEY example.com | dnssec-dsfromkey -f - -2 example.com"
+      },
+      {
+        "label": "Check what the parent publishes",
+        "language": "bash",
+        "code": "dig +short DS example.com @1.1.1.1\n# fields: keytag algorithm digest-type digest"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc8624",
+      "https://datatracker.ietf.org/doc/html/rfc4509"
+    ],
+    "cwe": "CWE-327",
+    "owasp": "A02:2021",
+    "_idx": 21
+  },
+  {
+    "id": "dns-nsec-zone-walking",
+    "type": "network-probe",
+    "title": "Signed zone uses NSEC, allowing zone walking",
+    "category": "dns",
+    "severity": "low",
+    "description": "The zone is DNSSEC-signed but publishes no NSEC3PARAM record, so it uses NSEC. NSEC provides authenticated denial of existence in a form that lets the zone's full contents be enumerated.",
+    "evidence": "DNSKEY records exist for {{url}}'s domain and no NSEC3PARAM record is published.",
+    "riskImpact": "An NSEC record proves a name does not exist by naming the next name that does, so walking the chain returns the complete contents of the zone. Every internal hostname in it becomes public: vpn, jira, staging, backup, the lot. That is a full target list produced without sending a single request to any of those hosts.",
+    "explanation": "This is a design property of NSEC rather than a misconfiguration, which is why NSEC3 was specified in the first place. Whether it matters depends on the zone: for one whose names are all public anyway it is close to irrelevant, and for one holding internal infrastructure names it hands over the network map. RFC 9276 recommends NSEC3 with zero iterations and an empty salt, which gives the enumeration resistance without the cost that made early NSEC3 deployments expensive.",
+    "fixSteps": [
+      "Switch to NSEC3 with zero iterations and an empty salt if the zone contains names you would rather not publish.",
+      "Walk your own zone first to see what is actually exposed before deciding how urgent this is.",
+      "For a zone of entirely public names, NSEC remains a reasonable choice; document the decision rather than leaving it implicit."
+    ],
+    "codeExamples": [
+      {
+        "label": "See what an attacker would see",
+        "language": "bash",
+        "code": "ldns-walk example.com"
+      },
+      {
+        "label": "BIND: move to NSEC3 with RFC 9276 parameters",
+        "language": "bash",
+        "code": "rndc signing -nsec3param 1 0 0 - example.com\n# hash=1 (SHA-1), flags=0, iterations=0, salt=- (empty)"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc9276",
+      "https://datatracker.ietf.org/doc/html/rfc5155"
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021",
+    "_idx": 22
+  },
+  {
+    "id": "dns-nsec3-iterations-nonzero",
+    "type": "network-probe",
+    "title": "NSEC3 configured with extra hash iterations",
+    "category": "dns",
+    "severity": "info",
+    "description": "The zone's NSEC3PARAM record declares a non-zero iteration count. RFC 9276 says the only value that should be used is zero.",
+    "evidence": "The NSEC3PARAM record for {{url}}'s domain declares extra hash iterations.",
+    "riskImpact": "Every extra iteration costs the authoritative server and every validating resolver an additional hash computation on each negative answer, and provides no meaningful additional protection against enumeration. That turns the parameter into a denial-of-service amplifier aimed at your own nameservers: an attacker querying random non-existent names forces the extra work on every request.",
+    "explanation": "The original NSEC3 specification allowed iterations as a defence against dictionary attacks on the hashed names, but the protection turned out to be negligible because the name space being hashed is small and guessable regardless. RFC 9276 is unambiguous: zero iterations, empty salt. Several large resolvers now cap or ignore high iteration counts, and some treat zones above a threshold as insecure, so a high value can cost validation as well as performance.",
+    "fixSteps": [
+      "Set the NSEC3 iteration count to 0 and use an empty salt, then re-sign the zone.",
+      "Most managed DNS providers expose this as a single setting; on BIND it is the iterations argument to the NSEC3 parameters.",
+      "Confirm the zone still validates after re-signing."
+    ],
+    "codeExamples": [
+      {
+        "label": "Read the current parameters",
+        "language": "bash",
+        "code": "dig +short NSEC3PARAM example.com\n# fields: hash flags iterations salt"
+      },
+      {
+        "label": "BIND: zero iterations, no salt",
+        "language": "bash",
+        "code": "rndc signing -nsec3param 1 0 0 - example.com"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc9276",
+      "https://datatracker.ietf.org/doc/html/rfc5155#section-10.3"
+    ],
+    "cwe": "CWE-400",
+    "owasp": "A05:2021",
+    "_idx": 23
+  },
+  {
+    "id": "dns-cname-at-apex",
+    "type": "network-probe",
+    "title": "CNAME record published at the zone apex",
+    "category": "dns",
+    "severity": "medium",
+    "description": "The registrable domain answers a CNAME query, but the zone apex always carries SOA and NS records. RFC 1034 forbids a CNAME from coexisting with any other record type at the same name.",
+    "evidence": "A CNAME record is published at the apex of {{url}}'s domain.",
+    "riskImpact": "Resolvers handle this inconsistently. Some follow the CNAME and never see the zone's MX record, which silently breaks inbound mail for the whole domain; others return the SOA and NS and ignore the CNAME, so the site does not resolve at all. Because the outcome depends on the resolver, the failure is intermittent and looks different to different users, which makes it very hard to diagnose from the server side.",
+    "explanation": "This is exactly what ALIAS, ANAME and CNAME-flattening record types exist to solve: the provider resolves the target itself and answers with A and AAAA records at the apex, so what goes on the wire stays legal. A literal CNAME at the apex therefore means either the provider offers no such type, or the record was created through an API path that skipped the validation the web console would have applied.",
+    "fixSteps": [
+      "Replace the apex CNAME with the provider's ALIAS, ANAME, or CNAME-flattening record type.",
+      "If the provider has no such type, publish A and AAAA records at the apex and keep the CNAME on www.",
+      "Check inbound mail specifically: a broken MX lookup is the failure most likely to have gone unnoticed."
+    ],
+    "codeExamples": [
+      {
+        "label": "Confirm the conflict",
+        "language": "bash",
+        "code": "dig example.com CNAME +short\ndig example.com MX +short\ndig example.com SOA +short"
+      },
+      {
+        "label": "Correct apex configuration",
+        "language": "dns",
+        "code": "; instead of: example.com. IN CNAME target.provider.net.\nexample.com.     IN A     203.0.113.10\nexample.com.     IN AAAA  2001:db8::10\nwww.example.com. IN CNAME target.provider.net."
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc1034#section-3.6.2",
+      "https://datatracker.ietf.org/doc/html/rfc2181#section-10.1"
+    ],
+    "cwe": "CWE-1188",
+    "owasp": "A05:2021",
+    "_idx": 24
+  },
+  {
+    "id": "dns-cname-chain-too-long",
+    "type": "network-probe",
+    "title": "CNAME chain longer than three hops",
+    "category": "dns",
+    "severity": "low",
+    "description": "Resolving the scanned hostname follows more than three CNAME hops before reaching an address record.",
+    "evidence": "The CNAME chain from {{url}}'s hostname is more than three hops deep.",
+    "riskImpact": "Every hop is another name whose registration, zone, and provider account have to stay under someone's control. A single link that expires, gets deleted, or points at a decommissioned service is a subdomain-takeover opportunity, and the deeper the chain the more likely one link belongs to a team that has forgotten it exists. Each hop also adds a resolution round trip to every cold lookup.",
+    "explanation": "Long chains grow through migrations: a vendor is replaced with another vendor, and rather than repointing the original record, a new CNAME is appended to the end. Some resolvers cap chain following, commonly at eight or sixteen, and return a failure past the limit, so a chain that works today can break when one more hop is added by a vendor you do not control.",
+    "fixSteps": [
+      "Collapse the chain by pointing the first record directly at the final target.",
+      "Check ownership of every intermediate name; any that no longer resolves, or points at an unclaimed service, is a takeover risk.",
+      "Where an intermediate belongs to a vendor, confirm the account behind it is still active and monitored."
+    ],
+    "codeExamples": [
+      {
+        "label": "Follow the chain",
+        "language": "bash",
+        "code": "dig www.example.com +noall +answer\n# each CNAME line is one hop; the final A/AAAA ends the chain"
+      },
+      {
+        "label": "Check each hop for a dangling target",
+        "language": "bash",
+        "code": "for h in a.example.net b.vendor.io c.cdn.example; do\n  printf '%s -> ' \"$h\"; dig +short \"$h\" | tail -1\ndone"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc1034#section-3.6.2",
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/10-Test_for_Subdomain_Takeover"
+    ],
+    "cwe": "CWE-1104",
+    "owasp": "A05:2021",
+    "_idx": 25
+  },
+  {
+    "id": "dns-caa-iodef-missing",
+    "type": "network-probe",
+    "title": "CAA record names no incident reporting address",
+    "category": "dns",
+    "severity": "info",
+    "description": "The domain publishes CAA records restricting certificate issuance, but no iodef property. A CA that receives a request violating the policy therefore has nowhere to report it.",
+    "evidence": "CAA records for {{url}}'s domain contain no iodef property.",
+    "riskImpact": "The iodef property is the only channel that turns a blocked issuance into a signal you actually receive. Without it, someone attempting to obtain a certificate for your domain from a CA you have not authorised is quietly refused and you never learn the attempt happened, which is exactly the early warning worth having.",
+    "explanation": "This is a hygiene recommendation rather than a weakness: the issuance restriction itself is working, and that is the part that matters most. RFC 8659 defines iodef as a mailto or https URL that a CA may use to report policy violations. Reporting is discretionary rather than mandatory, so treat it as one useful input alongside Certificate Transparency monitoring, not as a guaranteed alert.",
+    "fixSteps": [
+      "Add a CAA iodef record pointing at a monitored mailbox or ticket queue rather than an individual.",
+      "Pair it with Certificate Transparency monitoring, which catches issuance that actually succeeded.",
+      "Re-check the full CAA set at the same time: issue, issuewild and iodef are decided together."
+    ],
+    "codeExamples": [
+      {
+        "label": "CAA with restriction and reporting",
+        "language": "dns",
+        "code": "example.com. IN CAA 0 issue \"letsencrypt.org\"\nexample.com. IN CAA 0 issuewild \";\"\nexample.com. IN CAA 0 iodef \"mailto:security@example.com\""
+      },
+      {
+        "label": "Check what is published",
+        "language": "bash",
+        "code": "dig +short CAA example.com"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc8659",
+      "https://cabforum.org/working-groups/server/baseline-requirements/"
+    ],
+    "cwe": "CWE-778",
+    "owasp": "A09:2021",
+    "_idx": 26
+  },
+  {
+    "id": "dns-txt-verification-tokens-stale",
+    "type": "network-probe",
+    "title": "Accumulated SaaS domain-verification TXT records",
+    "category": "dns",
+    "severity": "info",
+    "description": "The domain publishes verification TXT records for five or more distinct SaaS vendors. They match the site-verification, domain-verification, verify and challenge shapes those services use.",
+    "evidence": "TXT records for {{url}}'s domain carry verification tokens for five or more distinct vendors.",
+    "riskImpact": "The set is a public list of the SaaS platforms this organisation has onboarded, which is directly useful for a targeted phishing campaign: a message naming the exact tools someone actually uses is far more convincing than a generic one. Tokens for services that were trialled and abandoned are worse than useless, because they can leave a dormant claim on the domain inside a vendor account nobody monitors any more.",
+    "explanation": "Verification records are meant to be temporary for many vendors and permanent for a few, and nothing ever prompts you to remove the temporary ones, so they accumulate over years. This is informational: their presence is not a vulnerability. It is a prompt to audit which of these services are still in use, and to close the accounts behind the ones that are not, because a live verification token plus an abandoned account is a standing claim on your domain.",
+    "fixSteps": [
+      "List the verification records and match each one to a service that is still in use and still owned by someone.",
+      "Remove tokens for services that were trialled or retired, and close the corresponding vendor accounts rather than only deleting the record.",
+      "Where a vendor supports it, prefer a scoped subdomain token over an apex TXT record so the inventory is not published at the apex."
+    ],
+    "codeExamples": [
+      {
+        "label": "List what is published",
+        "language": "bash",
+        "code": "dig +short TXT example.com | grep -i -E 'verification|verify|challenge'"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc1464",
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/"
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021",
+    "_idx": 27
   }
 ]

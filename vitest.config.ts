@@ -254,6 +254,42 @@ export default defineConfig({
           functions: 90,
           branches: 90,
         },
+        "lib/scanner/evidence-excerpts.ts": {
+          // 100% across the board. The module is pure and every branch is a
+          // rejection path a malformed excerpt can actually reach, so there
+          // is nothing here that a test would have to reach past.
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 95,
+        },
+        "lib/reports/csv-report.ts": {
+          // 100% / 100% / 100% / 88.63% actual. The uncovered branches are
+          // the per-field `?? ""` fallbacks for fields absent from a finding
+          // stored by an older engine; one such row is exercised, not all
+          // twenty-three columns of it.
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 80,
+        },
+        "lib/reports/markdown-report.ts": {
+          // 89.28% / 88.52% / 100% / 58.33% actual. The uncovered branches
+          // are the optional-field guards (code examples, AI verdict fields,
+          // an unparseable scannedAt) that the finding fixture does not vary
+          // one at a time.
+          lines: 85,
+          statements: 85,
+          functions: 95,
+          branches: 50,
+        },
+        "lib/seo/demo-link.ts": {
+          // 100% across the board.
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 95,
+        },
         "lib/scanner/schedule-timing.ts": {
           // 100% / 100% / 100% / 93.33% actual.
           lines: 100,
@@ -287,6 +323,14 @@ export default defineConfig({
           statements: 95,
           functions: 100,
           branches: 90,
+        },
+        // 100% actual across the board -- pure geometry and two localStorage
+        // accessors, every branch reachable from a plain object.
+        "lib/browserbase/viewer-layout.ts": {
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 95,
         },
         // 100% actual across the board -- pure comparison logic, no
         // branches left untested.
@@ -339,6 +383,18 @@ export default defineConfig({
           statements: 86,
           functions: 95,
           branches: 82,
+        },
+        // 100 / 100 / 100 / 100 actual. The four operational kill switches
+        // (maintenance, pause signups/logins/scanning). Held high on purpose:
+        // an uncovered branch here is either a lockout (staff refused by the
+        // login pause) or a switch that silently does nothing, and both are
+        // the kind of defect that is only discovered during the incident the
+        // switch was flipped for.
+        "lib/admin/service-state.ts": {
+          lines: 95,
+          statements: 95,
+          functions: 95,
+          branches: 95,
         },
         "app/api/v3/assets/route.ts": {
           // 97.87 / 98 / 100 / 68.75 actual. The uncovered branch is

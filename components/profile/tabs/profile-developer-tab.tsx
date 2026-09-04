@@ -683,7 +683,7 @@ export function ProfileDeveloperTab({
     <div className="flex flex-col gap-6">
       {/* Developer sub-tabs: API Keys / Webhooks / Scheduled Scans, each
           independently scannable instead of one long scroll. */}
-      <div className="flex gap-0.5 border-b border-border/80 overflow-x-auto scrollbar-hide -mx-1 px-1">
+      <div className="flex gap-0.5 border-b border-border/80 scroll-x-only scrollbar-hide -mx-1 px-1">
         {DEVELOPER_SECTIONS.map((section) => {
           const count = sectionCount(section.id);
           const isActive = activeSection === section.id;

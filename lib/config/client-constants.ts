@@ -74,6 +74,8 @@ import {
   CONFIG_BILLING_ELITE_SUPPORTER_RETENTION,
   CONFIG_API_CURRENT_VERSION,
   CONFIG_BROWSERBASE_LOGS_POLL_INTERVAL_MS,
+  CONFIG_BROWSERBASE_VIEWPORT_WIDTH,
+  CONFIG_BROWSERBASE_VIEWPORT_HEIGHT,
   CONFIG_DEMO_SCAN_LIMIT,
   CONFIG_AI_CHAT_HISTORY_DAYS,
   CONFIG_AI_CHAT_MAX_INPUT_LENGTH,
@@ -730,10 +732,18 @@ export const NOTIFICATION_DEFAULT_DISMISS_MAX_AGE =
 
 // BROWSER SESSION VIEWER
 //
-// Only the poll interval is client-side; the TTL ceilings that actually cap
-// a session live in constants.ts next to the Browserbase credential check.
+// The TTL ceilings that actually cap a session live in constants.ts next to
+// the Browserbase credential check. The two values here are the ones the
+// browser needs: how often the network dock polls, and the resolution the
+// remote browser was created at, which is what the viewer sizes its embed
+// frame from so the live view keeps the remote screen's aspect ratio.
 export const BROWSERBASE_LOGS_POLL_INTERVAL_MS =
   CONFIG_BROWSERBASE_LOGS_POLL_INTERVAL_MS;
+
+export const BROWSERBASE_VIEWPORT = {
+  WIDTH: CONFIG_BROWSERBASE_VIEWPORT_WIDTH,
+  HEIGHT: CONFIG_BROWSERBASE_VIEWPORT_HEIGHT,
+} as const;
 
 // SCAN LIMITS SHOWN IN THE UI
 

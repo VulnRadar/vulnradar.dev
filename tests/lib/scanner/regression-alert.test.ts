@@ -42,10 +42,16 @@ function finding(overrides: Partial<Vulnerability> = {}): Vulnerability {
   };
 }
 
-/** Route calls by SQL shape: scan_history lookup vs. feedback lookup. */
+/**
+ * Route calls by SQL shape: the previous-scan lookup, the false-positive
+ * feedback lookup, and the remediation lookup that decides whether the user
+ * has already accepted the risk.
+ */
 function installQueryMock({
   previousFindings = null as Vulnerability[] | null,
   suppressedFindingIds = [] as string[],
+  triagedFindingIds = [] as string[],
+  triageQueryThrows = false,
 } = {}) {
   mockQuery.mockImplementation(async (sql: string) => {
     if (sql.includes("FROM scan_history")) {
@@ -60,6 +66,12 @@ function installQueryMock({
       return {
         rows: suppressedFindingIds.map((finding_id) => ({ finding_id })),
       };
+    }
+    if (sql.includes("FROM finding_remediation")) {
+      if (triageQueryThrows) {
+        throw new Error('relation "finding_remediation" does not exist');
+      }
+      return { rows: triagedFindingIds.map((finding_id) => ({ finding_id })) };
     }
     return { rows: [] };
   });
@@ -253,6 +265,101 @@ describe("checkForNewCriticalOrHighFindings", () => {
     expect(result.hasNewCriticalOrHigh).toBe(false);
     expect(result.newFindings).toEqual([]);
     expect(result.outstandingFindings).toEqual([]);
+  });
+
+  // ── Remediation triage ──────────────────────────────────────────────────
+  //
+  // finding_remediation carried "accepted risk" and "won't fix" and this diff
+  // never read it, so a critical the user had explicitly accepted re-emailed
+  // them on every scheduled run: the exact repeat-notification problem this
+  // module was written to end, one level up.
+
+  it("does not alert on a new critical the user has accepted the risk of", async () => {
+    installQueryMock({
+      previousFindings: [],
+      triagedFindingIds: ["accepted--x"],
+    });
+
+    const result = await checkForNewCriticalOrHighFindings({
+      userId: 1,
+      url: "https://example.com",
+      scanId: 1,
+      currentFindings: [
+        finding({ id: "accepted--x", severity: "critical" }),
+        finding({ id: "real--x", severity: "critical" }),
+      ],
+    });
+
+    expect(result.newFindings.map((f) => f.id)).toEqual(["real--x"]);
+  });
+
+  it("drops a won't-fix finding from 'still outstanding' too", async () => {
+    const wontFix = finding({ id: "wontfix--x", severity: "high" });
+    installQueryMock({
+      previousFindings: [wontFix],
+      triagedFindingIds: ["wontfix--x"],
+    });
+
+    const result = await checkForNewCriticalOrHighFindings({
+      userId: 1,
+      url: "https://example.com",
+      scanId: 2,
+      currentFindings: [wontFix],
+    });
+
+    expect(result.hasNewCriticalOrHigh).toBe(false);
+    expect(result.outstandingFindings).toEqual([]);
+  });
+
+  it("still alerts on a finding the user marked FIXED but that is still detected", async () => {
+    // The one case where the scanner and the user disagree. Silencing it
+    // would hide a regression, so 'fixed' is deliberately not a suppressor.
+    installQueryMock({ previousFindings: [], triagedFindingIds: [] });
+
+    const result = await checkForNewCriticalOrHighFindings({
+      userId: 1,
+      url: "https://example.com",
+      scanId: 1,
+      currentFindings: [finding({ id: "fixed--x", severity: "critical" })],
+    });
+
+    expect(result.hasNewCriticalOrHigh).toBe(true);
+  });
+
+  it("only asks the remediation table for the statuses that mean 'decided'", async () => {
+    installQueryMock({ previousFindings: [] });
+
+    await checkForNewCriticalOrHighFindings({
+      userId: 7,
+      url: "https://example.com/",
+      scanId: 42,
+      currentFindings: [],
+    });
+
+    const call = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("FROM finding_remediation"),
+    );
+    expect(call).toBeDefined();
+    const [sql, params] = call!;
+    expect(sql).toContain("'accepted_risk'");
+    expect(sql).toContain("'wont_fix'");
+    expect(sql).not.toContain("'fixed'");
+    expect(params).toEqual([7, "https://example.com/"]);
+  });
+
+  it("keeps alerting when the remediation table is missing", async () => {
+    // The table postdates this module. A deployment that has not migrated
+    // must keep the alerts it had, not lose them to a failed lookup.
+    installQueryMock({ previousFindings: [], triageQueryThrows: true });
+
+    const result = await checkForNewCriticalOrHighFindings({
+      userId: 1,
+      url: "https://example.com",
+      scanId: 1,
+      currentFindings: [finding({ id: "real--x", severity: "critical" })],
+    });
+
+    expect(result.hasNewCriticalOrHigh).toBe(true);
   });
 
   it("scopes the previous-scan lookup to the same user, URL, and status='completed', excluding the current scan id", async () => {

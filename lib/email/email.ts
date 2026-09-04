@@ -19,6 +19,8 @@ import {
   emailLead,
   emailParagraph,
   emailStrong,
+  emailQuiet,
+  emailQuote,
   emailLink,
   emailButton,
   emailFallbackLink,
@@ -30,7 +32,7 @@ import {
   emailFindingList,
   emailChangeRow,
   severityChipRow,
-  SANS_STACK,
+  emailProse,
   type EmailAccent,
   type EmailDetailRow,
 } from "@/lib/email/layout";
@@ -245,13 +247,135 @@ function layout(
 // module deliberately reads none: the session-details panel and the "if this
 // wasn't you" aside, both of which name SUPPORT_EMAIL.
 
-// Session details for a security notice, as a clean label/value panel. Callers
-// pass a `SecurityAlertDetails`; values are escaped here.
-function securityDetailsBlock(details: SecurityAlertDetails): string {
-  return emailDetailPanel([
+/**
+ * Browsers, most specific token first. Chrome's UA carries "Safari", Edge's
+ * carries both "Chrome" and "Safari", and Opera's carries all three, so the
+ * order here IS the logic: the first match wins and everything below it is a
+ * substring of some UA that already matched.
+ */
+const UA_BROWSERS: [RegExp, string][] = [
+  [/\bEdg(?:e|A|iOS)?\/(\d+)/, "Edge"],
+  [/\bOPR\/(\d+)/, "Opera"],
+  [/\bOpera\/(\d+)/, "Opera"],
+  [/\bSamsungBrowser\/(\d+)/, "Samsung Internet"],
+  [/\bVivaldi\/(\d+)/, "Vivaldi"],
+  [/\bBrave\/(\d+)/, "Brave"],
+  [/\bFirefox\/(\d+)/, "Firefox"],
+  [/\bFxiOS\/(\d+)/, "Firefox"],
+  [/\bCriOS\/(\d+)/, "Chrome"],
+  [/\bChrome\/(\d+)/, "Chrome"],
+  [/\bVersion\/(\d+)[.\d]*\s+(?:Mobile\/\S+\s+)?Safari\//, "Safari"],
+  [/\bcurl\/(\d+)/, "curl"],
+  [/\bPostmanRuntime\/(\d+)/, "Postman"],
+  [/\bpython-requests\/(\d+)/, "python-requests"],
+  [/\bGo-http-client\/(\d+)/, "Go"],
+  [/\bokhttp\/(\d+)/, "OkHttp"],
+];
+
+/** Platforms, likewise most specific first: an iPad reports "Macintosh" too. */
+const UA_PLATFORMS: [RegExp, string][] = [
+  [/\biPad\b/, "iPad"],
+  [/\b(?:iPhone|iPod)\b/, "iPhone"],
+  [/\bAndroid\b/, "Android"],
+  [/\bCrOS\b/, "ChromeOS"],
+  [/\bWindows NT\b/, "Windows"],
+  [/\bWindows\b/, "Windows"],
+  [/\b(?:Mac OS X|Macintosh)\b/, "macOS"],
+  [/\bLinux\b|\bX11\b/, "Linux"],
+];
+
+/**
+ * "Firefox 155 on Windows" from a raw user-agent string.
+ *
+ * The security notices used to print the header verbatim, so the reader of a
+ * "was this you?" email got
+ * `Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:155.0) Gecko/20100101
+ * Firefox/155.0` wrapped over two lines. That is the one line in the message
+ * they have to make a judgement about, and it was the least readable thing in
+ * it. The raw string still ships, as the `hint` under the value, because it is
+ * the form someone comparing against a server log needs.
+ *
+ * Deliberately not a UA-parsing dependency: this needs to name a browser and
+ * an OS well enough for a human to recognise their own session, not to
+ * identify a device.
+ */
+function describeUserAgent(userAgent: string): string {
+  const ua = userAgent.trim();
+  if (!ua) return "Unknown device";
+
+  let browser = "";
+  for (const [pattern, name] of UA_BROWSERS) {
+    const match = pattern.exec(ua);
+    if (match) {
+      browser = match[1] ? `${name} ${match[1]}` : name;
+      break;
+    }
+  }
+  let platform = "";
+  for (const [pattern, name] of UA_PLATFORMS) {
+    if (pattern.test(ua)) {
+      platform = name;
+      break;
+    }
+  }
+
+  if (browser && platform) return `${browser} on ${platform}`;
+  if (browser) return browser;
+  if (platform) return `Unrecognized browser on ${platform}`;
+  // Nothing matched, so the string itself is all there is to show. Kept short:
+  // the full value is still on the row beneath.
+  return ua.length > 48 ? `${ua.slice(0, 45)}...` : ua;
+}
+
+/** The raw header, capped. Long enough for any real UA, short enough that a
+ * hostile one cannot turn the row into a wall of text. */
+const RAW_USER_AGENT_MAX_CHARS = 160;
+
+/**
+ * The "Device" row: what the session looks like to a human, with the exact
+ * header underneath in small type for whoever is diffing against a log.
+ */
+function deviceRow(userAgent: string): EmailDetailRow {
+  const described = describeUserAgent(userAgent);
+  const raw = userAgent.trim();
+  const showRaw = raw && raw !== described;
+  return {
+    label: "Device",
+    value: escapeHtml(described),
+    hint: showRaw
+      ? escapeHtml(
+          raw.length > RAW_USER_AGENT_MAX_CHARS
+            ? `${raw.slice(0, RAW_USER_AGENT_MAX_CHARS - 3)}...`
+            : raw,
+        )
+      : undefined,
+  };
+}
+
+/**
+ * Session details for a security notice, as rows rather than a finished block.
+ *
+ * Most of these templates already open with a panel of their own (which key,
+ * which webhook, which schedule), and appending a second panel gave every one
+ * of them two grey boxes in a row saying "here is some more data". Callers
+ * spread these into their existing panel instead; `securityDetailsBlock`
+ * below is for the ones that have no panel to spread into.
+ */
+function securityDetailRows(details: SecurityAlertDetails): EmailDetailRow[] {
+  return [
     { label: "IP address", value: escapeHtml(details.ipAddress), mono: true },
-    { label: "Device", value: escapeHtml(details.userAgent) },
-  ]);
+    deviceRow(details.userAgent),
+  ];
+}
+
+function securityDetailsBlock(details: SecurityAlertDetails): string {
+  return emailDetailPanel(securityDetailRows(details));
+}
+
+/** The humanised device string for the plain-text part, which has to say the
+ * same thing the HTML says. */
+function textDevice(userAgent: string): string {
+  return describeUserAgent(userAgent);
 }
 
 // The "if this wasn't you" aside shared by the account-change notices. Prose in
@@ -546,7 +670,7 @@ export function contactEmail(input: {
         { label: "Category", value: category },
         { label: "Subject", value: subject },
       ])}
-      ${emailParagraph(message)}
+      ${emailQuote("Message", emailProse(message))}
       ${emailButton(`mailto:${email}`, `Reply to ${name}`)}
     `,
   };
@@ -686,7 +810,7 @@ export function passwordChangedEmail(
   return {
     preheader: securityInfo,
     subject: `Your ${APP_NAME} password was changed`,
-    text: `The password for your ${APP_NAME} account was just changed.\n\n${securityInfo}\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf this wasn't you, change your password and review your active sessions right away, then email ${SUPPORT_EMAIL}.`,
+    text: `The password for your ${APP_NAME} account was just changed.\n\n${securityInfo}\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf this wasn't you, change your password and review your active sessions right away, then email ${SUPPORT_EMAIL}.`,
     html: `
       ${emailHeading("Your password was changed")}
       ${emailLead(`The password for your ${APP_NAME} account was just changed.`)}
@@ -769,11 +893,11 @@ export function landingContactEmail(input: { email: string; message: string }) {
       ${emailLead(`Someone reached out through the ${APP_NAME} landing page.`)}
       ${emailDetailPanel([
         {
-          label: "Email",
+          label: "From",
           value: emailLink(`mailto:${email}`, email),
         },
       ])}
-      ${emailParagraph(message)}
+      ${emailQuote("Message", emailProse(message))}
       ${emailButton(`mailto:${email}`, "Reply")}
     `,
   };
@@ -806,7 +930,7 @@ export function profileNameChangedEmail(
   return {
     preheader: sentence(`${oldName} is now ${newName}`),
     subject: `Your ${APP_NAME} account name was changed`,
-    text: `The name on your ${APP_NAME} account was just updated.\n\nPrevious name: ${oldName}\nNew name: ${newName}\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
+    text: `The name on your ${APP_NAME} account was just updated.\n\nPrevious name: ${oldName}\nNew name: ${newName}\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
     html: `
       ${emailHeading("Your account name was changed")}
       ${emailLead(`The name on your ${APP_NAME} account was just updated.`)}
@@ -817,8 +941,8 @@ export function profileNameChangedEmail(
           value: escapeHtml(newName),
           accent: "ok",
         },
+        ...securityDetailRows(details),
       ])}
-      ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
     `,
   };
@@ -832,7 +956,7 @@ export function profileEmailChangedEmail(
   return {
     preheader: sentence(`${oldEmail} is now ${newEmail}`),
     subject: `Your ${APP_NAME} account email was changed`,
-    text: `The email address on your ${APP_NAME} account was just updated.\n\nPrevious email: ${oldEmail}\nNew email: ${newEmail}\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
+    text: `The email address on your ${APP_NAME} account was just updated.\n\nPrevious email: ${oldEmail}\nNew email: ${newEmail}\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
     html: `
       ${emailHeading("Your account email was changed")}
       ${emailLead(`The email address on your ${APP_NAME} account was just updated.`)}
@@ -843,8 +967,8 @@ export function profileEmailChangedEmail(
           value: escapeHtml(newEmail),
           accent: "ok",
         },
+        ...securityDetailRows(details),
       ])}
-      ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
     `,
   };
@@ -854,7 +978,7 @@ export function profilePasswordChangedEmail(details: SecurityAlertDetails) {
   return {
     preheader: `Changed from ${details.ipAddress}. Review your sessions if that wasn't you.`,
     subject: `Your ${APP_NAME} password was changed`,
-    text: `The password for your ${APP_NAME} account was just updated.\n\nSigned in on a shared device recently? Review your active sessions in profile settings and sign out anything you don't recognize.\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
+    text: `The password for your ${APP_NAME} account was just updated.\n\nSigned in on a shared device recently? Review your active sessions in profile settings and sign out anything you don't recognize.\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
     html: `
       ${emailHeading("Your password was changed")}
       ${emailLead(`The password for your ${APP_NAME} account was just updated.`)}
@@ -872,7 +996,7 @@ export function twoFactorEnabledEmail(details: SecurityAlertDetails) {
     preheader:
       "Sign-in now asks for an authenticator code. Keep your backup codes safe.",
     subject: `Two-factor authentication is on for your ${APP_NAME} account`,
-    text: `Two-factor authentication was just turned on for your ${APP_NAME} account. From now on you'll enter a code from your authenticator app each time you sign in.\n\nKeep your backup codes somewhere safe. They're the way back in if you lose access to your authenticator app.\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
+    text: `Two-factor authentication was just turned on for your ${APP_NAME} account. From now on you'll enter a code from your authenticator app each time you sign in.\n\nKeep your backup codes somewhere safe. They're the way back in if you lose access to your authenticator app.\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
     html: `
       ${emailHeading("Two-factor authentication is on")}
       ${emailLead(`Two-factor authentication was just turned on for your ${APP_NAME} account. From now on you'll enter a code from your authenticator app each time you sign in.`)}
@@ -890,13 +1014,12 @@ export function twoFactorDisabledEmail(details: SecurityAlertDetails) {
     preheader:
       "Sign-in no longer asks for a code. You can turn it back on at any time.",
     subject: `Two-factor authentication is off for your ${APP_NAME} account`,
-    text: `Two-factor authentication was just turned off for your ${APP_NAME} account. Signing in no longer asks for an authenticator code.\n\nTwo-factor authentication is one of the best defenses against a stolen password. You can turn it back on anytime in your security settings.\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
+    text: `Two-factor authentication was just turned off for your ${APP_NAME} account. Signing in no longer asks for an authenticator code.\n\nTwo-factor authentication is one of the best defenses against a stolen password. You can turn it back on anytime in your security settings.\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
     html: `
       ${emailHeading("Two-factor authentication is off")}
       ${emailLead(`Two-factor authentication was just turned off for your ${APP_NAME} account. Signing in no longer asks for an authenticator code.`)}
-      ${emailNote(
+      ${emailParagraph(
         "Two-factor authentication is one of the best defenses against a stolen password. You can turn it back on anytime in your security settings.",
-        "warn",
       )}
       ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
@@ -909,13 +1032,12 @@ export function backupCodesRegeneratedEmail(details: SecurityAlertDetails) {
     preheader:
       "The old codes stopped working the moment the new set was generated.",
     subject: `Your ${APP_NAME} backup codes were regenerated`,
-    text: `A new set of two-factor backup codes was just generated for your ${APP_NAME} account.\n\nYour old backup codes no longer work. Save the new ones somewhere safe, like a password manager.\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
+    text: `A new set of two-factor backup codes was just generated for your ${APP_NAME} account.\n\nYour old backup codes no longer work. Save the new ones somewhere safe, like a password manager.\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
     html: `
       ${emailHeading("Your backup codes were regenerated")}
       ${emailLead(`A new set of two-factor backup codes was just generated for your ${APP_NAME} account.`)}
-      ${emailNote(
+      ${emailParagraph(
         "Your old backup codes no longer work. Save the new ones somewhere safe, like a password manager.",
-        "warn",
       )}
       ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
@@ -933,7 +1055,7 @@ export function apiKeyCreatedEmail(
   return {
     preheader: `${keyName} (${keyPrefix}...) can now call the API on your behalf.`,
     subject: `A new API key was created on your ${APP_NAME} account`,
-    text: `A new API key "${keyName}" was just added to your ${APP_NAME} account.\n\nKey prefix: ${keyPrefix}...\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you didn't create this key, revoke it from your API settings and email ${SUPPORT_EMAIL}.`,
+    text: `A new API key "${keyName}" was just added to your ${APP_NAME} account.\n\nKey prefix: ${keyPrefix}...\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf you didn't create this key, revoke it from your API settings and email ${SUPPORT_EMAIL}.`,
     html: `
       ${emailHeading("A new API key was created")}
       ${emailLead(`A new API key was just added to your ${APP_NAME} account.`)}
@@ -945,8 +1067,8 @@ export function apiKeyCreatedEmail(
           mono: true,
           accent: "brand",
         },
+        ...securityDetailRows(details),
       ])}
-      ${securityDetailsBlock(details)}
       ${emailNote(
         `If you didn't create this key, revoke it from your API settings and email ${supportLink()}.`,
         "warn",
@@ -963,15 +1085,15 @@ export function apiKeyDeletedEmail(
   return {
     preheader: `${keyName} can no longer authenticate. Requests using it now fail.`,
     subject: `An API key was revoked on your ${APP_NAME} account`,
-    text: `The API key "${keyName}" was just revoked on your ${APP_NAME} account. It can no longer be used to authenticate API requests.\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you didn't revoke this key, someone may have access to your account. Change your password and email ${SUPPORT_EMAIL}.`,
+    text: `The API key "${keyName}" was just revoked on your ${APP_NAME} account. It can no longer be used to authenticate API requests.\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf you didn't revoke this key, someone may have access to your account. Change your password and email ${SUPPORT_EMAIL}.`,
     html: `
       ${emailHeading("An API key was revoked")}
       ${emailLead(`The API key "${safeName}" was just revoked on your ${APP_NAME} account. It can no longer be used to authenticate API requests.`)}
       ${emailDetailPanel([
         { label: "Key name", value: safeName },
         { label: "Status", value: "Revoked", accent: "bad" },
+        ...securityDetailRows(details),
       ])}
-      ${securityDetailsBlock(details)}
       ${emailNote(
         `If you didn't revoke this key, someone may have access to your account. Change your password and email ${supportLink()}.`,
         "bad",
@@ -992,7 +1114,7 @@ export function webhookCreatedEmail(
   return {
     preheader: `${webhookName} (${webhookType}) will receive scan events from now on.`,
     subject: `A webhook was created on your ${APP_NAME} account`,
-    text: `A new ${webhookType} webhook "${webhookName}" was just added to your ${APP_NAME} account.\n\nEndpoint: ${webhookUrl}\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you didn't create this webhook, delete it from your webhook settings.`,
+    text: `A new ${webhookType} webhook "${webhookName}" was just added to your ${APP_NAME} account.\n\nEndpoint: ${webhookUrl}\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf you didn't create this webhook, delete it from your webhook settings.`,
     html: `
       ${emailHeading("A webhook was created")}
       ${emailLead(`A new webhook was just added to your ${APP_NAME} account.`)}
@@ -1000,8 +1122,8 @@ export function webhookCreatedEmail(
         { label: "Webhook name", value: safeName },
         { label: "Type", value: safeType, accent: "brand" },
         { label: "Endpoint", value: escapeHtml(webhookUrl), mono: true },
+        ...securityDetailRows(details),
       ])}
-      ${securityDetailsBlock(details)}
       ${emailNote(
         "If you didn't create this webhook, delete it from your webhook settings.",
         "warn",
@@ -1018,15 +1140,15 @@ export function webhookDeletedEmail(
   return {
     preheader: `${webhookName} will not receive scan events any more.`,
     subject: `A webhook was deleted from your ${APP_NAME} account`,
-    text: `The webhook "${webhookName}" was just removed from your ${APP_NAME} account. It will no longer receive scan events.\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you didn't delete this webhook, review your account activity and change your password.`,
+    text: `The webhook "${webhookName}" was just removed from your ${APP_NAME} account. It will no longer receive scan events.\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf you didn't delete this webhook, review your account activity and change your password.`,
     html: `
       ${emailHeading("A webhook was deleted")}
       ${emailLead(`The webhook "${safeName}" was just removed from your ${APP_NAME} account. It will no longer receive scan events.`)}
       ${emailDetailPanel([
         { label: "Webhook name", value: safeName },
         { label: "Status", value: "Deleted", accent: "bad" },
+        ...securityDetailRows(details),
       ])}
-      ${securityDetailsBlock(details)}
       ${emailNote(
         "If you didn't delete this webhook, review your account activity and change your password.",
         "warn",
@@ -1094,7 +1216,7 @@ export function scheduleCreatedEmail(
   return {
     preheader: `${frequencyLabel} scans of ${url}, starting from the next run.`,
     subject: `Scheduled scan created for ${hostOf(url)}`,
-    text: `A new recurring scan of ${url} was just added to your ${APP_NAME} account, running ${frequency}.\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you didn't set this up, delete it from your profile.`,
+    text: `A new recurring scan of ${url} was just added to your ${APP_NAME} account, running ${frequency}.\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf you didn't set this up, delete it from your profile.`,
     html: `
       ${emailHeading("Scheduled scan created")}
       ${emailLead(`A new recurring scan was just added to your ${APP_NAME} account.`)}
@@ -1106,8 +1228,8 @@ export function scheduleCreatedEmail(
           accent: "brand",
         },
         { label: "Frequency", value: frequencyLabel },
+        ...securityDetailRows(details),
       ])}
-      ${securityDetailsBlock(details)}
       ${emailNote(
         "If you didn't set this up, delete it from your profile.",
         "warn",
@@ -1124,7 +1246,7 @@ export function scheduleDeletedEmail(
   return {
     preheader: `No more automatic scans of ${url}.`,
     subject: `Scheduled scan deleted for ${hostOf(url)}`,
-    text: `The recurring scan of ${url} was just removed from your ${APP_NAME} account.\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}`,
+    text: `The recurring scan of ${url} was just removed from your ${APP_NAME} account.\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}`,
     html: `
       ${emailHeading("Scheduled scan deleted")}
       ${emailLead(`A recurring scan was just removed from your ${APP_NAME} account.`)}
@@ -1136,8 +1258,8 @@ export function scheduleDeletedEmail(
           accent: "brand",
         },
         { label: "Status", value: "Deleted", accent: "bad" },
+        ...securityDetailRows(details),
       ])}
-      ${securityDetailsBlock(details)}
     `,
   };
 }
@@ -1189,22 +1311,18 @@ export function dataRequestCreatedEmail(
     preheader:
       "We have 30 days to complete it, and we'll email you the moment it's done.",
     subject: `We received your ${typeLabel.toLowerCase()} request`,
-    text: `Your ${typeLabel.toLowerCase()} request for your ${APP_NAME} account has been received and is queued for review.\n\nWe'll process this within 30 days, as required by GDPR and similar privacy rules. You'll get another email when it's done.\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you didn't make this request, contact support right away.`,
+    text: `Your ${typeLabel.toLowerCase()} request for your ${APP_NAME} account has been received and is queued for review.\n\nWe'll process this within 30 days, as required by GDPR and similar privacy rules. You'll get another email when it's done.\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf you didn't make this request, contact support right away.`,
     html: `
       ${emailHeading(`${typeLabel} request received`)}
       ${emailLead(`Your ${typeLabel.toLowerCase()} request has been received and is queued for review.`)}
-      ${emailDetailPanel([
-        { label: "Request type", value: typeLabel },
-        {
-          label: "Status",
-          value: "Pending review",
-          accent: "warn",
-        },
-      ])}
       ${emailParagraph(
         "We'll process this within 30 days, as required by GDPR and similar privacy rules. You'll get another email when it's done.",
       )}
-      ${securityDetailsBlock(details)}
+      ${emailDetailPanel([
+        { label: "Request type", value: typeLabel },
+        { label: "Status", value: "Pending review", accent: "warn" },
+        ...securityDetailRows(details),
+      ])}
       ${securityWarningBlock()}
     `,
   };
@@ -1219,14 +1337,14 @@ export function newLoginEmail(
   return {
     preheader: `${location}, ${ipAddress}. Nothing to do if that was you.`,
     subject: `New sign-in to your ${APP_NAME} account`,
-    text: `Your ${APP_NAME} account was just accessed.\n\nLocation: ${location}\nIP address: ${ipAddress}\nDevice: ${details.userAgent}\n\nIf that was you, there's nothing to do. If it wasn't, change your password and review your active sessions right away.`,
+    text: `Your ${APP_NAME} account was just accessed.\n\nLocation: ${location}\nIP address: ${ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf that was you, there's nothing to do. If it wasn't, change your password and review your active sessions right away.`,
     html: `
       ${emailHeading("New sign-in to your account")}
       ${emailLead(`Your ${APP_NAME} account was just accessed. If that was you, there's nothing to do.`)}
       ${emailDetailPanel([
         { label: "Location", value: escapeHtml(location) },
         { label: "IP address", value: escapeHtml(ipAddress), mono: true },
-        { label: "Device", value: escapeHtml(details.userAgent) },
+        deviceRow(details.userAgent),
       ])}
       ${securityWarningBlock()}
     `,
@@ -1241,14 +1359,14 @@ export function failedLoginAttemptsEmail(
   return {
     preheader: `${attempts} attempts from ${ipAddress}, all blocked. Your account is fine.`,
     subject: `Failed sign-in attempts on your ${APP_NAME} account`,
-    text: `We blocked ${attempts} failed sign-in attempts on your ${APP_NAME} account in a short window. Your account is protected for now.\n\nFailed attempts: ${attempts}\nIP address: ${ipAddress}\nDevice: ${details.userAgent}\n\nIf that was you, no action is needed. If not, change your password and turn on two-factor authentication now.`,
+    text: `We blocked ${attempts} failed sign-in attempts on your ${APP_NAME} account in a short window. Your account is protected for now.\n\nFailed attempts: ${attempts}\nIP address: ${ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf that was you, no action is needed. If not, change your password and turn on two-factor authentication now.`,
     html: `
       ${emailHeading("Repeated failed sign-in attempts")}
       ${emailLead(`We blocked ${attempts} failed sign-in attempts on your ${APP_NAME} account in a short window. Your account is protected for now.`)}
       ${emailDetailPanel([
         { label: "Failed attempts", value: String(attempts) },
         { label: "IP address", value: escapeHtml(ipAddress), mono: true },
-        { label: "Device", value: escapeHtml(details.userAgent) },
+        deviceRow(details.userAgent),
       ])}
       ${emailNote(
         "If that was you, no action is needed. If not, change your password and turn on two-factor authentication now.",
@@ -1404,7 +1522,7 @@ export function email2FAEnabledEmail(details: SecurityAlertDetails) {
   return {
     preheader: "Each sign-in now sends a verification code to this address.",
     subject: `Email two-factor authentication is on for your ${APP_NAME} account`,
-    text: `Email-based two-factor authentication was just turned on for your ${APP_NAME} account. You'll get a verification code by email each time you sign in.\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
+    text: `Email-based two-factor authentication was just turned on for your ${APP_NAME} account. You'll get a verification code by email each time you sign in.\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
     html: `
       ${emailHeading("Email two-factor authentication is on")}
       ${emailLead(`Email-based two-factor authentication was just turned on for your ${APP_NAME} account. You'll get a verification code by email each time you sign in.`)}
@@ -1418,13 +1536,12 @@ export function email2FADisabledEmail(details: SecurityAlertDetails) {
   return {
     preheader: "Sign-in no longer sends a verification code to this address.",
     subject: `Email two-factor authentication is off for your ${APP_NAME} account`,
-    text: `Email-based two-factor authentication was just turned off for your ${APP_NAME} account. Signing in no longer sends a verification code by email.\n\nTwo-factor authentication makes a stolen password much harder to use. You can turn it back on anytime in your security settings.\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
+    text: `Email-based two-factor authentication was just turned off for your ${APP_NAME} account. Signing in no longer sends a verification code by email.\n\nTwo-factor authentication makes a stolen password much harder to use. You can turn it back on anytime in your security settings.\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf this wasn't you, change your password and review your active sessions right away.`,
     html: `
       ${emailHeading("Email two-factor authentication is off")}
       ${emailLead(`Email-based two-factor authentication was just turned off for your ${APP_NAME} account. Signing in no longer sends a verification code by email.`)}
-      ${emailNote(
+      ${emailParagraph(
         "Two-factor authentication makes a stolen password much harder to use. You can turn it back on anytime in your security settings.",
-        "warn",
       )}
       ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
@@ -1634,16 +1751,8 @@ export function criticalFindingsEmail(
     }\nThese pose real risk. Review and fix them as soon as you can. View the report: ${viewLink}`,
     html: `
       ${emailHeading("New critical and high findings")}
-      ${emailLead(`Your latest scan of this target turned up ${newFindings.length} new critical or high severity ${newWord} since last time. These are worth looking at now.`)}
+      ${emailLead(`Your latest scan of ${emailStrong(safeUrl)} turned up ${newFindings.length} new critical or high severity ${newWord} since last time. These are worth looking at now.`)}
       ${severityChipRow({ critical: newCritical, high: newHigh })}
-      ${emailDetailPanel([
-        {
-          label: "Target",
-          value: safeUrl,
-          mono: true,
-          accent: "brand",
-        },
-      ])}
       ${listBlock("New since your last scan", newFindings)}
       ${
         outstandingFindings.length > 0
@@ -1835,12 +1944,15 @@ export function postureDigestEmail(data: PostureDigestData) {
           ...(newFindingsTotal > 0 ? { accent: "bad" as const } : {}),
         },
         {
+          // The trend used to be a callout under this panel repeating the two
+          // numbers the panel already carried, which on a quiet week meant
+          // two green boxes in a row saying the same thing. The previous
+          // count belongs next to the current one.
           label: "Open now",
-          value: `${currentOpenCount}`,
+          value: `${currentOpenCount} ${emailQuiet(`(was ${previousOpenCount})`)}`,
           accent: trend_.accent,
         },
       ])}
-      ${emailNote(`${trend_.label}: ${previousOpenCount} to ${currentOpenCount} since your last digest.`, trend_.accent)}
       ${findingsBlock}
       ${emailButton(`${APP_URL}/history`, "View scan history")}
     `;
@@ -1883,19 +1995,14 @@ export function adminAccountChangeEmail(input: AdminChangeNotification) {
   return {
     preheader: `${input.changes.length} field${input.changes.length === 1 ? "" : "s"} changed by ${input.adminName}.`,
     subject: `An administrator updated your ${APP_NAME} account`,
-    text: `Hi ${input.userName},\n\nAn administrator (${input.adminName}) changed some details on your ${APP_NAME} account.\n\nChanges:\n${changesText}\n\nWhen: ${timestamp}\n\nIf any of this looks wrong, reach the team at ${SUPPORT_EMAIL}.`,
+    text: `Hi ${input.userName},\n\nAn administrator (${input.adminName}) changed some details on your ${APP_NAME} account on ${timestamp}.\n\nChanges:\n${changesText}\n\nIf any of this looks wrong, reach the team at ${SUPPORT_EMAIL}.`,
     html: `
       ${emailHeading("Your account was updated")}
-      ${emailLead(`Hi ${userName}, an administrator changed some details on your ${APP_NAME} account.`)}
-
+      ${emailLead(`Hi ${userName}, ${emailStrong(adminName)} changed some details on your ${APP_NAME} account on ${escapeHtml(timestamp)}.`)}
       ${emailPanel(
         "Changes",
         `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">${changesHtml}</table>`,
       )}
-      ${emailDetailPanel([
-        { label: "Changed by", value: adminName },
-        { label: "When", value: escapeHtml(timestamp) },
-      ])}
       ${emailParagraph(
         `If any of this looks wrong, reach the team at ${supportLink()}.`,
       )}
@@ -2139,7 +2246,7 @@ export function sessionRevokedEmail(details: SecurityAlertDetails) {
   return {
     preheader: `Signed out from ${details.ipAddress}. Sign in again on each device.`,
     subject: `You were signed out of every ${APP_NAME} session`,
-    text: `Every active session on your ${APP_NAME} account was just signed out. You'll need to sign in again on each device.\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you didn't do this, change your password and turn on two-factor authentication right away, then email ${SUPPORT_EMAIL}.`,
+    text: `Every active session on your ${APP_NAME} account was just signed out. You'll need to sign in again on each device.\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf you didn't do this, change your password and turn on two-factor authentication right away, then email ${SUPPORT_EMAIL}.`,
     html: `
       ${emailHeading("You were signed out everywhere")}
       ${emailLead(`Every active session on your ${APP_NAME} account was just signed out. You'll need to sign in again on each device.`)}
@@ -2306,11 +2413,10 @@ export function loginMethodChangedEmail(
   return {
     subject: `${providerLabel} was ${verb} your ${APP_NAME} account`,
     preheader: consequence,
-    text: `${providerLabel} was just ${verb} your ${APP_NAME} account.\n\n${consequence}\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf this wasn't you, change your password and review your active sessions right away, then email ${SUPPORT_EMAIL}.`,
+    text: `${providerLabel} was just ${verb} your ${APP_NAME} account.\n\n${consequence}\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf this wasn't you, change your password and review your active sessions right away, then email ${SUPPORT_EMAIL}.`,
     html: `
       ${emailHeading(connected ? "A sign-in method was added" : "A sign-in method was removed")}
-      ${emailLead(`${emailStrong(safeProvider)} was just ${verb} your ${APP_NAME} account.`)}
-      ${emailNote(escapeHtml(consequence), connected ? "brand" : "warn")}
+      ${emailLead(`${emailStrong(safeProvider)} was just ${verb} your ${APP_NAME} account. ${escapeHtml(consequence)}`)}
       ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
     `,
@@ -2329,19 +2435,15 @@ export function apiKeyBindingResetEmail(
   return {
     subject: `The IP lock on an API key was removed`,
     preheader: `${keyName} will now accept requests from any address.`,
-    text: `The IP binding on your API key "${keyName}" was just cleared. The key will now accept requests from any address, and re-binds to the first one it sees.\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you didn't do this, revoke the key from your API settings and email ${SUPPORT_EMAIL}.`,
+    text: `The IP binding on your API key "${keyName}" was just cleared. The key will now accept requests from any address, and re-binds to the first one it sees.\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nIf you didn't do this, revoke the key from your API settings and email ${SUPPORT_EMAIL}.`,
     html: `
       ${emailHeading("An API key's IP lock was removed")}
-      ${emailLead(`The IP binding on your API key "${safeName}" was just cleared.`)}
+      ${emailLead(`The IP binding on your API key "${safeName}" was just cleared. It now accepts requests from any address, and re-binds to the first one it sees.`)}
       ${emailDetailPanel([
         { label: "Key name", value: safeName },
         { label: "Binding", value: "Cleared", accent: "warn" },
+        ...securityDetailRows(details),
       ])}
-      ${emailNote(
-        "The key now accepts requests from any address, and re-binds to the first one it sees.",
-        "warn",
-      )}
-      ${securityDetailsBlock(details)}
       ${emailNote(
         `If you didn't do this, revoke the key from your API settings and email ${supportLink()}.`,
         "bad",
@@ -2362,7 +2464,7 @@ export function webhookSecretRotatedEmail(
   return {
     subject: `The signing secret for a webhook was rotated`,
     preheader: `${webhookName} deliveries fail signature checks until you update the receiver.`,
-    text: `The signing secret for your webhook "${webhookName}" was just rotated.\n\nAny receiver still verifying with the old secret will reject deliveries. Copy the new secret from your webhook settings and update it there.\n\nIP address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nManage webhooks: ${manageUrl}`,
+    text: `The signing secret for your webhook "${webhookName}" was just rotated.\n\nAny receiver still verifying with the old secret will reject deliveries. Copy the new secret from your webhook settings and update it there.\n\nIP address: ${details.ipAddress}\nDevice: ${textDevice(details.userAgent)}\n\nManage webhooks: ${manageUrl}`,
     html: `
       ${emailHeading("A webhook signing secret was rotated")}
       ${emailLead(`The signing secret for your webhook "${safeName}" was just rotated.`)}
@@ -2470,10 +2572,13 @@ export function creditRefundEmail(
 // in the product that did not look like the product.
 // ---------------------------------------------------------------------------
 
+// The ticket text itself, as a quote rather than a panel. It used to be a
+// second grey box stacked under the metadata one, which made the sender's own
+// sentences look like one more exported field.
 function ticketBodyBlock(body: string): string {
-  return emailPanel(
+  return emailQuote(
     "Message",
-    `<div class="v-t" style="font-family:${SANS_STACK};font-size:14px;line-height:1.65;">${escapeHtml(body).replace(/\n/g, "<br />")}</div>`,
+    emailProse(escapeHtml(body).replace(/\n/g, "<br />")),
   );
 }
 

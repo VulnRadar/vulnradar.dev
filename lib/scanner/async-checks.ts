@@ -59,11 +59,27 @@ import {
   checkNsProviderConcentration,
   checkWildcardDns,
   checkNullMxRecommended,
+  checkDnssecAlgorithmStrength,
+  checkDsDigestAlgorithm,
+  checkNsecParameters,
+  checkCnameChain,
+  checkCaaIodef,
+  checkVerificationTokenSprawl,
 } from "@/lib/scanner/checks/dns";
+import {
+  checkSpfRecordQuality,
+  checkDmarcReporting,
+  checkDkimSelectorFlags,
+  checkBimiVmc,
+  checkMxIpLiteral,
+  checkMtaStsPolicyContent,
+} from "@/lib/scanner/checks/email";
 import {
   checkHttpUpgradeToHttps,
   checkTlsCertChainCompleteness,
   checkOcspStapling,
+  checkTlsHandshakeDetails,
+  checkLegacyTlsProtocolAccepted,
 } from "@/lib/scanner/checks/tls";
 
 /**
@@ -4540,6 +4556,15 @@ export type AsyncBranchScope = "all" | "host" | "page";
  */
 type AsyncBranch = { label: string; run: () => Promise<Vulnerability[]> };
 
+/**
+ * Ceiling for the DNSSEC-parameter / zone-hygiene / email-policy group that
+ * runs alongside checkDNSSecurity in the "dns" branch. Deliberately well
+ * below CONFIG_SCANNER_ASYNC_BRANCH_TIMEOUT_MS (12s): those probes are
+ * additive, and a slow one must never take the branch's established checks
+ * down with it. See the call site in buildBranches.
+ */
+const EXTENDED_DNS_BUDGET_MS = 8000;
+
 function buildBranches(
   url: string,
   categories?: string[] | null,
@@ -4566,7 +4591,56 @@ function buildBranches(
 
   // DNS checks map to "dns" category (SPF, DMARC, DKIM, DNSSEC)
   if (wantsHost && (runAll || allowed!.has("dns"))) {
-    branches.push({ label: "dns", run: () => checkDNSSecurity(hostname, url) });
+    branches.push({
+      label: "dns",
+      run: () =>
+        Promise.allSettled([
+          checkDNSSecurity(hostname, url),
+          // The DNSSEC-parameter, zone-hygiene and email-policy-content
+          // probes in checks/dns.ts and checks/email.ts. They run in their
+          // own withDnsMemo scope rather than checkDNSSecurity's, because
+          // that one is opened inside checkDNSSecurity and a nested scope
+          // would not be shared either way; the memo still collapses the
+          // repeats WITHIN this group, which is where they are (four of
+          // these read the same apex TXT set).
+          //
+          // Raced against a budget well under the branch ceiling. Several of
+          // these are two- or three-round probes (SPF include chains, the
+          // DMARC report authorization lookup, MTA-STS policy fetch then MX),
+          // so their worst case is a multiple of one DNS timeout. Without
+          // this race that worst case would take the WHOLE dns branch past
+          // SCANNER_ASYNC_BRANCH_TIMEOUT_MS and discard checkDNSSecurity's 28
+          // sub-checks along with it: a slow resolver would cost the scan the
+          // findings it already had. Timing out here costs only this group.
+          Promise.race([
+            withDnsMemo(() =>
+              Promise.allSettled([
+                checkDnssecAlgorithmStrength(hostname, url),
+                checkDsDigestAlgorithm(hostname, url),
+                checkNsecParameters(hostname, url),
+                checkCnameChain(hostname, url),
+                checkCaaIodef(hostname, url),
+                checkVerificationTokenSprawl(hostname, url),
+                checkSpfRecordQuality(hostname, url),
+                checkDmarcReporting(hostname, url),
+                checkDkimSelectorFlags(hostname, url),
+                checkBimiVmc(hostname, url),
+                checkMxIpLiteral(hostname, url),
+                checkMtaStsPolicyContent(hostname, url),
+              ]).then((results) =>
+                results.flatMap((r) =>
+                  r.status === "fulfilled" ? r.value : [],
+                ),
+              ),
+            ),
+            new Promise<Vulnerability[]>((resolve) =>
+              setTimeout(() => resolve([]), EXTENDED_DNS_BUDGET_MS),
+            ),
+          ]),
+        ]).then((results) =>
+          results.flatMap((r) => (r.status === "fulfilled" ? r.value : [])),
+        ),
+    });
   }
 
   // TLS checks map to "ssl" or "tls" category. The `ssl` category
@@ -4597,6 +4671,10 @@ function buildBranches(
               checkHttpUpgradeToHttps(httpVariantUrl),
               checkTlsCertChainCompleteness(hostname, url),
               checkOcspStapling(hostname, url),
+              // One handshake, ten certificate/negotiation checks, plus a
+              // second handshake that offers only TLS 1.0/1.1.
+              checkTlsHandshakeDetails(hostname, url),
+              checkLegacyTlsProtocolAccepted(hostname, url),
             ]).then((results) =>
               results.flatMap((r) => (r.status === "fulfilled" ? r.value : [])),
             )

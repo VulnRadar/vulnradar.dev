@@ -141,7 +141,7 @@
       "https://github.com/teamplanes/graphql-rate-limit",
       "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/"
     ],
-    "_idx": 4,
+    "_idx": 3,
     "cwe": "CWE-799",
     "owasp": "A04:2021"
   },
@@ -176,7 +176,7 @@
       "https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/",
       "https://spec.openapis.org/oas/v3.1.0#server-object"
     ],
-    "_idx": 6,
+    "_idx": 4,
     "cwe": "CWE-200",
     "owasp": "A05:2021"
   },
@@ -210,7 +210,7 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Max-Age",
       "https://fetch.spec.whatwg.org/#http-cors-protocol"
     ],
-    "_idx": 7
+    "_idx": 5
   },
   {
     "id": "api-bearer-header-leak",
@@ -243,7 +243,7 @@
       "https://datatracker.ietf.org/doc/html/rfc6750#section-2.3",
       "https://owasp.org/API-Security/editions/2023/en/0xa2-broken-authentication/"
     ],
-    "_idx": 8,
+    "_idx": 6,
     "cwe": "CWE-598",
     "owasp": "A02:2021"
   },
@@ -273,7 +273,7 @@
       "https://portswigger.net/web-security/cors/same-origin-policy",
       "https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html"
     ],
-    "_idx": 11,
+    "_idx": 7,
     "cwe": "CWE-352",
     "owasp": "A01:2021"
   },
@@ -303,7 +303,7 @@
       "https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/",
       "https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html"
     ],
-    "_idx": 13,
+    "_idx": 8,
     "cwe": "CWE-862",
     "owasp": "A01:2021"
   },
@@ -333,7 +333,7 @@
       "https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/",
       "https://datatracker.ietf.org/doc/html/rfc7396"
     ],
-    "_idx": 14,
+    "_idx": 9,
     "cwe": "CWE-862",
     "owasp": "A01:2021"
   },
@@ -368,7 +368,7 @@
       "https://httpwg.org/specs/rfc9110.html#OPTIONS",
       "https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html"
     ],
-    "_idx": 15,
+    "_idx": 10,
     "cwe": "CWE-200",
     "owasp": "A05:2021"
   },
@@ -403,7 +403,7 @@
       "https://graphql.org/learn/introspection/",
       "https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/"
     ],
-    "_idx": 16,
+    "_idx": 11,
     "cwe": "CWE-200",
     "owasp": "A05:2021"
   },
@@ -438,7 +438,7 @@
       "https://www.apollographql.com/blog/batching-client-graphql-queries/",
       "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/"
     ],
-    "_idx": 17,
+    "_idx": 12,
     "cwe": "CWE-799",
     "owasp": "A04:2021"
   },
@@ -468,7 +468,7 @@
       "https://www.apollographql.com/docs/apollo-server/security/errors/",
       "https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/"
     ],
-    "_idx": 19,
+    "_idx": 13,
     "cwe": "CWE-209",
     "owasp": "A05:2021"
   },
@@ -498,7 +498,7 @@
       "https://swagger.io/docs/specification/authentication/",
       "https://owasp.org/API-Security/editions/2023/en/0xa2-broken-authentication/"
     ],
-    "_idx": 21,
+    "_idx": 14,
     "cwe": "CWE-287",
     "owasp": "A07:2021"
   },
@@ -528,7 +528,7 @@
       "https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/",
       "https://cheatsheetseries.owasp.org/cheatsheets/Mass_Assignment_Cheat_Sheet.html"
     ],
-    "_idx": 22
+    "_idx": 15
   },
   {
     "id": "api-jwt-hs256-weak-secret",
@@ -561,7 +561,7 @@
       "https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/",
       "https://datatracker.ietf.org/doc/html/rfc8725"
     ],
-    "_idx": 24,
+    "_idx": 16,
     "cwe": "CWE-326",
     "owasp": "A02:2021"
   },
@@ -591,7 +591,7 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Max-Age",
       "https://fetch.spec.whatwg.org/#http-cors-protocol"
     ],
-    "_idx": 28
+    "_idx": 17
   },
   {
     "id": "api-rate-limit-per-ip-no-auth",
@@ -619,7 +619,7 @@
       "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/",
       "https://cheatsheetseries.owasp.org/cheatsheets/Denial_of_Service_Cheat_Sheet.html"
     ],
-    "_idx": 29,
+    "_idx": 18,
     "cwe": "CWE-799",
     "owasp": "A04:2021"
   },
@@ -649,7 +649,7 @@
       "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/",
       "https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-ratelimit-headers"
     ],
-    "_idx": 30
+    "_idx": 19
   },
   {
     "id": "api-soap-soapaction-injection",
@@ -677,7 +677,7 @@
       "https://owasp.org/www-community/attacks/Server_Side_Request_Forgery",
       "https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html"
     ],
-    "_idx": 31,
+    "_idx": 20,
     "cwe": "CWE-918",
     "owasp": "A10:2021"
   },
@@ -712,7 +712,7 @@
       "https://owasp.org/www-community/vulnerabilities/XML_External_Entity_Processing",
       "https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html"
     ],
-    "_idx": 32,
+    "_idx": 21,
     "cwe": "CWE-611",
     "owasp": "A05:2021"
   },
@@ -747,7 +747,7 @@
       "https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/",
       "https://cheatsheetseries.owasp.org/cheatsheets/Web_Service_Security_Cheat_Sheet.html"
     ],
-    "_idx": 33,
+    "_idx": 22,
     "cwe": "CWE-200",
     "owasp": "A05:2021"
   },
@@ -782,7 +782,7 @@
       "https://portswigger.net/web-security/websockets/cross-site-websocket-hijacking",
       "https://owasp.org/API-Security/editions/2023/en/0xa2-broken-authentication/"
     ],
-    "_idx": 34,
+    "_idx": 23,
     "cwe": "CWE-346",
     "owasp": "A05:2021"
   },
@@ -812,7 +812,7 @@
       "https://cheatsheetseries.owasp.org/cheatsheets/Mass_Assignment_Cheat_Sheet.html",
       "https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/"
     ],
-    "_idx": 38,
+    "_idx": 24,
     "cwe": "CWE-915",
     "owasp": "A08:2021"
   },
@@ -848,7 +848,8 @@
       "https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-ratelimit-headers"
     ],
     "cwe": "CWE-799",
-    "owasp": "A04:2021"
+    "owasp": "A04:2021",
+    "_idx": 25
   },
   {
     "id": "options-method-exposed",
@@ -882,7 +883,8 @@
       "https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/"
     ],
     "cwe": "CWE-200",
-    "owasp": "A05:2021"
+    "owasp": "A05:2021",
+    "_idx": 26
   },
   {
     "id": "soap-endpoint",
@@ -912,7 +914,8 @@
       "https://cheatsheetseries.owasp.org/cheatsheets/Web_Service_Security_Cheat_Sheet.html"
     ],
     "cwe": "CWE-611",
-    "owasp": "A05:2021"
+    "owasp": "A05:2021",
+    "_idx": 27
   },
   {
     "id": "xml-rpc",
@@ -951,7 +954,8 @@
       "https://wordpress.org/documentation/article/xml-rpc-support/"
     ],
     "cwe": "CWE-611",
-    "owasp": "A05:2021"
+    "owasp": "A05:2021",
+    "_idx": 28
   },
   {
     "id": "trace-method-enabled",
@@ -991,7 +995,8 @@
       "https://httpwg.org/specs/rfc9110.html#TRACE"
     ],
     "cwe": "CWE-16",
-    "owasp": "A05:2021"
+    "owasp": "A05:2021",
+    "_idx": 29
   },
   {
     "id": "api-jwt-jku-x5u-header-claim",
@@ -1024,7 +1029,7 @@
       "https://datatracker.ietf.org/doc/html/rfc7515#section-4.1.2",
       "https://www.rfc-editor.org/rfc/rfc8725#section-3.7"
     ],
-    "_idx": 39,
+    "_idx": 30,
     "cwe": "CWE-347",
     "owasp": "A02:2021"
   },
@@ -1054,7 +1059,7 @@
       "https://datatracker.ietf.org/doc/html/rfc7636",
       "https://datatracker.ietf.org/doc/html/rfc9700"
     ],
-    "_idx": 40,
+    "_idx": 31,
     "cwe": "CWE-294",
     "owasp": "A07:2021"
   },
@@ -1083,7 +1088,7 @@
       "https://datatracker.ietf.org/doc/html/rfc9700",
       "https://oauth.net/2/grant-types/implicit/"
     ],
-    "_idx": 41,
+    "_idx": 32,
     "cwe": "CWE-522",
     "owasp": "A07:2021"
   },
@@ -1113,7 +1118,7 @@
       "https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html",
       "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
     ],
-    "_idx": 42,
+    "_idx": 33,
     "cwe": "CWE-209",
     "owasp": "A05:2021"
   },
@@ -1143,7 +1148,7 @@
       "https://datatracker.ietf.org/doc/html/rfc8594",
       "https://datatracker.ietf.org/doc/html/rfc9745"
     ],
-    "_idx": 43
+    "_idx": 34
   },
   {
     "id": "api-graphql-introspection-mutation-heavy",
@@ -1171,8 +1176,962 @@
       "https://graphql.org/learn/introspection/",
       "https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/"
     ],
-    "_idx": 44,
+    "_idx": 35,
     "cwe": "CWE-200",
     "owasp": "A05:2021"
+  },
+  {
+    "id": "api-graphql-ide-exposed",
+    "type": "body-pattern",
+    "title": "GraphQL IDE served in production",
+    "category": "api",
+    "severity": "medium",
+    "description": "This endpoint serves an interactive GraphQL IDE: a schema browser and a query editor for this API. GraphiQL, GraphQL Playground, Apollo Sandbox, Voyager and the Hasura console are all development tools, and every one of them is meant to be switched off outside development.",
+    "evidence": "The response body at {{url}} loads an interactive GraphQL IDE bundle.",
+    "riskImpact": "The IDE gives anyone who finds the endpoint a full schema browser plus a request builder pointed at your production API, with your visitor's own cookies attached. Enumerating the write surface, discovering fields the frontend never calls, and iterating on an authorization bypass all stop needing any tooling of the attacker's own.",
+    "explanation": "The detector matches structural markers only: the IDE's own bundle filename, its document title, or the function that renders it (GraphiQL.createFetcher, renderGraphiQL, ApolloServerPluginLandingPage). A page that mentions these products in prose does not match, so documentation and marketing pages do not fire it. Note that serving the IDE and enabling introspection are separate switches: turning off one does not turn off the other.",
+    "fixSteps": [
+      "Disable the IDE plugin in production. In Apollo Server, pass ApolloServerPluginLandingPageDisabled() rather than relying on NODE_ENV alone.",
+      "In express-graphql / graphql-http, set graphiql to false when the environment is not development.",
+      "For Hasura, do not deploy with HASURA_GRAPHQL_ENABLE_CONSOLE=true; run the console locally against the remote endpoint instead.",
+      "Disable schema introspection at the same time, since the IDE and introspection are controlled independently."
+    ],
+    "codeExamples": [
+      {
+        "label": "Apollo Server: disable the landing page in production",
+        "language": "typescript",
+        "code": "import {\n  ApolloServerPluginLandingPageDisabled,\n  ApolloServerPluginLandingPageLocalDefault,\n} from '@apollo/server/plugin/landingPage/default';\n\nconst isProd = process.env.NODE_ENV === 'production';\n\nnew ApolloServer({\n  schema,\n  introspection: !isProd,\n  plugins: [\n    isProd\n      ? ApolloServerPluginLandingPageDisabled()\n      : ApolloServerPluginLandingPageLocalDefault(),\n  ],\n});"
+      },
+      {
+        "label": "graphql-http: gate GraphiQL on the environment",
+        "language": "javascript",
+        "code": "app.all(\n  '/graphql',\n  createHandler({\n    schema,\n    graphiql: process.env.NODE_ENV !== 'production',\n  }),\n);"
+      }
+    ],
+    "references": [
+      "https://www.apollographql.com/docs/apollo-server/api/plugin/landing-pages/",
+      "https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html"
+    ],
+    "cwe": "CWE-489",
+    "owasp": "A05:2021",
+    "_idx": 36
+  },
+  {
+    "id": "api-graphql-schema-sdl-exposed",
+    "type": "body-pattern",
+    "title": "GraphQL schema served as raw SDL",
+    "category": "api",
+    "severity": "low",
+    "description": "The response is a GraphQL schema document in Schema Definition Language form, served as plain text. That is the schema itself, not an HTML page that happens to show one.",
+    "evidence": "The response at {{url}} is not HTML and contains a GraphQL SDL type definition block.",
+    "riskImpact": "An SDL dump hands over the same map that introspection would, without needing introspection to be enabled. Every type, field, argument, enum value and input object is readable, including internal fields the public client never queries, which is the starting point for finding an operation whose authorization was never written.",
+    "explanation": "Disabling introspection is a common hardening step, and it is quietly undone when the build also publishes schema.graphql next to the bundle. The detector requires the response not to be HTML and to contain a real type Query { ... } block plus a second SDL construct (a Mutation type, a schema block, an input, or an enum), so a tutorial page showing a schema in a code block does not match.",
+    "fixSteps": [
+      "Remove the .graphql / .gql schema file from anything the web server can serve, and from the published build output.",
+      "If a schema artifact is needed by CI or by a client codegen step, publish it to a private registry or an authenticated endpoint instead of the public origin.",
+      "Confirm introspection is disabled too: an attacker only needs one of the two paths."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js: keep schema files out of the public directory",
+        "language": "bash",
+        "code": "# Schema files belong beside the server code, not under public/\nmv public/schema.graphql server/schema.graphql\n\n# Verify nothing else ships one\ngrep -rl 'type Query' .next/static public 2>/dev/null"
+      },
+      {
+        "label": "Nginx: refuse to serve schema artifacts",
+        "language": "nginx",
+        "code": "location ~* \\.(graphql|gql)$ {\n    return 404;\n}"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html",
+      "https://spec.graphql.org/October2021/#sec-Type-System"
+    ],
+    "cwe": "CWE-540",
+    "owasp": "A01:2021",
+    "_idx": 37
+  },
+  {
+    "id": "api-openapi-no-security-declared",
+    "type": "body-pattern",
+    "title": "OpenAPI document declares no security for write operations",
+    "category": "api",
+    "severity": "low",
+    "description": "The served OpenAPI document describes write operations but declares no security scheme anywhere. There is no securitySchemes block, no securityDefinitions, and no security requirement on any POST, PUT, PATCH or DELETE operation.",
+    "evidence": "OpenAPI document at {{url}} describes state-changing operations and declares no security scheme or requirement.",
+    "riskImpact": "The contract clients and gateways generate from this document says every write is anonymous. Tooling that enforces the spec (an API gateway, a mock server, a generated SDK) will not attach credentials, and a reviewer reading the document has no way to tell an intentional public API from an endpoint whose auth was never declared.",
+    "explanation": "This reads the published document, not the running server: an operation can still be protected by middleware that the spec never mentions. That gap is the finding. A spec that omits security is either describing a genuinely public API, in which case an explicit empty security requirement says so, or it has drifted from the implementation. Read-only documents are not flagged, only ones that describe writes.",
+    "fixSteps": [
+      "Declare the scheme once under components.securitySchemes, then apply it with a top-level security requirement so every operation inherits it.",
+      "Override the inherited requirement per operation with security: [] on the endpoints that really are public, so the exception is explicit.",
+      "Add a spec lint step to CI (Spectral's owasp ruleset covers this) so a new operation cannot merge without a declared requirement."
+    ],
+    "codeExamples": [
+      {
+        "label": "OpenAPI 3: declare and apply a bearer scheme",
+        "language": "yaml",
+        "code": "components:\n  securitySchemes:\n    bearerAuth:\n      type: http\n      scheme: bearer\n      bearerFormat: JWT\n\nsecurity:\n  - bearerAuth: []\n\npaths:\n  /health:\n    get:\n      security: []   # deliberately public\n      responses:\n        '200': { description: OK }"
+      },
+      {
+        "label": "CI: fail the build on an undeclared requirement",
+        "language": "bash",
+        "code": "npx @stoplight/spectral-cli lint openapi.yaml \\\n  --ruleset https://unpkg.com/@stoplight/spectral-owasp-ruleset/dist/ruleset.js \\\n  --fail-severity=error"
+      }
+    ],
+    "references": [
+      "https://spec.openapis.org/oas/v3.1.0#security-requirement-object",
+      "https://owasp.org/API-Security/editions/2023/en/0xa5-broken-function-level-authorization/"
+    ],
+    "cwe": "CWE-306",
+    "owasp": "A01:2021",
+    "_idx": 38
+  },
+  {
+    "id": "api-openapi-server-url-plain-http",
+    "type": "body-pattern",
+    "title": "OpenAPI document publishes a cleartext base URL",
+    "category": "api",
+    "severity": "medium",
+    "description": "The served API description publishes a public base URL over plain http rather than https. That is either an OpenAPI 3 servers entry, or a Swagger 2.0 schemes list containing http and not https.",
+    "evidence": "API description at {{url}} publishes an http:// base URL for a public host.",
+    "riskImpact": "Every SDK, mock server, and gateway generated from this document targets the cleartext URL by default. Requests built that way carry the API key or bearer token in plaintext over the network, and an on-path attacker can read the credential and rewrite the response before the client sees it.",
+    "explanation": "This is specifically about a publicly routable http:// base URL. Localhost, RFC1918 and staging or internal hostnames are excluded here because those are reported separately as an internal-server-URL leak. A redirect from :80 to :443 does not make this safe: the first request, with its Authorization header, has already been sent in the clear.",
+    "fixSteps": [
+      "Change every servers[].url in the document to https://.",
+      "For Swagger 2.0, set schemes: [https] and remove http.",
+      "Regenerate and republish any SDKs built from the old document, since the base URL is usually baked into the generated client."
+    ],
+    "codeExamples": [
+      {
+        "label": "OpenAPI 3: https base URLs only",
+        "language": "yaml",
+        "code": "servers:\n  - url: https://api.example.com/v1\n    description: Production\n  - url: https://sandbox.example.com/v1\n    description: Sandbox"
+      },
+      {
+        "label": "Swagger 2.0: drop the http scheme",
+        "language": "yaml",
+        "code": "swagger: '2.0'\nhost: api.example.com\nbasePath: /v1\nschemes:\n  - https"
+      }
+    ],
+    "references": [
+      "https://spec.openapis.org/oas/v3.1.0#server-object",
+      "https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/"
+    ],
+    "cwe": "CWE-319",
+    "owasp": "A02:2021",
+    "_idx": 39
+  },
+  {
+    "id": "api-openapi-swagger-2-document",
+    "type": "body-pattern",
+    "title": "API described with Swagger 2.0",
+    "category": "api",
+    "severity": "info",
+    "description": "The API description served here declares swagger: 2.0. That format was superseded by OpenAPI 3.0 in 2017 and by 3.1 in 2021.",
+    "evidence": "API description at {{url}} declares \"swagger\": \"2.0\" and contains a paths object.",
+    "riskImpact": "Swagger 2.0 cannot express several things a security reviewer needs. It has no cookie parameter location, no way to describe more than one server, no oneOf/anyOf in schemas, and its OAuth2 model predates PKCE. Constraints that are not expressible are constraints that generated clients and gateways will not enforce.",
+    "explanation": "This is informational, not a vulnerability. It is worth knowing because the surrounding tooling tends to be the same age as the document: a Swagger 2.0 spec is usually served by a Swagger UI 2.x or 3.x bundle, and validated by a generator that has not shipped a security fix in years. Converting is largely mechanical.",
+    "fixSteps": [
+      "Convert the document with swagger2openapi, then review the securitySchemes section by hand.",
+      "Move the host / basePath / schemes triple into a servers array.",
+      "Upgrade the Swagger UI or Redoc bundle serving it at the same time."
+    ],
+    "codeExamples": [
+      {
+        "label": "Convert to OpenAPI 3",
+        "language": "bash",
+        "code": "npx swagger2openapi swagger.json -o openapi.json --resolve\n\n# Then validate the result\nnpx @redocly/cli lint openapi.json"
+      }
+    ],
+    "references": [
+      "https://spec.openapis.org/oas/v3.1.0",
+      "https://swagger.io/docs/specification/about/"
+    ],
+    "cwe": "CWE-1104",
+    "owasp": "A06:2021",
+    "_idx": 40
+  },
+  {
+    "id": "api-openapi-deprecated-operations-exposed",
+    "type": "body-pattern",
+    "title": "OpenAPI document advertises deprecated operations",
+    "category": "api",
+    "severity": "info",
+    "description": "The served API description marks one or more operations or parameters as deprecated. They are still published as callable, so the contract advertises a route the team has already written off.",
+    "evidence": "OpenAPI document at {{url}} contains \"deprecated\": true entries.",
+    "riskImpact": "A deprecated route is usually the one that stopped getting attention: it keeps the old parameter handling, the old validation, and often the old authorization code, while review and test effort moves to its replacement. Publishing it in the contract tells an attacker exactly which path that is.",
+    "explanation": "Marking an operation deprecated is good practice and is not itself a problem. The finding is the pairing: the document says do not use this, and the server still serves it. Treat the deprecated list as a work queue with a removal date, and pair it with a Deprecation and Sunset header on the live responses so clients find out at runtime rather than by reading the spec.",
+    "fixSteps": [
+      "Give every deprecated operation a removal date and track it.",
+      "Emit Deprecation and Sunset headers on those routes so callers see the notice without reading the spec.",
+      "Log calls to deprecated routes with the caller identity, so you know who still depends on them before removal.",
+      "Delete the route and its spec entry once the sunset date passes."
+    ],
+    "codeExamples": [
+      {
+        "label": "OpenAPI 3: deprecate with a stated replacement",
+        "language": "yaml",
+        "code": "paths:\n  /v1/users/search:\n    get:\n      deprecated: true\n      summary: 'Deprecated: use POST /v2/users/query. Removal 2027-01-01.'\n      responses:\n        '200': { description: OK }"
+      },
+      {
+        "label": "Express: announce the sunset at runtime",
+        "language": "javascript",
+        "code": "router.get('/v1/users/search', (req, res, next) => {\n  res.set('Deprecation', 'true');\n  res.set('Sunset', 'Fri, 01 Jan 2027 00:00:00 GMT');\n  res.set('Link', '</v2/users/query>; rel=\"successor-version\"');\n  next();\n});"
+      }
+    ],
+    "references": [
+      "https://spec.openapis.org/oas/v3.1.0#operation-object",
+      "https://datatracker.ietf.org/doc/html/rfc9745"
+    ],
+    "cwe": "CWE-1059",
+    "owasp": "A09:2021",
+    "_idx": 41
+  },
+  {
+    "id": "api-openapi-oauth2-implicit-flow-declared",
+    "type": "body-pattern",
+    "title": "OpenAPI document declares the OAuth2 implicit flow",
+    "category": "api",
+    "severity": "medium",
+    "description": "The served API description declares an OAuth2 security scheme using the implicit grant. That flow returns the access token directly in the redirect URL fragment instead of through a back-channel exchange.",
+    "evidence": "API description at {{url}} declares an OAuth2 implicit flow with an authorization URL.",
+    "riskImpact": "An implicit-grant token arrives in the URL fragment, so it lands in browser history, in any Referer sent by a script the page loads, and in the logs of anything that records full URLs. There is no client authentication and no PKCE, so a token intercepted at the redirect is immediately usable, and there is no refresh token, which pushes implementations toward long token lifetimes to compensate.",
+    "explanation": "OAuth 2.0 Security Best Current Practice (RFC 9700) says the implicit grant must not be used, and OAuth 2.1 removes it. The replacement for browser and mobile clients is the authorization code grant with PKCE, which keeps the token out of the URL and binds the code to the client that requested it. A spec that still declares implicit usually means the authorization server still accepts it.",
+    "fixSteps": [
+      "Replace the implicit flow declaration with authorizationCode and require PKCE on the authorization server.",
+      "Stop accepting response_type=token at the authorization endpoint once clients have migrated.",
+      "Shorten the lifetime of any token that was issued through the implicit flow and rotate refresh credentials."
+    ],
+    "codeExamples": [
+      {
+        "label": "OpenAPI 3: authorization code instead of implicit",
+        "language": "yaml",
+        "code": "components:\n  securitySchemes:\n    oauth2:\n      type: oauth2\n      flows:\n        authorizationCode:\n          authorizationUrl: https://auth.example.com/authorize\n          tokenUrl: https://auth.example.com/token\n          scopes:\n            read: Read access\n            write: Write access"
+      },
+      {
+        "label": "Authorization request with PKCE",
+        "language": "text",
+        "code": "GET /authorize\n  ?response_type=code\n  &client_id=spa-client\n  &redirect_uri=https%3A%2F%2Fapp.example.com%2Fcallback\n  &code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM\n  &code_challenge_method=S256\n  &state=<random>"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc9700",
+      "https://oauth.net/2/grant-types/implicit/"
+    ],
+    "cwe": "CWE-522",
+    "owasp": "A07:2021",
+    "_idx": 42
+  },
+  {
+    "id": "api-asyncapi-document-exposed",
+    "type": "body-pattern",
+    "title": "AsyncAPI document publicly served",
+    "category": "api",
+    "severity": "low",
+    "description": "An AsyncAPI document is served from this URL, describing the event-driven half of the system. It covers brokers, channels and topics, and the payload schema of every message that flows through them.",
+    "evidence": "The response at {{url}} declares an AsyncAPI version and contains a channels section.",
+    "riskImpact": "The document names the broker hostnames and ports, the exact channel and topic strings, the protocol and security scheme each server expects, and the payload schema of every message. That is the whole internal messaging topology, including queues that no public API ever touches, handed over in one file.",
+    "explanation": "Unlike an OpenAPI document, which usually describes an interface that is meant to be public, an AsyncAPI document normally describes internal plumbing between services. Publishing it on the web origin is almost always accidental, typically a docs build that copied the whole spec directory into the output. Serving it is not itself a break-in, but it removes the reconnaissance step for anyone who reaches the broker another way.",
+    "fixSteps": [
+      "Remove the AsyncAPI document from the public build output and from anything the web server maps.",
+      "Publish it to an internal developer portal or a private schema registry instead.",
+      "Treat the broker addresses it exposed as known, and confirm those brokers require authentication and are not reachable from the internet."
+    ],
+    "codeExamples": [
+      {
+        "label": "Check what the build is publishing",
+        "language": "bash",
+        "code": "grep -rl 'asyncapi' dist public build 2>/dev/null\n\n# Exclude spec sources from the published output\necho 'asyncapi.yaml' >> .vercelignore"
+      }
+    ],
+    "references": [
+      "https://www.asyncapi.com/docs/reference/specification/latest",
+      "https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/"
+    ],
+    "cwe": "CWE-540",
+    "owasp": "A05:2021",
+    "_idx": 43
+  },
+  {
+    "id": "api-postman-collection-exposed",
+    "type": "body-pattern",
+    "title": "Postman collection export publicly served",
+    "category": "api",
+    "severity": "medium",
+    "description": "A Postman collection export is served from this URL, identified by its own _postman_id field. Collections carry every request path, body and header the author saved.",
+    "evidence": "The response at {{url}} is a Postman collection export.",
+    "riskImpact": "A collection is a saved copy of how someone actually called the API: every path, every request body, every header. Collections routinely carry the values used while testing, so the file frequently contains a live bearer token, an API key, or a basic-auth credential in the auth block or in a saved variable, and it always contains internal routes that were never linked publicly.",
+    "explanation": "These usually reach the web root by accident: a developer exports a collection into the repository to share it, and the whole repository ends up in the build output. The immediate question is not whether the file should be there, it is whether anything in it is still valid. Treat every credential and every internal hostname it contains as disclosed.",
+    "fixSteps": [
+      "Remove the file from the served origin and from the repository history if it carried credentials.",
+      "Rotate every token, key, and password that appears anywhere in the collection or its environment file.",
+      "Share collections through a Postman workspace or a private link rather than a checked-in export.",
+      "Add *.postman_collection.json and *.postman_environment.json to .gitignore."
+    ],
+    "codeExamples": [
+      {
+        "label": "Find and exclude collection exports",
+        "language": "bash",
+        "code": "find . -name '*postman_collection.json' -o -name '*postman_environment.json'\n\ncat >> .gitignore <<'EOF'\n*.postman_collection.json\n*.postman_environment.json\nEOF"
+      }
+    ],
+    "references": [
+      "https://learning.postman.com/docs/collections/using-collections/",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html"
+    ],
+    "cwe": "CWE-540",
+    "owasp": "A05:2021",
+    "_idx": 44
+  },
+  {
+    "id": "api-insomnia-export-exposed",
+    "type": "body-pattern",
+    "title": "Insomnia workspace export publicly served",
+    "category": "api",
+    "severity": "medium",
+    "description": "An Insomnia workspace export is served from this URL, identified by the fields Insomnia writes. The export holds every saved request in the workspace, plus the environment values those requests interpolate.",
+    "evidence": "The response at {{url}} is an Insomnia workspace export.",
+    "riskImpact": "The export contains every saved request in the workspace: URLs, bodies, and headers, plus the environment objects those requests interpolate. Environments are where API keys and tokens are stored, so an exported workspace frequently ships working credentials alongside the exact requests they authorize.",
+    "explanation": "Same root cause as a published Postman collection, different tool. Insomnia's export format nests requests and environments in one JSON document, so a single file can disclose both the internal API surface and the secrets used to call it. Assume anything in the environment section is compromised rather than trying to judge whether a particular value looks live.",
+    "fixSteps": [
+      "Remove the export from the served origin, and purge it from git history if it contained secrets.",
+      "Rotate every credential stored in the workspace's environments.",
+      "Use Insomnia's private environments (which are excluded from exports) for secrets, and share workspaces through Insomnia Sync rather than a file."
+    ],
+    "codeExamples": [
+      {
+        "label": "Find Insomnia exports in the tree",
+        "language": "bash",
+        "code": "grep -rl '\"__export_source\"' . --include='*.json' 2>/dev/null\n\necho 'Insomnia_*.json' >> .gitignore"
+      }
+    ],
+    "references": [
+      "https://docs.insomnia.rest/insomnia/import-export-data",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html"
+    ],
+    "cwe": "CWE-540",
+    "owasp": "A05:2021",
+    "_idx": 45
+  },
+  {
+    "id": "api-wadl-document-exposed",
+    "type": "body-pattern",
+    "title": "WADL document publicly served",
+    "category": "api",
+    "severity": "low",
+    "description": "A WADL (Web Application Description Language) document is served from this URL. Jersey, Apache CXF and other JAX-RS stacks generate one automatically and expose it unless it is explicitly disabled.",
+    "evidence": "The response at {{url}} is a WADL application document.",
+    "riskImpact": "The document enumerates every resource path the JAX-RS application registers, the HTTP methods each accepts, and every query, path, header and form parameter with its type. That includes internal management resources that are not linked from anywhere and were never meant to be discovered.",
+    "explanation": "This is almost always unintentional rather than a decision: Jersey serves /application.wadl by default, so the surface appears without anyone adding it. Because the WADL is generated from the live resource classes, it is always accurate and always current, which makes it a better map of the application than any documentation the team wrote by hand.",
+    "fixSteps": [
+      "In Jersey, set jersey.config.server.wadl.disableWadl to true.",
+      "In Apache CXF, remove the WADLGenerator provider from the JAX-RS server configuration.",
+      "Block /application.wadl and any ?_wadl query at the reverse proxy as a second layer."
+    ],
+    "codeExamples": [
+      {
+        "label": "Jersey: disable WADL generation",
+        "language": "java",
+        "code": "public class AppConfig extends ResourceConfig {\n  public AppConfig() {\n    packages(\"com.example.api\");\n    property(ServerProperties.WADL_FEATURE_DISABLE, true);\n  }\n}"
+      },
+      {
+        "label": "Nginx: block the WADL endpoints",
+        "language": "nginx",
+        "code": "location ~* (application\\.wadl|\\?_wadl) {\n    return 404;\n}"
+      }
+    ],
+    "references": [
+      "https://eclipse-ee4j.github.io/jersey.github.io/documentation/latest/wadl.html",
+      "https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/"
+    ],
+    "cwe": "CWE-540",
+    "owasp": "A05:2021",
+    "_idx": 46
+  },
+  {
+    "id": "api-raml-document-exposed",
+    "type": "body-pattern",
+    "title": "RAML API definition publicly served",
+    "category": "api",
+    "severity": "low",
+    "description": "A RAML API definition is served from this URL, identified by the #%RAML version marker. RAML files must begin with that marker, so this matches the document itself rather than a mention of it.",
+    "evidence": "The response at {{url}} begins with a #%RAML version marker.",
+    "riskImpact": "A RAML file lists every resource and method the API defines, the parameters each takes, and the securedBy scheme applied to each one, including operations that are not referenced by any public client.",
+    "explanation": "RAML documents normally live in a design repository or an API portal, not on the runtime origin. Finding one served from the application host usually means the whole design directory was copied into the deployment. The security value to an attacker is the same as any complete interface description: it removes the guessing from finding an endpoint whose authorization was never implemented.",
+    "fixSteps": [
+      "Remove the RAML file and its includes from the served origin.",
+      "Publish the definition to an internal API portal or a design workspace instead.",
+      "Review any resource the file exposed that you did not expect to be public, and confirm it enforces authorization."
+    ],
+    "codeExamples": [
+      {
+        "label": "Find RAML files in the deployed output",
+        "language": "bash",
+        "code": "grep -rl '^#%RAML' dist public build 2>/dev/null"
+      }
+    ],
+    "references": [
+      "https://github.com/raml-org/raml-spec/blob/master/versions/raml-10/raml-10.md",
+      "https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/"
+    ],
+    "cwe": "CWE-540",
+    "owasp": "A05:2021",
+    "_idx": 47
+  },
+  {
+    "id": "api-odata-metadata-document-exposed",
+    "type": "body-pattern",
+    "title": "OData $metadata document publicly served",
+    "category": "api",
+    "severity": "low",
+    "description": "An OData $metadata document, describing the service's entity model, is served from this URL. OData services such as SAP Gateway, Microsoft Dynamics and ASP.NET Core OData publish one automatically.",
+    "evidence": "The response at {{url}} is an OData EDMX metadata document containing entity type definitions.",
+    "riskImpact": "The metadata document is a complete schema dump: every entity set, every property with its exact name and type, every navigation property linking one entity to another, and every callable function and action. Combined with OData's query syntax, which lets a caller select, filter and expand across those navigation properties, it is enough to reach data the intended UI never displays.",
+    "explanation": "Publishing $metadata is part of how OData works, so this is informational rather than a defect on its own. It matters because it turns any authorization gap into an immediately exploitable one: the caller does not have to guess a property name or an entity relationship, they can read it. The real control is server-side, restricting which entity sets are exposed and which query options are permitted.",
+    "fixSteps": [
+      "Expose only the entity sets the API actually needs, rather than registering the whole EDM model.",
+      "Restrict $expand, $select and $filter with query-option limits so navigation properties cannot be used to reach unrelated entities.",
+      "Require authentication on the metadata endpoint itself if the model is not meant to be public."
+    ],
+    "codeExamples": [
+      {
+        "label": "ASP.NET Core OData: bound query options",
+        "language": "csharp",
+        "code": "services.AddControllers().AddOData(opt => opt\n    .AddRouteComponents(\"odata\", GetEdmModel())\n    .Select()\n    .Filter()\n    .OrderBy()\n    .SetMaxTop(100));   // no unbounded $expand, capped page size"
+      },
+      {
+        "label": "Require auth on the metadata route",
+        "language": "csharp",
+        "code": "app.MapWhen(\n    ctx => ctx.Request.Path.StartsWithSegments(\"/odata/$metadata\"),\n    branch => branch.UseAuthentication().UseAuthorization());"
+      }
+    ],
+    "references": [
+      "https://docs.oasis-open.org/odata/odata/v4.01/odata-v4.01-part1-protocol.html",
+      "https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/"
+    ],
+    "cwe": "CWE-540",
+    "owasp": "A01:2021",
+    "_idx": 48
+  },
+  {
+    "id": "api-oidc-discovery-alg-none-supported",
+    "type": "body-pattern",
+    "title": "OIDC discovery advertises the \"none\" signing algorithm",
+    "category": "api",
+    "severity": "high",
+    "description": "The authorization-server metadata lists \"none\" among its supported ID token signing algorithms. That means the server will issue, and by implication accept, unsigned ID tokens.",
+    "evidence": "Authorization-server metadata at {{url}} lists \"none\" among its supported ID token signing algorithms.",
+    "riskImpact": "An unsigned ID token is a token anyone can write. A client that follows the discovery document and honours alg \"none\" will accept a token whose sub, email and groups claims the attacker chose, which is authentication bypass with no credential involved.",
+    "explanation": "OpenID Connect Core permits alg \"none\" only for the response of a token-endpoint exchange where the token never leaves the back channel, and OIDC-conformant clients are expected to reject it everywhere else. Advertising it in discovery metadata means clients that select an algorithm from that list can pick \"none\", and it strongly suggests the server accepts unsigned tokens on the paths where it verifies them. Providers that support it usually do so through a configuration flag left over from a development setup.",
+    "fixSteps": [
+      "Remove \"none\" from id_token_signing_alg_values_supported.",
+      "Configure the issuer to sign with RS256, PS256, or ES256 only, and to reject any token whose alg header is not on that list.",
+      "On the client side, pin the accepted algorithm explicitly rather than trusting the token's own alg header.",
+      "Review the issuer's logs for tokens presented with alg none."
+    ],
+    "codeExamples": [
+      {
+        "label": "Client: pin the algorithm during verification",
+        "language": "javascript",
+        "code": "const { payload } = await jose.jwtVerify(idToken, JWKS, {\n  issuer: 'https://auth.example.com',\n  audience: 'my-client-id',\n  algorithms: ['RS256'],   // never read alg from the token itself\n});"
+      },
+      {
+        "label": "Inspect what the issuer advertises",
+        "language": "bash",
+        "code": "curl -s https://auth.example.com/.well-known/openid-configuration \\\n  | jq '.id_token_signing_alg_values_supported'"
+      }
+    ],
+    "references": [
+      "https://openid.net/specs/openid-connect-discovery-1_0.html",
+      "https://datatracker.ietf.org/doc/html/rfc8725"
+    ],
+    "cwe": "CWE-347",
+    "owasp": "A07:2021",
+    "_idx": 49
+  },
+  {
+    "id": "api-oidc-discovery-implicit-flow-supported",
+    "type": "body-pattern",
+    "title": "OIDC discovery advertises implicit-grant response types",
+    "category": "api",
+    "severity": "low",
+    "description": "The authorization-server metadata advertises a response type that returns a token from the authorization endpoint. The advertised value is \"token\" or \"id_token token\", neither of which comes with a code.",
+    "evidence": "Authorization-server metadata at {{url}} advertises implicit-grant response types.",
+    "riskImpact": "Any client that reads this document is told the implicit grant is available. A token returned that way lands in the URL fragment, so it reaches browser history, third-party scripts on the callback page, and anything that logs full URLs, and it is issued without client authentication or PKCE.",
+    "explanation": "This describes what the server advertises, not what any particular client uses, so it is a Low finding rather than a confirmed weakness. It still matters: OAuth 2.0 Security Best Current Practice (RFC 9700) says the implicit grant must not be used and OAuth 2.1 removes it, so an advertised implicit response type is a migration that has not finished. Turning it off in the metadata is only cosmetic unless the authorization endpoint stops honouring it too.",
+    "fixSteps": [
+      "Migrate remaining clients to authorization code with PKCE.",
+      "Remove implicit entries from response_types_supported once no client depends on them.",
+      "Reject response_type=token and response_type=id_token token at the authorization endpoint, not only in the metadata."
+    ],
+    "codeExamples": [
+      {
+        "label": "Metadata after migration",
+        "language": "json",
+        "code": "{\n  \"response_types_supported\": [\"code\"],\n  \"grant_types_supported\": [\"authorization_code\", \"refresh_token\"],\n  \"code_challenge_methods_supported\": [\"S256\"]\n}"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc9700",
+      "https://openid.net/specs/openid-connect-discovery-1_0.html"
+    ],
+    "cwe": "CWE-522",
+    "owasp": "A07:2021",
+    "_idx": 50
+  },
+  {
+    "id": "api-oidc-discovery-pkce-not-advertised",
+    "type": "body-pattern",
+    "title": "OIDC discovery omits code_challenge_methods_supported",
+    "category": "api",
+    "severity": "low",
+    "description": "The authorization-server metadata advertises the authorization-code response type without PKCE support. code_challenge_methods_supported is the field a client reads to discover PKCE is available, and it is absent.",
+    "evidence": "Authorization-server metadata at {{url}} advertises the code response type with no code_challenge_methods_supported entry.",
+    "riskImpact": "A conforming client decides whether to send a code_challenge based on this field. When it is absent, well-behaved client libraries skip PKCE, which leaves the authorization code unbound to the requesting client: an attacker who intercepts the code at the redirect (a custom URI scheme another app registered, a leaked Referer, a compromised proxy) can exchange it themselves.",
+    "explanation": "The metadata may be understating the server, since many implementations accept a code_challenge without advertising it. That is exactly the problem: correctness now depends on every client hardcoding PKCE rather than on discovery. RFC 8414 defines the field and RFC 9700 requires PKCE for all authorization-code clients, public and confidential alike, so publishing it is the cheap half of the fix.",
+    "fixSteps": [
+      "Add \"code_challenge_methods_supported\": [\"S256\"] to the metadata document.",
+      "Require a code_challenge on every authorization-code request at the server, and reject the plain method.",
+      "In clients, enable PKCE explicitly rather than relying on discovery to turn it on."
+    ],
+    "codeExamples": [
+      {
+        "label": "Metadata: advertise S256",
+        "language": "json",
+        "code": "{\n  \"issuer\": \"https://auth.example.com\",\n  \"authorization_endpoint\": \"https://auth.example.com/authorize\",\n  \"token_endpoint\": \"https://auth.example.com/token\",\n  \"response_types_supported\": [\"code\"],\n  \"code_challenge_methods_supported\": [\"S256\"]\n}"
+      },
+      {
+        "label": "Check an issuer",
+        "language": "bash",
+        "code": "curl -s https://auth.example.com/.well-known/openid-configuration \\\n  | jq '{response_types_supported, code_challenge_methods_supported}'"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc8414",
+      "https://datatracker.ietf.org/doc/html/rfc7636"
+    ],
+    "cwe": "CWE-1021",
+    "owasp": "A07:2021",
+    "_idx": 51
+  },
+  {
+    "id": "api-oauth-authorize-redirect-uri-insecure",
+    "type": "url-check",
+    "title": "OAuth authorization request uses a cleartext redirect_uri",
+    "category": "api",
+    "severity": "medium",
+    "description": "The scanned URL is an OAuth or OpenID Connect authorization request with a cleartext redirect_uri. The callback is a plain http URL on a host that is not loopback.",
+    "evidence": "Authorization request at {{url}} carries an http:// redirect_uri on a non-loopback host.",
+    "riskImpact": "The authorization response, carrying either the authorization code or, in an implicit flow, the token itself, is delivered to that cleartext URL. Anyone on the network path reads it, and with the code in hand can complete the exchange before the real client does unless PKCE is enforced.",
+    "explanation": "RFC 9700 requires redirect URIs to use https, with one exception: loopback addresses for native applications, which RFC 8252 section 7.3 explicitly permits over http. This check honours that exception and does not fire on localhost, 127.0.0.1 or ::1. Everything else is a real downgrade, whether the redirect target is first-party or not.",
+    "fixSteps": [
+      "Change the client's registered redirect URI to https.",
+      "Configure the authorization server to reject any non-loopback http redirect_uri at registration time, not only at request time.",
+      "Treat any code or token already delivered over http as disclosed and revoke the associated grants."
+    ],
+    "codeExamples": [
+      {
+        "label": "Correct authorization request",
+        "language": "text",
+        "code": "GET /authorize\n  ?response_type=code\n  &client_id=web-app\n  &redirect_uri=https%3A%2F%2Fapp.example.com%2Fcallback\n  &code_challenge_method=S256\n  &code_challenge=<challenge>\n  &state=<random>"
+      },
+      {
+        "label": "Server: reject cleartext redirect URIs",
+        "language": "javascript",
+        "code": "function isAllowedRedirect(uri) {\n  const u = new URL(uri);\n  if (u.protocol === 'https:') return true;\n  // RFC 8252 7.3: loopback over http is permitted for native apps\n  return u.protocol === 'http:' &&\n    ['localhost', '127.0.0.1', '::1'].includes(u.hostname);\n}"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc9700",
+      "https://datatracker.ietf.org/doc/html/rfc8252#section-7.3"
+    ],
+    "cwe": "CWE-319",
+    "owasp": "A02:2021",
+    "_idx": 52
+  },
+  {
+    "id": "api-oauth-authorize-oidc-nonce-missing",
+    "type": "url-check",
+    "title": "OIDC authorization request returns an ID token with no nonce",
+    "category": "api",
+    "severity": "medium",
+    "description": "The scanned URL is an authorization request whose response_type includes id_token, but it carries no nonce parameter. OpenID Connect Core section 3.2.2.1 requires a nonce for every flow that returns an ID token from the authorization endpoint.",
+    "evidence": "Authorization request at {{url}} asks for an id_token response type and includes no nonce parameter.",
+    "riskImpact": "The nonce is what binds an ID token to the specific authentication request that asked for it. Without it, an ID token captured from one session can be replayed into another: an attacker who obtains a valid token for a victim, from browser history, a logged URL, or a different relying party, can present it at the callback and be logged in as that user.",
+    "explanation": "state and nonce solve different problems and neither substitutes for the other. state protects the redirect against CSRF; nonce protects the token against replay, and it is the only one carried inside the token itself so the client can check it after the fact. The value must be unguessable, stored with the session that started the flow, and compared against the token's nonce claim on return.",
+    "fixSteps": [
+      "Generate a cryptographically random nonce per authorization request and include it in the request.",
+      "Persist it against the user's session, not in a cookie the callback page can read from JavaScript.",
+      "On callback, reject the ID token unless its nonce claim equals the stored value, then discard the stored value so it cannot be reused.",
+      "Prefer the authorization code flow with PKCE, where the token is never exposed in the front channel at all."
+    ],
+    "codeExamples": [
+      {
+        "label": "Generate and store the nonce",
+        "language": "javascript",
+        "code": "const nonce = crypto.randomUUID();\nreq.session.oidcNonce = nonce;\n\nconst authUrl = new URL('https://auth.example.com/authorize');\nauthUrl.searchParams.set('response_type', 'code id_token');\nauthUrl.searchParams.set('client_id', CLIENT_ID);\nauthUrl.searchParams.set('redirect_uri', CALLBACK);\nauthUrl.searchParams.set('scope', 'openid profile');\nauthUrl.searchParams.set('nonce', nonce);\nauthUrl.searchParams.set('state', crypto.randomUUID());"
+      },
+      {
+        "label": "Verify it on callback",
+        "language": "javascript",
+        "code": "const { payload } = await jose.jwtVerify(idToken, JWKS, {\n  issuer: ISSUER,\n  audience: CLIENT_ID,\n  algorithms: ['RS256'],\n});\nif (payload.nonce !== req.session.oidcNonce) {\n  throw new Error('nonce mismatch');\n}\ndelete req.session.oidcNonce;   // single use"
+      }
+    ],
+    "references": [
+      "https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest",
+      "https://datatracker.ietf.org/doc/html/rfc9700"
+    ],
+    "cwe": "CWE-294",
+    "owasp": "A07:2021",
+    "_idx": 53
+  },
+  {
+    "id": "api-jwt-long-lived-token",
+    "type": "body-pattern",
+    "title": "JWT with a lifetime measured in months",
+    "category": "api",
+    "severity": "low",
+    "description": "A JWT reachable from this response stays valid for more than 90 days after it was issued. The decoded payload's exp claim is more than 90 days after its iat or nbf.",
+    "evidence": "A JWT found at {{url}} declares a lifetime of more than 90 days between its issue and expiry claims.",
+    "riskImpact": "Expiry is the only revocation a stateless JWT has. A token that lives for months means a copy taken from a log, a browser profile, a crash report, or an old backup keeps working long after the account it belongs to has changed password, lost a role, or been deleted, unless a separate denylist is consulted on every request.",
+    "explanation": "The claims are read by base64url-decoding the payload; no signature verification and no network request is involved, so this says nothing about whether the token is currently valid. Long-lived JWTs are sometimes deliberate, refresh tokens and machine-to-machine credentials are the usual cases, which is why this is Low rather than higher. What it is worth checking is that the long-lived token is a refresh credential held server-side, not an access token being sent to a browser.",
+    "fixSteps": [
+      "Keep access-token lifetimes in the minutes-to-an-hour range and use a refresh token for continuity.",
+      "Give refresh tokens a jti and check it against a server-side store on use, so revocation is possible.",
+      "Rotate refresh tokens on each use and invalidate the previous one, so a stolen copy stops working after the legitimate client next refreshes."
+    ],
+    "codeExamples": [
+      {
+        "label": "Short access token, revocable refresh token",
+        "language": "javascript",
+        "code": "const accessToken = await new jose.SignJWT({ sub: user.id, scope })\n  .setProtectedHeader({ alg: 'RS256' })\n  .setIssuedAt()\n  .setExpirationTime('15m')\n  .sign(privateKey);\n\nconst refreshToken = await new jose.SignJWT({ sub: user.id, jti })\n  .setProtectedHeader({ alg: 'RS256' })\n  .setIssuedAt()\n  .setExpirationTime('30d')\n  .sign(privateKey);\n\nawait db.storeRefreshJti(jti, user.id);   // makes revocation possible"
+      },
+      {
+        "label": "Inspect a token's lifetime",
+        "language": "bash",
+        "code": "echo \"$JWT\" | cut -d. -f2 | base64 -d 2>/dev/null | jq '{iat, exp, days: ((.exp - .iat) / 86400)}'"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc8725#section-3.10",
+      "https://cheatsheetseries.owasp.org/cheatsheets/JSON_Web_Token_for_Java_Cheat_Sheet.html"
+    ],
+    "cwe": "CWE-613",
+    "owasp": "A07:2021",
+    "_idx": 54
+  },
+  {
+    "id": "api-retry-after-invalid-value",
+    "type": "header-value",
+    "title": "Retry-After header is not a valid delay or date",
+    "category": "api",
+    "severity": "low",
+    "description": "The response carries a Retry-After header whose value is neither seconds nor an HTTP-date. Those are the only two forms RFC 9110 defines, and a client that cannot parse the header ignores it.",
+    "evidence": "Retry-After on the response to {{url}} is not a parseable value.",
+    "riskImpact": "Clients that cannot parse the header fall back to their own retry policy, which is usually an immediate retry or a fixed short interval. Under the load that produced the 429 or 503 in the first place, that turns a throttled client into a retry storm, and it defeats the backoff the header exists to coordinate.",
+    "explanation": "Common wrong values are \"60s\", an ISO-8601 timestamp, a float, or a bare word. The two legal forms are a decimal count of seconds (\"120\") and an IMF-fixdate (\"Wed, 21 Oct 2026 07:28:00 GMT\"). This check reads the header only; it does not judge whether the delay itself is reasonable.",
+    "fixSteps": [
+      "Emit either an integer number of seconds or an IMF-fixdate, with no unit suffix.",
+      "Set it on every 429 and on 503 responses that come from a maintenance or overload path.",
+      "Test the value with a client library rather than by eye: most will silently ignore what they cannot parse."
+    ],
+    "codeExamples": [
+      {
+        "label": "Express: valid Retry-After forms",
+        "language": "javascript",
+        "code": "// Seconds\nres.set('Retry-After', '120');\n\n// Or an absolute time\nres.set('Retry-After', new Date(Date.now() + 120_000).toUTCString());\n\nres.status(429).json({ error: 'rate_limited' });"
+      },
+      {
+        "label": "Nginx: fixed backoff on throttle",
+        "language": "nginx",
+        "code": "limit_req_status 429;\n\nerror_page 429 = @throttled;\nlocation @throttled {\n    add_header Retry-After 60 always;\n    return 429;\n}"
+      }
+    ],
+    "references": [
+      "https://httpwg.org/specs/rfc9110.html#field.retry-after",
+      "https://datatracker.ietf.org/doc/html/rfc6585"
+    ],
+    "cwe": "CWE-20",
+    "owasp": "A05:2021",
+    "_idx": 55
+  },
+  {
+    "id": "api-sunset-header-in-past",
+    "type": "header-value",
+    "title": "Sunset date has passed but the endpoint still answers",
+    "category": "api",
+    "severity": "low",
+    "description": "The response carries an RFC 8594 Sunset header whose date has already passed. The resource is still being served after the retirement date it announced.",
+    "evidence": "The response to {{url}} carries a Sunset date that has already passed.",
+    "riskImpact": "A route that outlives its own sunset date is a route nobody owns. It keeps running the code path that was frozen at deprecation, including its authentication and input validation, while review, testing and dependency updates have moved to the replacement. It is also the version an attacker will pick, precisely because it is the one that stopped changing.",
+    "explanation": "Sunset is a promise about a date, and the header still being served past that date means either the removal slipped or the header was never revisited. Both are worth knowing. The check only reads the header; it does not judge whether keeping the endpoint alive was the right call, and a deliberate extension should be reflected by updating the date rather than by leaving a stale one in place.",
+    "fixSteps": [
+      "Decide whether to remove the endpoint or extend it, then make the header say so.",
+      "If extending, publish a new Sunset date and tell the callers that are still using it.",
+      "If removing, return 410 Gone with a Link rel=successor-version pointing at the replacement, rather than deleting the route silently.",
+      "Add a check to CI or to a monitor that alerts when a Sunset date passes while the route is still live."
+    ],
+    "codeExamples": [
+      {
+        "label": "Retire the route properly",
+        "language": "javascript",
+        "code": "router.all('/v1/reports', (req, res) => {\n  res.set('Link', '</v2/reports>; rel=\"successor-version\"');\n  res.status(410).json({\n    error: 'gone',\n    message: 'v1/reports was retired on 2026-01-01. Use /v2/reports.',\n  });\n});"
+      },
+      {
+        "label": "Check a live endpoint",
+        "language": "bash",
+        "code": "curl -sI https://api.example.com/v1/reports | grep -i -E 'sunset|deprecation|link'"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc8594",
+      "https://datatracker.ietf.org/doc/html/rfc9745"
+    ],
+    "cwe": "CWE-1059",
+    "owasp": "A09:2021",
+    "_idx": 56
+  },
+  {
+    "id": "api-json-response-content-type-mismatch",
+    "type": "combined",
+    "title": "JSON body served as HTML or with no Content-Type",
+    "category": "api",
+    "severity": "low",
+    "description": "The response body is JSON-shaped but is not labelled as JSON by its Content-Type header. It is either declared as text/html, or served with no Content-Type at all.",
+    "evidence": "The response at {{url}} has a JSON-shaped body with an HTML or absent Content-Type.",
+    "riskImpact": "A JSON document labelled text/html is parsed as markup. Any string value in it that an attacker controls, a username, a search term, an error message echoing input, becomes live HTML in the browser, which is stored or reflected XSS on your own origin. With no Content-Type at all the browser sniffs, and a body whose first bytes look like markup is treated as a document.",
+    "explanation": "The detector checks structure rather than parsing the whole body: it requires the response to open with a JSON object or array and to have no HTML document markers near the start, so an HTML page that happens to embed JSON does not match. X-Content-Type-Options: nosniff blocks the sniffing half of this but does not help when the server explicitly says text/html, so the Content-Type itself has to be correct.",
+    "fixSteps": [
+      "Return Content-Type: application/json (or application/problem+json for errors) on every JSON response, including error paths.",
+      "Check the framework's error handler specifically: it is the usual place a JSON API falls back to the default HTML content type.",
+      "Send X-Content-Type-Options: nosniff as a second layer so a missing type never gets sniffed into a document."
+    ],
+    "codeExamples": [
+      {
+        "label": "Express: JSON content type on errors too",
+        "language": "javascript",
+        "code": "app.use((err, req, res, _next) => {\n  res.status(err.status || 500)\n     .type('application/problem+json')\n     .json({ title: 'Request failed', status: err.status || 500 });\n});"
+      },
+      {
+        "label": "Next.js Route Handler",
+        "language": "typescript",
+        "code": "return new Response(JSON.stringify(payload), {\n  status: 200,\n  headers: {\n    'Content-Type': 'application/json; charset=utf-8',\n    'X-Content-Type-Options': 'nosniff',\n  },\n});"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html",
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options"
+    ],
+    "cwe": "CWE-436",
+    "owasp": "A03:2021",
+    "_idx": 57
+  },
+  {
+    "id": "api-response-header-internal-host",
+    "type": "header-value",
+    "title": "Response header points at an internal host",
+    "category": "api",
+    "severity": "low",
+    "description": "A Location, Content-Location or Link response header contains a URL on an internal hostname. That means a loopback or RFC1918 address, or a private-use suffix such as .internal, .local or .corp.",
+    "evidence": "A response header for {{url}} carries a URL on an internal hostname.",
+    "riskImpact": "The header names a host that exists behind the proxy: an internal service name, a pod address, an admin origin. That is free reconnaissance for anyone who later reaches the network another way, and where the URL is a pagination Link, it also tells a client to fetch an address it cannot resolve, which turns into a hard failure rather than a graceful one.",
+    "explanation": "This is nearly always a backend building absolute URLs from its own request context rather than from the public origin, so the internal hostname survives the trip through the proxy. The fix is to construct outward-facing URLs from a configured public base, not from the incoming Host header or the container's own name. Relative URLs sidestep the problem entirely where the header allows them.",
+    "fixSteps": [
+      "Build absolute URLs in responses from an explicit PUBLIC_BASE_URL setting, not from req.headers.host or the local hostname.",
+      "Prefer relative references in Location and Link where the specification allows them.",
+      "Add a response filter at the edge that rejects or rewrites headers containing private hostnames, as a backstop."
+    ],
+    "codeExamples": [
+      {
+        "label": "Build links from a configured public origin",
+        "language": "javascript",
+        "code": "const PUBLIC_BASE = new URL(process.env.PUBLIC_BASE_URL);\n\nfunction pageLink(page) {\n  const u = new URL('/v1/items', PUBLIC_BASE);\n  u.searchParams.set('page', String(page));\n  return u.toString();\n}\n\nres.set('Link', `<${pageLink(next)}>; rel=\"next\"`);"
+      },
+      {
+        "label": "Nginx: keep redirects on the public origin",
+        "language": "nginx",
+        "code": "proxy_redirect http://app-internal:3000/ https://api.example.com/;\nabsolute_redirect off;"
+      }
+    ],
+    "references": [
+      "https://cwe.mitre.org/data/definitions/200.html",
+      "https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/"
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021",
+    "_idx": 58
+  },
+  {
+    "id": "api-www-authenticate-realm-internal-detail",
+    "type": "header-value",
+    "title": "WWW-Authenticate realm leaks internal detail",
+    "category": "api",
+    "severity": "low",
+    "description": "The WWW-Authenticate challenge carries a realm string that describes internal infrastructure. The value contains a filesystem path, an IP address, or an internal hostname suffix.",
+    "evidence": "The authentication challenge for {{url}} exposes internal detail in its realm value.",
+    "riskImpact": "The realm is shown to anyone who requests the resource, including in the browser's own credential prompt. A realm like \"/var/www/internal-admin\" or \"backup-01.corp\" hands over the server's directory layout or an internal hostname before any credential is supplied, and it tells an attacker which part of the estate they have reached.",
+    "explanation": "Realms usually pick up these values because the web server defaults to the protected directory path, or because someone used the machine name as a label. The realm has exactly one functional job: it lets a client group credentials that work in the same protection space. A short, opaque, stable label does that job without describing the infrastructure.",
+    "fixSteps": [
+      "Replace the realm with a short opaque label that names the service, not the path or the host.",
+      "Keep the value stable, since clients cache credentials against it.",
+      "Check the web server's default: Apache and Nginx templates often interpolate the directory being protected."
+    ],
+    "codeExamples": [
+      {
+        "label": "Nginx: opaque realm",
+        "language": "nginx",
+        "code": "location /admin/ {\n    auth_basic \"restricted\";\n    auth_basic_user_file /etc/nginx/.htpasswd;\n}"
+      },
+      {
+        "label": "Express: opaque realm on the challenge",
+        "language": "javascript",
+        "code": "res.set('WWW-Authenticate', 'Bearer realm=\"api\", error=\"invalid_token\"');\nres.status(401).end();"
+      }
+    ],
+    "references": [
+      "https://httpwg.org/specs/rfc9110.html#field.www-authenticate",
+      "https://cwe.mitre.org/data/definitions/200.html"
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021",
+    "_idx": 59
+  },
+  {
+    "id": "api-problem-json-trace-exposed",
+    "type": "body-pattern",
+    "title": "Problem document exposes a stack trace or exception class",
+    "category": "api",
+    "severity": "medium",
+    "description": "An RFC 9457 problem document exposes a stack trace or the internal exception class behind it. The trace member carries real stack frames, or the exception member names the class that threw.",
+    "evidence": "The problem document returned for {{url}} contains stack frames or an internal exception class name.",
+    "riskImpact": "A stack trace gives away the framework and its version, the absolute paths of deployed files, the internal package and class layout, and often the exact line where input handling failed. That is the map an attacker uses to pick which known vulnerability applies and where to aim the next request.",
+    "explanation": "Spring Boot produces this shape when server.error.include-stacktrace is set to always, which is the default in some starter templates and is frequently left on after debugging. The problem-document format itself is fine and worth using; what must not travel with it are the trace and exception members. A stable error code plus a correlation id gives support everything it needs while keeping the internals server-side.",
+    "fixSteps": [
+      "Set server.error.include-stacktrace=never and server.error.include-exception=false in production (or the equivalent in your framework).",
+      "Return a stable machine-readable error code and a correlation id in the problem document instead of the trace.",
+      "Log the full exception server-side against that same correlation id.",
+      "Test the error path in the production profile, not only in development, since the two usually differ."
+    ],
+    "codeExamples": [
+      {
+        "label": "Spring Boot: keep traces server-side",
+        "language": "properties",
+        "code": "server.error.include-stacktrace=never\nserver.error.include-exception=false\nserver.error.include-message=never\nserver.error.include-binding-errors=never"
+      },
+      {
+        "label": "A safe problem document",
+        "language": "json",
+        "code": "{\n  \"type\": \"https://api.example.com/errors/invalid-parameter\",\n  \"title\": \"Invalid parameter\",\n  \"status\": 400,\n  \"detail\": \"startDate must be before endDate\",\n  \"instance\": \"/v1/reports\",\n  \"correlationId\": \"0f2c1b7e-9a1d-4a44-8f2e-6b6d0f9a1c33\"\n}"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc9457",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html"
+    ],
+    "cwe": "CWE-209",
+    "owasp": "A05:2021",
+    "_idx": 60
+  },
+  {
+    "id": "api-swagger-ui-outdated-version",
+    "type": "body-pattern",
+    "title": "Outdated Swagger UI bundle loaded",
+    "category": "api",
+    "severity": "medium",
+    "description": "The page loads a Swagger UI bundle older than 4.1.3, read from the version embedded in the asset path or package specifier.",
+    "evidence": "A Swagger UI bundle earlier than 4.1.3 is referenced from {{url}}.",
+    "riskImpact": "Swagger UI before 4.1.3 is affected by a DOM XSS in its own rendering of a specification (CVE-2021-46708). Because Swagger UI is commonly configured to load a spec from a URL supplied in the query string, an attacker can serve a crafted specification and get script execution on the origin hosting the documentation, which is often the same origin as the API session cookie.",
+    "explanation": "The version is read from the asset path or the package specifier, so it reports what the page references rather than what a CDN might silently substitute. Documentation pages are easy to forget in dependency upgrades because they are usually a static bundle pinned once and never touched again. If the page also accepts a ?url= or ?configUrl= parameter, the exposure is direct rather than theoretical.",
+    "fixSteps": [
+      "Upgrade swagger-ui-dist to a current release and redeploy the documentation page.",
+      "Do not let the spec URL come from the query string; hardcode it, or validate it against an allowlist.",
+      "Serve the documentation from a separate origin from the authenticated application so an XSS there cannot reach session cookies.",
+      "Pin the bundle with a Subresource Integrity hash if it is loaded from a CDN."
+    ],
+    "codeExamples": [
+      {
+        "label": "Hardcode the spec URL",
+        "language": "javascript",
+        "code": "SwaggerUIBundle({\n  url: '/openapi.json',          // never new URLSearchParams(...).get('url')\n  dom_id: '#swagger-ui',\n  deepLinking: false,\n});"
+      },
+      {
+        "label": "Pin the bundle with SRI",
+        "language": "html",
+        "code": "<script\n  src=\"https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui-bundle.js\"\n  integrity=\"sha384-REPLACE_WITH_REAL_HASH\"\n  crossorigin=\"anonymous\"></script>"
+      }
+    ],
+    "references": [
+      "https://github.com/swagger-api/swagger-ui/releases",
+      "https://nvd.nist.gov/vuln/detail/CVE-2021-46708"
+    ],
+    "cwe": "CWE-79",
+    "owasp": "A06:2021",
+    "_idx": 61
+  },
+  {
+    "id": "api-cors-allow-origin-multiple-values",
+    "type": "header-value",
+    "title": "Access-Control-Allow-Origin carries more than one origin",
+    "category": "api",
+    "severity": "low",
+    "description": "The Access-Control-Allow-Origin header holds two or more origins rather than one. The header is defined to carry exactly one origin, or the single token *.",
+    "evidence": "Access-Control-Allow-Origin on the response to {{url}} contains multiple origin values.",
+    "riskImpact": "No browser accepts a multi-valued Access-Control-Allow-Origin, so every cross-origin call to this endpoint fails the CORS check regardless of which origin made it. The usual repair, once someone notices the breakage, is to replace the list with a wildcard or with unconditional reflection of the request's Origin, and both of those are materially worse than the list that was there.",
+    "explanation": "The header is written this way when a server joins its allowlist into one string instead of matching the incoming Origin against the list and echoing only the match. Serving the whole list also discloses which partner origins are trusted. The correct shape is one origin per response, chosen by comparing the request's Origin against the allowlist, with Vary: Origin so caches keep the answers apart.",
+    "fixSteps": [
+      "Match the request's Origin against the allowlist and echo only that single value.",
+      "Send no Access-Control-Allow-Origin at all when the Origin is not on the list, rather than sending the list.",
+      "Add Vary: Origin so a shared cache cannot serve one origin's response to another."
+    ],
+    "codeExamples": [
+      {
+        "label": "Echo one matched origin",
+        "language": "javascript",
+        "code": "const ALLOWED = new Set([\n  'https://app.example.com',\n  'https://admin.example.com',\n]);\n\napp.use((req, res, next) => {\n  const origin = req.headers.origin;\n  if (origin && ALLOWED.has(origin)) {\n    res.set('Access-Control-Allow-Origin', origin);\n    res.set('Access-Control-Allow-Credentials', 'true');\n  }\n  res.append('Vary', 'Origin');\n  next();\n});"
+      },
+      {
+        "label": "Verify per origin",
+        "language": "bash",
+        "code": "for o in https://app.example.com https://evil.example; do\n  echo \"$o\"\n  curl -sI -H \"Origin: $o\" https://api.example.com/v1/items \\\n    | grep -i access-control-allow-origin\ndone"
+      }
+    ],
+    "references": [
+      "https://fetch.spec.whatwg.org/#http-access-control-allow-origin",
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin"
+    ],
+    "cwe": "CWE-346",
+    "owasp": "A05:2021",
+    "_idx": 62
+  },
+  {
+    "id": "api-cors-credentials-without-allow-origin",
+    "type": "header-value",
+    "title": "Access-Control-Allow-Credentials sent with no allowed origin",
+    "category": "api",
+    "severity": "info",
+    "description": "The response sets Access-Control-Allow-Credentials: true with no Access-Control-Allow-Origin. There is no origin the credentialed cross-origin request could be allowed for.",
+    "evidence": "The response to {{url}} sets Access-Control-Allow-Credentials: true with no Access-Control-Allow-Origin.",
+    "riskImpact": "No browser will honour the credentialed cross-origin request, so this configuration cannot work as intended. That matters less for what it permits than for what it signals: a CORS policy that is half-applied, typically because the Allow-Origin half is set conditionally on a code path that did not run, while the credentials flag is set unconditionally.",
+    "explanation": "Reported as informational because in this state the header grants nothing. It is worth fixing because the two halves are meant to be decided together: whoever adds the missing Allow-Origin is one step from reflecting the request's Origin unconditionally, which combined with the credentials flag already present here is the arbitrary-origin-with-credentials case that is genuinely critical. Set both from the same allowlist check, or neither.",
+    "fixSteps": [
+      "Set Access-Control-Allow-Origin and Access-Control-Allow-Credentials in the same branch, after the origin has been matched against an allowlist.",
+      "Never pair the credentials flag with a reflected or wildcard origin.",
+      "Send Vary: Origin whenever the response depends on the request's Origin.",
+      "Drop the credentials flag entirely if the endpoint does not need cookies or HTTP authentication."
+    ],
+    "codeExamples": [
+      {
+        "label": "Set both together or neither",
+        "language": "javascript",
+        "code": "const ALLOWED = new Set(['https://app.example.com']);\n\napp.use((req, res, next) => {\n  const origin = req.headers.origin;\n  if (origin && ALLOWED.has(origin)) {\n    res.set('Access-Control-Allow-Origin', origin);\n    res.set('Access-Control-Allow-Credentials', 'true');\n  }\n  res.append('Vary', 'Origin');\n  next();\n});"
+      }
+    ],
+    "references": [
+      "https://fetch.spec.whatwg.org/#http-access-control-allow-credentials",
+      "https://portswigger.net/web-security/cors"
+    ],
+    "cwe": "CWE-346",
+    "owasp": "A05:2021",
+    "_idx": 63
   }
 ]

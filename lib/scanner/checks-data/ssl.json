@@ -114,7 +114,7 @@
       }
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc2818"],
-    "_idx": 5
+    "_idx": 3
   },
   {
     "id": "x-forwarded-method-override",
@@ -139,7 +139,7 @@
       }
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc7231#section-4"],
-    "_idx": 6,
+    "_idx": 4,
     "cwe": "CWE-284",
     "owasp": "A01:2021"
   },
@@ -166,7 +166,7 @@
       }
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc6797"],
-    "_idx": 8,
+    "_idx": 5,
     "cwe": "CWE-319",
     "owasp": "A02:2021"
   },
@@ -198,8 +198,290 @@
       }
     ],
     "references": ["https://www.w3.org/TR/mixed-content/"],
-    "_idx": 9,
+    "_idx": 6,
     "cwe": "CWE-319",
     "owasp": "A02:2021"
+  },
+  {
+    "id": "ssl-hsts-meta-tag-ineffective",
+    "type": "body-pattern",
+    "title": "HSTS declared in a meta tag, where browsers ignore it",
+    "category": "ssl",
+    "severity": "low",
+    "description": "The page carries a <meta http-equiv=\"Strict-Transport-Security\"> tag, which browsers ignore. HSTS is only honoured as a real HTTP response header; the meta form has never been implemented by any browser.",
+    "evidence": "{{url}} declares Strict-Transport-Security in a meta http-equiv tag.",
+    "riskImpact": "The site has no HSTS policy at all, while appearing in a code review to have one. Visitors who type the bare hostname, follow an http:// link, or use an old bookmark still make a cleartext request that an on-path attacker can intercept and strip, which is exactly the first-request window HSTS exists to close.",
+    "explanation": "RFC 6797 section 8.5 is explicit: a UA must ignore an HSTS policy delivered anywhere other than the response header field, precisely because a policy that arrives inside the document body could be injected by the same attacker HSTS is defending against. The meta form appears because http-equiv works for a few other headers (Content-Type, Content-Security-Policy, refresh) and it is reasonable to assume it generalises. It does not.",
+    "fixSteps": [
+      "Send Strict-Transport-Security as a real response header from the web server, CDN, or application.",
+      "Start with a short max-age, confirm nothing on any subdomain still needs plain HTTP, then raise it to 31536000 with includeSubDomains.",
+      "Remove the meta tag once the header is in place, so nobody later assumes it was doing something.",
+      "Consider the preload list only after the header has been serving includeSubDomains with a long max-age for a while, since preloading is difficult to reverse."
+    ],
+    "codeExamples": [
+      {
+        "label": "Nginx: HSTS as a header",
+        "language": "nginx",
+        "code": "server {\n    listen 443 ssl;\n    add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;\n}"
+      },
+      {
+        "label": "Next.js: HSTS from next.config",
+        "language": "javascript",
+        "code": "module.exports = {\n  async headers() {\n    return [{\n      source: '/:path*',\n      headers: [{\n        key: 'Strict-Transport-Security',\n        value: 'max-age=31536000; includeSubDomains',\n      }],\n    }];\n  },\n};"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc6797#section-8.5",
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
+    ],
+    "cwe": "CWE-319",
+    "owasp": "A05:2021",
+    "_idx": 7
+  },
+  {
+    "id": "ssl-alt-svc-cleartext-h2c",
+    "type": "header-value",
+    "title": "Alt-Svc advertises cleartext HTTP/2 (h2c)",
+    "category": "ssl",
+    "severity": "medium",
+    "description": "An HTTPS response advertises an alternative service using the h2c protocol identifier. h2c is HTTP/2 over plain TCP, with no TLS at all.",
+    "evidence": "The Alt-Svc header on the HTTPS response for {{url}} advertises h2c.",
+    "riskImpact": "A client that follows the advertisement moves the connection off TLS, so subsequent requests, cookies included, travel in cleartext while the address bar still shows the original https:// origin. It is a downgrade the server itself is asking for, and because Alt-Svc entries are cached for the header's ma= duration, one response can redirect a client's traffic for hours.",
+    "explanation": "Alt-Svc is meant to point clients at a better transport for the same origin, normally h2 or h3, both of which run over TLS. h2c has no TLS at all and is only defined for prior-knowledge or Upgrade-based connections. Browsers do not act on an h2c advertisement, which limits real-world exposure, but non-browser HTTP clients and proxies do, and the header is usually there because a reverse proxy was configured to advertise its own backend protocol to the world.",
+    "fixSteps": [
+      "Remove h2c from the Alt-Svc header on any TLS-terminated listener.",
+      "Advertise only h2 and h3 alternatives, both of which imply TLS.",
+      "Check the reverse proxy configuration: h2c in Alt-Svc usually means the backend protocol setting is being echoed outward rather than kept internal."
+    ],
+    "codeExamples": [
+      {
+        "label": "Advertise HTTP/3 only",
+        "language": "nginx",
+        "code": "add_header Alt-Svc 'h3=\":443\"; ma=86400' always;"
+      },
+      {
+        "label": "Check what a host advertises",
+        "language": "bash",
+        "code": "curl -sI https://example.com/ | grep -i alt-svc"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc7838",
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Alt-Svc"
+    ],
+    "cwe": "CWE-319",
+    "owasp": "A02:2021",
+    "_idx": 8
+  },
+  {
+    "id": "ssl-link-header-http-subresource",
+    "type": "header-value",
+    "title": "Link header preloads a cleartext subresource",
+    "category": "ssl",
+    "severity": "medium",
+    "description": "An HTTPS response carries a Link header pointing a subresource relation at an http URL. The relation is one of preload, modulepreload, preconnect, prefetch, dns-prefetch, prerender or stylesheet.",
+    "evidence": "A Link header on the HTTPS response for {{url}} references a cleartext subresource.",
+    "riskImpact": "The browser is told to fetch a resource over plain HTTP before the document has even been parsed. For a preloaded script or stylesheet that is active mixed content, so an on-path attacker who substitutes the response gets code execution on the origin. Browsers block active mixed content, which turns this into a hard load failure instead, so the page also breaks.",
+    "explanation": "Header-delivered resource hints are easy to miss in a mixed-content review because nothing in the HTML shows them: they are usually added by a CDN, an edge worker, or a framework's early-hints support. That is also why they tend to hold stale absolute URLs from before the site moved to HTTPS. A protocol-relative or root-relative URL avoids the problem entirely.",
+    "fixSteps": [
+      "Change the Link header URLs to https, or to root-relative paths where the resource is same-origin.",
+      "Check the CDN or edge configuration and any 103 Early Hints response, since those are the usual sources of a header-set hint.",
+      "Add upgrade-insecure-requests to the CSP so a remaining cleartext hint is upgraded rather than blocked."
+    ],
+    "codeExamples": [
+      {
+        "label": "Same-origin relative preload",
+        "language": "text",
+        "code": "Link: </assets/app.a91f2c.js>; rel=preload; as=script, </assets/app.a91f2c.css>; rel=preload; as=style"
+      },
+      {
+        "label": "Inspect the header",
+        "language": "bash",
+        "code": "curl -sI https://example.com/ | grep -i '^link:'"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Link",
+      "https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content"
+    ],
+    "cwe": "CWE-319",
+    "owasp": "A02:2021",
+    "_idx": 9
+  },
+  {
+    "id": "ssl-http-resource-hint-tag",
+    "type": "body-pattern",
+    "title": "Resource hint on an HTTPS page targets a cleartext URL",
+    "category": "ssl",
+    "severity": "low",
+    "description": "An HTTPS page contains a link element resource hint whose href is a cleartext http URL. The relation is one of preload, modulepreload, preconnect, prefetch, dns-prefetch, prerender or manifest.",
+    "evidence": "A resource-hint link element on {{url}} points at a cleartext URL.",
+    "riskImpact": "preconnect and dns-prefetch to an http:// origin leak the destination hostname to the network before any content is requested, and warm a connection the browser then cannot use. preload and modulepreload of an http:// script or style are active mixed content, so the fetch is blocked and whatever depended on it fails. A cleartext manifest link means the installed web app's own metadata can be rewritten in transit.",
+    "explanation": "Separate from the classic mixed-content checks, which read src on media and script elements and href on stylesheet links: hint relations are a different set of rel values and are usually added by a performance pass rather than by the code that renders the resource. That is why they lag behind an HTTPS migration. The risk varies by relation, hence the Low rating, but every case is either a leak or a broken fetch.",
+    "fixSteps": [
+      "Rewrite the href values to https, or to root-relative paths for same-origin resources.",
+      "Delete hints that point at hosts the page no longer uses, which is common after a CDN change.",
+      "Add upgrade-insecure-requests to the CSP as a safety net."
+    ],
+    "codeExamples": [
+      {
+        "label": "Hints over HTTPS",
+        "language": "html",
+        "code": "<link rel=\"preconnect\" href=\"https://cdn.example.com\" crossorigin>\n<link rel=\"preload\" href=\"/fonts/inter.woff2\" as=\"font\" type=\"font/woff2\" crossorigin>\n<link rel=\"manifest\" href=\"/site.webmanifest\">"
+      },
+      {
+        "label": "Find cleartext hints in a template tree",
+        "language": "bash",
+        "code": "grep -rn 'rel=\"\\(preload\\|preconnect\\|prefetch\\|dns-prefetch\\|manifest\\)\"' \\\n  --include='*.html' . | grep 'http://'"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/rel",
+      "https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content"
+    ],
+    "cwe": "CWE-319",
+    "owasp": "A02:2021",
+    "_idx": 10
+  },
+  {
+    "id": "ssl-mixed-content-non-src-attribute",
+    "type": "body-pattern",
+    "title": "Cleartext subresource loaded through srcset, poster or data",
+    "category": "ssl",
+    "severity": "medium",
+    "description": "An HTTPS page loads a cleartext subresource through an attribute other than src or a stylesheet href. The carrier is an img or source srcset candidate, a video poster, or an object data URL.",
+    "evidence": "A non-src loading attribute on {{url}} references a cleartext URL.",
+    "riskImpact": "srcset and poster are passive mixed content: the request still goes out in cleartext on browsers that allow it, revealing what the visitor is viewing and letting an on-path attacker swap the image. object data is active mixed content, because the embedded resource can execute in the page's context, so a substituted response is script execution on your origin.",
+    "explanation": "These attributes are consistently missed by mixed-content reviews and by tooling that only looks for src= and href=. srcset in particular holds several URLs in one attribute, so a single cleartext candidate hides among correct ones. Modern browsers auto-upgrade passive mixed content and block the active kind, but neither behaviour is guaranteed on older or embedded clients, and the request that gets upgraded still discloses nothing only because the upgrade succeeded.",
+    "fixSteps": [
+      "Rewrite every candidate URL in srcset, and the poster and data attributes, to https or to a relative path.",
+      "Add upgrade-insecure-requests to the CSP so anything missed is upgraded rather than sent in the clear.",
+      "Use block-all-mixed-content or a CSP report-only policy to find the remaining cases in real traffic."
+    ],
+    "codeExamples": [
+      {
+        "label": "Every srcset candidate over HTTPS",
+        "language": "html",
+        "code": "<img\n  src=\"https://cdn.example.com/hero-800.jpg\"\n  srcset=\"https://cdn.example.com/hero-400.jpg 400w,\n          https://cdn.example.com/hero-800.jpg 800w,\n          https://cdn.example.com/hero-1600.jpg 1600w\"\n  sizes=\"(max-width: 600px) 400px, 800px\"\n  alt=\"\">\n\n<video poster=\"https://cdn.example.com/poster.jpg\" controls></video>"
+      },
+      {
+        "label": "CSP: upgrade anything left behind",
+        "language": "text",
+        "code": "Content-Security-Policy: upgrade-insecure-requests"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content",
+      "https://www.w3.org/TR/upgrade-insecure-requests/"
+    ],
+    "cwe": "CWE-319",
+    "owasp": "A02:2021",
+    "_idx": 11
+  },
+  {
+    "id": "ssl-canonical-link-http",
+    "type": "body-pattern",
+    "title": "Canonical URL declared as cleartext HTTP",
+    "category": "ssl",
+    "severity": "low",
+    "description": "An HTTPS page declares <link rel=\"canonical\"> pointing at the http:// version of a URL.",
+    "evidence": "The canonical link element on {{url}} names an http:// URL.",
+    "riskImpact": "Search engines index and link the canonical URL, so results, and every site that copies the canonical from your page, send visitors to the cleartext version. Each of those arrivals is a plaintext first request before any redirect or HSTS policy can act, which is the window an on-path attacker uses to strip TLS.",
+    "explanation": "This survives HTTPS migrations because the canonical URL is usually built from a configured site URL rather than from the current request, so the redirect gets fixed and the configuration does not. The redirect to https does not make it harmless: it fixes the browser's next request, not the link that search results and other sites are handing out.",
+    "fixSteps": [
+      "Change the canonical URL to https, in the site configuration rather than per template.",
+      "Check sitemap.xml, og:url, and any RSS or JSON feed for the same stale scheme.",
+      "Keep the http to https redirect in place and enable HSTS so an already-published cleartext link costs one plaintext request at most."
+    ],
+    "codeExamples": [
+      {
+        "label": "Canonical over HTTPS",
+        "language": "html",
+        "code": "<link rel=\"canonical\" href=\"https://example.com/articles/tls-migration\">\n<meta property=\"og:url\" content=\"https://example.com/articles/tls-migration\">"
+      },
+      {
+        "label": "Find the remaining cleartext URLs",
+        "language": "bash",
+        "code": "curl -s https://example.com/sitemap.xml | grep -c 'http://'\ncurl -s https://example.com/ | grep -i 'rel=\"canonical\"'"
+      }
+    ],
+    "references": [
+      "https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls",
+      "https://datatracker.ietf.org/doc/html/rfc6797"
+    ],
+    "cwe": "CWE-319",
+    "owasp": "A02:2021",
+    "_idx": 12
+  },
+  {
+    "id": "ssl-meta-refresh-http-target",
+    "type": "body-pattern",
+    "title": "Meta refresh sends visitors to a cleartext URL",
+    "category": "ssl",
+    "severity": "medium",
+    "description": "An HTTPS page uses <meta http-equiv=\"refresh\"> whose target URL is http://.",
+    "evidence": "A meta refresh element on {{url}} redirects to a cleartext URL.",
+    "riskImpact": "The browser leaves a TLS-protected page and lands on a plaintext one, carrying whatever the destination expects with it. Anything in the query string of that target, a session identifier, a one-time token, a return URL, is transmitted in the clear, and the destination page itself can be rewritten by anyone on the network path.",
+    "explanation": "Meta refresh is often used as a fallback redirect on interstitial and logout pages, exactly the places that carry tokens, and the URL is usually hardcoded once and never revisited. A server-side 301 or 302 is better in every respect here: it happens before the document is parsed, it is honoured by clients that ignore meta refresh, and it is configured in one place where the scheme can be enforced.",
+    "fixSteps": [
+      "Change the target to https, or replace the meta refresh with a server-side 301/302.",
+      "Check whether the redirect target is still correct at all; a hardcoded cleartext URL is usually a stale one.",
+      "Add upgrade-insecure-requests to the CSP so a missed case is upgraded rather than sent in the clear."
+    ],
+    "codeExamples": [
+      {
+        "label": "Server-side redirect instead",
+        "language": "javascript",
+        "code": "// Express\nres.redirect(301, 'https://example.com/dashboard');\n\n// Next.js Route Handler\nreturn Response.redirect('https://example.com/dashboard', 301);"
+      },
+      {
+        "label": "If meta refresh has to stay",
+        "language": "html",
+        "code": "<meta http-equiv=\"refresh\" content=\"0; url=https://example.com/dashboard\">"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meta",
+      "https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content"
+    ],
+    "cwe": "CWE-319",
+    "owasp": "A02:2021",
+    "_idx": 13
+  },
+  {
+    "id": "ssl-http-fetch-endpoint-in-script",
+    "type": "body-pattern",
+    "title": "Inline script calls a cleartext HTTP endpoint",
+    "category": "ssl",
+    "severity": "medium",
+    "description": "An inline script on an HTTPS page issues a request to a cleartext http endpoint. The call is a fetch, an XMLHttpRequest.open, or a library helper such as axios.get or jQuery ajax.",
+    "evidence": "An inline script on {{url}} requests a cleartext endpoint.",
+    "riskImpact": "Requests made this way are active mixed content. Where a browser allows the request, the payload and any credentials it carries travel in cleartext and the response, which is usually parsed as JSON and rendered into the page, can be replaced wholesale by an on-path attacker. Where the browser blocks it, the feature simply stops working, often silently in a catch block.",
+    "explanation": "Markup-oriented mixed-content checks do not see this: the URL is in JavaScript, not in an attribute. It typically survives an HTTPS migration inside a hardcoded API base URL or a configuration object emitted into the page. Loopback URLs are excluded here, since a development script pointing at localhost is normal.",
+    "fixSteps": [
+      "Change the endpoint to https, and confirm the API actually serves TLS before switching.",
+      "Move the base URL into one configuration value rather than repeating it across scripts.",
+      "Add upgrade-insecure-requests to the CSP so any remaining cleartext request is upgraded.",
+      "Use a CSP report-only policy to find the rest in real traffic rather than by grepping."
+    ],
+    "codeExamples": [
+      {
+        "label": "One configured base URL",
+        "language": "javascript",
+        "code": "const API_BASE = 'https://api.example.com';\n\nconst res = await fetch(`${API_BASE}/v1/items`, {\n  credentials: 'include',\n});"
+      },
+      {
+        "label": "CSP: catch what is left",
+        "language": "text",
+        "code": "Content-Security-Policy-Report-Only: default-src https:; connect-src https:; report-uri /csp-report"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content",
+      "https://www.w3.org/TR/mixed-content/"
+    ],
+    "cwe": "CWE-319",
+    "owasp": "A02:2021",
+    "_idx": 14
   }
 ]

@@ -60,6 +60,94 @@ function findJwtCandidates(body: string, headers: Headers, max = 8): string[] {
   return out;
 }
 
+/**
+ * Base64url-decode a JWT's PAYLOAD (second segment) the same way
+ * decodeJwtHeaderClaims above decodes the header. Kept separate rather than
+ * parameterised so the header path, which several checks already depend on,
+ * keeps its exact behaviour.
+ */
+function decodeJwtPayloadClaims(token: string): Record<string, unknown> | null {
+  const segment = token.split(".")[1];
+  if (!segment) return null;
+  const normalized = segment.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(padded)) return null;
+  try {
+    const parsed: unknown = JSON.parse(
+      Buffer.from(padded, "base64").toString("utf8"),
+    );
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+// ── Shared gates for the document/spec detectors ───────────────────────────
+//
+// Every one of these anchors with indexOf before it runs a regex. The bodies
+// these checks read can be a full 1 MiB of attacker-chosen bytes, and a
+// substring scan that fails is one linear pass, where a regex that fails is a
+// retry from every offset. ref: tests/lib/scanner/_perf-budget.test.ts
+
+/** True when the body is an OpenAPI/Swagger document rather than a page that
+ *  merely mentions one. */
+function looksLikeOpenApiDocument(body: string): boolean {
+  if (body.indexOf('"openapi"') === -1 && body.indexOf('"swagger"') === -1) {
+    return false;
+  }
+  return (
+    /"(?:openapi|swagger)"\s*:\s*"\d/.test(body) && body.indexOf('"paths"') > -1
+  );
+}
+
+/** True when the body is an OpenID Connect / OAuth 2.0 authorization-server
+ *  metadata document (RFC 8414 / OIDC Discovery 1.0). */
+function looksLikeOidcDiscoveryDocument(body: string): boolean {
+  if (body.indexOf('"issuer"') === -1) return false;
+  return (
+    body.indexOf('"authorization_endpoint"') > -1 ||
+    body.indexOf('"token_endpoint"') > -1
+  );
+}
+
+/**
+ * The values of a JSON string array, e.g. `"response_types_supported": [...]`.
+ * Returns an empty array when the key is absent so callers can tell "declared
+ * nothing" from "did not declare the key" by checking presence separately.
+ */
+function jsonStringArrayValues(body: string, key: string): string[] {
+  const at = body.indexOf(`"${key}"`);
+  if (at === -1) return [];
+  const window = body.slice(at, at + 4000);
+  const arr = /^"[^"]+"\s*:\s*\[([^\]]{0,3000})\]/.exec(window);
+  if (!arr) return [];
+  return [...arr[1].matchAll(/"([^"]{0,120})"/g)].map((m) => m[1]);
+}
+
+/** Hostnames that must never appear in a public response header's URL. */
+function isInternalHostname(host: string): boolean {
+  const h = host.toLowerCase().replace(/^\[|\]$/g, "");
+  if (h === "localhost" || h.endsWith(".localhost")) return true;
+  if (h === "::1") return true;
+  if (/\.(?:local|internal|intranet|lan|corp|home|test|localdomain)$/.test(h)) {
+    return true;
+  }
+  if (/^127\./.test(h) || /^10\./.test(h) || /^192\.168\./.test(h)) return true;
+  if (/^169\.254\./.test(h)) return true;
+  if (/^172\.(?:1[6-9]|2\d|3[01])\./.test(h)) return true;
+  if (/^fd[0-9a-f]{2}:/i.test(h) || /^fe80:/i.test(h)) return true;
+  return false;
+}
+
+/** Seconds-or-HTTP-date parse used by the Retry-After / Sunset checks. */
+function parseHttpDate(value: string): number | null {
+  const ms = Date.parse(value.trim());
+  return Number.isFinite(ms) ? ms : null;
+}
+
 // ── OAuth authorize-endpoint URL shape ──────────────────────────────────────
 
 function isOAuthAuthorizeEndpoint(pathname: string): boolean {
@@ -822,6 +910,426 @@ const rawDetectors: Record<string, DetectFn> = {
     if (names.length < 5) return null;
     const sample = names.slice(0, 5).join(", ");
     return `GraphQL introspection at ${url} resolves a "Mutation" type exposing ${names.length} mutations (${sample}${names.length > 5 ? ", ..." : ""}) - the complete write surface of the API is enumerable without authentication.`;
+  },
+
+  // ── API description documents served in production ──────────────────────
+
+  "api-graphql-ide-exposed": (_url, _headers, body) => {
+    // Structural markers only: the IDE's own bundle filename, its document
+    // title, or the function that renders it. A page that merely writes
+    // "GraphQL Playground" in prose does not match any of them, which is
+    // what keeps this off marketing and documentation pages.
+    const markers: [RegExp, string][] = [
+      [/graphql-playground[\w-]{0,20}\.(?:js|css)\b/i, "GraphQL Playground"],
+      [/<title>\s*GraphiQL/i, "GraphiQL"],
+      [/\bGraphiQL\.createFetcher\b|\brenderGraphiQL\b/i, "GraphiQL"],
+      [/graphiql(?:\.min)?\.(?:js|css)\b/i, "GraphiQL"],
+      [/\bApolloServerPluginLandingPage\b/, "Apollo Server landing page"],
+      [
+        /embeddable-sandbox[\w.-]{0,20}\.(?:js|umd\.production\.min\.js)\b/i,
+        "Apollo Sandbox",
+      ],
+      [/graphql-voyager[\w-]{0,20}\.(?:js|css)\b/i, "GraphQL Voyager"],
+      [/\bHasura\s+Console\b|\b__hasuraConsole\b/, "Hasura Console"],
+    ];
+    for (const [pattern, name] of markers) {
+      if (pattern.test(body)) {
+        return `${name} is served from this endpoint, so the interactive GraphQL IDE is reachable in this environment.`;
+      }
+    }
+    return null;
+  },
+
+  "api-graphql-schema-sdl-exposed": (_url, headers, body) => {
+    // An SDL file is plain text; an HTML page that happens to contain the
+    // words is not. Requiring the response NOT to be HTML is what separates
+    // "the schema is being served" from "a tutorial shows a schema".
+    const contentType = headers.get("content-type") || "";
+    if (/text\/html/i.test(contentType)) return null;
+    if (body.indexOf("type Query") === -1) return null;
+    if (
+      !/(?:^|\n)\s*type\s+Query\s*(?:implements\s+[\w\s&]{1,80})?\{/.test(body)
+    ) {
+      return null;
+    }
+    const supporting =
+      /(?:^|\n)\s*type\s+Mutation\s*\{/.test(body) ||
+      /(?:^|\n)\s*schema\s*\{/.test(body) ||
+      /(?:^|\n)\s*input\s+\w{1,60}\s*\{/.test(body) ||
+      /(?:^|\n)\s*enum\s+\w{1,60}\s*\{/.test(body);
+    if (!supporting) return null;
+    return "The GraphQL schema is served as raw SDL, so every type, field, and argument the API defines is readable without issuing an introspection query.";
+  },
+
+  "api-openapi-no-security-declared": (_url, _headers, body) => {
+    if (!looksLikeOpenApiDocument(body)) return null;
+    // Only meaningful for a spec that describes writes. A read-only public
+    // catalogue with no security block is a legitimate design.
+    if (!/"(?:post|put|patch|delete)"\s*:\s*\{/i.test(body)) return null;
+    if (body.indexOf('"security"') > -1) return null;
+    if (
+      body.indexOf('"securitySchemes"') > -1 ||
+      body.indexOf('"securityDefinitions"') > -1
+    ) {
+      return null;
+    }
+    return "OpenAPI document describes state-changing operations (POST/PUT/PATCH/DELETE) but declares no security schemes and no security requirement, so the published contract says every one of them is callable anonymously.";
+  },
+
+  "api-openapi-server-url-plain-http": (_url, _headers, body) => {
+    if (!looksLikeOpenApiDocument(body)) return null;
+    // Internal/staging hosts are api-openapi-server-url-leak's finding; this
+    // one is specifically about a PUBLIC base URL published as cleartext
+    // http://, so those hosts are excluded here rather than double-reported.
+    const at = body.indexOf('"servers"');
+    if (at > -1) {
+      const window = body.slice(at, at + 3000);
+      const m =
+        /"url"\s*:\s*"(http:\/\/(?!localhost|127\.0\.0\.1|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|internal|staging)[^"]{1,200})"/i.exec(
+          window,
+        );
+      if (m) {
+        return `OpenAPI document publishes a cleartext base URL: "${m[1]}".`;
+      }
+    }
+    if (
+      /"schemes"\s*:\s*\[[^\]]{0,200}"http"/i.test(body) &&
+      !/"schemes"\s*:\s*\[[^\]]{0,200}"https"/i.test(body)
+    ) {
+      return 'Swagger 2.0 document declares "schemes": ["http"] with no https entry, so every generated client talks to this API in cleartext.';
+    }
+    return null;
+  },
+
+  "api-openapi-swagger-2-document": (_url, _headers, body) => {
+    if (body.indexOf('"swagger"') === -1) return null;
+    if (!/"swagger"\s*:\s*"2\.0"/.test(body)) return null;
+    if (body.indexOf('"paths"') === -1) return null;
+    return 'Document declares "swagger": "2.0". Swagger 2.0 was superseded by OpenAPI 3.0 in 2017 and by 3.1 in 2021.';
+  },
+
+  "api-openapi-deprecated-operations-exposed": (_url, _headers, body) => {
+    if (!looksLikeOpenApiDocument(body)) return null;
+    const matches = body.match(/"deprecated"\s*:\s*true/g);
+    if (!matches) return null;
+    return `OpenAPI document marks ${matches.length} operation(s) or parameter(s) as "deprecated": true while still publishing them as callable.`;
+  },
+
+  "api-openapi-oauth2-implicit-flow-declared": (_url, _headers, body) => {
+    if (!looksLikeOpenApiDocument(body)) return null;
+    // OpenAPI 3: flows.implicit. Swagger 2: "flow": "implicit".
+    if (/"implicit"\s*:\s*\{[^}]{0,400}"authorizationUrl"/i.test(body)) {
+      return 'OpenAPI document declares an OAuth2 "implicit" flow with an authorizationUrl.';
+    }
+    if (/"flow"\s*:\s*"implicit"/i.test(body)) {
+      return 'Swagger 2.0 document declares an OAuth2 security definition with "flow": "implicit".';
+    }
+    return null;
+  },
+
+  "api-asyncapi-document-exposed": (_url, _headers, body) => {
+    const jsonForm = /"asyncapi"\s*:\s*"[23]\./.test(body);
+    const yamlForm = /(?:^|\n)asyncapi:\s*["']?[23]\./.test(body);
+    if (!jsonForm && !yamlForm) return null;
+    if (body.indexOf("channels") === -1) return null;
+    return "An AsyncAPI document is served from this URL, publishing the event-driven side of the system: broker addresses, channel and topic names, and message payload schemas.";
+  },
+
+  "api-postman-collection-exposed": (_url, _headers, body) => {
+    if (
+      body.indexOf('"_postman_id"') === -1 &&
+      body.indexOf("schema.getpostman.com") === -1
+    ) {
+      return null;
+    }
+    if (
+      !/"_postman_id"\s*:\s*"/.test(body) &&
+      !/"schema"\s*:\s*"https?:\/\/schema\.getpostman\.com/.test(body)
+    ) {
+      return null;
+    }
+    const named = /"name"\s*:\s*"([^"]{1,80})"/.exec(body)?.[1];
+    return `A Postman collection export is served from this URL${named ? ` ("${named}")` : ""}. Collections carry every request path, body, and header the author saved, and frequently the auth values used while testing.`;
+  },
+
+  "api-insomnia-export-exposed": (_url, _headers, body) => {
+    if (
+      body.indexOf("insomnia") === -1 &&
+      body.indexOf('"__export_format"') === -1
+    ) {
+      return null;
+    }
+    if (
+      !/"__export_source"\s*:\s*"[^"]{0,80}insomnia/i.test(body) &&
+      !(
+        /"__export_format"\s*:\s*\d/.test(body) &&
+        /"_type"\s*:\s*"(?:export|request|environment)"/.test(body)
+      )
+    ) {
+      return null;
+    }
+    return "An Insomnia workspace export is served from this URL. The export contains every saved request, and any environment values stored alongside them.";
+  },
+
+  "api-wadl-document-exposed": (_url, _headers, body) => {
+    if (body.indexOf("wadl") === -1) return null;
+    if (
+      !/xmlns(?::\w{1,20})?="http:\/\/wadl\.dev\.java\.net\/2009\/02"/i.test(
+        body,
+      ) &&
+      !/<(?:\w{1,20}:)?application\b[^>]{0,300}wadl/i.test(body)
+    ) {
+      return null;
+    }
+    return "A WADL (Web Application Description Language) document is served from this URL, enumerating every resource, method, and parameter the service exposes.";
+  },
+
+  "api-raml-document-exposed": (_url, _headers, body) => {
+    if (!/^#%RAML\s+[01]\.\d/m.test(body.slice(0, 4000))) return null;
+    return "A RAML API definition is served from this URL, enumerating every resource, method, and declared security scheme.";
+  },
+
+  "api-odata-metadata-document-exposed": (url, _headers, body) => {
+    const isMetadataUrl = /\/\$metadata(?:\?|$)/i.test(url);
+    const hasEdmx =
+      body.indexOf("edmx") > -1 &&
+      /<(?:\w{1,20}:)?Edmx\b/i.test(body) &&
+      /<(?:\w{1,20}:)?EntityType\b/i.test(body);
+    if (!isMetadataUrl && !hasEdmx) return null;
+    if (!hasEdmx) return null;
+    return "An OData $metadata document is served from this URL. It publishes the complete entity model: every entity set, property name and type, navigation property, and callable function or action.";
+  },
+
+  // ── OpenID Connect / OAuth 2.0 discovery ────────────────────────────────
+
+  "api-oidc-discovery-alg-none-supported": (_url, _headers, body) => {
+    if (!looksLikeOidcDiscoveryDocument(body)) return null;
+    const algs = jsonStringArrayValues(
+      body,
+      "id_token_signing_alg_values_supported",
+    );
+    if (!algs.some((a) => a.toLowerCase() === "none")) return null;
+    return `Authorization-server metadata advertises "none" in id_token_signing_alg_values_supported (declared: ${algs.join(", ")}).`;
+  },
+
+  "api-oidc-discovery-implicit-flow-supported": (_url, _headers, body) => {
+    if (!looksLikeOidcDiscoveryDocument(body)) return null;
+    const types = jsonStringArrayValues(body, "response_types_supported");
+    const implicit = types.filter(
+      (t) => /\btoken\b/.test(t) && !/\bcode\b/.test(t),
+    );
+    if (implicit.length === 0) return null;
+    return `Authorization-server metadata advertises implicit-grant response types: ${implicit.join(", ")}.`;
+  },
+
+  "api-oidc-discovery-pkce-not-advertised": (_url, _headers, body) => {
+    if (!looksLikeOidcDiscoveryDocument(body)) return null;
+    const types = jsonStringArrayValues(body, "response_types_supported");
+    if (!types.some((t) => /\bcode\b/.test(t))) return null;
+    if (body.indexOf('"code_challenge_methods_supported"') > -1) return null;
+    return "Authorization-server metadata advertises the authorization-code response type but omits code_challenge_methods_supported, so a conforming client has no way to discover that PKCE is available.";
+  },
+
+  // ── OAuth authorization requests ────────────────────────────────────────
+
+  "api-oauth-authorize-redirect-uri-insecure": (url) => {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return null;
+    }
+    if (!isOAuthAuthorizeEndpoint(parsed.pathname)) return null;
+    const redirect = parsed.searchParams.get("redirect_uri");
+    if (!redirect || !/^http:\/\//i.test(redirect)) return null;
+    let host: string;
+    try {
+      host = new URL(redirect).hostname;
+    } catch {
+      return null;
+    }
+    // A loopback redirect URI over http is explicitly permitted for native
+    // apps by RFC 8252 section 7.3, so it is not a finding.
+    if (host === "localhost" || host === "127.0.0.1" || host === "::1") {
+      return null;
+    }
+    return `Authorization request carries redirect_uri=${redirect}, a cleartext http:// callback on a non-loopback host.`;
+  },
+
+  "api-oauth-authorize-oidc-nonce-missing": (url) => {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return null;
+    }
+    if (!isOAuthAuthorizeEndpoint(parsed.pathname)) return null;
+    const responseType = parsed.searchParams.get("response_type") || "";
+    if (!/\bid_token\b/i.test(responseType)) return null;
+    if (parsed.searchParams.has("nonce")) return null;
+    return `Authorization request uses response_type=${responseType} but carries no nonce parameter, which OpenID Connect Core section 3.2.2.1 requires for every flow that returns an ID token from the authorization endpoint.`;
+  },
+
+  "api-jwt-long-lived-token": (_url, headers, body) => {
+    const NINETY_DAYS = 90 * 24 * 60 * 60;
+    for (const token of findJwtCandidates(body, headers)) {
+      const claims = decodeJwtPayloadClaims(token);
+      if (!claims) continue;
+      const exp = typeof claims.exp === "number" ? claims.exp : null;
+      if (exp === null) continue;
+      const iat = typeof claims.iat === "number" ? claims.iat : null;
+      const nbf = typeof claims.nbf === "number" ? claims.nbf : null;
+      const start = iat ?? nbf ?? Math.floor(Date.now() / 1000);
+      const lifetime = exp - start;
+      if (lifetime <= NINETY_DAYS) continue;
+      const days = Math.round(lifetime / 86400);
+      return `A JWT reachable from this response has a ${days}-day lifetime (iat/nbf to exp), far beyond the minutes-to-hours an access token is normally given.`;
+    }
+    return null;
+  },
+
+  // ── Response-header correctness ─────────────────────────────────────────
+
+  "api-retry-after-invalid-value": (_url, headers) => {
+    const raw = headers.get("retry-after");
+    if (!raw) return null;
+    const value = raw.trim();
+    if (/^\d+$/.test(value)) return null;
+    if (parseHttpDate(value) !== null) return null;
+    return `Retry-After: ${value.slice(0, 120)} is neither a non-negative integer number of seconds nor an HTTP-date, the only two forms RFC 9110 defines.`;
+  },
+
+  "api-sunset-header-in-past": (_url, headers) => {
+    const raw = headers.get("sunset");
+    if (!raw) return null;
+    const at = parseHttpDate(raw);
+    if (at === null) return null;
+    if (at >= Date.now()) return null;
+    return `Sunset: ${raw.trim()} is in the past, yet the endpoint is still answering requests.`;
+  },
+
+  "api-json-response-content-type-mismatch": (_url, headers, body) => {
+    const head = body.slice(0, 400).trimStart();
+    if (!head.startsWith("{") && !head.startsWith("[")) return null;
+    // Structural, not a full parse: a 1 MiB body must not be JSON.parse'd on
+    // every scan just to answer "does this look like JSON".
+    if (!/^[[{]\s*(?:"|\]|\})/.test(head)) return null;
+    const opening = body.slice(0, 2000).toLowerCase();
+    if (opening.includes("<html") || opening.includes("<!doctype")) return null;
+    const contentType = headers.get("content-type");
+    if (contentType === null || contentType.trim() === "") {
+      return "Response body is JSON-shaped but the response carries no Content-Type header at all, so the browser is left to sniff the type.";
+    }
+    if (/text\/html/i.test(contentType)) {
+      return `Response body is JSON-shaped but is served as Content-Type: ${contentType.slice(0, 120)}.`;
+    }
+    return null;
+  },
+
+  "api-response-header-internal-host": (_url, headers) => {
+    for (const name of ["location", "content-location", "link"]) {
+      const value = headers.get(name);
+      if (!value) continue;
+      const urls = value.match(/https?:\/\/[^\s<>",;]{1,300}/gi) || [];
+      for (const candidate of urls) {
+        let host: string;
+        try {
+          host = new URL(candidate).hostname;
+        } catch {
+          continue;
+        }
+        if (!isInternalHostname(host)) continue;
+        return `Response header ${name} points at an internal host: ${candidate.slice(0, 160)}`;
+      }
+    }
+    return null;
+  },
+
+  "api-www-authenticate-realm-internal-detail": (_url, headers) => {
+    const value = headers.get("www-authenticate");
+    if (!value) return null;
+    const realm = /realm\s*=\s*"([^"]{1,200})"/i.exec(value)?.[1];
+    if (!realm) return null;
+    const looksInternal =
+      /(?:^|[\s@/\\])(?:\/(?:usr|home|opt|etc|var|srv)\/|[A-Za-z]:\\)/.test(
+        realm,
+      ) ||
+      /\b(?:\d{1,3}\.){3}\d{1,3}\b/.test(realm) ||
+      /\b[\w-]{1,40}\.(?:local|internal|intranet|lan|corp)\b/i.test(realm) ||
+      /\b(?:localhost|127\.0\.0\.1)\b/i.test(realm);
+    if (!looksInternal) return null;
+    return `WWW-Authenticate realm exposes internal infrastructure detail: realm="${realm.slice(0, 160)}"`;
+  },
+
+  "api-problem-json-trace-exposed": (_url, headers, body) => {
+    const contentType = headers.get("content-type") || "";
+    const isProblemJson = /application\/problem\+json/i.test(contentType);
+    const looksLikeProblem =
+      isProblemJson ||
+      (/"title"\s*:\s*"/.test(body) &&
+        /"status"\s*:\s*\d{3}/.test(body) &&
+        /"(?:type|detail)"\s*:\s*"/.test(body));
+    if (!looksLikeProblem) return null;
+    const traceField =
+      /"(?:trace|stackTrace|stack_trace)"\s*:\s*"((?:[^"\\]|\\.){0,4000})"/i.exec(
+        body,
+      );
+    // A real trace arrives JSON-escaped, so its frames read `\n\tat com...`
+    // and STACK_FRAME_PATTERN's leading \b never matches: the literal `t` of
+    // the `\t` escape runs straight into `at`. Turn the escapes back into
+    // whitespace first, or this only fires on a trace already flattened onto
+    // one line, which is the rarer shape.
+    const traceText = traceField?.[1].replace(/\\[ntr]/g, " ");
+    if (traceText && STACK_FRAME_PATTERN.test(traceText)) {
+      return 'RFC 9457 problem document carries a "trace" member containing a full stack trace with file paths and line numbers.';
+    }
+    const exceptionField = /"exception"\s*:\s*"([\w.$]{8,200})"/.exec(body);
+    if (exceptionField && exceptionField[1].includes(".")) {
+      return `RFC 9457 problem document names the internal exception class that produced it: "${exceptionField[1]}".`;
+    }
+    return null;
+  },
+
+  "api-swagger-ui-outdated-version": (_url, _headers, body) => {
+    if (body.indexOf("swagger-ui") === -1) return null;
+    // Bounded on both sides of the version and anchored on a real separator,
+    // so there is no lazy bridge between the name and the digits.
+    const m =
+      /swagger-ui(?:-dist|-bundle|-react)?[@/-](\d{1,2})\.(\d{1,3})\.(\d{1,3})/i.exec(
+        body,
+      );
+    if (!m) return null;
+    const [major, minor, patch] = [+m[1], +m[2], +m[3]];
+    // 4.1.3 is the first release carrying the fix for the DOM XSS in
+    // Swagger UI's own rendering of a spec (CVE-2021-46708).
+    const isOld =
+      major < 4 ||
+      (major === 4 && minor === 0) ||
+      (major === 4 && minor === 1 && patch < 3);
+    if (!isOld) return null;
+    return `Swagger UI ${major}.${minor}.${patch} is loaded by this page. Releases before 4.1.3 are affected by a DOM XSS in Swagger UI's own spec rendering.`;
+  },
+
+  "api-cors-allow-origin-multiple-values": (_url, headers) => {
+    const acao = headers.get("access-control-allow-origin");
+    if (!acao) return null;
+    const value = acao.trim();
+    if (value === "*" || value === "null") return null;
+    // The header takes exactly one origin. Two comma- or space-separated
+    // origins is a server that concatenated its allowlist instead of
+    // echoing the matching entry, and every browser rejects the response.
+    const origins = value.split(/[,\s]+/).filter(Boolean);
+    if (origins.length < 2) return null;
+    if (!origins.every((o) => /^(?:https?:\/\/|\*$|null$)/i.test(o)))
+      return null;
+    return `Access-Control-Allow-Origin carries ${origins.length} values ("${value.slice(0, 160)}"), but the header is defined to hold exactly one origin.`;
+  },
+
+  "api-cors-credentials-without-allow-origin": (_url, headers) => {
+    const acac = headers.get("access-control-allow-credentials");
+    if (!acac || acac.trim().toLowerCase() !== "true") return null;
+    if (headers.has("access-control-allow-origin")) return null;
+    return "Access-Control-Allow-Credentials: true is sent with no Access-Control-Allow-Origin header, so no browser will ever honour the credentialed request this header exists to permit.";
   },
 };
 

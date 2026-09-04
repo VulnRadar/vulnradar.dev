@@ -18,22 +18,22 @@ in this file and quote the title, description, and fix steps.
 
 ## Summary
 
-- **Total checks:** 828
+- **Total checks:** 852
 - **Categories:** 18 (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
-  - medium: 228
+  - medium: 238
   - high: 204
-  - low: 182
-  - info: 116
+  - low: 191
+  - info: 121
   - critical: 98
 - **By type:**
   - body-pattern: 475
   - header: 175
   - combined: 64
   - header-missing: 55
+  - network-probe: 36
   - url-check: 19
   - header-value: 18
-  - network-probe: 12
   - header-present: 10
 
 ---
@@ -1524,7 +1524,7 @@ const server = new ApolloServer({
 ### `api-graphql-ide-exposed` [api / medium / body-pattern]
 **GraphQL IDE served in production**
 
-An interactive GraphQL IDE (GraphiQL, GraphQL Playground, Apollo Sandbox, Voyager, or the Hasura console) is served from this endpoint. These are development tools that bundle a schema browser and a query editor, and they are meant to be turned off outside development.
+This endpoint serves an interactive GraphQL IDE: a schema browser and a query editor for this API. GraphiQL, GraphQL Playground, Apollo Sandbox, Voyager and the Hasura console are all development tools, and every one of them is meant to be switched off outside development.
 
 **Risk:** The IDE gives anyone who finds the endpoint a full schema browser plus a request builder pointed at your production API, with your visitor's own cookies attached. Enumerating the write surface, discovering fields the frontend never calls, and iterating on an authorization bypass all stop needing any tooling of the attacker's own.
 
@@ -1572,7 +1572,7 @@ app.all(
 ### `api-graphql-schema-sdl-exposed` [api / low / body-pattern]
 **GraphQL schema served as raw SDL**
 
-The response is a GraphQL schema in Schema Definition Language form, served as a plain-text document rather than as an HTML page that talks about one.
+The response is a GraphQL schema document in Schema Definition Language form, served as plain text. That is the schema itself, not an HTML page that happens to show one.
 
 **Risk:** An SDL dump hands over the same map that introspection would, without needing introspection to be enabled. Every type, field, argument, enum value and input object is readable, including internal fields the public client never queries, which is the starting point for finding an operation whose authorization was never written.
 
@@ -1604,7 +1604,7 @@ location ~* \.(graphql|gql)$ {
 ### `api-openapi-no-security-declared` [api / low / body-pattern]
 **OpenAPI document declares no security for write operations**
 
-The served OpenAPI document describes POST, PUT, PATCH or DELETE operations but contains no securitySchemes, no securityDefinitions, and no security requirement anywhere in the document.
+The served OpenAPI document describes write operations but declares no security scheme anywhere. There is no securitySchemes block, no securityDefinitions, and no security requirement on any POST, PUT, PATCH or DELETE operation.
 
 **Risk:** The contract clients and gateways generate from this document says every write is anonymous. Tooling that enforces the spec (an API gateway, a mock server, a generated SDK) will not attach credentials, and a reviewer reading the document has no way to tell an intentional public API from an endpoint whose auth was never declared.
 
@@ -1647,7 +1647,7 @@ npx @stoplight/spectral-cli lint openapi.yaml \
 ### `api-openapi-server-url-plain-http` [api / medium / body-pattern]
 **OpenAPI document publishes a cleartext base URL**
 
-The served API description gives a public base URL over plain http://, either in the OpenAPI 3 servers array or as a Swagger 2.0 schemes list containing http and not https.
+The served API description publishes a public base URL over plain http rather than https. That is either an OpenAPI 3 servers entry, or a Swagger 2.0 schemes list containing http and not https.
 
 **Risk:** Every SDK, mock server, and gateway generated from this document targets the cleartext URL by default. Requests built that way carry the API key or bearer token in plaintext over the network, and an on-path attacker can read the credential and rewrite the response before the client sees it.
 
@@ -1706,7 +1706,7 @@ npx @redocly/cli lint openapi.json
 ### `api-openapi-deprecated-operations-exposed` [api / info / body-pattern]
 **OpenAPI document advertises deprecated operations**
 
-The served API description marks one or more operations or parameters "deprecated": true while still publishing them as callable.
+The served API description marks one or more operations or parameters as deprecated. They are still published as callable, so the contract advertises a route the team has already written off.
 
 **Risk:** A deprecated route is usually the one that stopped getting attention: it keeps the old parameter handling, the old validation, and often the old authorization code, while review and test effort moves to its replacement. Publishing it in the contract tells an attacker exactly which path that is.
 
@@ -1744,7 +1744,7 @@ router.get('/v1/users/search', (req, res, next) => {
 ### `api-openapi-oauth2-implicit-flow-declared` [api / medium / body-pattern]
 **OpenAPI document declares the OAuth2 implicit flow**
 
-The served API description declares an OAuth2 security scheme using the implicit grant, which returns the access token directly in the redirect URL fragment.
+The served API description declares an OAuth2 security scheme using the implicit grant. That flow returns the access token directly in the redirect URL fragment instead of through a back-channel exchange.
 
 **Risk:** An implicit-grant token arrives in the URL fragment, so it lands in browser history, in any Referer sent by a script the page loads, and in the logs of anything that records full URLs. There is no client authentication and no PKCE, so a token intercepted at the redirect is immediately usable, and there is no refresh token, which pushes implementations toward long token lifetimes to compensate.
 
@@ -1786,7 +1786,7 @@ GET /authorize
 ### `api-asyncapi-document-exposed` [api / low / body-pattern]
 **AsyncAPI document publicly served**
 
-An AsyncAPI document is served from this URL. AsyncAPI describes the event-driven half of a system: brokers, channels and topics, and the shape of the messages that flow through them.
+An AsyncAPI document is served from this URL, describing the event-driven half of the system. It covers brokers, channels and topics, and the payload schema of every message that flows through them.
 
 **Risk:** The document names the broker hostnames and ports, the exact channel and topic strings, the protocol and security scheme each server expects, and the payload schema of every message. That is the whole internal messaging topology, including queues that no public API ever touches, handed over in one file.
 
@@ -1811,7 +1811,7 @@ echo 'asyncapi.yaml' >> .vercelignore
 ### `api-postman-collection-exposed` [api / medium / body-pattern]
 **Postman collection export publicly served**
 
-A Postman collection export is served from this URL, identified by its _postman_id or its schema.getpostman.com schema reference.
+A Postman collection export is served from this URL, identified by its own _postman_id field. Collections carry every request path, body and header the author saved.
 
 **Risk:** A collection is a saved copy of how someone actually called the API: every path, every request body, every header. Collections routinely carry the values used while testing, so the file frequently contains a live bearer token, an API key, or a basic-auth credential in the auth block or in a saved variable, and it always contains internal routes that were never linked publicly.
 
@@ -1839,7 +1839,7 @@ EOF
 ### `api-insomnia-export-exposed` [api / medium / body-pattern]
 **Insomnia workspace export publicly served**
 
-An Insomnia workspace export is served from this URL, identified by its __export_source or the __export_format plus _type fields Insomnia writes.
+An Insomnia workspace export is served from this URL, identified by the fields Insomnia writes. The export holds every saved request in the workspace, plus the environment values those requests interpolate.
 
 **Risk:** The export contains every saved request in the workspace: URLs, bodies, and headers, plus the environment objects those requests interpolate. Environments are where API keys and tokens are stored, so an exported workspace frequently ships working credentials alongside the exact requests they authorize.
 
@@ -1896,7 +1896,7 @@ location ~* (application\.wadl|\?_wadl) {
 ### `api-raml-document-exposed` [api / low / body-pattern]
 **RAML API definition publicly served**
 
-A RAML (RESTful API Modeling Language) definition is served from this URL, identified by the #%RAML version marker RAML files must start with.
+A RAML API definition is served from this URL, identified by the #%RAML version marker. RAML files must begin with that marker, so this matches the document itself rather than a mention of it.
 
 **Risk:** A RAML file lists every resource and method the API defines, the parameters each takes, and the securedBy scheme applied to each one, including operations that are not referenced by any public client.
 
@@ -1918,7 +1918,7 @@ grep -rl '^#%RAML' dist public build 2>/dev/null
 ### `api-odata-metadata-document-exposed` [api / low / body-pattern]
 **OData $metadata document publicly served**
 
-An OData $metadata document is served from this URL. OData services (SAP Gateway, Microsoft Dynamics, ASP.NET Core OData) publish one automatically to describe their entity model.
+An OData $metadata document, describing the service's entity model, is served from this URL. OData services such as SAP Gateway, Microsoft Dynamics and ASP.NET Core OData publish one automatically.
 
 **Risk:** The metadata document is a complete schema dump: every entity set, every property with its exact name and type, every navigation property linking one entity to another, and every callable function and action. Combined with OData's query syntax, which lets a caller select, filter and expand across those navigation properties, it is enough to reach data the intended UI never displays.
 
@@ -1951,7 +1951,7 @@ app.MapWhen(
 ### `api-oidc-discovery-alg-none-supported` [api / high / body-pattern]
 **OIDC discovery advertises the "none" signing algorithm**
 
-The authorization-server metadata document lists "none" in id_token_signing_alg_values_supported, meaning the server will issue, and by implication accept, unsigned ID tokens.
+The authorization-server metadata lists "none" among its supported ID token signing algorithms. That means the server will issue, and by implication accept, unsigned ID tokens.
 
 **Risk:** An unsigned ID token is a token anyone can write. A client that follows the discovery document and honours alg "none" will accept a token whose sub, email and groups claims the attacker chose, which is authentication bypass with no credential involved.
 
@@ -1983,7 +1983,7 @@ curl -s https://auth.example.com/.well-known/openid-configuration \
 ### `api-oidc-discovery-implicit-flow-supported` [api / low / body-pattern]
 **OIDC discovery advertises implicit-grant response types**
 
-The authorization-server metadata lists a response type that returns a token straight from the authorization endpoint ("token" or "id_token token") without an accompanying code.
+The authorization-server metadata advertises a response type that returns a token from the authorization endpoint. The advertised value is "token" or "id_token token", neither of which comes with a code.
 
 **Risk:** Any client that reads this document is told the implicit grant is available. A token returned that way lands in the URL fragment, so it reaches browser history, third-party scripts on the callback page, and anything that logs full URLs, and it is issued without client authentication or PKCE.
 
@@ -2009,7 +2009,7 @@ The authorization-server metadata lists a response type that returns a token str
 ### `api-oidc-discovery-pkce-not-advertised` [api / low / body-pattern]
 **OIDC discovery omits code_challenge_methods_supported**
 
-The authorization-server metadata advertises the authorization-code response type but does not include code_challenge_methods_supported, the field a client reads to discover that PKCE is available.
+The authorization-server metadata advertises the authorization-code response type without PKCE support. code_challenge_methods_supported is the field a client reads to discover PKCE is available, and it is absent.
 
 **Risk:** A conforming client decides whether to send a code_challenge based on this field. When it is absent, well-behaved client libraries skip PKCE, which leaves the authorization code unbound to the requesting client: an attacker who intercepts the code at the redirect (a custom URI scheme another app registered, a leaked Referer, a compromised proxy) can exchange it themselves.
 
@@ -2042,7 +2042,7 @@ curl -s https://auth.example.com/.well-known/openid-configuration \
 ### `api-oauth-authorize-redirect-uri-insecure` [api / medium / url-check]
 **OAuth authorization request uses a cleartext redirect_uri**
 
-The scanned URL is an OAuth or OpenID Connect authorization request whose redirect_uri points at a plain http:// callback on a host that is not loopback.
+The scanned URL is an OAuth or OpenID Connect authorization request with a cleartext redirect_uri. The callback is a plain http URL on a host that is not loopback.
 
 **Risk:** The authorization response, carrying either the authorization code or, in an implicit flow, the token itself, is delivered to that cleartext URL. Anyone on the network path reads it, and with the code in hand can complete the exchange before the real client does unless PKCE is enforced.
 
@@ -2124,7 +2124,7 @@ delete req.session.oidcNonce;   // single use
 ### `api-jwt-long-lived-token` [api / low / body-pattern]
 **JWT with a lifetime measured in months**
 
-A JWT reachable from this response decodes to a payload whose exp claim is more than 90 days after its iat or nbf, so the token stays valid for months after it was issued.
+A JWT reachable from this response stays valid for more than 90 days after it was issued. The decoded payload's exp claim is more than 90 days after its iat or nbf.
 
 **Risk:** Expiry is the only revocation a stateless JWT has. A token that lives for months means a copy taken from a log, a browser profile, a crash report, or an old backup keeps working long after the account it belongs to has changed password, lost a role, or been deleted, unless a separate denylist is consulted on every request.
 
@@ -2162,7 +2162,7 @@ echo "$JWT" | cut -d. -f2 | base64 -d 2>/dev/null | jq '{iat, exp, days: ((.exp 
 ### `api-retry-after-invalid-value` [api / low / header-value]
 **Retry-After header is not a valid delay or date**
 
-The response carries a Retry-After header whose value is neither a non-negative integer number of seconds nor an HTTP-date, the only two forms RFC 9110 defines.
+The response carries a Retry-After header whose value is neither seconds nor an HTTP-date. Those are the only two forms RFC 9110 defines, and a client that cannot parse the header ignores it.
 
 **Risk:** Clients that cannot parse the header fall back to their own retry policy, which is usually an immediate retry or a fixed short interval. Under the load that produced the 429 or 503 in the first place, that turns a throttled client into a retry storm, and it defeats the backoff the header exists to coordinate.
 
@@ -2200,7 +2200,7 @@ location @throttled {
 ### `api-sunset-header-in-past` [api / low / header-value]
 **Sunset date has passed but the endpoint still answers**
 
-The response carries an RFC 8594 Sunset header whose date is in the past, meaning the resource is still being served after the retirement date it announced.
+The response carries an RFC 8594 Sunset header whose date has already passed. The resource is still being served after the retirement date it announced.
 
 **Risk:** A route that outlives its own sunset date is a route nobody owns. It keeps running the code path that was frozen at deprecation, including its authentication and input validation, while review, testing and dependency updates have moved to the replacement. It is also the version an attacker will pick, precisely because it is the one that stopped changing.
 
@@ -2233,7 +2233,7 @@ curl -sI https://api.example.com/v1/reports | grep -i -E 'sunset|deprecation|lin
 ### `api-json-response-content-type-mismatch` [api / low / combined]
 **JSON body served as HTML or with no Content-Type**
 
-The response body is JSON-shaped but the response either declares Content-Type: text/html or carries no Content-Type header at all.
+The response body is JSON-shaped but is not labelled as JSON by its Content-Type header. It is either declared as text/html, or served with no Content-Type at all.
 
 **Risk:** A JSON document labelled text/html is parsed as markup. Any string value in it that an attacker controls, a username, a search term, an error message echoing input, becomes live HTML in the browser, which is stored or reflected XSS on your own origin. With no Content-Type at all the browser sniffs, and a body whose first bytes look like markup is treated as a document.
 
@@ -2269,7 +2269,7 @@ return new Response(JSON.stringify(payload), {
 ### `api-response-header-internal-host` [api / low / header-value]
 **Response header points at an internal host**
 
-A Location, Content-Location or Link response header contains a URL whose hostname is a loopback or RFC1918 address, or a private-use suffix such as .internal, .local or .corp.
+A Location, Content-Location or Link response header contains a URL on an internal hostname. That means a loopback or RFC1918 address, or a private-use suffix such as .internal, .local or .corp.
 
 **Risk:** The header names a host that exists behind the proxy: an internal service name, a pod address, an admin origin. That is free reconnaissance for anyone who later reaches the network another way, and where the URL is a pagination Link, it also tells a client to fetch an address it cannot resolve, which turns into a hard failure rather than a graceful one.
 
@@ -2304,7 +2304,7 @@ absolute_redirect off;
 ### `api-www-authenticate-realm-internal-detail` [api / low / header-value]
 **WWW-Authenticate realm leaks internal detail**
 
-The WWW-Authenticate challenge carries a realm string containing a filesystem path, an IP address, or an internal hostname suffix.
+The WWW-Authenticate challenge carries a realm string that describes internal infrastructure. The value contains a filesystem path, an IP address, or an internal hostname suffix.
 
 **Risk:** The realm is shown to anyone who requests the resource, including in the browser's own credential prompt. A realm like "/var/www/internal-admin" or "backup-01.corp" hands over the server's directory layout or an internal hostname before any credential is supplied, and it tells an attacker which part of the estate they have reached.
 
@@ -2334,7 +2334,7 @@ res.status(401).end();
 ### `api-problem-json-trace-exposed` [api / medium / body-pattern]
 **Problem document exposes a stack trace or exception class**
 
-An RFC 9457 problem document (application/problem+json, or a body carrying title, status and type or detail) includes a "trace" member with real stack frames, or an "exception" member naming the internal exception class.
+An RFC 9457 problem document exposes a stack trace or the internal exception class behind it. The trace member carries real stack frames, or the exception member names the class that threw.
 
 **Risk:** A stack trace gives away the framework and its version, the absolute paths of deployed files, the internal package and class layout, and often the exact line where input handling failed. That is the map an attacker uses to pick which known vulnerability applies and where to aim the next request.
 
@@ -2405,7 +2405,7 @@ SwaggerUIBundle({
 ### `api-cors-allow-origin-multiple-values` [api / low / header-value]
 **Access-Control-Allow-Origin carries more than one origin**
 
-The Access-Control-Allow-Origin header holds two or more origins. The header is defined to carry exactly one origin, or the single token *.
+The Access-Control-Allow-Origin header holds two or more origins rather than one. The header is defined to carry exactly one origin, or the single token *.
 
 **Risk:** No browser accepts a multi-valued Access-Control-Allow-Origin, so every cross-origin call to this endpoint fails the CORS check regardless of which origin made it. The usual repair, once someone notices the breakage, is to replace the list with a wildcard or with unconditional reflection of the request's Origin, and both of those are materially worse than the list that was there.
 
@@ -2448,7 +2448,7 @@ done
 ### `api-cors-credentials-without-allow-origin` [api / info / header-value]
 **Access-Control-Allow-Credentials sent with no allowed origin**
 
-The response sets Access-Control-Allow-Credentials: true but sends no Access-Control-Allow-Origin header, so there is no origin the credentialed request could be allowed for.
+The response sets Access-Control-Allow-Credentials: true with no Access-Control-Allow-Origin. There is no origin the credentialed cross-origin request could be allowed for.
 
 **Risk:** No browser will honour the credentialed cross-origin request, so this configuration cannot work as intended. That matters less for what it permits than for what it signals: a CORS policy that is half-applied, typically because the Allow-Origin half is set conditionally on a code path that did not run, while the credentials flag is set unconditionally.
 
@@ -11948,7 +11948,7 @@ res.setHeader('Set-Cookie', `session=abc123; Max-Age=<value>; Expires=<value>; S
 
 ---
 
-## Category: dns (19 checks)
+## Category: dns (28 checks)
 
 ### `dns-caa-record-missing` [dns / medium / header]
 **CAA Record Missing**
@@ -12436,9 +12436,252 @@ example.com. IN MX 0 .
 example.com. IN TXT "v=spf1 -all"
 ```
 
+### `dns-dnssec-algorithm-weak` [dns / medium / network-probe]
+**DNSSEC signed with a deprecated algorithm**
+
+The zone is DNSSEC-signed with an algorithm RFC 8624 marks as deprecated for signing. A published DNSKEY uses RSAMD5, DSA, RSA/SHA-1, one of the NSEC3 SHA-1 variants, or ECC-GOST.
+
+**Risk:** DNSSEC is only as strong as the algorithm behind the signature, and SHA-1 and MD5 have practical collision attacks. Validating resolvers are also progressively dropping support for these algorithms entirely, and a zone signed only with a removed algorithm is treated as unsigned, which silently discards the protection the zone was configured to have.
+
+**Why it matters:** The check reads the DNSKEY set over DNS-over-HTTPS and looks at the algorithm field of each key, so it only fires on a zone that is actually signed. RFC 8624 marks RSAMD5 as must-not-implement and the SHA-1 based algorithms as not-recommended for signing. The current recommendation is ECDSAP256SHA256 (algorithm 13), which is also far smaller on the wire than RSA, or RSASHA256 (algorithm 8) where the resolver population still needs it.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc8624
+- https://www.iana.org/assignments/dns-sec-alg-numbers/dns-sec-alg-numbers.xhtml
+
+**Fix:**
+- Roll the zone to algorithm 13 (ECDSAP256SHA256), or 8 (RSASHA256) if ECDSA support is a concern for your resolver population.
+- Follow the order: publish the new DNSKEY, re-sign the zone, wait for propagation, then update the DS record at the registrar, and only then withdraw the old key.
+- Confirm the new chain validates end to end before removing anything.
+- **Inspect the zone's keys** (bash):
+```bash
+dig +dnssec +multi DNSKEY example.com @1.1.1.1
+# the third field of each DNSKEY is the algorithm number
+```
+- **Validate the chain after a rollover** (bash):
+```bash
+delv @1.1.1.1 example.com A +rtrace
+# or
+dig +sigchase +trusted-key=./root.key example.com A
+```
+
+### `dns-dnssec-key-size-weak` [dns / medium / network-probe]
+**DNSSEC RSA key below 2048 bits**
+
+A published DNSKEY uses an RSA algorithm with a modulus smaller than 2048 bits. That is below the floor RFC 8624 sets for DNSSEC signing keys; the size is read from the RFC 3110 public-key blob in the record.
+
+**Risk:** An undersized signing key is the weakest link in the chain of trust regardless of how strong the hash is. Forging a signature over any record in the zone lets an attacker who can reach a validating resolver answer with data of their own choosing, which is exactly the substitution DNSSEC exists to prevent.
+
+**Why it matters:** A 1024-bit key-signing key is the more serious of the two cases, because it is the key the DS record at the registrar commits to and it typically has a much longer lifetime than a zone-signing key. Moving to ECDSAP256SHA256 solves the size problem and shrinks responses at the same time, which matters for a protocol that still has to fit into UDP wherever it can.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc8624
+- https://datatracker.ietf.org/doc/html/rfc3110
+
+**Fix:**
+- Roll the affected key to at least 2048-bit RSA, or move the zone to ECDSAP256SHA256.
+- If the key-signing key is the one affected, coordinate the rollover with the registrar so the DS record is updated in step.
+- Set a key-rollover schedule rather than treating this as a one-time fix.
+- **Read the key sizes** (bash):
+```bash
+dig +multi DNSKEY example.com @1.1.1.1
+# dnssec-keygen -a ECDSAP256SHA256 -f KSK example.com  # replacement KSK
+```
+
+### `dns-ds-digest-algorithm-weak` [dns / low / network-probe]
+**DNSSEC DS record uses only the SHA-1 digest**
+
+The DS record set in the parent zone contains a SHA-1 digest (type 1) and no SHA-256 or SHA-384 alternative alongside it.
+
+**Risk:** The DS digest is the single link between the parent zone and this zone's key. Validators that stop accepting SHA-1 digests, which is the direction every implementation is heading, will treat the delegation as unsigned and silently drop DNSSEC protection for the entire zone.
+
+**Why it matters:** RFC 8624 marks SHA-1 as not-recommended for DS records and SHA-256 (digest type 2) as mandatory to implement. A zone publishing both digests is mid-rollover and validators use the stronger one, so that case is deliberately not reported here. Note that the DS record lives in the parent zone, so this is changed at the registrar rather than in your own DNS.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc8624
+- https://datatracker.ietf.org/doc/html/rfc4509
+
+**Fix:**
+- Generate a SHA-256 DS record from the current key-signing key and submit it to the registrar.
+- Publish both digests during the transition, then remove the SHA-1 one once the new record has propagated.
+- Re-check the delegation validates before removing the old digest.
+- **Generate a SHA-256 DS record** (bash):
+```bash
+dig DNSKEY example.com | dnssec-dsfromkey -f - -2 example.com
+```
+- **Check what the parent publishes** (bash):
+```bash
+dig +short DS example.com @1.1.1.1
+# fields: keytag algorithm digest-type digest
+```
+
+### `dns-nsec-zone-walking` [dns / low / network-probe]
+**Signed zone uses NSEC, allowing zone walking**
+
+The zone is DNSSEC-signed but publishes no NSEC3PARAM record, so it uses NSEC. NSEC provides authenticated denial of existence in a form that lets the zone's full contents be enumerated.
+
+**Risk:** An NSEC record proves a name does not exist by naming the next name that does, so walking the chain returns the complete contents of the zone. Every internal hostname in it becomes public: vpn, jira, staging, backup, the lot. That is a full target list produced without sending a single request to any of those hosts.
+
+**Why it matters:** This is a design property of NSEC rather than a misconfiguration, which is why NSEC3 was specified in the first place. Whether it matters depends on the zone: for one whose names are all public anyway it is close to irrelevant, and for one holding internal infrastructure names it hands over the network map. RFC 9276 recommends NSEC3 with zero iterations and an empty salt, which gives the enumeration resistance without the cost that made early NSEC3 deployments expensive.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc9276
+- https://datatracker.ietf.org/doc/html/rfc5155
+
+**Fix:**
+- Switch to NSEC3 with zero iterations and an empty salt if the zone contains names you would rather not publish.
+- Walk your own zone first to see what is actually exposed before deciding how urgent this is.
+- For a zone of entirely public names, NSEC remains a reasonable choice; document the decision rather than leaving it implicit.
+- **See what an attacker would see** (bash):
+```bash
+ldns-walk example.com
+```
+- **BIND: move to NSEC3 with RFC 9276 parameters** (bash):
+```bash
+rndc signing -nsec3param 1 0 0 - example.com
+# hash=1 (SHA-1), flags=0, iterations=0, salt=- (empty)
+```
+
+### `dns-nsec3-iterations-nonzero` [dns / info / network-probe]
+**NSEC3 configured with extra hash iterations**
+
+The zone's NSEC3PARAM record declares a non-zero iteration count. RFC 9276 says the only value that should be used is zero.
+
+**Risk:** Every extra iteration costs the authoritative server and every validating resolver an additional hash computation on each negative answer, and provides no meaningful additional protection against enumeration. That turns the parameter into a denial-of-service amplifier aimed at your own nameservers: an attacker querying random non-existent names forces the extra work on every request.
+
+**Why it matters:** The original NSEC3 specification allowed iterations as a defence against dictionary attacks on the hashed names, but the protection turned out to be negligible because the name space being hashed is small and guessable regardless. RFC 9276 is unambiguous: zero iterations, empty salt. Several large resolvers now cap or ignore high iteration counts, and some treat zones above a threshold as insecure, so a high value can cost validation as well as performance.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc9276
+- https://datatracker.ietf.org/doc/html/rfc5155#section-10.3
+
+**Fix:**
+- Set the NSEC3 iteration count to 0 and use an empty salt, then re-sign the zone.
+- Most managed DNS providers expose this as a single setting; on BIND it is the iterations argument to the NSEC3 parameters.
+- Confirm the zone still validates after re-signing.
+- **Read the current parameters** (bash):
+```bash
+dig +short NSEC3PARAM example.com
+# fields: hash flags iterations salt
+```
+- **BIND: zero iterations, no salt** (bash):
+```bash
+rndc signing -nsec3param 1 0 0 - example.com
+```
+
+### `dns-cname-at-apex` [dns / medium / network-probe]
+**CNAME record published at the zone apex**
+
+The registrable domain answers a CNAME query, but the zone apex always carries SOA and NS records. RFC 1034 forbids a CNAME from coexisting with any other record type at the same name.
+
+**Risk:** Resolvers handle this inconsistently. Some follow the CNAME and never see the zone's MX record, which silently breaks inbound mail for the whole domain; others return the SOA and NS and ignore the CNAME, so the site does not resolve at all. Because the outcome depends on the resolver, the failure is intermittent and looks different to different users, which makes it very hard to diagnose from the server side.
+
+**Why it matters:** This is exactly what ALIAS, ANAME and CNAME-flattening record types exist to solve: the provider resolves the target itself and answers with A and AAAA records at the apex, so what goes on the wire stays legal. A literal CNAME at the apex therefore means either the provider offers no such type, or the record was created through an API path that skipped the validation the web console would have applied.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc1034#section-3.6.2
+- https://datatracker.ietf.org/doc/html/rfc2181#section-10.1
+
+**Fix:**
+- Replace the apex CNAME with the provider's ALIAS, ANAME, or CNAME-flattening record type.
+- If the provider has no such type, publish A and AAAA records at the apex and keep the CNAME on www.
+- Check inbound mail specifically: a broken MX lookup is the failure most likely to have gone unnoticed.
+- **Confirm the conflict** (bash):
+```bash
+dig example.com CNAME +short
+dig example.com MX +short
+dig example.com SOA +short
+```
+- **Correct apex configuration** (dns):
+```dns
+; instead of: example.com. IN CNAME target.provider.net.
+example.com.     IN A     203.0.113.10
+example.com.     IN AAAA  2001:db8::10
+www.example.com. IN CNAME target.provider.net.
+```
+
+### `dns-cname-chain-too-long` [dns / low / network-probe]
+**CNAME chain longer than three hops**
+
+Resolving the scanned hostname follows more than three CNAME hops before reaching an address record.
+
+**Risk:** Every hop is another name whose registration, zone, and provider account have to stay under someone's control. A single link that expires, gets deleted, or points at a decommissioned service is a subdomain-takeover opportunity, and the deeper the chain the more likely one link belongs to a team that has forgotten it exists. Each hop also adds a resolution round trip to every cold lookup.
+
+**Why it matters:** Long chains grow through migrations: a vendor is replaced with another vendor, and rather than repointing the original record, a new CNAME is appended to the end. Some resolvers cap chain following, commonly at eight or sixteen, and return a failure past the limit, so a chain that works today can break when one more hop is added by a vendor you do not control.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc1034#section-3.6.2
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/10-Test_for_Subdomain_Takeover
+
+**Fix:**
+- Collapse the chain by pointing the first record directly at the final target.
+- Check ownership of every intermediate name; any that no longer resolves, or points at an unclaimed service, is a takeover risk.
+- Where an intermediate belongs to a vendor, confirm the account behind it is still active and monitored.
+- **Follow the chain** (bash):
+```bash
+dig www.example.com +noall +answer
+# each CNAME line is one hop; the final A/AAAA ends the chain
+```
+- **Check each hop for a dangling target** (bash):
+```bash
+for h in a.example.net b.vendor.io c.cdn.example; do
+  printf '%s -> ' "$h"; dig +short "$h" | tail -1
+done
+```
+
+### `dns-caa-iodef-missing` [dns / info / network-probe]
+**CAA record names no incident reporting address**
+
+The domain publishes CAA records restricting certificate issuance, but no iodef property. A CA that receives a request violating the policy therefore has nowhere to report it.
+
+**Risk:** The iodef property is the only channel that turns a blocked issuance into a signal you actually receive. Without it, someone attempting to obtain a certificate for your domain from a CA you have not authorised is quietly refused and you never learn the attempt happened, which is exactly the early warning worth having.
+
+**Why it matters:** This is a hygiene recommendation rather than a weakness: the issuance restriction itself is working, and that is the part that matters most. RFC 8659 defines iodef as a mailto or https URL that a CA may use to report policy violations. Reporting is discretionary rather than mandatory, so treat it as one useful input alongside Certificate Transparency monitoring, not as a guaranteed alert.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc8659
+- https://cabforum.org/working-groups/server/baseline-requirements/
+
+**Fix:**
+- Add a CAA iodef record pointing at a monitored mailbox or ticket queue rather than an individual.
+- Pair it with Certificate Transparency monitoring, which catches issuance that actually succeeded.
+- Re-check the full CAA set at the same time: issue, issuewild and iodef are decided together.
+- **CAA with restriction and reporting** (dns):
+```dns
+example.com. IN CAA 0 issue "letsencrypt.org"
+example.com. IN CAA 0 issuewild ";"
+example.com. IN CAA 0 iodef "mailto:security@example.com"
+```
+- **Check what is published** (bash):
+```bash
+dig +short CAA example.com
+```
+
+### `dns-txt-verification-tokens-stale` [dns / info / network-probe]
+**Accumulated SaaS domain-verification TXT records**
+
+The domain publishes verification TXT records for five or more distinct SaaS vendors. They match the site-verification, domain-verification, verify and challenge shapes those services use.
+
+**Risk:** The set is a public list of the SaaS platforms this organisation has onboarded, which is directly useful for a targeted phishing campaign: a message naming the exact tools someone actually uses is far more convincing than a generic one. Tokens for services that were trialled and abandoned are worse than useless, because they can leave a dormant claim on the domain inside a vendor account nobody monitors any more.
+
+**Why it matters:** Verification records are meant to be temporary for many vendors and permanent for a few, and nothing ever prompts you to remove the temporary ones, so they accumulate over years. This is informational: their presence is not a vulnerability. It is a prompt to audit which of these services are still in use, and to close the accounts behind the ones that are not, because a live verification token plus an abandoned account is a standing claim on your domain.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc1464
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/
+
+**Fix:**
+- List the verification records and match each one to a service that is still in use and still owned by someone.
+- Remove tokens for services that were trialled or retired, and close the corresponding vendor accounts rather than only deleting the record.
+- Where a vendor supports it, prefer a scoped subdomain token over an apex TXT record so the inventory is not published at the apex.
+- **List what is published** (bash):
+```bash
+dig +short TXT example.com | grep -i -E 'verification|verify|challenge'
+```
+
 ---
 
-## Category: email (22 checks)
+## Category: email (37 checks)
 
 ### `email-dmarc-ruf-missing` [email / low / header]
 **DMARC Forensic Report URI (ruf=) Missing**
@@ -12957,6 +13200,390 @@ A DKIM selector was found publishing an RSA public key below 2048 bits. Keys und
 ```bash
 opendkim-genkey -b 2048 -d example.com -s mail -t
 # Publishes the new public key at mail._domainkey.example.com
+```
+
+### `email-spf-multiple-records` [email / medium / network-probe]
+**Multiple SPF records published**
+
+The domain publishes more than one TXT record beginning with v=spf1, which RFC 7208 forbids. Exactly one is allowed, and a domain with two or more is a permanent error.
+
+**Risk:** A receiver that finds two SPF records does not merge them or pick one: it returns permerror and abandons SPF evaluation entirely. The domain is left with no working sender policy, so mail from any source clears the SPF stage, and DMARC alignment has only DKIM left to fall back on. A second SPF record is worse than having none, because it looks configured.
+
+**Why it matters:** This almost always happens when a second service is onboarded and its setup guide says to add a TXT record: the record is added alongside the existing one rather than merged into it. The fix is a single record containing every include, which is also the point at which the ten-lookup limit starts to matter, so merging is a good moment to count the DNS-querying mechanisms.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc7208#section-4.5
+- https://datatracker.ietf.org/doc/html/rfc7208#section-4.6.4
+
+**Fix:**
+- Merge every mechanism into one v=spf1 TXT record at the apex and delete the others.
+- Count DNS-querying mechanisms while merging: include, a, mx, ptr, exists and redirect each cost one against a limit of ten.
+- Re-check with a validator after merging, since exceeding the lookup limit produces the same permerror you were fixing.
+- **One merged record** (dns):
+```dns
+example.com. IN TXT "v=spf1 include:_spf.google.com include:sendgrid.net ~all"
+```
+- **Find the duplicates** (bash):
+```bash
+dig +short TXT example.com | grep -c 'v=spf1'
+```
+
+### `email-spf-all-mechanism-missing` [email / low / network-probe]
+**SPF record has no all mechanism**
+
+The SPF record ends without an all mechanism and without a redirect modifier. Any sender not matched by an earlier mechanism therefore gets the default result, neutral.
+
+**Risk:** Neutral is defined to be treated exactly like no policy at all, so every sender the record does not list is neither permitted nor denied. Listed senders still pass, which makes the record look like it is working, while the thing SPF exists to say, that everyone else is not authorised, is simply absent.
+
+**Why it matters:** The all mechanism is what turns an SPF record from an open list into a closed one. Use -all once you are confident every legitimate sender is covered, or ~all while you are still finding them, and let DMARC aggregate reports show you what is missing before tightening. A record with neither is the only variant that says nothing whatsoever about unlisted senders.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc7208#section-5.1
+- https://datatracker.ietf.org/doc/html/rfc7208#section-2.6
+
+**Fix:**
+- Add ~all to the end of the record while you confirm every legitimate sender is listed.
+- Use DMARC aggregate reports to find senders the record does not yet cover.
+- Tighten to -all once the reports come back clean.
+- **Closed policy** (dns):
+```dns
+example.com. IN TXT "v=spf1 include:_spf.google.com include:sendgrid.net -all"
+```
+
+### `email-spf-redirect-ignored-with-all` [email / low / network-probe]
+**SPF redirect modifier ignored because all is present**
+
+The SPF record contains both an all mechanism and a redirect= modifier, so the redirect is dead. RFC 7208 section 6.1 says redirect is ignored whenever an all mechanism is present.
+
+**Risk:** The policy that actually applies is the one before the all mechanism, not the redirected one. Whoever added the redirect believes the shared policy at the target domain is in force, so a sender added there, or removed from there, has no effect here. The gap between the intended policy and the evaluated one stays invisible until legitimate mail starts failing.
+
+**Why it matters:** redirect= exists for the case where one domain defers entirely to another domain's policy, which is why it is only consulted when no mechanism matched and there is no all to produce a result first. To reuse another domain's senders while keeping your own default, use include: rather than redirect=: include pulls the other policy in as a mechanism and leaves your own all in charge of everything it does not match.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc7208#section-6.1
+- https://datatracker.ietf.org/doc/html/rfc7208#section-5.2
+
+**Fix:**
+- Decide which behaviour you want: keep redirect= and remove the all mechanism, or keep all and change redirect= to include:.
+- include: plus your own all is usually what was intended.
+- Re-count the lookup budget after the change, since include and redirect both cost one.
+- **include instead of redirect** (dns):
+```dns
+; the redirect here is dead code
+; "v=spf1 include:_spf.google.com -all redirect=_spf.example.net"
+
+example.com. IN TXT "v=spf1 include:_spf.google.com include:_spf.example.net -all"
+```
+
+### `email-spf-macro-mechanism` [email / info / network-probe]
+**SPF record uses macro expansion**
+
+The SPF record contains a macro expansion, which builds a DNS name out of the incoming message. Parts such as the sender's local part or the client IP are substituted into a name that is then queried.
+
+**Risk:** Every macro-expanded lookup sends attacker-influenced data into a DNS query aimed at whichever nameserver the macro's domain points to. A sender who controls the local part of the envelope address can make your receivers emit a DNS query encoding data of their choosing, and where the macro domain is third-party, its operator sees every one of those queries. Macros used with exists: also multiply the query count against the ten-lookup budget.
+
+**Why it matters:** Macros are a legitimate RFC 7208 feature and some large senders use them for per-user authorisation, so this is informational rather than a defect. It is surfaced because macros are rare, hard to review, and easy to inherit from a vendor setup guide without understanding what gets queried or by whom. If you did not add it deliberately, trace which include brought it in.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc7208#section-7
+- https://datatracker.ietf.org/doc/html/rfc7208#section-11.4
+
+**Fix:**
+- Confirm the macro is deliberate and that you know which nameserver receives the expanded queries.
+- Prefer plain ip4, ip6 and include mechanisms where per-sender granularity is not actually needed.
+- If the macro came from a third-party include, ask the vendor what the expanded queries are used for.
+- **What a macro expands to** (text):
+```text
+v=spf1 exists:%{l}._spf.%{d} -all
+
+; for MAIL FROM alice@example.com the receiver queries
+; alice._spf.example.com
+```
+
+### `email-spf-include-unresolvable` [email / medium / network-probe]
+**SPF include target publishes no SPF record**
+
+An include: mechanism names a domain that resolves but publishes no v=spf1 TXT record. That makes the whole SPF evaluation a permanent error, not just the one mechanism.
+
+**Risk:** An include whose target has no SPF record produces permerror, and permerror is not a partial failure: the receiver abandons SPF evaluation for the entire message. Every other mechanism in your record, including the -all at the end, stops being applied, so the policy you published is not the policy being enforced.
+
+**Why it matters:** This normally happens when a vendor is decommissioned and their SPF include domain is retired, or when an include hostname is mistyped and happens to resolve to a real domain with no SPF record. Because the failure is silent, the record can be broken for a long time before anyone notices, and DMARC aggregate reports are usually where it first shows up. A lookup that simply did not answer is treated as unknown here and does not produce this finding.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc7208#section-5.2
+- https://datatracker.ietf.org/doc/html/rfc7208#section-4.6.4
+
+**Fix:**
+- Remove the include if the service is no longer used.
+- If it is still in use, check the exact include hostname against the vendor's current documentation; these change more often than people expect.
+- Audit the rest of the record at the same time, since a stale include usually has stale company.
+- **Check every include target** (bash):
+```bash
+for d in $(dig +short TXT example.com | tr ' ' '\n' | grep -o 'include:[^ "]*' | cut -d: -f2); do
+  printf '%s: ' "$d"; dig +short TXT "$d" | grep -c 'v=spf1'
+done
+```
+
+### `email-dmarc-multiple-records` [email / medium / network-probe]
+**Multiple DMARC records published**
+
+The _dmarc subdomain returns more than one TXT record beginning with v=DMARC1. RFC 7489 section 6.6.3 says a receiver that finds more than one must apply no DMARC policy at all.
+
+**Risk:** The domain has no enforced DMARC policy, while any dashboard that only checks for the presence of a record reports it as configured. Spoofed mail failing SPF and DKIM alignment is delivered rather than quarantined or rejected, and no aggregate reports are generated, so the gap is invisible from your side too.
+
+**Why it matters:** Same root cause as duplicate SPF records: a second tool or vendor was onboarded, its setup guide said to add a TXT record at _dmarc, and one was added beside the existing one. Only one record may exist, and it has to carry every tag, including all reporting addresses, which belong in a single comma-separated rua value rather than in separate records.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc7489#section-6.6.3
+- https://datatracker.ietf.org/doc/html/rfc7489#section-6.3
+
+**Fix:**
+- Delete all but one record at _dmarc and merge the tags into the survivor.
+- Put multiple report destinations in one rua= value as a comma-separated list.
+- Confirm reports start arriving again after the merge, since none were being generated while the duplicate existed.
+- **One merged record with two report destinations** (dns):
+```dns
+_dmarc.example.com. IN TXT "v=DMARC1; p=reject; rua=mailto:dmarc@example.com,mailto:reports@vendor.example; adkim=s; aspf=s"
+```
+- **Count what is published** (bash):
+```bash
+dig +short TXT _dmarc.example.com | grep -c 'v=DMARC1'
+```
+
+### `email-dmarc-rua-invalid-uri` [email / low / network-probe]
+**DMARC aggregate report address is not a valid URI**
+
+The rua tag on the DMARC record contains an entry that is not a usable reporting URI. RFC 7489 requires each entry to be a URI, in practice mailto: or https:.
+
+**Risk:** A reporting address a receiver cannot parse is one that receives nothing. Aggregate reports are the only feedback channel showing which senders fail authentication, so without them there is no way to distinguish a spoofing campaign from a misconfigured legitimate sender, and no safe basis for moving the policy from none to quarantine or reject.
+
+**Why it matters:** The most common mistake is a bare email address with no mailto: scheme, which looks right at a glance and is silently ignored by every receiver. Reports go only to the addresses that parse, and some receivers drop the whole tag if any entry fails, so one malformed entry can cost you the working ones beside it.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc7489#section-6.3
+- https://datatracker.ietf.org/doc/html/rfc7489#section-7.1
+
+**Fix:**
+- Prefix every mail address with mailto: and separate multiple destinations with commas and no spaces.
+- Confirm reports are actually arriving, either through a DMARC report processor or by watching the destination mailbox.
+- Keep at least one destination on a domain you control, so reporting does not depend entirely on a third party.
+- **Correct rua syntax** (dns):
+```dns
+_dmarc.example.com. IN TXT "v=DMARC1; p=none; rua=mailto:dmarc@example.com,mailto:agg@analyzer.example"
+```
+
+### `email-dmarc-rua-external-unauthorized` [email / medium / network-probe]
+**DMARC reports sent to an external domain that has not authorized them**
+
+DMARC reports are addressed to a different domain that has not authorized receiving them. RFC 7489 section 7.1 requires the destination to publish an authorization record before a receiver will send cross-domain reports.
+
+**Risk:** Conforming receivers, which includes the large mailbox providers, will not send reports to a third-party domain that has not opted in. The reports are silently not sent, so the visibility DMARC was deployed for does not exist, and any decision to tighten the policy from none to quarantine or reject is being made without data on who it would affect.
+
+**Why it matters:** The authorization record lives in the destination's zone rather than yours: the report processor has to publish <your-domain>._report._dmarc.<their-domain> with a v=DMARC1 value. Managed DMARC platforms create it automatically once the domain is added in their console, so the usual cause of this finding is a domain that was put in the DMARC record before it was added to the platform, or one that was later removed from the platform without the DNS record being updated.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc7489#section-7.1
+- https://datatracker.ietf.org/doc/html/rfc7489#section-6.3
+
+**Fix:**
+- Add the domain in your report processor's console so it publishes the authorization record.
+- If you run the destination yourself, publish the authorization record there.
+- Keep a mailbox on your own domain in the rua list as well, so reports do not depend entirely on a third party.
+- **The record the destination must publish** (dns):
+```dns
+example.com._report._dmarc.analyzer.example. IN TXT "v=DMARC1"
+```
+- **Check it** (bash):
+```bash
+dig +short TXT example.com._report._dmarc.analyzer.example
+```
+
+### `email-dkim-testing-mode` [email / low / network-probe]
+**DKIM selector published in testing mode**
+
+A DKIM selector record carries the t=y flag, which marks the domain as still testing DKIM. It tells receivers not to treat a verification failure any differently from unsigned mail.
+
+**Risk:** t=y asks receivers to disregard DKIM failures for this selector, so a forged message that fails signature verification is handled exactly like one that was never signed. Where DMARC alignment depends on DKIM, that removes the DKIM half of the policy for every message signed with this selector, and it does so silently, because the record otherwise looks fully configured.
+
+**Why it matters:** The flag exists for the deployment window, while you confirm signing works end to end without risking legitimate mail. It is meant to be removed once that is confirmed, and very often is not, because nothing breaks when it stays. RFC 6376 defines t=y for exactly this purpose and expects it to be temporary.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc6376#section-3.6.1
+- https://datatracker.ietf.org/doc/html/rfc6376#section-3.6
+
+**Fix:**
+- Confirm signatures are verifying, using DMARC aggregate reports or a test send to a verifying receiver.
+- Remove the t=y flag from the selector record once that is confirmed.
+- Check every selector, not just the one reported: providers commonly publish two for rotation.
+- **Record with the testing flag removed** (dns):
+```dns
+default._domainkey.example.com. IN TXT "v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A..."
+```
+- **Check a selector** (bash):
+```bash
+dig +short TXT default._domainkey.example.com
+```
+
+### `email-dkim-revoked-key` [email / low / network-probe]
+**DKIM selector published with an empty (revoked) key**
+
+A DKIM selector record has an empty p= tag, which RFC 6376 defines as a revoked key. Every signature made with that selector therefore fails verification.
+
+**Risk:** Any mail still signed with this selector fails DKIM verification at every receiver. Under a DMARC policy of quarantine or reject, with SPF not aligned, that mail is discarded rather than delivered. Because the selector is chosen by the signing system rather than by DNS, the symptom is unexplained delivery failure from one particular sending path.
+
+**Why it matters:** Revoking a selector by emptying p= is the correct way to retire a key, and a revoked selector left in place is normally harmless. It is worth checking because both routes to this state look identical in DNS: a deliberate retirement, and a signing service still using a selector it was supposed to stop using. The DKIM-Signature header's s= tag on a received message tells you which selector is actually in use.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc6376#section-3.6.1
+- https://datatracker.ietf.org/doc/html/rfc6376#section-7.4
+
+**Fix:**
+- Confirm nothing still signs with this selector, then delete the record rather than leaving an empty key published.
+- If mail is still being signed with it, publish the current public key or repoint the signer at an active selector.
+- Check the s= tag in a recent message's DKIM-Signature header to see which selector the signer is really using.
+- **Find the selector in use** (bash):
+```bash
+# In a received message's headers:
+#   DKIM-Signature: v=1; a=rsa-sha256; d=example.com; s=selector1; ...
+dig +short TXT selector1._domainkey.example.com
+```
+
+### `email-dkim-sha1-hash` [email / medium / network-probe]
+**DKIM selector restricted to the SHA-1 hash algorithm**
+
+A DKIM selector record declares h=sha1 and offers no sha256 alternative alongside it. Signatures under that key are restricted to the rsa-sha1 algorithm.
+
+**Risk:** SHA-1 is collision-vulnerable and a DKIM signature covers a hash of the message. RFC 8301 formally deprecated rsa-sha1 for DKIM and tells verifiers to treat such signatures as failing, so conforming receivers discard the signature entirely. That is both a weakness and a deliverability problem: mail signed only with SHA-1 loses DKIM alignment under DMARC.
+
+**Why it matters:** The h= tag is a restriction rather than a description: it tells verifiers which hash algorithms are acceptable for this key. A selector limited to sha1 usually predates RFC 8301 and has never been rotated. Removing the tag entirely is the normal fix, since the default already permits sha256.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc8301
+- https://datatracker.ietf.org/doc/html/rfc6376#section-3.6.1
+
+**Fix:**
+- Configure the signing service to use rsa-sha256, or ed25519-sha256 where it is supported.
+- Publish a replacement key without the h=sha1 restriction.
+- Rotate to a new selector rather than editing the existing record in place, so mail already in flight still verifies.
+- **Generate a replacement key under a new selector** (bash):
+```bash
+opendkim-genkey -b 2048 -d example.com -s s2026a
+# publish s2026a._domainkey.example.com with no h= restriction, then switch the signer
+```
+
+### `email-mx-ip-literal` [email / medium / network-probe]
+**MX record points at an IP address instead of a hostname**
+
+An MX record names an IP address literal as its exchange, which the standards forbid. RFC 1035 and RFC 2181 require the exchange to be a domain name that has an address record.
+
+**Risk:** Standards-conforming senders resolve the exchange as a hostname, get NXDOMAIN, and defer or bounce the message, so inbound mail fails from some senders and works from others depending on how tolerant their MTA is. Because the failure is partial, it usually gets attributed to the sender rather than to the record.
+
+**Why it matters:** Beyond the delivery failures, an address literal makes it impossible to present a certificate name matching the exchange, which breaks everything layered on top of the MX name: MTA-STS policies list permitted MX hostnames, SMTP certificate validation matches the exchange name, and DANE TLSA records are published under it.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc2181#section-10.3
+- https://datatracker.ietf.org/doc/html/rfc5321#section-5.1
+
+**Fix:**
+- Create an A and AAAA record for a mail hostname and point the MX at that name.
+- Make sure the mail server presents a certificate valid for that hostname.
+- Re-check MTA-STS or DANE afterwards if either is in use, since both key on the exchange name.
+- **Correct MX configuration** (dns):
+```dns
+mail.example.com. IN A     203.0.113.25
+mail.example.com. IN AAAA  2001:db8::25
+example.com.      IN MX 10  mail.example.com.
+```
+- **Check what is published** (bash):
+```bash
+dig +short MX example.com
+```
+
+### `email-mta-sts-max-age-short` [email / low / network-probe]
+**MTA-STS policy max_age shorter than one week**
+
+The fetched MTA-STS policy file sets max_age below 604800 seconds, one week. RFC 8461 recommends at least that long for a policy in enforce mode.
+
+**Risk:** max_age is how long a sending server caches the policy, and that cache is the entire protection. Once it expires the sender must fetch the policy over the network again, which is exactly the moment an attacker able to interfere with DNS or HTTPS can prevent retrieval and downgrade the connection to opportunistic TLS. A short max_age multiplies the number of those windows.
+
+**Why it matters:** Short values are usually left over from the rollout, when a low max_age is deliberately used so a mistake can be corrected quickly. That is the right approach while testing and the wrong one afterwards. Raise it once the policy has been stable and every MX host it lists is serving a valid certificate, because a mistake will then be cached for the full duration.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc8461#section-3.2
+- https://datatracker.ietf.org/doc/html/rfc8461#section-5
+
+**Fix:**
+- Raise max_age to at least 604800; 1209600 is common for a settled policy.
+- Before raising it, confirm every MX host listed in the policy presents a valid certificate.
+- Change the policy id in the _mta-sts TXT record whenever the file changes, so senders refetch rather than waiting out the cache.
+- **Settled policy file** (text):
+```text
+version: STSv1
+mode: enforce
+mx: mail.example.com
+max_age: 1209600
+```
+- **Fetch the policy** (bash):
+```bash
+curl -s https://mta-sts.example.com/.well-known/mta-sts.txt
+```
+
+### `email-mta-sts-mx-mismatch` [email / medium / network-probe]
+**MTA-STS policy does not cover every published MX host**
+
+The fetched MTA-STS policy file lists mx patterns that do not match one or more of the domain's published MX hostnames.
+
+**Risk:** A sending server honouring an enforce-mode policy refuses to deliver to any MX host the policy does not list. Where the uncovered host is a backup MX, mail stops flowing to it during exactly the failover the backup exists for. Where it is a primary, inbound mail from MTA-STS-aware senders, which includes Gmail and Outlook, fails outright.
+
+**Why it matters:** The mismatch normally appears after an MX change: a new provider is added or a backup MX is introduced, and the policy file is not updated alongside it, because the policy lives on a web server rather than in DNS and is maintained by a different process. Wildcards are permitted in the mx list and match exactly one label, so mx: *.mail.example.com covers a.mail.example.com but not mail.example.com itself.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc8461#section-3.2
+- https://datatracker.ietf.org/doc/html/rfc8461#section-4.1
+
+**Fix:**
+- Add an mx: line for every published MX host, or a wildcard that covers them.
+- Change the policy id in the _mta-sts TXT record whenever the file changes, so senders refetch instead of using the cached copy.
+- Make updating the policy file part of whatever process changes MX records, so the two cannot drift again.
+- **Policy covering primary and backup** (text):
+```text
+version: STSv1
+mode: enforce
+mx: mail.example.com
+mx: mail2.example.com
+max_age: 1209600
+```
+- **Compare policy against DNS** (bash):
+```bash
+diff <(curl -s https://mta-sts.example.com/.well-known/mta-sts.txt | grep -i '^mx:' | awk '{print tolower($2)}' | sort) \
+     <(dig +short MX example.com | awk '{print tolower($2)}' | sed 's/\.$//' | sort)
+```
+
+### `email-bimi-without-vmc` [email / info / network-probe]
+**BIMI record publishes a logo with no verified mark certificate**
+
+The BIMI record at default._bimi publishes a logo URL but carries no a= tag. Without an a= tag there is no Verified Mark Certificate backing the logo.
+
+**Risk:** Without a VMC the major mailbox providers that display BIMI, Gmail and Apple Mail among them, will not show the logo, so the record produces no benefit at all. A logo that rendered on the strength of DNS alone would also be the wrong outcome: the certificate is what ties the mark to a trademark holder, and without it a lookalike domain could publish the same image.
+
+**Why it matters:** Informational because BIMI is a branding feature rather than a security control, and the record does no harm. The point is that the setup is half-finished: the DNS half is done and the expensive half, obtaining a VMC from an approved authority, is not, so nothing is gained. BIMI also requires DMARC at quarantine or reject before any provider will consider it, which is the more valuable prerequisite to get right first.
+
+**References:**
+- https://bimigroup.org/implementation-guide/
+- https://datatracker.ietf.org/doc/draft-brand-indicators-for-message-identification/
+
+**Fix:**
+- Confirm the domain is at DMARC p=quarantine or p=reject first, since no provider displays BIMI below that.
+- Obtain a Verified Mark Certificate from an approved authority and publish it, adding the a= tag pointing at the .pem.
+- If a VMC is not planned, consider removing the BIMI record rather than leaving an unused one published.
+- **Complete BIMI record** (dns):
+```dns
+default._bimi.example.com. IN TXT "v=BIMI1; l=https://example.com/bimi/logo.svg; a=https://example.com/bimi/vmc.pem"
+```
+- **Check what is published** (bash):
+```bash
+dig +short TXT default._bimi.example.com
+dig +short TXT _dmarc.example.com
 ```
 
 ---
@@ -20990,7 +21617,7 @@ export default nextConfig;
 ### `ssl-hsts-meta-tag-ineffective` [ssl / low / body-pattern]
 **HSTS declared in a meta tag, where browsers ignore it**
 
-The page carries a <meta http-equiv="Strict-Transport-Security"> tag. HSTS is only honoured when it arrives as a real HTTP response header; the meta form has never been implemented by any browser.
+The page carries a <meta http-equiv="Strict-Transport-Security"> tag, which browsers ignore. HSTS is only honoured as a real HTTP response header; the meta form has never been implemented by any browser.
 
 **Risk:** The site has no HSTS policy at all, while appearing in a code review to have one. Visitors who type the bare hostname, follow an http:// link, or use an old bookmark still make a cleartext request that an on-path attacker can intercept and strip, which is exactly the first-request window HSTS exists to close.
 
@@ -21030,7 +21657,7 @@ module.exports = {
 ### `ssl-alt-svc-cleartext-h2c` [ssl / medium / header-value]
 **Alt-Svc advertises cleartext HTTP/2 (h2c)**
 
-An HTTPS response advertises an alternative service using the h2c protocol identifier, which is HTTP/2 over plain TCP with no TLS.
+An HTTPS response advertises an alternative service using the h2c protocol identifier. h2c is HTTP/2 over plain TCP, with no TLS at all.
 
 **Risk:** A client that follows the advertisement moves the connection off TLS, so subsequent requests, cookies included, travel in cleartext while the address bar still shows the original https:// origin. It is a downgrade the server itself is asking for, and because Alt-Svc entries are cached for the header's ma= duration, one response can redirect a client's traffic for hours.
 
@@ -21056,7 +21683,7 @@ curl -sI https://example.com/ | grep -i alt-svc
 ### `ssl-link-header-http-subresource` [ssl / medium / header-value]
 **Link header preloads a cleartext subresource**
 
-An HTTPS response carries a Link header whose rel is a subresource relation (preload, modulepreload, preconnect, prefetch, dns-prefetch, prerender or stylesheet) pointing at an http:// URL.
+An HTTPS response carries a Link header pointing a subresource relation at an http URL. The relation is one of preload, modulepreload, preconnect, prefetch, dns-prefetch, prerender or stylesheet.
 
 **Risk:** The browser is told to fetch a resource over plain HTTP before the document has even been parsed. For a preloaded script or stylesheet that is active mixed content, so an on-path attacker who substitutes the response gets code execution on the origin. Browsers block active mixed content, which turns this into a hard load failure instead, so the page also breaks.
 
@@ -21082,7 +21709,7 @@ curl -sI https://example.com/ | grep -i '^link:'
 ### `ssl-http-resource-hint-tag` [ssl / low / body-pattern]
 **Resource hint on an HTTPS page targets a cleartext URL**
 
-An HTTPS page contains a <link> element with a hint relation (preload, modulepreload, preconnect, prefetch, dns-prefetch, prerender or manifest) whose href is an http:// URL.
+An HTTPS page contains a link element resource hint whose href is a cleartext http URL. The relation is one of preload, modulepreload, preconnect, prefetch, dns-prefetch, prerender or manifest.
 
 **Risk:** preconnect and dns-prefetch to an http:// origin leak the destination hostname to the network before any content is requested, and warm a connection the browser then cannot use. preload and modulepreload of an http:// script or style are active mixed content, so the fetch is blocked and whatever depended on it fails. A cleartext manifest link means the installed web app's own metadata can be rewritten in transit.
 
@@ -21111,7 +21738,7 @@ grep -rn 'rel="\(preload\|preconnect\|prefetch\|dns-prefetch\|manifest\)"' \
 ### `ssl-mixed-content-non-src-attribute` [ssl / medium / body-pattern]
 **Cleartext subresource loaded through srcset, poster or data**
 
-An HTTPS page loads a subresource over http:// through an attribute other than src or a stylesheet href: an img or source srcset candidate, a video poster, or an object data URL.
+An HTTPS page loads a cleartext subresource through an attribute other than src or a stylesheet href. The carrier is an img or source srcset candidate, a video poster, or an object data URL.
 
 **Risk:** srcset and poster are passive mixed content: the request still goes out in cleartext on browsers that allow it, revealing what the visitor is viewing and letting an on-path attacker swap the image. object data is active mixed content, because the embedded resource can execute in the page's context, so a substituted response is script execution on your origin.
 
@@ -21203,7 +21830,7 @@ return Response.redirect('https://example.com/dashboard', 301);
 ### `ssl-http-fetch-endpoint-in-script` [ssl / medium / body-pattern]
 **Inline script calls a cleartext HTTP endpoint**
 
-An inline script on an HTTPS page issues a request to an http:// URL through fetch, XMLHttpRequest.open, or a library helper such as axios.get or $.ajax.
+An inline script on an HTTPS page issues a request to a cleartext http endpoint. The call is a fetch, an XMLHttpRequest.open, or a library helper such as axios.get or jQuery ajax.
 
 **Risk:** Requests made this way are active mixed content. Where a browser allows the request, the payload and any credentials it carries travel in cleartext and the response, which is usually parsed as JSON and rendered into the page, can be replaced wholesale by an on-path attacker. Where the browser blocks it, the feature simply stops working, often silently in a catch block.
 
@@ -21627,7 +22254,7 @@ A client-side library loaded by this page, at the exact version detected from it
 ### `supply-chain-poetry-lock-exposed` [supply-chain / low / body-pattern]
 **Python poetry.lock exposed**
 
-The response is a Poetry lockfile: a [[package]] table set carrying Poetry's own generation banner or its [metadata] lock-version key.
+The response is a Poetry lockfile: a [[package]] table set with Poetry's own markers. Either its generation banner, or the [metadata] lock-version key that Cargo's identically shaped file does not have.
 
 **Risk:** The lockfile pins every transitive package to an exact version, so an attacker gets a precise inventory to cross-reference against advisory databases without probing anything. Poetry also records dev-group packages, which name the test and tooling stack, and any private source it resolves against, which names an internal package index.
 
@@ -21685,7 +22312,7 @@ pipenv requirements | pip-audit -r /dev/stdin
 ### `supply-chain-gradle-lockfile-exposed` [supply-chain / low / body-pattern]
 **Gradle dependency lockfile exposed**
 
-The response is a Gradle dependency lockfile: its generated banner, or three or more lines in Gradle's group:artifact:version=configurations form.
+The response is a Gradle dependency lockfile, served directly over HTTP. It is identified by Gradle's generated banner, or by lines in the group:artifact:version=configurations form.
 
 **Risk:** Each line names a resolved JVM coordinate and the configurations it belongs to, so the file separates runtime dependencies from compile-only and test ones. That tells an attacker exactly which libraries are loaded in the running process, which is the set worth checking for a deserialization or expression-language vulnerability.
 
@@ -21750,7 +22377,7 @@ mvn org.owasp:dependency-check-maven:check
 ### `supply-chain-nuget-manifest-exposed` [supply-chain / low / body-pattern]
 **NuGet package manifest exposed**
 
-The response is a NuGet dependency manifest: a packages.config with id and version attributes, or a packages.lock.json with resolved versions and content hashes.
+The response is a NuGet dependency manifest, served directly over HTTP. Either a packages.config with id and version attributes, or a packages.lock.json with resolved versions and content hashes.
 
 **Risk:** The manifest lists every .NET package the application loads with its exact version, which is enough to look up known vulnerabilities without sending a single probe. packages.lock.json goes further and includes the full transitive graph plus the target framework moniker, which also reveals the .NET runtime version in use.
 
@@ -21819,7 +22446,7 @@ mix hex.audit
 ### `supply-chain-pubspec-lock-exposed` [supply-chain / low / body-pattern]
 **Dart pubspec.lock exposed**
 
-The response is a Dart or Flutter pubspec.lock file, identified by its packages block and the direct main / direct dev dependency markers pub writes.
+The response is a Dart or Flutter pubspec.lock file, served over HTTP. It is identified by its packages block and the direct main and direct dev markers pub writes.
 
 **Risk:** The lockfile names every pub package and its resolved version, and separates direct dependencies from transitive ones. For a Flutter web build it also pins the SDK constraint, which identifies the exact Dart and Flutter versions the bundle was compiled with.
 
@@ -21848,7 +22475,7 @@ location ~* /(pubspec\.(yaml|lock)|\.dart_tool)/? {
 ### `supply-chain-swift-package-resolved-exposed` [supply-chain / low / body-pattern]
 **Swift Package.resolved exposed**
 
-The response is a Swift Package Manager resolution file: a pins array carrying repository locations and pinned commit revisions.
+The response is a Swift Package Manager resolution file, served over HTTP. Its pins array carries repository locations and the exact commit revisions the build is pinned to.
 
 **Risk:** Every dependency is listed with its source repository URL and the exact commit it is pinned to. Private repository URLs appear verbatim, which discloses internal GitHub Enterprise or self-hosted git hostnames and the names of internal packages, and internal package names are the raw material for a dependency-confusion attempt.
 
@@ -22016,7 +22643,7 @@ location ~* /(setup\.py|setup\.cfg|pyproject\.toml|MANIFEST\.in)$ {
 ### `supply-chain-pyproject-toml-exposed` [supply-chain / low / body-pattern]
 **Python pyproject.toml exposed**
 
-The response is a pyproject.toml: a [tool.poetry] or [build-system] table, or a [project] table with a requires-python key.
+The response is a Python pyproject.toml, served directly over HTTP. It is identified by a [tool.poetry] or [build-system] table, or a [project] table with a requires-python key.
 
 **Risk:** The file declares the dependency set with its version constraints, the optional dependency groups, and the requires-python range, which brackets the Python version in use. Tool sections beneath it commonly configure ruff, mypy and pytest, and those sections sometimes carry paths that reveal the source layout on the build machine.
 
@@ -22046,7 +22673,7 @@ COPY ./src /app
 ### `supply-chain-git-dependency-unpinned` [supply-chain / medium / body-pattern]
 **Git dependency with no commit pin**
 
-A dependency in the exposed manifest resolves from a git source (git+https, git+ssh, git:// or the github: shorthand) with no 40-character commit hash pinning it.
+A dependency in the exposed manifest resolves from a git source with no commit pin. The value uses git+https, git+ssh, git:// or the github: shorthand, with no 40-character commit hash.
 
 **Risk:** Without a commit pin the install resolves whatever the branch points at when the build runs. Anyone who can push to that branch, a maintainer, a compromised account, or whoever ends up owning the repository if it changes hands, decides what code your next build executes. There is no registry review, no immutable version, and no signature in the path.
 
@@ -22078,7 +22705,7 @@ npm ci            # installs exactly what package-lock.json records
 ### `supply-chain-importmap-unpinned-cdn` [supply-chain / medium / body-pattern]
 **Import map resolves to an unversioned CDN URL**
 
-A <script type="importmap"> on this page maps a bare module specifier to a CDN URL with no version in the path, or with @latest.
+An import map on this page resolves a bare module specifier to an unversioned CDN URL. The path carries no version at all, or an explicit @latest.
 
 **Risk:** Every module the page imports through that specifier is fetched fresh from whatever the CDN currently serves, so the code running in your users' browsers changes when the package publishes, without any deploy on your side. A malicious or compromised release reaches every visitor immediately, and import maps cannot carry an integrity attribute, so there is no hash to catch it.
 
@@ -22141,7 +22768,7 @@ An import map on an HTTPS page maps a module specifier to a cleartext http:// UR
 ### `supply-chain-esm-cdn-unpinned-import` [supply-chain / medium / body-pattern]
 **ES module imported from an unversioned CDN specifier**
 
-An import statement on this page pulls a module from esm.sh, Skypack or esm.run with no version in the specifier, so the CDN resolves it to the newest published release at request time.
+An import statement pulls a module from a CDN with no version in the specifier. esm.sh, Skypack and esm.run all resolve such a specifier to the newest published release at request time.
 
 **Risk:** The browser executes whatever that package published most recently. A compromised maintainer account, or a package that changes hands, reaches every visitor on the next page load with no deploy and no review. These CDNs also transitively rewrite the package's own dependencies to the same unversioned form, so a single bare import can pull in a whole tree of code chosen at request time.
 
@@ -22172,7 +22799,7 @@ npx esbuild src/main.js --bundle --format=esm --outfile=public/main.js
 ### `supply-chain-jsdelivr-gh-branch-reference` [supply-chain / medium / body-pattern]
 **Script loaded from a jsDelivr GitHub branch reference**
 
-The page loads an asset through jsDelivr's GitHub passthrough (cdn.jsdelivr.net/gh/...) at a moving reference: no @tag at all, or @master, @main, @latest or @HEAD.
+The page loads an asset through jsDelivr's GitHub passthrough at a moving reference. The URL carries no @tag at all, or one of @master, @main, @latest or @HEAD.
 
 **Risk:** The file that executes is whatever that branch points at when the browser fetches it. A push to the repository, by any collaborator or by anyone who compromises the account, changes what runs on your page without touching your deployment. Unlike jsDelivr's npm path, there is no registry publish step and no immutable version, so nothing is reviewed between a commit and your users.
 
@@ -22202,7 +22829,7 @@ curl -s https://cdn.jsdelivr.net/gh/owner/repo@<sha>/dist/widget.min.js \
 ### `supply-chain-rawgit-cdn-reference` [supply-chain / medium / body-pattern]
 **Page references RawGit, a shut-down CDN**
 
-The page references rawgit.com or cdn.rawgit.com. RawGit stopped serving new files in 2018 and shut down completely in October 2019.
+The page references rawgit.com or cdn.rawgit.com, a CDN that no longer exists. RawGit stopped serving new files in 2018 and shut down completely in October 2019.
 
 **Risk:** Anything loaded from this host is dead, so a script tag pointing at it silently does not execute and a stylesheet silently does not apply. That is a functional break that no error page reveals. The more serious concern is the domain itself: a retired CDN domain that later changes hands turns every page still pointing at it into a delivery channel for whoever owns it next.
 
@@ -22260,7 +22887,7 @@ Content-Security-Policy: script-src 'self' https://cdn.jsdelivr.net; object-src 
 ### `supply-chain-node-modules-path-served` [supply-chain / low / body-pattern]
 **Asset served directly out of node_modules**
 
-A script or stylesheet on this page has a URL containing /node_modules/, so the dependency directory itself is mapped into the web root.
+A script or stylesheet on this page has a URL containing a /node_modules/ path segment. The dependency directory itself is therefore mapped into the web root.
 
 **Risk:** The whole dependency directory is reachable, not just the file the page asks for. That means every package's package.json, its README, its source maps, its test fixtures and any .env or config file a package happens to ship are all fetchable by path. It also gives an attacker an exact version oracle: requesting node_modules/<pkg>/package.json returns the installed version of anything they care to name.
 
@@ -22321,7 +22948,7 @@ location /bower_components/ {
 ### `supply-chain-sri-weak-hash-algorithm` [supply-chain / medium / body-pattern]
 **Subresource Integrity hash uses an unsupported algorithm**
 
-A script or link element carries an integrity attribute whose hash prefixes are none of sha256, sha384 or sha512, the only algorithms the Subresource Integrity specification defines.
+A script or link element carries an integrity attribute with an unrecognised hash prefix. None of its prefixes is sha256, sha384 or sha512, the only algorithms Subresource Integrity defines.
 
 **Risk:** A browser that recognises no algorithm in the integrity attribute treats the metadata as unusable and loads the resource with no verification at all. The element looks protected in the markup and is not, so a CDN compromise or an on-path substitution goes through exactly as if the attribute had never been written.
 
@@ -22389,7 +23016,7 @@ curl -sI -H 'Origin: https://example.com' \
 ### `supply-chain-ci-workflow-exposed` [supply-chain / medium / body-pattern]
 **CI workflow definition publicly served**
 
-The response is a CI workflow definition: a jobs block with runner labels and action steps, in the shape GitHub Actions and compatible runners use.
+The response is a CI workflow definition with a jobs block and action steps. That is the shape GitHub Actions and compatible runners use, including runner labels and triggers.
 
 **Risk:** The workflow names every secret the pipeline reads, and while the values are not present the names tell an attacker exactly which credentials exist and what they are for. It also discloses the deployment target, the registry the build pushes to, whether self-hosted runners are used and with what labels, and which branches and events trigger a deploy. Self-hosted runner labels are the most immediately useful of those: they identify machines inside your network that execute code on a push.
 
@@ -22794,7 +23421,7 @@ openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \
 ### `tls-cert-validity-period-excessive` [tls / low / network-probe]
 **Certificate validity period exceeds 398 days**
 
-The leaf certificate's notBefore to notAfter window is longer than 398 days, the maximum the CA/Browser Forum Baseline Requirements have imposed on publicly trusted certificates since September 2020.
+The leaf certificate's notBefore to notAfter window is longer than 398 days. That is the maximum the CA/Browser Forum Baseline Requirements have imposed on publicly trusted certificates since September 2020.
 
 **Risk:** The validity window is the exposure window. If the private key is compromised, the certificate keeps working until it expires unless revocation actually reaches clients, and browsers soft-fail revocation checks, so in practice it does not. A long-lived certificate also outlives the key-size, algorithm and CA-policy changes that renewal would otherwise pick up.
 
@@ -22851,7 +23478,7 @@ chronyc tracking 2>/dev/null || ntpq -p
 ### `tls-cert-san-count-excessive` [tls / info / network-probe]
 **Certificate covers an unusually large number of names**
 
-The leaf certificate lists more than fifty Subject Alternative Names, so one certificate and one private key cover a large set of hostnames.
+The leaf certificate lists more than fifty Subject Alternative Names on one key. A single certificate and a single private key therefore cover a large set of hostnames.
 
 **Risk:** Every name on the certificate shares one private key, so a key compromise affects all of them simultaneously and a revocation forced by any one of them takes all of them offline together. Where the names belong to different customers or business units, the SAN list also discloses who else is hosted behind the same endpoint.
 
@@ -22875,7 +23502,7 @@ openssl s_client -connect example.com:443 </dev/null 2>/dev/null \
 ### `tls-cert-serial-low-entropy` [tls / low / network-probe]
 **Certificate serial number has too little entropy**
 
-The leaf certificate's serial number is shorter than sixteen hexadecimal digits, which is below the 64 bits of CSPRNG output the CA/Browser Forum Baseline Requirements have required since ballot 164 in 2016.
+The leaf certificate's serial number is shorter than sixteen hexadecimal digits. That is below the 64 bits of CSPRNG output the CA/Browser Forum has required since ballot 164 in 2016.
 
 **Risk:** Serial-number entropy is the defence against a chosen-prefix collision attack on the certificate signature: an attacker who can predict the serial can prepare a colliding certificate before it is issued. It is the property that kept SHA-1 issuance survivable while it was being phased out, and it protects any hash whose margin narrows later in the same way.
 
@@ -22904,7 +23531,7 @@ openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \
 ### `tls-cert-no-embedded-sct` [tls / info / network-probe]
 **Certificate carries no embedded Certificate Transparency SCTs**
 
-The leaf certificate contains no embedded Signed Certificate Timestamp list extension (OID 1.3.6.1.4.1.11129.2.4.2), the most common way a certificate proves it was submitted to public Certificate Transparency logs.
+The leaf certificate contains no embedded Signed Certificate Timestamp list extension. That extension is the most common way a certificate proves it was submitted to public Certificate Transparency logs.
 
 **Risk:** Certificate Transparency is what makes a misissued certificate for your domain visible. A certificate that is never logged does not appear to any CT monitor, so a certificate issued for your name by a compromised or tricked CA can exist without anyone being able to notice it from the outside.
 
@@ -22934,7 +23561,7 @@ example.com. IN CAA 0 iodef "mailto:security@example.com"
 ### `tls-must-staple-not-stapled` [tls / high / network-probe]
 **Certificate requires OCSP stapling but none was stapled**
 
-The certificate carries the RFC 7633 TLS Feature extension requesting status_request, known as OCSP Must-Staple, but the handshake returned no stapled OCSP response.
+The certificate carries the RFC 7633 TLS Feature extension requesting status_request. That is OCSP Must-Staple, and the handshake returned no stapled OCSP response.
 
 **Risk:** A client that enforces must-staple treats a handshake with no stapled response as a hard failure and refuses to connect. That is a self-inflicted outage, and it appears intermittently rather than at deploy time, because a server normally stops stapling when its own OCSP fetch starts failing.
 
@@ -22966,7 +23593,7 @@ openssl s_client -connect example.com:443 -status </dev/null 2>&1 \
 ### `tls-cipher-no-forward-secrecy` [tls / medium / network-probe]
 **Negotiated cipher suite has no forward secrecy**
 
-The handshake settled on a static-RSA key-exchange suite below TLS 1.3, so the session key is encrypted directly to the certificate's public key rather than derived from an ephemeral exchange.
+The handshake settled on a static-RSA key-exchange suite at a protocol version below TLS 1.3. The session key is encrypted directly to the certificate's public key rather than derived from an ephemeral exchange.
 
 **Risk:** Traffic recorded today can be decrypted later by anyone who obtains the private key, through a compromise, a legal demand, or a memory-disclosure bug in the server. Forward secrecy removes that possibility entirely by making each session's key ephemeral and unrecoverable from the certificate.
 
@@ -23023,7 +23650,7 @@ openssl s_client -connect example.com:443 </dev/null 2>&1 | grep -i "cipher"
 ### `tls-ephemeral-key-weak` [tls / medium / network-probe]
 **Weak ephemeral key exchange parameters**
 
-The handshake completed with an ephemeral key below a safe size: a finite-field Diffie-Hellman group smaller than 2048 bits, or an elliptic curve below 224 bits.
+The handshake completed with an ephemeral key below a safe size for its key-exchange type. That is a finite-field Diffie-Hellman group smaller than 2048 bits, or an elliptic curve below 224 bits.
 
 **Risk:** The ephemeral key is what forward secrecy actually rests on: it is the value an attacker must break to recover a recorded session. A finite-field group below 2048 bits is within reach of the precomputation attack demonstrated by Logjam, and because servers overwhelmingly reuse a handful of standard groups, one precomputation breaks every session that used the same group.
 
@@ -23054,7 +23681,7 @@ openssl s_client -connect example.com:443 </dev/null 2>&1 \
 ### `tls-legacy-protocol-accepted` [tls / medium / network-probe]
 **Server still accepts TLS 1.0 or TLS 1.1**
 
-A second handshake offering only TLS 1.0 and TLS 1.1 completed successfully, which proves the server still accepts a deprecated protocol version even if it prefers a modern one with a modern client.
+A second handshake offering only TLS 1.0 and TLS 1.1 completed successfully against this host. That proves the server still accepts a deprecated version even when it prefers a modern one with a modern client.
 
 **Risk:** TLS 1.0 and 1.1 depend on constructions no longer considered sound: MAC-then-encrypt CBC modes, MD5 and SHA-1 inside the PRF and in signatures, and no AEAD suites. An old client, or one an attacker can influence into downgrading, ends up on a protocol with published attacks against it. PCI DSS has disallowed TLS 1.0 since June 2018.
 

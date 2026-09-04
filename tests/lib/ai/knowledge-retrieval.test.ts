@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import {
   retrieveKnowledge,
@@ -120,16 +122,29 @@ describe("the budget degrades by dropping sections, never by cutting one", () =>
   });
 
   it("drops the lowest-scoring sections first", () => {
+    const chars = (sections: { text: string }[]) =>
+      sections.reduce((total, s) => total + s.text.length, 0);
     const generous = retrieveKnowledge(QUESTION, {
       maxChars: DEFAULT_MAX_CHARS,
     });
     const tight = retrieveKnowledge(QUESTION, { maxChars: 3_000 });
-    expect(tight.length).toBeLessThan(generous.length);
+    // Measured in characters, not sections: a tight budget can still return
+    // the same COUNT (it reaches further down the ranking for small sections
+    // once a large one no longer fits), and the count is not what the budget
+    // is about.
+    expect(chars(tight)).toBeLessThan(chars(generous));
+    expect(chars(tight)).toBeLessThanOrEqual(3_000);
     // The best match survives every budget that can hold it at all.
     expect(tight[0]?.heading).toBe(generous[0]?.heading);
     // And nothing kept scores below something that was dropped.
     const keptScores = tight.map((s) => s.score);
     expect(keptScores).toEqual([...keptScores].sort((a, b) => b - a));
+  });
+
+  it("returns fewer sections as the budget shrinks toward nothing", () => {
+    expect(retrieveKnowledge(QUESTION, { maxChars: 400 }).length).toBeLessThan(
+      retrieveKnowledge(QUESTION, { maxChars: 20_000 }).length,
+    );
   });
 
   it("honours the section cap", () => {
@@ -154,6 +169,65 @@ describe("retrieved sections carry their source", () => {
       expect(section.cmd).toMatch(/^[a-z-]+$/);
       expect(section.label.length).toBeGreaterThan(0);
       expect(section.heading.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+/**
+ * Both cases below are regressions that shipped in the first cut of the index
+ * and were only visible by reading what retrieval actually returned, never by
+ * the compiler exiting non-zero.
+ */
+describe("the index is built from real headings", () => {
+  const sections = (
+    JSON.parse(
+      readFileSync(
+        join(process.cwd(), "lib", "ai", "knowledge-index.json"),
+        "utf8",
+      ),
+    ) as { sections: [number, number, number, string, number][] }
+  ).sections;
+
+  /**
+   * A shell comment in a fenced code block ("# Generate a 32-byte API
+   * encryption key") is a level-1 markdown heading to a regex. Reading them as
+   * headings split sections mid-snippet and reset the heading stack, so whole
+   * runs of the docs corpus came back labelled with a line of bash.
+   */
+  it("never titles a section with a line from inside a code fence", () => {
+    for (const [, , , heading] of sections) {
+      expect(heading).not.toMatch(/npm run |node -e |apt-get |docker /);
+      expect(heading.length).toBeLessThan(200);
+      expect(heading.trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  it("labels docs sections with their page, not with a neighbouring page", () => {
+    const paths = sections.map(([, , , heading]) => heading);
+    // compile-docs-knowledge.mjs emits the page's hero <h1> BELOW the "## Page"
+    // heading, so a naive stack let the hero evict its own page and every
+    // later page inherited the wrong ancestor.
+    expect(paths).toContain("Self-Hosting > Callouts");
+    expect(paths.some((p) => p.startsWith("Webhooks >"))).toBe(true);
+  });
+
+  /**
+   * The budget may only drop whole sections, which is only safe while no
+   * single section is larger than the budget itself.
+   */
+  it("keeps every section inside one message's budget", () => {
+    for (const [, , bytes, heading] of sections) {
+      expect(bytes, `${heading} is ${bytes} bytes`).toBeLessThan(
+        DEFAULT_MAX_CHARS,
+      );
+    }
+  });
+
+  it("finds a release by its number, with or without the leading v", () => {
+    const withV = retrieveKnowledge("what changed in v3.8.0");
+    const withoutV = retrieveKnowledge("what changed in 3.8.0");
+    for (const result of [withV, withoutV]) {
+      expect(result.some((s) => s.heading.startsWith("v3.8.0"))).toBe(true);
     }
   });
 });

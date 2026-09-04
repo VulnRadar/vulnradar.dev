@@ -27,7 +27,8 @@
       "https://docs.npmjs.com/cli/v10/configuring-npm/package-lock-json"
     ],
     "cwe": "CWE-200",
-    "owasp": "A05:2021"
+    "owasp": "A05:2021",
+    "_idx": 0
   },
   {
     "id": "supply-chain-requirements-exposed",
@@ -56,7 +57,8 @@
       "https://pip.pypa.io/en/stable/reference/requirements-file-format/"
     ],
     "cwe": "CWE-200",
-    "owasp": "A05:2021"
+    "owasp": "A05:2021",
+    "_idx": 1
   },
   {
     "id": "supply-chain-gemfile-exposed",
@@ -85,7 +87,8 @@
       "https://owasp.org/www-project-dependency-check/"
     ],
     "cwe": "CWE-200",
-    "owasp": "A05:2021"
+    "owasp": "A05:2021",
+    "_idx": 2
   },
   {
     "id": "supply-chain-sri-external-script",
@@ -115,7 +118,8 @@
       "https://www.srihash.org/"
     ],
     "cwe": "CWE-353",
-    "owasp": "A08:2021"
+    "owasp": "A08:2021",
+    "_idx": 3
   },
   {
     "id": "supply-chain-http-script-on-https",
@@ -145,7 +149,8 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/upgrade-insecure-requests"
     ],
     "cwe": "CWE-319",
-    "owasp": "A02:2021"
+    "owasp": "A02:2021",
+    "_idx": 4
   },
   {
     "id": "supply-chain-composer-json-exposed",
@@ -175,7 +180,8 @@
       "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/04-Review_Old_Backup_and_Unreferenced_Files_for_Sensitive_Information"
     ],
     "cwe": "CWE-200",
-    "owasp": "A05:2021"
+    "owasp": "A05:2021",
+    "_idx": 5
   },
   {
     "id": "supply-chain-dockerfile-exposed",
@@ -205,7 +211,8 @@
       "https://owasp.org/www-community/vulnerabilities/Information_exposure_through_query_strings_in_url"
     ],
     "cwe": "CWE-200",
-    "owasp": "A05:2021"
+    "owasp": "A05:2021",
+    "_idx": 6
   },
   {
     "id": "supply-chain-env-file-exposed",
@@ -235,7 +242,8 @@
       "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html"
     ],
     "cwe": "CWE-538",
-    "owasp": "A05:2021"
+    "owasp": "A05:2021",
+    "_idx": 7
   },
   {
     "id": "supply-chain-cdn-script-unpinned-version",
@@ -265,7 +273,8 @@
       "https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity"
     ],
     "cwe": "CWE-829",
-    "owasp": "A08:2021"
+    "owasp": "A08:2021",
+    "_idx": 8
   },
   {
     "id": "supply-chain-composer-auth-json-exposed",
@@ -295,7 +304,8 @@
       "https://getcomposer.org/doc/articles/authentication-for-private-packages.md"
     ],
     "cwe": "CWE-538",
-    "owasp": "A05:2021"
+    "owasp": "A05:2021",
+    "_idx": 9
   },
   {
     "id": "supply-chain-cargo-lock-exposed",
@@ -324,7 +334,8 @@
       "https://rustsec.org/"
     ],
     "cwe": "CWE-200",
-    "owasp": "A05:2021"
+    "owasp": "A05:2021",
+    "_idx": 10
   },
   {
     "id": "supply-chain-go-sum-exposed",
@@ -353,7 +364,8 @@
       "https://go.dev/security/vuln/"
     ],
     "cwe": "CWE-200",
-    "owasp": "A05:2021"
+    "owasp": "A05:2021",
+    "_idx": 11
   },
   {
     "id": "supply-chain-malicious-install-script",
@@ -383,7 +395,8 @@
       "https://docs.npmjs.com/cli/v10/using-npm/scripts"
     ],
     "cwe": "CWE-506",
-    "owasp": "A08:2021"
+    "owasp": "A08:2021",
+    "_idx": 12
   },
   {
     "id": "osv-vulnerable-library",
@@ -408,6 +421,970 @@
       }
     ],
     "references": ["https://osv.dev/"],
-    "cwe": "CWE-1104"
+    "cwe": "CWE-1104",
+    "_idx": 13
+  },
+  {
+    "id": "supply-chain-poetry-lock-exposed",
+    "type": "body-pattern",
+    "title": "Python poetry.lock exposed",
+    "category": "supply-chain",
+    "severity": "low",
+    "description": "The response is a Poetry lockfile: a [[package]] table set with Poetry's own markers. Either its generation banner, or the [metadata] lock-version key that Cargo's identically shaped file does not have.",
+    "evidence": "The response at {{url}} is a poetry.lock file.",
+    "riskImpact": "The lockfile pins every transitive package to an exact version, so an attacker gets a precise inventory to cross-reference against advisory databases without probing anything. Poetry also records dev-group packages, which name the test and tooling stack, and any private source it resolves against, which names an internal package index.",
+    "explanation": "Distinguished from Cargo.lock, which uses the same [[package]] table format, by requiring a marker only Poetry writes. Publishing this is not itself an exploit; it removes the reconnaissance step from one. The practical question after finding it is whether any pinned version is currently vulnerable and whether the file names a private index URL.",
+    "fixSteps": [
+      "Stop serving poetry.lock from the web root: it belongs in the repository and the build image, not the deployed static output.",
+      "Add a deny rule at the web server or CDN for lock and manifest filenames so a future copy does not become reachable.",
+      "Run a vulnerability scan against the pinned versions, since the exact set is now public."
+    ],
+    "codeExamples": [
+      {
+        "label": "Nginx: refuse dependency manifests",
+        "language": "nginx",
+        "code": "location ~* /(poetry\\.lock|pyproject\\.toml|Pipfile(\\.lock)?|requirements[\\w.-]*\\.txt)$ {\n    return 404;\n}"
+      },
+      {
+        "label": "Audit the pinned set",
+        "language": "bash",
+        "code": "poetry export -f requirements.txt --without-hashes | pip-audit -r /dev/stdin"
+      }
+    ],
+    "references": [
+      "https://python-poetry.org/docs/basic-usage/#installing-dependencies",
+      "https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/"
+    ],
+    "cwe": "CWE-540",
+    "owasp": "A05:2021",
+    "_idx": 14
+  },
+  {
+    "id": "supply-chain-pipfile-lock-exposed",
+    "type": "body-pattern",
+    "title": "Python Pipfile.lock exposed",
+    "category": "supply-chain",
+    "severity": "low",
+    "description": "The response is a Pipenv lockfile, identified by its _meta block and pipfile-spec version.",
+    "evidence": "The response at {{url}} is a Pipfile.lock file.",
+    "riskImpact": "Pipfile.lock resolves both the default and develop sections, so it discloses the production dependency set and the test, lint and debugging tooling in one document. Its _meta.sources block names every package index the build pulls from, which reveals a private index URL when one is configured.",
+    "explanation": "Pipenv writes a hash for each artifact, which is a real integrity control and is the reason the file exists. That value is entirely on the install side; there is no reason for the file to be reachable over HTTP. It usually appears because a deployment copies the whole project directory into the served root rather than only the built application.",
+    "fixSteps": [
+      "Exclude Pipfile and Pipfile.lock from whatever is copied into the served directory.",
+      "Add a web-server deny rule for dependency manifests as a backstop.",
+      "Check the pinned versions against an advisory database now that the exact set is public."
+    ],
+    "codeExamples": [
+      {
+        "label": "Keep manifests out of the image's served path",
+        "language": "dockerfile",
+        "code": "FROM python:3.12-slim\nWORKDIR /app\nCOPY Pipfile Pipfile.lock /tmp/\nRUN cd /tmp && pipenv install --deploy --system && rm -f /tmp/Pipfile*\nCOPY ./app /app"
+      },
+      {
+        "label": "Audit the locked set",
+        "language": "bash",
+        "code": "pipenv requirements | pip-audit -r /dev/stdin"
+      }
+    ],
+    "references": [
+      "https://pipenv.pypa.io/en/latest/pipfile.html",
+      "https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/"
+    ],
+    "cwe": "CWE-540",
+    "owasp": "A05:2021",
+    "_idx": 15
+  },
+  {
+    "id": "supply-chain-gradle-lockfile-exposed",
+    "type": "body-pattern",
+    "title": "Gradle dependency lockfile exposed",
+    "category": "supply-chain",
+    "severity": "low",
+    "description": "The response is a Gradle dependency lockfile, served directly over HTTP. It is identified by Gradle's generated banner, or by lines in the group:artifact:version=configurations form.",
+    "evidence": "The response at {{url}} is a Gradle dependency lockfile.",
+    "riskImpact": "Each line names a resolved JVM coordinate and the configurations it belongs to, so the file separates runtime dependencies from compile-only and test ones. That tells an attacker exactly which libraries are loaded in the running process, which is the set worth checking for a deserialization or expression-language vulnerability.",
+    "explanation": "Dependency locking is a Gradle feature you have to opt into, so a project that has one is usually one that cares about reproducible builds. The lockfile still has no business being served: it is a build input, and the only thing publishing it changes is how quickly someone else can enumerate your JVM stack.",
+    "fixSteps": [
+      "Exclude gradle.lockfile, gradle/ and build files from the deployed artifact; ship the built JAR or WAR, not the project directory.",
+      "Block lockfile paths at the reverse proxy.",
+      "Run a dependency check against the locked coordinates, since the list is now known."
+    ],
+    "codeExamples": [
+      {
+        "label": "Check the coordinates for known issues",
+        "language": "bash",
+        "code": "./gradlew dependencyCheckAnalyze\n\n# or, with OSV\nosv-scanner --lockfile gradle.lockfile"
+      },
+      {
+        "label": "Apache: deny build files",
+        "language": "apache",
+        "code": "<FilesMatch \"^(gradle\\.lockfile|build\\.gradle(\\.kts)?|settings\\.gradle(\\.kts)?)$\">\n    Require all denied\n</FilesMatch>"
+      }
+    ],
+    "references": [
+      "https://docs.gradle.org/current/userguide/dependency_locking.html",
+      "https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/"
+    ],
+    "cwe": "CWE-540",
+    "owasp": "A05:2021",
+    "_idx": 16
+  },
+  {
+    "id": "supply-chain-maven-pom-exposed",
+    "type": "body-pattern",
+    "title": "Maven pom.xml exposed",
+    "category": "supply-chain",
+    "severity": "low",
+    "description": "The response is a Maven project object model: a modelVersion of 4.0.0 together with artifact coordinates.",
+    "evidence": "The response at {{url}} is a Maven pom.xml file.",
+    "riskImpact": "A pom names every direct dependency with its version, the build plugins and their configuration, and the repositories the build resolves against. Internal Nexus or Artifactory URLs appear in the repositories section, and profile blocks routinely carry environment-specific server names. It also states the application's own groupId and version, which pins down exactly which release is deployed.",
+    "explanation": "A served pom is nearly always a Java web application deployed as an exploded directory with the project sources still present, which usually means other build files are reachable too. Worth checking the same paths for settings.xml, which can contain repository credentials.",
+    "fixSteps": [
+      "Deploy the packaged artifact rather than the project directory, so build files are not present under the document root.",
+      "Deny pom.xml, settings.xml and any *.gradle path at the web server.",
+      "Verify settings.xml is not also reachable, since it may hold repository credentials.",
+      "Audit the declared dependency versions now that they are public."
+    ],
+    "codeExamples": [
+      {
+        "label": "Tomcat: refuse to serve build files",
+        "language": "xml",
+        "code": "<security-constraint>\n  <web-resource-collection>\n    <web-resource-name>Build files</web-resource-name>\n    <url-pattern>/pom.xml</url-pattern>\n    <url-pattern>/settings.xml</url-pattern>\n  </web-resource-collection>\n  <auth-constraint/>\n</security-constraint>"
+      },
+      {
+        "label": "Audit the declared tree",
+        "language": "bash",
+        "code": "mvn org.owasp:dependency-check-maven:check"
+      }
+    ],
+    "references": [
+      "https://maven.apache.org/pom.html",
+      "https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/"
+    ],
+    "cwe": "CWE-540",
+    "owasp": "A05:2021",
+    "_idx": 17
+  },
+  {
+    "id": "supply-chain-nuget-manifest-exposed",
+    "type": "body-pattern",
+    "title": "NuGet package manifest exposed",
+    "category": "supply-chain",
+    "severity": "low",
+    "description": "The response is a NuGet dependency manifest, served directly over HTTP. Either a packages.config with id and version attributes, or a packages.lock.json with resolved versions and content hashes.",
+    "evidence": "The response at {{url}} is a NuGet package manifest.",
+    "riskImpact": "The manifest lists every .NET package the application loads with its exact version, which is enough to look up known vulnerabilities without sending a single probe. packages.lock.json goes further and includes the full transitive graph plus the target framework moniker, which also reveals the .NET runtime version in use.",
+    "explanation": "A reachable packages.config generally means the whole project directory is under the document root, so web.config, .csproj files and sometimes the App_Data directory are worth checking at the same paths. IIS blocks some of these by default through request filtering, but that protection is easy to lose when the site is served through a reverse proxy or a container image built by hand.",
+    "fixSteps": [
+      "Publish the built output (dotnet publish) rather than the project directory.",
+      "Confirm IIS request filtering still denies .config and .csproj under the deployed path, especially behind a reverse proxy.",
+      "Check the listed package versions against the GitHub Advisory Database."
+    ],
+    "codeExamples": [
+      {
+        "label": "IIS: deny manifest files",
+        "language": "xml",
+        "code": "<configuration>\n  <system.webServer>\n    <security>\n      <requestFiltering>\n        <fileExtensions>\n          <add fileExtension=\".config\" allowed=\"false\" />\n          <add fileExtension=\".csproj\" allowed=\"false\" />\n        </fileExtensions>\n      </requestFiltering>\n    </security>\n  </system.webServer>\n</configuration>"
+      },
+      {
+        "label": "Audit the resolved graph",
+        "language": "bash",
+        "code": "dotnet list package --vulnerable --include-transitive"
+      }
+    ],
+    "references": [
+      "https://learn.microsoft.com/en-us/nuget/consume-packages/package-references-in-project-files",
+      "https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/"
+    ],
+    "cwe": "CWE-540",
+    "owasp": "A05:2021",
+    "_idx": 18
+  },
+  {
+    "id": "supply-chain-mix-lock-exposed",
+    "type": "body-pattern",
+    "title": "Elixir mix.lock exposed",
+    "category": "supply-chain",
+    "severity": "low",
+    "description": "The response is an Elixir mix.lock file, identified by two or more Hex package tuples in its {:hex, :name, ...} form.",
+    "evidence": "The response at {{url}} is a mix.lock file.",
+    "riskImpact": "The lockfile enumerates every Hex package and its exact version, including the ones that define the web stack (Phoenix, Plug, Cowboy) and any dependency that ships native code. That is enough to identify a vulnerable Phoenix or Plug release without touching the application.",
+    "explanation": "Elixir releases built with mix release do not include mix.lock, so a served copy almost always means the application is running from a source checkout under the document root. That is worth investigating on its own: the same directory usually contains config files, and Phoenix's config/runtime.exs is where secrets are read.",
+    "fixSteps": [
+      "Deploy a mix release rather than serving from a source checkout.",
+      "Confirm Plug.Static is scoped with :only to the specific asset directories, not pointed at the project root.",
+      "Check the config directory is not also reachable."
+    ],
+    "codeExamples": [
+      {
+        "label": "Phoenix: scope static serving explicitly",
+        "language": "elixir",
+        "code": "plug Plug.Static,\n  at: \"/\",\n  from: :my_app,\n  gzip: true,\n  only: MyAppWeb.static_paths()   # never `from: \".\"`"
+      },
+      {
+        "label": "Audit the locked Hex packages",
+        "language": "bash",
+        "code": "mix deps.audit\n# or\nmix hex.audit"
+      }
+    ],
+    "references": [
+      "https://hexdocs.pm/mix/Mix.Tasks.Deps.html",
+      "https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/"
+    ],
+    "cwe": "CWE-540",
+    "owasp": "A05:2021",
+    "_idx": 19
+  },
+  {
+    "id": "supply-chain-pubspec-lock-exposed",
+    "type": "body-pattern",
+    "title": "Dart pubspec.lock exposed",
+    "category": "supply-chain",
+    "severity": "low",
+    "description": "The response is a Dart or Flutter pubspec.lock file, served over HTTP. It is identified by its packages block and the direct main and direct dev markers pub writes.",
+    "evidence": "The response at {{url}} is a pubspec.lock file.",
+    "riskImpact": "The lockfile names every pub package and its resolved version, and separates direct dependencies from transitive ones. For a Flutter web build it also pins the SDK constraint, which identifies the exact Dart and Flutter versions the bundle was compiled with.",
+    "explanation": "Flutter's web build output is meant to contain only build/web; a reachable pubspec.lock means the whole project directory was deployed. That matters beyond the dependency list, because Flutter projects commonly keep API base URLs and non-secret configuration in files that ship alongside it, and sometimes keys that were meant to stay in the native build.",
+    "fixSteps": [
+      "Deploy only build/web, not the project root.",
+      "Deny pubspec.yaml, pubspec.lock and the .dart_tool directory at the web server.",
+      "Check the resolved package versions for known advisories."
+    ],
+    "codeExamples": [
+      {
+        "label": "Deploy only the built output",
+        "language": "bash",
+        "code": "flutter build web --release\nrsync -a --delete build/web/ deploy@host:/var/www/app/"
+      },
+      {
+        "label": "Nginx: deny project files",
+        "language": "nginx",
+        "code": "location ~* /(pubspec\\.(yaml|lock)|\\.dart_tool)/? {\n    return 404;\n}"
+      }
+    ],
+    "references": [
+      "https://dart.dev/tools/pub/glossary#lockfile",
+      "https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/"
+    ],
+    "cwe": "CWE-540",
+    "owasp": "A05:2021",
+    "_idx": 20
+  },
+  {
+    "id": "supply-chain-swift-package-resolved-exposed",
+    "type": "body-pattern",
+    "title": "Swift Package.resolved exposed",
+    "category": "supply-chain",
+    "severity": "low",
+    "description": "The response is a Swift Package Manager resolution file, served over HTTP. Its pins array carries repository locations and the exact commit revisions the build is pinned to.",
+    "evidence": "The response at {{url}} is a Swift Package.resolved file.",
+    "riskImpact": "Every dependency is listed with its source repository URL and the exact commit it is pinned to. Private repository URLs appear verbatim, which discloses internal GitHub Enterprise or self-hosted git hostnames and the names of internal packages, and internal package names are the raw material for a dependency-confusion attempt.",
+    "explanation": "Package.resolved belongs to an Xcode project, so finding one served over HTTP usually means an entire app repository was deployed to a web host, often as part of a documentation or download page. The commit pins themselves are a good practice; the exposure is the private repository URLs beside them.",
+    "fixSteps": [
+      "Remove the Xcode project directory from anything the web server maps.",
+      "Treat any private repository hostname the file disclosed as known, and confirm those hosts require authentication.",
+      "Check whether any internal package name it lists could be claimed on a public registry."
+    ],
+    "codeExamples": [
+      {
+        "label": "Find project files under the served root",
+        "language": "bash",
+        "code": "find /var/www -name 'Package.resolved' -o -name '*.xcodeproj' -o -name 'Package.swift'"
+      }
+    ],
+    "references": [
+      "https://www.swift.org/documentation/package-manager/",
+      "https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/"
+    ],
+    "cwe": "CWE-540",
+    "owasp": "A05:2021",
+    "_idx": 21
+  },
+  {
+    "id": "supply-chain-podfile-lock-exposed",
+    "type": "body-pattern",
+    "title": "CocoaPods Podfile.lock exposed",
+    "category": "supply-chain",
+    "severity": "low",
+    "description": "The response is a CocoaPods lockfile, identified by its PODS and SPEC CHECKSUMS sections.",
+    "evidence": "The response at {{url}} is a Podfile.lock file.",
+    "riskImpact": "The lockfile lists every pod and its resolved version, including analytics, crash-reporting and payment SDKs, and the checksum of each spec. That is a full inventory of the third-party code inside the mobile app, which is what an attacker needs to find a known issue in a bundled SDK.",
+    "explanation": "Like Package.resolved, this reaching a web server means an app repository was published rather than a build artifact. The EXTERNAL SOURCES section, when present, names private podspec repositories, which discloses internal hostnames along with the dependency list.",
+    "fixSteps": [
+      "Remove the iOS project directory from the web-served path.",
+      "Confirm any private podspec repository the file named is not reachable without authentication.",
+      "Review the listed pod versions against known advisories for those SDKs."
+    ],
+    "codeExamples": [
+      {
+        "label": "Find app project files under the document root",
+        "language": "bash",
+        "code": "find /var/www -name 'Podfile*' -o -name '*.xcworkspace'"
+      }
+    ],
+    "references": [
+      "https://guides.cocoapods.org/using/the-podfile.html",
+      "https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/"
+    ],
+    "cwe": "CWE-540",
+    "owasp": "A05:2021",
+    "_idx": 22
+  },
+  {
+    "id": "supply-chain-terraform-lock-exposed",
+    "type": "body-pattern",
+    "title": "Terraform provider lockfile exposed",
+    "category": "supply-chain",
+    "severity": "medium",
+    "description": "The response is a .terraform.lock.hcl file: registry.terraform.io provider blocks with their recorded hashes.",
+    "evidence": "The response at {{url}} is a Terraform provider dependency lockfile.",
+    "riskImpact": "The provider list is an inventory of the infrastructure itself. Seeing aws, cloudflare, vault, datadog and a database provider together tells an attacker which cloud the estate runs on, which secret store it uses, and which SaaS platforms hold an API token for this organisation, before any other reconnaissance. The pinned provider versions also indicate how recently the infrastructure code was touched.",
+    "explanation": "Rated above the language lockfiles because of what it implies rather than what it contains: this file only exists inside a Terraform working directory, so its presence under a web root means infrastructure code was deployed alongside the application. The files beside it are the real exposure. terraform.tfvars and any .tfstate in the same directory routinely contain credentials and full resource inventories.",
+    "fixSteps": [
+      "Remove the Terraform working directory from the web-served path immediately.",
+      "Check the same directory for terraform.tfvars, *.auto.tfvars and *.tfstate, and treat every value in them as compromised.",
+      "Rotate any credential that could have been in those files.",
+      "Move state to a remote backend with access control so it is never a file on an application host."
+    ],
+    "codeExamples": [
+      {
+        "label": "Check what else is reachable in that directory",
+        "language": "bash",
+        "code": "for f in terraform.tfstate terraform.tfvars terraform.tfstate.backup .terraform.lock.hcl; do\n  printf '%s ' \"$f\"\n  curl -s -o /dev/null -w '%{http_code}\\n' \"https://example.com/$f\"\ndone"
+      },
+      {
+        "label": "Use a remote backend instead of local state",
+        "language": "hcl",
+        "code": "terraform {\n  backend \"s3\" {\n    bucket         = \"example-tf-state\"\n    key            = \"prod/terraform.tfstate\"\n    region         = \"us-east-1\"\n    encrypt        = true\n    dynamodb_table = \"tf-state-lock\"\n  }\n}"
+      }
+    ],
+    "references": [
+      "https://developer.hashicorp.com/terraform/language/files/dependency-lock",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
+    ],
+    "cwe": "CWE-540",
+    "owasp": "A05:2021",
+    "_idx": 23
+  },
+  {
+    "id": "supply-chain-cargo-toml-exposed",
+    "type": "body-pattern",
+    "title": "Rust Cargo.toml exposed",
+    "category": "supply-chain",
+    "severity": "low",
+    "description": "The response is a Rust crate manifest: a [package] table with an edition key and a [dependencies] table.",
+    "evidence": "The response at {{url}} is a Cargo.toml file.",
+    "riskImpact": "The manifest names every direct dependency and the feature flags each is built with, which matters in Rust because features change what code is compiled in. It also exposes any git or path dependency, and a git dependency pointing at a private repository discloses an internal host and the fact that unpublished crates are in the build.",
+    "explanation": "Distinct from a served Cargo.lock, which gives the full resolved transitive tree: the manifest gives the author's intent, including version ranges that will resolve differently on the next build and the feature set that decides which code paths exist. Both are build inputs and neither should be reachable from a compiled binary's deployment.",
+    "fixSteps": [
+      "Deploy the compiled binary and its runtime assets only, not the crate source directory.",
+      "If the manifest named a private git dependency, confirm that repository is not publicly readable.",
+      "Audit the dependency set with cargo audit now that the list is public."
+    ],
+    "codeExamples": [
+      {
+        "label": "Multi-stage build that ships only the binary",
+        "language": "dockerfile",
+        "code": "FROM rust:1-slim AS build\nWORKDIR /src\nCOPY . .\nRUN cargo build --release\n\nFROM debian:stable-slim\nCOPY --from=build /src/target/release/app /usr/local/bin/app\nCMD [\"app\"]"
+      },
+      {
+        "label": "Audit the dependency set",
+        "language": "bash",
+        "code": "cargo audit"
+      }
+    ],
+    "references": [
+      "https://doc.rust-lang.org/cargo/reference/manifest.html",
+      "https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/"
+    ],
+    "cwe": "CWE-540",
+    "owasp": "A05:2021",
+    "_idx": 24
+  },
+  {
+    "id": "supply-chain-go-mod-exposed",
+    "type": "body-pattern",
+    "title": "Go go.mod exposed",
+    "category": "supply-chain",
+    "severity": "low",
+    "description": "The response is a Go module file: a module directive followed by a go language-version directive.",
+    "evidence": "The response at {{url}} is a go.mod file.",
+    "riskImpact": "The module path is frequently a private repository URL, which discloses an internal git host and the organisation's internal module naming. The require block gives every direct dependency and version, and the go directive pins the toolchain version, which reveals whether the build predates a known Go runtime fix.",
+    "explanation": "Go binaries are statically linked and ship without go.mod, so a served copy means the source tree is under the document root rather than just the built binary. Where the module path names a private host, the more useful follow-up is dependency confusion: an internal module path that is not reserved on the public proxy can be claimed by someone else.",
+    "fixSteps": [
+      "Deploy the compiled binary, not the source tree.",
+      "Check whether the internal module path disclosed here is claimable on proxy.golang.org, and reserve it if so.",
+      "Set GOPRIVATE / GONOSUMDB for internal module prefixes so the toolchain never resolves them through the public proxy.",
+      "Run govulncheck against the module now that its dependency set is public."
+    ],
+    "codeExamples": [
+      {
+        "label": "Keep internal modules off the public proxy",
+        "language": "bash",
+        "code": "go env -w GOPRIVATE=git.internal.example.com/*\ngo env -w GONOSUMCHECK=1"
+      },
+      {
+        "label": "Audit the module",
+        "language": "bash",
+        "code": "go install golang.org/x/vuln/cmd/govulncheck@latest\ngovulncheck ./..."
+      }
+    ],
+    "references": [
+      "https://go.dev/ref/mod",
+      "https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/"
+    ],
+    "cwe": "CWE-540",
+    "owasp": "A05:2021",
+    "_idx": 25
+  },
+  {
+    "id": "supply-chain-setup-py-exposed",
+    "type": "body-pattern",
+    "title": "Python setup.py source exposed",
+    "category": "supply-chain",
+    "severity": "low",
+    "description": "The response is a Python setup.py: a setup() call with an install_requires list.",
+    "evidence": "The response at {{url}} is a setup.py file.",
+    "riskImpact": "Beyond the declared dependency list, setup.py is executable Python that runs at install time. A served copy shows any custom cmdclass, build step or post-install hook the package runs, and those are exactly the places where a package fetches something at install time or writes outside its own tree.",
+    "explanation": "Unlike a lockfile, this one is code, so it is worth reading rather than just inventorying. The dependency_links and extras_require entries are also informative: dependency_links can point at a private index or a direct URL, and extras name optional integrations the application supports even when they are not installed here.",
+    "fixSteps": [
+      "Remove packaging files from the served directory; deploy the installed package, not the source distribution.",
+      "Review the file's own install-time hooks: a setup.py that downloads or executes anything at install time is a supply-chain risk in its own right.",
+      "Audit the versions in install_requires."
+    ],
+    "codeExamples": [
+      {
+        "label": "Nginx: deny Python packaging files",
+        "language": "nginx",
+        "code": "location ~* /(setup\\.py|setup\\.cfg|pyproject\\.toml|MANIFEST\\.in)$ {\n    return 404;\n}"
+      }
+    ],
+    "references": [
+      "https://packaging.python.org/en/latest/guides/distributing-packages-using-setuptools/",
+      "https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/"
+    ],
+    "cwe": "CWE-540",
+    "owasp": "A05:2021",
+    "_idx": 26
+  },
+  {
+    "id": "supply-chain-pyproject-toml-exposed",
+    "type": "body-pattern",
+    "title": "Python pyproject.toml exposed",
+    "category": "supply-chain",
+    "severity": "low",
+    "description": "The response is a Python pyproject.toml, served directly over HTTP. It is identified by a [tool.poetry] or [build-system] table, or a [project] table with a requires-python key.",
+    "evidence": "The response at {{url}} is a pyproject.toml file.",
+    "riskImpact": "The file declares the dependency set with its version constraints, the optional dependency groups, and the requires-python range, which brackets the Python version in use. Tool sections beneath it commonly configure ruff, mypy and pytest, and those sections sometimes carry paths that reveal the source layout on the build machine.",
+    "explanation": "Where a lockfile gives the resolved set, pyproject gives the constraints, so it shows what a rebuild would pull in rather than what is installed now. A caret or wildcard constraint on a package with a recent advisory tells an attacker that the next deployment may reintroduce it. It also names any private index configured under tool.poetry.source.",
+    "fixSteps": [
+      "Exclude packaging files from the served directory.",
+      "Replace open-ended version constraints on security-sensitive packages with bounded ones, backed by a lockfile.",
+      "Confirm any private index URL the file disclosed still requires authentication."
+    ],
+    "codeExamples": [
+      {
+        "label": "Copy only the application into the runtime image",
+        "language": "dockerfile",
+        "code": "FROM python:3.12-slim AS build\nWORKDIR /src\nCOPY pyproject.toml poetry.lock ./\nRUN pip install poetry && poetry export -f requirements.txt -o /tmp/req.txt\n\nFROM python:3.12-slim\nCOPY --from=build /tmp/req.txt /tmp/req.txt\nRUN pip install --no-cache-dir -r /tmp/req.txt\nCOPY ./src /app"
+      }
+    ],
+    "references": [
+      "https://packaging.python.org/en/latest/specifications/pyproject-toml/",
+      "https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/"
+    ],
+    "cwe": "CWE-540",
+    "owasp": "A05:2021",
+    "_idx": 27
+  },
+  {
+    "id": "supply-chain-git-dependency-unpinned",
+    "type": "body-pattern",
+    "title": "Git dependency with no commit pin",
+    "category": "supply-chain",
+    "severity": "medium",
+    "description": "A dependency in the exposed manifest resolves from a git source with no commit pin. The value uses git+https, git+ssh, git:// or the github: shorthand, with no 40-character commit hash.",
+    "evidence": "A dependency at {{url}} resolves from a git URL with no commit pin.",
+    "riskImpact": "Without a commit pin the install resolves whatever the branch points at when the build runs. Anyone who can push to that branch, a maintainer, a compromised account, or whoever ends up owning the repository if it changes hands, decides what code your next build executes. There is no registry review, no immutable version, and no signature in the path.",
+    "explanation": "Registry packages are immutable once published, which is what makes a version number meaningful. A git reference has no such guarantee: a branch or tag can be force-updated in place, and a deleted repository name can be re-registered by someone else. A commit SHA is the only reference in git that cannot be changed under you, and the resolution has to record it.",
+    "fixSteps": [
+      "Replace each git reference with a #<40-hex-commit> pin, or publish the package to a registry and depend on a version.",
+      "Commit the lockfile so the resolved commit is recorded even when the manifest names a branch.",
+      "Confirm the repository is one you control or trust, and that it still exists under the account you expect.",
+      "Run installs with a frozen lockfile in CI (npm ci, not npm install) so an unpinned reference cannot re-resolve silently."
+    ],
+    "codeExamples": [
+      {
+        "label": "Pin the commit",
+        "language": "json",
+        "code": "{\n  \"dependencies\": {\n    \"internal-utils\": \"git+https://github.com/example/internal-utils.git#3f2b9c1d5a4e8f70b1c2d3e4f5a6b7c8d9e0f1a2\"\n  }\n}"
+      },
+      {
+        "label": "CI: never re-resolve",
+        "language": "bash",
+        "code": "npm ci            # installs exactly what package-lock.json records\n# not: npm install, which may re-resolve a moving git ref"
+      }
+    ],
+    "references": [
+      "https://docs.npmjs.com/cli/v10/configuring-npm/package-json#git-urls-as-dependencies",
+      "https://slsa.dev/spec/v1.0/threats"
+    ],
+    "cwe": "CWE-1357",
+    "owasp": "A08:2021",
+    "_idx": 28
+  },
+  {
+    "id": "supply-chain-importmap-unpinned-cdn",
+    "type": "body-pattern",
+    "title": "Import map resolves to an unversioned CDN URL",
+    "category": "supply-chain",
+    "severity": "medium",
+    "description": "An import map on this page resolves a bare module specifier to an unversioned CDN URL. The path carries no version at all, or an explicit @latest.",
+    "evidence": "An import map at {{url}} resolves a module to an unversioned CDN URL.",
+    "riskImpact": "Every module the page imports through that specifier is fetched fresh from whatever the CDN currently serves, so the code running in your users' browsers changes when the package publishes, without any deploy on your side. A malicious or compromised release reaches every visitor immediately, and import maps cannot carry an integrity attribute, so there is no hash to catch it.",
+    "explanation": "This is the module-graph version of an unpinned script tag, and it is worse in one specific way: a script tag can carry integrity, an import map entry cannot. That makes the version pin the only control available. Pinning is also what makes the page reproducible, since an unversioned specifier means two users loading the page a week apart can run different code.",
+    "fixSteps": [
+      "Put an exact version in every import map URL. Prefer a specific patch version over a range.",
+      "Better still, bundle these modules and serve them from your own origin, where SRI and your own CSP apply.",
+      "Restrict script-src in CSP to the specific CDN origin so an unexpected host cannot be introduced.",
+      "Automate version bumps through your dependency updater rather than relying on the CDN to hand you the newest build."
+    ],
+    "codeExamples": [
+      {
+        "label": "Pin every entry",
+        "language": "html",
+        "code": "<script type=\"importmap\">\n{\n  \"imports\": {\n    \"lit\": \"https://cdn.jsdelivr.net/npm/lit@3.1.4/index.js\",\n    \"preact\": \"https://cdn.jsdelivr.net/npm/preact@10.22.1/dist/preact.module.js\"\n  }\n}\n</script>"
+      },
+      {
+        "label": "Constrain where modules may come from",
+        "language": "text",
+        "code": "Content-Security-Policy: script-src 'self' https://cdn.jsdelivr.net; object-src 'none'; base-uri 'none'"
+      }
+    ],
+    "references": [
+      "https://html.spec.whatwg.org/multipage/webappapis.html#import-maps",
+      "https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/"
+    ],
+    "cwe": "CWE-1357",
+    "owasp": "A08:2021",
+    "_idx": 29
+  },
+  {
+    "id": "supply-chain-importmap-insecure-source",
+    "type": "body-pattern",
+    "title": "Import map resolves a module over plain HTTP",
+    "category": "supply-chain",
+    "severity": "high",
+    "description": "An import map on an HTTPS page maps a module specifier to a cleartext http:// URL on a host other than localhost.",
+    "evidence": "An import map at {{url}} points a module specifier at an http:// URL.",
+    "riskImpact": "A module fetched over plain HTTP can be replaced in transit by anyone on the network path, and the replacement runs as first-party script on your origin: full access to the DOM, to same-origin storage, and to any session the user has. Browsers block this as active mixed content, so in practice the import fails and the feature breaks, but the map is a standing instruction to load executable code insecurely.",
+    "explanation": "Distinct from an http:// script tag in that the URL is in a JSON policy rather than in markup, so it survives reviews that only look at tags and does not appear in most mixed-content audits. Localhost is excluded here because a development import map pointing at a local dev server is normal and harmless.",
+    "fixSteps": [
+      "Change every import map URL to https, or to a same-origin path.",
+      "Add upgrade-insecure-requests to the CSP so any remaining cleartext subresource is upgraded rather than silently failing.",
+      "Confirm the target actually serves HTTPS before switching, so the module does not simply stop loading."
+    ],
+    "codeExamples": [
+      {
+        "label": "HTTPS in every entry",
+        "language": "html",
+        "code": "<script type=\"importmap\">\n{\n  \"imports\": {\n    \"app/\": \"/modules/\",\n    \"lit\": \"https://cdn.jsdelivr.net/npm/lit@3.1.4/index.js\"\n  }\n}\n</script>"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content",
+      "https://html.spec.whatwg.org/multipage/webappapis.html#import-maps"
+    ],
+    "cwe": "CWE-319",
+    "owasp": "A02:2021",
+    "_idx": 30
+  },
+  {
+    "id": "supply-chain-esm-cdn-unpinned-import",
+    "type": "body-pattern",
+    "title": "ES module imported from an unversioned CDN specifier",
+    "category": "supply-chain",
+    "severity": "medium",
+    "description": "An import statement pulls a module from a CDN with no version in the specifier. esm.sh, Skypack and esm.run all resolve such a specifier to the newest published release at request time.",
+    "evidence": "A module import at {{url}} names an unversioned CDN specifier.",
+    "riskImpact": "The browser executes whatever that package published most recently. A compromised maintainer account, or a package that changes hands, reaches every visitor on the next page load with no deploy and no review. These CDNs also transitively rewrite the package's own dependencies to the same unversioned form, so a single bare import can pull in a whole tree of code chosen at request time.",
+    "explanation": "Distinct from a script tag without SRI: this is inside module code, so it is not visible in the markup a reviewer scans, and ES module imports cannot carry an integrity attribute at all. The version in the specifier is the only pin available, and esm.sh and Skypack both accept an exact one.",
+    "fixSteps": [
+      "Pin an exact version in every CDN import specifier.",
+      "Prefer bundling these modules into your own build, where the lockfile and SRI both apply.",
+      "Restrict script-src in CSP to the specific CDN host so an unexpected origin cannot be introduced later."
+    ],
+    "codeExamples": [
+      {
+        "label": "Pin the specifier",
+        "language": "javascript",
+        "code": "// Resolves to whatever is newest right now\nimport confetti from 'https://esm.sh/canvas-confetti';\n\n// Pinned\nimport confetti from 'https://esm.sh/canvas-confetti@1.9.3';"
+      },
+      {
+        "label": "Or bundle it and serve it yourself",
+        "language": "bash",
+        "code": "npm install canvas-confetti@1.9.3\nnpx esbuild src/main.js --bundle --format=esm --outfile=public/main.js"
+      }
+    ],
+    "references": [
+      "https://esm.sh/#docs",
+      "https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/"
+    ],
+    "cwe": "CWE-1357",
+    "owasp": "A08:2021",
+    "_idx": 31
+  },
+  {
+    "id": "supply-chain-jsdelivr-gh-branch-reference",
+    "type": "body-pattern",
+    "title": "Script loaded from a jsDelivr GitHub branch reference",
+    "category": "supply-chain",
+    "severity": "medium",
+    "description": "The page loads an asset through jsDelivr's GitHub passthrough at a moving reference. The URL carries no @tag at all, or one of @master, @main, @latest or @HEAD.",
+    "evidence": "An asset at {{url}} is loaded from cdn.jsdelivr.net/gh at a branch reference.",
+    "riskImpact": "The file that executes is whatever that branch points at when the browser fetches it. A push to the repository, by any collaborator or by anyone who compromises the account, changes what runs on your page without touching your deployment. Unlike jsDelivr's npm path, there is no registry publish step and no immutable version, so nothing is reviewed between a commit and your users.",
+    "explanation": "jsDelivr supports pinning /gh/ URLs to a tag or a full commit SHA, and a pinned URL is served immutably and cached indefinitely. A branch reference deliberately opts out of that. This is a distinct problem from a missing SRI hash: an integrity attribute would break on every legitimate push, so the fix is to pin the reference rather than to add a hash to a moving target.",
+    "fixSteps": [
+      "Pin the URL to a release tag or, better, a full commit SHA: cdn.jsdelivr.net/gh/owner/repo@<sha>/file.js.",
+      "Add an integrity attribute once the URL is immutable.",
+      "For anything you depend on seriously, vendor the file into your own build instead of loading it from a third-party repository."
+    ],
+    "codeExamples": [
+      {
+        "label": "Pin to a commit and add SRI",
+        "language": "html",
+        "code": "<script\n  src=\"https://cdn.jsdelivr.net/gh/owner/repo@3f2b9c1d5a4e8f70b1c2d3e4f5a6b7c8d9e0f1a2/dist/widget.min.js\"\n  integrity=\"sha384-REPLACE_WITH_REAL_HASH\"\n  crossorigin=\"anonymous\"></script>"
+      },
+      {
+        "label": "Compute the hash",
+        "language": "bash",
+        "code": "curl -s https://cdn.jsdelivr.net/gh/owner/repo@<sha>/dist/widget.min.js \\\n  | openssl dgst -sha384 -binary | openssl base64 -A"
+      }
+    ],
+    "references": [
+      "https://www.jsdelivr.com/documentation#id-github",
+      "https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/"
+    ],
+    "cwe": "CWE-1357",
+    "owasp": "A08:2021",
+    "_idx": 32
+  },
+  {
+    "id": "supply-chain-rawgit-cdn-reference",
+    "type": "body-pattern",
+    "title": "Page references RawGit, a shut-down CDN",
+    "category": "supply-chain",
+    "severity": "medium",
+    "description": "The page references rawgit.com or cdn.rawgit.com, a CDN that no longer exists. RawGit stopped serving new files in 2018 and shut down completely in October 2019.",
+    "evidence": "A RawGit URL is referenced from {{url}}.",
+    "riskImpact": "Anything loaded from this host is dead, so a script tag pointing at it silently does not execute and a stylesheet silently does not apply. That is a functional break that no error page reveals. The more serious concern is the domain itself: a retired CDN domain that later changes hands turns every page still pointing at it into a delivery channel for whoever owns it next.",
+    "explanation": "This is a maintenance signal as much as a security one. A page still referencing RawGit has not had its third-party assets reviewed since at least 2019, which usually means the rest of the front-end dependency set is the same age. Check what the reference was meant to load and whether the page has been quietly running without it.",
+    "fixSteps": [
+      "Find what the RawGit URL was supposed to load and confirm whether the page still needs it.",
+      "Replace it with the file served from your own origin, or with a pinned jsDelivr URL plus an integrity hash.",
+      "Audit the rest of the page's third-party references at the same time; they are likely the same vintage."
+    ],
+    "codeExamples": [
+      {
+        "label": "Find every reference",
+        "language": "bash",
+        "code": "grep -rn 'rawgit\\.com' --include='*.html' --include='*.js' --include='*.css' ."
+      },
+      {
+        "label": "Replace with a pinned, hashed source",
+        "language": "html",
+        "code": "<script\n  src=\"https://cdn.jsdelivr.net/gh/owner/repo@v1.4.2/dist/widget.min.js\"\n  integrity=\"sha384-REPLACE_WITH_REAL_HASH\"\n  crossorigin=\"anonymous\"></script>"
+      }
+    ],
+    "references": [
+      "https://rawgit.com/",
+      "https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/"
+    ],
+    "cwe": "CWE-1104",
+    "owasp": "A08:2021",
+    "_idx": 33
+  },
+  {
+    "id": "supply-chain-github-raw-script-source",
+    "type": "body-pattern",
+    "title": "Script loaded from GitHub raw content",
+    "category": "supply-chain",
+    "severity": "medium",
+    "description": "A script element on this page loads its source from raw.githubusercontent.com or gist.githubusercontent.com.",
+    "evidence": "A script at {{url}} loads from GitHub's raw content host.",
+    "riskImpact": "GitHub's raw endpoints are not a CDN and make no immutability promise for a branch path: the content changes the moment someone pushes. Anyone with write access to that repository, or to that gist, controls executable code on your origin. For a gist the blast radius is smaller only in that fewer people have access, which also means less oversight of who does.",
+    "explanation": "The raw hosts serve with a short cache lifetime and rate limit aggressively, so this also fails intermittently under load. If the reference has to stay, a permalink to a full commit SHA is immutable and can be paired with an integrity hash. The better answer is to vendor the file into your own build, where it goes through the same review as everything else you ship.",
+    "fixSteps": [
+      "Vendor the file into your own repository and serve it from your origin.",
+      "If it must be remote, use a full commit-SHA permalink and add an integrity attribute.",
+      "Restrict script-src in CSP so githubusercontent hosts are not an allowed script source.",
+      "Check who has write access to the source repository, since they currently have script execution on your site."
+    ],
+    "codeExamples": [
+      {
+        "label": "Vendor it instead",
+        "language": "bash",
+        "code": "curl -sL https://raw.githubusercontent.com/owner/repo/<sha>/dist/widget.js \\\n  -o public/vendor/widget.js\n# then reference /vendor/widget.js and commit it"
+      },
+      {
+        "label": "CSP that excludes raw hosts",
+        "language": "text",
+        "code": "Content-Security-Policy: script-src 'self' https://cdn.jsdelivr.net; object-src 'none'"
+      }
+    ],
+    "references": [
+      "https://docs.github.com/en/repositories/working-with-files/using-files/viewing-and-understanding-files",
+      "https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/"
+    ],
+    "cwe": "CWE-1357",
+    "owasp": "A08:2021",
+    "_idx": 34
+  },
+  {
+    "id": "supply-chain-node-modules-path-served",
+    "type": "body-pattern",
+    "title": "Asset served directly out of node_modules",
+    "category": "supply-chain",
+    "severity": "low",
+    "description": "A script or stylesheet on this page has a URL containing a /node_modules/ path segment. The dependency directory itself is therefore mapped into the web root.",
+    "evidence": "An asset at {{url}} is loaded from a /node_modules/ path.",
+    "riskImpact": "The whole dependency directory is reachable, not just the file the page asks for. That means every package's package.json, its README, its source maps, its test fixtures and any .env or config file a package happens to ship are all fetchable by path. It also gives an attacker an exact version oracle: requesting node_modules/<pkg>/package.json returns the installed version of anything they care to name.",
+    "explanation": "This is a build-pipeline shortcut rather than a deliberate choice: it happens when a static server is pointed at the project root so a library can be referenced without a bundler step. The dependency inventory it leaks is the mild half. The real risk is the files inside packages that were never meant to be served, and the exact-version oracle, which turns any published advisory into a confirmed hit.",
+    "fixSteps": [
+      "Bundle or copy the specific files you need into a build output directory, and serve only that directory.",
+      "Never point a static-file middleware at the project root or at node_modules.",
+      "If a directory mapping is unavoidable, deny access to package.json, source maps and dotfiles beneath it."
+    ],
+    "codeExamples": [
+      {
+        "label": "Copy the file into the build output instead",
+        "language": "json",
+        "code": "{\n  \"scripts\": {\n    \"prebuild\": \"cp node_modules/chart.js/dist/chart.umd.js public/vendor/chart.js\"\n  }\n}"
+      },
+      {
+        "label": "Express: serve the build output only",
+        "language": "javascript",
+        "code": "app.use(express.static(path.join(__dirname, 'public'), { dotfiles: 'deny' }));\n// never: app.use('/node_modules', express.static('node_modules'))"
+      }
+    ],
+    "references": [
+      "https://expressjs.com/en/starter/static-files.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
+    ],
+    "cwe": "CWE-548",
+    "owasp": "A05:2021",
+    "_idx": 35
+  },
+  {
+    "id": "supply-chain-bower-components-reference",
+    "type": "body-pattern",
+    "title": "Asset loaded from a Bower install directory",
+    "category": "supply-chain",
+    "severity": "low",
+    "description": "A script or stylesheet on this page loads from a bower_components path. Bower was deprecated in 2017 and its registry stopped accepting new packages.",
+    "evidence": "An asset at {{url}} is loaded from a bower_components path.",
+    "riskImpact": "Bower resolved packages straight from git tags with no integrity checking and no lockfile by default, so what is installed here was never verified and cannot be reproduced. Packages installed this way have not received updates since the registry froze, which means any front-end library in that directory is at least several years behind on security fixes.",
+    "explanation": "The immediate issue is age, not a specific vulnerability: jQuery, Bootstrap, Angular 1.x and Handlebars are the usual residents of a bower_components directory, and each has had XSS or prototype-pollution fixes since. Serving the directory also exposes each package's bower.json and often its full source tree, which gives an exact version for every library present.",
+    "fixSteps": [
+      "Migrate the front-end dependencies to npm and a bundler, and delete bower_components.",
+      "Until then, identify the versions actually loaded and check each against an advisory database.",
+      "Stop serving the directory itself; reference specific built files from your own output path."
+    ],
+    "codeExamples": [
+      {
+        "label": "See what versions are actually installed",
+        "language": "bash",
+        "code": "for f in bower_components/*/bower.json; do\n  echo \"$f: $(node -e \"console.log(require('./$f').version)\")\"\ndone"
+      },
+      {
+        "label": "Deny the directory while migrating",
+        "language": "nginx",
+        "code": "location /bower_components/ {\n    return 404;\n}"
+      }
+    ],
+    "references": [
+      "https://bower.io/blog/2017/how-to-migrate-away-from-bower/",
+      "https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/"
+    ],
+    "cwe": "CWE-1104",
+    "owasp": "A06:2021",
+    "_idx": 36
+  },
+  {
+    "id": "supply-chain-sri-weak-hash-algorithm",
+    "type": "body-pattern",
+    "title": "Subresource Integrity hash uses an unsupported algorithm",
+    "category": "supply-chain",
+    "severity": "medium",
+    "description": "A script or link element carries an integrity attribute with an unrecognised hash prefix. None of its prefixes is sha256, sha384 or sha512, the only algorithms Subresource Integrity defines.",
+    "evidence": "An integrity attribute at {{url}} names an algorithm no browser accepts.",
+    "riskImpact": "A browser that recognises no algorithm in the integrity attribute treats the metadata as unusable and loads the resource with no verification at all. The element looks protected in the markup and is not, so a CDN compromise or an on-path substitution goes through exactly as if the attribute had never been written.",
+    "explanation": "The usual causes are an sha1- or md5- prefix copied from an older integrity scheme, or a bare base64 digest with no prefix. This is the quietest kind of SRI failure: there is no console error in most browsers, the resource loads normally, and a reviewer reading the HTML sees an integrity attribute and moves on. Regenerating the hash with sha384 is the whole fix.",
+    "fixSteps": [
+      "Regenerate the digest with sha384 (or sha512) and replace the attribute value, prefix included.",
+      "Keep the crossorigin attribute alongside it, since SRI on a cross-origin resource needs a CORS-enabled fetch.",
+      "Add a build step that generates integrity attributes rather than writing them by hand."
+    ],
+    "codeExamples": [
+      {
+        "label": "Generate a correct hash",
+        "language": "bash",
+        "code": "curl -s https://cdn.example.com/lib.js \\\n  | openssl dgst -sha384 -binary \\\n  | openssl base64 -A"
+      },
+      {
+        "label": "The attribute it produces",
+        "language": "html",
+        "code": "<script\n  src=\"https://cdn.example.com/lib.js\"\n  integrity=\"sha384-oqVuAfXRKap7fdgcCY5uykM6+R9GqQ8K/uxy9rx7HNQlGYl1kPzQho1wx4JwY8wC\"\n  crossorigin=\"anonymous\"></script>"
+      }
+    ],
+    "references": [
+      "https://www.w3.org/TR/SRI/",
+      "https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity"
+    ],
+    "cwe": "CWE-353",
+    "owasp": "A08:2021",
+    "_idx": 37
+  },
+  {
+    "id": "supply-chain-sri-missing-crossorigin",
+    "type": "body-pattern",
+    "title": "Cross-origin subresource has integrity but no crossorigin",
+    "category": "supply-chain",
+    "severity": "medium",
+    "description": "A cross-origin script or stylesheet carries an integrity attribute without a crossorigin attribute. Subresource Integrity requires a CORS-enabled fetch, so the browser cannot check the hash.",
+    "evidence": "A cross-origin subresource at {{url}} has an integrity attribute and no crossorigin attribute.",
+    "riskImpact": "Without crossorigin the response is opaque to the page, and the specification says a request with integrity metadata whose response is not CORS-enabled fails. In practice the resource either does not load, breaking the page, or in older engines loads unverified. Either way the integrity attribute is providing none of the protection it appears to provide.",
+    "explanation": "This is a two-attribute feature that is very commonly written with one. It is easy to miss because the failure is either a broken page (obvious, but usually blamed on the CDN) or a silently unverified load (invisible). The value crossorigin=\"anonymous\" is right for public CDN assets: it sends no credentials and asks for the CORS headers SRI needs.",
+    "fixSteps": [
+      "Add crossorigin=\"anonymous\" to every cross-origin element that carries an integrity attribute.",
+      "Confirm the CDN actually returns Access-Control-Allow-Origin; without it the fetch fails whatever the markup says.",
+      "Use crossorigin=\"use-credentials\" only when the resource genuinely requires cookies, which a public CDN asset does not."
+    ],
+    "codeExamples": [
+      {
+        "label": "Both attributes together",
+        "language": "html",
+        "code": "<script\n  src=\"https://cdn.jsdelivr.net/npm/htmx.org@2.0.3/dist/htmx.min.js\"\n  integrity=\"sha384-REPLACE_WITH_REAL_HASH\"\n  crossorigin=\"anonymous\"></script>\n\n<link\n  rel=\"stylesheet\"\n  href=\"https://cdn.jsdelivr.net/npm/normalize.css@8.0.1/normalize.css\"\n  integrity=\"sha384-REPLACE_WITH_REAL_HASH\"\n  crossorigin=\"anonymous\">"
+      },
+      {
+        "label": "Confirm the CDN sends CORS headers",
+        "language": "bash",
+        "code": "curl -sI -H 'Origin: https://example.com' \\\n  https://cdn.jsdelivr.net/npm/htmx.org@2.0.3/dist/htmx.min.js \\\n  | grep -i access-control-allow-origin"
+      }
+    ],
+    "references": [
+      "https://www.w3.org/TR/SRI/#cross-origin-data-leakage",
+      "https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/crossorigin"
+    ],
+    "cwe": "CWE-353",
+    "owasp": "A08:2021",
+    "_idx": 38
+  },
+  {
+    "id": "supply-chain-ci-workflow-exposed",
+    "type": "body-pattern",
+    "title": "CI workflow definition publicly served",
+    "category": "supply-chain",
+    "severity": "medium",
+    "description": "The response is a CI workflow definition with a jobs block and action steps. That is the shape GitHub Actions and compatible runners use, including runner labels and triggers.",
+    "evidence": "The response at {{url}} is a CI workflow definition with a jobs block.",
+    "riskImpact": "The workflow names every secret the pipeline reads, and while the values are not present the names tell an attacker exactly which credentials exist and what they are for. It also discloses the deployment target, the registry the build pushes to, whether self-hosted runners are used and with what labels, and which branches and events trigger a deploy. Self-hosted runner labels are the most immediately useful of those: they identify machines inside your network that execute code on a push.",
+    "explanation": "Workflow files are public for any public repository, so this is only a disclosure where the repository is private. Either way, a workflow served from the application origin means the repository was deployed rather than the build output, so the same document root likely holds other repository files. The pipeline detail is also worth reviewing on its own merits: pull_request_target triggers and unpinned third-party actions are the two things attackers look for here.",
+    "fixSteps": [
+      "Stop deploying the repository; publish only the build output.",
+      "Review the workflow for pull_request_target triggers combined with checkout of untrusted code, which is a well-known privilege-escalation shape.",
+      "Confirm no self-hosted runner it names is reachable from outside your network.",
+      "Rotate any secret whose purpose the file reveals if you cannot rule out that the values were also exposed."
+    ],
+    "codeExamples": [
+      {
+        "label": "Find repository files under the served root",
+        "language": "bash",
+        "code": "curl -s -o /dev/null -w '%{http_code}\\n' https://example.com/.github/workflows/deploy.yml\ncurl -s -o /dev/null -w '%{http_code}\\n' https://example.com/.git/config"
+      },
+      {
+        "label": "Nginx: deny dot-directories",
+        "language": "nginx",
+        "code": "location ~ /\\. {\n    deny all;\n    return 404;\n}"
+      }
+    ],
+    "references": [
+      "https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
+    ],
+    "cwe": "CWE-540",
+    "owasp": "A05:2021",
+    "_idx": 39
+  },
+  {
+    "id": "supply-chain-github-action-unpinned-tag",
+    "type": "body-pattern",
+    "title": "CI workflow uses a third-party action by mutable tag",
+    "category": "supply-chain",
+    "severity": "medium",
+    "description": "The exposed workflow references a third-party action with a tag or branch reference rather than a full commit SHA.",
+    "evidence": "A workflow at {{url}} references a third-party action by tag rather than by commit SHA.",
+    "riskImpact": "A git tag can be moved. Whoever controls that repository, or anyone who compromises the maintainer's account, can repoint the tag at different code, and the next pipeline run executes it with the workflow's full permissions: the repository token, every secret the job can read, and on a self-hosted runner, the runner machine itself. This is the exact mechanism behind several real supply-chain incidents in CI.",
+    "explanation": "Actions published by GitHub itself are excluded here, since pinning those to a major-version tag is the documented convention and GitHub controls the tag. For everything else GitHub's own hardening guide says to pin to a full-length commit SHA. The SHA is not readable, which is the usual objection, so keep the version in a trailing comment and let Dependabot update both together.",
+    "fixSteps": [
+      "Replace each third-party action reference with owner/repo@<full 40-character SHA>, keeping the version in a comment.",
+      "Enable Dependabot for github-actions so pinned SHAs are updated with a reviewable pull request.",
+      "Set permissions on each job to the minimum the job needs, so a compromised action cannot use a broad default token.",
+      "Restrict which actions may run at all through the repository or organisation actions policy."
+    ],
+    "codeExamples": [
+      {
+        "label": "Pin to a commit SHA",
+        "language": "yaml",
+        "code": "jobs:\n  build:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n    steps:\n      - uses: actions/checkout@v4\n      - uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75  # v6.9.0"
+      },
+      {
+        "label": "Keep pins updated automatically",
+        "language": "yaml",
+        "code": "# .github/dependabot.yml\nversion: 2\nupdates:\n  - package-ecosystem: github-actions\n    directory: /\n    schedule:\n      interval: weekly"
+      }
+    ],
+    "references": [
+      "https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions#using-third-party-actions",
+      "https://slsa.dev/spec/v1.0/threats"
+    ],
+    "cwe": "CWE-1357",
+    "owasp": "A08:2021",
+    "_idx": 40
+  },
+  {
+    "id": "supply-chain-sbom-document-exposed",
+    "type": "body-pattern",
+    "title": "Software bill of materials publicly served",
+    "category": "supply-chain",
+    "severity": "low",
+    "description": "The response is a software bill of materials in CycloneDX or SPDX format, listing the components the build shipped.",
+    "evidence": "The response at {{url}} is a CycloneDX or SPDX software bill of materials.",
+    "riskImpact": "An SBOM is the most complete dependency inventory that exists for a build: every component, its exact version, and often its package URL and licence. Feeding it to an advisory-matching tool takes seconds and returns a precise list of known vulnerabilities present in what is currently deployed, with no probing of the application at all.",
+    "explanation": "Publishing an SBOM is deliberate in some contexts and is increasingly expected in others, so this is informational rather than a defect. The point is to make the decision consciously: if it is intentional, the component list is public and the patching cadence has to assume an attacker reads it the day an advisory lands. If it reached the web root because the build copied its artifacts into the output, it is an accident worth undoing.",
+    "fixSteps": [
+      "Decide whether publishing this SBOM is intentional. If not, exclude build artifacts from the deployed output.",
+      "If it is intentional, treat the component list as public and prioritise patching accordingly.",
+      "Run the SBOM through a vulnerability matcher yourself, on a schedule, so you see what an attacker sees."
+    ],
+    "codeExamples": [
+      {
+        "label": "Match the SBOM against advisories",
+        "language": "bash",
+        "code": "grype sbom:./sbom.cdx.json\n# or\nosv-scanner --sbom=./sbom.spdx.json"
+      },
+      {
+        "label": "Keep build artifacts out of the deploy",
+        "language": "bash",
+        "code": "cat >> .vercelignore <<'EOF'\nsbom.*.json\n*.spdx.json\n*.cdx.json\nEOF"
+      }
+    ],
+    "references": [
+      "https://cyclonedx.org/specification/overview/",
+      "https://spdx.dev/use/specifications/"
+    ],
+    "cwe": "CWE-540",
+    "owasp": "A06:2021",
+    "_idx": 41
   }
 ]

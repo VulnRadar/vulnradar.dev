@@ -27,7 +27,11 @@
  * `false_positive` is treated as already-known/suppressed: it never counts
  * as newly regressed, and it is dropped from the "still outstanding" list
  * too, since a finding the user has already told us isn't real shouldn't be
- * presented as something that needs action.
+ * presented as something that needs action. A finding whose remediation
+ * status (finding_remediation, see lib/scanner/remediation.ts) is
+ * `accepted_risk` or `wont_fix` is treated the same way, for the same reason:
+ * the user has made a decision about it, and mailing them about it hourly is
+ * the repeat-notification problem this module exists to end.
  */
 
 import pool from "@/lib/database/db";
@@ -51,6 +55,40 @@ async function getSuppressedFindingIds(
     [userId, findingUrl],
   );
   return new Set(result.rows.map((r) => r.finding_id));
+}
+
+/**
+ * Findings the user has closed out in triage: accepted risk, or won't fix
+ * (lib/scanner/remediation.ts). Both mean "I have decided about this", so
+ * re-alerting on them every scheduled run is exactly the repeat-notification
+ * problem this module was written to end, one level up.
+ *
+ * `fixed` is deliberately NOT here. A finding still being detected after the
+ * user marked it fixed is the one case where the scanner disagrees with the
+ * user, and that is worth an email rather than silence.
+ *
+ * Best-effort: the table postdates this module, so a deployment that has not
+ * migrated yet keeps the previous behaviour instead of losing its alerts.
+ */
+async function getTriagedFindingIds(
+  userId: number,
+  findingUrl: string,
+): Promise<Set<string>> {
+  try {
+    const result = await pool.query<{ finding_id: string }>(
+      `SELECT finding_id FROM finding_remediation
+       WHERE user_id = $1 AND finding_url = $2
+         AND status IN ('accepted_risk', 'wont_fix')`,
+      [userId, findingUrl],
+    );
+    return new Set(result.rows.map((r) => r.finding_id));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!msg.includes("finding_remediation")) {
+      console.error("[regression-alert] triage lookup failed:", msg);
+    }
+    return new Set();
+  }
 }
 
 /** The most recent *other*, completed scan of this exact URL for this user
@@ -109,10 +147,14 @@ export async function checkForNewCriticalOrHighFindings(
 ): Promise<RegressionCheckResult> {
   const { userId, url, scanId, currentFindings } = params;
 
-  const [previousFindings, suppressedIds] = await Promise.all([
+  const [previousFindings, falsePositiveIds, triagedIds] = await Promise.all([
     getPreviousScanFindings(userId, url, scanId),
     getSuppressedFindingIds(userId, url),
+    getTriagedFindingIds(userId, url),
   ]);
+  // One set from here down: "the user has already dealt with this", whether
+  // they dealt with it by calling it wrong or by accepting it.
+  const suppressedIds = new Set([...falsePositiveIds, ...triagedIds]);
 
   const { added, unchanged } = diffFindingsByKey(
     previousFindings,

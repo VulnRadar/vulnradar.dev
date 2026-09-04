@@ -1125,7 +1125,7 @@ export function IssueDetail({
               <div
                 role="group"
                 aria-label="Code examples"
-                className="flex gap-1 overflow-x-auto rounded-md bg-muted p-1"
+                className="flex gap-1 scroll-x-only rounded-md bg-muted p-1"
               >
                 {issue.codeExamples.map((example, i) => (
                   <button

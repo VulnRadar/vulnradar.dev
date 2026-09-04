@@ -92,6 +92,7 @@ import * as http from "http";
 import * as crypto from "crypto";
 import {
   checkSPF,
+  checkSPFChain,
   checkDMARC,
   checkDKIM,
   checkDNSSEC,
@@ -193,6 +194,70 @@ describe("checkSPF", () => {
     dnsMock.resolveTxt.mockRejectedValueOnce(new Error("ENOTFOUND"));
     const findings = await checkSPF("example.com", "https://example.com");
     expect(findings).toEqual([]);
+  });
+});
+
+// ── checkSPFChain (10-lookup limit) ───────────────────────────────────
+
+describe("checkSPFChain", () => {
+  /** `include:leafN.example` repeated `n` times. Each leaf costs 0 lookups. */
+  function includes(n: number): string {
+    return Array.from({ length: n }, (_, i) => `include:leaf${i}.example`).join(
+      " ",
+    );
+  }
+
+  const LEAF = "v=spf1 ip4:198.51.100.7 -all";
+
+  it("does not count an `a:`-shaped fragment of an ip6: literal as a lookup mechanism", async () => {
+    // `ip6:2a00:1450:4000::a:0/112` contains the substring `a:0/112`. The
+    // mechanism regex was unanchored, so that counted as an `a:` mechanism
+    // and pushed a record sitting exactly on the RFC limit over it.
+    dnsMock.resolveTxt.mockImplementation(async (name: string) => {
+      if (name === "example.com")
+        return [[`v=spf1 ip6:2a00:1450:4000::a:0/112 ${includes(10)} -all`]];
+      if (/^leaf\d+\.example$/.test(name)) return [[LEAF]];
+      throw new Error("NXDOMAIN");
+    });
+    const findings = await checkSPFChain("example.com", "https://example.com");
+    expect(findings).toEqual([]);
+  });
+
+  it("still reports a chain that genuinely exceeds the 10-lookup limit", async () => {
+    dnsMock.resolveTxt.mockImplementation(async (name: string) => {
+      if (name === "example.com") return [[`v=spf1 ${includes(11)} -all`]];
+      if (/^leaf\d+\.example$/.test(name)) return [[LEAF]];
+      throw new Error("NXDOMAIN");
+    });
+    const findings = await checkSPFChain("example.com", "https://example.com");
+    expect(findings.length).toBe(1);
+    expect(findings[0].title).toMatch(/lookup/i);
+  });
+
+  it("ignores redirect= when the record also carries an all mechanism (RFC 7208 §6.1)", async () => {
+    // A receiver never evaluates that redirect, so attributing its whole
+    // sub-chain to this domain counted lookups nobody performs.
+    dnsMock.resolveTxt.mockImplementation(async (name: string) => {
+      if (name === "example.com")
+        return [["v=spf1 ip4:198.51.100.1 redirect=spfbig.example -all"]];
+      if (name === "spfbig.example") return [[`v=spf1 ${includes(10)} -all`]];
+      if (/^leaf\d+\.example$/.test(name)) return [[LEAF]];
+      throw new Error("NXDOMAIN");
+    });
+    const findings = await checkSPFChain("example.com", "https://example.com");
+    expect(findings).toEqual([]);
+  });
+
+  it("still follows redirect= on a record with no all mechanism, where the spec says it applies", async () => {
+    dnsMock.resolveTxt.mockImplementation(async (name: string) => {
+      if (name === "example.com") return [["v=spf1 redirect=spfbig.example"]];
+      if (name === "spfbig.example") return [[`v=spf1 ${includes(10)} -all`]];
+      if (/^leaf\d+\.example$/.test(name)) return [[LEAF]];
+      throw new Error("NXDOMAIN");
+    });
+    const findings = await checkSPFChain("example.com", "https://example.com");
+    expect(findings.length).toBe(1);
+    expect(findings[0].title).toMatch(/lookup/i);
   });
 });
 

@@ -118,7 +118,7 @@
       "https://datatracker.ietf.org/doc/html/rfc5280",
       "https://letsencrypt.org/docs/"
     ],
-    "_idx": 5,
+    "_idx": 3,
     "cwe": "CWE-295",
     "owasp": "A02:2021"
   },
@@ -147,7 +147,7 @@
       "https://datatracker.ietf.org/doc/html/rfc8446",
       "https://datatracker.ietf.org/doc/html/rfc8996"
     ],
-    "_idx": 9
+    "_idx": 4
   },
   {
     "id": "tls-cert-san-missing",
@@ -179,7 +179,7 @@
       "https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.6",
       "https://datatracker.ietf.org/doc/html/rfc2818#section-3.1"
     ],
-    "_idx": 12,
+    "_idx": 5,
     "cwe": "CWE-295",
     "owasp": "A02:2021"
   },
@@ -214,7 +214,8 @@
       "https://csrc.nist.gov/publications/detail/sp/800-57-part-1/rev-5/final"
     ],
     "cwe": "CWE-326",
-    "owasp": "A02:2021"
+    "owasp": "A02:2021",
+    "_idx": 6
   },
   {
     "id": "tls-cert-expired-ca-chain",
@@ -248,7 +249,8 @@
       "https://datatracker.ietf.org/doc/html/rfc8446"
     ],
     "cwe": "CWE-298",
-    "owasp": "A02:2021"
+    "owasp": "A02:2021",
+    "_idx": 7
   },
   {
     "id": "tls-http-no-https-upgrade",
@@ -276,7 +278,8 @@
       "https://datatracker.ietf.org/doc/html/rfc6797"
     ],
     "cwe": "CWE-319",
-    "owasp": "A02:2021"
+    "owasp": "A02:2021",
+    "_idx": 8
   },
   {
     "id": "tls-cert-chain-incomplete",
@@ -304,7 +307,8 @@
       "https://datatracker.ietf.org/doc/html/rfc8446"
     ],
     "cwe": "CWE-295",
-    "owasp": "A02:2021"
+    "owasp": "A02:2021",
+    "_idx": 9
   },
   {
     "id": "tls-ocsp-stapling-disabled",
@@ -332,6 +336,389 @@
       "https://datatracker.ietf.org/doc/html/rfc6960"
     ],
     "cwe": "CWE-299",
-    "owasp": "A02:2021"
+    "owasp": "A02:2021",
+    "_idx": 10
+  },
+  {
+    "id": "tls-cert-signature-algorithm-weak",
+    "type": "network-probe",
+    "title": "Certificate signed with a broken hash algorithm",
+    "category": "tls",
+    "severity": "high",
+    "description": "A certificate in the chain the server presents is signed with SHA-1, MD5, MD2, or an ECDSA/DSA variant of SHA-1. The scan reads the signature algorithm OID out of the DER of each certificate the server sent, skipping the self-signed root.",
+    "evidence": "A certificate served by {{url}} carries a broken signature-algorithm OID.",
+    "riskImpact": "A signature over a broken hash can be moved onto a different certificate, because an attacker can construct a second input with the same digest. A forged certificate carrying a genuine CA signature defeats the entire chain of trust, and any client that still accepts the algorithm accepts the forgery without a warning.",
+    "explanation": "Public CAs stopped issuing SHA-1 TLS certificates in 2016 and browsers stopped trusting them in 2017, so a chain still carrying one is a private CA, a very old certificate, or an intermediate that was never rotated. The root's own self-signature is deliberately excluded: a root is trusted by identity rather than by its signature, so SHA-1 there is not a finding.",
+    "fixSteps": [
+      "Reissue the leaf from a CA that signs with SHA-256 or better, and install the full modern chain.",
+      "For a private CA, re-sign the intermediate and leaf with SHA-256 and redistribute the root to clients.",
+      "Check every intermediate the server sends, not only the leaf: a modern leaf under a SHA-1 intermediate is still a broken chain."
+    ],
+    "codeExamples": [
+      {
+        "label": "Read the algorithm of every certificate served",
+        "language": "bash",
+        "code": "openssl s_client -connect example.com:443 -showcerts </dev/null 2>/dev/null \\\n  | awk '/BEGIN CERT/,/END CERT/' \\\n  | openssl x509 -noout -subject -issuer -text 2>/dev/null \\\n  | grep -i \"signature algorithm\""
+      },
+      {
+        "label": "Private CA: sign with SHA-256",
+        "language": "bash",
+        "code": "openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \\\n  -CAcreateserial -out server.crt -days 397 -sha256"
+      }
+    ],
+    "references": [
+      "https://cabforum.org/working-groups/server/baseline-requirements/",
+      "https://shattered.io/"
+    ],
+    "cwe": "CWE-327",
+    "owasp": "A02:2021",
+    "_idx": 11
+  },
+  {
+    "id": "tls-cert-validity-period-excessive",
+    "type": "network-probe",
+    "title": "Certificate validity period exceeds 398 days",
+    "category": "tls",
+    "severity": "low",
+    "description": "The leaf certificate's notBefore to notAfter window is longer than 398 days. That is the maximum the CA/Browser Forum Baseline Requirements have imposed on publicly trusted certificates since September 2020.",
+    "evidence": "The certificate served by {{url}} has a validity window longer than 398 days.",
+    "riskImpact": "The validity window is the exposure window. If the private key is compromised, the certificate keeps working until it expires unless revocation actually reaches clients, and browsers soft-fail revocation checks, so in practice it does not. A long-lived certificate also outlives the key-size, algorithm and CA-policy changes that renewal would otherwise pick up.",
+    "explanation": "Public CAs cannot issue beyond 398 days, so a longer certificate is normally a private CA, an appliance that installed its own, or one issued before the limit took effect. Short lifetimes are valuable mainly because they force renewal to be automated, and automated renewal is what makes an emergency rotation a routine operation rather than an outage.",
+    "fixSteps": [
+      "Reissue with a validity period of 398 days or less; 90 days is now the common default.",
+      "Automate renewal with ACME or the hosting platform's managed certificates so short lifetimes cost nothing operationally.",
+      "Alert on approaching expiry rather than relying on a calendar reminder."
+    ],
+    "codeExamples": [
+      {
+        "label": "Check the window",
+        "language": "bash",
+        "code": "openssl s_client -connect example.com:443 </dev/null 2>/dev/null \\\n  | openssl x509 -noout -dates"
+      },
+      {
+        "label": "Automated renewal with certbot",
+        "language": "bash",
+        "code": "certbot certonly --nginx -d example.com -d www.example.com\nsystemctl enable --now certbot.timer"
+      }
+    ],
+    "references": [
+      "https://cabforum.org/2020/07/16/ballot-sc31-browser-alignment/",
+      "https://letsencrypt.org/docs/faq/"
+    ],
+    "cwe": "CWE-324",
+    "owasp": "A02:2021",
+    "_idx": 12
+  },
+  {
+    "id": "tls-cert-not-yet-valid",
+    "type": "network-probe",
+    "title": "Certificate is not yet valid",
+    "category": "tls",
+    "severity": "high",
+    "description": "The certificate the server presents has a notBefore date later than the time of the scan, so it has not started being valid.",
+    "evidence": "The certificate served by {{url}} has a notBefore date in the future.",
+    "riskImpact": "Every client with a correct clock rejects the connection with a certificate validity error, so HTTPS is effectively down for them. Worse than the outage is the habit it builds: users who are told to click through the interstitial learn to ignore exactly the warning that would otherwise stop a real interception.",
+    "explanation": "This is usually a clock problem rather than a certificate problem. Either the issuing system's clock ran ahead when the certificate was signed, or the server's own clock is behind and a perfectly valid certificate looks premature. Comparing the server's time against NTP is the first thing to check, because reissuing will not help if the clock is the cause.",
+    "fixSteps": [
+      "Check the server's system clock and confirm NTP is running and synchronised.",
+      "If the clock is correct, reissue: the certificate's notBefore really was set in the future.",
+      "Where a certificate is deliberately pre-issued for a future cutover, do not deploy it until its notBefore has passed."
+    ],
+    "codeExamples": [
+      {
+        "label": "Compare certificate dates against the clock",
+        "language": "bash",
+        "code": "date -u\nopenssl s_client -connect example.com:443 </dev/null 2>/dev/null \\\n  | openssl x509 -noout -dates"
+      },
+      {
+        "label": "Confirm time sync",
+        "language": "bash",
+        "code": "timedatectl status\nchronyc tracking 2>/dev/null || ntpq -p"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc5280#section-4.1.2.5",
+      "https://developer.mozilla.org/en-US/docs/Web/Security/Transport_Layer_Security"
+    ],
+    "cwe": "CWE-298",
+    "owasp": "A02:2021",
+    "_idx": 13
+  },
+  {
+    "id": "tls-cert-san-count-excessive",
+    "type": "network-probe",
+    "title": "Certificate covers an unusually large number of names",
+    "category": "tls",
+    "severity": "info",
+    "description": "The leaf certificate lists more than fifty Subject Alternative Names on one key. A single certificate and a single private key therefore cover a large set of hostnames.",
+    "evidence": "The certificate served by {{url}} lists more than fifty Subject Alternative Names.",
+    "riskImpact": "Every name on the certificate shares one private key, so a key compromise affects all of them simultaneously and a revocation forced by any one of them takes all of them offline together. Where the names belong to different customers or business units, the SAN list also discloses who else is hosted behind the same endpoint.",
+    "explanation": "Large SAN lists are normal on shared hosting and on some CDN configurations, where a single certificate fronts many tenants, which is why this is informational rather than a defect. It is worth surfacing because it describes shared fate: the blast radius of a rotation or an emergency revocation is every name in the list, not just yours.",
+    "fixSteps": [
+      "Confirm the shared certificate is a deliberate choice rather than an artifact of how provisioning works.",
+      "Where names span separate trust domains or customers, issue per-domain certificates so a compromise stays contained.",
+      "If the certificate is provided by a hosting platform, check what its revocation and rotation process would mean for your own availability."
+    ],
+    "codeExamples": [
+      {
+        "label": "List the names on the certificate",
+        "language": "bash",
+        "code": "openssl s_client -connect example.com:443 </dev/null 2>/dev/null \\\n  | openssl x509 -noout -ext subjectAltName \\\n  | tr \",\" \"\\n\" | wc -l"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.6",
+      "https://cabforum.org/working-groups/server/baseline-requirements/"
+    ],
+    "cwe": "CWE-295",
+    "owasp": "A02:2021",
+    "_idx": 14
+  },
+  {
+    "id": "tls-cert-serial-low-entropy",
+    "type": "network-probe",
+    "title": "Certificate serial number has too little entropy",
+    "category": "tls",
+    "severity": "low",
+    "description": "The leaf certificate's serial number is shorter than sixteen hexadecimal digits. That is below the 64 bits of CSPRNG output the CA/Browser Forum has required since ballot 164 in 2016.",
+    "evidence": "The certificate served by {{url}} has a serial number shorter than 64 bits.",
+    "riskImpact": "Serial-number entropy is the defence against a chosen-prefix collision attack on the certificate signature: an attacker who can predict the serial can prepare a colliding certificate before it is issued. It is the property that kept SHA-1 issuance survivable while it was being phased out, and it protects any hash whose margin narrows later in the same way.",
+    "explanation": "A short serial almost always means a private CA or an appliance generating certificates from a counter rather than a random source. A well-known 2019 incident forced the mass revocation of millions of publicly trusted certificates issued with 63 bits instead of 64, which is how narrowly this requirement is read.",
+    "fixSteps": [
+      "Configure the issuing CA to draw serial numbers from at least 64 bits of CSPRNG output.",
+      "Reissue certificates that were generated with counter-based or short serials.",
+      "For a private CA built on OpenSSL, stop using a plain incrementing serial file and generate random serials instead."
+    ],
+    "codeExamples": [
+      {
+        "label": "Read the serial",
+        "language": "bash",
+        "code": "openssl s_client -connect example.com:443 </dev/null 2>/dev/null \\\n  | openssl x509 -noout -serial"
+      },
+      {
+        "label": "Private CA: random serial instead of a counter",
+        "language": "bash",
+        "code": "openssl rand -hex 16 > ca.srl\nopenssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \\\n  -CAserial ca.srl -sha256 -days 397 -out server.crt"
+      }
+    ],
+    "references": [
+      "https://cabforum.org/2016/07/08/ballot-164/",
+      "https://datatracker.ietf.org/doc/html/rfc5280#section-4.1.2.2"
+    ],
+    "cwe": "CWE-331",
+    "owasp": "A02:2021",
+    "_idx": 15
+  },
+  {
+    "id": "tls-cert-no-embedded-sct",
+    "type": "network-probe",
+    "title": "Certificate carries no embedded Certificate Transparency SCTs",
+    "category": "tls",
+    "severity": "info",
+    "description": "The leaf certificate contains no embedded Signed Certificate Timestamp list extension. That extension is the most common way a certificate proves it was submitted to public Certificate Transparency logs.",
+    "evidence": "The certificate served by {{url}} does not carry the embedded SCT list extension.",
+    "riskImpact": "Certificate Transparency is what makes a misissued certificate for your domain visible. A certificate that is never logged does not appear to any CT monitor, so a certificate issued for your name by a compromised or tricked CA can exist without anyone being able to notice it from the outside.",
+    "explanation": "SCTs can also be delivered in the TLS handshake extension or inside a stapled OCSP response, so the absence of the embedded extension does not prove the certificate is unlogged. It does mean the most common and most portable delivery method is not in use, which in practice points to a private or internal CA that does not log at all. Either way, CT monitoring for your domains is worth having, because it catches misissuance by any public CA regardless of what your own certificate does.",
+    "fixSteps": [
+      "For a publicly trusted certificate, ask the CA to embed SCTs; every major public CA does so by default.",
+      "Subscribe to a Certificate Transparency monitor for your domains so any newly logged certificate raises an alert.",
+      "Publish a CAA record so only the CAs you intend can issue for the domain at all."
+    ],
+    "codeExamples": [
+      {
+        "label": "Look for embedded SCTs",
+        "language": "bash",
+        "code": "openssl s_client -connect example.com:443 </dev/null 2>/dev/null \\\n  | openssl x509 -noout -text \\\n  | grep -A3 -i \"CT Precertificate SCTs\""
+      },
+      {
+        "label": "Restrict issuance with CAA",
+        "language": "dns",
+        "code": "example.com. IN CAA 0 issue \"letsencrypt.org\"\nexample.com. IN CAA 0 issuewild \";\"\nexample.com. IN CAA 0 iodef \"mailto:security@example.com\""
+      }
+    ],
+    "references": [
+      "https://certificate.transparency.dev/",
+      "https://datatracker.ietf.org/doc/html/rfc6962"
+    ],
+    "cwe": "CWE-295",
+    "owasp": "A02:2021",
+    "_idx": 16
+  },
+  {
+    "id": "tls-must-staple-not-stapled",
+    "type": "network-probe",
+    "title": "Certificate requires OCSP stapling but none was stapled",
+    "category": "tls",
+    "severity": "high",
+    "description": "The certificate carries the RFC 7633 TLS Feature extension requesting status_request. That is OCSP Must-Staple, and the handshake returned no stapled OCSP response.",
+    "evidence": "The certificate for {{url}} declares must-staple and the handshake carried no stapled OCSP response.",
+    "riskImpact": "A client that enforces must-staple treats a handshake with no stapled response as a hard failure and refuses to connect. That is a self-inflicted outage, and it appears intermittently rather than at deploy time, because a server normally stops stapling when its own OCSP fetch starts failing.",
+    "explanation": "Must-staple is a promise the certificate makes on the server's behalf: every handshake will carry a fresh, CA-signed revocation status. It is a strong control, since it closes the soft-fail gap that makes revocation largely ineffective, but it only works if stapling is configured, working, and monitored. A certificate that declares it against a server that does not staple is the worst combination of the two.",
+    "fixSteps": [
+      "Enable OCSP stapling on the TLS terminator: ssl_stapling on plus ssl_stapling_verify on in Nginx, SSLUseStapling On in Apache.",
+      "Make sure the server can reach the CA's OCSP responder outbound and has a working resolver configured; a blocked responder is the usual cause of stapling stopping silently.",
+      "Monitor for a stapled response continuously in production, not only at deploy time.",
+      "If stapling cannot be made reliable, reissue without the must-staple extension rather than leaving the promise unmet."
+    ],
+    "codeExamples": [
+      {
+        "label": "Nginx: enable and verify stapling",
+        "language": "nginx",
+        "code": "ssl_stapling on;\nssl_stapling_verify on;\nssl_trusted_certificate /etc/ssl/certs/chain.pem;\nresolver 1.1.1.1 8.8.8.8 valid=300s;\nresolver_timeout 5s;"
+      },
+      {
+        "label": "Confirm a response is actually stapled",
+        "language": "bash",
+        "code": "openssl s_client -connect example.com:443 -status </dev/null 2>&1 \\\n  | grep -A2 \"OCSP Response Status\""
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc7633",
+      "https://datatracker.ietf.org/doc/html/rfc6066#section-8"
+    ],
+    "cwe": "CWE-299",
+    "owasp": "A02:2021",
+    "_idx": 17
+  },
+  {
+    "id": "tls-cipher-no-forward-secrecy",
+    "type": "network-probe",
+    "title": "Negotiated cipher suite has no forward secrecy",
+    "category": "tls",
+    "severity": "medium",
+    "description": "The handshake settled on a static-RSA key-exchange suite at a protocol version below TLS 1.3. The session key is encrypted directly to the certificate's public key rather than derived from an ephemeral exchange.",
+    "evidence": "The TLS handshake with {{url}} negotiated a static-RSA cipher suite.",
+    "riskImpact": "Traffic recorded today can be decrypted later by anyone who obtains the private key, through a compromise, a legal demand, or a memory-disclosure bug in the server. Forward secrecy removes that possibility entirely by making each session's key ephemeral and unrecoverable from the certificate.",
+    "explanation": "This reports the suite the server actually chose when offered a normal modern cipher list, not merely one it supports, so it means either the server offered no ephemeral suites or it preferred the static one. TLS 1.3 removes static RSA key exchange from the protocol, which is why this only applies to 1.2 and below.",
+    "fixSteps": [
+      "Restrict the server's cipher list to ECDHE and DHE suites so no static-RSA suite can be selected.",
+      "Enable TLS 1.3, where every defined suite provides forward secrecy.",
+      "Set server cipher preference on, so the server's ordering decides rather than the client's."
+    ],
+    "codeExamples": [
+      {
+        "label": "Nginx: forward-secret suites only",
+        "language": "nginx",
+        "code": "ssl_protocols TLSv1.2 TLSv1.3;\nssl_prefer_server_ciphers on;\nssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;"
+      },
+      {
+        "label": "See what gets negotiated",
+        "language": "bash",
+        "code": "openssl s_client -connect example.com:443 </dev/null 2>&1 \\\n  | grep -E \"^(New|Protocol|Cipher)\""
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc8446",
+      "https://wiki.mozilla.org/Security/Server_Side_TLS"
+    ],
+    "cwe": "CWE-326",
+    "owasp": "A02:2021",
+    "_idx": 18
+  },
+  {
+    "id": "tls-cipher-cbc-mode",
+    "type": "network-probe",
+    "title": "Negotiated cipher suite uses CBC mode",
+    "category": "tls",
+    "severity": "low",
+    "description": "The handshake settled on a CBC-mode cipher suite below TLS 1.3, rather than an AEAD suite such as AES-GCM or ChaCha20-Poly1305.",
+    "evidence": "The TLS handshake with {{url}} negotiated a CBC-mode suite.",
+    "riskImpact": "CBC suites in TLS use MAC-then-encrypt, the construction behind a long run of padding-oracle attacks: BEAST, Lucky 13, and the POODLE and Zombie POODLE families. Each has a mitigation, but the mitigations live in the TLS library and are easy to lose across an upgrade or in an unusual stack, whereas AEAD removes the whole class.",
+    "explanation": "Rated Low because a current TLS library with the standard countermeasures is not practically exploitable here. It is a signal about the configuration rather than a live break: a server that still prefers CBC over AES-GCM is running a cipher ordering from several years ago, and the rest of that TLS configuration is usually the same vintage.",
+    "fixSteps": [
+      "Prefer AEAD suites and remove CBC suites from the cipher list.",
+      "Enable TLS 1.3, which defines only AEAD suites.",
+      "Turn on server cipher preference so the ordering you set is the one that applies."
+    ],
+    "codeExamples": [
+      {
+        "label": "Apache: AEAD suites only",
+        "language": "apache",
+        "code": "SSLProtocol -all +TLSv1.2 +TLSv1.3\nSSLHonorCipherOrder on\nSSLCipherSuite ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305"
+      },
+      {
+        "label": "Check the negotiated suite",
+        "language": "bash",
+        "code": "openssl s_client -connect example.com:443 </dev/null 2>&1 | grep -i \"cipher\""
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc7457",
+      "https://wiki.mozilla.org/Security/Server_Side_TLS"
+    ],
+    "cwe": "CWE-327",
+    "owasp": "A02:2021",
+    "_idx": 19
+  },
+  {
+    "id": "tls-ephemeral-key-weak",
+    "type": "network-probe",
+    "title": "Weak ephemeral key exchange parameters",
+    "category": "tls",
+    "severity": "medium",
+    "description": "The handshake completed with an ephemeral key below a safe size for its key-exchange type. That is a finite-field Diffie-Hellman group smaller than 2048 bits, or an elliptic curve below 224 bits.",
+    "evidence": "The TLS handshake with {{url}} used an undersized ephemeral key.",
+    "riskImpact": "The ephemeral key is what forward secrecy actually rests on: it is the value an attacker must break to recover a recorded session. A finite-field group below 2048 bits is within reach of the precomputation attack demonstrated by Logjam, and because servers overwhelmingly reuse a handful of standard groups, one precomputation breaks every session that used the same group.",
+    "explanation": "Servers reach this state by keeping a dhparam file generated years ago, or by leaving a library default in place. The durable fix is to prefer elliptic-curve key exchange, where a 256-bit curve provides far more security than a 2048-bit finite field at a fraction of the cost, and to remove finite-field DHE suites unless a specific client needs them.",
+    "fixSteps": [
+      "Prefer ECDHE with X25519 or P-256, and remove finite-field DHE suites where no client requires them.",
+      "If DHE must remain, generate a fresh group of at least 2048 bits and point the server at it.",
+      "Do not reuse a well-known published group: a unique group defeats the precomputation the attack depends on."
+    ],
+    "codeExamples": [
+      {
+        "label": "Generate a strong group and use it",
+        "language": "bash",
+        "code": "openssl dhparam -out /etc/nginx/dhparam.pem 3072\n\n# nginx.conf\n# ssl_dhparam /etc/nginx/dhparam.pem;\n# ssl_ecdh_curve X25519:prime256v1;"
+      },
+      {
+        "label": "Check what the server used",
+        "language": "bash",
+        "code": "openssl s_client -connect example.com:443 </dev/null 2>&1 \\\n  | grep -i \"server temp key\""
+      }
+    ],
+    "references": [
+      "https://weakdh.org/",
+      "https://wiki.mozilla.org/Security/Server_Side_TLS"
+    ],
+    "cwe": "CWE-326",
+    "owasp": "A02:2021",
+    "_idx": 20
+  },
+  {
+    "id": "tls-legacy-protocol-accepted",
+    "type": "network-probe",
+    "title": "Server still accepts TLS 1.0 or TLS 1.1",
+    "category": "tls",
+    "severity": "medium",
+    "description": "A second handshake offering only TLS 1.0 and TLS 1.1 completed successfully against this host. That proves the server still accepts a deprecated version even when it prefers a modern one with a modern client.",
+    "evidence": "A handshake with {{url}} restricted to TLS 1.0/1.1 completed successfully.",
+    "riskImpact": "TLS 1.0 and 1.1 depend on constructions no longer considered sound: MAC-then-encrypt CBC modes, MD5 and SHA-1 inside the PRF and in signatures, and no AEAD suites. An old client, or one an attacker can influence into downgrading, ends up on a protocol with published attacks against it. PCI DSS has disallowed TLS 1.0 since June 2018.",
+    "explanation": "The evidence here is deliberately one-directional. A successful legacy handshake proves the server accepts the version. A failed one proves nothing, because the scanning client's own TLS library may refuse those suites regardless of what the server would have done, so this check never reports that legacy protocols are disabled, only that they are enabled. It is also distinct from reporting the negotiated version: a server can prefer TLS 1.3 and still answer a 1.0 client.",
+    "fixSteps": [
+      "Set the minimum protocol version to TLS 1.2 on every listener, load balancer and CDN in front of the site.",
+      "Check the edge and the origin separately: their protocol settings are usually configured independently.",
+      "Review client analytics before disabling, since a small number of very old clients will lose access.",
+      "Re-test afterwards with an explicit legacy handshake rather than trusting the configuration file."
+    ],
+    "codeExamples": [
+      {
+        "label": "Nginx and Apache: TLS 1.2 minimum",
+        "language": "nginx",
+        "code": "# nginx\nssl_protocols TLSv1.2 TLSv1.3;\n\n# apache\n# SSLProtocol -all +TLSv1.2 +TLSv1.3"
+      },
+      {
+        "label": "Confirm the legacy versions are refused",
+        "language": "bash",
+        "code": "openssl s_client -connect example.com:443 -tls1 </dev/null\nopenssl s_client -connect example.com:443 -tls1_1 </dev/null\n# both should fail to complete a handshake"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc8996",
+      "https://blog.mozilla.org/security/2018/10/15/removing-old-versions-of-tls/"
+    ],
+    "cwe": "CWE-327",
+    "owasp": "A02:2021",
+    "_idx": 21
   }
 ]

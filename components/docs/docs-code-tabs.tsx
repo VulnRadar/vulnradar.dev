@@ -62,7 +62,7 @@ export function DocsCodeTabs({
         // and four language labels are wider than a 343px phone. Same
         // -mx/px pair as components/history/history-view-tabs.tsx so the
         // scrolled strip still starts flush with the panel edge.
-        className="-mx-4 flex gap-1 overflow-x-auto scrollbar-hide border-b border-border/50 px-4 sm:mx-0 sm:px-0"
+        className="-mx-4 flex gap-1 scroll-x-only scrollbar-hide border-b border-border/50 px-4 sm:mx-0 sm:px-0"
       >
         {tabs.map((tab, i) => (
           <button

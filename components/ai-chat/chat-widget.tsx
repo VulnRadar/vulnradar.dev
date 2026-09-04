@@ -20,6 +20,7 @@ import {
   Check,
   Lock,
   AlertCircle,
+  ArrowUpRight,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -80,18 +81,64 @@ const MAX_AGE_MS = AI_CHAT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 // the assistant too and a second literal is how a rename gets half-applied.
 const BOT_NAME = AI_BOT_NAME;
 
+const PANEL_MIN_WIDTH = 300;
+const PANEL_MAX_WIDTH = 680;
+const PANEL_MIN_HEIGHT = 300;
+const PANEL_MAX_HEIGHT = 900;
+const PANEL_DEFAULT_WIDTH = 420;
+const PANEL_DEFAULT_HEIGHT = 640;
+// The panel is anchored `sm:right-5 sm:bottom-20`, so what actually bounds it
+// is the launcher underneath plus a margin on the other three sides.
+const PANEL_GUTTER_X = 40;
+const PANEL_GUTTER_Y = 96;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+/**
+ * How much room the floating panel has right now.
+ *
+ * The stored size is a preference, not a promise: a 640px-tall panel remembered
+ * from a desktop monitor used to render at 640px in a 500px-tall window and run
+ * its composer off the bottom of the screen. The preference is kept as typed and
+ * clamped to this at render time, so making the window big again restores it.
+ */
+function availablePanelSize(): { width: number; height: number } {
+  if (typeof window === "undefined")
+    return { width: PANEL_MAX_WIDTH, height: PANEL_MAX_HEIGHT };
+  return {
+    width: Math.max(PANEL_MIN_WIDTH, window.innerWidth - PANEL_GUTTER_X),
+    height: Math.max(PANEL_MIN_HEIGHT, window.innerHeight - PANEL_GUTTER_Y),
+  };
+}
+
 function loadPanelSize() {
-  if (typeof window === "undefined") return { width: 420, height: 520 };
+  if (typeof window === "undefined")
+    return { width: PANEL_DEFAULT_WIDTH, height: PANEL_DEFAULT_HEIGHT };
+  const room = availablePanelSize();
+  const fallback = {
+    width: Math.min(PANEL_DEFAULT_WIDTH, room.width),
+    height: Math.min(PANEL_DEFAULT_HEIGHT, room.height),
+  };
   try {
     const raw = localStorage.getItem(PANEL_SIZE_KEY);
-    if (!raw) return { width: 420, height: 520 };
+    if (!raw) return fallback;
     const p = JSON.parse(raw);
     return {
-      width: Math.max(300, Math.min(680, Number(p.width) || 420)),
-      height: Math.max(300, Math.min(800, Number(p.height) || 520)),
+      width: clamp(
+        Number(p.width) || fallback.width,
+        PANEL_MIN_WIDTH,
+        PANEL_MAX_WIDTH,
+      ),
+      height: clamp(
+        Number(p.height) || fallback.height,
+        PANEL_MIN_HEIGHT,
+        PANEL_MAX_HEIGHT,
+      ),
     };
   } catch {
-    return { width: 420, height: 520 };
+    return fallback;
   }
 }
 
@@ -109,7 +156,10 @@ function makeWelcome(): ChatMessage {
   return {
     id: "welcome",
     role: "assistant",
-    content: `Hi, I'm ${BOT_NAME}. Ask me about scan findings, how to fix issues, API usage, or self-hosting ${APP_NAME}.\n\nType **/** to load context on demand, try \`/docs\`, \`/changelog\`, \`/history\`, and more.`,
+    // The command hint that used to be a second paragraph here is now the row
+    // of real, clickable commands under the starters below, so the greeting is
+    // one line instead of a third of the panel.
+    content: `Hi, I'm ${BOT_NAME}. Ask me about a scan finding, how to fix it, the API, or self-hosting ${APP_NAME}.`,
   };
 }
 
@@ -257,7 +307,7 @@ function ContextPill({
     <div className="flex items-center gap-1.5 py-1.5 px-1">
       <span
         className={cn(
-          "inline-flex items-center gap-1 font-mono border rounded px-2 py-0.5 text-[10px]",
+          "inline-flex items-center gap-1 font-mono border rounded-md px-2 py-0.5 text-[10px]",
           state === "error"
             ? "bg-destructive/8 border-destructive/20 text-destructive/70 opacity-70"
             : "bg-primary/8 border-primary/20 text-primary/70",
@@ -360,7 +410,7 @@ function MessageBubble({
     return (
       <div
         role="alert"
-        className="flex items-start gap-2 max-w-[88%] mr-auto rounded-2xl rounded-tl-sm px-3.5 py-2.5 bg-destructive/8 border border-destructive/25 text-sm leading-relaxed text-destructive"
+        className="flex items-start gap-2 max-w-[92%] mr-auto rounded-lg px-3 py-2 bg-destructive/8 border border-destructive/25 text-sm leading-relaxed text-destructive"
       >
         <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
         <span>{content}</span>
@@ -371,10 +421,19 @@ function MessageBubble({
   return (
     <div
       className={cn(
-        "group relative text-sm leading-relaxed max-w-[88%] wrap-break-word",
+        "group relative text-sm leading-relaxed wrap-break-word",
         isUser
-          ? "rounded-2xl rounded-tr-sm px-3.5 py-2.5 bg-primary text-primary-foreground whitespace-pre-wrap ml-auto"
-          : "rounded-2xl rounded-tl-sm px-3.5 py-2.5 bg-muted/60 text-foreground border border-border/30 mr-auto",
+          ? // rounded-lg, not rounded-2xl: the radius ladder puts a card at lg
+            // and the panel these sit inside is itself sm:rounded-lg, so the
+            // bubbles were rounder than the surface holding them.
+            "ml-auto max-w-[88%] rounded-lg rounded-tr-sm px-3 py-2 bg-primary text-primary-foreground whitespace-pre-wrap"
+          : // The reply is not a bubble. In a ~420px panel a bordered box costs
+            // roughly 30px of every line, and what goes in it is markdown:
+            // headings, lists, tables, fenced code that then has to scroll
+            // sideways inside a box inside a panel. The brand-filled bubble
+            // sitting opposite says which side is which without a second box.
+            // pr-6 keeps the hover copy button off the first line.
+            "mr-auto w-full pr-6 text-foreground",
       )}
     >
       {isUser
@@ -391,48 +450,84 @@ function MessageBubble({
   );
 }
 
+// Three, not five. Five full-width chips filled the empty panel from the
+// greeting to the composer, so the first thing the assistant showed was a menu
+// rather than a conversation.
 const QUICK_PROMPTS = [
   "What security headers should every site have?",
   "How do I fix a Content Security Policy issue?",
-  "What does a high danger score actually mean?",
-  "How do I enable HSTS on my server?",
   `How do I self-host ${APP_NAME}?`,
 ];
 
-function SuggestedPrompts({ onSelect }: { onSelect: (p: string) => void }) {
+// The commands worth putting in front of someone who has never typed one. The
+// full list is still one "/" away, and lib/ai/commands.ts stays the source of
+// truth for what each one does.
+const STARTER_COMMANDS = ["features", "docs", "changelog"] as const;
+
+function ConversationStarters({
+  onSelect,
+  onCommand,
+}: {
+  onSelect: (p: string) => void;
+  onCommand: (cmd: string) => void;
+}) {
   return (
-    <div className="flex flex-wrap gap-2 mt-3 pl-0.5">
-      {QUICK_PROMPTS.map((p) => (
-        <button
-          key={p}
-          type="button"
-          onClick={() => onSelect(p)}
-          className="text-[11px] px-3 py-1.5 rounded-full border border-primary/20 bg-primary/5 text-muted-foreground hover:text-foreground hover:bg-primary/10 hover:border-primary/35 transition-colors text-left leading-snug"
-        >
-          {p}
-        </button>
-      ))}
+    <div className="mt-3 w-full space-y-3">
+      <div className="space-y-1.5">
+        {QUICK_PROMPTS.map((p) => (
+          <button
+            key={p}
+            type="button"
+            onClick={() => onSelect(p)}
+            className="group/starter w-full flex items-center gap-2 rounded-md border border-border/50 bg-muted/30 px-3 py-2 text-left text-xs leading-snug text-muted-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-foreground transition-colors"
+          >
+            <span className="min-w-0 flex-1">{p}</span>
+            <ArrowUpRight
+              className="h-3 w-3 shrink-0 opacity-0 group-hover/starter:opacity-60 transition-opacity"
+              aria-hidden="true"
+            />
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[10px] text-muted-foreground/60">
+          Or load context:
+        </span>
+        {STARTER_COMMANDS.map((c) => (
+          <button
+            key={c}
+            type="button"
+            onClick={() => onCommand(c)}
+            className="rounded-md border border-primary/20 bg-primary/5 px-1.5 py-0.5 font-mono text-[10px] text-primary/80 hover:bg-primary/10 hover:text-primary transition-colors"
+          >
+            /{c}
+          </button>
+        ))}
+        <span className="text-[10px] text-muted-foreground/40">
+          type / for the rest
+        </span>
+      </div>
     </div>
   );
 }
 
 function ThinkingBubble() {
+  // No bubble, to match the reply that replaces it: a box that appears for two
+  // seconds and then vanishes into unbubbled text is a flicker of chrome.
   return (
-    <div className="rounded-2xl rounded-tl-sm px-3.5 py-2.5 bg-muted/60 border border-border/30 w-fit">
-      <div className="flex items-center gap-1.5">
-        <span
-          className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce"
-          style={{ animationDelay: "0ms", animationDuration: "1s" }}
-        />
-        <span
-          className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce"
-          style={{ animationDelay: "150ms", animationDuration: "1s" }}
-        />
-        <span
-          className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce"
-          style={{ animationDelay: "300ms", animationDuration: "1s" }}
-        />
-      </div>
+    <div className="flex items-center gap-1.5 py-1.5">
+      <span
+        className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce"
+        style={{ animationDelay: "0ms", animationDuration: "1s" }}
+      />
+      <span
+        className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce"
+        style={{ animationDelay: "150ms", animationDuration: "1s" }}
+      />
+      <span
+        className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce"
+        style={{ animationDelay: "300ms", animationDuration: "1s" }}
+      />
     </div>
   );
 }
@@ -531,9 +626,21 @@ export function ChatWidget() {
   const [cmdSuggestions, setCmdSuggestions] = useState<SlashCommand[]>([]);
   const [cmdHighlight, setCmdHighlight] = useState(0);
   const [streamingMsgId, setStreamingMsgId] = useState<string | null>(null);
+  // The size the user dragged the panel to, kept as typed. What gets rendered
+  // is this clamped to `panelRoom` below, so a window that shrinks does not
+  // overwrite the preference.
   const [panelWidth, setPanelWidth] = useState(() => loadPanelSize().width);
   const [panelHeight, setPanelHeight] = useState(() => loadPanelSize().height);
-  const currentSizeRef = useRef({ w: 420, h: 520 });
+  const [panelRoom, setPanelRoom] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+  const currentSizeRef = useRef({
+    w: PANEL_DEFAULT_WIDTH,
+    h: PANEL_DEFAULT_HEIGHT,
+  });
+  // Two-step guard on the header's clear-conversation control.
+  const [confirmClear, setConfirmClear] = useState(false);
   const [isPinnedToBottom, setIsPinnedToBottom] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -557,6 +664,23 @@ export function ChatWidget() {
     mq.addEventListener("change", update);
     return () => mq.removeEventListener("change", update);
   }, []);
+
+  // Track how much room the floating panel has, so it can use a tall window
+  // instead of ignoring it and so it stops overflowing a short one.
+  useEffect(() => {
+    const update = () => setPanelRoom(availablePanelSize());
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  // Drop a pending clear confirmation when the panel closes, so reopening
+  // never lands on "Clear it?" for a decision the user walked away from.
+  useEffect(() => {
+    if (isOpen) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resets a two-step confirmation on close, gated on isOpen
+    setConfirmClear(false);
+  }, [isOpen]);
 
   // How far to lift the launcher so it clears a bar pinned to the bottom of
   // the viewport. The 56px launcher sat at bottom-5 right-5 on every route,
@@ -690,9 +814,12 @@ export function ChatWidget() {
     e.preventDefault();
     const startX = e.clientX;
     const startW = panelWidth;
+    // The drag stops at the window edge as well as at the hard ceiling, so it
+    // cannot leave a preference the render clamps away again on mouse-up.
+    const ceiling = Math.min(PANEL_MAX_WIDTH, availablePanelSize().width);
     function onMove(ev: MouseEvent) {
       setPanelWidth(
-        Math.max(300, Math.min(680, startW + (startX - ev.clientX))),
+        clamp(startW + (startX - ev.clientX), PANEL_MIN_WIDTH, ceiling),
       );
     }
     function onUp() {
@@ -708,9 +835,10 @@ export function ChatWidget() {
     e.preventDefault();
     const startY = e.clientY;
     const startH = panelHeight;
+    const ceiling = Math.min(PANEL_MAX_HEIGHT, availablePanelSize().height);
     function onMove(ev: MouseEvent) {
       setPanelHeight(
-        Math.max(300, Math.min(800, startH + (startY - ev.clientY))),
+        clamp(startH + (startY - ev.clientY), PANEL_MIN_HEIGHT, ceiling),
       );
     }
     function onUp() {
@@ -1293,6 +1421,24 @@ export function ChatWidget() {
         ? provider.model
         : null;
 
+  // Anything beyond the canned welcome. Nothing to clear before that.
+  const hasConversation = messages.some((m) => m.id !== "welcome");
+
+  // The rendered size: the remembered preference, never larger than the room
+  // the window actually has.
+  const appliedWidth = Math.min(panelWidth, panelRoom?.width ?? panelWidth);
+  const appliedHeight = Math.min(panelHeight, panelRoom?.height ?? panelHeight);
+
+  // The composer's "/" affordance. Slash commands are a real feature and the
+  // only thing advertising them was placeholder text, which a touch keyboard
+  // covers and a returning user stops reading. It opens the command list on an
+  // empty composer; with something already typed it just puts the caret back,
+  // rather than throwing away a half-written question to insert a slash.
+  function openCommands() {
+    if (input.trim() === "") handleInputChange("/");
+    inputRef.current?.focus();
+  }
+
   if (provider?.aiDisabled) return null;
   // The live browser session viewer has its own focused UI; a floating
   // chat button on top of it is a distraction, not a feature.
@@ -1320,7 +1466,7 @@ export function ChatWidget() {
                 }
               : isMobile
                 ? undefined
-                : { width: panelWidth, height: panelHeight }
+                : { width: appliedWidth, height: appliedHeight }
           }
           className={cn(
             // Mobile: genuinely full screen, edge to edge. inset-0 alone
@@ -1352,13 +1498,13 @@ export function ChatWidget() {
           {/* Resize handle, desktop only: drag the left edge for width */}
           <div
             onMouseDown={onWidthResizeStart}
-            className="hidden sm:block absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-10 hover:bg-primary/20 transition-colors rounded-l-xl"
+            className="hidden sm:block absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-10 hover:bg-primary/20 transition-colors rounded-l-lg"
             title="Drag to resize width"
           />
           {/* Resize handle, desktop only: drag the top edge for height */}
           <div
             onMouseDown={onHeightResizeStart}
-            className="hidden sm:block absolute top-0 left-0 right-0 h-1 cursor-row-resize z-10 hover:bg-primary/20 transition-colors rounded-t-xl"
+            className="hidden sm:block absolute top-0 left-0 right-0 h-1 cursor-row-resize z-10 hover:bg-primary/20 transition-colors rounded-t-lg"
             title="Drag to resize height"
           />
           {/* Header. Top padding grows for the notch/status bar now that the
@@ -1391,21 +1537,52 @@ export function ChatWidget() {
               </div>
             </div>
             <div className="flex items-center gap-1 shrink-0">
-              {providerLabel && (
-                <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-medium bg-primary/10 text-primary/70 border border-primary/15 leading-none mr-1">
-                  {providerLabel}
-                </span>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={clearChat}
-                className="h-11 w-11 sm:h-8 sm:w-8 p-0 text-muted-foreground/50 hover:text-foreground touch-manipulation"
-                title="Clear conversation"
-                aria-label="Clear conversation"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
+              {/* The provider name used to sit here as a bare chip reading
+                  "MiniMax", which tells a visitor nothing. It moved to the
+                  footer, where there is room to say what it is.
+
+                  Clear is guarded and only appears once there is something to
+                  clear: it was a one-click, undoable-by-nobody delete of the
+                  whole conversation, sitting alone in the corner of the
+                  header. */}
+              {hasConversation &&
+                (confirmClear ? (
+                  <div className="flex items-center gap-1">
+                    <span className="hidden sm:inline text-[11px] text-muted-foreground">
+                      Clear it?
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setConfirmClear(false)}
+                      className="h-11 sm:h-8 px-2 text-[11px] text-muted-foreground hover:text-foreground touch-manipulation"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setConfirmClear(false);
+                        clearChat();
+                      }}
+                      className="h-11 sm:h-8 px-2 text-[11px] text-destructive hover:text-destructive hover:bg-destructive/10 touch-manipulation"
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setConfirmClear(true)}
+                    className="h-11 w-11 sm:h-8 sm:w-8 p-0 text-muted-foreground/50 hover:text-foreground touch-manipulation"
+                    title="Clear conversation"
+                    aria-label="Clear conversation"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                ))}
               {/* Mobile only: the panel is a full-width bottom sheet here, so
                   this is the top-right close a user expects on that layout.
                   Desktop closes via the launcher button, which becomes an X
@@ -1516,7 +1693,10 @@ export function ChatWidget() {
                           );
                         })()}
                         {m.id === "welcome" && messages.length === 1 && (
-                          <SuggestedPrompts onSelect={(p) => sendMessage(p)} />
+                          <ConversationStarters
+                            onSelect={(p) => sendMessage(p)}
+                            onCommand={(c) => sendMessage(`/${c}`)}
+                          />
                         )}
                       </div>
                     ))}
@@ -1608,6 +1788,16 @@ export function ChatWidget() {
                   }}
                 >
                   <div className="flex items-end gap-2">
+                    <button
+                      type="button"
+                      onClick={openCommands}
+                      disabled={isStreaming || isLoadingCmd}
+                      title="Slash commands"
+                      aria-label="Show slash commands"
+                      className="h-9 w-9 shrink-0 rounded-md border border-border/40 bg-muted/40 font-mono text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50 touch-manipulation"
+                    >
+                      /
+                    </button>
                     <textarea
                       ref={inputRef}
                       value={input}
@@ -1637,7 +1827,10 @@ export function ChatWidget() {
                         // input/textarea with a computed font-size under 16px.
                         // text-base (16px) below sm: avoids that; sm:text-sm
                         // keeps the tighter desktop size where zoom never fires.
-                        "flex-1 text-base sm:text-sm bg-muted/40 border rounded-xl px-3 py-2 resize-none overflow-y-hidden",
+                        // rounded-md, not rounded-xl: a control, and it sat
+                        // inside a rounded-lg panel with a larger radius than
+                        // the surface holding it.
+                        "flex-1 min-w-0 text-base sm:text-sm bg-muted/40 border rounded-md px-3 py-2 resize-none overflow-y-hidden",
                         "placeholder:text-muted-foreground/40 leading-snug outline-hidden",
                         "transition-colors focus:border-primary/50 focus:bg-muted/60",
                         "disabled:opacity-50",
@@ -1649,7 +1842,7 @@ export function ChatWidget() {
                       type="submit"
                       size="sm"
                       disabled={!canSend}
-                      className="h-9 w-9 p-0 shrink-0 rounded-lg touch-manipulation"
+                      className="h-9 w-9 p-0 shrink-0 rounded-md touch-manipulation"
                       aria-label="Send"
                     >
                       {isStreaming || isLoadingCmd ? (
@@ -1674,11 +1867,22 @@ export function ChatWidget() {
                 </form>
               </div>
 
-              {/* Footer */}
-              <div className="px-3 py-1.5 border-t border-border/20 shrink-0">
-                <p className="text-[10px] text-muted-foreground/40 leading-snug">
-                  AI can be wrong. Verify critical findings manually.
+              {/* Footer. The model name lives here now rather than as a chip
+                  in the header: a self-hoster can point this at any provider,
+                  so which one answered is worth showing, but "MiniMax" on its
+                  own beside the assistant's name read as a second brand. */}
+              <div className="flex items-center gap-2 px-3 py-1.5 border-t border-border/20 shrink-0">
+                <p className="min-w-0 text-[10px] text-muted-foreground/40 leading-snug">
+                  AI can be wrong. Verify anything critical yourself.
                 </p>
+                {providerLabel && (
+                  <span
+                    className="ml-auto shrink-0 max-w-[45%] truncate text-[10px] text-muted-foreground/40"
+                    title={`Replies are generated by ${providerLabel}`}
+                  >
+                    via {providerLabel}
+                  </span>
+                )}
               </div>
             </>
           )}

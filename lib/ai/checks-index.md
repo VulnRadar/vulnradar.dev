@@ -441,7 +441,7 @@ remediation documentation in the docs.
 - [low     ] `netscaler-cookie-exposes-internal-server` [header] - Citrix NetScaler Cookie May Expose Internal Server
 - [low     ] `cookie-maxage-expires-conflict` [header] - Cookie Max-Age and Expires Disagree
 
-### dns (19)
+### dns (28)
 - [medium  ] `dns-caa-record-missing` [header] - CAA Record Missing
 - [high    ] `dns-ns-record-count` [header] - Less Than 2 Authoritative Nameservers
 - [medium  ] `dns-mx-record-missing` [header] - MX Record Missing
@@ -461,8 +461,17 @@ remediation documentation in the docs.
 - [info    ] `dns-ns-single-provider-concentration` [header] - All Nameservers Concentrated at a Single Provider
 - [low     ] `dns-wildcard-record-present` [header] - Wildcard DNS Record Detected
 - [info    ] `dns-null-mx-recommended` [header] - Null MX Recommended for Non-Mail Domain
+- [medium  ] `dns-dnssec-algorithm-weak` [network-probe] - DNSSEC signed with a deprecated algorithm
+- [medium  ] `dns-dnssec-key-size-weak` [network-probe] - DNSSEC RSA key below 2048 bits
+- [low     ] `dns-ds-digest-algorithm-weak` [network-probe] - DNSSEC DS record uses only the SHA-1 digest
+- [low     ] `dns-nsec-zone-walking` [network-probe] - Signed zone uses NSEC, allowing zone walking
+- [info    ] `dns-nsec3-iterations-nonzero` [network-probe] - NSEC3 configured with extra hash iterations
+- [medium  ] `dns-cname-at-apex` [network-probe] - CNAME record published at the zone apex
+- [low     ] `dns-cname-chain-too-long` [network-probe] - CNAME chain longer than three hops
+- [info    ] `dns-caa-iodef-missing` [network-probe] - CAA record names no incident reporting address
+- [info    ] `dns-txt-verification-tokens-stale` [network-probe] - Accumulated SaaS domain-verification TXT records
 
-### email (22)
+### email (37)
 - [low     ] `email-dmarc-ruf-missing` [header] - DMARC Forensic Report URI (ruf=) Missing
 - [medium  ] `email-dmarc-rua-missing` [header] - DMARC Aggregate Report URI (rua=) Missing
 - [medium  ] `mta-sts` [header] - MTA-STS (SMTP Strict Transport Security)
@@ -485,6 +494,21 @@ remediation documentation in the docs.
 - [low     ] `email-bimi-logo-invalid` [header] - BIMI Logo URL Does Not Meet BIMI Requirements
 - [medium  ] `email-dmarc-subdomain-policy-weaker` [header] - DMARC Subdomain Policy Weaker Than Domain Policy
 - [medium  ] `email-dkim-weak-key` [header] - DKIM Public Key Uses a Weak RSA Key Size
+- [medium  ] `email-spf-multiple-records` [network-probe] - Multiple SPF records published
+- [low     ] `email-spf-all-mechanism-missing` [network-probe] - SPF record has no all mechanism
+- [low     ] `email-spf-redirect-ignored-with-all` [network-probe] - SPF redirect modifier ignored because all is present
+- [info    ] `email-spf-macro-mechanism` [network-probe] - SPF record uses macro expansion
+- [medium  ] `email-spf-include-unresolvable` [network-probe] - SPF include target publishes no SPF record
+- [medium  ] `email-dmarc-multiple-records` [network-probe] - Multiple DMARC records published
+- [low     ] `email-dmarc-rua-invalid-uri` [network-probe] - DMARC aggregate report address is not a valid URI
+- [medium  ] `email-dmarc-rua-external-unauthorized` [network-probe] - DMARC reports sent to an external domain that has not authorized them
+- [low     ] `email-dkim-testing-mode` [network-probe] - DKIM selector published in testing mode
+- [low     ] `email-dkim-revoked-key` [network-probe] - DKIM selector published with an empty (revoked) key
+- [medium  ] `email-dkim-sha1-hash` [network-probe] - DKIM selector restricted to the SHA-1 hash algorithm
+- [medium  ] `email-mx-ip-literal` [network-probe] - MX record points at an IP address instead of a hostname
+- [low     ] `email-mta-sts-max-age-short` [network-probe] - MTA-STS policy max_age shorter than one week
+- [medium  ] `email-mta-sts-mx-mismatch` [network-probe] - MTA-STS policy does not cover every published MX host
+- [info    ] `email-bimi-without-vmc` [network-probe] - BIMI record publishes a logo with no verified mark certificate
 
 ### headers (138)
 - [high    ] `hsts-missing` [combined] - Missing HTTP Strict Transport Security (HSTS)
@@ -883,20 +907,20 @@ remediation documentation in the docs.
 
 ## Totals
 
-- Total checks: **828**
+- Total checks: **852**
 - Categories: **18** (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
-  - medium: 228
+  - medium: 238
   - high: 204
-  - low: 182
-  - info: 116
+  - low: 191
+  - info: 121
   - critical: 98
 - By type:
   - body-pattern: 475
   - header: 175
   - combined: 64
   - header-missing: 55
+  - network-probe: 36
   - url-check: 19
   - header-value: 18
-  - network-probe: 12
   - header-present: 10

@@ -27,9 +27,15 @@ export interface RenderedTemplate {
   html: string;
 }
 
+// A full, real-length user-agent header rather than a tidied one. The old
+// value here was trimmed to 60 characters, which hid the thing that made the
+// security notices look bad: a real header wraps onto two lines and reads as
+// a machine dump. The Device row now leads with "Firefox 155 on Windows" and
+// keeps this underneath in small type, and the preview has to show that.
 const DETAILS = {
   ipAddress: "203.0.113.42",
-  userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/126.0",
+  userAgent:
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:155.0) Gecko/20100101 Firefox/155.0",
 };
 
 const WHEN = new Date("2026-09-01T14:30:00Z");

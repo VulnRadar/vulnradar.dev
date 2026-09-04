@@ -6,11 +6,9 @@ import {
   Activity,
   AlertTriangle,
   ExternalLink,
-  Plus,
   Power,
   Loader2,
   X,
-  Timer,
   Lock,
   WifiOff,
   CheckCircle2,
@@ -18,9 +16,20 @@ import {
 import { Button } from "@/components/ui/button";
 import { ThemedLogo } from "@/components/shared/themed-logo";
 import { cn } from "@/lib/ui/utils";
-import { API, APP_NAME } from "@/lib/config/client-constants";
+import {
+  API,
+  APP_NAME,
+  BROWSERBASE_VIEWPORT,
+} from "@/lib/config/client-constants";
 import { useClientConfig } from "@/lib/hooks/use-client-config";
 import type { NetworkRequest } from "@/lib/browserbase/client";
+import {
+  fitEmbed,
+  readViewerFlag,
+  writeViewerFlag,
+  VIEWER_STORAGE_KEYS,
+  type Size,
+} from "@/lib/browserbase/viewer-layout";
 
 interface BrowserSession {
   id: string;
@@ -37,6 +46,14 @@ interface PageProps {
 }
 
 const AUTO_CLOSE_SECONDS = 5;
+
+// The resolution POST /api/v3/browser/sessions creates the remote browser at.
+// Not a guess about what Browserbase is showing: it is the same constant the
+// route sends as browserSettings.viewport.
+const REMOTE_VIEWPORT: Size = {
+  width: BROWSERBASE_VIEWPORT.WIDTH,
+  height: BROWSERBASE_VIEWPORT.HEIGHT,
+};
 
 function formatMmSs(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds));
@@ -107,7 +124,6 @@ export default function BrowserViewerPage({ params }: PageProps) {
   const searchParams = useSearchParams();
   const rawTargetUrl = searchParams.get("url") || "";
   const targetUrl = /^https?:\/\//i.test(rawTargetUrl) ? rawTargetUrl : null;
-  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const [session, setSession] = useState<BrowserSession | null>(null);
   const [loading, setLoading] = useState(true);
@@ -125,16 +141,35 @@ export default function BrowserViewerPage({ params }: PageProps) {
   const [minutesAllocated, setMinutesAllocated] = useState(1);
   const MAX_MINUTES = 5;
 
-  // Network logs sidebar. On desktop it opens by default -- the network stream
-  // is the point of the devtools dock. On a phone it starts CLOSED: there it
-  // renders as a bottom sheet over the browser view, and opening it on load
-  // would bury the actual browser the user came to watch. A mount effect below
-  // flips it open on wide viewports (SSR-safe: starts false, matching the
-  // server render, then corrects on the client before the session is live).
+  // Network logs dock. Remembered across sessions (VIEWER_STORAGE_KEYS), since
+  // reclaiming its width is the difference between a 1440px-wide live view and
+  // a 1690px one and re-closing it on every session got old. The initial state
+  // is false so the client's first render matches the server's; a mount effect
+  // below reads the stored preference, defaulting to open on a wide screen and
+  // closed on a phone, where the dock is a sheet over the browser view and
+  // opening it on load would bury the thing the user came to watch.
   const [showLogs, setShowLogs] = useState(false);
   const [networkRequests, setNetworkRequests] = useState<NetworkRequest[]>([]);
   const [logsError, setLogsError] = useState<string | null>(null);
   const logsPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // The remote-session safety notice. Dismissible and remembered: it used to
+  // hold a permanent full-width row above the fold on every session, which on a
+  // 1080px screen is height the live view could have had.
+  const [showNotice, setShowNotice] = useState(false);
+
+  // Measured content box of the stage, and the frame size derived from it. The
+  // frame keeps the remote screen's aspect ratio, so Browserbase's viewer has
+  // nothing left to letterbox.
+  // A callback ref, not a useRef: the stage only mounts once the session has
+  // loaded, so a ref object would still be null when a mount-time effect ran
+  // and nothing would ever be observed.
+  const [stageEl, setStageEl] = useState<HTMLDivElement | null>(null);
+  const [stageSize, setStageSize] = useState<Size>({ width: 0, height: 0 });
+  const embed = useMemo(
+    () => fitEmbed(stageSize, REMOTE_VIEWPORT),
+    [stageSize],
+  );
 
   const load = useCallback(async () => {
     try {
@@ -186,14 +221,85 @@ export default function BrowserViewerPage({ params }: PageProps) {
     void load();
   }, [load]);
 
-  // Open the network dock by default on desktop only. Kept out of the initial
-  // useState so the client's first render matches the server's (both closed),
-  // then corrected here on mount -- mobile stays closed, wide viewports open.
+  // Restore both remembered toggles. Kept out of the useState initializers so
+  // the client's first render matches the server's, then corrected here.
   useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot device default, runs once on mount
-    if (window.matchMedia("(min-width: 640px)").matches) setShowLogs(true);
+    if (typeof window === "undefined") return;
+    const wide = window.matchMedia?.("(min-width: 640px)").matches ?? true;
+    /* eslint-disable react-hooks/set-state-in-effect -- one-shot restore of remembered UI state, runs once on mount */
+    setShowLogs(
+      readViewerFlag(
+        window.localStorage,
+        VIEWER_STORAGE_KEYS.networkDock,
+        wide,
+      ),
+    );
+    setShowNotice(
+      readViewerFlag(
+        window.localStorage,
+        VIEWER_STORAGE_KEYS.safetyNotice,
+        true,
+      ),
+    );
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
+
+  const toggleLogs = useCallback(() => {
+    setShowLogs((open) => {
+      const next = !open;
+      writeViewerFlag(
+        typeof window === "undefined" ? null : window.localStorage,
+        VIEWER_STORAGE_KEYS.networkDock,
+        next,
+      );
+      return next;
+    });
+  }, []);
+
+  const setNotice = useCallback((visible: boolean) => {
+    setShowNotice(visible);
+    writeViewerFlag(
+      typeof window === "undefined" ? null : window.localStorage,
+      VIEWER_STORAGE_KEYS.safetyNotice,
+      visible,
+    );
+  }, []);
+
+  // Track the stage's content box so the frame can be sized from it. The
+  // observed element carries no padding of its own, so contentRect is exactly
+  // the space the frame may occupy, and its size does not depend on the frame:
+  // no feedback loop.
+  useEffect(() => {
+    if (!stageEl) return;
+    const apply = (width: number, height: number) => {
+      setStageSize((prev) =>
+        prev.width === width && prev.height === height
+          ? prev
+          : { width, height },
+      );
+    };
+
+    // No ResizeObserver means no measurement, and no measurement means the
+    // frame never mounts at all, so fall back to measuring on window resize
+    // rather than showing an empty stage.
+    if (typeof ResizeObserver === "undefined") {
+      const measure = () => {
+        const rect = stageEl.getBoundingClientRect();
+        apply(rect.width, rect.height);
+      };
+      measure();
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (!rect) return;
+      apply(rect.width, rect.height);
+    });
+    observer.observe(stageEl);
+    return () => observer.disconnect();
+  }, [stageEl]);
 
   // Start the virtual 1-minute countdown the first time a live session loads.
   useEffect(() => {
@@ -293,7 +399,7 @@ export default function BrowserViewerPage({ params }: PageProps) {
     setVirtualExpiresAt((t) => (t ?? Date.now()) + 60_000);
   }
 
-  // Poll network logs while the sidebar is open and session is live.
+  // Poll network logs while the dock is open and session is live.
   useEffect(() => {
     if (!showLogs || !isLive) {
       if (logsPollingRef.current) {
@@ -361,13 +467,16 @@ export default function BrowserViewerPage({ params }: PageProps) {
       {/* a11y (SC 1.3.1 / 2.4.6): this was the one page in the app with no
           heading of any level, so a screen-reader user landing on it had
           nothing to orient from and no heading to jump to. The visible chrome
-          is a brand mark and a "Live Browser" label, neither of which is a
+          is a brand mark and the target's address, neither of which is a
           heading, so the h1 is sr-only rather than inventing visible copy. */}
       <h1 className="sr-only">Live browser session</h1>
 
-      {/* Top bar */}
+      {/* Top bar. This is the ONLY chrome above the live view now. The frame
+          below used to carry a second, fake browser window (traffic-light
+          dots and an address bar) inside the real browser's own chrome, which
+          read as a mockup and cost a whole row for a URL that is shown here
+          instead. */}
       <header className="shrink-0 h-14 border-b border-border/60 bg-card/70 backdrop-blur-md flex items-center px-3 sm:px-4 gap-2 sm:gap-3 z-20">
-        {/* Brand mark */}
         <div className="flex items-center gap-2 shrink-0">
           <ThemedLogo
             width={20}
@@ -375,154 +484,212 @@ export default function BrowserViewerPage({ params }: PageProps) {
             className="h-5 w-5 shrink-0"
             alt={APP_NAME}
           />
-          <span className="text-sm font-semibold text-foreground tracking-tight hidden md:inline">
+          <span className="text-sm font-semibold text-foreground tracking-tight hidden lg:inline">
             {APP_NAME}
-          </span>
-          <span className="hidden md:inline text-border/60">·</span>
-          <span className="text-xs text-muted-foreground hidden md:inline font-medium">
-            Live Browser
           </span>
         </div>
 
-        <div className="flex-1" />
-
-        {/* Live pill (the URL now lives in the browser-frame address bar below) */}
-        {isLive && (
-          <div
-            className="shrink-0 hidden sm:flex items-center gap-1.5 h-7 pl-2 pr-2.5 rounded-full bg-[hsl(var(--success))]/10 border border-[hsl(var(--success))]/20 text-[hsl(var(--success))]"
-            title="Session active"
+        {/* The address, as a link out rather than a fake address bar. It is
+            the one piece the old browser-chrome row carried that was worth
+            keeping, so it moved up here where the row already exists.
+            max-w-sm on purpose: a full-width version of this reads as the
+            address bar it is replacing. */}
+        {displayUrl && (
+          <a
+            href={displayUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={displayUrl}
+            className="group flex min-w-0 flex-1 max-w-sm items-center gap-1.5 h-8 px-2.5 rounded-md border border-border/50 bg-muted/40 text-xs text-muted-foreground hover:text-foreground hover:border-border transition-colors"
           >
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[hsl(var(--success))] opacity-60" />
-              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[hsl(var(--success))]" />
+            <Lock
+              className="h-3 w-3 shrink-0 text-[hsl(var(--success))]"
+              aria-hidden="true"
+            />
+            <span className="truncate font-mono">
+              {truncateUrl(displayUrl)}
             </span>
-            <span className="text-[11px] font-semibold tracking-wide uppercase">
-              Live
-            </span>
-          </div>
+            {/* A hover affordance, so it is dead weight on a touch screen
+                where the chip is already fighting for width. */}
+            <ExternalLink
+              className="hidden sm:block h-3 w-3 shrink-0 opacity-0 group-hover:opacity-60 transition-opacity ml-auto"
+              aria-hidden="true"
+            />
+          </a>
         )}
 
-        {/* Timer + extend */}
-        {autoCloseCountdown !== null ? (
-          <div className="shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium tabular-nums bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border border-[hsl(var(--warning))]/20">
-            <Timer className="h-3 w-3" />
-            Closing in {autoCloseCountdown}s
-          </div>
-        ) : virtualExpiresAt !== null && !ended ? (
-          <div className="shrink-0 flex items-center gap-1">
+        <div className="ml-auto flex items-center gap-2 shrink-0">
+          {/* Timer + extend, as one control group. The separate LIVE pill that
+            used to sit beside it said the same thing the running clock and its
+            pulsing dot already say. */}
+          {autoCloseCountdown !== null ? (
+            <div className="shrink-0 flex items-center h-9 sm:h-8 px-2.5 rounded-md text-xs font-medium tabular-nums bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border border-[hsl(var(--warning))]/20">
+              Closing in {autoCloseCountdown}s
+            </div>
+          ) : virtualExpiresAt !== null && !ended ? (
             <div
               className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium tabular-nums border transition-colors",
+                "shrink-0 flex items-stretch h-9 sm:h-8 rounded-md border overflow-hidden transition-colors",
                 expiresCritical
-                  ? "bg-destructive/10 text-destructive border-destructive/20 animate-pulse"
+                  ? "border-destructive/30 bg-destructive/10 text-destructive"
                   : expiresSoon
-                    ? "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20"
-                    : "bg-muted/40 text-muted-foreground border-border/60",
-              )}
-              aria-live="polite"
-              title={`Session time remaining: ${formatMmSs(remaining)}`}
-            >
-              <Timer className="h-3 w-3" />
-              {formatMmSs(remaining)}
-            </div>
-            <button
-              onClick={handleExtend}
-              disabled={!canExtend}
-              // a11y (SC 4.1.2): the only icon-only control in the app whose
-              // name came from `title` alone. title is unreachable on touch
-              // and inconsistently exposed, so the name is explicit and title
-              // stays as the sighted-user tooltip.
-              aria-label="Extend session by 1 minute"
-              title={
-                canExtend
-                  ? `Add 1 minute (${minutesAllocated}/${MAX_MINUTES} min used)`
-                  : "Maximum session time reached (5 min total)"
-              }
-              className={cn(
-                // h-9 w-9 below sm rather than the app's h-11: this control
-                // sits inline with a compact timer pill in a floating dock, so
-                // a 44px box would set the whole bar's height. 36px still
-                // clears the 24px minimum by a wide margin, where the flat
-                // 24px it had did not.
-                "flex items-center justify-center h-9 w-9 rounded border transition-colors sm:h-6 sm:w-6",
-                canExtend
-                  ? "border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
-                  : "border-border/30 bg-muted/20 text-muted-foreground/30 cursor-not-allowed",
+                    ? "border-[hsl(var(--warning))]/25 bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))]"
+                    : "border-border/60 bg-muted/40 text-muted-foreground",
               )}
             >
-              <Plus className="h-3 w-3" />
-            </button>
-          </div>
-        ) : null}
-
-        {/* Network logs toggle */}
-        {isLive && (
-          <Button
-            variant={showLogs ? "secondary" : "outline"}
-            size="sm"
-            onClick={() => setShowLogs((v) => !v)}
-            title={showLogs ? "Hide network logs" : "Show network logs"}
-            aria-pressed={showLogs}
-            className={cn(
-              "shrink-0 h-8 gap-1.5 text-xs",
-              showLogs &&
-                "bg-primary/10 border-primary/30 text-primary hover:bg-primary/15",
-            )}
-          >
-            <Activity className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Network</span>
-            {networkRequests.length > 0 && (
-              <span
+              <div
+                className="flex items-center gap-1.5 px-2.5 text-xs font-medium tabular-nums"
+                aria-live="polite"
+                title={`Session time remaining: ${formatMmSs(remaining)}`}
+              >
+                <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
+                  <span
+                    className={cn(
+                      "animate-ping absolute inline-flex h-full w-full rounded-full opacity-60",
+                      expiresCritical
+                        ? "bg-destructive"
+                        : expiresSoon
+                          ? "bg-[hsl(var(--warning))]"
+                          : "bg-[hsl(var(--success))]",
+                    )}
+                  />
+                  <span
+                    className={cn(
+                      "relative inline-flex rounded-full h-1.5 w-1.5",
+                      expiresCritical
+                        ? "bg-destructive"
+                        : expiresSoon
+                          ? "bg-[hsl(var(--warning))]"
+                          : "bg-[hsl(var(--success))]",
+                    )}
+                  />
+                </span>
+                {formatMmSs(remaining)}
+              </div>
+              <button
+                onClick={handleExtend}
+                disabled={!canExtend}
+                // a11y (SC 4.1.2): the visible "+1m" is an abbreviation, so the
+                // accessible name spells the action out. title stays as the
+                // sighted-user tooltip, which is unreachable on touch.
+                aria-label="Extend session by 1 minute"
+                title={
+                  canExtend
+                    ? `Add 1 minute (${minutesAllocated}/${MAX_MINUTES} min used)`
+                    : "Maximum session time reached (5 min total)"
+                }
                 className={cn(
-                  "hidden sm:inline rounded px-1 py-0.5 text-[10px] tabular-nums",
-                  showLogs
-                    ? "bg-primary/15 text-primary"
-                    : "bg-muted text-muted-foreground",
+                  "flex items-center px-2 border-l text-[11px] font-medium tabular-nums transition-colors",
+                  expiresCritical
+                    ? "border-destructive/30"
+                    : expiresSoon
+                      ? "border-[hsl(var(--warning))]/25"
+                      : "border-border/60",
+                  canExtend
+                    ? "hover:bg-foreground/5 hover:text-foreground cursor-pointer"
+                    : "opacity-40 cursor-not-allowed",
                 )}
               >
-                {networkRequests.length}
-              </span>
-            )}
-          </Button>
-        )}
+                +1m
+              </button>
+            </div>
+          ) : null}
 
-        {/* End session */}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={endSession}
-          disabled={ending || ended}
-          className={cn(
-            "shrink-0 h-8 text-xs gap-1.5 transition-colors",
-            !ended && !ending
-              ? "border-destructive/30 text-destructive hover:bg-destructive/10 hover:border-destructive/50 hover:text-destructive"
-              : "opacity-40",
+          {/* Re-opens the safety notice once it has been dismissed, so the
+            warning is one click away rather than gone for good. */}
+          {!ended && !showNotice && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setNotice(true)}
+              title="Show the remote session notice"
+              aria-label="Show the remote session notice"
+              className="shrink-0 h-9 w-9 sm:h-8 sm:w-8 p-0 text-[hsl(var(--warning))]/70 hover:text-[hsl(var(--warning))]"
+            >
+              <AlertTriangle className="h-3.5 w-3.5" />
+            </Button>
           )}
-        >
-          {ending ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <Power className="h-3 w-3" />
+
+          {isLive && (
+            <Button
+              variant={showLogs ? "secondary" : "outline"}
+              size="sm"
+              onClick={toggleLogs}
+              title={showLogs ? "Hide network panel" : "Show network panel"}
+              aria-pressed={showLogs}
+              className={cn(
+                "shrink-0 h-9 sm:h-8 gap-1.5 text-xs px-2.5",
+                showLogs &&
+                  "bg-primary/10 border-primary/30 text-primary hover:bg-primary/15",
+              )}
+            >
+              <Activity className="h-3.5 w-3.5" />
+              <span className="hidden md:inline">Network</span>
+              {networkRequests.length > 0 && (
+                <span
+                  className={cn(
+                    "rounded-md px-1 py-0.5 text-[10px] tabular-nums",
+                    showLogs
+                      ? "bg-primary/15 text-primary"
+                      : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  {networkRequests.length}
+                </span>
+              )}
+            </Button>
           )}
-          <span className="hidden sm:inline">End</span>
-        </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={endSession}
+            disabled={ending || ended}
+            className={cn(
+              "shrink-0 h-9 sm:h-8 text-xs gap-1.5 px-2.5 transition-colors",
+              !ended && !ending
+                ? "border-destructive/30 text-destructive hover:bg-destructive/10 hover:border-destructive/50 hover:text-destructive"
+                : "opacity-40",
+            )}
+          >
+            {ending ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Power className="h-3 w-3" />
+            )}
+            <span className="hidden md:inline">End</span>
+          </Button>
+        </div>
       </header>
 
-      {/* Safety notice, always visible, no close button */}
-      {!ended && (
-        <div className="shrink-0 flex items-center gap-2 px-4 py-1.5 bg-[hsl(var(--warning))]/10 border-b border-[hsl(var(--warning))]/15 text-[hsl(var(--warning))] text-xs leading-snug">
-          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-          <span>
-            <span className="font-semibold">Remote session:</span> this browser
-            runs on a secure cloud server, not your device. Do not enter real
-            passwords. Your session is deleted when closed.
-          </span>
+      {/* Safety notice. One compact line, dismissible, and remembered, with
+          the header button above bringing it back. */}
+      {!ended && showNotice && (
+        <div className="shrink-0 flex items-start gap-2 px-3 sm:px-4 py-1.5 bg-[hsl(var(--warning))]/10 border-b border-[hsl(var(--warning))]/15 text-[hsl(var(--warning))] text-[11px] leading-snug">
+          <AlertTriangle
+            className="h-3.5 w-3.5 shrink-0 mt-px"
+            aria-hidden="true"
+          />
+          <p className="min-w-0">
+            This browser runs on a cloud server, not on your device. Do not type
+            real passwords into it. The session is deleted when you close it.
+          </p>
+          <button
+            onClick={() => setNotice(false)}
+            title="Dismiss"
+            aria-label="Dismiss the remote session notice"
+            // The after: overlay lifts the tap area to 44px without growing a
+            // box that has to fit inside a 24px line of text.
+            className="relative ml-auto shrink-0 rounded-sm opacity-60 hover:opacity-100 transition-opacity after:absolute after:-inset-3 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[hsl(var(--warning))]/50"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
       )}
 
       {/* Main content */}
       <main id="main-content" tabIndex={-1} className="flex-1 flex min-h-0">
-        {/* Left: browser content */}
+        {/* Left: the remote page, given everything that is left */}
         <div className="flex-1 flex flex-col min-h-0 min-w-0">
           {ended ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8 text-center bg-background">
@@ -596,49 +763,33 @@ export default function BrowserViewerPage({ params }: PageProps) {
               </Button>
             </div>
           ) : viewerUrl ? (
-            <div
-              className="relative flex-1 min-h-0 flex flex-col p-2 sm:p-3 bg-muted/20"
-              style={{
-                backgroundImage:
-                  "radial-gradient(hsl(var(--border) / 0.5) 1px, transparent 1px)",
-                backgroundSize: "18px 18px",
-              }}
-            >
-              <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-border/70 bg-card overflow-hidden shadow-[0_10px_40px_-16px_rgba(0,0,0,0.4)]">
-                {/* Browser chrome: window controls + live address bar. This is a
-                    real remote browser, so framing it as a browser window is
-                    honest, not decoration -- and it shows the exact URL the
-                    session is on. */}
-                <div className="shrink-0 h-9 flex items-center gap-2.5 px-3 border-b border-border/60 bg-gradient-to-b from-muted/50 to-muted/20">
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="h-3 w-3 rounded-full bg-destructive/70" />
-                    <span className="h-3 w-3 rounded-full bg-[hsl(var(--warning))]/70" />
-                    <span className="h-3 w-3 rounded-full bg-[hsl(var(--success))]/70" />
-                  </div>
-                  {displayUrl && (
-                    <a
-                      href={displayUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title={displayUrl}
-                      className="group flex-1 min-w-0 flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-background/70 border border-border/50 text-xs text-muted-foreground hover:text-foreground hover:border-border transition-colors"
-                    >
-                      <Lock className="h-3 w-3 shrink-0 text-[hsl(var(--success))]" />
-                      <span className="truncate font-mono">
-                        {truncateUrl(displayUrl, 72)}
-                      </span>
-                      <ExternalLink className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-60 transition-opacity ml-auto" />
-                    </a>
+            // Stage. The padding lives here; the measured child carries none,
+            // so its content box is exactly the room the frame may take.
+            <div className="flex-1 min-h-0 bg-muted/30 p-2 sm:p-3">
+              <div
+                ref={setStageEl}
+                className="h-full w-full flex items-center justify-center"
+              >
+                <div
+                  // Sized from the remote viewport's real dimensions, scaled to
+                  // fit and centred. The frame therefore has the same shape as
+                  // the remote screen, so Browserbase's viewer fills it edge to
+                  // edge instead of painting black bands to make up the
+                  // difference. Whatever is left over is stage, in the app's
+                  // own surface colour.
+                  style={{ width: embed.width, height: embed.height }}
+                  className="relative rounded-lg border border-border/70 bg-background overflow-hidden shadow-[0_10px_40px_-16px_rgba(0,0,0,0.4)]"
+                >
+                  {embed.width > 0 && (
+                    <iframe
+                      src={viewerUrl}
+                      title="Live interactive browser"
+                      className="absolute inset-0 h-full w-full border-0"
+                      sandbox="allow-same-origin allow-scripts allow-forms"
+                      allow="clipboard-read; clipboard-write"
+                    />
                   )}
                 </div>
-                <iframe
-                  ref={iframeRef}
-                  src={viewerUrl}
-                  title="Live interactive browser"
-                  className="flex-1 min-h-0 w-full border-0 bg-white"
-                  sandbox="allow-same-origin allow-scripts allow-forms"
-                  allow="clipboard-read; clipboard-write"
-                />
               </div>
             </div>
           ) : (
@@ -664,41 +815,48 @@ export default function BrowserViewerPage({ params }: PageProps) {
           )}
         </div>
 
-        {/* Right: live network dock, styled as a devtools Network tab. From sm
-            up it docks as a fixed 420px right rail. Below that it's a bottom
-            sheet (max 65vh, rounded top) that slides over the lower half of the
-            screen, leaving the live browser visible above it -- a full-screen
-            overlay here would bury the browser the user came to watch. */}
+        {/* Right: live network dock. From sm up it docks as a right rail that
+            narrows on smaller laptops, because every pixel it takes is a pixel
+            the live view scales down by. Below that it's a bottom sheet (max
+            65vh, rounded top) over the lower half of the screen, leaving the
+            live browser visible above it. */}
         {showLogs && isLive && (
-          <div className="fixed inset-x-0 bottom-0 top-auto z-30 max-h-[65vh] rounded-t-2xl border-t border-border/70 shadow-2xl flex flex-col overflow-hidden bg-card sm:static sm:inset-auto sm:z-auto sm:max-h-none sm:rounded-none sm:shadow-none sm:border-t-0 sm:w-[420px] sm:shrink-0 sm:border-l">
+          <div className="fixed inset-x-0 bottom-0 top-auto z-30 max-h-[65vh] rounded-t-xl border-t border-border/70 shadow-2xl flex flex-col overflow-hidden bg-card sm:static sm:inset-auto sm:z-auto sm:max-h-none sm:rounded-none sm:shadow-none sm:border-t-0 sm:w-[280px] md:w-[320px] xl:w-[360px] sm:shrink-0 sm:border-l">
             {/* Grab handle -- mobile bottom-sheet affordance, hidden on desktop */}
             <div className="sm:hidden flex justify-center pt-2 pb-1 shrink-0">
               <span className="h-1 w-9 rounded-full bg-border" />
             </div>
-            {/* Dock header */}
-            <div className="h-10 sm:h-9 border-b border-border/60 flex items-center px-3 gap-2 shrink-0 bg-gradient-to-b from-muted/40 to-muted/10">
-              <Activity className="h-3.5 w-3.5 text-primary" />
+            {/* Dock header. Carries the count too, which is why the footer that
+                used to repeat it below the list is gone. */}
+            <div className="h-10 sm:h-9 border-b border-border/60 flex items-center px-3 gap-2 shrink-0 bg-muted/30">
+              <Activity
+                className="h-3.5 w-3.5 text-primary shrink-0"
+                aria-hidden="true"
+              />
               <span className="text-xs font-semibold text-foreground">
                 Network
               </span>
               <span
-                className="ml-1 flex items-center gap-1 text-[10px] font-medium text-[hsl(var(--success))]"
+                className="flex items-center gap-1 text-[10px] font-medium text-[hsl(var(--success))]"
                 title={`Streaming, refreshes every ${LOGS_POLL_MS / 1000}s`}
               >
-                <span className="relative flex h-1.5 w-1.5">
+                <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[hsl(var(--success))] opacity-60" />
                   <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[hsl(var(--success))]" />
                 </span>
-                LIVE
+                live
+              </span>
+              <span className="ml-auto text-[10px] tabular-nums text-muted-foreground/60">
+                {networkRequests.length}
               </span>
               <button
-                onClick={() => setShowLogs(false)}
+                onClick={toggleLogs}
                 // The after: overlay lifts the tap area from 32px to 44px
                 // without growing the box, which shares a dense panel header
-                // with the LIVE pill.
-                className="relative ml-auto -mr-1 rounded p-2 text-muted-foreground opacity-60 transition-opacity after:absolute after:-inset-1.5 hover:opacity-100 hover:text-foreground sm:p-1 sm:after:hidden"
-                title="Close panel"
-                aria-label="Close network panel"
+                // with the live indicator.
+                className="relative -mr-1 rounded-sm p-2 text-muted-foreground opacity-60 transition-opacity after:absolute after:-inset-1.5 hover:opacity-100 hover:text-foreground sm:p-1 sm:after:hidden focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/50"
+                title="Hide network panel"
+                aria-label="Hide network panel"
               >
                 <X className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
               </button>
@@ -715,53 +873,38 @@ export default function BrowserViewerPage({ params }: PageProps) {
                 </p>
               </div>
             ) : (
-              <>
-                {/* Column headers */}
-                {/* The resource type drops out below sm. 120px of fixed
-                    columns in front of the path left it about 170px on a
-                    320px screen, so every host clipped to a stub; the type is
-                    the least load-bearing of the three. */}
-                <div className="grid grid-cols-[36px_32px_1fr] border-b border-border/40 bg-muted/30 shrink-0 sm:grid-cols-[44px_36px_40px_1fr]">
-                  {["Method", "Stat", "Type", "Path"].map((h) => (
-                    <div
-                      key={h}
-                      className={cn(
-                        "px-2 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide",
-                        h === "Type" && "hidden sm:block",
-                      )}
-                    >
-                      {h}
-                    </div>
-                  ))}
-                </div>
-
-                {/* Request list */}
-                <div className="flex-1 overflow-y-auto">
-                  {networkRequests.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full min-h-32 gap-2.5 text-center px-6">
-                      <span className="relative flex h-2.5 w-2.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-50" />
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary/70" />
-                      </span>
-                      <p className="text-xs font-medium text-muted-foreground/80">
-                        Listening for requests
-                      </p>
-                      <p className="text-[10px] text-muted-foreground/50 leading-relaxed">
-                        Requests the remote browser makes appear here as they
-                        happen. Interact with the page to see traffic.
-                      </p>
-                    </div>
-                  ) : (
-                    networkRequests.map((req) => (
+              <div className="flex-1 overflow-y-auto">
+                {networkRequests.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full min-h-32 gap-2.5 text-center px-6">
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-50" />
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary/70" />
+                    </span>
+                    <p className="text-xs font-medium text-muted-foreground/80">
+                      Listening for requests
+                    </p>
+                    <p className="text-[10px] text-muted-foreground/50 leading-relaxed">
+                      Requests the remote browser makes appear here as they
+                      happen. Interact with the page to see traffic.
+                    </p>
+                  </div>
+                ) : (
+                  // Two lines per request rather than four fixed columns. The
+                  // path had roughly 170px of a four-column grid and every URL
+                  // clipped to a stub; here it gets the dock's full width on
+                  // its own line, with the host and resource type below it.
+                  networkRequests.map((req) => {
+                    const type = resourceType(req.mimeType);
+                    return (
                       <div
                         key={req.requestId}
-                        className="grid grid-cols-[36px_32px_1fr] items-center border-b border-border/20 hover:bg-muted/25 transition-colors sm:grid-cols-[44px_36px_40px_1fr]"
+                        className="border-b border-border/20 px-2.5 py-1.5 hover:bg-muted/25 transition-colors"
                         title={req.url}
                       >
-                        <div className="px-2 py-1.5">
+                        <div className="flex items-baseline gap-2 min-w-0">
                           <span
                             className={cn(
-                              "text-[10px] font-mono font-semibold",
+                              "w-8 shrink-0 text-[10px] font-mono font-semibold",
                               methodColor(req.method),
                             )}
                           >
@@ -769,55 +912,41 @@ export default function BrowserViewerPage({ params }: PageProps) {
                               ? req.method.slice(0, 3)
                               : req.method}
                           </span>
-                        </div>
-                        <div className="px-2 py-1.5">
                           <span
                             className={cn(
-                              "text-[10px] font-mono font-medium tabular-nums",
+                              "w-7 shrink-0 text-[10px] font-mono font-medium tabular-nums",
                               statusColor(req.status, req.failed),
                             )}
                           >
                             {statusLabel(req.status, req.failed)}
                           </span>
-                        </div>
-                        <div className="hidden px-2 py-1.5 sm:block">
-                          <span className="text-[10px] font-mono text-muted-foreground/70 lowercase">
-                            {resourceType(req.mimeType)}
+                          <span className="min-w-0 flex-1 truncate text-[11px] font-mono text-foreground/85">
+                            {req.path}
                           </span>
                         </div>
-                        <div className="px-2 py-1.5 min-w-0">
-                          <p className="text-[10px] font-mono text-muted-foreground truncate">
-                            <span className="text-foreground/80">
-                              {req.host}
+                        <div className="mt-0.5 flex items-center gap-2 min-w-0">
+                          <span className="min-w-0 flex-1 truncate text-[10px] font-mono text-muted-foreground/70">
+                            {req.host}
+                          </span>
+                          {type && (
+                            <span className="shrink-0 rounded-md bg-muted px-1 text-[9px] font-mono text-muted-foreground/70">
+                              {type}
                             </span>
-                            <span className="opacity-60">{req.path}</span>
-                          </p>
+                          )}
                         </div>
                       </div>
-                    ))
-                  )}
-                </div>
-              </>
+                    );
+                  })
+                )}
+              </div>
             )}
-
-            {/* Dock footer */}
-            <div className="shrink-0 h-7 border-t border-border/40 bg-muted/20 flex items-center justify-between px-3">
-              <p className="text-[10px] text-muted-foreground/60 tabular-nums">
-                {networkRequests.length === 0
-                  ? "0 requests"
-                  : `${networkRequests.length} request${networkRequests.length === 1 ? "" : "s"}`}
-              </p>
-              <p className="text-[10px] text-muted-foreground/40">
-                live · {LOGS_POLL_MS / 1000}s
-              </p>
-            </div>
           </div>
         )}
       </main>
 
       {/* Footer */}
-      <footer className="shrink-0 h-7 border-t border-border/40 bg-card/40 flex items-center justify-center px-4">
-        <p className="text-[10px] text-muted-foreground/50 text-center">
+      <footer className="shrink-0 h-6 border-t border-border/40 bg-card/40 flex items-center justify-center px-4">
+        <p className="text-[10px] text-muted-foreground/50 text-center truncate">
           Powered by{" "}
           <a
             href="https://browserbase.com"

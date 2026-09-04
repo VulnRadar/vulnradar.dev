@@ -56,6 +56,19 @@ export const BRAND = {
   dangerLight: "#fca5a5",
   dangerPale: "#fecaca",
 
+  // Callout surfaces, one pair per message tone. A callout is a tinted box
+  // with a hairline edge of the same hue, which is how the in-app UI draws one
+  // (`bg-primary/10 border-primary/20`). It is NOT a grey box with a thick
+  // coloured bar down one side: that pattern put a 3px stripe of `warning`
+  // next to brand blue in every security notice, and the two hues fought.
+  callout: {
+    brand: { bg: "#132840", edge: "#1e3a5f" },
+    ok: { bg: "#0a2e1a", edge: "#14532d" },
+    warn: { bg: "#3a2408", edge: "#573713" },
+    bad: { bg: "#3d0f12", edge: "#5c1a1e" },
+    neutral: { bg: "#1b1f28", edge: "#252a34" },
+  },
+
   // Finding severity, matching --severity-* in app/globals.css. Distinct from
   // the status tints above: these rate a vulnerability, not a message tone.
   severity: {
@@ -82,24 +95,35 @@ export const BRAND = {
   // `surface` (#ffffff) for body copy and `surfaceRaised` (#f2f5f9) for the
   // detail panels and callouts, which is the tighter of the two.
   onLight: {
-    // Canvas behind the card. Mirrors the light theme's --background
-    // (213 25% 90%) in app/globals.css.
-    canvas: "#dfe5ec",
+    // Canvas behind the card.
+    //
+    // This used to be the light theme's --background (213 25% 90% = #dfe5ec)
+    // read straight off app/globals.css, and it was the wrong value to borrow.
+    // In the app that tone sits UNDER --card (213 22% 95%), one quiet step
+    // apart; in email the card is white, so the same canvas became a
+    // saturated blue-grey slab with a white rectangle floating on it. It read
+    // as muddy rather than as a page. Two steps lighter and slightly less
+    // saturated, the canvas reads as margin and the card reads as the sheet.
+    canvas: "#eef1f6",
     // The card itself. White rather than the app's --card, because the whole
     // message sits on it and the extra step buys contrast everywhere at once.
     surface: "#ffffff",
-    // Detail panels, callouts, the one-time-code block.
-    surfaceRaised: "#f2f5f9",
-    border: "#d3dae4",
-    // Mirrors the light theme's --border.
-    borderStrong: "#bec6d0",
+    // Detail panels, callouts, the one-time-code block. Sits inside the white
+    // card, never against the canvas, so the two being close is fine.
+    surfaceRaised: "#f5f7fa",
+    // Hairline. Lighter than the old #d3dae4: with the card's blue top bar
+    // gone this edge is the only thing separating card from canvas, and it
+    // should read as a fold, not a frame.
+    border: "#e3e8f0",
+    // Control edge: the severity chips and anything button-shaped.
+    borderStrong: "#cbd3e0",
 
     // 17.8:1 on surface. Mirrors --foreground (220 20% 10%).
     text: "#14181f",
-    // 7.37:1 on surface, 6.74:1 on surfaceRaised, 5.81:1 on canvas.
+    // 7.37:1 on surface, 7.29:1 on surfaceRaised, 6.66:1 on canvas.
     // Mirrors --muted-foreground (220 12% 35%).
     textMuted: "#4f5664",
-    // Footer fine print, on the canvas rather than the card: 4.85:1 there.
+    // Footer fine print, on the canvas rather than the card: 5.38:1 there.
     textFaint: "#5a6270",
 
     // Button fill. White label on it is 5.17:1. Same hex as primaryHover
@@ -121,6 +145,19 @@ export const BRAND = {
     danger: "#b91c1c", // 6.47:1 on surface, 5.92:1 on surfaceRaised
     dangerBg: "#fdecec",
     infoBg: "#e9f1fd",
+
+    // Callout surfaces, the light half of the pairs above. Backgrounds are
+    // 3-5% off white so the box reads as a tint rather than a grey slab, and
+    // each edge is the same hue two steps down, which is what makes a callout
+    // look like the app's `bg-x/10 border-x/20` instead of a bordered table
+    // cell. textMuted on every one of these clears 7:1.
+    callout: {
+      brand: { bg: "#eef4ff", edge: "#cfe0fb" },
+      ok: { bg: "#eafaf1", edge: "#bfe6d1" },
+      warn: { bg: "#fdf5e6", edge: "#f0dcb0" },
+      bad: { bg: "#fdeeee", edge: "#f5d0d0" },
+      neutral: { bg: "#f5f7fa", edge: "#e3e8f0" },
+    },
 
     // Severity, re-derived for a light ground. The dark ramp fails here:
     // #ef4444 is 3.76:1 on white and #e7b008 is 1.9:1, so a chip row would

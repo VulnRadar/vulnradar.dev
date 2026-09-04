@@ -441,6 +441,553 @@ const fixtures: DetectorFixtures = {
       expect: "skip",
     },
   ],
+
+  // ── API description documents served in production ────────────────────
+
+  "api-graphql-ide-exposed": [
+    {
+      description: "GraphiQL bundle loaded from the /graphql endpoint",
+      url: "https://example.com/graphql",
+      body: '<html><head><title>GraphiQL</title><script src="/static/graphiql.min.js"></script></head><body><div id="graphiql"></div></body></html>',
+      expect: "fire",
+      evidenceIncludes: "graphiql",
+    },
+    {
+      description: "Apollo Server landing page plugin rendered in production",
+      url: "https://api.example.com/graphql",
+      body: '<html><body><div id="embeddable-sandbox"></div><script src="https://embeddable-sandbox.cdn.apollographql.com/_latest/embeddable-sandbox.umd.production.min.js"></script></body></html>',
+      expect: "fire",
+      evidenceIncludes: "sandbox",
+    },
+    {
+      description:
+        "marketing page that only mentions GraphQL Playground in prose",
+      url: "https://example.com/blog/graphql-tooling",
+      body: "<html><body><p>We used to ship GraphQL Playground with every service, and GraphiQL before that.</p></body></html>",
+      expect: "skip",
+    },
+    {
+      description: "ordinary GraphQL JSON response with no IDE",
+      url: "https://example.com/graphql",
+      body: '{"data":{"viewer":{"id":"1"}}}',
+      expect: "skip",
+    },
+  ],
+
+  "api-graphql-schema-sdl-exposed": [
+    {
+      description: "schema.graphql served as text/plain",
+      url: "https://example.com/schema.graphql",
+      headers: { "content-type": "text/plain" },
+      body: "type Query {\n  user(id: ID!): User\n}\n\ntype Mutation {\n  createUser(input: CreateUserInput!): User\n}\n\ninput CreateUserInput {\n  email: String!\n}\n",
+      expect: "fire",
+      evidenceIncludes: "sdl",
+    },
+    {
+      description:
+        "HTML documentation page rendering the same schema as example text",
+      url: "https://example.com/docs/schema",
+      headers: { "content-type": "text/html" },
+      body: "<html><body><pre>type Query {\n  user(id: ID!): User\n}\ntype Mutation {\n  createUser(input: CreateUserInput!): User\n}</pre></body></html>",
+      expect: "skip",
+    },
+    {
+      description: "plain-text file that mentions type Query in prose only",
+      url: "https://example.com/notes.txt",
+      headers: { "content-type": "text/plain" },
+      body: "Remember to check the type Query fields before the release.",
+      expect: "skip",
+    },
+  ],
+
+  "api-openapi-no-security-declared": [
+    {
+      description: "OpenAPI 3 document with a POST and no security anywhere",
+      url: "https://example.com/openapi.json",
+      body: '{"openapi":"3.0.3","info":{"title":"Orders","version":"1"},"paths":{"/orders":{"post":{"responses":{"201":{"description":"created"}}}}}}',
+      expect: "fire",
+      evidenceIncludes: "no security schemes",
+    },
+    {
+      description: "OpenAPI 3 document that declares a bearer scheme",
+      url: "https://example.com/openapi.json",
+      body: '{"openapi":"3.0.3","info":{"title":"Orders","version":"1"},"security":[{"bearerAuth":[]}],"components":{"securitySchemes":{"bearerAuth":{"type":"http","scheme":"bearer"}}},"paths":{"/orders":{"post":{"responses":{"201":{"description":"created"}}}}}}',
+      expect: "skip",
+    },
+    {
+      description: "read-only OpenAPI document with no write operations",
+      url: "https://example.com/openapi.json",
+      body: '{"openapi":"3.1.0","info":{"title":"Catalogue","version":"1"},"paths":{"/items":{"get":{"responses":{"200":{"description":"ok"}}}}}}',
+      expect: "skip",
+    },
+  ],
+
+  "api-openapi-server-url-plain-http": [
+    {
+      description: "OpenAPI 3 servers array with a public http base URL",
+      url: "https://example.com/openapi.json",
+      body: '{"openapi":"3.0.3","paths":{"/x":{}},"servers":[{"url":"http://api.example.com/v1","description":"Production"}]}',
+      expect: "fire",
+      evidenceIncludes: "cleartext",
+    },
+    {
+      description: "Swagger 2.0 declaring only the http scheme",
+      url: "https://example.com/swagger.json",
+      body: '{"swagger":"2.0","host":"api.example.com","basePath":"/v1","schemes":["http"],"paths":{"/x":{}}}',
+      expect: "fire",
+      evidenceIncludes: "cleartext",
+    },
+    {
+      description: "servers array over https only",
+      url: "https://example.com/openapi.json",
+      body: '{"openapi":"3.0.3","paths":{"/x":{}},"servers":[{"url":"https://api.example.com/v1"}]}',
+      expect: "skip",
+    },
+    {
+      description:
+        "localhost http server URL, which is the internal-URL check's finding",
+      url: "https://example.com/openapi.json",
+      body: '{"openapi":"3.0.3","paths":{"/x":{}},"servers":[{"url":"http://localhost:3000"}]}',
+      expect: "skip",
+    },
+  ],
+
+  "api-openapi-swagger-2-document": [
+    {
+      description: "document declaring swagger 2.0",
+      url: "https://example.com/swagger.json",
+      body: '{"swagger":"2.0","info":{"title":"Legacy","version":"1"},"paths":{"/x":{"get":{}}}}',
+      expect: "fire",
+      evidenceIncludes: "2.0",
+    },
+    {
+      description: "OpenAPI 3 document",
+      url: "https://example.com/openapi.json",
+      body: '{"openapi":"3.1.0","info":{"title":"Modern","version":"1"},"paths":{"/x":{"get":{}}}}',
+      expect: "skip",
+    },
+  ],
+
+  "api-openapi-deprecated-operations-exposed": [
+    {
+      description: "OpenAPI document with a deprecated operation",
+      url: "https://example.com/openapi.json",
+      body: '{"openapi":"3.0.3","paths":{"/v1/search":{"get":{"deprecated":true,"responses":{"200":{"description":"ok"}}}}}}',
+      expect: "fire",
+      evidenceIncludes: "deprecated",
+    },
+    {
+      description: "OpenAPI document with nothing deprecated",
+      url: "https://example.com/openapi.json",
+      body: '{"openapi":"3.0.3","paths":{"/v2/query":{"post":{"responses":{"200":{"description":"ok"}}}}}}',
+      expect: "skip",
+    },
+  ],
+
+  "api-openapi-oauth2-implicit-flow-declared": [
+    {
+      description: "OpenAPI 3 securityScheme declaring an implicit flow",
+      url: "https://example.com/openapi.json",
+      body: '{"openapi":"3.0.3","paths":{"/x":{}},"components":{"securitySchemes":{"oauth2":{"type":"oauth2","flows":{"implicit":{"authorizationUrl":"https://auth.example.com/authorize","scopes":{}}}}}}}',
+      expect: "fire",
+      evidenceIncludes: "implicit",
+    },
+    {
+      description: "OpenAPI 3 securityScheme using authorizationCode",
+      url: "https://example.com/openapi.json",
+      body: '{"openapi":"3.0.3","paths":{"/x":{}},"components":{"securitySchemes":{"oauth2":{"type":"oauth2","flows":{"authorizationCode":{"authorizationUrl":"https://auth.example.com/authorize","tokenUrl":"https://auth.example.com/token","scopes":{}}}}}}}',
+      expect: "skip",
+    },
+  ],
+
+  "api-asyncapi-document-exposed": [
+    {
+      description: "AsyncAPI 2.x JSON document with channels",
+      url: "https://example.com/asyncapi.json",
+      body: '{"asyncapi":"2.6.0","info":{"title":"Events","version":"1"},"servers":{"prod":{"url":"kafka.internal:9092","protocol":"kafka"}},"channels":{"user/signedup":{"subscribe":{}}}}',
+      expect: "fire",
+      evidenceIncludes: "asyncapi",
+    },
+    {
+      description: "OpenAPI document, not AsyncAPI",
+      url: "https://example.com/openapi.json",
+      body: '{"openapi":"3.0.3","paths":{"/x":{"get":{}}}}',
+      expect: "skip",
+    },
+  ],
+
+  "api-postman-collection-exposed": [
+    {
+      description: "Postman collection export with a _postman_id",
+      url: "https://example.com/api.postman_collection.json",
+      body: '{"info":{"_postman_id":"a1b2c3d4-1111-2222-3333-444455556666","name":"Internal API","schema":"https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},"item":[]}',
+      expect: "fire",
+      evidenceIncludes: "postman",
+    },
+    {
+      description: "blog post that merely mentions Postman",
+      url: "https://example.com/blog/api-testing",
+      body: "<html><body><p>We keep our request library in Postman rather than in the repo.</p></body></html>",
+      expect: "skip",
+    },
+  ],
+
+  "api-insomnia-export-exposed": [
+    {
+      description: "Insomnia export identified by __export_source",
+      url: "https://example.com/insomnia.json",
+      body: '{"_type":"export","__export_format":4,"__export_date":"2026-01-02T00:00:00.000Z","__export_source":"insomnia.desktop.app:v8.6.1","resources":[]}',
+      expect: "fire",
+      evidenceIncludes: "insomnia",
+    },
+    {
+      description: "unrelated JSON that happens to contain the word insomnia",
+      url: "https://example.com/api/articles",
+      body: '{"articles":[{"title":"Sleep, insomnia and developer burnout"}]}',
+      expect: "skip",
+    },
+  ],
+
+  "api-wadl-document-exposed": [
+    {
+      description: "Jersey-generated application.wadl",
+      url: "https://example.com/application.wadl",
+      body: '<?xml version="1.0"?><application xmlns="http://wadl.dev.java.net/2009/02"><resources base="https://example.com/api/"><resource path="users"><method name="GET"/></resource></resources></application>',
+      expect: "fire",
+      evidenceIncludes: "wadl",
+    },
+    {
+      description: "ordinary XML sitemap",
+      url: "https://example.com/sitemap.xml",
+      body: '<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://example.com/</loc></url></urlset>',
+      expect: "skip",
+    },
+  ],
+
+  "api-raml-document-exposed": [
+    {
+      description: "RAML 1.0 definition served as text",
+      url: "https://example.com/api.raml",
+      headers: { "content-type": "text/plain" },
+      body: "#%RAML 1.0\ntitle: Orders API\nbaseUri: https://api.example.com/v1\n/orders:\n  get:\n",
+      expect: "fire",
+      evidenceIncludes: "raml",
+    },
+    {
+      description: "documentation page that mentions RAML in prose",
+      url: "https://example.com/docs",
+      body: "<html><body><p>Our older services were described with RAML 1.0 before we moved to OpenAPI.</p></body></html>",
+      expect: "skip",
+    },
+  ],
+
+  "api-odata-metadata-document-exposed": [
+    {
+      description: "OData EDMX metadata document",
+      url: "https://example.com/odata/$metadata",
+      body: '<?xml version="1.0"?><edmx:Edmx xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" Version="4.0"><edmx:DataServices><Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="Example"><EntityType Name="Customer"><Key><PropertyRef Name="Id"/></Key></EntityType></Schema></edmx:DataServices></edmx:Edmx>',
+      expect: "fire",
+      evidenceIncludes: "metadata",
+    },
+    {
+      description: "a $metadata URL that returns an error page, not EDMX",
+      url: "https://example.com/odata/$metadata",
+      body: "<html><body><h1>404 Not Found</h1></body></html>",
+      expect: "skip",
+    },
+  ],
+
+  // ── OpenID Connect / OAuth 2.0 discovery ──────────────────────────────
+
+  "api-oidc-discovery-alg-none-supported": [
+    {
+      description: 'discovery document listing "none" as a signing algorithm',
+      url: "https://auth.example.com/.well-known/openid-configuration",
+      body: '{"issuer":"https://auth.example.com","authorization_endpoint":"https://auth.example.com/authorize","token_endpoint":"https://auth.example.com/token","id_token_signing_alg_values_supported":["RS256","none"]}',
+      expect: "fire",
+      evidenceIncludes: "none",
+    },
+    {
+      description: "discovery document listing only RS256",
+      url: "https://auth.example.com/.well-known/openid-configuration",
+      body: '{"issuer":"https://auth.example.com","authorization_endpoint":"https://auth.example.com/authorize","id_token_signing_alg_values_supported":["RS256","ES256"]}',
+      expect: "skip",
+    },
+  ],
+
+  "api-oidc-discovery-implicit-flow-supported": [
+    {
+      description: "discovery document advertising id_token token",
+      url: "https://auth.example.com/.well-known/openid-configuration",
+      body: '{"issuer":"https://auth.example.com","authorization_endpoint":"https://auth.example.com/authorize","response_types_supported":["code","id_token token"]}',
+      expect: "fire",
+      evidenceIncludes: "implicit",
+    },
+    {
+      description: "discovery document advertising code only",
+      url: "https://auth.example.com/.well-known/openid-configuration",
+      body: '{"issuer":"https://auth.example.com","authorization_endpoint":"https://auth.example.com/authorize","response_types_supported":["code"]}',
+      expect: "skip",
+    },
+  ],
+
+  "api-oidc-discovery-pkce-not-advertised": [
+    {
+      description:
+        "discovery document with the code response type and no PKCE methods",
+      url: "https://auth.example.com/.well-known/openid-configuration",
+      body: '{"issuer":"https://auth.example.com","authorization_endpoint":"https://auth.example.com/authorize","token_endpoint":"https://auth.example.com/token","response_types_supported":["code"]}',
+      expect: "fire",
+      evidenceIncludes: "code_challenge_methods_supported",
+    },
+    {
+      description: "discovery document advertising S256",
+      url: "https://auth.example.com/.well-known/openid-configuration",
+      body: '{"issuer":"https://auth.example.com","authorization_endpoint":"https://auth.example.com/authorize","response_types_supported":["code"],"code_challenge_methods_supported":["S256"]}',
+      expect: "skip",
+    },
+  ],
+
+  // ── OAuth authorization requests ──────────────────────────────────────
+
+  "api-oauth-authorize-redirect-uri-insecure": [
+    {
+      description: "authorize request with an http redirect_uri on a real host",
+      url: "https://auth.example.com/authorize?response_type=code&client_id=web&redirect_uri=http%3A%2F%2Fapp.example.com%2Fcallback",
+      expect: "fire",
+      evidenceIncludes: "redirect_uri",
+    },
+    {
+      description:
+        "loopback http redirect_uri, explicitly permitted by RFC 8252 for native apps",
+      url: "https://auth.example.com/authorize?response_type=code&client_id=native&redirect_uri=http%3A%2F%2F127.0.0.1%3A8080%2Fcb",
+      expect: "skip",
+    },
+    {
+      description: "https redirect_uri",
+      url: "https://auth.example.com/authorize?response_type=code&client_id=web&redirect_uri=https%3A%2F%2Fapp.example.com%2Fcallback",
+      expect: "skip",
+    },
+  ],
+
+  "api-oauth-authorize-oidc-nonce-missing": [
+    {
+      description: "hybrid flow asking for an id_token with no nonce",
+      url: "https://auth.example.com/authorize?response_type=code%20id_token&client_id=web&redirect_uri=https%3A%2F%2Fapp.example.com%2Fcb",
+      expect: "fire",
+      evidenceIncludes: "nonce",
+    },
+    {
+      description: "same request carrying a nonce",
+      url: "https://auth.example.com/authorize?response_type=code%20id_token&client_id=web&nonce=8f3a1c&redirect_uri=https%3A%2F%2Fapp.example.com%2Fcb",
+      expect: "skip",
+    },
+    {
+      description: "plain authorization-code request, no id_token involved",
+      url: "https://auth.example.com/authorize?response_type=code&client_id=web&redirect_uri=https%3A%2F%2Fapp.example.com%2Fcb",
+      expect: "skip",
+    },
+  ],
+
+  "api-jwt-long-lived-token": [
+    {
+      description: "JWT whose exp is a year after its iat",
+      // {"alg":"HS256","typ":"JWT"} . {"sub":"1","iat":1700000000,"exp":1731536000}
+      body: '<script>window.token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiaWF0IjoxNzAwMDAwMDAwLCJleHAiOjE3MzE1MzYwMDB9.c2lnbmF0dXJl";</script>',
+      expect: "fire",
+      evidenceIncludes: "day lifetime",
+    },
+    {
+      description: "JWT with a one-hour lifetime",
+      // {"sub":"1","iat":1700000000,"exp":1700003600}
+      body: '<script>window.token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiaWF0IjoxNzAwMDAwMDAwLCJleHAiOjE3MDAwMDM2MDB9.c2lnbmF0dXJl";</script>',
+      expect: "skip",
+    },
+  ],
+
+  // ── Response-header correctness ───────────────────────────────────────
+
+  "api-retry-after-invalid-value": [
+    {
+      description: 'Retry-After given a unit suffix ("60s")',
+      headers: { "retry-after": "60s" },
+      expect: "fire",
+      evidenceIncludes: "retry-after",
+    },
+    {
+      description: "Retry-After as an integer number of seconds",
+      headers: { "retry-after": "120" },
+      expect: "skip",
+    },
+    {
+      description: "Retry-After as an IMF-fixdate",
+      headers: { "retry-after": "Wed, 21 Oct 2026 07:28:00 GMT" },
+      expect: "skip",
+    },
+  ],
+
+  "api-sunset-header-in-past": [
+    {
+      description: "Sunset date well in the past",
+      headers: { sunset: "Sat, 01 Jan 2022 00:00:00 GMT" },
+      expect: "fire",
+      evidenceIncludes: "sunset",
+    },
+    {
+      description: "Sunset date in the future",
+      headers: { sunset: "Fri, 01 Jan 2100 00:00:00 GMT" },
+      expect: "skip",
+    },
+    {
+      description: "no Sunset header at all",
+      headers: { "content-type": "application/json" },
+      expect: "skip",
+    },
+  ],
+
+  "api-json-response-content-type-mismatch": [
+    {
+      description: "JSON body served as text/html",
+      url: "https://example.com/api/me",
+      headers: { "content-type": "text/html; charset=utf-8" },
+      body: '{"id":1,"name":"<img src=x onerror=alert(1)>"}',
+      expect: "fire",
+      evidenceIncludes: "text/html",
+    },
+    {
+      description: "JSON body served with the correct content type",
+      url: "https://example.com/api/me",
+      headers: { "content-type": "application/json; charset=utf-8" },
+      body: '{"id":1,"name":"ada"}',
+      expect: "skip",
+    },
+    {
+      description: "ordinary HTML page",
+      url: "https://example.com/",
+      headers: { "content-type": "text/html" },
+      body: "<!DOCTYPE html><html><body><h1>Hello</h1></body></html>",
+      expect: "skip",
+    },
+  ],
+
+  "api-response-header-internal-host": [
+    {
+      description: "Location header pointing at an RFC1918 address",
+      headers: { location: "http://10.0.3.14:8080/next" },
+      expect: "fire",
+      evidenceIncludes: "internal host",
+    },
+    {
+      description: "Link pagination header pointing at a .internal hostname",
+      headers: {
+        link: '<https://orders.svc.internal/v1/items?page=2>; rel="next"',
+      },
+      expect: "fire",
+      evidenceIncludes: "internal host",
+    },
+    {
+      description: "Link pagination header on the public origin",
+      headers: {
+        link: '<https://api.example.com/v1/items?page=2>; rel="next"',
+      },
+      expect: "skip",
+    },
+  ],
+
+  "api-www-authenticate-realm-internal-detail": [
+    {
+      description: "Basic realm naming a filesystem path",
+      headers: { "www-authenticate": 'Basic realm="/var/www/internal-admin"' },
+      expect: "fire",
+      evidenceIncludes: "realm",
+    },
+    {
+      description: "opaque realm",
+      headers: { "www-authenticate": 'Basic realm="restricted"' },
+      expect: "skip",
+    },
+  ],
+
+  "api-problem-json-trace-exposed": [
+    {
+      description: "problem+json carrying a Java stack trace",
+      url: "https://example.com/api/orders",
+      headers: { "content-type": "application/problem+json" },
+      body: '{"type":"about:blank","title":"Internal Server Error","status":500,"trace":"java.lang.NullPointerException\\n\\tat com.example.OrderService.load(/opt/app/OrderService.java:88:4)\\n\\tat com.example.Api.handle(/opt/app/Api.java:31:9)"}',
+      expect: "fire",
+      evidenceIncludes: "stack trace",
+    },
+    {
+      description: "problem+json naming the internal exception class",
+      url: "https://example.com/api/orders",
+      headers: { "content-type": "application/problem+json" },
+      body: '{"type":"about:blank","title":"Internal Server Error","status":500,"exception":"com.example.orders.OrderNotFoundException"}',
+      expect: "fire",
+      evidenceIncludes: "exception class",
+    },
+    {
+      description: "well-formed problem document with no internals",
+      url: "https://example.com/api/orders",
+      headers: { "content-type": "application/problem+json" },
+      body: '{"type":"https://api.example.com/errors/invalid-parameter","title":"Invalid parameter","status":400,"detail":"startDate must be before endDate","correlationId":"0f2c1b7e"}',
+      expect: "skip",
+    },
+  ],
+
+  "api-swagger-ui-outdated-version": [
+    {
+      description: "swagger-ui-dist pinned to 3.52.5",
+      url: "https://example.com/docs",
+      body: '<html><body><script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@3.52.5/swagger-ui-bundle.js"></script></body></html>',
+      expect: "fire",
+      evidenceIncludes: "3.52.5",
+    },
+    {
+      description: "current swagger-ui-dist release",
+      url: "https://example.com/docs",
+      body: '<html><body><script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"></script></body></html>',
+      expect: "skip",
+    },
+  ],
+
+  "api-cors-allow-origin-multiple-values": [
+    {
+      description: "the whole allowlist concatenated into one header",
+      headers: {
+        "access-control-allow-origin":
+          "https://app.example.com, https://admin.example.com",
+      },
+      expect: "fire",
+      evidenceIncludes: "2 values",
+    },
+    {
+      description: "a single echoed origin",
+      headers: { "access-control-allow-origin": "https://app.example.com" },
+      expect: "skip",
+    },
+    {
+      description: "the wildcard token",
+      headers: { "access-control-allow-origin": "*" },
+      expect: "skip",
+    },
+  ],
+
+  "api-cors-credentials-without-allow-origin": [
+    {
+      description: "credentials flag with no allowed origin",
+      headers: { "access-control-allow-credentials": "true" },
+      expect: "fire",
+      evidenceIncludes: "credentials",
+    },
+    {
+      description: "both halves set together",
+      headers: {
+        "access-control-allow-credentials": "true",
+        "access-control-allow-origin": "https://app.example.com",
+      },
+      expect: "skip",
+    },
+  ],
 };
 
 runDetectorTests(detectors, fixtures);

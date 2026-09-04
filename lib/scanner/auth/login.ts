@@ -46,10 +46,19 @@ export type EstablishSessionResult =
  * Log in with credentials supplied for this one scan and return a session
  * bound to the target's origin, or a non-secret reason the login could not
  * be trusted.
+ *
+ * `userId` is the account the scan belongs to. Only the "form" branch uses
+ * it, and only for billing and capacity: that branch opens a real
+ * BrowserBase session, which is metered against the caller's live-browser
+ * minutes and takes a slot from the global concurrency queue (see
+ * establishBrowserFormSession). It is required rather than optional so a new
+ * caller cannot open an unmetered browser by forgetting to pass it, which is
+ * exactly how this path ran unbilled and uncapped before.
  */
 export async function establishScanSession(
   auth: EphemeralAuthInput,
   targetUrl: string,
+  userId: number,
 ): Promise<EstablishSessionResult> {
   const origin = originOf(targetUrl);
   if (!origin) {
@@ -89,7 +98,11 @@ export async function establishScanSession(
     }
 
     case "form": {
-      const loginResult = await establishBrowserFormSession(auth, origin);
+      const loginResult = await establishBrowserFormSession(
+        auth,
+        origin,
+        userId,
+      );
       if (!loginResult.ok) return loginResult;
       return finish(loginResult.session, targetUrl);
     }

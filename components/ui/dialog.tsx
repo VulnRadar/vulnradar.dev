@@ -102,7 +102,11 @@ const DialogContent = React.forwardRef<
             // :focus-visible rule in app/globals.css skips tabindex="-1", so
             // this does not paint a ring around the whole panel.
             e.preventDefault();
-            (e.currentTarget as HTMLElement).focus();
+            // preventScroll: focusing an element scrolls it into view, and on
+            // a panel taller than a phone's viewport the browser satisfied
+            // that by scrolling to the bottom of the dialog. The focus itself
+            // is what this block is for; the scroll was never wanted.
+            (e.currentTarget as HTMLElement).focus({ preventScroll: true });
           }}
           {...props}
         >
@@ -150,8 +154,16 @@ const DialogBody = ({
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => {
   const tier = React.useContext(DialogTierContext);
+  const ref = React.useRef<HTMLDivElement>(null);
+  // Radix keeps the panel mounted between openings, so a body left scrolled by
+  // one row was still scrolled when the next row opened it. Layout effect, so
+  // the reset happens before paint rather than as a visible jump.
+  React.useLayoutEffect(() => {
+    if (ref.current) ref.current.scrollTop = 0;
+  }, []);
   return (
     <div
+      ref={ref}
       className={cn(tier === "shell" ? modalBand.body : undefined, className)}
       {...props}
     />

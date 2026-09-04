@@ -51,15 +51,30 @@ vi.mock("@/lib/teams/scan-teams", () => ({
   getScanResourceAccess: (...a: unknown[]) => mockTeamAccess(...a),
 }));
 
+// The suppressed ids the owner has marked false_positive, as the store
+// helper would attach them. Mocked at the module boundary (it imports the pg
+// pool); the flag it sets is what the route filters on.
+const mockSuppressedIds = new Set<string>();
 vi.mock("@/lib/scanner/remediation-store", () => ({
   attachRemediation: (_u: number, _url: string, f: unknown) => f,
+  attachFalsePositiveVerdicts: (_u: number, f: unknown) =>
+    (f as { id: string }[]).map((finding) =>
+      mockSuppressedIds.has(finding.id)
+        ? { ...finding, suppressed: true }
+        : finding,
+    ),
 }));
 
-vi.mock("@/lib/reports/sarif-report", () => ({
-  generateSarifReport: () => ({ version: "2.1.0", runs: [] }),
+const mockSarif = vi.fn((..._a: unknown[]) => ({
+  version: "2.1.0",
+  runs: [],
 }));
+vi.mock("@/lib/reports/sarif-report", () => ({
+  generateSarifReport: (...a: unknown[]) => mockSarif(...a),
+}));
+const mockMarkdown = vi.fn((..._a: unknown[]) => "# markdown report");
 vi.mock("@/lib/reports/markdown-report", () => ({
-  generateMarkdownReport: () => "# markdown report",
+  generateMarkdownReport: (...a: unknown[]) => mockMarkdown(...a),
 }));
 vi.mock("@/lib/reports/compliance-report", () => ({
   generateComplianceReport: () => "# compliance report",
@@ -71,8 +86,8 @@ vi.mock("@/lib/reports/pdf-report", () => ({
 const { GET } = await import("@/app/api/v3/history/[id]/report/route");
 
 const params = { params: Promise.resolve({ id: "pub_1" }) };
-function req(format?: string, auth?: string) {
-  const url = `http://localhost/api/v3/history/pub_1/report${format ? `?format=${format}` : ""}`;
+function req(format?: string, auth?: string, query = "") {
+  const url = `http://localhost/api/v3/history/pub_1/report${format ? `?format=${format}` : "?"}${query}`;
   return new NextRequest(url, {
     method: "GET",
     headers: auth ? { authorization: auth } : {},
@@ -95,6 +110,9 @@ const SCAN = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockSuppressedIds.clear();
+  mockSarif.mockReturnValue({ version: "2.1.0", runs: [] });
+  mockMarkdown.mockReturnValue("# markdown report");
   mockGetSession.mockResolvedValue({ userId: 7, role: "user" });
   mockResolveScanRow.mockResolvedValue(SCAN);
   mockTeamAccess.mockResolvedValue({ canRead: false });
@@ -200,6 +218,133 @@ describe("GET /api/v3/history/[id]/report", () => {
     const res = await GET(req("sarif", "Bearer vr_live_x"), params);
     expect(res.status).toBe(200);
     expect(mockRecordUsage).toHaveBeenCalledWith(3);
+  });
+
+  // ── Triage in exports ────────────────────────────────────────────────
+  //
+  // The route attached remediation and threw the result away, never attached
+  // false-positive verdicts at all, and passed the STORED summary alongside
+  // an unfiltered findings list. Since lib/scanner/recompute-scan-score.ts
+  // rewrites that stored summary to exclude false positives, one export could
+  // print a headline count that disagreed with the findings printed under it.
+
+  it("recomputes summary from the findings actually exported, so the two agree", async () => {
+    mockResolveScanRow.mockResolvedValue({
+      ...SCAN,
+      // What storage holds after a false-positive verdict: a summary counting
+      // one finding, over a findings array still holding two.
+      summary: { critical: 0, high: 1, medium: 0, low: 0, info: 0, total: 1 },
+      findings: [
+        { id: "real", severity: "high", title: "Real" },
+        { id: "bogus", severity: "high", title: "Bogus" },
+      ],
+    });
+    mockSuppressedIds.add("bogus");
+
+    const res = await GET(req(), params);
+    const body = await res.json();
+
+    expect(body.findings.map((f: { id: string }) => f.id)).toEqual(["real"]);
+    expect(body.summary).toEqual({
+      critical: 0,
+      high: 1,
+      medium: 0,
+      low: 0,
+      info: 0,
+      total: 1,
+    });
+    expect(body.summary.total).toBe(body.findings.length);
+  });
+
+  it("keeps summary and findings consistent with ?includeSuppressed=true too", async () => {
+    mockResolveScanRow.mockResolvedValue({
+      ...SCAN,
+      summary: { critical: 0, high: 1, medium: 0, low: 0, info: 0, total: 1 },
+      findings: [
+        { id: "real", severity: "high", title: "Real" },
+        { id: "bogus", severity: "high", title: "Bogus" },
+      ],
+    });
+    mockSuppressedIds.add("bogus");
+
+    const res = await GET(req(undefined, undefined, "includeSuppressed=1"), {
+      params: Promise.resolve({ id: "pub_1" }),
+    });
+    const body = await res.json();
+
+    expect(body.findings).toHaveLength(2);
+    expect(body.summary.high).toBe(2);
+    expect(body.summary.total).toBe(2);
+  });
+
+  it("hands the same filtered list to the markdown generator", async () => {
+    mockResolveScanRow.mockResolvedValue({
+      ...SCAN,
+      findings: [
+        { id: "real", severity: "high", title: "Real" },
+        { id: "bogus", severity: "critical", title: "Bogus" },
+      ],
+    });
+    mockSuppressedIds.add("bogus");
+
+    await GET(req("md"), params);
+
+    const passed = mockMarkdown.mock.calls[0][0] as {
+      findings: { id: string }[];
+      summary: { total: number; critical: number };
+    };
+    expect(passed.findings.map((f) => f.id)).toEqual(["real"]);
+    expect(passed.summary.critical).toBe(0);
+    expect(passed.summary.total).toBe(1);
+  });
+
+  // A team-read viewer sees the stored findings as scanned: triage belongs to
+  // the owner who did it, and leaking "the owner called this a false
+  // positive" across the team boundary is the thing remediation-store's
+  // owner-only contract exists to prevent.
+  it("does not apply the owner's triage to a team-read viewer's export", async () => {
+    mockGetSession.mockResolvedValue({ userId: 8, role: "user" });
+    mockTeamAccess.mockResolvedValue({ canRead: true });
+    mockResolveScanRow.mockResolvedValue({
+      ...SCAN,
+      findings: [
+        { id: "real", severity: "high", title: "Real" },
+        { id: "bogus", severity: "high", title: "Bogus" },
+      ],
+    });
+    mockSuppressedIds.add("bogus");
+
+    const body = await (await GET(req(), params)).json();
+    expect(body.findings).toHaveLength(2);
+    expect(body.summary.total).toBe(2);
+  });
+
+  // Suppression in SARIF is what a CI gate reads, so it stays opt-in.
+  it("leaves SARIF suppressions off unless ?applyTriage says otherwise", async () => {
+    await GET(req("sarif"), params);
+    expect(mockSarif.mock.calls[0][1]).toEqual({ applySuppressions: false });
+
+    mockSarif.mockClear();
+    await GET(req("sarif", undefined, "&applyTriage=true"), {
+      params: Promise.resolve({ id: "pub_1" }),
+    });
+    expect(mockSarif.mock.calls[0][1]).toEqual({ applySuppressions: true });
+  });
+
+  it("serves CSV, which used to be browser-only", async () => {
+    const res = await GET(req("csv"), params);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/csv");
+    expect(res.headers.get("content-disposition")).toContain(".csv");
+    // Byte-order mark first, so Excel on Windows reads the file as UTF-8
+    // rather than falling back to the system code page. Asserted on the raw
+    // bytes: Response.text() performs a UTF-8 decode, which strips a leading
+    // BOM by spec, so a string comparison here would pass even without one.
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+    expect(new TextDecoder().decode(bytes)).toContain(
+      "Finding ID,Title,Severity",
+    );
   });
 
   it("403s an API key lacking scan:read", async () => {

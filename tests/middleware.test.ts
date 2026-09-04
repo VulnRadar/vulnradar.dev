@@ -619,3 +619,99 @@ describe("middleware: request correlation id", () => {
     expect(res.headers.get("x-request-id")).toBeTruthy();
   });
 });
+
+/**
+ * MAINTENANCE_MODE, the environment break-glass half.
+ *
+ * The database-backed switch is enforced in app/layout.tsx via
+ * lib/admin/service-state.ts, because middleware compiles to the Edge bundle
+ * and cannot reach Postgres. This half is the one that still works when the
+ * database is what went down: the situation that motivated the switch, where
+ * the app cannot boot far enough to know it should be serving a maintenance
+ * page at all.
+ *
+ * Two of these are lockout tests and one is a restart-loop test. They are the
+ * reason the exempt list exists.
+ */
+describe("middleware: maintenance break-glass", () => {
+  it("serves a 503 HTML page instead of the app", () => {
+    vi.stubEnv("MAINTENANCE_MODE", "true");
+    const res = middleware(makeRequest("/dashboard"));
+    expect(res.status).toBe(503);
+    expect(res.headers.get("Content-Type")).toContain("text/html");
+    expect(res.headers.get("Retry-After")).toBe("300");
+  });
+
+  it("answers API paths with JSON rather than an HTML page", () => {
+    vi.stubEnv("MAINTENANCE_MODE", "true");
+    const res = middleware(
+      makeRequest("/api/v3/history", { cookie: "vulnradar_session=abc123" }),
+    );
+    expect(res.status).toBe(503);
+    expect(res.headers.get("Content-Type")).toContain("application/json");
+  });
+
+  // An orchestrator that gets a 503 from its readiness probe restarts the
+  // container, so a maintenance page covering this endpoint would put the
+  // deployment into a restart loop for as long as maintenance lasted.
+  it("leaves /api/v3/health reachable", () => {
+    vi.stubEnv("MAINTENANCE_MODE", "true");
+    expect(middleware(makeRequest("/api/v3/health")).status).not.toBe(503);
+  });
+
+  // Both of these are the route back in for the operator.
+  it.each([
+    ROUTES.LOGIN,
+    "/api/v3/auth/login",
+    "/admin",
+    "/api/v3/admin",
+    "/api/v3/version",
+    "/_next/static/chunks/main.js",
+  ])("leaves %s reachable", (path) => {
+    vi.stubEnv("MAINTENANCE_MODE", "true");
+    expect(middleware(makeRequest(path)).status).not.toBe(503);
+  });
+
+  it("still applies the security headers to the maintenance response", () => {
+    vi.stubEnv("MAINTENANCE_MODE", "true");
+    const res = middleware(makeRequest("/dashboard"));
+    expect(res.headers.get("Content-Security-Policy")).toBeTruthy();
+    expect(res.headers.get("x-request-id")).toBeTruthy();
+  });
+
+  // "1" is what an operator's fingers type; the registry's bool schema
+  // accepts only "true"/"false", so getSetting("MAINTENANCE_MODE") would
+  // ignore "1". A switch that half works is worse than one that does not, so
+  // this file matches the registry exactly.
+  it("ignores MAINTENANCE_MODE=1, matching the registry's bool parsing", () => {
+    vi.stubEnv("MAINTENANCE_MODE", "1");
+    expect(middleware(makeRequest("/dashboard")).status).not.toBe(503);
+  });
+
+  it("does nothing when the variable is unset", () => {
+    vi.stubEnv("MAINTENANCE_MODE", "");
+    expect(middleware(makeRequest("/landing")).status).not.toBe(503);
+  });
+});
+
+describe("middleware: x-pathname forwarding", () => {
+  // app/layout.tsx has no other way to read the path it is rendering, and the
+  // database-backed maintenance gate needs it to keep /login exempt.
+  it("forwards the request path to Server Components", () => {
+    // With a session, so the request is passed through rather than redirected
+    // to /login: a redirect carries no forwarded request headers.
+    const res = middleware(
+      makeRequest("/dashboard/settings", {
+        cookie: "vulnradar_session=abc123",
+      }),
+    );
+    expect(res.headers.get("x-middleware-request-x-pathname")).toBe(
+      "/dashboard/settings",
+    );
+  });
+
+  it("forwards the trailing-slash-normalized form", () => {
+    const res = middleware(makeRequest("/landing"));
+    expect(res.headers.get("x-middleware-request-x-pathname")).toBe("/landing");
+  });
+});
