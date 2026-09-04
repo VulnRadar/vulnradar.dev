@@ -192,6 +192,7 @@ export async function POST(request: NextRequest) {
     const loginResult = await establishScanSession(
       ephemeralAuth,
       startUrl.href,
+      userId,
     );
     if (!loginResult.ok) {
       // The reason string is non-secret by construction (see

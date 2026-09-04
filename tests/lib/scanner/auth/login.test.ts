@@ -27,6 +27,16 @@ vi.mock("@/lib/config/runtime-config", () => ({
   getSettings: vi.fn(async () => ({})),
 }));
 
+// Same reason, one module further along: ./browser-login now also imports the
+// live-browser meter and the concurrency queue, because a form login opens a
+// real (billable, capped) BrowserBase session. Both reach the pg pool at
+// import time. Stubbed at the database boundary rather than mocking the
+// billing modules themselves -- this suite never runs the form method, so no
+// assertion here depends on either of them.
+vi.mock("@/lib/database/db", () => ({
+  default: { query: vi.fn(async () => ({ rows: [], rowCount: 0 })) },
+}));
+
 import { establishScanSession, verifySession } from "@/lib/scanner/auth/login";
 import { ScanSession } from "@/lib/scanner/auth/scan-session";
 import type { EphemeralAuthInput } from "@/lib/scanner/auth/types";
@@ -41,6 +51,11 @@ function htmlResponse(
   });
 }
 
+/** The account a scan belongs to. Only the "form" branch of
+ *  establishScanSession uses it (to meter the BrowserBase session that
+ *  branch opens); header and cookie auth never touch it. */
+const USER_ID = 42;
+
 beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn());
 });
@@ -51,7 +66,7 @@ describe("establishScanSession: invalid target", () => {
       method: "header",
       headerValue: "Bearer x",
     };
-    const result = await establishScanSession(auth, "not-a-url");
+    const result = await establishScanSession(auth, "not-a-url", USER_ID);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toMatch(/valid http/i);
   });
@@ -76,6 +91,7 @@ describe("header credential: verified via the generic heuristic", () => {
     const result = await establishScanSession(
       auth,
       "https://app.example.com/api/status",
+      USER_ID,
     );
     expect(result.ok).toBe(true);
 
@@ -107,6 +123,7 @@ describe("header credential: verified via the generic heuristic", () => {
     const result = await establishScanSession(
       auth,
       "https://app.example.com/api/status",
+      USER_ID,
     );
     expect(result.ok).toBe(true);
 
@@ -129,6 +146,7 @@ describe("header credential: verified via the generic heuristic", () => {
     const result = await establishScanSession(
       auth,
       "https://app.example.com/api/status",
+      USER_ID,
     );
     expect(result.ok).toBe(false);
   });
@@ -145,6 +163,7 @@ describe("header credential: verified via the generic heuristic", () => {
     const result = await establishScanSession(
       auth,
       "https://app.example.com/api/status",
+      USER_ID,
     );
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -168,6 +187,7 @@ describe("cookie credential", () => {
     const result = await establishScanSession(
       auth,
       "https://app.example.com/dashboard",
+      USER_ID,
     );
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -191,6 +211,7 @@ describe("cookie credential", () => {
     const result = await establishScanSession(
       auth,
       "https://app.example.com/dashboard",
+      USER_ID,
     );
     expect(result.ok).toBe(false);
     if (!result.ok) {

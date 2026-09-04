@@ -15,6 +15,14 @@ vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
 }));
 
+/**
+ * Per-test setting overrides, consulted ahead of the shipped registry
+ * default. Lets a test shrink SCAN_ASYNC_CHECKS_TIMEOUT_MS to a few
+ * milliseconds and exercise the async layer's real ceiling instead of
+ * waiting the shipped 15 seconds for it.
+ */
+const settingOverrides: Record<string, unknown> = {};
+
 // Runtime-config resolves settings via pool.query under the hood in
 // production; mocked here at the module boundary so it does not consume the
 // mockQuery call sequence the "never writes scan_history" assertions below
@@ -22,13 +30,16 @@ vi.mock("@/lib/database/db", () => ({
 // identical to the old static SCAN_AUTH.ENABLED constant.
 vi.mock("@/lib/config/runtime-config", async () => {
   const { SETTINGS_REGISTRY } = await import("@/lib/config/registry");
+  const resolve = (key: keyof typeof SETTINGS_REGISTRY) =>
+    key in settingOverrides
+      ? settingOverrides[key]
+      : SETTINGS_REGISTRY[key].default;
   return {
-    getSetting: vi.fn(
-      async (key: keyof typeof SETTINGS_REGISTRY) =>
-        SETTINGS_REGISTRY[key].default,
+    getSetting: vi.fn(async (key: keyof typeof SETTINGS_REGISTRY) =>
+      resolve(key),
     ),
     getSettings: vi.fn(async (keys: (keyof typeof SETTINGS_REGISTRY)[]) =>
-      Object.fromEntries(keys.map((k) => [k, SETTINGS_REGISTRY[k].default])),
+      Object.fromEntries(keys.map((k) => [k, resolve(k)])),
     ),
   };
 });
@@ -109,8 +120,17 @@ vi.mock("@/lib/scanner/registry", () => ({
   getChecksByCategory: () => [],
 }));
 
+// runAsyncChecksDetailed, not runAsyncChecks: this route needs the
+// `incomplete` bookkeeping so a run that came back short cannot be presented
+// as a clean one. Module-scope handles so a test can drive the timed-out and
+// throwing branches, which is the whole property under test below.
+const mockRunAsyncChecksDetailed = vi.fn();
+const mockGetPlannedAsyncBranches = vi.fn();
 vi.mock("@/lib/scanner/async-checks", () => ({
-  runAsyncChecks: vi.fn(async () => []),
+  runAsyncChecksDetailed: (...args: unknown[]) =>
+    mockRunAsyncChecksDetailed(...args),
+  getPlannedAsyncBranches: (...args: unknown[]) =>
+    mockGetPlannedAsyncBranches(...args),
 }));
 
 const mockEstablishScanSession = vi.fn();
@@ -149,6 +169,14 @@ beforeEach(() => {
   mockValidateScanTarget.mockResolvedValue({ safe: true });
   mockCheckAccessRules.mockReset();
   mockCheckAccessRules.mockResolvedValue({ allowed: true });
+  mockRunAsyncChecksDetailed.mockReset();
+  mockRunAsyncChecksDetailed.mockResolvedValue({
+    findings: [],
+    incomplete: [],
+  });
+  mockGetPlannedAsyncBranches.mockReset();
+  mockGetPlannedAsyncBranches.mockReturnValue(["dns", "tls", "live-fetch"]);
+  for (const key of Object.keys(settingOverrides)) delete settingOverrides[key];
   mockInlineSlot.mockReset();
   mockInlineSlot.mockImplementation(
     async (_userId: number, work: () => Promise<unknown>) => ({
@@ -612,5 +640,165 @@ describe("domain ownership gate", () => {
     );
     expect(res.status).toBe(200);
     expect(mockEstablishScanSession).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * "We found nothing" and "we could not finish looking" must never be the same
+ * output. This route used to make them identical: it called the
+ * bookkeeping-free `runAsyncChecks`, which throws the `incomplete` list away,
+ * and its own outer ceiling resolved to a bare `[]`. So an authenticated scan
+ * whose DNS, TLS and live-fetch branches all ran out of time answered with
+ * summary.total = 0 and nothing marking it short, and the dashboard drew it as
+ * "Zero findings on this host. Every enabled check ran and none of them fired."
+ *
+ * The single property every test here asserts is the one the UI actually
+ * branches on (components/scanner/scan-summary.tsx, scan-result-detail.tsx,
+ * dashboard-results.tsx): a result reads as clean only when it has no findings
+ * AND no `incomplete` entries. `presentsAsClean` below is that predicate,
+ * written out once so each case states the same thing.
+ */
+function presentsAsClean(json: {
+  summary?: { total?: number };
+  incomplete?: string[];
+}): boolean {
+  return (
+    (json.summary?.total ?? 0) === 0 && (json.incomplete ?? []).length === 0
+  );
+}
+
+/** The result_meta JSON bound into the scan_history INSERT (11th param). */
+function persistedResultMeta(calls: unknown[][]): Record<string, unknown> {
+  const insert = calls.find((call) =>
+    String(call[0]).includes("INSERT INTO scan_history"),
+  );
+  return JSON.parse(String((insert![1] as unknown[])[10]));
+}
+
+describe("POST /api/v3/scan/authenticated - an unfinished scan cannot present as clean", () => {
+  it("names the branches that did not finish, and does not read as clean, when the async layer comes back short", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockRunAsyncChecksDetailed.mockResolvedValue({
+      findings: [],
+      incomplete: ["dns", "tls"],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 900 }] });
+
+    const res = await POST(postRequest(FORM_AUTH_BODY));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.summary.total).toBe(0);
+    expect(json.incomplete).toEqual(["dns", "tls"]);
+    expect(presentsAsClean(json)).toBe(false);
+    // And the same on every later read of this scan: History, the shared
+    // link and the public host page all render from result_meta, not from
+    // this response.
+    expect(persistedResultMeta(mockQuery.mock.calls).incomplete).toEqual([
+      "dns",
+      "tls",
+    ]);
+  });
+
+  it("marks every planned branch unfinished when the whole async layer hits this route's ceiling", async () => {
+    settingOverrides.SCAN_ASYNC_CHECKS_TIMEOUT_MS = 5;
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    // Still running when the ceiling fires: the exact case that used to
+    // resolve to a bare [] and report the scan as complete.
+    mockRunAsyncChecksDetailed.mockReturnValue(
+      new Promise((resolve) =>
+        setTimeout(() => resolve({ findings: [], incomplete: [] }), 300),
+      ),
+    );
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 901 }] });
+
+    const res = await POST(postRequest(FORM_AUTH_BODY));
+    const json = await res.json();
+
+    expect(json.incomplete).toEqual(["dns", "tls", "live-fetch"]);
+    expect(presentsAsClean(json)).toBe(false);
+  });
+
+  it("marks every planned branch unfinished when the async layer throws outright", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockRunAsyncChecksDetailed.mockRejectedValue(new Error("resolver blew up"));
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 902 }] });
+
+    const res = await POST(postRequest(FORM_AUTH_BODY));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.incomplete).toEqual(["dns", "tls", "live-fetch"]);
+    expect(presentsAsClean(json)).toBe(false);
+  });
+
+  it("does not read as clean when the login held but the session was lost mid-scan", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: {
+        lost: true,
+        reason: "The target cleared the session cookie during the scan.",
+      },
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 903 }] });
+
+    const res = await POST(postRequest(FORM_AUTH_BODY));
+    const json = await res.json();
+
+    // The pages that came back are the signed-out surface, so the
+    // authenticated area the caller asked about was never checked.
+    expect(json.authReport.status).toBe("lost");
+    expect(json.incomplete).toContain("authenticated-session");
+    expect(presentsAsClean(json)).toBe(false);
+    expect(persistedResultMeta(mockQuery.mock.calls).incomplete).toContain(
+      "authenticated-session",
+    );
+  });
+
+  it("still reads as clean, with no incomplete marker at all, when everything genuinely ran", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 904 }] });
+
+    const res = await POST(postRequest(FORM_AUTH_BODY));
+    const json = await res.json();
+
+    expect(json.summary.total).toBe(0);
+    // Absent, not an empty array: a consumer that only checks for the key
+    // must be able to tell "everything ran" from "something did not".
+    expect(json.incomplete).toBeUndefined();
+    expect(presentsAsClean(json)).toBe(true);
+    expect(
+      persistedResultMeta(mockQuery.mock.calls).incomplete,
+    ).toBeUndefined();
+  });
+
+  it("reports lower engine confidence for a run that came back short than for one that finished", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 905 }] });
+    const complete = await (await POST(postRequest(FORM_AUTH_BODY))).json();
+
+    mockRunAsyncChecksDetailed.mockResolvedValue({
+      findings: [],
+      incomplete: ["dns"],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 906 }] });
+    const short = await (await POST(postRequest(FORM_AUTH_BODY))).json();
+
+    expect(short.engineConfidence).toBeLessThan(complete.engineConfidence);
   });
 });

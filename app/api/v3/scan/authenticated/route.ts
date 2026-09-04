@@ -42,7 +42,11 @@ import {
   getEngineConfidence,
 } from "@/lib/scanner/safety-rating";
 import { runSyncChecks } from "@/lib/scanner/engine";
-import { runAsyncChecks } from "@/lib/scanner/async-checks";
+import {
+  getPlannedAsyncBranches,
+  runAsyncChecksDetailed,
+  type AsyncCheckResult,
+} from "@/lib/scanner/async-checks";
 import { normalizeUrl } from "@/lib/scanner/execute-scan";
 import { validateScanTarget, safeFetch } from "@/lib/scanner/safe-fetch";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
@@ -381,7 +385,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // concurrentScans cap simply did not apply here. Taken after the target
   // and ownership gates so a rejected request never holds a slot.
   const slotted = await withInlineScanSlot(authedUserId, async () => {
-    const loginResult = await establishScanSession(auth, url);
+    const loginResult = await establishScanSession(auth, url, authedUserId);
     if (!loginResult.ok) {
       const authReport: ScanAuthReport = {
         status: "failed",
@@ -461,16 +465,41 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     );
     const syncFindings: Vulnerability[] = syncResult.findings;
 
+    // runAsyncChecksDetailed, not runAsyncChecks: an authenticated scan is
+    // rendered through the same components as every other scan, so it needs
+    // the same completeness bookkeeping. The bookkeeping-free variant threw
+    // the `incomplete` list away and this route's own outer race resolved to
+    // a bare [] on the ceiling, so an authenticated scan whose DNS, TLS and
+    // live-fetch branches all ran out of time returned summary.total = 0
+    // with nothing marking it short, and the dashboard drew it as "Zero
+    // findings on this host. Every enabled check ran and none of them
+    // fired." That is the one thing a scanner must never say about a run it
+    // could not finish, and it is the same defect the single-page and crawl
+    // executors already fixed (lib/scanner/execute-scan.ts,
+    // lib/scanner/execute-crawl-scan.ts).
+    const plannedBranches = getPlannedAsyncBranches(url, scanners ?? null);
     let asyncFindings: Vulnerability[] = [];
+    let asyncIncomplete: string[] = [];
+    let asyncTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
     try {
-      asyncFindings = await Promise.race([
-        runAsyncChecks(url, scanners ?? null),
-        new Promise<Vulnerability[]>((resolve) =>
-          setTimeout(() => resolve([]), asyncChecksTimeoutMs),
-        ),
+      const asyncResult = await Promise.race<AsyncCheckResult>([
+        runAsyncChecksDetailed(url, scanners ?? null),
+        new Promise<AsyncCheckResult>((resolve) => {
+          asyncTimeoutHandle = setTimeout(
+            () => resolve({ findings: [], incomplete: plannedBranches }),
+            asyncChecksTimeoutMs,
+          );
+        }),
       ]);
+      asyncFindings = asyncResult.findings;
+      asyncIncomplete = asyncResult.incomplete;
     } catch {
-      /* non-fatal */
+      // runAsyncChecksDetailed absorbs per-branch failures, so this is only
+      // reachable on something it cannot absorb. Either way the async layer
+      // contributed nothing, which is exactly what incomplete records.
+      asyncIncomplete = plannedBranches;
+    } finally {
+      if (asyncTimeoutHandle) clearTimeout(asyncTimeoutHandle);
     }
 
     const findings = [...syncFindings, ...asyncFindings].sort(
@@ -501,13 +530,36 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       reason: session.lost ? (session.reason ?? undefined) : undefined,
     };
 
+    // Everything about this run that did NOT reach a conclusion, in the one
+    // shape the result components already read (ScanResult.incomplete, whose
+    // contract in lib/scanner/types.ts is "listed area means not checked, not
+    // checked and clean"). A lost session belongs in it as much as a timed-out
+    // branch does: the scan carried on against the signed-out surface, so the
+    // authenticated area the caller actually asked about was never looked at,
+    // and a zero-finding run must not read as clean because of it.
+    const incomplete = [
+      ...asyncIncomplete,
+      ...(session.lost ? ["authenticated-session"] : []),
+    ];
+
     // Headline signals, same as a normal scan (getDangerScore/getEngineConfidence
     // are pure over the findings). Without these an authenticated scan showed
     // only duration + scanned time on the summary; they are also stored in
     // result_meta so the History view of this scan matches every other result.
     const dangerScore = getDangerScore(findings);
-    const engineConfidence = getEngineConfidence(findings);
-    const resultMeta = { dangerScore, engineConfidence };
+    const engineConfidence = getEngineConfidence(
+      findings,
+      incomplete.length > 0,
+    );
+    const resultMeta = {
+      checksRun: syncResult.checksRun,
+      ...(syncResult.checksErrored > 0
+        ? { checksErrored: syncResult.checksErrored }
+        : {}),
+      dangerScore,
+      engineConfidence,
+      ...(incomplete.length > 0 ? { incomplete } : {}),
+    };
 
     let scanHistoryId: number | null = null;
     try {
@@ -602,6 +654,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       authReport,
       dangerScore,
       engineConfidence,
+      checksRun: syncResult.checksRun,
+      // Only present when something genuinely did not finish. Its absence is
+      // the claim "everything ran"; sending an empty array every time would
+      // make the two indistinguishable to any consumer that only checks for
+      // the key.
+      ...(incomplete.length > 0 ? { incomplete } : {}),
     });
   });
   if (!slotted.ok) {

@@ -122,15 +122,40 @@ export async function POST(request: Request) {
     );
   }
 
-  // Get user's email
-  const userRes = await pool.query("SELECT email FROM users WHERE id = $1", [
-    session.userId,
-  ]);
+  // Get user's email, and whether the account has actually proved it owns it.
+  const userRes = await pool.query(
+    "SELECT email, email_verified_at FROM users WHERE id = $1",
+    [session.userId],
+  );
   const userEmail = userRes.rows[0]?.email;
+  const emailVerified = Boolean(userRes.rows[0]?.email_verified_at);
 
   if (userEmail !== invite.email) {
     return NextResponse.json(
       { error: "This invite was sent to a different email address." },
+      { status: 403 },
+    );
+  }
+
+  // authz: an invite is addressed to an ADDRESS, so joining on it has to
+  // prove the caller controls that address, not merely that they typed it
+  // into their profile. PATCH /api/v3/auth/update lets an account move to
+  // any address no other account holds, and it clears email_verified_at
+  // when it does -- but it also re-issues the caller's own session, so the
+  // account stays signed in with an unverified address. Matching on
+  // users.email alone therefore let anyone point their account at a pending
+  // invite's address and accept it, joining a team (and seeing its scans)
+  // they were never invited to. Login already refuses an unverified account
+  // (app/api/v3/auth/login/route.ts), so every ordinary session reaching
+  // here is verified and nothing legitimate is blocked: a user who
+  // genuinely changes address clicks the link that change already mails
+  // them and the invite becomes acceptable again.
+  if (!emailVerified) {
+    return NextResponse.json(
+      {
+        error:
+          "Verify your email address before accepting a team invitation. Use the verification link we sent to it, or request a new one from your profile.",
+      },
       { status: 403 },
     );
   }

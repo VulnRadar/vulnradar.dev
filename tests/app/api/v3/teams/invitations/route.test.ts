@@ -7,6 +7,11 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 let userEmail: string | null = "bob@example.com";
+/** Whether the account has actually proved it owns `userEmail`. An account
+ *  can move to any unclaimed address without proving anything (PATCH
+ *  /api/v3/auth/update), so both handlers here gate on this, not on the
+ *  address alone. */
+let userEmailVerified: string | null = "2026-01-01T00:00:00.000Z";
 let invitesRows: Record<string, unknown>[] = [];
 let deleteRowCount = 1;
 const calls: { sql: string; params: unknown[] }[] = [];
@@ -14,8 +19,12 @@ const calls: { sql: string; params: unknown[] }[] = [];
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   calls.push({ sql, params });
   const s = sql.trim();
-  if (s.startsWith("SELECT email FROM users")) {
-    return { rows: userEmail ? [{ email: userEmail }] : [] };
+  if (s.startsWith("SELECT email, email_verified_at FROM users")) {
+    return {
+      rows: userEmail
+        ? [{ email: userEmail, email_verified_at: userEmailVerified }]
+        : [],
+    };
   }
   if (s.includes("FROM team_invites ti")) {
     return { rows: invitesRows };
@@ -58,6 +67,7 @@ beforeEach(() => {
   mockGetSession.mockResolvedValue({ userId: 42 });
   mockMarkHandled.mockReset();
   userEmail = "bob@example.com";
+  userEmailVerified = "2026-01-01T00:00:00.000Z";
   invitesRows = [];
   deleteRowCount = 1;
   calls.length = 0;
@@ -107,6 +117,33 @@ describe("GET /api/v3/teams/invitations", () => {
       false,
     );
   });
+
+  // An account can point itself at any unclaimed address and keep its
+  // session (PATCH /api/v3/auth/update re-issues one), so listing by
+  // users.email alone showed a stranger's pending invites -- team name and
+  // inviter name included -- to whoever typed their address in.
+  it("lists nothing for an account that has not verified the address it claims", async () => {
+    userEmailVerified = null;
+    invitesRows = [
+      {
+        id: 7,
+        role: "viewer",
+        created_at: "now",
+        expires_at: "later",
+        team_name: "Acme",
+        invited_by_name: "Alice",
+      },
+    ];
+
+    const res = await GET();
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.invitations).toEqual([]);
+    expect(calls.some((c) => c.sql.includes("FROM team_invites ti"))).toBe(
+      false,
+    );
+  });
 });
 
 describe("DELETE /api/v3/teams/invitations", () => {
@@ -139,6 +176,22 @@ describe("DELETE /api/v3/teams/invitations", () => {
     deleteRowCount = 0;
     const res = await DELETE(deleteRequest({ inviteId: 999 }));
     expect(res.status).toBe(404);
+    expect(mockMarkHandled).not.toHaveBeenCalled();
+  });
+
+  // Declining deletes the invite outright, so an account that has only
+  // claimed an address (never proved it) could destroy a pending invite
+  // belonging to whoever really owns it.
+  it("refuses to decline anything for an account that has not verified the address it claims", async () => {
+    userEmailVerified = null;
+
+    const res = await DELETE(deleteRequest({ inviteId: 7 }));
+
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toMatch(/verify your email/i);
+    expect(
+      calls.some((c) => c.sql.trim().startsWith("DELETE FROM team_invites")),
+    ).toBe(false);
     expect(mockMarkHandled).not.toHaveBeenCalled();
   });
 });

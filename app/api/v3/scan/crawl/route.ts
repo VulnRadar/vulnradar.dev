@@ -410,6 +410,7 @@ export async function POST(request: NextRequest) {
     const loginResult = await establishScanSession(
       ephemeralAuth,
       normalizedMainUrl,
+      authedUserId,
     );
     if (!loginResult.ok) {
       const authReport: ScanAuthReport = {

@@ -33,6 +33,15 @@ import {
   openCdpPageSession,
   type CdpConnection,
 } from "@/lib/browserbase/client";
+import {
+  checkBrowserbaseQuota,
+  recordBrowserbaseSeconds,
+} from "@/lib/billing/browserbase-usage";
+import {
+  acquireConcurrencySlot,
+  releaseConcurrencySlot,
+} from "@/lib/browserbase/concurrency-queue";
+import { getUserPlan } from "@/lib/rate-limiting/daily-limits";
 import { APP_NAME } from "@/lib/config/constants";
 import {
   CONFIG_SCAN_AUTH_BROWSER_MAX_HTML_CHARS,
@@ -522,11 +531,63 @@ export async function runLoginOverCdp(
 /**
  * Open a BrowserBase session, run the login handshake, and always tear the
  * browser session down afterward, success or failure.
+ *
+ * A real BrowserBase session costs real money and the account has a hard
+ * concurrency ceiling of its own, so this path is gated and metered exactly
+ * like every other one that opens a browser (POST /api/v3/browser/sessions
+ * and lib/scanner/page-screenshot.ts): the caller's live-browser minutes are
+ * checked first, one slot is taken from the global queue (paid plans ahead
+ * of free), and the seconds actually spent are billed back to `userId`. It
+ * used to open a session on all three counts unmetered, which was both a
+ * billing hole and a way for one account to exhaust the whole deployment's
+ * BrowserBase concurrency with repeated form logins.
+ *
+ * The slot is released in `finally`, on every path, and the meter is charged
+ * only when a session genuinely came up (`sessionId` set), so a create that
+ * threw is never billed and a retry pays for its own second session rather
+ * than double-charging for the first.
  */
 export async function establishBrowserFormSession(
   auth: EphemeralFormAuth,
   origin: string,
+  userId: number,
 ): Promise<EstablishSessionResult> {
+  // Plan/meter gate before anything is reserved or opened. Same check, same
+  // message, as a live viewer session's.
+  try {
+    const quota = await checkBrowserbaseQuota(userId);
+    if (!quota.allowed) {
+      return fail(
+        quota.message ??
+          "Your live-browser allowance is used up, so a form login cannot open a browser right now.",
+      );
+    }
+  } catch {
+    return fail("Could not check your live-browser allowance for this login.");
+  }
+
+  // Paid plans jump the concurrency queue ahead of free, the same rule the
+  // interactive session route and the screenshot capture both apply.
+  let priority = false;
+  try {
+    priority = (await getUserPlan(userId)) !== "free";
+  } catch {
+    /* default to non-priority */
+  }
+
+  let acquired = false;
+  try {
+    acquired = (await acquireConcurrencySlot(priority)).acquired;
+  } catch {
+    acquired = false;
+  }
+  if (!acquired) {
+    return fail(
+      "Live-browser capacity is full right now, so the login page could not be rendered. Try again in a moment.",
+    );
+  }
+
+  const startedAt = Date.now();
   let sessionId: string | null = null;
   try {
     const timings = await resolveBrowserAuthTimings();
@@ -557,7 +618,18 @@ export async function establishBrowserFormSession(
       `Could not start a browser session to attempt the login: ${message}`,
     );
   } finally {
-    if (sessionId) await endBrowserSession(sessionId);
+    if (sessionId) {
+      await endBrowserSession(sessionId);
+      // Charge only for a session that actually existed on BrowserBase's
+      // side. Fire-and-forget: a usage-write hiccup never fails the scan.
+      const elapsedSeconds = Math.max(
+        1,
+        Math.round((Date.now() - startedAt) / 1000),
+      );
+      recordBrowserbaseSeconds(userId, elapsedSeconds).catch(() => {});
+    }
+    // Always release the slot taken above, on every path.
+    releaseConcurrencySlot().catch(() => {});
   }
 }
 

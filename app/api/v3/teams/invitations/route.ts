@@ -25,11 +25,19 @@ export async function GET() {
   const gate = await teamsDisabledResponse();
   if (gate) return gate;
 
-  const userRes = await pool.query("SELECT email FROM users WHERE id = $1", [
-    session.userId,
-  ]);
+  // email_verified_at, not just email: the same boundary POST
+  // /api/v3/teams/accept-invite enforces. An account can point itself at any
+  // unclaimed address (PATCH /api/v3/auth/update) and keep its session, so
+  // listing by users.email alone would show a stranger's pending invites --
+  // team name and inviter name included -- to whoever typed that address in.
+  // An unverified account simply has no invitations to show yet.
+  const userRes = await pool.query(
+    "SELECT email, email_verified_at FROM users WHERE id = $1",
+    [session.userId],
+  );
   const email = userRes.rows[0]?.email;
-  if (!email) return NextResponse.json({ invitations: [] });
+  if (!email || !userRes.rows[0]?.email_verified_at)
+    return NextResponse.json({ invitations: [] });
 
   const invites = await pool.query(
     `SELECT ti.id, ti.role, ti.created_at, ti.expires_at,
@@ -62,14 +70,27 @@ export async function DELETE(request: Request) {
   if (!inviteId)
     return NextResponse.json({ error: "inviteId required." }, { status: 400 });
 
-  const userRes = await pool.query("SELECT email FROM users WHERE id = $1", [
-    session.userId,
-  ]);
+  const userRes = await pool.query(
+    "SELECT email, email_verified_at FROM users WHERE id = $1",
+    [session.userId],
+  );
   const email = userRes.rows[0]?.email;
   if (!email)
     return NextResponse.json(
       { error: "Your account has no email address." },
       { status: 400 },
+    );
+  // Declining is destructive: it deletes the invite outright. Same
+  // verified-address requirement the accept and list paths use, so an
+  // account that has only claimed an address (never proved it) cannot
+  // destroy a pending invite belonging to whoever really owns it.
+  if (!userRes.rows[0]?.email_verified_at)
+    return NextResponse.json(
+      {
+        error:
+          "Verify your email address before answering a team invitation. Use the verification link we sent to it, or request a new one from your profile.",
+      },
+      { status: 403 },
     );
 
   // Scope the delete to the caller's own email so an inviteId (a small,

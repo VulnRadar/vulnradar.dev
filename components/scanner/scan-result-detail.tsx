@@ -194,6 +194,11 @@ export function ScanResultDetail({
     dns: "DNS records",
     tls: "TLS and certificate checks",
     "live-fetch": "Live page fetch",
+    // Written by POST /api/v3/scan/authenticated when the login held long
+    // enough to start but the session was lost during the run: the pages
+    // that came back are the signed-out surface, so the authenticated area
+    // the user asked about is unchecked rather than clean.
+    "authenticated-session": "The signed-in view of this page",
   };
   const incompleteAreas = (result.incomplete ?? []).map(
     (area) => INCOMPLETE_LABELS[area] ?? area,

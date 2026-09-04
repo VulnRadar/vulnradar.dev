@@ -68,6 +68,10 @@ const SCAN_EXECUTION_CALLS = [
   "discoverPages(",
   "runSyncChecks(",
   "runAsyncChecks(",
+  // Distinct string, not a prefix of the one above: "runAsyncChecks(" does
+  // not match "runAsyncChecksDetailed(". Both spellings run the same network
+  // work, so both belong here.
+  "runAsyncChecksDetailed(",
 ];
 
 const ENTRY_POINTS: EntryPoint[] = [

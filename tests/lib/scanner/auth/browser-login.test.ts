@@ -30,6 +30,31 @@ vi.mock("@/lib/config/runtime-config", () => ({
   getSettings: vi.fn(async () => ({})),
 }));
 
+// Billing + capacity boundary for the BrowserBase session
+// establishBrowserFormSession opens. Mocked here, one level above the
+// database each of these modules would otherwise reach, so the suite can
+// both drive their refusal branches and assert the slot/meter bookkeeping
+// this path used to skip entirely. vi.hoisted because the vi.mock factories
+// below are lifted above the static imports at the bottom of this block.
+const meter = vi.hoisted(() => ({
+  checkBrowserbaseQuota: vi.fn(),
+  recordBrowserbaseSeconds: vi.fn(),
+  acquireConcurrencySlot: vi.fn(),
+  releaseConcurrencySlot: vi.fn(),
+  getUserPlan: vi.fn(),
+}));
+vi.mock("@/lib/billing/browserbase-usage", () => ({
+  checkBrowserbaseQuota: meter.checkBrowserbaseQuota,
+  recordBrowserbaseSeconds: meter.recordBrowserbaseSeconds,
+}));
+vi.mock("@/lib/browserbase/concurrency-queue", () => ({
+  acquireConcurrencySlot: meter.acquireConcurrencySlot,
+  releaseConcurrencySlot: meter.releaseConcurrencySlot,
+}));
+vi.mock("@/lib/rate-limiting/daily-limits", () => ({
+  getUserPlan: meter.getUserPlan,
+}));
+
 // Speed up the settle-window poll in navigateAndWaitForLoad without
 // touching the timeout/limit constants other modules under test rely on.
 vi.mock("@/lib/config/config-values", async (importOriginal) => {
@@ -130,8 +155,24 @@ const LOGIN_FORM_HTML = `
 </form>
 </body></html>`;
 
+/** The account a form login is billed to. */
+const USER_ID = 42;
+
 beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn());
+  meter.checkBrowserbaseQuota.mockReset();
+  meter.checkBrowserbaseQuota.mockResolvedValue({ allowed: true });
+  meter.recordBrowserbaseSeconds.mockReset();
+  meter.recordBrowserbaseSeconds.mockResolvedValue(undefined);
+  meter.acquireConcurrencySlot.mockReset();
+  meter.acquireConcurrencySlot.mockResolvedValue({
+    acquired: true,
+    queued: false,
+  });
+  meter.releaseConcurrencySlot.mockReset();
+  meter.releaseConcurrencySlot.mockResolvedValue(undefined);
+  meter.getUserPlan.mockReset();
+  meter.getUserPlan.mockResolvedValue("pro");
 });
 
 describe("detectChallenge", () => {
@@ -351,7 +392,7 @@ describe("establishBrowserFormSession: session lifecycle", () => {
 
     const { establishBrowserFormSession: establish } =
       await import("@/lib/scanner/auth/browser-login");
-    const result = await establish(AUTH, ORIGIN);
+    const result = await establish(AUTH, ORIGIN, USER_ID);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toMatch(/not available/i);
     vi.doUnmock("@/lib/browserbase/client");
@@ -378,9 +419,149 @@ describe("establishBrowserFormSession: session lifecycle", () => {
 
     const { establishBrowserFormSession: establish } =
       await import("@/lib/scanner/auth/browser-login");
-    const result = await establish(AUTH, ORIGIN);
+    const result = await establish(AUTH, ORIGIN, USER_ID);
     expect(result.ok).toBe(false);
     expect(endBrowserSession).toHaveBeenCalledWith("sess_2");
+    vi.doUnmock("@/lib/browserbase/client");
+    vi.resetModules();
+  });
+});
+
+/**
+ * A BrowserBase session costs real money and the deployment's account has a
+ * hard concurrency ceiling, so every other path that opens one checks the
+ * caller's live-browser allowance, takes a queue slot, and bills the seconds
+ * back (POST /api/v3/browser/sessions, lib/scanner/page-screenshot.ts). This
+ * one did none of the three: a form login opened a session unmetered and
+ * uncapped, so repeated form logins were both free and a way for one account
+ * to exhaust the whole deployment's concurrency.
+ */
+describe("establishBrowserFormSession: metering and capacity", () => {
+  /** Mocks lib/browserbase/client with a session that comes up but renders a
+   *  page holding no login form, so the login fails AFTER a real session
+   *  exists: the case where a slot is held and seconds were really spent. */
+  function mockClientWithLiveSession(id: string, createThrows = false) {
+    vi.doMock("@/lib/browserbase/client", () => ({
+      createBrowserSession: vi.fn(async () => {
+        if (createThrows) throw new Error("browserbase is down");
+        return { id, status: "RUNNING", url: "", connectUrl: "wss://c" };
+      }),
+      endBrowserSession: vi.fn(async () => undefined),
+      openCdpPageSession: vi.fn(async () =>
+        makeFakeCdp({
+          rendered: { title: "Home", html: "<html>no form</html>" },
+        }),
+      ),
+    }));
+  }
+
+  it("opens no browser session at all once the account's live-browser allowance is used up", async () => {
+    vi.resetModules();
+    const createBrowserSession = vi.fn();
+    vi.doMock("@/lib/browserbase/client", () => ({
+      createBrowserSession,
+      endBrowserSession: vi.fn(async () => undefined),
+      openCdpPageSession: vi.fn(async () => null),
+    }));
+    meter.checkBrowserbaseQuota.mockResolvedValue({
+      allowed: false,
+      message: "You've used your 5 live-browser minute(s) for this month.",
+    });
+
+    const { establishBrowserFormSession: establish } =
+      await import("@/lib/scanner/auth/browser-login");
+    const result = await establish(AUTH, ORIGIN, USER_ID);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toMatch(/live-browser minute/i);
+    expect(createBrowserSession).not.toHaveBeenCalled();
+    // Nothing was reserved, so nothing may be released: a stray release here
+    // would hand a slot back that was never taken and inflate the cap.
+    expect(meter.acquireConcurrencySlot).not.toHaveBeenCalled();
+    expect(meter.releaseConcurrencySlot).not.toHaveBeenCalled();
+    expect(meter.recordBrowserbaseSeconds).not.toHaveBeenCalled();
+    vi.doUnmock("@/lib/browserbase/client");
+    vi.resetModules();
+  });
+
+  it("opens no browser session when the global concurrency queue has no slot free", async () => {
+    vi.resetModules();
+    const createBrowserSession = vi.fn();
+    vi.doMock("@/lib/browserbase/client", () => ({
+      createBrowserSession,
+      endBrowserSession: vi.fn(async () => undefined),
+      openCdpPageSession: vi.fn(async () => null),
+    }));
+    meter.acquireConcurrencySlot.mockResolvedValue({
+      acquired: false,
+      queued: true,
+    });
+
+    const { establishBrowserFormSession: establish } =
+      await import("@/lib/scanner/auth/browser-login");
+    const result = await establish(AUTH, ORIGIN, USER_ID);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toMatch(/capacity is full/i);
+    expect(createBrowserSession).not.toHaveBeenCalled();
+    expect(meter.releaseConcurrencySlot).not.toHaveBeenCalled();
+    expect(meter.recordBrowserbaseSeconds).not.toHaveBeenCalled();
+    vi.doUnmock("@/lib/browserbase/client");
+    vi.resetModules();
+  });
+
+  it("takes exactly one slot, releases it, and bills the seconds once when the login fails after the session came up", async () => {
+    vi.resetModules();
+    mockClientWithLiveSession("sess_meter_1");
+
+    const { establishBrowserFormSession: establish } =
+      await import("@/lib/scanner/auth/browser-login");
+    const result = await establish(AUTH, ORIGIN, USER_ID);
+
+    expect(result.ok).toBe(false);
+    expect(meter.acquireConcurrencySlot).toHaveBeenCalledTimes(1);
+    // A slot taken must always be handed back, including on the failure
+    // paths, or the cap silently shrinks with every failed login.
+    expect(meter.releaseConcurrencySlot).toHaveBeenCalledTimes(1);
+    expect(meter.recordBrowserbaseSeconds).toHaveBeenCalledTimes(1);
+    expect(meter.recordBrowserbaseSeconds.mock.calls[0][0]).toBe(USER_ID);
+    expect(meter.recordBrowserbaseSeconds.mock.calls[0][1]).toBeGreaterThan(0);
+    vi.doUnmock("@/lib/browserbase/client");
+    vi.resetModules();
+  });
+
+  it("admits a paid plan to the queue ahead of free", async () => {
+    vi.resetModules();
+    mockClientWithLiveSession("sess_meter_2");
+
+    const { establishBrowserFormSession: establish } =
+      await import("@/lib/scanner/auth/browser-login");
+    await establish(AUTH, ORIGIN, USER_ID);
+    expect(meter.acquireConcurrencySlot).toHaveBeenCalledWith(true);
+
+    meter.acquireConcurrencySlot.mockClear();
+    meter.getUserPlan.mockResolvedValue("free");
+    await establish(AUTH, ORIGIN, USER_ID);
+    expect(meter.acquireConcurrencySlot).toHaveBeenCalledWith(false);
+
+    vi.doUnmock("@/lib/browserbase/client");
+    vi.resetModules();
+  });
+
+  it("releases the slot and bills nothing when the session never came up", async () => {
+    vi.resetModules();
+    mockClientWithLiveSession("sess_meter_3", true);
+
+    const { establishBrowserFormSession: establish } =
+      await import("@/lib/scanner/auth/browser-login");
+    const result = await establish(AUTH, ORIGIN, USER_ID);
+
+    expect(result.ok).toBe(false);
+    expect(meter.releaseConcurrencySlot).toHaveBeenCalledTimes(1);
+    // Nothing ran on BrowserBase's side, so nothing may be charged -- and a
+    // caller retrying after this pays for its own session, never twice for
+    // one that never existed.
+    expect(meter.recordBrowserbaseSeconds).not.toHaveBeenCalled();
     vi.doUnmock("@/lib/browserbase/client");
     vi.resetModules();
   });
@@ -418,7 +599,11 @@ describe("establishScanSession (form): runs verifySession after a successful bro
     );
 
     const { establishScanSession } = await import("@/lib/scanner/auth/login");
-    const result = await establishScanSession(AUTH, `${ORIGIN}/dashboard`);
+    const result = await establishScanSession(
+      AUTH,
+      `${ORIGIN}/dashboard`,
+      USER_ID,
+    );
     expect(result.ok).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(3);
 

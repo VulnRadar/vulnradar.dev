@@ -58,6 +58,19 @@ function postRequest(body: unknown): NextRequest {
   });
 }
 
+/**
+ * The `SELECT email, email_verified_at FROM users` row the route reads to
+ * decide whether the caller may act on an invite. Both columns matter: the
+ * address has to match the invite AND the account has to have proved it owns
+ * that address, because PATCH /api/v3/auth/update lets an account move to any
+ * unclaimed address (clearing email_verified_at) while re-issuing its own
+ * session, so it stays signed in with an address it never proved.
+ */
+const VERIFIED_USER = {
+  email: "bob@example.com",
+  email_verified_at: "2026-01-01T00:00:00.000Z",
+};
+
 function invite(overrides: Record<string, unknown> = {}) {
   return {
     id: 7,
@@ -132,7 +145,7 @@ describe("POST /api/v3/teams/accept-invite", () => {
 
   it("accepts via the emailed token link and marks the notification handled", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [invite()] }); // find by token hash
-    mockQuery.mockResolvedValueOnce({ rows: [{ email: "bob@example.com" }] }); // user's email
+    mockQuery.mockResolvedValueOnce({ rows: [VERIFIED_USER] }); // user's email
     mockQuery.mockResolvedValueOnce({ rows: [] }); // existingMember
     mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE accepted_at
     mockQuery.mockResolvedValueOnce({ rows: [] }); // INSERT team_members
@@ -151,7 +164,7 @@ describe("POST /api/v3/teams/accept-invite", () => {
 
   it("accepts via inviteId (the bell's in-app Accept button) and marks the notification handled", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [invite()] }); // find by id
-    mockQuery.mockResolvedValueOnce({ rows: [{ email: "bob@example.com" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [VERIFIED_USER] });
     mockQuery.mockResolvedValueOnce({ rows: [] }); // existingMember
     mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE accepted_at
     mockQuery.mockResolvedValueOnce({ rows: [] }); // INSERT team_members
@@ -171,12 +184,57 @@ describe("POST /api/v3/teams/accept-invite", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [invite({ email: "someone-else@example.com" })],
     });
-    mockQuery.mockResolvedValueOnce({ rows: [{ email: "bob@example.com" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [VERIFIED_USER] });
 
     const res = await POST(postRequest({ inviteId: 7 }));
 
     expect(res.status).toBe(403);
     expect(mockMarkHandled).not.toHaveBeenCalled();
+  });
+
+  // The invite is addressed to an ADDRESS, so accepting it has to prove the
+  // caller controls that address. PATCH /api/v3/auth/update lets an account
+  // move to any address no other account holds; it clears email_verified_at
+  // but re-issues the caller's session, so the account stays signed in with
+  // an unverified address. Matching on users.email alone therefore let
+  // anyone point their account at a pending invite's address and join a team
+  // (and see its scans) they were never invited to.
+  it("refuses to join a team on an address the account has claimed but never verified", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [invite()] }); // find by id
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ email: "bob@example.com", email_verified_at: null }],
+    });
+
+    const res = await POST(postRequest({ inviteId: 7 }));
+
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toMatch(/verify your email/i);
+    // No membership row, no accepted_at, no cleared notification: the account
+    // must be left exactly where it was.
+    const sqlIssued = mockQuery.mock.calls.map(([sql]) => String(sql));
+    expect(
+      sqlIssued.some((sql) => sql.includes("INSERT INTO team_members")),
+    ).toBe(false);
+    expect(sqlIssued.some((sql) => sql.includes("UPDATE team_invites"))).toBe(
+      false,
+    );
+    expect(mockMarkHandled).not.toHaveBeenCalled();
+  });
+
+  it("still refuses on the emailed-token path, which carries the same address requirement", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [invite()] }); // find by token hash
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ email: "bob@example.com", email_verified_at: null }],
+    });
+
+    const res = await POST(postRequest({ token: "plaintext-token" }));
+
+    expect(res.status).toBe(403);
+    expect(
+      mockQuery.mock.calls.some(([sql]) =>
+        String(sql).includes("INSERT INTO team_members"),
+      ),
+    ).toBe(false);
   });
 
   it("rejects an expired invite", async () => {
@@ -199,7 +257,7 @@ describe("POST /api/v3/teams/accept-invite", () => {
 
   it("a failure marking the notification handled does not fail the accept response", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [invite()] });
-    mockQuery.mockResolvedValueOnce({ rows: [{ email: "bob@example.com" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [VERIFIED_USER] });
     mockQuery.mockResolvedValueOnce({ rows: [] });
     mockQuery.mockResolvedValueOnce({ rows: [] });
     mockQuery.mockResolvedValueOnce({ rows: [] });
