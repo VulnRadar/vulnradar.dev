@@ -379,16 +379,54 @@ export interface Element {
 }
 
 /**
+ * Deepest element nesting that keeps a frame on the open-element stack.
+ *
+ * Two things below are O(open elements) per token: building `ancestors`, and
+ * attributing text to every open element. Without a cap, a body of
+ * `"<div>x".repeat(n)` makes both O(n) at every one of n tokens, so the whole
+ * pass is quadratic in TIME and in RETAINED MEMORY. Measured on the real
+ * function: 6 KB took 57 ms / 33 MB, 12 KB took 148 ms / 109 MB, and 24 KB
+ * took 924 ms / 391 MB. Around 96 KB it exhausts the heap and kills the
+ * process, and since this runs in one synchronous call, the engine's
+ * between-check yielding cannot help and the scan watchdog's timer cannot
+ * fire: every concurrent scan and unrelated request dies with it. A page can
+ * do this to us with no crafted payload, just nested divs.
+ *
+ * 256 is well past anything real (browsers cap around 512, and genuine pages
+ * sit under 50), so the bound is invisible to real documents and only ever
+ * binds on markup built to hurt us. Past it, elements are still emitted with
+ * correct tags and offsets; they just stop collecting descendant text and
+ * stop extending `ancestors`.
+ */
+const MAX_OPEN_DEPTH = 256;
+
+/**
+ * Cap on the text accumulated onto any single element.
+ *
+ * Depth alone does not bound memory: one deep chain with a large body still
+ * copies the whole tail into every open element. Only the inline-script case
+ * is actually read downstream (page-context.ts reads `el.text` for scripts
+ * with no src), and a script larger than this is already far past anything a
+ * check meaningfully inspects.
+ */
+const MAX_ELEMENT_TEXT = 128 * 1024;
+
+/**
  * Flatten a token stream into an element index.
  *
  * Depth tracking uses a stack that pops on a matching end tag and unwinds to
  * the nearest match when tags are crossed, which is what browsers do for the
  * mis-nesting that occurs in real pages. Elements are returned in document
  * order.
+ *
+ * Bounded by MAX_OPEN_DEPTH and MAX_ELEMENT_TEXT above; see those for why.
  */
 export function toElements(tokens: Token[]): Element[] {
   const out: Element[] = [];
   const stack: { tag: string; index: number }[] = [];
+  /** Depth actually seen, including frames past the cap that were not pushed,
+   *  so `el.depth` keeps reporting the document's real nesting. */
+  let depth = 0;
 
   for (const t of tokens) {
     if (t.kind === "start") {
@@ -399,18 +437,37 @@ export function toElements(tokens: Token[]): Element[] {
         raw: t.raw,
         start: t.start,
         end: t.end,
-        depth: stack.length,
+        // The document's real depth, not the stack's, so this stays truthful
+        // past the cap.
+        depth,
+        // stack is bounded by MAX_OPEN_DEPTH, so this copy is bounded too. It
+        // was the other half of the quadratic memory.
         ancestors: stack.map((s) => s.tag),
       };
       out.push(el);
-      if (!t.selfClosing) stack.push({ tag: t.tag, index: out.length - 1 });
+      if (!t.selfClosing) {
+        depth++;
+        // Past the cap the element is still emitted, it just stops being an
+        // open container: it collects no descendant text and encloses nothing.
+        if (stack.length < MAX_OPEN_DEPTH) {
+          stack.push({ tag: t.tag, index: out.length - 1 });
+        }
+      }
       continue;
     }
 
     if (t.kind === "text") {
       // Attribute text to every currently open element so a check can ask for
       // the text of a <form> or the source of a <script> without a tree walk.
-      for (const frame of stack) out[frame.index].text += t.text;
+      // Bounded twice over: the stack cannot exceed MAX_OPEN_DEPTH, and an
+      // element stops accumulating at MAX_ELEMENT_TEXT. Without both, one text
+      // token is copied into every open element, and deep nesting makes the
+      // pass quadratic in time and in retained memory.
+      for (const frame of stack) {
+        const el = out[frame.index];
+        if (el.text.length >= MAX_ELEMENT_TEXT) continue;
+        el.text += t.text;
+      }
       continue;
     }
 
@@ -426,6 +483,11 @@ export function toElements(tokens: Token[]): Element[] {
       for (let s = stack.length - 1; s >= found; s--) {
         out[stack[s].index].end = t.end;
       }
+      // Unwinding closes (stack.length - found) containers. depth also
+      // counts frames that were never pushed because of the cap, so it is
+      // decremented by that same amount and floored, never recomputed from
+      // stack.length.
+      depth = Math.max(0, depth - (stack.length - found));
       stack.length = found;
     }
   }

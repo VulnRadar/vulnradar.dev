@@ -121,6 +121,36 @@ const UNTERMINATED_MARKUP =
     "<",
   );
 
+/**
+ * A library name repeated, then a long digit run that never forms a version.
+ *
+ * This shape is why the suite existed and still missed three cubic
+ * detectors: the corpus had unbroken runs, near-miss secrets and unclosed
+ * markup, but nothing that put MANY start positions in front of a lazy
+ * bridge and a partially-satisfiable tail. /lodash.*?(d+.d+.d+)/
+ * measured 188 ms at 2 KB and 1511 ms at 4 KB before the fix.
+ */
+const LAZY_BRIDGE_VERSIONS =
+  "lodash.".repeat(BODY_BYTES / 28) +
+  "angular.min.js.".repeat(BODY_BYTES / 60) +
+  "0".repeat(BODY_BYTES / 4);
+
+/**
+ * JSON array punctuation with the keyword that would satisfy the pattern
+ * deliberately absent, so the lazy bridges can never complete and every
+ * opening pair is retried against every suffix. 16 KB of this measured 31 s
+ * against the old api-graphql-batch-queries regex.
+ */
+const UNSATISFIABLE_JSON_BATCH = '"errors":[' + "[{".repeat(BODY_BYTES / 2);
+
+/**
+ * Deep element nesting. Not a regex case at all: this one made toElements
+ * quadratic in TIME AND RETAINED MEMORY (24 KB cost 391 MB, ~96 KB killed
+ * the process), because each text token was copied into every open element.
+ * Included here because the budget this suite defends is really "no page can
+ * stall the event loop", and OOM is the most complete way to fail it.
+ */
+const DEEP_NESTING = "<div>x".repeat(BODY_BYTES / 6);
 /** Repeat `unit` until the body reaches the target size. */
 function rep(unit: string): string {
   return unit.repeat(Math.max(1, Math.floor(BODY_BYTES / unit.length)));
@@ -212,6 +242,33 @@ describe("synchronous detector time budget", () => {
     expect(
       unexpected.map((o) => `${o.id}=${o.ms}ms`),
       "A detector that is fast on a plain run of characters but slow on near-misses is backtracking, which is the same defect with a different trigger.",
+    ).toEqual([]);
+  });
+
+  it("keeps every detector inside budget on lazy-bridge version strings", () => {
+    const over = detectorsOverBudget(LAZY_BRIDGE_VERSIONS);
+    const unexpected = over.filter(
+      (o) => !KNOWN_QUADRATIC_DETECTORS.includes(o.id),
+    );
+    expect(
+      unexpected.map((o) => `${o.id}=${o.ms}ms`),
+      "A floating `.*?` between a fixed name and a version group is cubic: " +
+        "every occurrence of the name is a start position, and the version " +
+        "group consumes a digit run and backtracks out at each one. Bound " +
+        "the gap and require a real separator before the version.",
+    ).toEqual([]);
+  });
+
+  it("keeps every detector inside budget on unsatisfiable JSON batch syntax", () => {
+    const over = detectorsOverBudget(UNSATISFIABLE_JSON_BATCH);
+    const unexpected = over.filter(
+      (o) => !KNOWN_QUADRATIC_DETECTORS.includes(o.id),
+    );
+    expect(
+      unexpected.map((o) => `${o.id}=${o.ms}ms`),
+      "Lazy bridges that can never be satisfied are the worst case, not the " +
+        "best one: the matcher proves failure from every start position. " +
+        "Anchor on the keyword with indexOf before matching structure.",
     ).toEqual([]);
   });
 

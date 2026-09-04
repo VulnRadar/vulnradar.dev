@@ -1,6 +1,6 @@
 # VulnRadar Public Docs: AI Knowledge
 
-_Auto-compiled from `app/docs/*/page.tsx` on 2026-09-03._
+_Auto-compiled from `app/docs/*/page.tsx` on 2026-09-04._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about every public docs page. Edit
@@ -264,20 +264,29 @@ context. A small local model, e.g. Ollama&rsquo;s default
 llama3.2, does not have that headroom and
 will degrade or break outright once enough context is loaded.
 
-> **WARNING: pg_dump must be installed (postgresql-client)**
-> The backup and restore scripts shell out to
-pg_dump and psql,
-which come from the postgresql-client
-system package. Minimal Node images, including the
-Pterodactyl Node egg,
-do not ship it, so backups fail with
-pg_dump not found and no
-backups/ directory is created. Install it
-first, e.g.
-apt-get install -y postgresql-client
-(Debian/Ubuntu) or
-apk add postgresql-client (Alpine). The
-official Docker image already includes it.
+> **INFO: postgresql-client is preferred, not required**
+> The scripts use pg_dump and
+psql (from the
+postgresql-client system package) when they
+are on PATH, and fall back on their own to a built-in JavaScript
+dumper and an in-process restore when they are not. Minimal Node
+images, including the
+
+Pterodactyl and Pelican Node eggs
+
+, do not ship postgresql-client and give the operator no way to add
+it, which is exactly why the fallback exists: backups work there
+with nothing installed. The file it writes is plain SQL in
+pg_dump's own shape, so it restores with
+npm run db:restore, psql, pgAdmin, or a
+managed provider's importer. It covers the public schema only.
+Encryption, gzip, retention and offsite upload are identical on both
+paths. Force the JavaScript path with
+npm run db:backup -- --js, or
+BACKUP_FORCE_JS=1 when the admin panel is
+what runs it. Installing postgresql-client is still worth it where
+you can: pg_dump is the more complete tool. The official Docker
+image already includes it.
 
 > **WARNING: Use a persistent volume**
 > BACKUP_DIR defaults to
@@ -2882,7 +2891,7 @@ individual URLs instead.
 | `/docs` | ✓ | 5 | 0 | 0 | 1 | 0 | 0 | 9 | 1 |
 | `/docs/setup` | - | 12 | 4 | 0 | 22 | 0 | 0 | 27 | 30 |
 | `/docs/extension` | ✓ | 11 | 2 | 0 | 0 | 0 | 0 | 14 | 2 |
-| `/docs/self-hosting` | - | 16 | 9 | 0 | 14 | 0 | 0 | 29 | 3 |
+| `/docs/self-hosting` | - | 16 | 9 | 0 | 14 | 0 | 0 | 28 | 3 |
 | `/docs/config` | - | 9 | 4 | 0 | 2 | 0 | 0 | 31 | 0 |
 | `/docs/api` | - | 8 | 5 | 0 | 6 | 41 | 0 | 17 | 5 |
 | `/docs/api/playground` | - | 2 | 1 | 0 | 0 | 0 | 0 | 3 | 0 |

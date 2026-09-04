@@ -56,13 +56,7 @@ const MIN_ROUTES = 45;
  *   The index pages above them (/checks, /alternatives) stay.
  * - /dev is a development-only workbench that calls notFound() in production.
  */
-const SKIP_PREFIXES = [
-  "/api",
-  "/docs",
-  "/checks/",
-  "/alternatives/",
-  "/dev",
-];
+const SKIP_PREFIXES = ["/api", "/docs", "/checks/", "/alternatives/", "/dev"];
 
 /** Route -> the section it is grouped under in the output. First match wins. */
 const GROUPS = [
@@ -110,11 +104,11 @@ function readGeneratedCheckStats() {
   if (!existsSync(path)) return {};
   const src = readFileSync(path, "utf8");
   const out = {};
-  for (const m of src.matchAll(
-    /export const (EXACT_[A-Z_]+)\s*=\s*(\d+)/g,
-  ))
+  for (const m of src.matchAll(/export const (EXACT_[A-Z_]+)\s*=\s*(\d+)/g))
     out[m[1]] = m[2];
-  const label = src.match(/export const GENERATED_CHECKS_LABEL\s*=\s*"([^"]+)"/);
+  const label = src.match(
+    /export const GENERATED_CHECKS_LABEL\s*=\s*"([^"]+)"/,
+  );
   // TOTAL_CHECKS_LABEL is client-constants' re-export of the same value; pages
   // import it under that name, so both spellings have to resolve.
   if (label) out.TOTAL_CHECKS_LABEL = label[1];
@@ -158,12 +152,16 @@ function substituteBareExpressions(s, locals = {}) {
 function resolveTemplate(text, locals = {}) {
   let out = text;
   for (let pass = 0; pass < 3; pass++) {
-    const next = out.replace(/\$\{([A-Za-z][A-Za-z0-9_.]*)\}/g, (full, name) => {
-      if (name in STATIC_SUBSTITUTIONS) return STATIC_SUBSTITUTIONS[name];
-      if (name in locals) return locals[name];
-      if (name === "BILLING_PLAN_LIMITS.free") return String(readFreeScanLimit());
-      return full;
-    });
+    const next = out.replace(
+      /\$\{([A-Za-z][A-Za-z0-9_.]*)\}/g,
+      (full, name) => {
+        if (name in STATIC_SUBSTITUTIONS) return STATIC_SUBSTITUTIONS[name];
+        if (name in locals) return locals[name];
+        if (name === "BILLING_PLAN_LIMITS.free")
+          return String(readFreeScanLimit());
+        return full;
+      },
+    );
     if (next === out) break;
     out = next;
   }
@@ -254,12 +252,27 @@ function extractHeadingPairs(source) {
 function importedComponentFiles(source) {
   const files = [];
   for (const m of source.matchAll(/from "@\/(components\/[^"]+)"/g)) {
-    for (const ext of [".tsx", ".ts"]) {
-      const candidate = join(ROOT, `${m[1]}${ext}`);
-      if (existsSync(candidate)) {
-        files.push(candidate);
-        break;
-      }
+    const base = join(ROOT, m[1]);
+    const direct = [`${base}.tsx`, `${base}.ts`].find((p) => existsSync(p));
+    if (direct) {
+      files.push(direct);
+      continue;
+    }
+    // A barrel (`@/components/teams` -> components/teams/index.ts) is an
+    // alias, not a second hop: expand it into what it re-exports, in
+    // declaration order, and treat those as the page's own imports.
+    const barrel = [join(base, "index.ts"), join(base, "index.tsx")].find((p) =>
+      existsSync(p),
+    );
+    if (!barrel) continue;
+    for (const re of readFileSync(barrel, "utf8").matchAll(
+      /from "\.\/([^"]+)"/g,
+    )) {
+      const target = [
+        join(base, `${re[1]}.tsx`),
+        join(base, `${re[1]}.ts`),
+      ].find((p) => existsSync(p));
+      if (target) files.push(target);
     }
   }
   return files;
@@ -322,7 +335,10 @@ let freeScanLimit = null;
 /** CONFIG_BILLING_FREE_LIMIT, read once from config-values.ts. */
 function readFreeScanLimit() {
   if (freeScanLimit !== null) return freeScanLimit;
-  const src = readFileSync(join(ROOT, "lib", "config", "config-values.ts"), "utf8");
+  const src = readFileSync(
+    join(ROOT, "lib", "config", "config-values.ts"),
+    "utf8",
+  );
   const m = src.match(/CONFIG_BILLING_FREE_LIMIT\s*=\s*(\d+)/);
   freeScanLimit = m ? Number(m[1]) : 0;
   return freeScanLimit;
@@ -432,7 +448,7 @@ function groupFor(route) {
   return DEFAULT_GROUP;
 }
 
-function describeRoute({ route, dir }, navLabels, disallowed) {
+function describeRoute({ route, dir }, navLabels, disallowed, routesTable) {
   const pageSrc = readFileSync(join(dir, "page.tsx"), "utf8");
   const layoutPath = join(dir, "layout.tsx");
   const layoutSrc = existsSync(layoutPath)
@@ -441,22 +457,27 @@ function describeRoute({ route, dir }, navLabels, disallowed) {
 
   // Metadata may live in either file: a server page exports it directly, a
   // "use client" page cannot and puts it in a sibling layout.
-  const meta = layoutSrc.includes("Metadata")
-    ? extractMetadata(layoutSrc)
-    : extractMetadata(pageSrc);
-  const fallbackMeta =
-    meta.title || meta.description ? null : extractMetadata(pageSrc);
-
-  const title = meta.title ?? fallbackMeta?.title ?? null;
-  const rawDescription = meta.description ?? fallbackMeta?.description ?? null;
+  const fromLayout = layoutSrc ? extractMetadata(layoutSrc) : null;
+  const fromPage = extractMetadata(pageSrc);
+  const title = fromLayout?.title ?? fromPage.title;
+  const rawDescription = fromLayout?.description ?? fromPage.description;
   const description = rawDescription
-    ? resolveTemplate(rawDescription).replace(/\s+/g, " ").trim()
+    ? rawDescription.replace(/\s+/g, " ").trim()
     : null;
 
-  const pairs = extractHeadingPairs(pageSrc);
-  const onPage = pairs.find(
-    (p) => isCleanProse(p.body) && p.heading && !/[{}]/.test(p.heading),
-  );
+  // The page's own header first, then the header of a component it renders.
+  const sources = [
+    pageSrc,
+    ...importedComponentFiles(pageSrc).map((f) => readFileSync(f, "utf8")),
+  ];
+  let onPage = null;
+  for (const src of sources) {
+    onPage =
+      extractHeadingPairs(src).find(
+        (p) => isCleanProse(p.body) && p.heading && !/[{}]/.test(p.heading),
+      ) ?? null;
+    if (onPage) break;
+  }
 
   const nav = navLabels.get(route) ?? null;
   const needsSession = disallowed.some(
@@ -471,29 +492,45 @@ function describeRoute({ route, dir }, navLabels, disallowed) {
     onPage: onPage?.body ?? null,
     nav,
     needsSession,
+    redirectsTo: extractRedirect(pageSrc, routesTable),
   };
 }
 
 function renderRoute(entry) {
-  const lines = [`### ${entry.nav?.label ?? entry.heading ?? entry.title ?? entry.route}`];
+  const lines = [
+    `### ${entry.nav?.label ?? entry.title ?? entry.heading ?? entry.route}`,
+  ];
   lines.push(`Route: ${entry.route}`);
   lines.push(
     `Access: ${entry.needsSession ? "signed in (or a share token)" : "public, no account needed"}`,
   );
   if (entry.title) lines.push(`Page title: ${entry.title}`);
-  if (entry.nav?.label) lines.push(`In-app navigation label: ${entry.nav.label}`);
-  if (entry.nav?.keywords)
-    lines.push(`Also called: ${entry.nav.keywords.split(/\s+/).join(", ")}`);
+  if (entry.heading && entry.heading !== entry.title)
+    lines.push(`Heading on the page: ${entry.heading}`);
+  if (entry.nav?.label)
+    lines.push(`In-app navigation label: ${entry.nav.label}`);
+  // Verbatim, not comma-joined: this string is the app's own list of the
+  // other words people use for the feature, and it is the single most useful
+  // line in the entry for matching a question against a page.
+  if (entry.nav?.keywords) lines.push(`Also known as: ${entry.nav.keywords}`);
   lines.push("");
-  // The page's own subtitle first: it is written for someone standing on the
-  // page and says what the thing does. The meta description is written for a
-  // search result and repeats the product pitch more often.
-  if (entry.onPage) lines.push(entry.onPage);
-  else if (entry.description) lines.push(entry.description);
-  else
+
+  if (entry.redirectsTo) {
     lines.push(
-      `No description could be read from the source for this page. Say you are not sure what it covers rather than guessing, and point the user at ${entry.route}.`,
+      `This route holds no content of its own: it redirects to ${entry.redirectsTo}.`,
     );
+  } else if (entry.onPage) {
+    // The page's own subtitle first: it is written for someone standing on
+    // the page and says what the thing does. A meta description is written
+    // for a search result and repeats the product pitch more often.
+    lines.push(entry.onPage);
+  } else if (entry.description) {
+    lines.push(entry.description);
+  } else {
+    lines.push(
+      `This page exists at ${entry.route}. Its source states no description in a form that could be quoted here, so say what it is called and where it lives, and do not describe what it does beyond that.`,
+    );
+  }
   lines.push("");
   return lines.join("\n");
 }
@@ -519,7 +556,9 @@ function build() {
     process.exit(1);
   }
 
-  const described = routes.map((r) => describeRoute(r, navLabels, disallowed));
+  const described = routes.map((r) =>
+    describeRoute(r, navLabels, disallowed, routesTable),
+  );
 
   // A run where nothing resolved means the metadata/JSX shapes moved and every
   // route would be published as "no description available". Fail instead.

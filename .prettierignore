@@ -21,3 +21,9 @@ lib/ai/checks-index.md
 lib/ai/docs-knowledge.md
 lib/ai/changelog-knowledge.md
 lib/ai/legal-knowledge.md
+lib/ai/features-knowledge.md
+# The retrieval index, from compile-knowledge-index.mjs. Same reason as the
+# .md files above, and one more: it is written minified on purpose. Prettier
+# expands it from ~250 KB to ~450 KB of a file the server parses on boot and
+# no human reads.
+lib/ai/knowledge-index.json

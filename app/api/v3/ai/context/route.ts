@@ -51,6 +51,19 @@ async function handleContext(
   let result: ContextResult;
 
   switch (cmd) {
+    case "features": {
+      const content = readKnowledgeFile("lib", "ai", "features-knowledge.md");
+      result = {
+        cmd,
+        label: "Product Features",
+        summary: content
+          ? `Feature inventory loaded. Ask me what ${APP_NAME} can do or where a feature lives.`
+          : "Feature inventory not available. Run `npm run build:knowledge` to generate it.",
+        content,
+      };
+      break;
+    }
+
     case "docs": {
       const content = readKnowledgeFile("lib", "ai", "docs-knowledge.md");
       result = {

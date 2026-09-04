@@ -44,3 +44,12 @@ marketing
 .idea
 docker-compose.yml
 docker-compose.dev.yml
+
+# Key material must never enter the build context. certificates/ holds a real
+# (dev-only, localhost) private key, and `COPY . .` in the Dockerfile would
+# put it in the builder layer and the local build cache.
+certificates
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx

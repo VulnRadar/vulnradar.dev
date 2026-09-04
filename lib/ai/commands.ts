@@ -10,6 +10,11 @@ export type SlashCommand = {
 
 export const SLASH_COMMANDS: SlashCommand[] = [
   {
+    cmd: "features",
+    description: "Load every feature and page this build ships",
+    requiresAuth: false,
+  },
+  {
     cmd: "docs",
     description: "Load documentation context",
     requiresAuth: false,
@@ -55,7 +60,11 @@ export const SLASH_COMMANDS: SlashCommand[] = [
 export function buildHelpText(): string {
   return `**Slash commands**
 
+Vera already pulls the relevant parts of the knowledge below into every
+message on its own. Use a command when you want the whole file loaded.
+
 **Context loaders**: load info Vera can use to answer your questions:
+- \`/features\`: Every ${APP_NAME} feature and page, and where each one lives
 - \`/docs\`: ${APP_NAME} documentation and setup guides
 - \`/changelog\`: Recent release notes
 - \`/checks\`: All ${TOTAL_CHECKS_LABEL} scanner check descriptions

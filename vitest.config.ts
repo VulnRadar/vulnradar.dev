@@ -173,6 +173,16 @@ export default defineConfig({
           functions: 100,
           branches: 90,
         },
+        // Exercised against the committed knowledge index, not a fixture, by
+        // tests/lib/ai/knowledge-retrieval.test.ts. The uncovered lines are
+        // the two degradation paths that need a broken index on disk (missing
+        // file, unparseable JSON).
+        "lib/ai/knowledge-retrieval.ts": {
+          lines: 85,
+          statements: 85,
+          functions: 85,
+          branches: 70,
+        },
         // The "lib/types/config.ts" entry that used to sit here was
         // removed: that file no longer exists (lib/types/ is gone
         // entirely), so the glob matched nothing and the four 100%

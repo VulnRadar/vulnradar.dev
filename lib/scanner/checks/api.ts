@@ -117,6 +117,32 @@ function extractTopLevelFieldNames(fieldsArrayInner: string): string[] {
   return names;
 }
 
+/**
+ * Structural test for GraphQL batch (array) syntax: `[{ ..."query"... }, {`.
+ *
+ * Deliberately not a single regex; see the call site for why and for the
+ * measurements. Anchoring on the keyword with indexOf makes the common case
+ * (a body with no "query"/"mutation" at all) one substring scan instead of a
+ * cubic backtracking walk, and confines the structural match to a constant
+ * window where real batch syntax actually sits.
+ */
+function looksLikeGraphQLBatch(body: string): boolean {
+  const WINDOW = 2000;
+  for (const keyword of ['"query"', '"mutation"']) {
+    let at = body.indexOf(keyword);
+    while (at !== -1) {
+      const before = body.slice(Math.max(0, at - WINDOW), at);
+      const after = body.slice(at, at + WINDOW);
+      // An array open then an object open before the keyword, and an object
+      // close followed by the next object after it. Both regexes run against
+      // a bounded slice, so neither can blow up on body length.
+      if (/[[sS]*{/.test(before) && /}s*,s*{/.test(after)) return true;
+      at = body.indexOf(keyword, at + keyword.length);
+    }
+  }
+  return false;
+}
+
 const rawDetectors: Record<string, DetectFn> = {
   // graphql-introspection, graphql-endpoint-exposed, swagger-docs-exposed handled by content.ts
 
@@ -312,7 +338,13 @@ const rawDetectors: Record<string, DetectFn> = {
     const looksLikeGraphQL =
       /\/graphql/i.test(url) || /"errors"\s*:\s*\[/.test(body);
     if (!looksLikeGraphQL) return null;
-    if (/\[.*\{[\s\S]*?(?:"query"|"mutation")[\s\S]*?\}\s*,\s*\{/.test(body)) {
+    // The single-regex form of this test was cubic. A greedy .* followed by
+    // two lazy [sS]*? bridges that can never be satisfied when the keyword
+    // is absent means every "[{" is retried against every suffix: measured
+    // 8 KB of '"errors":[' + "[{".repeat(n) at 3.9 s, 16 KB at 31 s. The gate
+    // above is satisfiable by body content alone, so no /graphql URL is
+    // needed, and this runs on every default scan.
+    if (looksLikeGraphQLBatch(body)) {
       return "GraphQL batch (array) query pattern detected in response body.";
     }
     return null;

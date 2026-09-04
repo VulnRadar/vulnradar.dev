@@ -336,17 +336,19 @@ export const detectors: Record<string, DetectFn> = {
       },
       {
         name: "Angular.js 1.x",
-        pattern: /angular(?:\.min)?\.js.*?(\d+\.\d+\.\d+)/i,
+        pattern:
+          /angular(?:\.min)?\.js[^\s"'<>]{0,40}?[-.@/v=_:](\d{1,4}\.\d{1,4}\.\d{1,4})/i,
         maxSafe: "2.0.0",
       },
       {
         name: "Lodash < 4.17.21",
-        pattern: /lodash.*?(\d+\.\d+\.\d+)/i,
+        pattern: /lodash[^\s"'<>]{0,40}?[-.@/v=_:](\d{1,4}\.\d{1,4}\.\d{1,4})/i,
         maxSafe: "4.17.21",
       },
       {
         name: "Bootstrap < 5.3.0",
-        pattern: /bootstrap(?:\.min)?\.(?:js|css).*?(\d+\.\d+\.\d+)/i,
+        pattern:
+          /bootstrap(?:\.min)?\.(?:js|css)[^\s"'<>]{0,40}?[-.@/v=_:](\d{1,4}\.\d{1,4}\.\d{1,4})/i,
         maxSafe: "5.3.0",
       },
       {

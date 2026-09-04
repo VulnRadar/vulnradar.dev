@@ -256,6 +256,97 @@ describe("POST /api/v3/ai/chat: large context blocks reach the model", () => {
   });
 });
 
+/**
+ * The reported bug, at the level that actually matters: the owner asked "can
+ * we do GitHub repo scanning?" with no slash command and got a flat no about
+ * /repos. Knowledge only ever reached the model when the user typed the right
+ * command first, so a bare question was answered from the system prompt alone.
+ *
+ * These assert the retrieved block reaches the provider on an ordinary
+ * message, and stays out of the way when there is nothing to retrieve.
+ */
+describe("POST /api/v3/ai/chat: automatic knowledge retrieval", () => {
+  function forwardedMessages(): { role: string; content: string }[] {
+    const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    return (
+      JSON.parse((init as RequestInit).body as string) as {
+        messages: { role: string; content: string }[];
+      }
+    ).messages;
+  }
+
+  it("injects the /repos material for a bare GitHub repo-scanning question", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      sseUpstreamResponse([{ choices: [{ delta: { content: "yes" } }] }]),
+    );
+    const res = await POST(
+      postRequest({
+        messages: [
+          { role: "user", content: "can we do GitHub repo scanning?" },
+        ],
+      }),
+    );
+    expect(res.status).toBe(200);
+
+    const messages = forwardedMessages();
+    const auto = messages.find((m) =>
+      m.content.startsWith('<context cmd="auto"'),
+    );
+    expect(auto, "no retrieved context reached the provider").toBeDefined();
+    expect(auto!.role).toBe("user");
+    expect(auto!.content).toContain("/repos");
+    // Injected in front of the question it answers, not after it.
+    expect(messages.indexOf(auto!)).toBeLessThan(messages.length - 1);
+    expect(messages[messages.length - 1].content).toBe(
+      "can we do GitHub repo scanning?",
+    );
+  });
+
+  it("injects nothing for a greeting", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      sseUpstreamResponse([{ choices: [{ delta: { content: "hi" } }] }]),
+    );
+    const res = await POST(
+      postRequest({ messages: [{ role: "user", content: "hey" }] }),
+    );
+    expect(res.status).toBe(200);
+    expect(
+      forwardedMessages().some((m) =>
+        m.content.startsWith('<context cmd="auto"'),
+      ),
+    ).toBe(false);
+  });
+
+  /**
+   * The query is the newest real turn, not a loaded context block. Scoring a
+   * 250k <context cmd="changelog"> payload against the index would retrieve
+   * the file the user was already handed, and burn the budget doing it.
+   */
+  it("scores the user's question, not a loaded context block", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      sseUpstreamResponse([{ choices: [{ delta: { content: "ok" } }] }]),
+    );
+    const res = await POST(
+      postRequest({
+        messages: [
+          {
+            role: "user",
+            content: `<context cmd="changelog">nothing to see</context>`,
+          },
+          { role: "assistant", content: "Changelog loaded." },
+          { role: "user", content: "how do I compare two scans?" },
+        ],
+      }),
+    );
+    expect(res.status).toBe(200);
+    const auto = forwardedMessages().find((m) =>
+      m.content.startsWith('<context cmd="auto"'),
+    );
+    expect(auto).toBeDefined();
+    expect(auto!.content).toContain("/compare");
+  });
+});
+
 describe("POST /api/v3/ai/chat: unified AI usage quota", () => {
   it("is free/unmetered: still calls the upstream provider even when the quota reports not allowed", async () => {
     mockCheckAiUsageQuota.mockResolvedValue({

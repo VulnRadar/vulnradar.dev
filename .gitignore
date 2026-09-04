@@ -78,3 +78,38 @@ marketing/
 *.zip
 
 certificates
+
+# --- hardening, added after a git-history audit ---
+# Two real API_KEY_ENCRYPTION_KEY values and two Turnstile secrets reached
+# public history through a committed .env.example and a docs page. Both were
+# rotated, but the rules below are what stop the next one, since the only
+# reliable remedy after the fact is rotation: commits stay fetchable from
+# GitHub's pull refs even after a history rewrite.
+
+# Every dotenv variant at any depth, not just .env and .env*.local. This
+# missed .env.production, .env.staging and app/.env.local.
+.env.*
+!.env.example
+
+# Key material and certificates. certificates/localhost-key.pem is a real
+# private key sitting untracked in this repo right now.
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+
+# Database dumps. Deliberately NOT a blanket *.sql, which would shadow the
+# tracked scripts/*.sql migrations.
+*.sql.gz
+*.dump
+*.bak
+
+# Agent and platform working directories. .claude/worktrees/ is a full second
+# checkout (~18 MB) and was only ever saved by a local .git/info/exclude,
+# which is not shared, so any fresh clone would stage it.
+.claude/
+.vercel/

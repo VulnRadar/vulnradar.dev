@@ -1,5 +1,6 @@
 import { buildSystemPrompt, sanitizeUserName } from "@/lib/ai/system-prompt";
 import { SLASH_COMMANDS } from "@/lib/ai/commands";
+import { buildRetrievedContextBlock } from "@/lib/ai/knowledge-retrieval";
 import {
   resolveProviderName,
   resolveAiBaseUrl,
@@ -226,6 +227,46 @@ export async function POST(req: Request) {
       if (turnBudget < 0 && conversationMessages.length > 0) continue;
     }
     conversationMessages.unshift(m);
+  }
+
+  // Automatic knowledge retrieval.
+  //
+  // The slash commands were the ONLY way knowledge ever reached the model, so
+  // a question nobody prefixed with a command was answered from the system
+  // prompt alone. "Can we do GitHub repo scanning?" got a flat no about a
+  // feature that has shipped, because nothing in the prompt had ever heard of
+  // /repos.
+  //
+  // So every message is scored against a build-time index of the same
+  // knowledge files (lib/ai/knowledge-retrieval.ts) and the best few sections
+  // are injected here. Server-side and keyword-based on purpose: this route
+  // speaks to Anthropic, any OpenAI-compatible endpoint, and whatever a
+  // self-hoster points AI_BASE_URL at, so anything that needed model-driven
+  // tool calls or an embedding provider would work on some of those and
+  // silently fail on the rest.
+  //
+  // The query is the newest real user turn, not a <context> block: when
+  // someone types /features the widget sends the whole file as its own
+  // message, and scoring that against the index would just retrieve the file
+  // it was already handed.
+  const retrievalQuery = [...conversationMessages]
+    .reverse()
+    .find((m) => m.role === "user" && !isContextBlock(m.content))?.content;
+  if (retrievalQuery) {
+    const retrieved = buildRetrievedContextBlock(retrievalQuery);
+    // Immediately before the final turn, which is where handleCommand in the
+    // chat widget puts a loaded context block too: near the question it is
+    // meant to answer, and after the earlier conversation rather than in
+    // front of it.
+    if (retrieved)
+      conversationMessages.splice(
+        Math.max(0, conversationMessages.length - 1),
+        0,
+        {
+          role: "user",
+          content: retrieved,
+        },
+      );
   }
 
   // Character-length estimate of the INPUT side, for the ESTIMATED-token
